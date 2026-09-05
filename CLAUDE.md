@@ -59,7 +59,9 @@ These come from the spec and apply to every change.
   anything. Fonts are self-hosted from `assets/fonts/`.
 - **Keep both electron-builder file allowlists in sync.** `package.json` `build.files`
   and `electron-builder.preview.yml` `files` must match. A missing entry does not fail
-  the build — it ships an installer that opens a blank window.
+  the build — it ships an installer that opens a blank window. Both configs also carry a
+  `mac` block (Apple Silicon `.dmg`, unsigned: `identity: null`); keep those two in step
+  the same way.
 
 ## Commands
 
@@ -67,7 +69,11 @@ These come from the spec and apply to every change.
 npm run dev                       # launch the app (starts the Python backend too)
 node --test test/*.test.js        # renderer unit tests
 npm test                          # same
+npm run package:mac               # Apple Silicon .dmg into dist/ (needs backend-dist/ built first)
 ```
+
+If the app launched from this shell dies at `app.isPackaged`, the shell exports
+`ELECTRON_RUN_AS_NODE=1` (IDE-hosted terminals do); `unset` it first.
 
 `node --test test/` (directory form) **fails** on Node 24 — it treats the directory as
 a CommonJS entry point. Use the glob. Do not "fix" it back.

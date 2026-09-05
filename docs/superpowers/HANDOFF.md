@@ -743,6 +743,14 @@ what it leaves for whoever picks the branch up:
   the model behind the numbers on screen from `qc.models`. `renderer/data/models.js` is
   the display list with `node --test` coverage; the sidebar block is DOM code and was
   verified by launching the app, not by a test.
+- **A macOS build.** `package.json` and the preview config carry a `mac` block (Apple
+  Silicon `.dmg`, `identity: null` — there is no Developer ID, so it is ad-hoc signed and
+  Gatekeeper asks the user to open it once). `.github/workflows/macos-preview.yml` mirrors
+  the Windows preview workflow step for step, on a `macos-14` runner, and publishes to a
+  separate `preview-macos` prerelease; it has the same repository guard. The backend
+  bundle is built on the runner for its own arch; `main.js` already launched the bare
+  binary on non-Windows. Verified locally: the image builds, the packaged app launches,
+  the bundled backend answers, and a segmentation runs through it.
 - **Contract amendment** at the end of the architecture contract; **ROADMAP item 3** is
   half-addressed (per-result provenance in `qc.models`), the store-level half still stands.
 - **Not done here:** the smoke suites were not re-run on this branch; the preview

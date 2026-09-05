@@ -44,6 +44,26 @@ win:
   icon: assets/branding/spinecontour-mark-dark.png
   artifactName: Spine-Contour-Preview-Windows.${ext}
 
+# macOS: an unsigned, ad-hoc-signed Apple Silicon disk image. There is no
+# Developer ID certificate, so Gatekeeper asks the user to open it explicitly
+# once (right-click > Open). identity: null is what makes the build possible
+# without one; the artifact name keeps it apart from the production image.
+mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+  icon: assets/branding/spinecontour-mark-dark.png
+  category: public.app-category.medical
+  artifactName: Spine-Contour-Preview-macOS-${arch}.${ext}
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+
+dmg:
+  artifactName: Spine-Contour-Preview-macOS-${arch}.${ext}
+  sign: false
+
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

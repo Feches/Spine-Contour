@@ -2,6 +2,12 @@ Automated measurements from radiographs.
 
 On Windows, download the current [Spine-Contour installer](https://github.com/mjayasur/Spine-Contour/releases/download/latest-windows/Spine-Contour-Windows.exe) and open it. Choose a radiograph, leave X-ray, Lumbar, and Lateral selected, then click **Measure radiograph**.
 
+On a Mac with Apple Silicon, the same app builds as a disk image (`npm run package:mac`
+from source, or the `preview-macos` prerelease when the preview workflow has run). It is
+not signed with an Apple Developer ID, so the first time you open it macOS will say it
+cannot verify the developer: right-click the app in the disk image, choose **Open**, and
+confirm. Intel Macs are not built for.
+
 ## Workspace
 
 The Workspace screen is part of the redesigned app on this branch; it is not in the current
