@@ -118,7 +118,10 @@ them by accident; any can be reversed before implementation starts.
 2. **The key is called Subject, not Patient, and the UI says it is a study code.** A research library
    holding MRNs beside radiographs is a PHI store, and the app is investigational. The label, the
    drawer placeholder and the CSV header all say "Subject". The app cannot enforce what the user
-   types; it can avoid inviting the wrong thing.
+   types; it can avoid inviting the wrong thing. This is the same reasoning as HANDOFF decision 26
+   (the film's watermark keeps the `SP-nnnn` id rather than the name, because a filename can carry
+   PHI and the dropzone promises de-identified input): the subject id is likewise never burned into
+   the film, and appears only in the grid, the drawer, the comparison badge and the CSV.
 3. **Timepoint is a label with a known order, not a two-value enum.** Fusion research has 6-week,
    1-year and 2-year films, and deformity work has intra-op films. A binary field would have to be
    replaced the first time one appeared. Pairing anchors on the label `Pre-op`; the post side is
@@ -415,7 +418,11 @@ Pure modules get `node --test` coverage:
 
 DOM and canvas code gets manual verification plus additions to `tools/smoke/`: a fixture workspace
 with `pre-op/` and `post-op/` subfolders and one CSV; assert the load message, the grid's row count
-under each filter, the exported file's header and first row, and the compare badge text.
+under each filter, the exported file's header and first row, and the compare badge text. Two of
+HANDOFF's known traps apply directly: smoke selectors key on `data-study-id` (and a `data-` attribute
+for the new grid rows and filter chips), never on a visible label such as a subject or timepoint,
+because the point of several assertions is that a stored field survived; and a suite that prints
+nothing has thrown, so a silent run is re-run bare and its stack read before anything is concluded.
 
 ## 15. Sequencing
 
