@@ -370,8 +370,22 @@ try {
     check('the row badge reads Segmented or Needs review', Boolean(row) && (row.badge === 'Segmented' || row.badge === 'Needs review'), row);
     check('the row still shows the name derived from the film, not the id',
       Boolean(row) && row.name === '13462cd9-a59f-4aab-9256-cbd723fb978c', row && row.name);
-    check('the name and folder survived the restart, so both fields cleared the store validator',
+    check('the row derives its FOLDER cell from the film path that survived the restart',
       Boolean(row) && row.folder === 'design_src', row && row.folder);
+    // Read the STORE, not the cell: studyName() falls back to the filename stem, so a rendered
+    // name would look right even if validateStudy had silently dropped the stored field. This
+    // round-trips through the saver and back out of validateStudy, which is what proves `name`
+    // and `workspaceFolder` are on the whitelist -- without them a rename would work all session
+    // and be gone at the next launch. (`in` and not a truthiness test: workspaceFolder is
+    // legitimately null here, and a dropped key would read as null too.)
+    const storedFields = await cdp.evaluate(`window.spineContour.loadStudies().then((r) => {
+      const s = (r.studies || []).find((x) => x.id === ${JSON.stringify(STUDY_ID)});
+      return s ? { hasNameKey: 'name' in s, name: s.name, hasWorkspaceKey: 'workspaceFolder' in s, workspaceFolder: s.workspaceFolder } : null;
+    })`);
+    check('the stored record kept `name` through validateStudy',
+      Boolean(storedFields) && storedFields.hasNameKey === true && storedFields.name === '13462cd9-a59f-4aab-9256-cbd723fb978c', storedFields);
+    check('the stored record kept `workspaceFolder`, null for a film added by hand',
+      Boolean(storedFields) && storedFields.hasWorkspaceKey === true && storedFields.workspaceFolder === null, storedFields);
 
     // 7. Re-opening the row shows the film: the dynamic canvas is sized to it, not left at 300x150.
     check('the row re-opens the study', Boolean(await openFromStudies()), null);

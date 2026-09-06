@@ -19,11 +19,20 @@ test('defaultName is null when there is no usable name, so the id keeps naming t
   assert.equal(defaultName(null), null);
 });
 
-test('studyName prefers the stored name and falls back to the id', () => {
-  assert.equal(studyName({ id: 'SP-1001', name: 'pre01' }), 'pre01');
-  assert.equal(studyName({ id: 'SP-1001', name: null }), 'SP-1001');
-  assert.equal(studyName({ id: 'SP-1001' }), 'SP-1001'); // a record saved before `name` existed
-  assert.equal(studyName({ id: 'SP-1001', name: '   ' }), 'SP-1001'); // blank is not a name
+test('studyName prefers the stored name', () => {
+  assert.equal(studyName({ id: 'SP-1001', name: 'pre01', fileName: 'other.jpg' }), 'pre01');
+});
+
+test('studyName derives from the filename when nothing is stored, so old records need no migration', () => {
+  assert.equal(studyName({ id: 'SP-1001', fileName: 'pre01.jpg' }), 'pre01');
+  assert.equal(studyName({ id: 'SP-1001', name: null, fileName: 'pre01.jpg' }), 'pre01');
+  assert.equal(studyName({ id: 'SP-1001', name: '   ', fileName: 'pre01.jpg' }), 'pre01'); // blank is not a name
+});
+
+test('studyName falls back to the id only when there is no filename either', () => {
+  assert.equal(studyName({ id: 'SP-1001' }), 'SP-1001');
+  assert.equal(studyName({ id: 'SP-1001', fileName: null }), 'SP-1001');
+  assert.equal(studyName({ id: 'SP-1001', fileName: '' }), 'SP-1001');
   assert.equal(studyName(null), DASH);
 });
 

@@ -13,11 +13,17 @@ export function defaultName(fileName) {
   return stem.trim() === '' ? null : stem;
 }
 
-// What to show wherever a study is named. Falls back to the id for any record saved before
-// `name` existed -- there is no migration, and an older study simply keeps reading as SP-nnnn.
+// What to show wherever a study is named.
+//
+// Three steps, and the middle one is why no migration is needed: a record saved before `name`
+// existed still carries `fileName`, so it reads as its film's name from the first launch after
+// this change rather than sitting there as SP-nnnn until someone renames it. The stored `name`
+// only has to exist for records the user has actually renamed. The id is the last resort, for a
+// record with no usable filename at all.
 export function studyName(study) {
   if (!study) return DASH;
-  return typeof study.name === 'string' && study.name.trim() !== '' ? study.name : study.id;
+  if (typeof study.name === 'string' && study.name.trim() !== '') return study.name;
+  return defaultName(study.fileName) ?? study.id;
 }
 
 // The last segment of a path, either separator, with trailing separators ignored.
