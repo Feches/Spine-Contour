@@ -5,13 +5,19 @@ radiographs. A Python/FastAPI backend runs three PyTorch models locally; the Ele
 main process spawns it on a random `127.0.0.1` port and polls `/health`.
 
 **Currently mid-redesign — plans 01–06 of 07 are done; plan 07 is deferred past the first
-release.** Plan 06's automated verification is green (unit 270/270 and every `tools/smoke/`
-suite) and its Gate 1 passed on 2026-09-03, but **Gate 2 was not run** — the user chose on
-2026-09-04 to skip it and hand the branch to the developer who wrote the Python backend — and
-**the preview installer has never been tested with plan 06's code in it**. The branch is pushed to
-`fork` at `4a0142c`; the fork's `main` is untouched at `7aa1a86`. Every push of
-`ui-redesign-cw` rebuilds the preview installer, and the user tests that installer before
-anything touches `main`. See `docs/superpowers/HANDOFF.md` before doing anything: "Handing this
+release.** Plan 06's automated verification is green and its Gate 1 passed on 2026-09-03, but
+**Gate 2 was not run** — the user chose on 2026-09-04 to skip it and hand the branch to the
+developer who wrote the Python backend — and **the preview installer has never been tested with
+plan 06's code in it**.
+
+**Current branch (2026-09-06): `claude/studies-ui-updates-bb040d`**, 7 commits of user-requested
+studies/UI work on top of `origin/ui-redesign-cw` @ `0022d91`, pushed to `fork`. Unit 293/293 and
+every `tools/smoke/` suite green, including a new `smoke-chord.mjs`. **One thing is unverified: an
+installed app now opens on an EMPTY library, and that branch of the demo gate has never run in a
+packaged build** (it is `!app.isPackaged`, so every test had demos on) — check it first the next
+time a preview installer exists. `origin/ui-redesign-cw` is the real trunk and carries the newer
+backend; the local and fork `ui-redesign-cw` are an older lineage sharing the name, and `main` does
+not contain the redesign at all. See `docs/superpowers/HANDOFF.md` before doing anything: "Handing this
 to the backend author" if you are merging a new segmentation model, "Resume plan 07 here" for
 what plan 06 changed under plan 07 (the contract was amended in step; the plan-07 document was
 not), and "Release prerequisites" for what stands between this branch and a production release.
@@ -126,7 +132,7 @@ packages; keep `--collect-all timm` in both workflows.
 
 ## Git
 
-This worktree is on branch `ui-redesign-cw`. Two remotes:
+This worktree is on branch `claude/studies-ui-updates-bb040d`. Two remotes:
 
 - `fork` → `github.com/Feches/Spine-Contour` — **push here**
 - `origin` → `github.com/mjayasur/Spine-Contour` — upstream, read-only in practice
@@ -135,6 +141,13 @@ This worktree is on branch `ui-redesign-cw`. Two remotes:
 Pushing `ui-redesign-cw` triggers only the preview installer workflow, which publishes
 to a `preview-windows` prerelease. It cannot touch the production `latest-windows`
 release the README links to. Keep it that way.
+
+The triggers are **exact branch names, no wildcards** (verified 2026-09-06):
+`windows-preview.yml` and `macos-preview.yml` fire on `push` to `ui-redesign-cw`;
+`windows.yml` fires on `push` to `main` and additionally guards `github.ref`. So a
+feature branch like `claude/studies-ui-updates-bb040d` can be pushed to `fork` as a
+backup and **publishes nothing at all**. Only renaming a branch onto `ui-redesign-cw`,
+or pushing to `main`, builds an installer.
 
 ## Conventions
 

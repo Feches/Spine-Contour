@@ -1,12 +1,66 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-09-04
-**Branch:** `ui-redesign-cw`
-**Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\ui-redesign`
+**Last updated:** 2026-09-06
+**Branch:** `claude/studies-ui-updates-bb040d` (7 commits on top of `origin/ui-redesign-cw` @ `0022d91`)
+**Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
+
+> The redesign line moved. `origin/ui-redesign-cw` (upstream, `mjayasur/Spine-Contour`) is the real
+> trunk: it carries the redesigned renderer **and** the newer backend — `backend/framing.py`,
+> `femoral.py`, `landmarks.py`, `models/hrnet.py`, weight `hrnet_landmarks.pt`. The **local**
+> `ui-redesign-cw` and `fork/ui-redesign-cw` are the same name on an older lineage (`ac81866`,
+> 12 commits behind). `main` is a third variant and does **not** contain the redesign at all — it is
+> still the flat `index.html`/`renderer.js` app, 199 commits behind. Read `origin/ui-redesign-cw`
+> when you need "what the installed Preview runs". Nothing needs merging from `main`: its three
+> extra commits are upstream's parallel crop-search/HRNet work on the flat renderer, already
+> superseded here.
 
 ---
 
 ## Where things stand
+
+### Session 2026-09-06 — studies and UI updates (7 commits, `e82ea42`..`93e4850`)
+
+Seven changes the user asked for directly, outside any plan. Branched from
+`origin/ui-redesign-cw` @ `0022d91` and **pushed to `fork` as
+`claude/studies-ui-updates-bb040d`** — that branch name triggers **no** workflow (both preview
+workflows fire only on a branch literally named `ui-redesign-cw`; `windows.yml` only on `main`), so
+the push published nothing and the installer is untouched.
+
+| # | Change | Commit |
+|---|---|---|
+| 1 | Demo studies gone from **both** installers (dev keeps them) | `cbb1fd3` |
+| 2 | A study is named after its film; renamable from the Analysis header | `3ceb929` |
+| 3 | `WORKSPACE` + `FOLDER` columns; `LORDOSIS` removed | `3ceb929` |
+| 4 | The sidebar's OPEN STUDY card is a real control | `97bace9` |
+| 5 | The whole radiograph fits the stage on open | `e82ea42` |
+| 6 | Left+right chord pans; the wheel zooms at the cursor | `93e54c1` |
+| 7 | Clicking Edit drops pan mode (one-way) | `93e54c1` |
+| — | Smoke baselines + the new chord suite | `eb7cf36` |
+| — | An existing study reads as its filename with no migration | `93e4850` |
+
+**Verified.** Unit 293/293 and backend pytest 53 passed, both re-run at the wrap.
+
+Smoke, at the final code commit `93e4850`: `studies` 60/60, `workspace` 96/96,
+`persist` 36/36 + 44/44 across a real restart, `parity` 15/15, `gate1` 25/25, `gate2` 32/32,
+`gate3` 23/23.
+
+**`chip` (20/20) and `chord` (28/28) were last green one commit earlier, at `eb7cf36`, and were
+NOT re-run at `93e4850`** — three attempts wedged the renderer rather than failing, on a machine
+that had been running Electron and segmentation for hours. The gap is argued, not measured:
+`93e4850` touches only `renderer/data/labels.js`, its unit test, and one `smoke-persist.mjs`
+assertion, and `labels.js` is not referenced anywhere in `renderer/components/viewer.js` or
+`renderer/viewer/` — which is the code those two suites exercise (`git show --stat 93e4850` and a
+grep both confirm this). Treat it as very likely green and re-run both on a fresh machine before
+relying on them.
+
+**The one thing not verified: the demo gate's shipping branch has never executed.** It is
+`!app.isPackaged`, so every test ran with demos ON. The plumbing is verified (the flag crosses the
+existing `load-studies` payload, the getter defaults to false on a load error, the empty-library
+copy renders), but no packaged build has been opened. Worst case is cosmetic — an installed app
+that still shows nine demo studies — and it is visible the moment anyone opens one. **Check it
+first the next time a preview installer is built for any reason.** Both electron-builder allowlists
+were checked and are byte-identical and in the same order, and `renderer/**/*` does cover the new
+`renderer/data/labels.js`, so the blank-window failure mode is ruled out.
 
 **Plans 01 through 06 are complete.** Plan 06's implementation (Tasks 1–8, commit range
 `439a185..4148299`, the six fix commits `d934eaa`..`d1cb14d` from its closing whole-branch review,
@@ -968,10 +1022,9 @@ explicit say-so.
 13. **`state.running` is a study id, not a boolean; `sourceAvailable` is dropped.** A moved
     film is discovered when it's needed, at re-run, not by a background check on the row.
     Deleting a study and pruning `predictions/` are plan 06's. **Done in plan 06 (Task 7).**
-14. **Demo studies are gated on the build channel for release** (2026-09-03, decided at
-    Gate 1): kept in dev and the preview installer, absent from the production build. This
-    is a release-prep task, not part of plan 05 or plan 06 — carried as a named prerequisite
-    below, not yet implemented.
+14. ~~**Demo studies are gated on the build channel for release** (2026-09-03, decided at
+    Gate 1): kept in dev and the preview installer, absent from the production build.~~
+    **Superseded and implemented 2026-09-06** — see decision 19.
 15. **Plan 06 (Workspace & clinical data) is done (2026-09-04 — implementation and automated
     verification complete; Gate 2 skipped by the user, not passed); plan 07 (Find similar &
     comparison) is deferred past the first release.**
@@ -986,6 +1039,50 @@ explicit say-so.
     mechanical work (implementers with complete code in the brief, scoped re-reviews), Opus for judgment
     (reviewers, skeptics, integration implementers, the final whole-branch review); Fable only when
     genuinely necessary. Set the model explicitly on every dispatch.
+
+All of the following were settled with the user in chat on **2026-09-06** and implemented the same
+day. Each carries what it costs if it turns out to be the wrong call.
+
+19. **Demo studies are absent from BOTH installers, not just production** (reverses decision 14 and
+    `ROADMAP.md`'s "wanted in the preview installer"). Gated on `!app.isPackaged`, so they survive
+    only in `npm run dev`. *Why:* the preview installer is the one the user tests, so leaving demos
+    in it would mean the tested app never shows the empty state the real one ships with. *Cost if
+    wrong:* the preview loses a ready-made fixture for eyeballing the UI — recoverable by changing
+    one boolean to `!app.isPackaged || IS_PREVIEW`.
+20. **The gate rides the existing `load-studies` payload, never the allowlists.** *Why:* both
+    configs ship `renderer/**/*` by glob; excluding `renderer/data/demo-studies.js` would leave the
+    bare import in `data/persistence.js` resolving to nothing and the renderer would fail to boot —
+    and the allowlist CI check only compares the two lists **to each other**, so it would pass.
+    *Cost if wrong:* none identified; it also avoided a new IPC channel and a preload entry.
+21. **A study is named after its film; the `SP-nnnn` id stays its identity.** `name` is stored and
+    renamable, and `studyName()` falls back to the filename stem so existing records need no
+    migration. *Why:* the user found the generated id unintuitive against the file they opened.
+    *Cost if wrong:* the id is no longer the first thing on screen — it is on every cell's `title`,
+    still the sidecar filename, the delete key and the CSV's `Study ID`, so nothing is orphaned.
+22. **Provenance is TWO columns, `WORKSPACE` + `FOLDER`, and `LORDOSIS` is deleted.** *Why:* either
+    column alone is ambiguous — the derived folder cannot separate `CohortA/pre-op` from
+    `CohortB/pre-op`, and the stored root cannot separate two subfolders of one workspace. The user
+    judged lordosis to add nothing to a screen for *finding* a study, which is what paid for the
+    width. *Cost if wrong:* the two columns duplicate each other on every non-nested row, and a
+    lordosis reader has to open the study.
+23. **No backfill and no `STORE_VERSION` bump.** `name` and `workspaceFolder` are optional and
+    default to null. *Why:* the user's library is a test environment and an installed build now
+    opens empty, so there is nothing to migrate; a bump is expensive (`validateStudy` throws,
+    `renderer/main.js` then disables persistence for the session). *Cost if wrong:* studies that
+    predate the change show `—` under `WORKSPACE` forever unless someone writes a backfill.
+24. **Pan/edit exclusivity is ONE-WAY.** Clicking Edit clears `panMode`; pressing Pan while already
+    editing still lets pan win. *Why:* the second half is behaviour a human signed off at Gate 1 on
+    2026-09-03 and is asserted by `smoke-gate1.mjs`. Panning is not lost while editing — middle-drag
+    and the new chord both still work. *Cost if wrong:* the toggle the user just pressed is silently
+    cleared; the alternative the verifier preferred was to disable the Pan button while editing,
+    which makes the exclusivity visible instead.
+25. **"Double click to move the x-ray" was NOT double-click.** The user meant a left+right chord
+    drag, plus cursor-anchored zoom. No `dblclick` handler exists anywhere and none was added.
+    *Cost if wrong:* nothing built on a misread requirement — but see the chord trap below, because
+    the obvious implementation of it does not work.
+26. **The film's watermark keeps the `SP-nnnn` id, not the name.** *Why:* a filename is
+    user-supplied text that can carry PHI, and the dropzone copy promises de-identified input.
+    *Cost if wrong:* the burned-in stamp does not match the name on screen.
 
 ## Release prerequisites — before a production release
 
@@ -1018,6 +1115,52 @@ production release:
 
 ## Known traps
 
+- **A mouse chord is born in `pointermove`, never in `pointerdown`.** Chromium implements the
+  Pointer Events chorded-button rule: `pointerdown` fires only on the transition from no buttons to
+  some button, and `pointerup` only on the transition back to zero. The second button of a
+  left+right chord, and the first release out of one, **both arrive as `pointermove`** carrying
+  `button` = the button that changed and `buttons` = the new mask. A chord test placed only in a
+  pointerdown handler is dead code that silently never fires. Test the `buttons` **bitmask**, never
+  `button` — a `button` test gets exactly one press order right. Verified on Electron 44 / Chrome
+  152 in both orders; `renderer/viewer/interactions.js`'s `isChordHeld` is the predicate.
+- **A CDP `mouseMoved` sent with `button: 'none'` silently drops pointer capture.** It reads as
+  "capture is lost during a chord", which is a false negative that looks exactly like a real defect.
+  Every move in a chord test must carry the held buttons (`{ button: 'left', buttons: 3 }`).
+  `cdp.click` and `cdp.drag` hardcode a single button, so chord tests must use the raw `mouse`
+  primitive. `cdp-lib.mjs`'s own `drag` already does this correctly — copy it.
+- **A wheel is not a pointer event, so it slips past every drag guard.** `handleWheel` fires *during*
+  a pan drag: pointer capture does not withhold it and `if (drag) return` never sees it. Now that
+  the wheel writes pan as well as zoom, the live drag's baseline has to be re-based by exactly what
+  the wheel changed, or the next `pointermove` discards it and the film snaps back.
+- **`transform-origin: center` breaks the naive zoom-anchor formula.** `.viewer-host` scales about
+  the stage's centre, so a host-local point lands at `C + P + z*(p - C)`, not `P + z*p`. The
+  top-left formula is wrong by `(1-z)*C` — 500px at 2× on a 1000px stage: nearly right in the middle
+  and grossly wrong at the edges, which is where a quick manual check does not look. And `k` must
+  come from the **post-clamp** zoom, or the film creeps every tick at `ZOOM_MAX` while the label
+  sits frozen at 240%.
+- **Before believing a canvas/pointer suite's FAILURE, re-run it alone on a freshly launched
+  instance.** On 2026-09-06 a batched re-run reported `gate1` 22/25 and `gate2` 28/32 — pan-vs-edit
+  precedence, Escape-exits-edit, and a landmark drag all "failing". Run alone against the same
+  commit, on a fresh `launch.mjs`, both were 25/25 and 32/32. The batch had followed a suite that
+  was killed mid-run, and the existing "never re-run on an instance where a previous suite was
+  killed" note is why: a wedged renderer produces failures that read exactly like real pointer
+  regressions. The same run also stalled `parity` for minutes because `pytest backend` was loading
+  torch on the same CPU-only laptop — **do not run the Python suite concurrently with a canvas
+  suite**; the drag assertions are timing-sensitive and starve.
+- **A smoke suite that prints nothing has thrown, not passed.** `smoke-workspace.mjs` and
+  `smoke-persist.mjs` buffer their results and print at the very end, so an exception mid-run
+  produces *no output at all* — not even the failures already recorded. When a suite is silent, re-run
+  it without piping through `grep` and read the stack. It cost an afternoon here: a `rectBy(...)`
+  returned null and the next line dereferenced `.cx`.
+- **Do not key a smoke selector on a user-visible label.** Two `smoke-workspace.mjs` lookups selected
+  on `aria-label="Delete SP-nnnn"`; renaming studies broke them into a null dereference. They select
+  on `data-study-id` now. The same applies to any assertion on a name — read the store, not the cell,
+  when the point is that a stored field survived.
+- **`el()` assigns to the property when the key exists on the node.** `spellcheck: 'false'` sets the
+  boolean property from a non-empty string and therefore turns it **on**. Pass real booleans.
+- **`npm install` in a fresh worktree does not give you a working Electron.** This machine's npm
+  blocks package install scripts, so Electron's postinstall never downloads the ~244 MB binary.
+  Copy `node_modules/electron/dist` (and `path.txt`) from a worktree that already has it.
 - **`cdp.errors` replays old page exceptions on every connect.** `cdp-lib.mjs`'s `connect()` enables
   `Runtime`, and Chromium re-emits the page's stored console messages, so a fresh `cdp.mjs` process
   prints exceptions from earlier in the same page session as if they had just happened. Only a
