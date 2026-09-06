@@ -23,6 +23,13 @@ what plan 06 changed under plan 07 (the contract was amended in step; the plan-0
 not), and "Release prerequisites" for what stands between this branch and a production release.
 `docs/ROADMAP.md` carries the deferred work that has no plan yet.
 
+**Branch `claude/preop-postop-xray-org-2c4d80` (2026-09-06)** sits above the studies branch and holds
+only docs: the pre-op/post-op organisation spec
+(`docs/superpowers/specs/2026-09-06-preop-postop-organisation-design.md`) and the plan for its task
+1, the Parameters tab (`docs/superpowers/plans/2026-09-06-parameters-tab.md`). No code from either
+exists yet; resume at that plan's Task 1, subagent-driven. `docs/superpowers/NEXT-SESSION.md` is the
+prompt. It merges back into the studies branch when task 1 is done, at the user's say-so.
+
 ## Read these first
 
 | Document | What it is |
@@ -132,7 +139,8 @@ packages; keep `--collect-all timm` in both workflows.
 
 ## Git
 
-This worktree is on branch `claude/studies-ui-updates-bb040d`. Two remotes:
+This worktree is on branch `claude/preop-postop-xray-org-2c4d80`, branched from
+`claude/studies-ui-updates-bb040d` and meant to merge back into it. Two remotes:
 
 - `fork` → `github.com/Feches/Spine-Contour` — **push here**
 - `origin` → `github.com/mjayasur/Spine-Contour` — upstream, read-only in practice

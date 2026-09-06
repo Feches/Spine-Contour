@@ -1938,3 +1938,57 @@ git push fork claude/preop-postop-xray-org-2c4d80
 - **§6 decision 7** (segmented-only default, count shown) — Task 5; **decision 8** (long export primary) — Task 6; **decision 9** (nothing drops silently: the export names its row count, the filter names its hidden count) — Tasks 5 and 6.
 
 Names used across tasks were checked against each other: `mountParameters(host, {onOpen})`, `update(live, queried)`, `HAND_ADDED`, `DEFAULT_FILTERS`, `DEFAULT_SORT`, `measurementColumns`, `parameterValues`, `formatParameter`, `workspaceOptions`, `folderOptions`, `normaliseFilters`, `filterParameters`, `hiddenUnsegmented`, `sortParameters`, `emptyReason`, `exportFileName`, `toCsv(studies, opts)`, `lastSegment`, and the store keys `studiesTab`, `paramFilters`, `paramSort`, `paramLevels`.
+
+---
+
+## Ledger
+
+This section travels with the repo. Append a session-end line at every wrap; record every decision
+made in chat as `Ruling: <what> — <why> — <cost if wrong>`.
+
+Session ended 2026-09-06: resume at **Task 1** (nothing implemented; unit 293/293 at the wrap).
+Execution method chosen by the user: subagent-driven, a fresh subagent per task with two-stage
+review; Sonnet for Tasks 1, 2, 3, 7 and 8, Opus for Tasks 4, 5 and 6; never Fable.
+
+Rulings from the brainstorm and planning session (HANDOFF decisions 27–36 carry the same list):
+
+- Ruling: subject, timepoint and film date are optional null-default fields on the film record, not
+  folders, not clinical-map entries, not a patient entity, and no `STORE_VERSION` bump — folders
+  cannot pair a hand-added or second-load film and give a one-year follow-up no home; a clinical-map
+  entry cannot be acted on by the app; a patient entity carries nothing the per-film clinical map does
+  not — cost if wrong: a later patient entity migrates two string fields into a `patients` array, a
+  one-time lift.
+- Ruling: the key is "Subject", a study code, never "Patient" or an MRN, and it is never burned into
+  the film — PHI, the same reasoning as HANDOFF decision 26 — cost if wrong: a user who wants MRNs
+  keeps a key elsewhere.
+- Ruling: timepoint is an ordered label (Pre-op, Intra-op, Post-op, N wk/mo/yr, custom), not a
+  two-value enum — fusion research has 6-week, 1-year and 2-year films; deformity work has intra-op —
+  cost if wrong: pairing names a label rather than a boolean, and a misspelt label pairs nothing.
+- Ruling: view is seeded from folder and stem tokens that name a position, never inferred from a
+  timepoint, and a per-folder assignment table on the Workspace card replaces any per-load selector
+  or null-until-set — the no-fabrication rule, and a whole-batch selector mislabels a
+  flexion/extension workspace — cost if wrong: a layout with one folder per subject gets a long
+  table; the column-header set-all control mitigates and row collapsing is the recorded escalation.
+- Ruling: the acquisition date is "Film date" (`filmDate`); the Find tab's DATE stays the date
+  added; a bare `date` CSV header is not recognised — two columns called DATE meaning different
+  things, and a clinical sheet's `date` is as likely the surgery date — cost if wrong: a CSV headed
+  `date` has to be renamed `film_date` or `study_date`.
+- Ruling: no per-field provenance flag for seeded values; explicit (CSV) beats inferred (folder);
+  nothing overwrites a stored value on load — the grid shows every value and the load message says
+  what was inferred; matches the fill-blanks rule — cost if wrong: which values were guessed versus
+  typed cannot be told apart later without re-loading.
+- Ruling: the Parameters tab defaults to segmented-only and says how many it hides; long export is
+  primary and the paired export ships last; nothing drops silently — the tab is for numbers; stats
+  packages pivot long format in one line; the paired export shares its delta code with comparison
+  mode — cost if wrong: an Excel-first user waits for spec task 4 for the wide file.
+- Ruling: `toCsv` exports the union of clinical keys on the exported rows and drops its `fields`
+  parameter — roadmap item 1's third decision; a hidden column vanished from the file with nothing
+  to say so — cost if wrong: the file can carry a column the user deliberately hid, and the
+  per-study export on Analysis changes with it.
+- Ruling: task 1 sorts by study name, not id, and the Studies search box applies to the grid — there
+  is no id column, and a visible control that does nothing on one tab reads as broken — cost if
+  wrong: the spec's §10.3 wording is amended in Task 8; an id sort would need an id column.
+- Ruling: branch strategy is a docs-only branch off `claude/studies-ui-updates-bb040d`, rebased onto
+  its tip whenever the other session moves it, merged back when task 1 is done; pushed to `fork` as
+  a backup, which publishes nothing — the preview workflows fire only on `ui-redesign-cw` — cost if
+  wrong: none identified; the branch name can never build an installer.

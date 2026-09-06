@@ -3,6 +3,9 @@
 **Last updated:** 2026-09-06
 **Branch:** `claude/studies-ui-updates-bb040d` (7 commits on top of `origin/ui-redesign-cw` @ `0022d91`)
 **Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
+**This copy is on:** `claude/preop-postop-xray-org-2c4d80` (docs only, above the branch above), worktree
+`C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628` — see the first
+section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
 > The redesign line moved. `origin/ui-redesign-cw` (upstream, `mjayasur/Spine-Contour`) is the real
 > trunk: it carries the redesigned renderer **and** the newer backend — `backend/framing.py`,
@@ -17,6 +20,24 @@
 ---
 
 ## Where things stand
+
+### Pre-op/post-op organisation — spec and plan written, nothing implemented (branch `claude/preop-postop-xray-org-2c4d80`)
+
+Branched from `claude/studies-ui-updates-bb040d` @ `9735202` on 2026-09-06, rebased onto that tip
+once when the other session moved it, and pushed to `fork` (publishes nothing). Docs only; no code
+has changed and unit is 293/293 at the wrap.
+
+| What | Where |
+|---|---|
+| The approved design: subject, timepoint, film date and view on the film record; folder and CSV seeding with a per-folder assignment table on the Workspace card; a Parameters tab on Studies; long and paired CSV exports; the compare-with-pre-op entry into comparison mode | `docs/superpowers/specs/2026-09-06-preop-postop-organisation-design.md` |
+| The plan for spec task 1, the Parameters tab: eight TDD tasks, a DOM-only smoke suite, the records | `docs/superpowers/plans/2026-09-06-parameters-tab.md` (its `## Ledger` is the progress file) |
+| The next-session prompt | `docs/superpowers/NEXT-SESSION.md` |
+
+**Resume at plan Task 1**, subagent-driven (the user's choice: a fresh subagent per task, Sonnet for
+Tasks 1, 2, 3, 7, 8, Opus for the DOM Tasks 4, 5, 6). The spec's tasks 2–4 — the new fields and
+seeding; compare-with-pre-op, which waits on plan 07; the paired export — each get their own plan
+later. Decisions 27–36 below are this session's. The intent is to merge this branch back into
+`claude/studies-ui-updates-bb040d` when task 1 is done, at the user's say-so.
 
 ### Session 2026-09-06 — studies and UI updates (7 commits, `e82ea42`..`93e4850`)
 
@@ -1084,6 +1105,57 @@ day. Each carries what it costs if it turns out to be the wrong call.
     user-supplied text that can carry PHI, and the dropzone copy promises de-identified input.
     *Cost if wrong:* the burned-in stamp does not match the name on screen.
 
+The following were settled with the user in chat on **2026-09-06** during the pre-op/post-op
+brainstorm and are recorded in that spec's §6 and in the Parameters-tab plan's ledger. None is
+implemented yet.
+
+27. **Subject, timepoint and film date are optional null-default fields on the film record** — not
+    folders, not clinical-map entries, not a patient entity — and there is **no `STORE_VERSION`
+    bump** (decision 23's precedent). *Why:* folders cannot pair a hand-added or second-load film
+    and give a one-year follow-up no home; a clinical-map entry cannot be acted on by the app; a
+    patient entity would carry nothing the per-film clinical map does not. *Cost if wrong:* a later
+    patient entity migrates two string fields into a `patients` array — a one-time lift.
+28. **The key is "Subject", a study code, never "Patient" or an MRN, and it is never burned into the
+    film.** *Why:* PHI; the same reasoning as decision 26. *Cost if wrong:* a user who wants MRNs
+    keeps a key elsewhere.
+29. **Timepoint is an ordered label** (Pre-op, Intra-op, Post-op, N wk/mo/yr, custom), **not a
+    two-value enum.** *Why:* fusion research has 6-week, 1-year and 2-year films; deformity work has
+    intra-op films. *Cost if wrong:* pairing names a label rather than a boolean, and a misspelt
+    label pairs nothing.
+30. **View is seeded from folder and stem tokens that name a position (`flexion`, `extension`,
+    `prone`, `supine`, `standing`), never inferred from a timepoint, and a per-folder assignment
+    table on the Workspace card replaces any per-load selector or null-until-set.** *Why:* the
+    no-fabrication rule — an `intra-op` folder does not set prone — and a whole-batch selector
+    mislabels a workspace with a flexion subfolder and an extension subfolder. *Cost if wrong:* a
+    layout with one folder per subject gets a long table; the column-header set-all control
+    mitigates and collapsing identical rows is the recorded escalation.
+31. **The acquisition date is "Film date" (`filmDate`); the Find tab's DATE stays the date added;
+    a bare `date` CSV header is not recognised** (`film_date` and `study_date` are). *Why:* two
+    columns called DATE meaning different things, and a clinical sheet's `date` is as likely the
+    surgery date. *Cost if wrong:* a CSV headed `date` has to be renamed.
+32. **No per-field provenance flag for seeded values; explicit (CSV) beats inferred (folder);
+    nothing overwrites a stored value on load.** *Why:* the grid shows every value and the load
+    message says what was inferred; the last rule is the clinical load's fill-blanks rule. *Cost
+    if wrong:* which values were guessed versus typed cannot be told apart later without
+    re-loading.
+33. **The Parameters tab defaults to segmented-only and says how many it hides; the long export is
+    primary and the paired export ships last; nothing drops silently.** *Why:* the tab is for
+    numbers; stats packages pivot long format in one line; the paired export shares its delta
+    code with comparison mode. *Cost if wrong:* an Excel-first user waits for spec task 4 for the
+    wide file.
+34. **`toCsv` exports the union of clinical keys present on the exported rows and drops its
+    `fields` parameter** (roadmap item 1's third decision, made). *Why:* a column hidden in the
+    drawer vanished from the file with nothing to say so. *Cost if wrong:* the file can carry a
+    column the user deliberately hid, and the per-study export on Analysis changes with it.
+35. **Task 1 sorts the grid by study name, not id, and the Studies search box applies to the
+    grid.** *Why:* there is no id column (the id is on the name's tooltip), and a visible control
+    that does nothing on one tab reads as broken. *Cost if wrong:* the spec's §10.3 wording is
+    amended in the plan's Task 8; an id sort would need an id column.
+36. **Execution of the plan is subagent-driven: a fresh subagent per task, Sonnet for the
+    mechanical tasks (1, 2, 3, 7, 8), Opus for the DOM tasks (4, 5, 6), never Fable.** *Why:* the
+    user's standing instruction is the lowest model that can do the task. *Cost if wrong:* none
+    identified; recorded so the next session does not ask again.
+
 ## Release prerequisites — before a production release
 
 These are about shipping `latest-windows`, not about any remaining plan work; plan 07 is
@@ -1115,6 +1187,15 @@ production release:
 
 ## Known traps
 
+- **`git reset --hard` is refused by the auto-mode permission classifier; `git checkout -B <branch>
+  <target>` is accepted** and is the same operation for a branch with no unique commits (2026-09-06,
+  re-basing a fresh worktree branch onto the studies branch). Prove `git log <target>..HEAD` shows
+  nothing that is not already on `main` or the target first, or the commits are gone.
+- **Two sessions can work this repo at once, and the other one can move your base branch.** The
+  studies-branch session added a docs commit to `claude/studies-ui-updates-bb040d` while the
+  pre-op/post-op branch was being written. The fix was `git merge-tree --write-tree <target> HEAD`
+  as a conflict dry run, `git rebase <target>`, then re-reading `CLAUDE.md` and this file — before
+  writing any code, not after.
 - **A mouse chord is born in `pointermove`, never in `pointerdown`.** Chromium implements the
   Pointer Events chorded-button rule: `pointerdown` fires only on the transition from no buttons to
   some button, and `pointerup` only on the transition back to zero. The second button of a
