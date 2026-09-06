@@ -326,10 +326,14 @@ export function render(state) {
 
   const study = currentStudy(state);
   if (!study) {
-    // Not reachable from plan 03's UI -- screens/studies.js always sets openId and
-    // screen together, and the sidebar has no Analysis nav item -- but rendering a
-    // header-and-empty-viewer shell over a study that isn't there is worse than one
-    // extra branch.
+    // Still not reachable, but no longer for the old reason: the sidebar's OPEN STUDY card
+    // IS an Analysis entry point now, and it sets `screen` without touching openId. It is
+    // safe because the card only renders while the study is in state.studies
+    // (components/sidebar.js's openStudyCard), and `studies` is in the router's SIDEBAR_KEYS,
+    // so deleting the open study remounts the sidebar and the card goes with it -- the delete
+    // path in screens/studies.js clears openId and returns to the list in the same setState.
+    // Rendering a header-and-empty-viewer shell over a study that isn't there would still be
+    // worse than one extra branch.
     return el('main', { class: 'placeholder-screen' }, el('p', {}, 'No study is open.'));
   }
 

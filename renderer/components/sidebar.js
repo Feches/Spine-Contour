@@ -56,11 +56,20 @@ function workspaceStatus(state) {
   return `${state.wsFiles.length} FILMS · ${state.wsCsvRows.length} ROWS`;
 }
 
+// The card is the sidebar's way back to the open study, so it is a real control, built like
+// navRow above. It patches `screen` ONLY: openId does not change, so screens/studies.js's
+// FRESH_VIEW reset does not apply and components/viewer.js re-applies the stored zoom/pan --
+// the user returns to the view they left. No aria-label: the three children already name it,
+// and one would hide the view/patient line from a screen reader.
 function openStudyCard(state) {
   if (!state.openId) return null;
   const study = state.studies.find((item) => item.id === state.openId);
   if (!study) return null;
-  return el('div', { class: 'sidebar-open-study' },
+  return el('button', {
+    type: 'button',
+    class: 'sidebar-open-study',
+    onClick: () => setState({ screen: 'analysis' }),
+  },
     el('div', { class: 'eyebrow' }, 'OPEN STUDY'),
     el('div', { class: 'open-study-id' }, study.id),
     el('div', { class: 'open-study-meta' }, `${study.view} · ${study.pt || '—'}`),

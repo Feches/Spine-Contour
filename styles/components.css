@@ -422,13 +422,20 @@
   white-space: nowrap;
 }
 
+/* A <button>, like .nav-row. base.css resets button's border/background/padding, but this
+   class outranks the element selector so the well and the border survive. text-align is the
+   one reset that does bite: a button centres its text. The fill is already var(--well), so
+   hover shifts the border rather than the background. */
 .sidebar-open-study {
   margin-top: 14px;
   padding: 10px 12px;
   border-radius: 12px;
   background: var(--well);
   border: 1px solid var(--border);
+  text-align: left;
+  cursor: pointer;
 }
+.sidebar-open-study:hover { border-color: var(--accent); }
 .open-study-id {
   margin-top: 5px;
   font-family: 'Chivo Mono', monospace;
@@ -454,6 +461,7 @@
 .btn:focus-visible,
 .icon-btn:focus-visible,
 .nav-row:focus-visible,
+.sidebar-open-study:focus-visible,
 .theme-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
