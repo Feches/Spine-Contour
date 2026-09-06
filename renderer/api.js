@@ -91,6 +91,16 @@ function assertWritable() {
 // Parallel to persistenceDisabledReason() and read once by the bootstrap after the first render.
 let loadNotice = null;
 
+// Whether the compiled-in demo studies may be merged into the library. Defaults to FALSE and is
+// only ever turned on by a load that actually reached the main process, because the load-error
+// path in main.js leaves `real = []` with no payload at all -- and an installed app that failed
+// to read its store must not answer by inventing nine studies.
+let demoStudies = false;
+
+export function demoStudiesAllowed() {
+  return demoStudies;
+}
+
 export function storeLoadNotice() {
   return loadNotice;
 }
@@ -110,6 +120,7 @@ export async function loadStudies() {
     ? raw.notice
     : null;
   loadNotice = notice;
+  demoStudies = raw && typeof raw === 'object' && raw.demoStudies === true;
   if (notice && raw.persistenceUnsafe) disablePersistence(notice);
   return validate(raw);
 }

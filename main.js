@@ -14,6 +14,19 @@ const pkg = require('./package.json');
 const IS_PREVIEW = pkg.buildChannel === 'preview';
 const APP_TITLE = IS_PREVIEW ? 'Spine-Contour Preview' : 'Spine-Contour';
 
+// The nine compiled-in demo studies are a DEVELOPMENT fixture: an installed app must open on an
+// empty library, so an installed study is always one the user put there. Every packaged build is
+// excluded, preview included -- the preview installer is the one that gets tested, so leaving
+// demos in it would mean the tested app never shows the empty state the real one ships with.
+// (docs/ROADMAP.md wanted them kept in preview; that is the one line this reverses. To restore
+// it, make this `!app.isPackaged || IS_PREVIEW`.)
+//
+// The gate is here rather than in the two electron-builder file allowlists on purpose: they
+// ship renderer/ by glob, and excluding renderer/data/demo-studies.js would leave the bare
+// import in renderer/data/persistence.js resolving to nothing, so the renderer would fail to
+// boot -- and the CI check only compares the two allowlists to each other, so it would pass.
+const SHOW_DEMO_STUDIES = !app.isPackaged;
+
 // Development only: point a run at a scratch profile so smoke runs never write into the
 // developer's real studies.json. Ignored in packaged builds. setPath throws on a directory
 // that does not exist, so create it first.
@@ -143,8 +156,14 @@ ipcMain.handle('save-csv', async (_event, request) => {
 // The notices below are display-ready: renderer/api.js hands them to showToast verbatim, so they
 // name the two files and nothing else about the profile.
 function quarantineNotice(storeFile, sidecarDir) {
+  // The second sentence has to match what the user is actually looking at. With demos gated off
+  // in a packaged build, a quarantined store leaves an EMPTY list, and promising demo studies
+  // over it would be the app describing a state it is not in.
+  const running = SHOW_DEMO_STUDIES
+    ? 'Spine-Contour is running on the demo studies.'
+    : 'Spine-Contour is running on an empty library.';
   return `Your saved studies could not be read and were moved aside as ${storeFile} (with ${sidecarDir}). `
-    + 'Spine-Contour is running on the demo studies. To recover, quit and rename both back.';
+    + `${running} To recover, quit and rename both back.`;
 }
 
 function sidecarMoveFailedNotice(storeFile) {
@@ -155,7 +174,7 @@ function sidecarMoveFailedNotice(storeFile) {
 
 ipcMain.handle('load-studies', async () => {
   const store = await readStudyStore(storePath());
-  if (!store.quarantined) return { ...store, notice: null };
+  if (!store.quarantined) return { ...store, notice: null, demoStudies: SHOW_DEMO_STUDIES };
 
   // Share the store's own timestamp so the two names pair up on sight.
   const stamp = /\.corrupt-(\d+)$/.exec(store.quarantined);
@@ -166,10 +185,15 @@ ipcMain.handle('load-studies', async () => {
   } catch (error) {
     // A fresh profile has no predictions/ at all. That is the normal case, not a failure.
     if (error.code !== 'ENOENT') {
-      return { ...store, notice: sidecarMoveFailedNotice(store.quarantined), persistenceUnsafe: true };
+      return {
+        ...store,
+        notice: sidecarMoveFailedNotice(store.quarantined),
+        persistenceUnsafe: true,
+        demoStudies: SHOW_DEMO_STUDIES,
+      };
     }
   }
-  return { ...store, notice: quarantineNotice(store.quarantined, sidecarDir) };
+  return { ...store, notice: quarantineNotice(store.quarantined, sidecarDir), demoStudies: SHOW_DEMO_STUDIES };
 });
 
 ipcMain.handle('save-studies', async (_event, studies) => {

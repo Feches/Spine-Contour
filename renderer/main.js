@@ -1,6 +1,9 @@
 import { getState, setState, subscribe } from './store.js';
 import { renderRoute } from './router.js';
-import { loadStudies, saveStudies, disablePersistence, storeLoadNotice, persistenceDisabledReason } from './api.js';
+import {
+  loadStudies, saveStudies, disablePersistence, storeLoadNotice, persistenceDisabledReason,
+  demoStudiesAllowed,
+} from './api.js';
 import { merge, createStudySaver } from './data/persistence.js';
 import { clinicalFieldNames } from './data/csv.js';
 import { showToast } from './components/toast.js';
@@ -17,7 +20,8 @@ function render(state) {
 }
 
 // Load before the first paint. A store that cannot be read (a newer version, a record with a
-// broken identity) is left exactly as it is on disk: the app runs on the demo studies and
+// broken identity) is left exactly as it is on disk: the app runs on whatever the library would
+// otherwise be -- the demo studies in development, nothing at all in a packaged build -- and
 // persistence is disabled for the session -- the saver reports once, and every later
 // saveStudies/savePrediction rejects -- so nothing on disk is overwritten with less than it held.
 let loadError = null;
@@ -28,7 +32,10 @@ try {
   loadError = error;
   disablePersistence(error.message);
 }
-const studies = merge(real);
+// main.js decides this: the demos are a development fixture, so an installed app opens empty and
+// every study in it is one the user put there. demoStudiesAllowed() is false until a load
+// actually returned the flag, so the catch above falls through to the real (empty) library.
+const studies = demoStudiesAllowed() ? merge(real) : real;
 // `fields` (which clinical columns the drawer shows) is session state and is never written to
 // disk -- the version-1 store holds Study records only. The VALUES are on each record's
 // `clinical`, so seed the columns once from every name that has a stored value: after a

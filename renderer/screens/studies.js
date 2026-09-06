@@ -207,13 +207,21 @@ function buildRow(study, runningId) {
   return row;
 }
 
-function buildTable(studies, runningId) {
+// `filtered` distinguishes the two empty tables, which used to be the same sentence because the
+// nine demo studies made a genuinely empty library unreachable. Now that an installed app opens
+// with nothing, "No studies match that search." over a library the user has not filled yet would
+// blame a search they never made. The filtered wording is pinned by tools/smoke/smoke-studies.mjs
+// -- keep it exactly.
+function buildTable(studies, runningId, filtered) {
   // An explicit arrow, not `studies.map(buildRow)`: map passes the index as the second
   // argument, so every row would receive its own position as `runningId` and the running
   // study would silently never be badged Processing. The arrow is load-bearing.
+  const emptyText = filtered
+    ? 'No studies match that search.'
+    : 'No studies yet — choose or drop a radiograph above, or load a workspace folder.';
   const body = studies.length > 0
     ? studies.map((study) => buildRow(study, runningId))
-    : [el('div', { class: 'studies-empty' }, 'No studies match that search.')];
+    : [el('div', { class: 'studies-empty' }, emptyText)];
   return el('div', { class: 'studies-table card' },
     el('div', { class: 'studies-table-head' },
       el('div', {}, 'STUDY ID'), el('div', {}, 'PATIENT'), el('div', {}, 'VIEW'),
@@ -337,7 +345,7 @@ export function render(state) {
     const queued = studies.filter((study) => (live.running === study.id ? 'proc' : deriveStatus(study)) === 'proc').length;
     summary.textContent = `${studies.length} STUDIES · ${queued} IN QUEUE`;
     const query = (live.query || '').trim().toLowerCase();
-    mount(tableHost, buildTable(studies.filter((study) => matchesQuery(study, query)), live.running));
+    mount(tableHost, buildTable(studies.filter((study) => matchesQuery(study, query)), live.running, query !== ''));
   }
 
   const root = el('main', { class: 'studies-page' },
