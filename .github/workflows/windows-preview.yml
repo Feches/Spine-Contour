@@ -20,8 +20,9 @@ jobs:
     runs-on: windows-latest
     # workflow_dispatch has no branch or repository restriction of its own.
     # This guard is what actually keeps the job from running anywhere but the
-    # fork, making the header comment above literally true.
-    if: github.repository == 'Feches/Spine-Contour'
+    # fork or the parent repository, making the header comment above literally
+    # true. Both publish only to their own preview prerelease.
+    if: github.repository == 'Feches/Spine-Contour' || github.repository == 'mjayasur/Spine-Contour'
     steps:
       - uses: actions/checkout@v7
         with:

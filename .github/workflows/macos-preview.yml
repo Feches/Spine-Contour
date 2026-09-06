@@ -21,8 +21,9 @@ jobs:
     # on, and that is the arch the disk image is for.
     runs-on: macos-14
     # Same guard as the Windows preview: workflow_dispatch has no branch or
-    # repository restriction of its own.
-    if: github.repository == 'Feches/Spine-Contour'
+    # repository restriction of its own. Runs on the fork or the parent
+    # repository, and publishes only to that repository's preview prerelease.
+    if: github.repository == 'Feches/Spine-Contour' || github.repository == 'mjayasur/Spine-Contour'
     steps:
       - uses: actions/checkout@v7
         with:
