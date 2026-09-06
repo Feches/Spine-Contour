@@ -57,6 +57,9 @@ node tools/smoke/cdp.mjs --file tools/smoke/inject-study.js
 node tools/smoke/cdp.mjs --file tools/smoke/run-and-wait.js > tools/smoke/out/last-run.json
 node tools/smoke/smoke-gate3.mjs
 node tools/smoke/smoke-chip.mjs
+node tools/smoke/cdp.mjs --file tools/smoke/inject-study.js
+node tools/smoke/cdp.mjs --file tools/smoke/run-and-wait.js > tools/smoke/out/last-run.json
+node tools/smoke/smoke-chord.mjs
 ```
 
 `inject-study.js` embeds its own tiny 157x280 sample film (the `design_src/13462cd9`
@@ -82,8 +85,14 @@ during the run; a green process exit is sufficient to trust the result, no need 
 eyeball output.
 
 **Known baseline** (fresh scratch profile, this branch tip): parity 15/15, gate1
-25/25, gate2 32/32, gate3 23/23 (with the fresh precondition above), chip 20/20. Use
-these to spot a real regression later.
+25/25, gate2 32/32, gate3 23/23 (with the fresh precondition above), chip 20/20,
+chord 28/28. Use these to spot a real regression later.
+
+`smoke-chord.mjs` covers the left+right chord pan and the cursor-anchored zoom. Its mouse
+moves MUST carry the held buttons ({ button: 'left', buttons: 3 }): Chromium silently drops
+pointer capture on a mouseMoved with button: 'none', which reads as "capture is lost during a
+chord" and is a false negative. It drives the raw `mouse` primitive throughout, because
+`cdp.click` and `cdp.drag` hardcode a single button.
 
 **`smoke-label.superseded.mjs` is not in the run order and must not be added back.**
 Plan-04 Task 20 built a canvas-drawn label plate; Task 21 replaced it with a DOM chip
@@ -245,8 +254,9 @@ folders that could not be read)` clause — `screens/workspace.js` records the s
 module scope only when its own folder handler ran the scan, so a state-seeded scan renders
 `3 radiographs found` without the clause, and that is what the suite asserts.
 
-**Known baseline** (fresh scratch profile, this branch tip `d1cb14d`): unit 270/270
-(`node --test test/*.test.js`); `smoke-workspace.mjs` 96/96 — the same figures as
+**Known baseline** (fresh scratch profile, this branch tip): unit 291/291
+(`node --test test/*.test.js`); `smoke-studies.mjs` 60/60; `smoke-workspace.mjs` 96/96;
+`smoke-persist.mjs` 34/34 then 44/44 — the same figures as
 `docs/superpowers/HANDOFF.md`'s baseline paragraph. Every check in the suite runs
 unconditionally; there is no skip path.
 
