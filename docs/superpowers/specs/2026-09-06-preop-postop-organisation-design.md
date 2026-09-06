@@ -46,9 +46,11 @@ The researcher (spec §2), doing this:
 
 1. Arrange films on disk as `Fusion2025/pre-op/S001.png`, `Fusion2025/post-op/S001.png`, … or any of
    the layouts in §8.1, optionally with a clinical CSV.
-2. Load the folder in the Workspace. Subject, timepoint and, where a folder names a position, view
-   are read off the folder names (or the CSV) for every film, and the load message says how many were
-   inferred and how many were not.
+2. Choose the folder in the Workspace. The card lists every folder the scan found with the timepoint
+   and view the load will assign it, read off the folder names where they say so; the user corrects
+   an ambiguous one (`fusion1_other`) from a dropdown, then presses Load. Subject comes off the folder
+   or filename per film (or the CSV), and the load message says how many films were labelled and how
+   many were not.
 3. Run segmentation across the cohort.
 4. Open the **Parameters** tab on the Studies screen, filter to the workspace, see one row per film
    with every measurement, sort by subject so each patient's films sit together.
@@ -134,10 +136,12 @@ them by accident; any can be reversed before implementation starts.
    flexion subfolder and an extension subfolder needs no clicks. Position is **never inferred from a
    timepoint**: an `intra-op` folder sets the timepoint and leaves the view to the default, the CSV
    or the drawer, because "intra-op films are usually prone" is a guess and the app does not guess.
-   For films whose path names no position, changing the default to null would make each read `—`
-   until set, which is more honest but adds a click per film to the common all-standing dataset; the
-   per-load selector alternative is an open question (§16). The load can also seed view from a CSV
-   column.
+   For folders whose names say nothing (`fusion1`, `fusion1_other`), the Workspace card's **folder
+   table** (§8.5) shows what the load will assign to each folder and lets the user change it before
+   Load, so the position comes from the user, not from an assumption. The all-standing dataset still
+   needs no clicks: every row already reads `Standing lateral`, visibly, before Load. A film added by
+   the picker or dropped on the list has no folder table and keeps the default, editable in the
+   drawer. The load can also seed view from a CSV column.
 5. **No per-field provenance flag for seeded values.** A subject label is not a measurement; the
    Parameters grid makes every seeded value visible in a column, the load message says how many were
    inferred and from what, and the drawer edits them. Storing "this was guessed" per field is extra
@@ -253,8 +257,9 @@ segments strictly below the workspace root, plus the filename stem, and classifi
 | `root/S001.png` | `S001` | `null` | default |
 | `root/IMG_0001.png` | `IMG_0001` | `null` | default |
 
-"default" is the last step of §8.3's chain, `Standing lateral` today. The `CohortA` row is the
-heuristic's known weakness: a cohort folder between the root and the subject is read as the subject. The load message (§8.4) makes it visible in one load, and the fix is to choose
+"default" is the folder's row in the folder table (§8.5), which starts at `Standing lateral` and is
+whatever the user set it to before Load. The `CohortA` row is the heuristic's known weakness: a
+cohort folder between the root and the subject is read as the subject. The load message (§8.4) makes it visible in one load, and the fix is to choose
 the cohort folder as the workspace. The last row is harmless but useless; the user edits or the CSV
 overrides.
 
@@ -275,11 +280,14 @@ duplicates and ambiguous stems are reported exactly as today.
 
 ### 8.3 Precedence
 
-Per field, per film, in order: an existing non-null stored value is kept; else the CSV value if the
-row supplied one; else the folder or stem token; else null. `view` is the one field with a further
-step instead of null: the load default, which is `Standing lateral` today and would be the per-load
-selector's value if §16 adopts it. A folder token always beats that default, so a `flexion` subfolder
-keeps its view whatever the selector says. The drawer overwrites anything.
+Per field, per film, most specific first: an existing non-null stored value is kept; else the CSV
+value if the row supplied one; else a token in the film's own stem (§8.1 rule 3); else, for
+`timepoint` and `view`, the folder table row for the folder the film sits in (§8.5) — which starts
+at the folder's own inferred token and is whatever the user set it to; else null. `view` never
+reaches null on a workspace load because its row always holds a value. `subjectId` has no folder-row
+step: it follows §8.1 rules 2 and 3. So `fusion1/S001_extension.png` under a row the user set to
+`Flexion lateral` is extension, because the film's own name is more specific than its folder. The
+drawer overwrites anything.
 
 ### 8.4 Load message
 
@@ -290,6 +298,31 @@ keeps its view whatever the selector says. The drawer overwrites anything.
 - `· N films have no subject` (or `no timepoint`; both when both)
 - `· N film dates could not be read` — the rejected text is stored nowhere; the film's empty Film date cell in
   the Parameters grid is how the user finds which one
+
+### 8.5 The folder table
+
+After a scan, the Workspace card lists one row per folder that directly holds at least one supported
+film: the root itself when films sit in it, and every subfolder with films, in scan order.
+
+| Column | Content |
+|---|---|
+| Folder | path relative to the root; `.` for the root |
+| Films | count of supported films directly in it |
+| Timepoint | dropdown: the §7.2 known labels and `none`; starts at what §8.1 rule 1 infers from the folder's own path |
+| View | dropdown: the §7.3 labels; starts at the inferred token, else `Standing lateral` |
+
+The user changes any row before pressing Load, and the row's values apply to every film directly in
+that folder under §8.3's precedence. A control in each column header sets the whole column, which is
+how a layout with one folder per subject is set in one action, and is also the whole-batch selector
+for a workspace with no subfolders (one row). The rows are transient workspace state
+(`state.wsFolderRows`), rebuilt by every scan, cleared when the folder is cleared, and never
+persisted — the workspace is not a saved thing (roadmap item 2). Changing a row writes nothing; only
+Load writes, and a film already in the library keeps its stored values under the fill-blanks rule.
+
+The table is what makes the app's position labels honest: no film gets `Standing lateral` without
+that value having been on screen, per folder, before the user pressed Load. It also makes the
+inference visible before it is committed, which §16 previously listed as the escalation for the
+folder heuristic's weaknesses; a misread cohort folder shows up here as a row, not after the fact.
 
 ## 9. Editing
 
@@ -436,6 +469,10 @@ Pure modules get `node --test` coverage:
 - `data/seeding.js`: every row of the §8.1 table, both separators, mixed case, a cohort folder, a
   stem that is only a token, a stem carrying both a timepoint and a view token, a view token in a
   folder and in a stem, an `intra-op` folder leaving view at the default, a root with no subfolders.
+  The folder table's pure half: `folderRows(files, root)` yields one row per folder directly holding
+  a film with its count and inferred values, films in the root give a `.` row, and applying a set of
+  rows to the scanned files follows §8.3 exactly — a stem token beats a user-set row, a user-set row
+  beats the default, and a film already in the library is untouched.
 - `data/timepoints.js`: normalisation of every token, the sort order across all four buckets, tie
   breaking by film date then `addedAt`, custom labels after known ones.
 - `data/csv.js`: the three new long columns, the union of clinical keys, `toPairedCsv` with paired,
@@ -448,7 +485,9 @@ Pure modules get `node --test` coverage:
 
 DOM and canvas code gets manual verification plus additions to `tools/smoke/`: a fixture workspace
 with `pre-op/` and `post-op/` subfolders and one CSV; assert the load message, the grid's row count
-under each filter, the exported file's header and first row, and the compare badge text. Two of
+under each filter, the exported file's header and first row, and the compare badge text; and a
+folder-table row changed to `Extension lateral` before Load, with the view of a film in that folder
+read back from the store after the load. Two of
 HANDOFF's known traps apply directly: smoke selectors key on `data-study-id` (and a `data-` attribute
 for the new grid rows and filter chips), never on a visible label such as a subject or timepoint,
 because the point of several assertions is that a stored field survived; and a suite that prints
@@ -462,8 +501,9 @@ implementation plan, each merged back before the next starts:
 1. **Parameters tab** with workspace, folder and segmented-only filters, sort, and long export of the
    visible set with the union-of-clinical-keys rule. No new fields; nothing in §7–§9. Independently
    useful, and every later piece lands in it.
-2. **Subject, timepoint, film date and view**: §7, §8, §9, the timepoint and subject and paired-only
-   filters, subject sort, the load message, the three new export columns.
+2. **Subject, timepoint, film date and view**: §7, §8 including the folder table, §9, the timepoint,
+   view, subject and paired-only filters, subject sort, the load message, the three new export
+   columns.
 3. **Compare with pre-op** (§12), after plan 07 has built comparison mode.
 4. **Paired export** (§11.2, §11.3).
 
@@ -475,16 +515,16 @@ implementation plan, each merged back before the next starts:
   folder between root and subject is misread (§8.1). The load message is the safeguard. If it proves
   insufficient, the next step is a preview of inferred values on the Workspace card before Load, not
   a cleverer heuristic.
-- **Default view.** With folder and stem tokens seeding the view (§8.1), the default reaches only
-  films whose path names no position — which is the common all-standing pre/post dataset. Decision 4
-  keeps `Standing lateral` as that default, assumed by the app. The honest alternative is a
-  **per-load View selector on the Workspace card**, default `Standing lateral`, so the value is
-  asserted by the user once per load rather than by the app; it applies to the whole load, and a
-  folder token still wins over it for the films that carry one, so a flexion/extension workspace is
-  unaffected by it. This is cheap and worth deciding before task 2. Two escalations are recorded and
-  not recommended yet: a **per-folder override** (the Workspace card lists the subfolders the scan
-  found, each with a view dropdown, for datasets whose folder names say nothing about position, such
-  as `Series 3`), and null-until-set.
+- **A folder table with hundreds of rows.** The layout `root/S001/pre-op.png` gives every subject
+  its own folder, so the table has one row per subject. The column-header control sets a whole
+  column at once and the table scrolls, which is workable. If it proves not to be, the escalation is
+  to collapse rows whose inferred values are identical into one summary row (`212 folders · none ·
+  Standing lateral`) with an expand control — not to hide the table, because its point is that every
+  assignment was on screen before Load.
+- **Default view, resolved.** The per-load selector and null-until-set alternatives that stood here
+  are superseded by the folder table (§8.5, decided with the user 2026-09-06): a whole-batch selector
+  is the table's one-row case or its column-header control, and no film is labelled `Standing
+  lateral` without that value having been shown per folder before Load.
 - **Two pre-op films for one subject** (a repeat, a flexion pair). Ambiguous for pairing; reported,
   never guessed. The user resolves it by relabelling one (`Pre-op flexion`).
 - **Width.** The grid scrolls in its container. If the sticky first column plus fourteen numeric
@@ -511,7 +551,8 @@ comparison pane; PDF export.
   optional-null wording as `name` and `workspaceFolder`; note that `view` is now user-editable.
 - **Architecture contract, module list:** `data/seeding.js`, `data/timepoints.js`; `toCsv`'s new
   columns and union rule; `toPairedCsv`; `screens/studies.js` exports for the Parameters tab's pure
-  filter/sort; `workspaceLoadedMessage`'s new clauses; `state.studiesTab`.
+  filter/sort; `workspaceLoadedMessage`'s new clauses; `state.studiesTab`; `state.wsFolderRows` (transient, reset
+  by every scan, never persisted) and the `folderRows` / apply functions in `data/seeding.js`.
 - **Roadmap item 1:** the "export hidden fields or not" decision is made here (union). Update the
   item.
 - **Roadmap item 2:** superseded in part; the FOLDER/WORKSPACE columns stay, and the Parameters tab is
