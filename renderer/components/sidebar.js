@@ -3,6 +3,7 @@ import { setState } from '../store.js';
 import { openExternal } from '../api.js';
 import { showToast } from './toast.js';
 import { DEFAULT_MODELS, VERTEBRA_MODELS, modelLabel } from '../data/models.js';
+import { studyName } from '../data/labels.js';
 
 const VERSION_LABEL = 'v0.1.0';
 const DOCS_URL = 'https://github.com/mjayasur/Spine-Contour#readme';
@@ -71,7 +72,7 @@ function openStudyCard(state) {
     onClick: () => setState({ screen: 'analysis' }),
   },
     el('div', { class: 'eyebrow' }, 'OPEN STUDY'),
-    el('div', { class: 'open-study-id' }, study.id),
+    el('div', { class: 'open-study-id', title: study.id }, studyName(study)),
     el('div', { class: 'open-study-meta' }, `${study.view} · ${study.pt || '—'}`),
   );
 }

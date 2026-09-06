@@ -10,6 +10,7 @@ import { getState, setState, subscribe } from '../store.js';
 import { selectFile, pathForFile, deletePrediction, persistenceDisabledReason } from '../api.js';
 import { showToast } from '../components/toast.js';
 import { deriveStatus, statusLabel } from '../data/status.js';
+import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle } from '../data/labels.js';
 import { nextId } from '../data/persistence.js';
 import { setFilePayload, releaseStudy } from './analysis.js';
 import { forgetPrediction } from '../components/viewer.js';
@@ -18,9 +19,6 @@ const UPLOAD_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" 
 
 // Same 24-unit stroke-icon convention as UPLOAD_SVG and components/viewer.js's toolbar.
 const TRASH_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 H20"></path><path d="M9 7 V4 H15 V7"></path><path d="M6 7 L7 20 H17 L18 7"></path><path d="M10 11 V16"></path><path d="M14 11 V16"></path></svg>';
-
-// Spec 9.4: lordosis switches to the accent colour at >= 40 degrees.
-const LORDOSIS_ACCENT_DEGREES = 40;
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
@@ -36,12 +34,14 @@ export function formatDate(iso) {
 // call with raw input. The clinical values are what makes the search box's promise true on real
 // studies: `pt`/`dx` exist only on the nine compiled-in demo records, so without them a
 // diagnosis the user imported a minute ago could be typed here and find nothing. Values are
-// user text of any shape, so the string filter below still guards the join. The file path is
-// deliberately NOT searchable -- that is a separate feature the user has deferred.
+// user text of any shape, so the string filter below still guards the join. The study's name,
+// its workspace and its containing folder are searchable because the table shows all three and
+// a visible column you cannot search reads as broken. The FULL file path is still not: only the
+// two folder names the cells actually display are matched.
 export function matchesQuery(study, query) {
   const needle = (query ?? '').trim().toLowerCase();
   if (!needle) return true;
-  return [study.id, study.pt, study.dx, study.view, ...Object.values(study.clinical ?? {})]
+  return [study.id, studyName(study), workspaceLabel(study), folderLabel(study), study.pt, study.dx, study.view, ...Object.values(study.clinical ?? {})]
     .filter((value) => typeof value === 'string')
     .join(' ')
     .toLowerCase()
@@ -50,9 +50,14 @@ export function matchesQuery(study, query) {
 
 // An unsegmented real Study. Bytes are NOT on the record (screens/analysis.js's payload map);
 // measurements, geometry, qc and thumbnail arrive when the run completes.
-export function newStudy({ id, fileName, filePath }) {
+// `name` is what a human reads; `id` stays the record's identity -- it names the sidecar on
+// disk, keys the delete and the CSV join, and must keep matching main.js's /^SP-\d{4,}$/.
+// `workspaceFolder` is set by the workspace load; a film added with the picker or dropped on
+// the list has none, and that em dash in the table is how you tell the two apart.
+export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
   return {
     id, source: 'real', filePath: filePath ?? null, fileName,
+    name: defaultName(fileName), workspaceFolder,
     addedAt: new Date().toISOString(), view: 'Standing lateral', thumbnail: null,
     measurements: null, geometry: null, qc: null, clinical: {},
   };
@@ -155,7 +160,7 @@ function actionCell(study, confirming) {
     return el('div', { class: 'studies-cell-actions' },
       el('button', {
         type: 'button', class: 'icon-btn studies-delete',
-        'aria-label': `Delete ${study.id}`, title: 'Delete study', innerHTML: TRASH_SVG,
+        'aria-label': `Delete ${studyName(study)}`, title: 'Delete study', innerHTML: TRASH_SVG,
         onClick: (event) => { event.stopPropagation(); askToDelete(study.id); },
       }));
   }
@@ -177,12 +182,14 @@ function actionCell(study, confirming) {
 // deriveStatus, which stays a pure function of the record and knows nothing about the store.
 function buildRow(study, runningId) {
   const status = runningId === study.id ? 'proc' : deriveStatus(study);
-  const lordosis = study.measurements?.LL?.['L1-S1'];
-  const hasLordosis = typeof lordosis === 'number' && Number.isFinite(lordosis);
   const patientChildren = [study.pt || '—'];
   if (study.source === 'demo') patientChildren.push(el('span', { class: 'pill-demo' }, 'DEMO'));
-  // While this row is confirming a delete, the prompt takes the DATE, STATUS and LORDOSIS
-  // cells' columns (see .studies-cell-actions-confirming); the id and patient stay visible.
+  // While this row is confirming a delete, the prompt takes every cell from WORKSPACE rightwards
+  // (see .studies-cell-actions-confirming); the study, patient and view cells stay visible.
+  // Those four are nulled together and the prompt's grid-column start is the 4th track, so the
+  // placement cursor is still at 4 when the action cell is laid out. Adding a VISIBLE cell
+  // before the prompt without moving that start line would push the cursor past it and wrap the
+  // prompt onto a second row.
   const confirming = confirmingId === study.id;
   const row = el('div', {
     class: 'studies-row', role: 'button', tabindex: '0', 'data-study-id': study.id,
@@ -196,13 +203,13 @@ function buildRow(study, runningId) {
       if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openStudy(study); }
     },
   },
-    el('div', { class: 'studies-cell-id' }, study.id),
+    el('div', { class: 'studies-cell-id', title: study.id }, studyName(study)),
     el('div', { class: 'studies-cell-patient' }, ...patientChildren),
     el('div', { class: 'studies-cell-view' }, study.view || '—'),
+    confirming ? null : el('div', { class: 'studies-cell-workspace' }, workspaceLabel(study)),
+    confirming ? null : el('div', { class: 'studies-cell-folder', ...(pathTitle(study) ? { title: pathTitle(study) } : {}) }, folderLabel(study)),
     confirming ? null : el('div', { class: 'studies-cell-date' }, formatDate(study.addedAt)),
     confirming ? null : el('div', {}, statusBadge(status)),
-    confirming ? null : el('div', { class: hasLordosis && lordosis >= LORDOSIS_ACCENT_DEGREES ? 'studies-lordosis studies-lordosis-high' : 'studies-lordosis' },
-      hasLordosis ? `${Math.round(lordosis)}°` : '—'),
     actionCell(study, confirming));
   return row;
 }
@@ -224,8 +231,9 @@ function buildTable(studies, runningId, filtered) {
     : [el('div', { class: 'studies-empty' }, emptyText)];
   return el('div', { class: 'studies-table card' },
     el('div', { class: 'studies-table-head' },
-      el('div', {}, 'STUDY ID'), el('div', {}, 'PATIENT'), el('div', {}, 'VIEW'),
-      el('div', {}, 'DATE'), el('div', {}, 'STATUS'), el('div', { class: 'studies-col-lordosis' }, 'LORDOSIS'),
+      el('div', {}, 'STUDY'), el('div', {}, 'PATIENT'), el('div', {}, 'VIEW'),
+      el('div', {}, 'WORKSPACE'), el('div', {}, 'FOLDER'),
+      el('div', {}, 'DATE'), el('div', {}, 'STATUS'),
       el('div', {})),
     ...body);
 }
@@ -287,6 +295,9 @@ function cancelDelete() {
 // belong to the newer library this build cannot read, and the disabled saver writes nothing.
 async function deleteStudy(id) {
   confirmingId = null;
+  // Read the name before the record leaves the list -- the toast below fires after the setState
+  // that removes it, and the user knows this study by its name, not by SP-nnnn.
+  const label = studyName(getState().studies.find((s) => s.id === id) ?? { id });
   if (getState().running === id) {
     showToast('Wait for the segmentation to finish before deleting this study.');
     // The row is still there, so hand focus back to its trash button, as cancelDelete does;
@@ -312,7 +323,7 @@ async function deleteStudy(id) {
     studies: s.studies.filter((x) => x.id !== id),
     ...(s.openId === id ? { openId: null, screen: 'studies', ...FRESH_VIEW } : {}),
   }));
-  showToast(`Deleted ${id}`);
+  showToast(`Deleted ${label}`);
 }
 
 export function render(state) {
@@ -320,7 +331,7 @@ export function render(state) {
   const summary = el('div', { class: 'studies-summary' });
   const search = el('input', {
     type: 'search', class: 'studies-search', value: state.query || '',
-    placeholder: 'Search ID, patient, diagnosis…', 'aria-label': 'Search studies',
+    placeholder: 'Search name, workspace, folder, patient…', 'aria-label': 'Search studies',
     // A keystroke here can filter the confirming row out of the table; clearing the prompt
     // first stops it reappearing, primed on Delete, when the search is cleared again.
     // The setState notification repaints through the same gate (confirmingId is in the key),

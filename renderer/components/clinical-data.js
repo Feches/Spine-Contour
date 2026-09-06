@@ -15,6 +15,7 @@ import { el, clear } from '../dom.js';
 import { getState, setState } from '../store.js';
 import { showToast } from './toast.js';
 import { KNOWN_FIELDS, joinClinical, fileStem } from '../data/csv.js';
+import { studyName } from '../data/labels.js';
 
 // 12x12 chevron pointing UP (the drawer is open by default); .clinical-toggle-closed rotates
 // it 180deg in CSS. Same construction as sidebar.js's CHEVRON_SVG.
@@ -265,7 +266,9 @@ export function mountClinicalData(host) {
       // vanish at the next launch. Say so instead of accepting it.
       const isDemo = study.source === 'demo';
       return el('div', { class: 'clinical-grid-row' },
-        el('div', { class: 'clinical-grid-cell clinical-grid-id' }, study.id),
+        // The visible label is the study's name; every `data-` attribute below stays keyed on
+        // the id, which is what the focus-restore machinery looks the row back up by.
+        el('div', { class: 'clinical-grid-cell clinical-grid-id', title: study.id }, studyName(study)),
         ...state.fields.map((name) => el('input', {
           type: 'text',
           class: 'clinical-cell',
@@ -273,7 +276,7 @@ export function mountClinicalData(host) {
           // store visible; only null/undefined is absent, and absent shows the placeholder.
           value: study.clinical?.[name] != null ? String(study.clinical[name]) : '',
           placeholder: '—',
-          'aria-label': `${study.id} ${name}`,
+          'aria-label': `${studyName(study)} ${name}`,
           'data-focus-key': `cell:${study.id}:${name}`,
           // The cell's identity, readable back off the node after a rebuild replaced it.
           // Both go through setAttribute (they are not node properties), which is why they

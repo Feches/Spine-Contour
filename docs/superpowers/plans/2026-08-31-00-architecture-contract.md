@@ -136,6 +136,7 @@ renderer/                         (new)
   data/similarity.js              weighted distance
   data/status.js                  status derivation
   data/csv.js                     parse, auto-map, export
+  data/labels.js                  how a study names itself and where it came from
 
 test/                             (new) mirrors renderer/ — node --test
   geometry.test.js  similarity.test.js  status.test.js
@@ -164,6 +165,9 @@ The single record type. Demo and real studies share it exactly.
  * @property {'real'|'demo'} source
  * @property {string|null} filePath   absolute path; null for demo
  * @property {string}  fileName
+ * @property {string|null} name    display name, defaulted from fileName's stem and renamable
+ * @property {string|null} workspaceFolder  the workspace ROOT this film was loaded from;
+ *                                          null for a film added with the picker or dropped
  * @property {string}  addedAt     ISO 8601
  * @property {string}  view        'Standing lateral'
  * @property {string|null} thumbnail  data URI, max 128px long edge; null if none
@@ -175,6 +179,14 @@ The single record type. Demo and real studies share it exactly.
 ```
 
 `status` is **derived, never stored** — see `data/status.js`.
+
+`name` and `workspaceFolder` are both **optional and default to `null`**, so they carry no
+`STORE_VERSION` bump: a record written before they existed loads unchanged and simply reads as
+its `SP-nnnn` id with no workspace. Both must appear in `validateStudy`'s returned object or the
+saver writes them and the next load silently drops them. `id` remains the record's identity —
+it names the sidecar, keys the delete, and is the CSV's `Study ID` — so a rename is cosmetic by
+construction and can never orphan a file. The folder shown beside the workspace is **derived
+from `filePath`**, never stored, so it stays correct when a moved film is relocated.
 
 Demo studies additionally carry `dx`, `plan`, `hx`, `outcome`, `pt`, `sex`, `age`,
 `bmi`, `odi`, `conf` for display. Real studies leave these absent; the UI renders `—`.

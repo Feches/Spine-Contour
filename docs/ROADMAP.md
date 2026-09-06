@@ -107,6 +107,20 @@ Two sizes of answer:
   record, which means the validator, the contract's record definition, a decision about the studies
   already in the library, and a version bump.
 
+**DONE (2026-09-06) — both, as two columns.** The user chose to take both halves rather than pick
+one, because on their own each is ambiguous: the derived folder alone cannot separate `CohortA/pre-op`
+from `CohortB/pre-op`, and the stored root alone cannot separate two subfolders of the same workspace.
+`WORKSPACE` shows the stored root and `FOLDER` the derived containing folder; together they are unique.
+A film added by hand shows `—` for the workspace and its own source folder for FOLDER, which is how an
+ad-hoc film is told from a loaded one at a glance.
+
+No backfill and **no `STORE_VERSION` bump**: `workspaceFolder` is optional and defaults to null, so an
+existing record loads unchanged and reads `—` forever. That was the user's explicit call — the library
+is a test environment, and an installed build now opens empty anyway (see the demo-studies bullet
+below), so there is nothing to migrate. Width came from deleting `LORDOSIS`, which the user judged to
+add nothing to a screen for *finding* a study. Search now covers the two folder names shown, but still
+not the full path — the deferral recorded in `screens/studies.js` stands for the path itself.
+
 ---
 
 ## 3. Nothing records which model produced a stored measurement
@@ -146,8 +160,15 @@ Not code quality; these stand between the branch and a production release.
 - **`windows.yml` has no repository guard**, only a branch filter, so merging a descendant of this
   branch into a fork's `main` would run the production workflow there and publish a release tagged
   as the latest.
-- **The nine demo studies ship in every build.** They are wanted in development and in the preview
-  installer, and must be absent from a production build.
+- ~~**The nine demo studies ship in every build.** They are wanted in development and in the preview
+  installer, and must be absent from a production build.~~
+  **DONE (2026-09-06), and stricter than this said.** They are gated on `!app.isPackaged`, so they
+  appear in `npm run dev` only and are absent from **both** installers, preview included. The user
+  reversed the preview half deliberately: the preview installer is the one they test, so leaving
+  demos in it would mean the tested app never shows the empty state the real one ships with. The
+  gate rides the existing `load-studies` payload — it is **not** an allowlist exclusion, because
+  `renderer/**/*` ships by glob and dropping `demo-studies.js` would leave a bare import resolving
+  to nothing, failing the renderer boot while the allowlist CI check still passed.
 
 ---
 

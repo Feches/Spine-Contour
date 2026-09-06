@@ -61,7 +61,11 @@
 .studies-table-head,
 .studies-row {
   display: grid;
-  grid-template-columns: 112px 1.15fr 1.2fr 0.9fr 1.05fr 110px 44px;
+  /* STUDY · PATIENT · VIEW · WORKSPACE · FOLDER · DATE · STATUS · actions.
+     STUDY was a fixed 112px when it held an SP-nnnn id; it now holds a filename, so it flexes
+     and gets the widest share. The 110px LORDOSIS track that used to sit before the actions is
+     gone -- the list is for finding a study, not for reading its numbers. */
+  grid-template-columns: 1.35fr 1.15fr 1.05fr 1.05fr 1fr 0.85fr 1.05fr 44px;
   gap: 16px;
   align-items: center;
   padding: 13px 22px;
@@ -78,10 +82,6 @@
   color: var(--muted);
 }
 
-.studies-col-lordosis {
-  text-align: right;
-}
-
 .studies-row {
   border-top: 1px solid var(--border);
   cursor: pointer;
@@ -96,20 +96,44 @@
   outline-offset: -2px;
 }
 
+/* The study's name -- a filename, not an SP-nnnn token any more, so the monospace tracking that
+   suited a fixed-width id is dropped. Filenames get long; ellipsis rather than reflow the row. */
 .studies-cell-id {
-  font-family: 'Chivo Mono', monospace;
-  font-size: 12.5px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
+  font: 600 14px 'Source Sans 3', sans-serif;
   color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+/* Provenance. WORKSPACE is the root the film was loaded from and is an em dash for anything
+   added by hand; FOLDER is the folder the film actually sits in, so a film the recursive scan
+   found below the root shows the subfolder. Together they separate two same-named films under
+   different workspaces. Both truncate; the full path is on the FOLDER cell's title. */
+.studies-cell-workspace,
+.studies-cell-folder {
+  font: 400 14px 'Source Sans 3', sans-serif;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The label and the DEMO pill sit on one line. Two provenance columns made this track narrower
+   than it was, and without nowrap a label like 'P-8841' broke across two lines and grew the row.
+   The pill keeps its size; the label truncates first. */
 .studies-cell-patient {
   display: flex;
   align-items: center;
   gap: 8px;
   font: 400 14px 'Source Sans 3', sans-serif;
   color: var(--body);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.studies-cell-patient > .pill-demo {
+  flex: none;
 }
 
 .studies-cell-view {
@@ -125,21 +149,6 @@
   white-space: nowrap;
 }
 
-.studies-lordosis,
-.studies-lordosis-high {
-  text-align: right;
-  font: 600 15px 'Source Sans 3', sans-serif;
-  font-variant-numeric: tabular-nums;
-}
-
-.studies-lordosis {
-  color: var(--ink);
-}
-
-.studies-lordosis-high {
-  color: var(--accent);
-}
-
 .studies-empty {
   padding: 34px;
   text-align: center;
@@ -148,7 +157,11 @@
 }
 
 /* Delete (plan 06 Task 7). The action cell is the trailing 44px column; while a row is
-   confirming, the prompt takes the DATE, STATUS and LORDOSIS columns as well. */
+   confirming, the prompt takes the WORKSPACE, FOLDER, DATE and STATUS columns as well -- those
+   four cells are the ones screens/studies.js nulls, and `4 / -1` below is the 4th track, which
+   is where WORKSPACE starts. The two MUST stay in step: grid auto-placement walks items in
+   document order, so a cell left visible before a definite column-start that has already been
+   passed pushes the prompt onto a second implicit row. */
 .studies-cell-actions {
   display: flex;
   justify-content: flex-end;

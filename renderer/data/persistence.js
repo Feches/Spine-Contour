@@ -130,6 +130,12 @@ function validateStudy(entry, index) {
     id: entry.id, source: 'real',
     filePath: typeof entry.filePath === 'string' ? entry.filePath : null,
     fileName: entry.fileName, addedAt: entry.addedAt, view: entry.view,
+    // Both are optional and default to null, so no STORE_VERSION bump: a record written before
+    // they existed loads fine and simply reads as its SP-nnnn id with no workspace. They must
+    // be listed HERE or they are written to disk and then dropped on the next load, which looks
+    // like the column working all session and going blank after a restart.
+    name: typeof entry.name === 'string' && entry.name.trim() !== '' ? entry.name : null,
+    workspaceFolder: typeof entry.workspaceFolder === 'string' ? entry.workspaceFolder : null,
     thumbnail: typeof entry.thumbnail === 'string' && entry.thumbnail.startsWith('data:image/') ? entry.thumbnail : null,
     measurements: complete ? measurements : null,
     geometry: complete ? geometry : null,

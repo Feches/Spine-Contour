@@ -8,6 +8,7 @@ import { toCsv } from '../data/csv.js';
 import { loadStudyImages, disposeStudyImages, thumbnailDataUri } from '../viewer/canvas.js';
 import { mountViewer, recordPrediction } from '../components/viewer.js';
 import { describeModels } from '../data/models.js';
+import { studyName, defaultName } from '../data/labels.js';
 import { mountMeasurements } from '../components/measurements.js';
 import { mountClinicalData } from '../components/clinical-data.js';
 
@@ -346,8 +347,46 @@ export function render(state) {
     onClick: () => setState({ screen: 'studies', editing: false, selection: null }),
   });
 
+  // The name is an input, not text: it is the one field on the header the user owns. It defaults
+  // to the film's filename and is theirs to change. The SP-nnnn id underneath never moves -- it
+  // names the sidecar, keys the delete and is the CSV's Study ID -- so a rename is cosmetic by
+  // construction and can never orphan a file.
+  const nameField = el('input', {
+    type: 'text',
+    class: 'analysis-name',
+    'aria-label': 'Study name',
+    // A boolean, not the string 'false': dom.js's el() assigns to the property when the key
+    // exists on the node, and the non-empty string 'false' would coerce to true.
+    spellcheck: false,
+    onKeydown: (event) => {
+      if (event.key === 'Enter') { event.preventDefault(); nameField.blur(); return; }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        const open = currentStudy(getState());
+        if (open) nameField.value = studyName(open);
+        nameField.blur();
+      }
+    },
+    // Deferred: Chromium fires this while the node may still be being replaced, and setState
+    // notifies synchronously. The clinical drawer defers its writes for the same reason.
+    onBlur: () => queueMicrotask(commitName),
+  });
   const headerMeta = el('div', { class: 'analysis-meta' });
   const confidenceValue = el('div', { class: 'confidence-value' });
+
+  // Blank means "go back to the film's own name", not "no name": an empty header would leave the
+  // user with nothing to recognise the study by, and the filename is always recoverable.
+  function commitName() {
+    const open = currentStudy(getState());
+    if (!open || open.source === 'demo') return;
+    const typed = nameField.value.trim();
+    const next = typed === '' ? defaultName(open.fileName) : typed;
+    if ((open.name ?? null) === (next ?? null)) return;
+    // A new record and a new array: the store's records are never edited in place.
+    setState((state) => ({
+      studies: state.studies.map((study) => (study.id === open.id ? { ...study, name: next } : study)),
+    }));
+  }
 
   // Labelled FEMORAL FIT CONFIDENCE, not the mockup's SEGMENTATION CONFIDENCE, because
   // the number behind it is qc.femoral.confidence -- a femoral circle-fit score, not a
@@ -364,6 +403,7 @@ export function render(state) {
   // read them, so the pill belongs beside the id, not only back on the list.
   const header = el('header', { class: 'analysis-header' },
     backButton,
+    nameField,
     headerMeta,
     study.source === 'demo' ? el('span', { class: 'pill-demo' }, 'DEMO') : null,
     el('div', { class: 'analysis-spacer' }),
@@ -448,7 +488,21 @@ export function render(state) {
     // The model that produced the numbers on screen, when the result recorded one. Older
     // records carry no provenance and show nothing extra rather than a guessed name.
     const produced = describeModels(open.qc);
-    headerMeta.textContent = `${open.id} · ${(open.view ?? '').toUpperCase()} · ${open.pt ?? '—'}`
+    // Never overwrite what the user is in the middle of typing.
+    if (document.activeElement !== nameField) {
+      nameField.value = studyName(open);
+      nameField.size = Math.min(34, Math.max(8, nameField.value.length + 1));
+    }
+    // Demo records are never written (the saver filters them), so a rename would silently vanish
+    // at the next launch. The clinical drawer refuses the same edit for the same reason.
+    nameField.disabled = open.source === 'demo';
+    nameField.title = open.source === 'demo'
+      ? 'Demo studies are not saved'
+      : `Rename this study · ${open.id}${open.fileName ? ` · ${open.fileName}` : ''}`;
+
+    // The rest of the header line. The name leads because that is what the user recognises; the
+    // SP-nnnn id stays reachable on the title rather than disappearing entirely.
+    headerMeta.textContent = `${(open.view ?? '').toUpperCase()} · ${open.pt ?? '—'}`
       + (produced ? ` · ${produced.toUpperCase()}` : '');
     confidenceValue.textContent = formatConfidence(open.qc);
 

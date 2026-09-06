@@ -75,7 +75,10 @@ export function loadWorkspaceStudies(state) {
     }
     const id = `SP-${String(next++).padStart(4, '0')}`;
     added.push({
-      ...newStudy({ id, fileName: filePath.split(/[\\/]/).pop(), filePath }),
+      // state.wsFolder is the ROOT the user picked. The scan recurses, so a film below it keeps
+      // its own containing folder in filePath; the table shows both, and the pair is what tells
+      // two same-named films under different workspaces apart.
+      ...newStudy({ id, fileName: filePath.split(/[\\/]/).pop(), filePath, workspaceFolder: state.wsFolder ?? null }),
       // Spread, never the join's own object: Task 3's note guarantees the store never holds
       // a reference the join still owns.
       clinical: { ...(join?.byFile.get(filePath) ?? {}) },

@@ -29,6 +29,37 @@
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* The study's name, and the one editable thing on this header. It reads as the title until you
+   put the cursor in it, so it carries no border or fill at rest -- the hover well and the focus
+   ring are what say it is a field. `size` is set from the value in screens/analysis.js, so the
+   box tracks the name's length instead of reserving a fixed slab of the header. */
+.analysis-name {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--ink);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 3px 7px;
+  margin-right: -8px;
+  min-width: 0;
+}
+.analysis-name:hover:not(:disabled) {
+  background: var(--well);
+  border-color: var(--border);
+}
+.analysis-name:focus {
+  outline: none;
+  background: var(--bg);
+  border-color: var(--accent);
+}
+.analysis-name:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
 /* PLACEMENT ONLY. .pill-demo's border, background, colour and type are components.css's --
    the header's pill and the studies list's pill must never drift apart. All this rule does
    is pull the pill in from the header's 14px gap so it reads as part of the id beside it. */

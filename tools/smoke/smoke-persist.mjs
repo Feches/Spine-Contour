@@ -353,16 +353,25 @@ try {
       { found: persisted.found, hasGeometry: persisted.hasGeometry, thumbnailPrefix: persisted.thumbnailPrefix });
     check('the persisted measurements match the store', persisted.found === true && Boolean(study) && same(persisted.measurements, study.measurements), null);
 
-    // 6. Back on Studies the row is segmented, never Processing, with a rounded lordosis cell.
+    // 6. Back on Studies the row is segmented, never Processing, and still names itself after
+    // its file. The list no longer carries a lordosis cell -- it is for finding a study, not for
+    // reading its numbers -- so the measurement itself is asserted against the store above.
     check('back button returns to Studies', await backToStudies(), null);
     const row = await cdp.evaluate(`(() => {
       const r = document.querySelector('.studies-row[data-study-id="${STUDY_ID}"]');
       if (!r) return null;
       const badge = r.querySelector('.badge');
-      return { badge: badge ? badge.textContent.trim() : null, lordosis: r.querySelector('.studies-lordosis')?.textContent ?? null };
+      return {
+        badge: badge ? badge.textContent.trim() : null,
+        name: r.querySelector('.studies-cell-id')?.textContent ?? null,
+        folder: r.querySelector('.studies-cell-folder')?.textContent ?? null,
+      };
     })()`);
     check('the row badge reads Segmented or Needs review', Boolean(row) && (row.badge === 'Segmented' || row.badge === 'Needs review'), row);
-    check('the row lordosis cell is the rounded L1-S1 value', Boolean(row) && row.lordosis === `${Math.round(lordosis)}°`, row && { lordosis: row.lordosis, expected: `${Math.round(lordosis)}°` });
+    check('the row still shows the name derived from the film, not the id',
+      Boolean(row) && row.name === '13462cd9-a59f-4aab-9256-cbd723fb978c', row && row.name);
+    check('the name and folder survived the restart, so both fields cleared the store validator',
+      Boolean(row) && row.folder === 'design_src', row && row.folder);
 
     // 7. Re-opening the row shows the film: the dynamic canvas is sized to it, not left at 300x150.
     check('the row re-opens the study', Boolean(await openFromStudies()), null);

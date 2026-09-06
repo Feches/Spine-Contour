@@ -199,15 +199,21 @@ Three step cards:
 
 ### 9.4 Studies
 
-Scrolling, max 1160 px. Heading **"Studies"** with a `{n} STUDIES · {m} IN QUEUE` summary. Search filters across ID, patient, diagnosis, and view.
+Scrolling, max 1160 px. Heading **"Studies"** with a `{n} STUDIES · {m} IN QUEUE` summary. Search filters across the study's name, its workspace, its containing folder, the id, patient, diagnosis, view, and every clinical value. The full file path is **not** searchable — only the two folder names the cells actually show.
 
 Dashed dropzone: **"Drop a DICOM series or lateral radiograph"**, subtext **"De-identified files only. Segmentation runs locally on the workstation."**, and a `Use sample film` button. Drop and click both accept files.
 
-Table columns: `STUDY ID`, `PATIENT`, `VIEW`, `DATE`, `STATUS`, `LORDOSIS` (right-aligned, tabular). Status pills: **Segmented** (sage), **Needs review** (accent), **Processing** (muted). Lordosis renders `—` when unsegmented and switches to accent colour at ≥ 40°.
+Table columns: `STUDY`, `PATIENT`, `VIEW`, `WORKSPACE`, `FOLDER`, `DATE`, `STATUS`. Status pills: **Segmented** (sage), **Needs review** (accent), **Processing** (muted).
+
+`STUDY` is the study's **name** — defaulted from its film's filename and renamable from the Analysis header — not the `SP-nnnn` id. The id stays the record's identity and is on the cell's title.
+
+`WORKSPACE` is the root folder the film was loaded from, and is `—` for a film added with the picker or dropped on the list. `FOLDER` is the folder the film itself sits in, derived from its path, so a film the recursive scan found below the root shows the subfolder. The pair is what separates two same-named films under different workspaces; neither alone does.
+
+`LORDOSIS` was removed: the list is for finding a study, not for reading its numbers.
 
 Demo rows carry an additional `DEMO` pill.
 
-Empty state: **"No studies match that search."**
+Empty state: **"No studies match that search."** while a search is active; **"No studies yet — choose or drop a radiograph above, or load a workspace folder."** when the library is genuinely empty, which is what an installed build opens on.
 
 ### 9.5 Study Analysis
 

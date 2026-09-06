@@ -63,7 +63,7 @@ try {
   const initialRows = await rowCount(cdp);
   check('.studies-row count equals n', initialRows === n, { initialRows, n });
 
-  // 2. Demo pills and status badges; specific lordosis and date cells.
+  // 2. Demo pills and status badges; the provenance cells and a date cell.
   const demoRows = await cdp.evaluate(`(() => {
     const rows = [...document.querySelectorAll('.studies-row')].filter((r) => /^SP-00(3[0-9]|4[0-2])$/.test(r.dataset.studyId));
     return rows.map((r) => ({
@@ -77,16 +77,27 @@ try {
 
   const cellDetail = await cdp.evaluate(`(() => {
     const row = (id) => document.querySelector('.studies-row[data-study-id="' + id + '"]');
-    const lordosis = (id) => { const c = row(id).querySelector('.studies-lordosis'); return c ? { text: c.textContent, high: c.classList.contains('studies-lordosis-high') } : null; };
+    const text = (id, cls) => row(id).querySelector(cls)?.textContent ?? null;
     return {
-      sp0031: lordosis('SP-0031'),
-      sp0030: lordosis('SP-0030'),
-      sp0042Date: row('SP-0042').querySelector('.studies-cell-date')?.textContent,
+      lordosisGone: document.querySelectorAll('.studies-lordosis, .studies-lordosis-high, .studies-col-lordosis').length,
+      headers: [...document.querySelectorAll('.studies-table-head > div')].map((d) => d.textContent),
+      sp0042Date: text('SP-0042', '.studies-cell-date'),
+      // Demo records carry no filePath and no workspace, so both provenance cells are em dashes.
+      sp0042Workspace: text('SP-0042', '.studies-cell-workspace'),
+      sp0042Folder: text('SP-0042', '.studies-cell-folder'),
+      // fileName is 'SP-0042.jpg', so the name defaults to the stem and reads the same as the id.
+      sp0042Name: text('SP-0042', '.studies-cell-id'),
     };
   })()`);
-  check('SP-0031 lordosis reads 58° and carries studies-lordosis-high', cellDetail.sp0031?.text === '58°' && cellDetail.sp0031?.high === true, cellDetail.sp0031);
-  check('SP-0030 lordosis reads 18° without studies-lordosis-high', cellDetail.sp0030?.text === '18°' && cellDetail.sp0030?.high === false, cellDetail.sp0030);
+  check('the LORDOSIS column is gone from the list', cellDetail.lordosisGone === 0, cellDetail.lordosisGone);
+  check('the header row reads STUDY, PATIENT, VIEW, WORKSPACE, FOLDER, DATE, STATUS',
+    JSON.stringify(cellDetail.headers) === JSON.stringify(['STUDY', 'PATIENT', 'VIEW', 'WORKSPACE', 'FOLDER', 'DATE', 'STATUS', '']),
+    cellDetail.headers);
   check('SP-0042 date cell reads Aug 21, 2026', cellDetail.sp0042Date === 'Aug 21, 2026', cellDetail.sp0042Date);
+  check('a demo study has an em dash for both workspace and folder',
+    cellDetail.sp0042Workspace === '—' && cellDetail.sp0042Folder === '—',
+    { workspace: cellDetail.sp0042Workspace, folder: cellDetail.sp0042Folder });
+  check('the study cell shows the name derived from the filename', cellDetail.sp0042Name === 'SP-0042', cellDetail.sp0042Name);
 
   // 3. Search filtering: caret/focus preservation, diagnosis match, empty state, clear.
   const searchRect = await cdp.rect('.studies-search');
@@ -200,11 +211,19 @@ try {
       badgeProc: Boolean(row.querySelector('.badge-proc')),
       badgeText: row.querySelector('.badge-proc')?.textContent,
       patient: row.querySelector('.studies-cell-patient')?.textContent.trim(),
-      lordosis: row.querySelector('.studies-lordosis')?.textContent,
+      name: row.querySelector('.studies-cell-id')?.textContent,
+      workspace: row.querySelector('.studies-cell-workspace')?.textContent,
+      folder: row.querySelector('.studies-cell-folder')?.textContent,
       demoPill: Boolean(row.querySelector('.pill-demo')),
     };
   })()`);
-  check('the new study is the first row, Processing, no measurements, no DEMO pill', newRow && newRow.id === 'SP-9000' && newRow.badgeProc && newRow.badgeText === 'Processing' && newRow.patient === '—' && newRow.lordosis === '—' && newRow.demoPill === false, newRow);
+  check('the new study is the first row, Processing, no DEMO pill', newRow && newRow.id === 'SP-9000' && newRow.badgeProc && newRow.badgeText === 'Processing' && newRow.patient === '—' && newRow.demoPill === false, newRow);
+  check('the injected study is named after its file, not its id',
+    newRow && newRow.name === '13462cd9-a59f-4aab-9256-cbd723fb978c', newRow && newRow.name);
+  // Added by hand: no workspace, but the folder is still derived from the film's own path.
+  check('a study added by hand shows an em dash workspace and its containing folder',
+    newRow && newRow.workspace === '—' && newRow.folder === 'design_src',
+    newRow && { workspace: newRow.workspace, folder: newRow.folder });
   const summaryAfterAdd = (await text(cdp, '.studies-summary') || '').trim();
   check('summary reads n+1 studies, 1 in queue', summaryAfterAdd === `${n + 1} STUDIES · 1 IN QUEUE`, summaryAfterAdd);
 

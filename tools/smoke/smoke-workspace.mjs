@@ -337,7 +337,9 @@ try {
     same(listAfterLoad.firstThree.map((r) => r.id), [ID_A, ID_B, ID_C]) && listAfterLoad.firstThree.every((r) => r.proc && r.badge === 'Processing'), listAfterLoad.firstThree);
   const summaryAfterLoad = await summaryParts();
   check('the summary grew by 3 studies and 3 in queue', summaryAfterLoad && summaryAfterLoad.studies === startCount + 3 && summaryAfterLoad.queued === startSummary.queued + 3, { startSummary, summaryAfterLoad });
-  check('a real row has a Delete <id> button; a demo row has none', listAfterLoad.deleteA === `Delete ${ID_A}` && listAfterLoad.deleteDemo === false, listAfterLoad);
+  // The delete button names the study the way the row does -- by its NAME, which defaults to the
+  // film's filename stem ('a.png' -> 'a'), not by its SP-nnnn id.
+  check('a real row has a Delete <name> button; a demo row has none', listAfterLoad.deleteA === 'Delete a' && listAfterLoad.deleteDemo === false, listAfterLoad);
 
   // 5. Load again from the same state: idempotent -- nothing added, the three counted as known.
   await cdp.setState('{ screen: "workspace" }');
@@ -388,7 +390,7 @@ try {
   const loadedCells = cellsByField(loadedGrid);
   check('the columns are AGE, SEX and TREATMENT PLAN, holding the values the load linked',
     loadedGrid && same([...loadedGrid.heads.slice(1)].sort(), ['AGE', 'SEX', 'TREATMENT PLAN'])
-    && loadedGrid.rows.length === 1 && loadedGrid.rows[0].id === ID_A
+    && loadedGrid.rows.length === 1 && loadedGrid.rows[0].id === 'a'
     && loadedCells.AGE?.value === '58' && loadedCells.SEX?.value === 'F' && loadedCells['TREATMENT PLAN']?.value === 'Fusion', { heads: loadedGrid?.heads, loadedCells });
   check('ADD FIELD offers the six known fields that are not columns yet, plus the custom input',
     same(drawer.chips, KNOWN_FIELDS.filter((f) => !['Age', 'Sex', 'Treatment plan'].includes(f))) && drawer.custom === '+ Custom field…', { chips: drawer.chips, custom: drawer.custom });
@@ -405,7 +407,9 @@ try {
   check('state.fields holds Age, Sex and Treatment plan', same([...s.fields].sort(), ['Age', 'Sex', 'Treatment plan']), s.fields);
   let grid = await drawerGrid();
   let cells = cellsByField(grid);
-  check('the grid has one row, for the open study', grid && grid.rows.length === 1 && grid.rows[0].id === ID_A, grid?.rows);
+  // The drawer's first cell shows the study's NAME (a.png -> 'a'), not its SP-nnnn id; the id
+  // stays on every data-attribute the focus-restore machinery looks the row up by.
+  check('the grid has one row, for the open study', grid && grid.rows.length === 1 && grid.rows[0].id === 'a', grid?.rows);
   check('the head row is STUDY then the three fields, each with a Hide button',
     grid && grid.heads[0] === 'STUDY' && same([...grid.heads.slice(1)].sort(), ['AGE', 'SEX', 'TREATMENT PLAN']) && same([...grid.removeLabels].sort(), ['Hide Age', 'Hide Sex', 'Hide Treatment plan']), { heads: grid?.heads, removeLabels: grid?.removeLabels });
   check('AGE, SEX and TREATMENT PLAN cells hold the CSV values, enabled',
@@ -509,7 +513,7 @@ try {
   const countBeforeDelete = (await cdp.state()).studies.length;
   const summaryBeforeDelete = await summaryParts();
 
-  const deleteRect = await rectBy(`() => document.querySelector('.studies-delete[aria-label="Delete ${ID_B}"]')`);
+  const deleteRect = await rectBy(`() => document.querySelector('.studies-row[data-study-id="${ID_B}"] .studies-delete')`);
   check('the b.PNG row has a Delete button with layout', Boolean(deleteRect), deleteRect);
   await cdp.click(deleteRect.cx, deleteRect.cy);
   await cdp.settle(100);
@@ -538,7 +542,7 @@ try {
   check('Cancel restores the Delete button and removes the prompt', prompt && prompt.prompt === null && prompt.confirm === null && prompt.deleteButton === true, prompt);
   check('the record is still there after Cancel', (await cdp.state()).studies.some((x) => x.id === ID_B), ID_B);
 
-  const deleteRect2 = await rectBy(`() => document.querySelector('.studies-delete[aria-label="Delete ${ID_B}"]')`);
+  const deleteRect2 = await rectBy(`() => document.querySelector('.studies-row[data-study-id="${ID_B}"] .studies-delete')`);
   await cdp.click(deleteRect2.cx, deleteRect2.cy);
   await cdp.settle(100);
   const confirmRect = await rectBy(`() => document.querySelector('.studies-row[data-study-id="${ID_B}"] .studies-delete-confirm')`);
@@ -548,7 +552,7 @@ try {
   await cdp.settle(150);
   s = await cdp.state();
   check('confirming removes the record from the store', removed === true && s.studies.length === countBeforeDelete - 1, { removed, count: s.studies.length });
-  check('the toast reads Deleted <id> and the app stays on Studies', s.toast === `Deleted ${ID_B}` && s.screen === 'studies', { toast: s.toast, screen: s.screen });
+  check('the toast reads Deleted <name> and the app stays on Studies', s.toast === 'Deleted b' && s.screen === 'studies', { toast: s.toast, screen: s.screen });
   check('a.png and c.jpg survive the delete with their clinical values',
     same(s.studies.find((x) => x.id === ID_A)?.clinical, { ...CLINICAL_A, Notes: NOTE_TEXT }) && s.studies.some((x) => x.id === ID_C), s.studies.slice(0, 3).map((x) => x.id));
   const rowsAfterDelete = await cdp.evaluate(`[...document.querySelectorAll('.studies-row')].map((r) => r.dataset.studyId)`);
