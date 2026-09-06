@@ -616,7 +616,20 @@ export function sameHandle(a, b)                    // (plan 04) → boolean, ex
 export function hitTestFemoral(circles, x, y, radius = 14)   // (plan 04) → Selection|null, coordinate-space agnostic
 export function arrowKeyDelta(key, shiftKey)        // (plan 04) → {dx,dy}|null — 1px, 10px with Shift
 export function debounce(fn, ms)                    // (plan 04) → fn with .cancel()
+
+export const CHORD_MASK = 0b11                      // primary|secondary bits of PointerEvent.buttons
+export function isChordHeld(buttons)                // → boolean — BOTH primary and secondary held
+export function zoomAbout(view, direction, offsetX, offsetY)
+//   → {zoom, panX, panY} — a zoom step anchored at a point instead of the film's centre.
+//   `direction` is a SIGN, not a factor, so the wheel and the toolbar buttons reach
+//   bit-identical zooms. Offsets are measured from the STAGE CENTRE because .viewer-host
+//   has transform-origin:center. Does not mutate `view`.
 ```
+
+`isChordHeld` tests the `buttons` **bitmask**, never `button`. The Pointer Events chorded-button
+rule fires `pointerdown` only on the no-buttons→some-button transition, so the second button of a
+chord arrives as a `pointermove`; a chord test placed only in a pointerdown handler is dead code.
+The DOM half of that gesture lives in `components/viewer.js`, as all pointer wiring does.
 
 **Transient interaction state** — the in-flight drag, the hovered handle, and the
 retrace point buffer are **not** in `store.js`. They live as module-scope variables in

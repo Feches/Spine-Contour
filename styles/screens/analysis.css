@@ -458,6 +458,13 @@
 .viewer-stage.is-pan-mode .viewer-canvas-dynamic { cursor: grab; }
 .viewer-stage.is-pan-mode:active .viewer-canvas-dynamic { cursor: grabbing; }
 
+/* A left+right chord pans in every mode, including over the label chip, so its cursor has to
+   beat the mode rules above AND .viewer-label's own `cursor: move`. These MUST stay last: the
+   first two tie .is-editing .viewer-canvas-dynamic at (0,3,0) and win only on source order. */
+.viewer-stage.is-panning { cursor: grabbing; }
+.viewer-stage.is-panning .viewer-canvas-dynamic { cursor: grabbing; }
+.viewer-stage.is-panning .viewer-label { cursor: grabbing; }
+
 /* The selected construction's label: a chip inside the pan/zoom host, so it scales and moves with
    the film and can sit in the black space around it. Tokens, not literals: this is DOM over the
    stage. While editing it is faded and pointer-transparent so it can never block a handle. */

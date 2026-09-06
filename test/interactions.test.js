@@ -1,6 +1,104 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ZOOM_MIN, ZOOM_MAX, clampZoom, zoomIn, zoomOut, vertebraAt, TAB_ORDER, FULL_ORDER, sameHandle, nextSelection, nudge, hitTestFemoral, arrowKeyDelta, debounce } from '../renderer/viewer/interactions.js';
+import { ZOOM_MIN, ZOOM_MAX, clampZoom, zoomIn, zoomOut, zoomAbout, isChordHeld, vertebraAt, TAB_ORDER, FULL_ORDER, sameHandle, nextSelection, nudge, hitTestFemoral, arrowKeyDelta, debounce } from '../renderer/viewer/interactions.js';
+
+// The transform is `translate(pan) scale(zoom)` about the stage CENTRE, so a host-local point
+// p lands at C + P + z*(p - C). Working in centre-relative coordinates (offset = p - C) that is
+// just offset*z + P. This oracle is deliberately written from the CSS, not from zoomAbout's
+// algebra, so it can disagree with it.
+function project(view, offset) {
+  return [offset[0] * view.zoom + view.panX, offset[1] * view.zoom + view.panY];
+}
+
+// Where the film point currently under `cursor` sits, in centre-relative stage coordinates.
+function pointUnder(view, cursor) {
+  return [(cursor[0] - view.panX) / view.zoom, (cursor[1] - view.panY) / view.zoom];
+}
+
+test('isChordHeld is true only when BOTH the primary and secondary bits are set', () => {
+  assert.equal(isChordHeld(0), false);
+  assert.equal(isChordHeld(1), false); // left alone
+  assert.equal(isChordHeld(2), false); // right alone
+  assert.equal(isChordHeld(4), false); // middle alone
+  assert.equal(isChordHeld(3), true); // left + right
+  assert.equal(isChordHeld(7), true); // left + right + middle still chords
+  assert.equal(isChordHeld(5), false); // left + middle is not a chord
+  assert.equal(isChordHeld(6), false); // right + middle is not a chord
+});
+
+test('zoomAbout keeps the point under the cursor stationary, at any pan and any offset', () => {
+  for (const view of [
+    { zoom: 1, panX: 0, panY: 0 },
+    { zoom: 1.2, panX: 100, panY: -40 },
+    { zoom: 0.8, panX: -55, panY: 33 },
+    { zoom: 1.5625, panX: 7, panY: 210 },
+  ]) {
+    for (const offset of [[0, 0], [200, -200], [-380, 90], [17, 17]]) {
+      for (const direction of [1, -1]) {
+        const anchored = pointUnder(view, offset);
+        const next = zoomAbout(view, direction, offset[0], offset[1]);
+        const after = project(next, anchored);
+        assert.ok(Math.abs(after[0] - offset[0]) < 1e-9, `x drifted: ${after[0]} vs ${offset[0]}`);
+        assert.ok(Math.abs(after[1] - offset[1]) < 1e-9, `y drifted: ${after[1]} vs ${offset[1]}`);
+      }
+    }
+  }
+});
+
+test('zoomAbout at the stage centre with no pan reduces exactly to the old centre-anchored zoom', () => {
+  const next = zoomAbout({ zoom: 1, panX: 0, panY: 0 }, 1, 0, 0);
+  assert.equal(next.panX, 0);
+  assert.equal(next.panY, 0);
+  assert.equal(next.zoom, zoomIn(1));
+});
+
+test('zoomAbout at the stage centre WITH a pan scales the pan -- it does not leave it alone', () => {
+  // The tempting "if the cursor is centred, nothing moves" shortcut is wrong: when the film is
+  // panned, the point under the stage centre is not the film's centre.
+  const next = zoomAbout({ zoom: 1, panX: 100, panY: 0 }, 1, 0, 0);
+  assert.equal(next.panX, 100 * (zoomIn(1) / 1));
+});
+
+test('zoomAbout leaves the pan untouched when the clamp bites, so repeated ticks cannot drift', () => {
+  const atMax = { zoom: ZOOM_MAX, panX: 42, panY: -13 };
+  const inAtMax = zoomAbout(atMax, 1, 300, 300);
+  assert.equal(inAtMax.zoom, ZOOM_MAX);
+  assert.equal(inAtMax.panX, 42);
+  assert.equal(inAtMax.panY, -13);
+
+  const atMin = { zoom: ZOOM_MIN, panX: 42, panY: -13 };
+  const outAtMin = zoomAbout(atMin, -1, 300, 300);
+  assert.equal(outAtMin.zoom, ZOOM_MIN);
+  assert.equal(outAtMin.panX, 42);
+  assert.equal(outAtMin.panY, -13);
+});
+
+test('zoomAbout uses the POST-clamp zoom, so a partly-clamped step still anchors exactly', () => {
+  // 2.2 * 1.25 would be 2.75; the clamp cuts it to 2.4, so k is 1.0909..., not 1.25.
+  const view = { zoom: 2.2, panX: 30, panY: 0 };
+  const anchored = pointUnder(view, [200, 0]);
+  const next = zoomAbout(view, 1, 200, 0);
+  assert.equal(next.zoom, ZOOM_MAX);
+  assert.ok(Math.abs(project(next, anchored)[0] - 200) < 1e-9);
+});
+
+test('the wheel and the toolbar buttons reach bit-identical zooms', () => {
+  // Guards the direction form. A factor form (zoom * (1/ZOOM_STEP)) drifts in the last bits.
+  for (const z of [1, 1.2, 1.4, 0.8, 2.2, ZOOM_MAX, ZOOM_MIN]) {
+    assert.equal(zoomAbout({ zoom: z, panX: 0, panY: 0 }, 1, 0, 0).zoom, zoomIn(z));
+    assert.equal(zoomAbout({ zoom: z, panX: 0, panY: 0 }, -1, 0, 0).zoom, zoomOut(z));
+  }
+});
+
+test('zoomAbout does not mutate the view it is given', () => {
+  // Load-bearing: setState's functional form hands the updater the RAW store object.
+  const frozen = Object.freeze({ zoom: 1.2, panX: 30, panY: -10 });
+  const next = zoomAbout(frozen, 1, 120, 45);
+  assert.equal(frozen.zoom, 1.2);
+  assert.equal(frozen.panX, 30);
+  assert.equal(frozen.panY, -10);
+  assert.notEqual(next.panX, 30);
+});
 
 test('clampZoom clamps to the 0.6..2.4 range and passes through in between', () => {
   assert.equal(clampZoom(0.1), ZOOM_MIN);

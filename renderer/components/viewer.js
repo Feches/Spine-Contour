@@ -6,7 +6,7 @@ import {
   createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel,
 } from '../viewer/canvas.js';
 import { clientToImage, imageToClient, nearestLandmark, setLandmarkAt, femoralCircle, setFemoralCircle, fitCircle } from '../viewer/geometry.js';
-import { zoomIn, zoomOut, vertebraAt, sameHandle, hitTestFemoral, nextSelection, nudge, arrowKeyDelta } from '../viewer/interactions.js';
+import { zoomIn, zoomOut, zoomAbout, isChordHeld, vertebraAt, sameHandle, hitTestFemoral, nextSelection, nudge, arrowKeyDelta } from '../viewer/interactions.js';
 import { createMeasureQueue } from '../viewer/measure-queue.js';
 
 // Icons lifted verbatim from design-reference/template.html's Study Analysis toolbar.
@@ -39,6 +39,10 @@ let suppressClick = false; // a pointerdown that started a gesture eats the clic
 let hover = null;          // Selection | null -- the handle under the pointer
 let retracing = false;
 let tracePoints = [];      // [x, y][] in image space
+// Which pointer placed the last retrace point, so a chord that starts as a left press in
+// retrace mode can take that point back -- the retrace branch sets no `drag`, so nothing else
+// would undo it and a stray point would survive the pan into fitCircle.
+let tracePointPointer = null;
 
 // Where the user has dragged each construction's label, in image pixels, for the open study.
 let labelOffsets = new Map(); // construction key ('L3', 'PI', ...) -> {dx, dy}
@@ -142,7 +146,16 @@ export function mountViewer(container) {
   const overlayButton = toolButton('Toggle segmentation overlay', ICONS.overlays, () => setState((s) => ({ overlays: !s.overlays })), { 'aria-pressed': 'false' });
   const editButton = toolButton('Edit landmarks', ICONS.edit, () => {
     if (getState().editing) exitEditMode();
-    else setState({ editing: true });
+    // Entering edit mode drops the pan toggle: with it on, a primary-button drag pans and the
+    // handle press underneath never happens, so pressing Edit and then finding you cannot move
+    // a landmark was the whole complaint. Panning is not taken away -- the middle button and
+    // the left+right chord both still pan in every mode, edit included.
+    //
+    // ONE-WAY on purpose. Pressing Pan while already editing must keep pan winning: that is a
+    // signed-off behaviour asserted by tools/smoke/smoke-gate1.mjs and stated in the gesture
+    // comment on handlePointerDown. Do not make this symmetric without changing those too.
+    // exitEditMode does not restore the toggle, so DONE/Escape returns with Pan off.
+    else setState({ editing: true, panMode: false });
   }, { 'aria-pressed': 'false', disabled: true });
   let runHandler = null;
   const rerunButton = toolButton('Re-run segmentation', ICONS.rerun, () => { if (runHandler) runHandler(); }, { disabled: true });
@@ -317,21 +330,113 @@ export function mountViewer(container) {
 
   function handleWheel(event) {
     event.preventDefault();
-    setState((s) => ({ zoom: event.deltaY < 0 ? zoomIn(s.zoom) : zoomOut(s.zoom) }));
+    // deltaY === 0 (shift+wheel, a horizontal trackpad swipe, a tilt wheel) used to fall into
+    // the zoom-OUT branch of the old ternary. That was harmless while only `zoom` was written;
+    // now it would also yank the pan sideways, so bail before anything is computed.
+    if (event.deltaY === 0) return;
+    // .viewer-host is inset:0 in a stage with NO border and NO padding, so the stage's rect IS
+    // the host's untransformed box and its centre is the transform origin. Adding a border or
+    // padding to .viewer-stage would break this silently.
+    const rect = stage.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    const offsetX = event.clientX - rect.left - rect.width / 2;
+    const offsetY = event.clientY - rect.top - rect.height / 2;
+    // A live pan drag baselines its pan at pointerdown and recomputes ABSOLUTELY from it. A
+    // wheel is not a pointer event, so pointer capture does not withhold it and the `if (drag)
+    // return` guard on pointerdown does not apply -- this DOES fire mid-drag. Without the
+    // re-baseline below, the next pointermove would silently discard the pan this wheel just
+    // wrote and the film would snap back.
+    const before = drag && drag.kind === 'pan' ? getState() : null;
+    setState((s) => zoomAbout(s, event.deltaY < 0 ? 1 : -1, offsetX, offsetY));
+    if (before && drag && drag.kind === 'pan') {
+      const after = getState();
+      // Shift the baseline by exactly what the wheel changed, so `drag.panX + mouse delta`
+      // keeps yielding the anchored pan. Deliberately does NOT touch drag.clientX/clientY: the
+      // wheel may come from a different device than the pointer holding the drag.
+      drag.panX += after.panX - before.panX;
+      drag.panY += after.panY - before.panY;
+    }
   }
 
-  function startPan(event) {
+  // Electron ships no default context menu -- main.js never requires Menu and nothing handles
+  // webContents 'context-menu' -- so nothing pops today and the chord works without this. It is
+  // a guard: on Windows `contextmenu` fires on the RIGHT BUTTON'S RELEASE, which for a chord is
+  // the exact moment the pan ends (verified: it arrives with buttons=1, while the primary is
+  // still held). The day anyone adds a context menu, it would otherwise appear at the end of
+  // every chord pan. On `stage`, not the canvas: contextmenu is NOT retargeted by pointer
+  // capture, so it lands on whatever the cursor is actually over -- canvas, chip, or the black
+  // surround. That also covers the toolbar, edit bar and footer, which are stage children.
+  function handleContextMenu(event) {
+    event.preventDefault();
+  }
+
+  function startPan(event, chord = false) {
     const state = getState();
-    drag = { kind: 'pan', pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, panX: state.panX, panY: state.panY };
+    drag = { kind: 'pan', chord, pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, panX: state.panX, panY: state.panY };
     suppressClick = true;
-    dynamicCanvas.setPointerCapture(event.pointerId);
+    stage.classList.add('is-panning');
+    if (!dynamicCanvas.hasPointerCapture(event.pointerId)) dynamicCanvas.setPointerCapture(event.pointerId);
   }
 
-  // Gesture precedence: middle button pans in every mode; the primary button pans when the
-  // pan toggle is on; while editing, a retrace press places a point and a handle press starts
-  // a handle drag. A second pointer while a gesture is live is ignored. The construction
-  // label has its own drag, on its own pointer events -- see handleLabelPointerDown below.
+  // A chord outranks every other gesture, so starting one has to dismantle whatever was
+  // running. Mouse-only and same-pointer: a pen in contact reports buttons=1 and its barrel
+  // button adds 2, so contact+barrel would otherwise pan; a second pointer is ignored the same
+  // way handlePointerDown ignores one.
+  function chordStarts(event) {
+    return event.pointerType === 'mouse'
+      && isChordHeld(event.buttons)
+      && (!drag || drag.pointerId === event.pointerId);
+  }
+
+  function startChordPan(event) {
+    const previous = drag;
+    if (previous && previous.kind === 'pan' && previous.chord) return; // idempotent: fires every move
+    if (previous && previous.kind === 'label' && labelChip.hasPointerCapture(event.pointerId)) {
+      labelChip.releasePointerCapture(event.pointerId);
+      labelChip.classList.remove('is-dragging');
+    }
+    // A LEFT-first chord in retrace mode has already appended a point. Take it back.
+    if (tracePointPointer === event.pointerId && tracePoints.length > 0) {
+      tracePoints = tracePoints.slice(0, -1);
+      updateEditBar(getState(), currentStudy());
+    }
+    tracePointPointer = null;
+    startPan(event, true);
+    stage.classList.remove('is-dragging-handle');
+    clearHover();
+    // Load-bearing: panX/panY are absent from dynamicKey, so nothing else repaints and an
+    // abandoned handle drag's working copy would stay painted. liveGeometry() returns the
+    // store's geometry here because drag.kind is already 'pan'.
+    redrawDynamic(liveGeometry());
+  }
+
+  function endChordPan() {
+    drag = null;
+    stage.classList.remove('is-panning');
+    // Capture and suppressClick stay: releasing the primary while the secondary is held fires
+    // a real click on the canvas, and suppressClick is what stops it reselecting.
+    // handlePointerDown resets suppressClick at the top of the next gesture, which is what
+    // makes both the click-fires and no-click-fires orders safe.
+  }
+
+  // Gesture precedence: a LEFT+RIGHT chord pans in every mode and outranks everything below
+  // it, including a handle drag while editing; the middle button pans in every mode; the
+  // primary button pans when the pan toggle is on; while editing, a retrace press places a
+  // point and a handle press starts a handle drag. A second pointer while a gesture is live is
+  // ignored. The construction label has its own drag -- see handleLabelPointerDown below.
+  //
+  // The chord test is FIRST, above `if (drag) return`, because outranking a live handle drag
+  // is the point. It is also, for a real mouse, dead code: Chromium fires pointerdown only on
+  // the transition from no buttons to some button, so the second button of a chord arrives as
+  // a pointermove and handlePointerMove is where the chord is actually born. It stays here so
+  // that a pointerdown which DOES carry both bits -- a synthesised one, a future input
+  // backend -- cannot be swallowed by the `if (drag) return` guard below.
   function handlePointerDown(event) {
+    if (chordStarts(event)) {
+      event.preventDefault();
+      startChordPan(event);
+      return;
+    }
     if (drag) return;
     suppressClick = false;
     const state = getState();
@@ -351,6 +456,9 @@ export function mountViewer(container) {
         event.preventDefault();
         suppressClick = true;
         tracePoints = [...tracePoints, clientToImage(event, dynamicCanvas)];
+        // Remember whose press this was, so a chord completed by the OTHER button can take the
+        // point back rather than leaving a stray one to reach fitCircle.
+        tracePointPointer = event.pointerId;
         updateEditBar(state, study);
         redrawDynamic(liveGeometry());
         return;
@@ -372,6 +480,20 @@ export function mountViewer(container) {
   }
 
   function handlePointerMove(event) {
+    // THIS is where a chord is born and where it dies. Chromium fires pointerdown only on the
+    // transition from no buttons to some button and pointerup only on the transition back to
+    // zero; every intermediate press or release arrives here as a pointermove carrying
+    // `button` = the button that changed and `buttons` = the new mask. Verified on Electron 44
+    // / Chrome 152, both press orders. Do NOT move this test into pointerdown -- there it never
+    // runs for a real mouse. And do not add an early return above it: anything that bails
+    // before this line silently kills the whole feature.
+    if (chordStarts(event)) {
+      event.preventDefault();
+      startChordPan(event); // no-op once the chord pan is running
+    } else if (drag && drag.kind === 'pan' && drag.chord) {
+      endChordPan();
+      return;
+    }
     if (!drag) {
       const state = getState();
       if (!state.editing || retracing) return;
@@ -416,6 +538,8 @@ export function mountViewer(container) {
     const ended = drag;
     drag = null;
     stage.classList.remove('is-dragging-handle');
+    // Covers the ordinary pan, a chord released as one simultaneous pointerup, and pointercancel.
+    stage.classList.remove('is-panning');
     if (!ended || ended.kind !== 'handle') return;
     // A cancelled gesture (pen lifted out of range, window lost the pointer) discards the
     // working copy: the store still holds the pre-drag geometry, so redraw from it.
@@ -430,6 +554,11 @@ export function mountViewer(container) {
   // the offset stays anchored to the film at any zoom; nothing is committed and no /measure
   // is scheduled. The shared `drag` keeps the canvas gestures and keyboard out while it runs.
   function handleLabelPointerDown(event) {
+    // Outside pan and edit mode the chip is a live pointer target, so with a construction
+    // selected it swallows a chord two ways: right-first is dropped by the button bail below,
+    // and left-first starts a label drag whose capture retargets every later move here. Both
+    // hand off to the same chord pan.
+    if (chordStarts(event)) { event.preventDefault(); startChordPan(event); return; }
     if (event.button !== 0 || drag) return;
     const state = getState();
     event.preventDefault();
@@ -442,6 +571,10 @@ export function mountViewer(container) {
   }
 
   function handleLabelPointerMove(event) {
+    // A chord that began on the chip reaches the film ONLY here: the chip holds pointer
+    // capture, so the second button's pointermove is retargeted to the chip, not the canvas.
+    // After the hand-off capture lives on dynamicCanvas and later moves go to handlePointerMove.
+    if (chordStarts(event)) { event.preventDefault(); startChordPan(event); return; }
     if (!drag || drag.kind !== 'label' || event.pointerId !== drag.pointerId) return;
     labelOffsets.set(drag.key, {
       dx: drag.startOffset.dx + (event.clientX - drag.start[0]) * drag.perPx,
@@ -483,6 +616,7 @@ export function mountViewer(container) {
   function cancelRetrace() {
     retracing = false;
     tracePoints = [];
+    tracePointPointer = null;
   }
 
   // The one way out of edit mode. Clears every piece of transient edit state before the
@@ -662,6 +796,7 @@ export function mountViewer(container) {
   }
 
   stage.addEventListener('wheel', handleWheel, { passive: false });
+  stage.addEventListener('contextmenu', handleContextMenu);
   dynamicCanvas.addEventListener('pointerdown', handlePointerDown);
   dynamicCanvas.addEventListener('pointermove', handlePointerMove);
   dynamicCanvas.addEventListener('pointerleave', handlePointerLeave);
@@ -672,6 +807,7 @@ export function mountViewer(container) {
 
   function detach() {
     stage.removeEventListener('wheel', handleWheel);
+    stage.removeEventListener('contextmenu', handleContextMenu);
     dynamicCanvas.removeEventListener('pointerdown', handlePointerDown);
     dynamicCanvas.removeEventListener('pointermove', handlePointerMove);
     dynamicCanvas.removeEventListener('pointerleave', handlePointerLeave);
@@ -689,6 +825,8 @@ export function mountViewer(container) {
     hover = null;
     retracing = false;
     tracePoints = [];
+    tracePointPointer = null;
+    stage.classList.remove('is-panning');
     labelOffsets = new Map();
     labelStudyId = null;
   }

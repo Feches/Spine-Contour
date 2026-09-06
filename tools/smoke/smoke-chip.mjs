@@ -147,7 +147,10 @@ try {
   await cdp.settle(100);
   s = await cdp.state();
   check('wheel over the chip zooms the stage', near(s.zoom, 1.25, 1e-6), s.zoom);
-  await cdp.setState('{ zoom: 1 }');
+  // Zoom anchors at the cursor, and the chip is off-centre, so that wheel also wrote pan.
+  // Section 9 happens to reset all three, but a partial reset here would still be a trap for
+  // whoever adds a check between the two.
+  await cdp.setState('{ zoom: 1, panX: 0, panY: 0 }');
 
   // 9. A new study starts with the label at its default position.
   const second = await openFreshStudy();

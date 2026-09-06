@@ -16,6 +16,61 @@ export function zoomOut(zoom) {
   return clampZoom(zoom / ZOOM_STEP);
 }
 
+// A chorded pan: the primary AND secondary buttons held together.
+//
+// Test the `buttons` BITMASK (left 1, right 2, middle 4), never `button`. The Pointer Events
+// chorded-button rule fires pointerdown only on the no-buttons -> some-button transition and
+// pointerup only on the transition back to zero, so the second button of a chord and the first
+// release out of one BOTH arrive as pointermove, carrying `button` = the button that changed
+// (2 for a left-first chord, 0 for a right-first one) and `buttons` = the new mask. A test on
+// `button` gets exactly one press order right. Verified on Electron 44 / Chrome 152.
+export const CHORD_MASK = 0b11;
+
+export function isChordHeld(buttons) {
+  return (buttons & CHORD_MASK) === CHORD_MASK;
+}
+
+/**
+ * Zoom about a point rather than the film's centre.
+ *
+ * components/viewer.js writes `translate(panX,panY) scale(zoom)` on .viewer-host, which is
+ * position:absolute; inset:0; transform-origin:center inside a .viewer-stage that declares no
+ * border and no padding. transform-origin wraps the WHOLE transform list, so a host-local point
+ * p lands at C + P + z*(p - C) where C is the stage's centre -- NOT at P + z*p. Holding the
+ * point under the cursor across z0 -> z1 gives
+ *
+ *   P1 = k*P0 + (1 - k)*offset,   k = z1/z0
+ *
+ * with `offset` measured FROM THE STAGE CENTRE. The naive top-left formula is wrong by
+ * (1-z)*C -- 500px at z=2 on a 1000px stage, i.e. nearly right in the middle and grossly wrong
+ * at the edges, which is exactly where a quick manual test does not look.
+ *
+ * The step and the clamp happen INSIDE and k comes from the CLAMPED result, so a tick at
+ * ZOOM_MIN/ZOOM_MAX gives k === 1 and leaves the pan alone. Deriving k from the REQUESTED zoom
+ * instead makes the film creep further every tick while the zoom label sits frozen at 240%.
+ *
+ * Takes a DIRECTION, not a factor, so the wheel and the toolbar buttons agree bit-for-bit:
+ * `zoom * (1/ZOOM_STEP)` is not `zoom / ZOOM_STEP` in binary floating point.
+ *
+ * Must not mutate `view`: setState's functional form hands the updater the RAW store object,
+ * not the frozen copy getState() returns.
+ *
+ * @param {{zoom:number, panX:number, panY:number}} view current view; NOT mutated
+ * @param {number} direction > 0 zooms in, otherwise out
+ * @param {number} offsetX pointer x minus the stage's centre x, CSS px
+ * @param {number} offsetY pointer y minus the stage's centre y, CSS px
+ * @returns {{zoom:number, panX:number, panY:number}} a setState patch
+ */
+export function zoomAbout(view, direction, offsetX, offsetY) {
+  const zoom = direction > 0 ? zoomIn(view.zoom) : zoomOut(view.zoom);
+  const k = zoom / view.zoom;
+  return {
+    zoom,
+    panX: k * view.panX + (1 - k) * offsetX,
+    panY: k * view.panY + (1 - k) * offsetY,
+  };
+}
+
 function pointInPolygon(point, polygon) {
   const [x, y] = point;
   let inside = false;
