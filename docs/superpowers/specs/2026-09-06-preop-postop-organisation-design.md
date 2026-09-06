@@ -46,8 +46,9 @@ The researcher (spec §2), doing this:
 
 1. Arrange films on disk as `Fusion2025/pre-op/S001.png`, `Fusion2025/post-op/S001.png`, … or any of
    the layouts in §8.1, optionally with a clinical CSV.
-2. Load the folder in the Workspace. Subject and timepoint are read off the folder names (or the CSV)
-   for every film, and the load message says how many were inferred and how many were not.
+2. Load the folder in the Workspace. Subject, timepoint and, where a folder names a position, view
+   are read off the folder names (or the CSV) for every film, and the load message says how many were
+   inferred and how many were not.
 3. Run segmentation across the cohort.
 4. Open the **Parameters** tab on the Studies screen, filter to the workspace, see one row per film
    with every measurement, sort by subject so each patient's films sit together.
@@ -60,7 +61,7 @@ no delta between films of different positions without the positions shown, no si
 
 ## 3. Goals
 
-1. Give a film a **subject**, a **timepoint** and an optional **study date**, so films of one patient
+1. Give a film a **subject**, a **timepoint** and an optional **film date**, so films of one patient
    can be found, grouped, paired and exported together.
 2. Make **view** a recorded, editable fact rather than a constant, so a standing-versus-prone
    comparison is visibly that.
@@ -126,9 +127,15 @@ them by accident; any can be reversed before implementation starts.
    1-year and 2-year films, and deformity work has intra-op films. A binary field would have to be
    replaced the first time one appeared. Pairing anchors on the label `Pre-op`; the post side is
    chosen (§11.2).
-4. **View stays a string, defaults to `Standing lateral` on every add path as today, and becomes
-   editable with a suggested list.** Changing the default to null would make every film read `—`
-   until set, which is more honest but adds a click per film to the common all-standing dataset. The
+4. **View stays a string, is seeded from folder and stem tokens that name a position directly, and
+   otherwise defaults to `Standing lateral` on every add path as today; it is editable with a
+   suggested list.** A folder called `flexion`, `extension`, `prone`, `supine` or `standing` states
+   the position, and the load reads it exactly as it reads `pre-op` (§8.1), so a workspace with a
+   flexion subfolder and an extension subfolder needs no clicks. Position is **never inferred from a
+   timepoint**: an `intra-op` folder sets the timepoint and leaves the view to the default, the CSV
+   or the drawer, because "intra-op films are usually prone" is a guess and the app does not guess.
+   For films whose path names no position, changing the default to null would make each read `—`
+   until set, which is more honest but adds a click per film to the common all-standing dataset; the
    per-load selector alternative is an open question (§16). The load can also seed view from a CSV
    column.
 5. **No per-field provenance flag for seeded values.** A subject label is not a measurement; the
@@ -165,7 +172,7 @@ them by accident; any can be reversed before implementation starts.
  *                                     (decision 2)
  * @property {string|null} timepoint   'Pre-op' | 'Intra-op' | 'Post-op' | '6 wk' | '1 yr' | … or any
  *                                     user label (§7.2)
- * @property {string|null} studyDate   'YYYY-MM-DD'; the film's acquisition date, never addedAt
+ * @property {string|null} filmDate   'YYYY-MM-DD'; the film's acquisition date, never addedAt
  */
 ```
 
@@ -186,7 +193,7 @@ A small module, `renderer/data/timepoints.js`, owns the vocabulary:
 | `N wk` / `N mo` / `N yr` | 3, then by duration in days | `6wk`, `6 weeks`, `3mo`, `3 months`, `1yr`, `2 years`, … |
 | any other string | 4, then alphabetical | none — only the CSV or the drawer can set these |
 
-Ties within a sort key break on `studyDate` ascending, then `addedAt` ascending. Tokens match a
+Ties within a sort key break on `filmDate` ascending, then `addedAt` ascending. Tokens match a
 **whole** path segment or a whole stem token only (§8.1), never a substring: a folder named
 `Preoperative planning` does not match, and `Postgraduate` does not match.
 
@@ -196,13 +203,23 @@ other label commits it as typed.
 ### 7.3 View
 
 Suggested list, in `renderer/data/timepoints.js` beside the timepoint vocabulary (it is the same kind
-of thing — a controlled label with free-text escape): `Standing lateral`, `Supine lateral`,
-`Prone lateral`, `Flexion lateral`, `Extension lateral`. Intra-op films are prone on a Jackson table;
-the app does not infer that — an `intra-op` folder sets the timepoint, not the view.
+of thing — a controlled label with free-text escape), each with the folder and stem tokens that
+normalise to it under the same whole-segment rule as §7.2:
+
+| Label | Tokens (case-insensitive) |
+|---|---|
+| `Standing lateral` | `standing`, `upright`, `erect` |
+| `Supine lateral` | `supine` |
+| `Prone lateral` | `prone` |
+| `Flexion lateral` | `flexion`, `flex` |
+| `Extension lateral` | `extension`, `ext` |
+
+Intra-op films are prone on a Jackson table; the app does not infer that — an `intra-op` folder sets
+the timepoint, not the view (decision 4). A folder named `prone` does.
 
 ### 7.4 Persistence and validation
 
-`validateStudy` returns the three fields, each `null` unless a non-empty string. `studyDate` is
+`validateStudy` returns the three fields, each `null` unless a non-empty string. `filmDate` is
 additionally checked against `/^\d{4}-\d{2}-\d{2}$/` and nulled with a console warning otherwise (a
 malformed date is not fatal to the record). Demo studies may carry the fields; two of the nine should,
 so the dev build demonstrates pairing without a fixture.
@@ -214,25 +231,30 @@ so the dev build demonstrates pairing without a fixture.
 `scanFolder` returns absolute paths. For each film, `renderer/data/seeding.js` (pure) takes the
 segments strictly below the workspace root, plus the filename stem, and classifies:
 
-1. Any segment that normalises to a timepoint (§7.2) supplies `timepoint`. The **last** such segment
-   wins if two match.
-2. The **first** segment below the root that is not a timepoint supplies `subjectId`.
-3. If no folder segment supplied a subject, the stem does — unless the stem's last `-`/`_`/space
-   separated token is a timepoint, in which case that token is the timepoint and the rest of the stem
-   is the subject.
+1. Any segment that normalises to a timepoint (§7.2) supplies `timepoint`; any that normalises to a
+   view (§7.3) supplies `view`. The **last** such segment wins if two of the same kind match.
+2. The **first** segment below the root that is neither a timepoint nor a view supplies `subjectId`.
+3. If no folder segment supplied a subject, the stem does. Its trailing `-`/`_`/space separated
+   tokens are examined right to left for as long as they normalise to a timepoint or a view, each
+   supplying its field; whatever remains is the subject. A stem made only of such tokens supplies no
+   subject.
 
-| Layout | subjectId | timepoint |
-|---|---|---|
-| `root/pre-op/S001.png` | `S001` | `Pre-op` |
-| `root/S001/pre-op.png` | `S001` | `Pre-op` |
-| `root/S001/post-op/lateral.dcm` | `S001` | `Post-op` |
-| `root/S001_preop.png` | `S001` | `Pre-op` |
-| `root/CohortA/1yr/S001.png` | `CohortA` | `1 yr` |
-| `root/S001.png` | `S001` | `null` |
-| `root/IMG_0001.png` | `IMG_0001` | `null` |
+| Layout | subjectId | timepoint | view |
+|---|---|---|---|
+| `root/pre-op/S001.png` | `S001` | `Pre-op` | default |
+| `root/S001/pre-op.png` | `S001` | `Pre-op` | default |
+| `root/S001/post-op/lateral.dcm` | `S001` | `Post-op` | default |
+| `root/S001_preop.png` | `S001` | `Pre-op` | default |
+| `root/flexion/S001.png` | `S001` | `null` | `Flexion lateral` |
+| `root/S001/pre-op/extension.png` | `S001` | `Pre-op` | `Extension lateral` |
+| `root/S001_preop_flexion.png` | `S001` | `Pre-op` | `Flexion lateral` |
+| `root/intra-op/S001.dcm` | `S001` | `Intra-op` | default — not inferred as prone |
+| `root/CohortA/1yr/S001.png` | `CohortA` | `1 yr` | default |
+| `root/S001.png` | `S001` | `null` | default |
+| `root/IMG_0001.png` | `IMG_0001` | `null` | default |
 
-The fifth row is the heuristic's known weakness: a cohort folder between the root and the subject is
-read as the subject. The load message (§8.4) makes it visible in one load, and the fix is to choose
+"default" is the last step of §8.3's chain, `Standing lateral` today. The `CohortA` row is the
+heuristic's known weakness: a cohort folder between the root and the subject is read as the subject. The load message (§8.4) makes it visible in one load, and the fix is to choose
 the cohort folder as the workspace. The last row is harmless but useless; the user edits or the CSV
 overrides.
 
@@ -245,7 +267,7 @@ Four structural columns, recognised the way `study_id` is (`findJoinHeader`'s no
 |---|---|---|
 | `subject_id`, `subject` | `subjectId` | any non-empty text, trimmed |
 | `timepoint`, `time_point`, `visit` | `timepoint` | normalised through §7.2 if it matches a token, else stored as typed |
-| `study_date`, `film_date` | `studyDate` | `YYYY-MM-DD` or `M/D/YYYY` (Excel's US default); anything else is not written and is counted. A bare `date` column is deliberately not recognised: in a clinical CSV it is as likely to be the surgery date |
+| `study_date`, `film_date` | `filmDate` | `YYYY-MM-DD` or `M/D/YYYY` (Excel's US default); anything else is not written and is counted. A bare `date` column is deliberately not recognised: in a clinical CSV it is as likely to be the surgery date |
 | `view`, `position` | `view` | stored as typed after trimming |
 
 The row joins the film by the existing rule (filename stem = `study_id`). Rows that match no film,
@@ -254,22 +276,25 @@ duplicates and ambiguous stems are reported exactly as today.
 ### 8.3 Precedence
 
 Per field, per film, in order: an existing non-null stored value is kept; else the CSV value if the
-row supplied one; else the folder inference; else null. The drawer overwrites anything.
+row supplied one; else the folder or stem token; else null. `view` is the one field with a further
+step instead of null: the load default, which is `Standing lateral` today and would be the per-load
+selector's value if §16 adopts it. A folder token always beats that default, so a `flexion` subfolder
+keeps its view whatever the selector says. The drawer overwrites anything.
 
 ### 8.4 Load message
 
 `workspaceLoadedMessage` gains up to three clauses, each present only when its count is non-zero:
 
-- `· subject and timepoint read from folder names for N films`
-- `· subject, timepoint or date set from the CSV for N films`
+- `· subject, timepoint or view read from folder names for N films`
+- `· subject, timepoint, film date or view set from the CSV for N films`
 - `· N films have no subject` (or `no timepoint`; both when both)
-- `· N dates could not be read` — the rejected text is stored nowhere; the film's empty Date cell in
+- `· N film dates could not be read` — the rejected text is stored nowhere; the film's empty Film date cell in
   the Parameters grid is how the user finds which one
 
 ## 9. Editing
 
 The clinical data drawer (spec §9.5) gets four fixed columns ahead of the clinical field columns,
-under a **Study** group heading: Subject (text), Timepoint (text with the §7.2 chips), Study date
+under a **Study** group heading: Subject (text), Timepoint (text with the §7.2 chips), Film date
 (date input), View (text with the §7.3 chips). The grid keeps its shape — one row per visible study —
 so the new cells sit beside that study's clinical values. These four columns cannot be removed and
 do not appear in the `ADD FIELD` chips, because they are not clinical fields. The same deferred
@@ -300,11 +325,14 @@ Columns, left to right, first column sticky, the grid scrolling horizontally ins
 | Subject | `subjectId` | `—` |
 | Timepoint | `timepoint` | `—` |
 | View | `view` | — |
-| Date | `studyDate` | `—` |
+| Film date | `filmDate` | `—` |
 | PI, PT, SS, LL L1-S1, PI–LL, L1PA | `measurements` via the existing row helpers | `—` |
 | LL L2-S1 … L5-S1 | same, behind a `Levels` toggle, off by default | `—` |
 | Clinical fields in use | `state.fields`, as the drawer shows them | empty |
 | Workspace, Folder | `workspaceLabel`, `folderLabel` | `—` |
+
+Film date is the acquisition date (§7.1). The Find tab's DATE column is the date the film was added
+to the library; the two are different facts and never share a label.
 
 Values render exactly as the measurements panel renders them (one decimal, `—` for absent, the
 consistency mark from spec §10.4 on the PI cell). Clicking a row opens the study, as in Find. The grid
@@ -321,11 +349,12 @@ clears it.
 | Workspace | dropdown of distinct `workspaceFolder` roots, plus `Added by hand` | the one the user asked for first |
 | Folder | dropdown of distinct `folderLabel` values within the chosen workspace | |
 | Timepoint | dropdown of labels present, in §7.2 order | |
+| View | dropdown of views present | flexion against extension, or standing against prone |
 | Subject | text, substring | |
 | Paired only | checkbox + a `with` dropdown of post-side labels, default `Post-op` | keeps subjects having both a `Pre-op` film and the chosen label; hides everyone else and says how many |
 | Segmented only | checkbox, default on | shows `N unsegmented hidden` beside it |
 
-Sort: by subject (then §7.2 order, then date), by study id, by workspace then folder, or by any
+Sort: by subject (then §7.2 order, then film date), by study id, by workspace then folder, or by any
 measurement column (absent last). Sorting by subject draws a thin rule between subjects so a pair
 reads as a block. The empty grid distinguishes "no segmented films" from "nothing matches these
 filters", as the Find table does.
@@ -341,7 +370,7 @@ as it is.
 
 ### 11.1 Long format
 
-`toCsv` gains three columns after `View`: `Subject`, `Timepoint`, `Study date`. Absent values are
+`toCsv` gains three columns after `View`: `Subject`, `Timepoint`, `Film date`. Absent values are
 empty, never `0` or `—`. The comment block stays (roadmap item 1 decides whether import skips it).
 
 **Clinical columns are the union of every clinical key present on the exported studies**, in
@@ -352,7 +381,7 @@ The per-study export on the Analysis screen changes with it, since both call `to
 contract amendment rather than leaving a parameter that is silently ignored.
 
 ```
-Study ID,Source,View,Subject,Timepoint,Study date,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,...,Age,Sex,ODI
+Study ID,Source,View,Subject,Timepoint,Film date,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,...,Age,Sex,ODI
 SP-1000,real,Standing lateral,S001,Pre-op,2025-03-02,38.2,52.1,21.4,30.7,13.9,...,61,F,44
 SP-1001,real,Standing lateral,S001,Post-op,2025-09-14,49.1,52.3,14.0,38.3,3.2,...,61,F,18
 ```
@@ -362,13 +391,13 @@ SP-1001,real,Standing lateral,S001,Post-op,2025-09-14,49.1,52.3,14.0,38.3,3.2,..
 `toPairedCsv(studies, {post: 'Post-op'})` in `data/csv.js`, pure. One row per subject in the input
 that has exactly one `Pre-op` film and exactly one film with the chosen post label.
 
-Columns: `Subject`, `Pre study`, `Post study`, `Pre view`, `Post view`, `Pre date`, `Post date`; then
+Columns: `Subject`, `Pre study`, `Post study`, `Pre view`, `Post view`, `Pre film date`, `Post film date`; then
 for each measurement column `M pre`, `M post`, `Δ M` (post minus pre, signed, one decimal, empty when
 either side is absent); then for each clinical key in the union, `F pre` and `F post`. Every clinical
 field is exported both ways rather than guessing which are per-subject and which are per-visit.
 
 ```
-Subject,Pre study,Post study,Pre view,Post view,Pre date,Post date,PT pre,PT post,Δ PT,...
+Subject,Pre study,Post study,Pre view,Post view,Pre film date,Post film date,PT pre,PT post,Δ PT,...
 S001,SP-1000,SP-1001,Standing lateral,Standing lateral,2025-03-02,2025-09-14,21.4,14.0,-7.4,...
 ```
 
@@ -405,9 +434,10 @@ film, so an intra-op or full-spine lateral yields PI, PT, SS, LL and L1PA withou
 Pure modules get `node --test` coverage:
 
 - `data/seeding.js`: every row of the §8.1 table, both separators, mixed case, a cohort folder, a
-  stem that is only a token, a root with no subfolders.
+  stem that is only a token, a stem carrying both a timepoint and a view token, a view token in a
+  folder and in a stem, an `intra-op` folder leaving view at the default, a root with no subfolders.
 - `data/timepoints.js`: normalisation of every token, the sort order across all four buckets, tie
-  breaking by date then `addedAt`, custom labels after known ones.
+  breaking by film date then `addedAt`, custom labels after known ones.
 - `data/csv.js`: the three new long columns, the union of clinical keys, `toPairedCsv` with paired,
   unpaired, ambiguous, no-subject and absent-measurement cases, the four structural CSV headers
   routed to fields and never to `clinical`, both date formats and a rejected one.
@@ -432,7 +462,7 @@ implementation plan, each merged back before the next starts:
 1. **Parameters tab** with workspace, folder and segmented-only filters, sort, and long export of the
    visible set with the union-of-clinical-keys rule. No new fields; nothing in §7–§9. Independently
    useful, and every later piece lands in it.
-2. **Subject, timepoint, date and view**: §7, §8, §9, the timepoint and subject and paired-only
+2. **Subject, timepoint, film date and view**: §7, §8, §9, the timepoint and subject and paired-only
    filters, subject sort, the load message, the three new export columns.
 3. **Compare with pre-op** (§12), after plan 07 has built comparison mode.
 4. **Paired export** (§11.2, §11.3).
@@ -445,10 +475,16 @@ implementation plan, each merged back before the next starts:
   folder between root and subject is misread (§8.1). The load message is the safeguard. If it proves
   insufficient, the next step is a preview of inferred values on the Workspace card before Load, not
   a cleverer heuristic.
-- **Default view.** Decision 4 keeps `Standing lateral` as the assumed default. The honest
-  alternative is a **per-load View selector on the Workspace card**, default `Standing lateral`, so
-  the value is asserted by the user once per load rather than by the app. This is cheap and worth
-  deciding before task 2. The null-until-set alternative is recorded and not recommended.
+- **Default view.** With folder and stem tokens seeding the view (§8.1), the default reaches only
+  films whose path names no position — which is the common all-standing pre/post dataset. Decision 4
+  keeps `Standing lateral` as that default, assumed by the app. The honest alternative is a
+  **per-load View selector on the Workspace card**, default `Standing lateral`, so the value is
+  asserted by the user once per load rather than by the app; it applies to the whole load, and a
+  folder token still wins over it for the films that carry one, so a flexion/extension workspace is
+  unaffected by it. This is cheap and worth deciding before task 2. Two escalations are recorded and
+  not recommended yet: a **per-folder override** (the Workspace card lists the subfolders the scan
+  found, each with a view dropdown, for datasets whose folder names say nothing about position, such
+  as `Series 3`), and null-until-set.
 - **Two pre-op films for one subject** (a repeat, a flexion pair). Ambiguous for pairing; reported,
   never guessed. The user resolves it by relabelling one (`Pre-op flexion`).
 - **Width.** The grid scrolls in its container. If the sticky first column plus fourteen numeric
@@ -466,11 +502,12 @@ implementation plan, each merged back before the next starts:
 ## 17. Out of scope
 
 Everything in §4, plus: a Subjects screen; bulk relabelling; timepoint arithmetic (days since
-surgery); inferring view from anything; a third comparison pane; PDF export.
+surgery); inferring view from a timepoint (an `intra-op` folder does not set prone); a third
+comparison pane; PDF export.
 
 ## 18. Amendments this forces
 
-- **Architecture contract, `Study` typedef:** add `subjectId`, `timepoint`, `studyDate` with the same
+- **Architecture contract, `Study` typedef:** add `subjectId`, `timepoint`, `filmDate` with the same
   optional-null wording as `name` and `workspaceFolder`; note that `view` is now user-editable.
 - **Architecture contract, module list:** `data/seeding.js`, `data/timepoints.js`; `toCsv`'s new
   columns and union rule; `toPairedCsv`; `screens/studies.js` exports for the Parameters tab's pure
