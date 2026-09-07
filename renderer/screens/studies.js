@@ -12,6 +12,7 @@ import { showToast } from '../components/toast.js';
 import { deriveStatus, statusLabel } from '../data/status.js';
 import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle } from '../data/labels.js';
 import { nextId } from '../data/persistence.js';
+import { withIds } from '../data/parameters.js';
 import { setFilePayload, releaseStudy } from './analysis.js';
 import { forgetPrediction } from '../components/viewer.js';
 import { mountParameters } from './parameters.js';
@@ -322,6 +323,11 @@ async function deleteStudy(id) {
   // the list must not stay on an Analysis screen that has no record behind it.
   setState((s) => ({
     studies: s.studies.filter((x) => x.id !== id),
+    // nextId is max+1 over the surviving records, so deleting the highest-numbered study puts
+    // its id straight back in circulation; a tick left behind here would land on the next film
+    // added, which would arrive on the Parameters grid already selected. withIds returns a new
+    // array -- the selection is replaced, never mutated.
+    paramSelected: withIds(s.paramSelected, [id], false),
     ...(s.openId === id ? { openId: null, screen: 'studies', ...FRESH_VIEW } : {}),
   }));
   showToast(`Deleted ${label}`);

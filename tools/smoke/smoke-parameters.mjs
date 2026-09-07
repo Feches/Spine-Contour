@@ -1,8 +1,9 @@
 // Parameters tab smoke (task 1 of the pre-op/post-op spec, 2026-09-06 §10): the tab strip, the
 // grid over the demo library, the segmented-only and workspace filters, sort by a measurement
-// column, the export button's disabled state, and the tab and sort surviving a trip to Analysis
-// and back. DOM-only: nothing is segmented and the backend is never called, so it runs in a few
-// seconds. Precondition: the app is running from source (demo studies present), any screen.
+// column, the export button's disabled state, the tab and sort surviving a trip to Analysis and
+// back, and a deleted study's tick being pruned from the selection. DOM-only: nothing is
+// segmented and the backend is never called, so it runs in a few seconds. Precondition: the app
+// is running from source (demo studies present), any screen.
 //
 // Two records are injected straight into the store -- SP-9100 unsegmented, SP-9101 segmented
 // under a workspace root -- and removed in `finally`, so a later suite never meets a stray
@@ -37,6 +38,26 @@ async function clickKey(key) {
   await cdp.settle(80);
 }
 const store = (expr) => cdp.evaluate(`import('./renderer/store.js').then((m) => { const s = m.getState(); return (${expr}); })`);
+
+// Scrolls the match into view before measuring it, the way smoke-workspace.mjs does: the Find
+// list is longer than the viewport and cdp.click needs client-space coordinates that are on it.
+const rectBy = (finderSource) => cdp.evaluate(`(() => {
+  const e = (${finderSource})();
+  if (!e) return null;
+  e.scrollIntoView({ block: 'center' });
+  const r = e.getBoundingClientRect();
+  return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+})()`);
+
+// Polls the store through the page's own module instance, the way smoke-workspace.mjs does.
+async function waitForState(predicateSource, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await store(`Boolean(${predicateSource})`)) return true;
+    await cdp.settle(150);
+  }
+  return false;
+}
 
 try {
   // 1. Land on Studies, Find tab, everything reset.
@@ -162,7 +183,36 @@ try {
   s = await cdp.state();
   check('back on Studies, the Parameters tab and the PI sort are still in place', s.studiesTab === 'parameters' && s.paramSort.key === 'PI' && s.paramSort.dir === 'desc' && (await has('[data-param-key="grid"]')), { tab: s.studiesTab, sort: s.paramSort });
 
-  // 10. No console errors or exceptions during the run.
+  // 10. Deleting a ticked study prunes its tick. data/persistence.js's nextId is max+1 over the
+  // surviving records, so deleting the highest-numbered study puts its id straight back in
+  // circulation; a tick left behind on that id would arrive on the grid already selected and the
+  // next export would write the wrong film. SP-9101 is ticked here on the Parameters tab and then
+  // deleted through the Find list's own two-step control -- the flow the user actually has --
+  // rather than by calling deleteStudy directly. This step consumes SP-9101, so it must stay
+  // after section 9, which opens it.
+  await clickKey('select-SP-9101');
+  const tickedBeforeDelete = await store('s.paramSelected');
+  await clickKey('tab-find');
+  await cdp.settle(100);
+  const deleteRect = await rectBy(`() => document.querySelector('.studies-row[data-study-id="SP-9101"] .studies-delete')`);
+  if (!deleteRect) throw new Error('no .studies-delete on the SP-9101 row of the Find list');
+  await cdp.click(deleteRect.cx, deleteRect.cy);
+  await cdp.settle(100);
+  const confirmRect = await rectBy(`() => document.querySelector('.studies-row[data-study-id="SP-9101"] .studies-delete-confirm')`);
+  if (!confirmRect) throw new Error('the first click on Delete did not raise .studies-delete-confirm');
+  await cdp.click(confirmRect.cx, confirmRect.cy);
+  // deleteStudy awaits the delete-prediction IPC before its setState, so the removal is not
+  // synchronous with the click. An injected record has no sidecar; the main-process handler
+  // treats a missing file as the outcome the caller wanted and resolves.
+  const pruned = await waitForState("!s.studies.some((x) => x.id === 'SP-9101') && !(s.paramSelected ?? []).includes('SP-9101')", 5000);
+  await cdp.settle(150);
+  const afterDelete = await store("({ selected: s.paramSelected, present: s.studies.some((x) => x.id === 'SP-9101'), toast: s.toast })");
+  check('deleting a ticked study drops its id from paramSelected as well as from studies',
+    pruned === true && afterDelete.present === false && !afterDelete.selected.includes('SP-9101'),
+    { tickedBeforeDelete, afterDelete });
+  await clickKey('tab-parameters');
+
+  // 11. No console errors or exceptions during the run.
   check('no console errors or exceptions during the run', cdp.errors.length === 0, cdp.errors);
 } finally {
   // Remove the injected records and reset the tab state whatever happened above.

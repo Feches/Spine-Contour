@@ -280,7 +280,7 @@ a draw function must blank a layer, never freeze the application.
                             // `workspace` is a stored root, HAND_ADDED ('__hand__') or null
   paramSort: { key: 'study', dir: 'asc' },   // key: 'study'|'workspace'|a measurement column key
   paramLevels: false,       // show LL L2–S1..L5–S1 columns
-  paramSelected: [],        // string[] study ids ticked on the Parameters grid (2026-09-07); replaced wholesale; session-only
+  paramSelected: [],        // string[] study ids ticked on the Parameters grid (2026-09-07); replaced wholesale; session-only; screens/studies.js clears a deleted study's id from it
                             // All four are read by screens/studies.js's own subscription, never by SCREEN_KEYS.
   openId: null,
   compareId: null,

@@ -169,11 +169,17 @@ export function mountParameters(host, { onOpen }) {
 
   // `lead` is a node placed before the sort button inside the header cell -- the STUDY column's
   // select-all box. Null for every other column.
-  function sortableHeader(key, label, sort, extraClass, lead) {
+  // `ariaLabel` names the CELL itself. A header cell's accessible name is computed from its
+  // contents, so the STUDY cell -- which holds the select-all box as well as the sort button --
+  // would otherwise announce as "Select all visible studies STUDY", and a screen reader repeats
+  // that name on every data cell in the column. Only the STUDY call passes it; the select-all
+  // box and the sort button keep their own labels.
+  function sortableHeader(key, label, sort, extraClass, lead, ariaLabel) {
     const active = sort.key === key;
     return el('th', {
       scope: 'col', class: `param-th${extraClass ? ` ${extraClass}` : ''}`,
       'aria-sort': active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none',
+      ...(ariaLabel ? { 'aria-label': ariaLabel } : {}),
     },
       lead ?? null,
       el('button', {
@@ -194,7 +200,11 @@ export function mountParameters(host, { onOpen }) {
     // The tick sits inside the sticky STUDY cell, before the name, so it scrolls with the column
     // it belongs to and stays on screen with the row's identity. toggleId returns a new array:
     // the store's selection is replaced, never mutated.
-    const nameCell = el('th', { scope: 'row', class: 'param-cell-study' },
+    // aria-label names the ROW HEADER itself. Its accessible name is otherwise computed from its
+    // contents -- the tick ("Select <name>") and the open button (<name>) -- which announces as
+    // "Select <name> <name>", and a row header's name is repeated on every cell in the row.
+    // The checkbox and the button keep their own labels.
+    const nameCell = el('th', { scope: 'row', class: 'param-cell-study', 'aria-label': studyName(study) },
       checkbox({
         key: `select-${study.id}`, label: null, checked: selected.includes(study.id),
         ariaLabel: `Select ${studyName(study)}`,
@@ -246,7 +256,7 @@ export function mountParameters(host, { onOpen }) {
       },
     });
     const head = el('thead', {}, el('tr', {},
-      sortableHeader('study', 'STUDY', sort, 'param-col-study', selectAll),
+      sortableHeader('study', 'STUDY', sort, 'param-col-study', selectAll, 'STUDY'),
       plainHeader('VIEW'),
       ...columns.map((column) => sortableHeader(column.key, column.label.toUpperCase(), sort, 'param-col-num')),
       ...fields.map((field) => plainHeader(field.toUpperCase())),

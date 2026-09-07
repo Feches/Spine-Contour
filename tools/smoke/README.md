@@ -254,9 +254,9 @@ folders that could not be read)` clause — `screens/workspace.js` records the s
 module scope only when its own folder handler ran the scan, so a state-seeded scan renders
 `3 radiographs found` without the clause, and that is what the suite asserts.
 
-**Known baseline** (fresh scratch profile, this branch tip): unit 318/318
+**Known baseline** (fresh scratch profile, this branch tip): unit 333/333
 (`node --test test/*.test.js`); `smoke-studies.mjs` 60/60; `smoke-workspace.mjs` 96/96;
-`smoke-parameters.mjs` 32/32; `smoke-persist.mjs` 34/34 then 44/44 — the same figures as
+`smoke-parameters.mjs` 33/33; `smoke-persist.mjs` 34/34 then 44/44 — the same figures as
 `docs/superpowers/HANDOFF.md`'s baseline paragraph. Every check in the suite runs
 unconditionally; there is no skip path.
 
@@ -276,7 +276,7 @@ root.
 node tools/smoke/smoke-parameters.mjs
 ```
 
-Every selector is a `data-param-key` or `data-study-id`. Baseline: 32/32.
+Every selector is a `data-param-key` or `data-study-id`. Baseline: 33/33.
 
 ## Library
 

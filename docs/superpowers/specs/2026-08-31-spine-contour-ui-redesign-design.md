@@ -299,7 +299,7 @@ Selecting a similar study splits the viewer into two panes and adds `{other}` an
 
 ### 10.7 Export CSV
 
-One row per study, columns for every real measurement plus any clinical fields in use. Absent measurements export as empty, never as `0`. A leading comment block carries the citation text and a `NOT FOR CLINICAL USE` line. Demo studies are excluded unless explicitly included.
+One row per study, columns for every real measurement plus any clinical fields in use. Absent measurements export as empty, never as `0`. A leading comment block carries the citation text and a `NOT FOR CLINICAL USE` line. Demo studies are never exported (2026-09-07: the include-demo option and the `Source` column are gone).
 
 ## 11. Backend changes
 
