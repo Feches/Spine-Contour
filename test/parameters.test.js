@@ -313,6 +313,11 @@ test('withIds "on" appends only the missing ids, in ids order, and is idempotent
   assert.notEqual(again, result); // still a fresh array
 });
 
+test('withIds "on" adds a duplicated id in `ids` only once', () => {
+  assert.deepEqual(withIds(['a'], ['b', 'b', 'c'], true), ['a', 'b', 'c']); // 'b' added once despite appearing twice
+  assert.deepEqual(withIds(['b'], ['b', 'b'], true), ['b']); // already selected AND duplicated: not re-added
+});
+
 test('withIds "off" removes every listed id and leaves the rest, in their original order', () => {
   const selected = ['a', 'b', 'c', 'd'];
 

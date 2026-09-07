@@ -140,7 +140,7 @@ export function toggleId(selected, id) {
 export function withIds(selected, ids, on) {
   const current = selected ?? [];
   const list = ids ?? [];
-  if (on) return [...current, ...list.filter((id) => !current.includes(id))];
+  if (on) return [...current, ...list.filter((id, i) => !current.includes(id) && list.indexOf(id) === i)];
   return current.filter((id) => !list.includes(id));
 }
 
