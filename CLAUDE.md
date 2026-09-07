@@ -23,12 +23,15 @@ what plan 06 changed under plan 07 (the contract was amended in step; the plan-0
 not), and "Release prerequisites" for what stands between this branch and a production release.
 `docs/ROADMAP.md` carries the deferred work that has no plan yet.
 
-**Branch `claude/preop-postop-xray-org-2c4d80` (2026-09-06)** sits above the studies branch and holds
-only docs: the pre-op/post-op organisation spec
-(`docs/superpowers/specs/2026-09-06-preop-postop-organisation-design.md`) and the plan for its task
-1, the Parameters tab (`docs/superpowers/plans/2026-09-06-parameters-tab.md`). No code from either
-exists yet; resume at that plan's Task 1, subagent-driven. `docs/superpowers/NEXT-SESSION.md` is the
-prompt. It merges back into the studies branch when task 1 is done, at the user's say-so.
+**Branch `claude/preop-postop-xray-org-2c4d80` (2026-09-07)** sits above the studies branch and holds
+the pre-op/post-op organisation spec
+(`docs/superpowers/specs/2026-09-06-preop-postop-organisation-design.md`) and its task 1, the
+**Parameters tab**, complete: the plan `docs/superpowers/plans/2026-09-06-parameters-tab.md`
+(Tasks 1–8 plus an addendum, Tasks 9–12: the CSV's `Source` column removed, ticked rows export as a
+chosen subset), all reviewed, the DOM tasks verified by the user. Unit 333/333; `smoke-parameters.mjs`
+33/33. Pushed to `fork`. **The merge back into the studies branch is pending, at the user's say-so;
+the next work is spec task 2 (subject, timepoint, film date, view and the Workspace folder table),
+which needs its own plan first.** `docs/superpowers/NEXT-SESSION.md` is the prompt.
 
 ## Read these first
 

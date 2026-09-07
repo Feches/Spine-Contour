@@ -45,6 +45,23 @@ The app's own **Export CSV** file cannot be loaded back in through the Workspace
 things stop it, and `docs/ROADMAP.md` (item 1) sets out each of them and the design decision a
 fix has to make first.
 
+## Parameters tab
+
+The Studies screen has two tabs. **Find** is the list. **Parameters** shows every segmented study's
+measurements in one grid — PI, PT, SS, LL L1–S1, PI–LL, L1PA, the L2–S1…L5–S1 levels behind a
+**Levels** toggle, any clinical fields in use, and the workspace and folder each film came from.
+
+- Filter by workspace, by folder within it, and by **Segmented only** (on by default; the note beside
+  it says how many unsegmented films are hidden). The search box applies to the grid as well as the
+  list. Click a column header to sort; absent values sort last.
+- Click a study name to open it. Tick rows to choose a subset: the button reads **Export N selected**
+  and writes the ticked rows that are visible; with nothing ticked, **Export CSV** writes every
+  visible row. Hidden picks stay ticked and return with the filter.
+- The file has three `#` comment lines, then the header
+  `Study ID,View,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1` followed
+  by every clinical field present on the exported studies. Absent values are empty cells. Demo
+  studies are never exported.
+
 ## Models
 
 Three structures are read from a lateral film — the L1–L5 vertebral bodies, the S1

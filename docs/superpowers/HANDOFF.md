@@ -1,9 +1,10 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-09-06
+**Last updated:** 2026-09-07
 **Branch:** `claude/studies-ui-updates-bb040d` (7 commits on top of `origin/ui-redesign-cw` @ `0022d91`)
 **Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
-**This copy is on:** `claude/preop-postop-xray-org-2c4d80` (docs only, above the branch above), worktree
+**This copy is on:** `claude/preop-postop-xray-org-2c4d80` (the Parameters tab and its addendum, code and
+docs, above the branch above; the merge back is pending at the user's say-so), worktree
 `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628` — see the first
 section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
@@ -21,25 +22,46 @@ section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
 ## Where things stand
 
-### Parameters tab — task 1 of the pre-op/post-op spec (branch `claude/preop-postop-xray-org-2c4d80`)
+### Parameters tab — task 1 of the pre-op/post-op spec, DONE with an addendum (branch `claude/preop-postop-xray-org-2c4d80`)
 
 Spec: `docs/superpowers/specs/2026-09-06-preop-postop-organisation-design.md` §10, §11.1. Plan:
-`docs/superpowers/plans/2026-09-06-parameters-tab.md`. Commits: `git log --oneline 9735202..HEAD` on
-that branch.
+`docs/superpowers/plans/2026-09-06-parameters-tab.md` (Tasks 1–8, then the 2026-09-07 addendum
+Tasks 9–12; its `## Ledger` carries every ruling and every deferred review finding). Commits:
+`git log --oneline 9735202..HEAD` on that branch. Two whole-branch reviews (one per range), each
+"with fixes"; the fixes landed and were re-reviewed clean. **The merge back into
+`claude/studies-ui-updates-bb040d` is pending, at the user's say-so.**
 
-- The Studies screen has a `Find | Parameters` tab strip; the tab, the grid's filters, sort and
-  level toggle are store keys (`studiesTab`, `paramFilters`, `paramSort`, `paramLevels`), read by
-  the screen's own subscription, never by `SCREEN_KEYS`.
-- `renderer/data/parameters.js` is pure and fully unit-tested; `renderer/screens/parameters.js` is
-  DOM and is covered by `tools/smoke/smoke-parameters.mjs` (22 checks, DOM-only) plus the manual
-  steps recorded in each task's commit message.
-- `toCsv(studies, opts)`: the `fields` parameter is gone; clinical columns are the union of keys on
-  the exported rows (roadmap item 1's third decision, now made).
-- Not built here, by design: subject, timepoint, view, film date, the paired-only filter, the
-  paired export and compare-with-pre-op -- spec tasks 2–4.
+**Verified at the wrap (2026-09-07):** unit 333/333; `smoke-parameters.mjs` 33/33; `smoke-studies.mjs`
+60/60; `smoke-workspace.mjs` 96/96 — on a fresh scratch profile at `211a2b8`. Tasks 4, 5, 6 and 11
+were verified by the user on their real library (112 studies); the outcomes are in those commits'
+bodies, including the checks that were not reachable there and stand on the harness.
 
-**Trap:** the panel rebuilds on every change to its key and restores focus by `data-param-key`;
-a new control without that attribute drops keyboard focus to `<body>` after its own change event.
+- The Studies screen has a `Find | Parameters` tab strip; the tab, the grid's filters, sort, level
+  toggle and row selection are store keys (`studiesTab`, `paramFilters`, `paramSort`, `paramLevels`,
+  `paramSelected`), read by the screen's own subscription, never by `SCREEN_KEYS`; none is
+  persisted. `screens/studies.js` clears a deleted study's id from `paramSelected`, because `nextId`
+  reissues it.
+- `renderer/data/parameters.js` is pure and fully unit-tested (columns, values, filter options,
+  filter, sort, empty reason, export filename, `patchFilters`, the selection helpers);
+  `renderer/screens/parameters.js` is DOM and is covered by `tools/smoke/smoke-parameters.mjs`
+  (33 checks, DOM-only; run it FIRST on a fresh launch) plus the manual steps in the commit bodies.
+- `toCsv(studies)`: the `fields` parameter (2026-09-06: clinical columns are the union of keys on the
+  exported rows) and then the `Source` column and the `includeDemo` option (2026-09-07) are gone;
+  demo rows are never written. Header: `Study ID,View,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1`
+  then the clinical union.
+- Ticking rows exports a chosen subset: the export writes the selected rows that are VISIBLE, in
+  grid order; hidden picks stay ticked and return with the filter; the button reads
+  `Export N selected`, the count line `· N SELECTED`; a disabled Export button carries a visible
+  note (Chromium shows no tooltip on a disabled control).
+- Not built here, by design: subject, timepoint, view, film date, the folder table, the
+  paired-only filter, the paired export and compare-with-pre-op — spec tasks 2–4. **Spec task 2
+  is next and has no plan yet.**
+
+**Traps:** the panel rebuilds on every change to its key array and restores focus (by
+`data-param-key`) and the grid's scroll position; a new store key the grid reads MUST be added to
+that array or the grid silently stops repainting for it, and a new control without a
+`data-param-key` drops keyboard focus to `<body>` after its own change event. The panel is not
+rebuilt while the Find tab is up (gated on `studiesTab` before the key is assigned).
 
 ### Session 2026-09-06 — studies and UI updates (7 commits, `e82ea42`..`93e4850`)
 
@@ -1158,6 +1180,25 @@ implemented yet.
     user's standing instruction is the lowest model that can do the task. *Cost if wrong:* none
     identified; recorded so the next session does not ask again.
 
+The following were settled with the user in chat on **2026-09-07**, at the Parameters tab's gates, and
+are implemented on the same branch (the plan's addendum, Tasks 9–12).
+
+37. **The CSV's `Source` column and the `includeDemo` option are gone; `toCsv(studies)` never writes
+    a demo row.** *Why:* the export dialog that would have set the option was never built, nothing
+    passed it, and no installer ships demos (19), so every file the app could write read `real` on
+    every row. *Cost if wrong:* a fabricated demo row could no longer be marked in a file, and no path
+    writes one.
+38. **Ticked rows export as a chosen subset, and the export writes the selected rows that are
+    VISIBLE, in grid order; hidden picks stay ticked and return with the filter; with nothing ticked
+    the export is the visible rows.** *Why:* the file always matches what is on screen; the button
+    label and the count line say exactly how many. *Cost if wrong:* a user expecting a fixed list
+    exports fewer rows than they ticked — disclosed by the label.
+39. **The row checkbox lives inside the sticky STUDY cell, not in a new first column; the study name
+    is the row's link and the whole row is not a click target; there are no filter chips.** Controller
+    rulings, accepted at the Task 11 gate and recorded in the plan's Ledger with their costs. *Why:*
+    the spec's sticky first column and `<th scope="row">` semantics stay untouched; a whole-row click
+    fights the table's other affordances; a chip would repeat the select beside it.
+
 ## Release prerequisites — before a production release
 
 These are about shipping `latest-windows`, not about any remaining plan work; plan 07 is
@@ -1189,6 +1230,20 @@ production release:
 
 ## Known traps
 
+- **A Sonnet implementer that starts a multi-minute suite in the background and "waits for the
+  Monitor" ends its turn mid-task** (twice on 2026-09-07), leaving files edited, nothing committed
+  and the app alive on port 9222; `SendMessage` is not available in this harness, so it cannot be
+  resumed. Say "run each suite in the foreground and capture its output to a file" in every dispatch
+  that runs one; the recovery is a fresh finisher told the working-tree state.
+- **`cdp-lib.mjs`'s `key('Enter')` and Space send no `text`**, so Blink emits no keypress and a native
+  `<button>` or checkbox never activates from them; dispatch the key event with `text` yourself. The
+  suites click; the human's real Enter works.
+- **Chromium shows no tooltip on a disabled control.** A `title` on a disabled button is invisible;
+  the Parameters tab renders its reason as a visible note. The Analysis screen's Export button still
+  relies on `title` (roadmap item 5).
+- **A docs commit above a gated task's commit forces a history rewrite to amend that body.** Keep the
+  ledger uncommitted during a gate and commit it after the amend; `git commit --amend` and
+  `git reset --soft` are accepted by the classifier (`--hard` is not). Push only after the last amend.
 - **`git reset --hard` is refused by the auto-mode permission classifier; `git checkout -B <branch>
   <target>` is accepted** and is the same operation for a branch with no unique commits (2026-09-06,
   re-basing a fresh worktree branch onto the studies branch). Prove `git log <target>..HEAD` shows

@@ -2309,3 +2309,18 @@ Deferred minors from the addendum reviews — the whole-addendum review triaged 
 - Task 11: minor (deferred): stale ids accumulate in paramSelected when a ticked study leaves the library; harmless (selectedVisible ignores them), session-only, nothing prunes.
 - Task 12: minor (deferred): smoke check :119 `includes('1 SELECTED')` also matches `11 SELECTED` (its sibling label check catches the bug); :152's title claims the untick landed but the note reads the same either way; :141 is a negative assertion; :127 degenerates without demos; README sentence has two "and"s (brief-verbatim); nothing pins withIds leaving hidden ticks alone or the `Nothing to export` note branch.
 - Task 12: minor (for the wrap): HANDOFF.md:34 still says the suite has 22 checks (now 32) and README:259 claims parity with HANDOFF's baseline paragraph.
+
+Session ended 2026-09-07: the plan (Tasks 1–8) and its addendum (Tasks 9–12) are complete at
+`211a2b8` plus the docs above it; two whole-branch reviews with their fix waves re-reviewed clean;
+unit 333/333, `smoke-parameters.mjs` 33/33, `smoke-studies.mjs` 60/60, `smoke-workspace.mjs` 96/96.
+Nothing is half-done and no finding is open. Resume at: (1) the merge back into
+`claude/studies-ui-updates-bb040d` — the user's call, never unasked; (2) spec task 2 (subject,
+timepoint, film date, view, the Workspace folder table), which has no plan yet — brainstorm against
+spec §7–§9, then superpowers:writing-plans, then subagent-driven execution as before.
+- Ruling: the wrap adds a user-facing README section for the Parameters tab (the first whole-branch
+  review found the README silent on it) and two ROADMAP bullets under item 5 (the Analysis export
+  button's invisible disabled reason; no clear-selection control) — records, not code — cost if
+  wrong: a paragraph to edit.
+- Ruling: HANDOFF's header, its Parameters section, decisions 37–39 and four new traps, CLAUDE.md's
+  branch paragraph and NEXT-SESSION.md are edited in place at the wrap; the scratch SDD workspace
+  under `.superpowers/sdd/` is kept (git-ignored) until the branch is finished — cost if wrong: prose.

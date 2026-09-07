@@ -218,6 +218,15 @@ Not code quality; these stand between the branch and a production release.
   `tabindex="-1"` on the inactive one, and ArrowLeft/ArrowRight plus Home/End moving the selection —
   or drop the roles and let the two buttons be what the Analysis panel's plain buttons already are.
   Mouse and Tab-then-Enter both work today.
+- **The Analysis screen's Export CSV button explains its disabled state in a `title` only**, and
+  Chromium shows no tooltip on a disabled control, so the reason ("Demo studies are not exported") is
+  invisible. The Parameters tab renders its reason as a visible note beside the button
+  (2026-09-07); do the same here.
+- **Hidden picks on the Parameters grid are invisible until the filter changes, and there is no
+  "clear selection" control.** Both follow from the rule that the export writes the selected rows
+  that are visible (HANDOFF decision 38): a tick hidden by a filter is still a tick. Clicking an
+  indeterminate select-all selects everything visible, so clearing a partial pick is two clicks. A
+  `Clear selection` control shown whenever any pick exists, visible or not, would blunt both.
 
 ---
 
