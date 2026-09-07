@@ -1925,6 +1925,136 @@ git push fork claude/preop-postop-xray-org-2c4d80
 
 ---
 
+## Addendum (2026-09-07) — two changes decided with the user at the Task 6 gate
+
+Approved in chat on 2026-09-07 as a bounded change (no separate spec document): drop the CSV's
+`Source` column, and let the user export a chosen subset of the grid. The user's rule for hidden
+picks: **the export writes the selected rows that are visible**, in grid order; hidden picks stay
+ticked and return with the filter. The Global Constraints above bind every task here. The tasks are
+executed the same way as Tasks 1–8 (Sonnet for 9, 10, 12; Opus for 11, which has a human gate).
+
+### Task 9: Drop the CSV's `Source` column and the unused include-demo option
+
+**Files:**
+- Modify: `renderer/data/csv.js` (`toCsv`)
+- Modify: `renderer/screens/analysis.js` (the one call and the comment above it)
+- Modify: `renderer/screens/parameters.js` (the one call in `exportVisible`)
+- Modify: `test/csv.test.js`
+- Modify: `docs/superpowers/plans/2026-08-31-00-architecture-contract.md` (the csv.js block: signature line and the paragraph that mentions `includeDemo`)
+- Modify: `docs/superpowers/specs/2026-09-06-preop-postop-organisation-design.md` (§10.2 one sentence; §11.1 the three example lines)
+- Modify: `docs/ROADMAP.md` (item 1, "What happens today": the example header and row)
+
+**Why.** The `Source` column exists to mark fabricated demo rows in a file written with
+`includeDemo: true`. No dialog ever sets that option, nothing in the app passes it, and no installer
+ships demo studies (HANDOFF decision 19), so every file the app can write reads `real` on every row.
+A constant column in a research CSV is noise, and an option nothing sets is a trap.
+
+**Interfaces:**
+- Produces: `toCsv(studies) → string`. The `opts` parameter is gone with its only key. Demo rows
+  (`source === 'demo'`) are never written. Header: `Study ID,View,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1` followed by the clinical union.
+
+- [ ] **Step 1: Narrow the tests first.** In `test/csv.test.js`: the test `'toCsv excludes demo studies by default and includes them with opts.includeDemo'` becomes `'toCsv never writes a demo study'` — keep its exclusion assertions, delete the `includeDemo: true` half. Every call `toCsv(x, {})` becomes `toCsv(x)`. Every header-position assertion moves one left: the comments "Study ID, Source, View, …" lose `Source`; `header.slice(13)` → `header.slice(12)`; `header.length === 13` → `12`; `header[12] === 'LL L5-S1'` → `header[11]`. Grep the file for `Source`, `includeDemo`, `slice(13`, `header[12]`, `length, 13` and fix each. Run `node --test test/csv.test.js`: the narrowed tests FAIL (the header still carries `Source`). Record the output.
+- [ ] **Step 2: Change `toCsv`.** Signature `export function toCsv(studies)`. `const rows = studies.filter((study) => study.source !== 'demo');` with a comment: demo rows are never written; the option that once included them was wired to no dialog and no installer ships demos, so the `Source` column that marked them is gone with it (2026-09-07). Header `['Study ID', 'View', ...MEASUREMENT_COLUMNS, ...fields]`; the cells drop `study.source`. Run the CSV suite: PASS.
+- [ ] **Step 3: The two callers.** `renderer/screens/analysis.js`: `toCsv(live.studies.filter((s) => s.id === live.openId))`, and rewrite the comment above it (it explains why `includeDemo` is not passed) to say that `toCsv` never writes a demo study, so the guard below it is what keeps a demo's export from producing a header with no rows. `renderer/screens/parameters.js`: `toCsv(visible)`.
+- [ ] **Step 4: Records.** Contract csv.js block: `export function toCsv(studies)          // → string   (2026-09-07) demo rows are never written; the Source column and the includeDemo option are gone` (keep the earlier `(2026-09-06)` note about the union rule on the same entry), and in the paragraph beginning "`toCsv` emits the citation comment block first", replace "and excludes `source === 'demo'` unless `opts.includeDemo` is true" with "and never writes a `source === 'demo'` study (2026-09-07: the `includeDemo` option and the `Source` column are gone — no dialog ever set the option and no installer ships demos)". Spec §10.2: "excluded from export unless the export dialog includes them (spec §10.7)" → "never exported (2026-09-07: there is no include-demo option and no `Source` column)". Spec §11.1: drop `Source,` from the example header and `real,` from the two example rows. ROADMAP item 1 "What happens today": drop `Source,` and `real,` from the example header and row.
+- [ ] **Step 5: Verify and commit.** `node --test test/*.test.js` — 322/322 (no test added, one narrowed). `grep -rn "includeDemo\|'Source'" renderer test` shows nothing. Commit the seven files:
+
+```
+feat: drop the CSV's Source column and the unused include-demo option
+
+Every file the app can write read `real` on every row: no dialog ever set includeDemo and no
+installer ships demo studies. toCsv(studies) never writes a demo row.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+```
+
+### Task 10: Selection state and the pure helpers for exporting chosen studies
+
+**Files:**
+- Modify: `renderer/store.js` (one key)
+- Modify: `test/store.test.js` (one assertion)
+- Modify: `renderer/data/parameters.js` (four exports; header comment)
+- Modify: `test/parameters.test.js` (a "selection" section)
+- Modify: `docs/superpowers/plans/2026-08-31-00-architecture-contract.md` (State shape: one line; module list: the `data/parameters.js` entry mentions the selection helpers)
+
+**Interfaces:**
+- Produces the store key `paramSelected: []` — `string[]` of study ids ticked on the Parameters grid, replaced wholesale on every change (the panel's gate compares by reference), session-only (never written to `studies.json`; the saver writes only `studies`), NOT in `router.js`'s `SCREEN_KEYS`.
+- Produces, in `renderer/data/parameters.js`, all pure, all tolerating `selected` of `null`/`undefined` as `[]`, all returning NEW arrays and never mutating inputs:
+
+  ```js
+  export function toggleId(selected, id)              // → string[]  id appended if absent, removed if present
+  export function withIds(selected, ids, on)          // → string[]  on: every id in `ids` present once (appended in `ids` order); off: every id in `ids` removed
+  export function selectedVisible(visible, selected)  // → Study[]   the visible studies whose id is selected, in visible order; stale ids ignored
+  export function rowsToExport(visible, selected)     // → Study[]   selectedVisible when it is non-empty, else visible
+  ```
+
+- [ ] **Step 1: Pin the store key.** In `test/store.test.js`, after the `paramLevels` assertion add `assert.deepEqual(state.paramSelected, []);` — FAIL. In `renderer/store.js`, after `paramLevels: false,` add `paramSelected: [],` with a comment: the study ids ticked on the Parameters grid (addendum, 2026-09-07); replaced wholesale; session-only, never persisted. PASS.
+- [ ] **Step 2: Write the failing tests.** In `test/parameters.test.js`, import the four names and add a `// selection` section: `toggleId` adds an absent id at the end and removes a present one, returns a new array, leaves the input untouched, treats `undefined` as empty; `withIds` on adds only the missing ids in `ids` order and is idempotent, off removes every listed id and leaves others, both return new arrays; `selectedVisible` returns the visible studies in visible order for a selection given in a different order, ignores ids no visible study carries, and returns `[]` for `null`; `rowsToExport` returns `selectedVisible` when non-empty and the whole `visible` array (a new array, equal contents) when nothing visible is selected. Use the file's `study()` helper. Run: FAIL at import.
+- [ ] **Step 3: Write the helpers** after `patchFilters`, each with a one-line comment, and add "the selection of rows to export" to the module header's list of what it decides. Run `node --test test/parameters.test.js`: PASS.
+- [ ] **Step 4: Contract.** State shape: after the `paramLevels` line add `  paramSelected: [],        // string[] study ids ticked on the Parameters grid (2026-09-07); replaced wholesale; session-only`. Module list: extend the `data/parameters.js` entry with `; selection helpers toggleId/withIds/selectedVisible/rowsToExport (2026-09-07)`.
+- [ ] **Step 5: Verify and commit.** `node --test test/*.test.js` — all pass (322 plus the new tests; report the total). Commit the five files:
+
+```
+feat: selection state and pure helpers for exporting chosen studies
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+```
+
+### Task 11: Tick rows to export a chosen subset
+
+**Files:**
+- Modify: `renderer/screens/parameters.js`
+- Modify: `styles/screens/studies.css` (append)
+
+**Interfaces:**
+- Consumes: `toggleId`, `withIds`, `selectedVisible`, `rowsToExport` (Task 10); `paramSelected` (Task 10); `toCsv(studies)` (Task 9).
+- Produces: a checkbox in each row's STUDY cell (`data-param-key="select-<id>"`), a select-all checkbox in the STUDY header (`data-param-key="select-all"`), the Export button's label and target, a `· N SELECTED` suffix on the count line, and a visible reason beside the disabled button (`data-param-key="export-note"`).
+
+DOM code: no unit test. Verification is a CDP dry run by the implementer, the manual step below (human gate), and Task 12's smoke checks.
+
+- [ ] **Step 1: The row checkbox.** In `buildRow`, before the name button inside the sticky `<th scope="row">` STUDY cell, add a checkbox using the codebase's hidden-input + `.checkbox-box` pattern (see the file's `checkbox()` helper and `styles/components.css` `.checkbox-row`), with no visible text: the input carries `type: 'checkbox'`, a real boolean `checked` (`selected.includes(study.id)`), `'aria-label': \`Select ${studyName(study)}\``, `'data-param-key': \`select-${study.id}\``, and `onChange: () => setState((s) => ({ paramSelected: toggleId(s.paramSelected, study.id) }))`. `selected` is `live.paramSelected ?? []`, passed into `buildRow`. Keep the cell's sticky styling; the checkbox and the name sit on one line (`.param-cell-study` becomes a flex row with a small gap).
+- [ ] **Step 2: Select-all.** In `buildGrid`, the STUDY header cell gets, before its sort button, a checkbox with `'data-param-key': 'select-all'`, `'aria-label': 'Select all visible studies'`, `checked` = `visible.length > 0 && every visible id is selected` (real boolean), and after creation set its `indeterminate` property to `true` when some but not all visible ids are selected. `onChange: (event) => setState((s) => ({ paramSelected: withIds(s.paramSelected, visible.map((x) => x.id), event.target.checked) }))`. The `visible` in that closure is the render's own array, exactly as the Export button captures it.
+- [ ] **Step 3: The export target, label, count and note.** In `buildFilterBar`: `const chosen = selectedVisible(visible, live.paramSelected);` and `const rows = rowsToExport(visible, live.paramSelected);`. `exportable` counts the real studies in `rows`. The button's text is `chosen.length > 0 ? \`Export ${chosen.length} selected\` : 'Export CSV'`; its `onClick` calls `exportVisible(rows, filters)` (rename that function's first parameter to `rows` and update its comment: it writes the rows it is given — the visible rows, or the visible selected ones). The disabled reason stays as the `title` AND is rendered as `el('span', { class: 'param-export-note', 'data-param-key': 'export-note' }, reason)` placed right after the button, only when the button is disabled (Chromium shows no tooltip on a disabled control). The count line becomes `\`${visible.length} OF ${live.studies.length} STUDIES SHOWN${chosen.length > 0 ? \` · ${chosen.length} SELECTED\` : ''}\``.
+- [ ] **Step 4: The gate key.** Add `live.paramSelected` to the key array in `update()` (the comment there says why every store key the grid reads must be listed).
+- [ ] **Step 5: Style.** Append to `styles/screens/studies.css`: `.param-cell-study` as an inline flex row (`display: flex; align-items: center; gap: 10px;` — check the sticky rules still apply), the checkbox box sized like `.param-check .checkbox-box` (16px, no top margin), and `.param-export-note` (Chivo Mono 10px, `var(--muted)`, `flex: none`). The header's select-all sits before the sort button with the same gap.
+- [ ] **Step 6: Unit suite.** `node --test test/*.test.js` — all pass, total unchanged from Task 10.
+- [ ] **Step 7: Manual verification** (human gate; the implementer dry-runs the same checks over CDP first, injecting `SP-91xx` records for what the pickers cannot reach):
+  1. Every row has a checkbox before its name in the STUDY cell; the STUDY header has a select-all checkbox before the sort button.
+  2. Tick one row with the mouse: the count line ends `· 1 SELECTED` and the button reads `Export 1 selected`.
+  3. Tick select-all: every visible row is ticked, the count says N; untick it: none; tick two rows by hand: the header checkbox shows the indeterminate state.
+  4. With two real rows ticked, Export: the file holds exactly those two rows under the header; the toast reads `Exported 2 rows to <path>`.
+  5. With a row ticked, set a filter or search that hides it: the count and label no longer count it; clear the filter: it is still ticked and counted again.
+  6. Keyboard: Tab to a row checkbox, Space toggles it, and focus stays on that checkbox after the rebuild.
+  7. With only demo rows visible (or "not reachable"): the disabled button has a visible note `Demo studies are not exported` beside it; with nothing visible, `Nothing to export`.
+  8. Console: no errors.
+- [ ] **Step 8: Commit** (body: `Manual verification: pending the human gate (eight checks) — outcomes recorded here by amendment before Task 12 starts.` until the gate; then the eight outcomes):
+
+```
+feat: tick rows on the Parameters grid to export a chosen subset
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+```
+
+### Task 12: Smoke checks and records for the selected-studies export
+
+**Files:**
+- Modify: `tools/smoke/smoke-parameters.mjs`
+- Modify: `tools/smoke/README.md` (the baseline figure; one sentence in the Parameters section)
+- Modify: `docs/superpowers/specs/2026-09-06-preop-postop-organisation-design.md` (§10.2, §10.4)
+- Modify: `docs/superpowers/plans/2026-08-31-00-architecture-contract.md` (the `screens/parameters.js` module-list entry)
+
+- [ ] **Step 1: Suite.** `RESET` and the `finally` patch gain `paramSelected: []`. After the sort step (7) and before the open step (8), add checks keyed only on `data-param-key`/`data-study-id`: tick `select-SP-9101` (clickKey on its box: click the rect of the `label`/`.checkbox-box` that wraps the hidden input, or dispatch a `click` on the input via `evaluate` — say which) → the count line text contains `1 SELECTED` and `[data-param-key="export"]` text is `Export 1 selected`; click `select-all` → every `.param-row` checkbox is checked and the label reads `Export <rows> selected`; click `select-all` again → none checked, label `Export CSV`; tick `select-SP-9101`, choose workspace `__hand__` → label `Export CSV` and no `SELECTED` in the count line; choose `''` → label `Export 1 selected` again; untick it; with workspace `__hand__` the note `[data-param-key="export-note"]` reads `Demo studies are not exported`. Then continue with the open step. Run on a fresh launch: every check passes; report the new total (22 + the checks you added).
+- [ ] **Step 2: README.** Update `smoke-parameters.mjs`'s figure in the second "Known baseline" paragraph and in the Parameters section's `Baseline:` line to the new total; add "and ticking rows to export a chosen subset" to the section's first sentence.
+- [ ] **Step 3: Spec.** §10.2: after the sentence about the study name being the link, add "Each row's Study cell also carries a checkbox, and the STUDY header a select-all for the visible rows (2026-09-07)." §10.4: after the filename sentence, add "Ticking rows narrows the export to the ticked rows that are visible, in grid order; the button reads `Export N selected` and the count line `· N SELECTED`; hidden picks stay ticked and return with the filter; with nothing ticked the export is the visible rows (decided 2026-09-07). The reason a disabled Export button cannot act is written beside it, not in a tooltip."
+- [ ] **Step 4: Contract.** Extend the `screens/parameters.js` module-list entry: `reads paramFilters/paramSort/paramLevels/paramSelected, writes them`.
+- [ ] **Step 5: Commit** the four files:
+
+```
+test: smoke checks for the selected-studies export; records
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+```
+
 ## Self-review against the spec
 
 - **§10.1 placement, tab in store, return to the same tab** — Task 3 (key), Task 4 (strip), Task 7 check 20.
@@ -2138,3 +2268,13 @@ Deferred minors from the per-task and final reviews — the final review triaged
 - Task 7: minor (deferred): checks 3, 5, 11, 16, 19 pass no detail (a failure prints `-> undefined`); check 19 (focus restore) is the one most worth a detail.
 - Task 7: minor (deferred): the two selects are selected by class though both carry data-param-key; not a label selector.
 - Task 8: minor (deferred, brief-verbatim): ASCII `--` where the docs use `—` (HANDOFF:39, contract:142); contract:113 runs to 135 columns; HANDOFF:27 records the commit set as a git-log recipe that stops resolving after the merge.
+
+Addendum approved by the user 2026-09-07 (bounded path, design in chat): Tasks 9–12 above — the
+`Source` column and the include-demo option leave `toCsv`; ticked rows export as a chosen subset.
+- Ruling (user): hidden picks — the export writes the selected rows that are VISIBLE, in grid order;
+  hidden picks stay ticked and return with the filter — the file always matches what is on screen —
+  cost if wrong: a user expecting a fixed list exports fewer rows than they ticked, but the button
+  label and the count line say exactly how many.
+- Ruling: the row checkbox lives inside the sticky STUDY cell rather than in a new first column — the
+  spec's sticky first column and the `<th scope="row">` semantics stay untouched — cost if wrong: a
+  crowded first cell on narrow windows.
