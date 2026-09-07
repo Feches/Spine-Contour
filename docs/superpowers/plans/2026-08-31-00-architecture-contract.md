@@ -141,7 +141,8 @@ renderer/                         (new)
   data/csv.js                     parse, auto-map, export
   data/labels.js                  how a study names itself and where it came from
   data/parameters.js              (2026-09-06) pure: columns, values, filter options, filter, sort, empty reason, export
-                                  filename for the Parameters tab -- see the file header for the exported names
+                                  filename for the Parameters tab -- see the file header for the exported names;
+                                  selection helpers toggleId/withIds/selectedVisible/rowsToExport (2026-09-07)
 
 test/                             (new) mirrors renderer/ — node --test
   geometry.test.js  similarity.test.js  status.test.js
@@ -279,6 +280,7 @@ a draw function must blank a layer, never freeze the application.
                             // `workspace` is a stored root, HAND_ADDED ('__hand__') or null
   paramSort: { key: 'study', dir: 'asc' },   // key: 'study'|'workspace'|a measurement column key
   paramLevels: false,       // show LL L2–S1..L5–S1 columns
+  paramSelected: [],        // string[] study ids ticked on the Parameters grid (2026-09-07); replaced wholesale; session-only
                             // All four are read by screens/studies.js's own subscription, never by SCREEN_KEYS.
   openId: null,
   compareId: null,

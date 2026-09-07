@@ -2,8 +2,8 @@
  * Pure logic for the Parameters tab of the Studies screen (pre-op/post-op spec, 2026-09-06 §10):
  * which columns the grid shows, each study's value in them, the filter options, the filter and
  * sort over Study[] and how a filter control's change is merged into the stored filters, why the
- * grid is empty, and the export filename. No DOM. screens/parameters.js renders what this module
- * decides; test/parameters.test.js pins it.
+ * grid is empty, the export filename, and the selection of rows to export. No DOM.
+ * screens/parameters.js renders what this module decides; test/parameters.test.js pins it.
  *
  * Values come from the same row helpers the Measurements panel uses, so the grid and the panel
  * can never disagree about a number, and an absent value is null here and an em dash on screen --
@@ -125,6 +125,38 @@ export function normaliseFilters(filters, studies) {
 // patch is merged over what the user is actually looking at, so a control's new value always wins.
 export function patchFilters(filters, studies, patch) {
   return { ...normaliseFilters(filters, studies), ...patch };
+}
+
+// The selected ids with `id` removed if present, else appended at the end. A null/undefined
+// selection is treated as empty. Always a new array; `selected` is never mutated.
+export function toggleId(selected, id) {
+  const current = selected ?? [];
+  return current.includes(id) ? current.filter((existing) => existing !== id) : [...current, id];
+}
+
+// `on`: every id in `ids` present exactly once, the missing ones appended in `ids` order (ids
+// already selected keep their place, so this is idempotent). `off`: every id in `ids` gone, the
+// rest untouched. A null/undefined selection is treated as empty. Always a new array.
+export function withIds(selected, ids, on) {
+  const current = selected ?? [];
+  const list = ids ?? [];
+  if (on) return [...current, ...list.filter((id) => !current.includes(id))];
+  return current.filter((id) => !list.includes(id));
+}
+
+// The visible studies whose id is selected, in VISIBLE order (not selection order) -- so the grid
+// and the export never reorder rows to match how they were ticked. An id no visible study carries
+// (a stale selection) is silently ignored. A null/undefined selection selects nothing.
+export function selectedVisible(visible, selected) {
+  const current = selected ?? [];
+  return visible.filter((study) => current.includes(study.id));
+}
+
+// What Export writes: the ticked visible rows, or -- when nothing visible is ticked -- every
+// visible row. Always a new array, even in the fall-through case.
+export function rowsToExport(visible, selected) {
+  const chosen = selectedVisible(visible, selected);
+  return chosen.length > 0 ? chosen : [...visible];
 }
 
 export function filterParameters(studies, filters) {

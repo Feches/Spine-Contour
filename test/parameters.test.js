@@ -4,6 +4,7 @@ import {
   HAND_ADDED, DEFAULT_FILTERS, DEFAULT_SORT, CORE_COLUMNS, LEVEL_COLUMNS, measurementColumns,
   parameterValues, formatParameter, isSegmented, workspaceOptions, folderOptions, normaliseFilters,
   patchFilters, filterParameters, hiddenUnsegmented, sortParameters, emptyReason, exportFileName,
+  toggleId, withIds, selectedVisible, rowsToExport,
 } from '../renderer/data/parameters.js';
 
 const DASH = '\u2014';
@@ -274,4 +275,97 @@ test('exportFileName names the workspace, or the library when there is no single
   assert.equal(exportFileName('C:\\films\\Fusion2025'), 'Fusion2025-parameters.csv');
   assert.equal(exportFileName('/data/Fusion 2025 (v2)/'), 'Fusion-2025-v2-parameters.csv');
   assert.equal(exportFileName('/'), 'workspace-parameters.csv');
+});
+
+// ---------------------------------------------------------------------------
+// selection
+// ---------------------------------------------------------------------------
+
+test('toggleId appends an absent id at the end and removes a present one, without mutating the input', () => {
+  const selected = ['a', 'b'];
+
+  const added = toggleId(selected, 'c');
+  assert.deepEqual(added, ['a', 'b', 'c']);
+  assert.notEqual(added, selected);
+  assert.deepEqual(selected, ['a', 'b']); // input untouched
+
+  const removed = toggleId(selected, 'b');
+  assert.deepEqual(removed, ['a']);
+  assert.notEqual(removed, selected);
+  assert.deepEqual(selected, ['a', 'b']); // input still untouched
+});
+
+test('toggleId treats a null/undefined selection as empty', () => {
+  assert.deepEqual(toggleId(undefined, 'a'), ['a']);
+  assert.deepEqual(toggleId(null, 'a'), ['a']);
+});
+
+test('withIds "on" appends only the missing ids, in ids order, and is idempotent', () => {
+  const selected = ['a', 'x'];
+
+  const result = withIds(selected, ['x', 'b', 'c'], true);
+  assert.deepEqual(result, ['a', 'x', 'b', 'c']); // 'x' already present, kept in place; 'b','c' appended in ids order
+  assert.notEqual(result, selected);
+  assert.deepEqual(selected, ['a', 'x']); // input untouched
+
+  const again = withIds(result, ['x', 'b', 'c'], true);
+  assert.deepEqual(again, result); // idempotent: nothing left to add
+  assert.notEqual(again, result); // still a fresh array
+});
+
+test('withIds "off" removes every listed id and leaves the rest, in their original order', () => {
+  const selected = ['a', 'b', 'c', 'd'];
+
+  const result = withIds(selected, ['b', 'd', 'z'], false); // 'z' is not selected; harmless
+  assert.deepEqual(result, ['a', 'c']);
+  assert.notEqual(result, selected);
+  assert.deepEqual(selected, ['a', 'b', 'c', 'd']); // input untouched
+});
+
+test('withIds treats a null/undefined selection as empty', () => {
+  assert.deepEqual(withIds(undefined, ['a', 'b'], true), ['a', 'b']);
+  assert.deepEqual(withIds(null, ['a'], false), []);
+});
+
+test('selectedVisible returns the visible studies in VISIBLE order, not selection order', () => {
+  const a = study({ id: 'a' });
+  const b = study({ id: 'b' });
+  const c = study({ id: 'c' });
+  const visible = [a, b, c];
+
+  const result = selectedVisible(visible, ['c', 'a']); // selection lists c before a
+  assert.deepEqual(result, [a, c]); // visible order: a, then c
+});
+
+test('selectedVisible ignores ids no visible study carries', () => {
+  const a = study({ id: 'a' });
+  assert.deepEqual(selectedVisible([a], ['a', 'ghost']), [a]);
+});
+
+test('selectedVisible returns [] for a null/undefined selection', () => {
+  const a = study({ id: 'a' });
+  assert.deepEqual(selectedVisible([a], null), []);
+  assert.deepEqual(selectedVisible([a], undefined), []);
+});
+
+test('rowsToExport returns selectedVisible when it is non-empty', () => {
+  const a = study({ id: 'a' });
+  const b = study({ id: 'b' });
+  const visible = [a, b];
+
+  assert.deepEqual(rowsToExport(visible, ['b']), [b]);
+});
+
+test('rowsToExport returns a new array equal to visible when nothing visible is selected', () => {
+  const a = study({ id: 'a' });
+  const b = study({ id: 'b' });
+  const visible = [a, b];
+
+  const result = rowsToExport(visible, []);
+  assert.notEqual(result, visible); // a new array, not the same reference
+  assert.deepEqual(result, visible); // same contents
+
+  const stale = rowsToExport(visible, ['ghost']); // selected, but no visible match
+  assert.notEqual(stale, visible);
+  assert.deepEqual(stale, visible);
 });

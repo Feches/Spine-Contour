@@ -15,6 +15,9 @@ let state = {
   paramFilters: { workspace: null, folder: null, segmentedOnly: true },
   paramSort: { key: 'study', dir: 'asc' },
   paramLevels: false,
+  // The study ids ticked on the Parameters grid (addendum, 2026-09-07); replaced wholesale;
+  // session-only, never persisted.
+  paramSelected: [],
   openId: null,
   compareId: null,
 
