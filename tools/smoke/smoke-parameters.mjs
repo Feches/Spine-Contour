@@ -20,7 +20,7 @@ function check(name, ok, detail) {
 }
 
 const WS_ROOT = 'C:\\smoke-fixture\\Fusion2025';
-const RESET = '{ query: "", studiesTab: "find", paramFilters: { workspace: null, folder: null, segmentedOnly: true }, paramSort: { key: "study", dir: "asc" }, paramLevels: false, paramSelected: [] }';
+const RESET = '{ query: "", studiesTab: "find", paramFilters: { workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: "", pairedOnly: false, pairedWith: "__any__" }, paramSort: { key: "study", dir: "asc" }, paramLevels: false, paramSelected: [] }';
 
 const cdp = await connect();
 const count = (selector) => cdp.evaluate(`document.querySelectorAll(${JSON.stringify(selector)}).length`);

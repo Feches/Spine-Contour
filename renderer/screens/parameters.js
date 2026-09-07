@@ -21,10 +21,11 @@ import { toCsv } from '../data/csv.js';
 import { isConsistent } from '../data/measurements.js';
 import { studyName, workspaceLabel, folderLabel, pathTitle } from '../data/labels.js';
 import {
-  HAND_ADDED, DEFAULT_SORT, measurementColumns, parameterValues, formatParameter,
+  HAND_ADDED, ANY_POST, DEFAULT_SORT, measurementColumns, parameterValues, formatParameter,
   workspaceOptions, folderOptions, normaliseFilters, patchFilters, filterParameters,
   hiddenUnsegmented, sortParameters, emptyReason, exportFileName,
   toggleId, withIds, selectedVisible, rowsToExport,
+  timepointOptions, viewOptions, pairedWithOptions, hiddenUnpaired, subjectBreaks,
 } from '../data/parameters.js';
 
 const EMPTY_COPY = {
@@ -35,6 +36,8 @@ const EMPTY_COPY = {
 
 // The Measurements panel's own wording for a PI/PT/SS residual over the limit.
 const INCONSISTENT_TITLE = 'Parameters inconsistent \u2014 check S1 and femoral landmarks.';
+
+const DASH = '\u2014';
 
 const CHECK_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 L10 17.5 L19 7"></path></svg>';
 
@@ -127,6 +130,54 @@ export function mountParameters(host, { onOpen }) {
     }
     folderSelect.value = filters.folder ?? '';
 
+    // Timepoint and view: dropdowns of what is present (spec §10.3); each shows its value and
+    // clears it with its All… entry. Options come from the whole library, as the workspace ones do.
+    const timepointSelect = el('select', {
+      class: 'param-select param-select-timepoint', 'aria-label': 'Filter by timepoint', 'data-param-key': 'timepoint',
+      onChange: (event) => setFilters({ timepoint: event.target.value === '' ? null : event.target.value }),
+    });
+    timepointSelect.append(el('option', { value: '' }, 'All timepoints'));
+    for (const option of timepointOptions(live.studies)) timepointSelect.append(el('option', { value: option.value }, option.label));
+    timepointSelect.value = filters.timepoint ?? '';
+
+    const viewSelect = el('select', {
+      class: 'param-select param-select-view', 'aria-label': 'Filter by view', 'data-param-key': 'view',
+      onChange: (event) => setFilters({ view: event.target.value === '' ? null : event.target.value }),
+    });
+    viewSelect.append(el('option', { value: '' }, 'All views'));
+    for (const option of viewOptions(live.studies)) viewSelect.append(el('option', { value: option.value }, option.label));
+    viewSelect.value = filters.view ?? '';
+
+    // Substring on the subject, committed on every keystroke like the Studies search box. The
+    // rebuild replaces this input; update() hands focus and the caret back by data-param-key.
+    const subjectInput = el('input', {
+      type: 'search', class: 'param-subject', placeholder: 'Subject…', 'aria-label': 'Filter by subject',
+      'data-param-key': 'subject', value: filters.subject ?? '',
+      onInput: (event) => setFilters({ subject: event.target.value }),
+    });
+
+    // Paired only, and which post-side label pairs with Pre-op (§10.3). The `with` select stays
+    // disabled until the box is ticked; the note says how many rows the tick hides. A stored
+    // label the options do not list (a relabelled library) is still offered so the control never
+    // shows a value it does not hold.
+    const pairedWithSelect = el('select', {
+      class: 'param-select param-select-paired-with', 'aria-label': 'Paired with', 'data-param-key': 'paired-with',
+      disabled: filters.pairedOnly !== true,
+      onChange: (event) => setFilters({ pairedWith: event.target.value }),
+    });
+    const withOptions = pairedWithOptions(live.studies);
+    const chosenWith = filters.pairedWith || ANY_POST;
+    if (!withOptions.some((option) => option.value === chosenWith)) withOptions.push({ value: chosenWith, label: chosenWith });
+    for (const option of withOptions) pairedWithSelect.append(el('option', { value: option.value }, option.label));
+    pairedWithSelect.value = chosenWith;
+    const unpaired = hiddenUnpaired(queried, filters);
+    const paired = checkbox({
+      key: 'paired', label: 'Paired only', checked: filters.pairedOnly === true,
+      note: filters.pairedOnly === true && unpaired > 0 ? ` \u00B7 ${unpaired} unpaired hidden` : null,
+      onChange: (event) => setFilters({ pairedOnly: event.target.checked }),
+    });
+    const pairedGroup = el('div', { class: 'param-paired' }, paired, el('span', { class: 'param-paired-with' }, 'with'), pairedWithSelect);
+
     const hidden = hiddenUnsegmented(queried, filters);
     const segmented = checkbox({
       key: 'segmented', label: 'Segmented only', checked: filters.segmentedOnly,
@@ -157,7 +208,7 @@ export function mountParameters(host, { onOpen }) {
     }, chosen.length > 0 ? `Export ${chosen.length} selected` : 'Export CSV');
 
     return el('div', { class: 'param-bar' },
-      workspaceSelect, folderSelect, segmented, levels,
+      workspaceSelect, folderSelect, timepointSelect, viewSelect, subjectInput, pairedGroup, segmented, levels,
       el('div', { class: 'param-count', 'data-param-key': 'count' },
         `${visible.length} OF ${live.studies.length} STUDIES SHOWN${chosen.length > 0 ? ` \u00B7 ${chosen.length} SELECTED` : ''}`),
       // Button and note in one group: the bar wraps, and on their own they land on separate lines
@@ -194,7 +245,7 @@ export function mountParameters(host, { onOpen }) {
     return el('th', { scope: 'col', class: 'param-th' }, label);
   }
 
-  function buildRow(study, columns, fields, selected) {
+  function buildRow(study, columns, fields, selected, isBreak) {
     const values = parameterValues(study);
     const inconsistent = study.measurements != null && !isConsistent(study.measurements);
     // The tick sits inside the sticky STUDY cell, before the name, so it scrolls with the column
@@ -215,9 +266,15 @@ export function mountParameters(host, { onOpen }) {
         onClick: () => onOpen(study),
       }, studyName(study)),
       study.source === 'demo' ? el('span', { class: 'pill-demo' }, 'DEMO') : null);
-    return el('tr', { class: 'param-row', 'data-study-id': study.id },
+    // A rule above the first row of each subject block under the subject sort (spec §10.3).
+    return el('tr', { class: `param-row${isBreak ? ' param-row-break' : ''}`, 'data-study-id': study.id },
       nameCell,
-      el('td', { class: 'param-cell-text' }, study.view || '\u2014'),
+      // Subject, timepoint, view, film date (spec §10.2): text as stored, an em dash when absent;
+      // the film date as stored (YYYY-MM-DD), the Find tab's formatted DATE being the date added.
+      el('td', { class: 'param-cell-text' }, study.subjectId || DASH),
+      el('td', { class: 'param-cell-text' }, study.timepoint || DASH),
+      el('td', { class: 'param-cell-text' }, study.view || DASH),
+      el('td', { class: 'param-cell-text param-cell-date' }, study.filmDate || DASH),
       ...columns.map((column) => {
         // The panel's consistency warning, on the PI cell: the residual |PI − (PT + SS)| is over
         // the limit, so the three pelvic numbers on this row do not agree with each other.
@@ -257,12 +314,16 @@ export function mountParameters(host, { onOpen }) {
     });
     const head = el('thead', {}, el('tr', {},
       sortableHeader('study', 'STUDY', sort, 'param-col-study', selectAll, 'STUDY'),
+      sortableHeader('subject', 'SUBJECT', sort),
+      plainHeader('TIMEPOINT'),
       plainHeader('VIEW'),
+      plainHeader('FILM DATE'),
       ...columns.map((column) => sortableHeader(column.key, column.label.toUpperCase(), sort, 'param-col-num')),
       ...fields.map((field) => plainHeader(field.toUpperCase())),
       sortableHeader('workspace', 'WORKSPACE', sort),
       plainHeader('FOLDER')));
-    const body = el('tbody', {}, ...visible.map((study) => buildRow(study, columns, fields, selected)));
+    const breaks = subjectBreaks(visible, sort);
+    const body = el('tbody', {}, ...visible.map((study, i) => buildRow(study, columns, fields, selected, breaks[i])));
     return el('div', { class: 'param-table-wrap card', 'data-param-key': 'grid' },
       el('table', { class: 'param-table' }, head, body));
   }
@@ -287,6 +348,10 @@ export function mountParameters(host, { onOpen }) {
     // never steal focus from the search box or the tab strip.
     const active = document.activeElement;
     const focusKey = root.contains(active) ? active.getAttribute('data-param-key') : null;
+    // A text control's caret goes with its focus: the subject box is rebuilt on every keystroke,
+    // and focus() alone would park the caret at the end of the text.
+    const caret = focusKey !== null && active.tagName === 'INPUT' && active.type === 'search'
+      ? { start: active.selectionStart, end: active.selectionEnd } : null;
 
     // The scroll container is replaced by the rebuild, so a new node starts at 0. Nothing else
     // restores it -- a keystroke in the search box has focus outside this panel -- and a wide grid
@@ -317,7 +382,10 @@ export function mountParameters(host, { onOpen }) {
     if (focusKey !== null) {
       for (const candidate of root.querySelectorAll('[data-param-key]')) {
         if (candidate.getAttribute('data-param-key') === focusKey) {
-          if (typeof candidate.focus === 'function') candidate.focus();
+          candidate.focus();
+          if (caret !== null && caret.start !== null && typeof candidate.setSelectionRange === 'function') {
+            candidate.setSelectionRange(caret.start, caret.end);
+          }
           break;
         }
       }

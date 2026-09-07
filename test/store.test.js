@@ -13,7 +13,7 @@ test('getState returns the documented initial shape', () => {
   assert.equal(state.query, '');
   assert.equal(state.studiesTab, 'find');
   assert.deepEqual(state.paramFilters, {
-    workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: 'Post-op',
+    workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: '__any__',
   });
   assert.deepEqual(state.paramSort, { key: 'study', dir: 'asc' });
   assert.equal(state.paramLevels, false);

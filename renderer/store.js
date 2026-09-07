@@ -12,7 +12,7 @@ let state = {
   // scope so coming back from Analysis lands on the tab, filters and sort the user left. Each
   // is replaced wholesale on change -- the screen's gate compares by reference.
   studiesTab: 'find',
-  paramFilters: { workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: 'Post-op' },
+  paramFilters: { workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: '__any__' },
   paramSort: { key: 'study', dir: 'asc' },
   paramLevels: false,
   // The study ids ticked on the Parameters grid (addendum, 2026-09-07); replaced wholesale;

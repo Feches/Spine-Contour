@@ -475,3 +475,52 @@
   letter-spacing: 0.15em;
   color: var(--muted);
 }
+
+/* The subject filter box, the paired-only group and the rule between subject blocks (pre-op/post-op
+   spec §10.3). */
+.param-subject {
+  width: 150px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  font: 400 13.5px 'Source Sans 3', sans-serif;
+}
+
+.param-subject::placeholder {
+  color: var(--muted);
+}
+
+.param-subject:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.param-paired {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.param-paired-with {
+  font: 400 13px 'Source Sans 3', sans-serif;
+  color: var(--muted);
+}
+
+.param-select:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.param-cell-date {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+/* Sorting by subject draws a rule above the first row of each subject, so a pair reads as a block. */
+.param-row-break td,
+.param-row-break th {
+  border-top: 2px solid color-mix(in srgb, var(--ink) 30%, var(--border));
+}

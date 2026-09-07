@@ -24,9 +24,14 @@ export const HAND_ADDED = '__hand__';
 // pattern: a sentinel, because null means "no timepoint filter".
 export const NO_TIMEPOINT = '__none__';
 
+// The paired-with filter's value for "any labelled film that is not Pre-op" (user decision at the
+// Task 9 gate, 2026-09-07): a follow-up study labels its post films 6 wk, 1 yr, 2 yr as often as
+// Post-op, and a pair should not need its label picked first. A film with no timepoint never pairs.
+export const ANY_POST = '__any__';
+
 export const DEFAULT_FILTERS = Object.freeze({
   workspace: null, folder: null, segmentedOnly: true,
-  timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: POST_OP,
+  timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: ANY_POST,
 });
 export const DEFAULT_SORT = Object.freeze({ key: 'study', dir: 'asc' });
 
@@ -151,8 +156,8 @@ export function viewOptions(studies) {
   return seen.map((value) => ({ value, label: value }));
 }
 
-// The post side of a pair: every label present other than Pre-op, in §7.2 order, with Post-op
-// always offered -- it is the default, and the control must show it before any study carries it.
+// The post side of a pair: `All paired` first (the default), then Post-op (always offered),
+// then every other label present other than Pre-op, in §7.2 order.
 export function pairedWithOptions(studies) {
   const labels = [POST_OP];
   for (const study of studies) {
@@ -160,11 +165,12 @@ export function pairedWithOptions(studies) {
     if (label !== null && label !== PRE_OP && !labels.includes(label)) labels.push(label);
   }
   labels.sort(compareTimepoints);
-  return labels.map((value) => ({ value, label: value }));
+  return [{ value: ANY_POST, label: 'All paired' }, ...labels.map((value) => ({ value, label: value }))];
 }
 
-// Subject keys with at least one Pre-op film and at least one film labelled `post` among
-// `studies`. A film with no subject pairs with nothing.
+// Subject keys with at least one Pre-op film and at least one film labelled `post` -- or, for
+// ANY_POST, any labelled film that is not Pre-op -- among `studies`. A film with no subject or no
+// timepoint pairs with nothing.
 export function pairedSubjects(studies, post) {
   const pre = new Set();
   const after = new Set();
@@ -172,8 +178,9 @@ export function pairedSubjects(studies, post) {
     const key = subjectKey(study);
     if (key === null) continue;
     const label = timepointOf(study);
+    if (label === null) continue;
     if (label === PRE_OP) pre.add(key);
-    if (label === post) after.add(key);
+    else if (post === ANY_POST || label === post) after.add(key);
   }
   return new Set([...pre].filter((key) => after.has(key)));
 }
@@ -256,7 +263,7 @@ export function filterParameters(studies, filters) {
     && (!f.segmentedOnly || isSegmented(study))
     && (!f.view || study.view === f.view)
     && matchesSubject(study, f.subject));
-  const paired = f.pairedOnly ? pairedSubjects(kept, f.pairedWith || POST_OP) : null;
+  const paired = f.pairedOnly ? pairedSubjects(kept, f.pairedWith || ANY_POST) : null;
   return kept.filter((study) => (paired === null || paired.has(subjectKey(study)))
     && matchesTimepoint(study, f.timepoint));
 }
