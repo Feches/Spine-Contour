@@ -271,3 +271,151 @@
   border-radius: 14px;
   overflow-x: auto;
 }
+
+.param-select {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  font: 400 13.5px 'Source Sans 3', sans-serif;
+  cursor: pointer;
+}
+
+.param-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.param-check {
+  align-items: center;
+  font: 400 13.5px 'Source Sans 3', sans-serif;
+  color: var(--body);
+}
+
+.param-check .checkbox-box {
+  width: 16px;
+  height: 16px;
+  margin-top: 0;
+}
+
+.param-check-note {
+  color: var(--muted);
+}
+
+/* The grid is a real table: table semantics for assistive technology (the Find list's
+   single-control row is the thing roadmap item 5 records), a sticky first column, and
+   horizontal scroll inside .param-table-wrap -- the page never scrolls sideways. */
+.param-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 100%;
+}
+
+.param-th {
+  padding: 12px 14px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+  background: var(--well);
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+
+.param-col-num,
+.param-cell-num {
+  text-align: right;
+}
+
+.param-sort {
+  all: unset;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  white-space: nowrap;
+}
+
+.param-sort.is-active {
+  color: var(--ink);
+}
+
+.param-sort:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.param-row td,
+.param-row th {
+  padding: 11px 14px;
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+  font: 400 14px 'Source Sans 3', sans-serif;
+  color: var(--body);
+  text-align: left;
+}
+
+.param-row:hover td,
+.param-row:hover th {
+  background: var(--well);
+}
+
+.param-cell-study,
+.param-th.param-col-study {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--card);
+}
+
+.param-th.param-col-study {
+  background: var(--well);
+  z-index: 2;
+}
+
+.param-row:hover .param-cell-study {
+  background: var(--well);
+}
+
+.param-open {
+  all: unset;
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  font: 600 14px 'Source Sans 3', sans-serif;
+  color: var(--ink);
+}
+
+.param-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.param-cell-study .pill-demo {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.param-cell-num {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.param-cell-num.is-inconsistent {
+  color: var(--accent);
+}
+
+.param-cell-text {
+  color: var(--muted);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
