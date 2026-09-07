@@ -2086,3 +2086,55 @@ Decisions with the user (2026-09-07, at the Task 6 gate):
 Task 6 human gate (2026-09-07): checks 2, 3, 4, 5 pass on the user's real library; check 1 and the
 `<root>-parameters.csv` half of check 3 are not reachable there (no demos-only view, no workspace
 root) and stand on the harness's assertions on the scratch profile. Task 6 complete.
+
+## Execution record (2026-09-06/07) — rulings and deferred findings carried out of the scratch ledger
+
+Plan complete at `3bd633f`: eight tasks, three human gates, a final whole-branch review ("with fixes"), one fix wave, one scoped re-review (clean). Unit 322/322; `smoke-parameters.mjs` 22/22; `smoke-studies.mjs` 60/60. Every ruling made while executing, in order (the pre-flight and gate rulings above are repeated here only where they were not already recorded):
+
+- - Ruling: Tasks 4, 5 and 6 commit their code BEFORE the human gate with a body line "Manual verification: pending the human gate — outcomes recorded here by amendment before the next task starts"; after the user reports, the controller amends that still-unpushed HEAD commit's message with the outcomes. — The plan wants the outcomes in the commit body, the user wants the gate stopped at and asked, and an uncommitted working tree across a session boundary is fragile. — Cost if wrong: one unpushed commit message rewritten.
+- - Ruling: before each human gate, the DOM task's implementer drives the same manual checks over the CDP harness on a scratch profile (everything the harness can reach: clicks, typed text, Tab/Enter, screenshots, console errors) and records the outcomes in its report, so the human's run is a confirmation with real gestures, not a first look. — Each stop costs a whole round trip; the harness exists for exactly this. — Cost if wrong: one extra launch per DOM task.
+- Task 4: parked — sameKey duplication — Ruling: the helper stays module-private in screens/parameters.js. Five copies already exist (components/clinical-data.js:90, components/measurements.js:78, components/viewer.js:120, screens/studies.js:242, plus this one): the plan followed the codebase's established per-module redraw-gate pattern, and consolidating all five into dom.js is a cross-cutting refactor outside this plan; Task 8 records it as a ROADMAP item so it is not lost. — Cost if wrong: a three-line predicate lives in five files until someone consolidates it.
+- - Ruling: the final whole-branch review covers 868fe25..HEAD (this execution's range); the docs-only commits 9735202..868fe25 are the spec and the plan themselves, written and reviewed with the user in the previous session, and the reviewer gets them as files — cost if wrong: the final reviewer does not re-read a diff of the spec and plan text.
+- - Ruling: the fix wave (ONE dispatch, Opus) takes the Important (#1, as a pure `patchFilters` helper with tests) plus the cheap, safe minors #2 (scroll restore + the CSS comment), #6 (gate the panel on studiesTab, before lastKey), #10 (no accent mark on an absent PI), and the docs of #5 (spec §10.2/§10.3 wording) and #3 (a ROADMAP accessibility line) — each is a few lines and the reviewer judged #6 provably safe — cost if wrong: a larger fix diff for the scoped re-review.
+- - Ruling: #4 (the disabled Export button's title never shows) is carried into the export-selected-studies addendum, which reworks that button — cost if wrong: the "why" stays invisible until then.
+- - Ruling: #7, #8, #9, #11 stay deferred: #7/#8/#9 as grid polish for the roadmap, #11's README paragraph for the session wrap (after the addendum changes the export again) and the contract's test listing was already stale before this branch — cost if wrong: a README without the tab for one more session.
+- - Ruling (spec §10.2): the study name is the row's link and click target; the whole row is not a click target — table semantics with a per-row link is the spec's own second clause and a whole-row click fights the table's other affordances — cost if wrong: a user aiming at a number cell gets nothing.
+- - Ruling (spec §10.3): there are no filter chips; each control shows and clears its own value (a dropdown's All entry, a checkbox's untick) — a chip would repeat the select beside it — cost if wrong: spec task 2 (subject/timepoint/view filters) revisits chips when there are more controls.
+
+Deferred minors from the per-task and final reviews — the final review triaged all of them as not blocking the merge; the ones that matter are on the roadmap (`sameKey` consolidation, the ARIA tabs pattern) or ride with the addendum tasks:
+
+- Task 1: minor (deferred): task-1-report.md RED narrative says 21 of 44 csv tests failed; only the 10 toCsv tests could — evidence-accuracy only, GREEN confirmed.
+- Task 1: minor (deferred): test/csv.test.js:82 title says "carries a value" but the union keys off key presence (`clinical: { Age: '' }` yields an Age column) — brief's wording inherited; suggest "carries a clinical key".
+- Task 1: minor (deferred): test/csv.test.js:64-80 has one custom field, so first-seen order of custom columns is not discriminated at the toCsv level (the clinicalFieldNames test covers it directly).
+- Task 1: minor (deferred, pre-existing): renderer/data/csv.js:71 `study.clinical[field] != null` is not an own-property check; a custom key named like an Object.prototype member (`constructor`, `toString`) would stringify a function into other rows' cells. Remote; hardening is a one-line hasOwnProperty guard.
+- Task 2: minor (deferred): parameters.js:24,31 Object.freeze is shallow; column objects shared via measurementColumns copies could be mutated by a future renderer.
+- Task 2: minor (deferred): parameters.js:110,120,129,169 an explicit `segmentedOnly: undefined` in filters flips segmented-only OFF via spread; unreachable — the store seeds the key and T5's setFilters writes booleans.
+- Task 2: minor (deferred): parameters.js:84 option label falls back to `root` where workspaceLabel falls back to U+2014 (root `/` only); unreachable from the picker.
+- Task 2: minor (deferred): parameters.js:87 collision check is case-sensitive (Pre-Op vs pre-op not treated as colliding); cosmetic.
+- Task 2: minor (deferred): parameters.js:167-172 emptyReason ignores segmentedOnly; unreachable via filterParameters.
+- Task 2: minor (deferred): parameters.js:46,58,63 parameterValues/isSegmented/rootOf do not guard a null study, unlike labels.js siblings; unreachable from real records.
+- Task 2: minor (deferred, plan-mandated wording): labels.js:32-33 the new lastSegment comment drops the "'' for an empty path" line; pinned by the new test only.
+- Task 3: minor (deferred, pre-existing): store.js getState() freezes only the top level; nested `paramFilters`/`paramSort` objects are mutable in place — enforcement of "replaced wholesale" is by comment; T5's setFilters spreads a new object, to be checked in its review.
+- Task 3: minor (deferred, brief wording): the store comment and the contract line say the keys are read by screens/studies.js only; the brief's Interfaces also names screens/parameters.js.
+- Task 4: minor (deferred, plan-mandated): parameters.js:12 imports DEFAULT_FILTERS unused; Task 5 replaces the file and uses it.
+- Task 4: minor (deferred, plan-mandated): styles/screens/studies.css:268-271 .param-table-wrap is dead until Task 5.
+- Task 4: minor (deferred): tab strip lacks aria-controls / roving tabindex / arrow keys (WAI-ARIA APG polish); screen-reader output is correct as is.
+- Task 4: minor (deferred): `queried` is computed before the table's gate now — one Array.filter per Studies notification; deliberate.
+- Task 5: minor (deferred): parameters.js:131 a row with measurements but PI/PT/SS absent gets NaN residual → isConsistent false → a `—` PI cell painted accent with the warning; mirrors the Measurements panel; guard `values.PI !== null &&` if ever seen.
+- Task 5: minor (deferred, brief-mandated): the consistency mark is colour + title only (WCAG 1.4.1).
+- Task 5: minor (deferred): parameters.js:80 `title` on <option> is inert in Chromium's native menulist; harmless.
+- Task 5: minor (deferred, Task 4 gate design): update()'s key lacks studiesTab, so the grid rebuilds on every search keystroke while the Find tab is up — cost grew from one div (T4) to ~11 nodes/row (T5).
+- Task 5: minor (deferred): the bar mixes scopes — hidden count over the searched subset, count-line denominator over the whole library (`3 OF 112 · 2 unsegmented hidden` invites a wrong subtraction).
+- Task 5: minor (deferred): parameters.js:163 `field.toUpperCase()` mangles a user-typed field name (eGFR → EGFR) and is locale-unsafe; `text-transform: uppercase` would keep the accessible name; `fields` dedupes case-sensitively so Age/age give two AGE columns.
+- Task 5: minor (deferred): only the name is clickable, not the row (spec §10.2 says both "clicking a row" and "a per-row link"; the brief chose the link); no pointer cursor elsewhere on the row.
+- Task 5: minor (deferred): parameters.js:197 `typeof candidate.focus === 'function'` guard is dead.
+- Task 6: minor (deferred, brief-mandated): parameters.js exportVisible — `toCsv(visible, {})` sits outside the try; a throw there would reject the discarded promise silently; unreachable today (escapeField/measurementValue/clinicalFieldNames are null-safe).
+- Task 6: minor (deferred, brief-mandated): the `{}` second argument to toCsv is redundant (defaulted).
+- Task 6: design note (not a defect): with demos and real rows both visible the demo drop is disclosed only by the toast's count differing from the N OF M chip — the mechanism §11.3 names; the brief rules out a tooltip on the enabled button.
+- Task 7: minor (deferred): smoke-parameters.mjs finally does not restore `screen` — on a throw between checks 20 and 21 it nulls openId with screen left 'analysis' (the analysis.js:530 warning); benign, next suite sets screen; add `screen: "studies"` to the cleanup patch.
+- Task 7: minor (deferred): README section never says that empty output means the suite threw (house pattern; the brief's Step 2 says it but nothing committed does).
+- Task 7: minor (deferred): README does not state the SP-0042 / demo-library precondition of checks 7–8.
+- Task 7: minor (deferred): check 9 (default sort) compares only the first two names with <=, so equal names pass; weak.
+- Task 7: minor (deferred): checks 3, 5, 11, 16, 19 pass no detail (a failure prints `-> undefined`); check 19 (focus restore) is the one most worth a detail.
+- Task 7: minor (deferred): the two selects are selected by class though both carry data-param-key; not a label selector.
+- Task 8: minor (deferred, brief-verbatim): ASCII `--` where the docs use `—` (HANDOFF:39, contract:142); contract:113 runs to 135 columns; HANDOFF:27 records the commit set as a git-log recipe that stops resolving after the merge.
