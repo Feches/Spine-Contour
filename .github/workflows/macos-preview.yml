@@ -50,7 +50,7 @@ jobs:
       - name: Bundle OCR runtime
         run: |
           brew install tesseract
-          python tools/build/bundle_ocr_macos.py build/ocr
+          python tools/packaging/bundle_ocr_macos.py build/ocr
 
       - name: Test backend
         run: python -m pytest backend/tests -q
@@ -107,7 +107,7 @@ jobs:
             sleep 1
           done
           if [ "$ready" -eq 1 ]; then
-            python tools/build/check_bundled_ocr.py || { kill "$backend"; exit 1; }
+            python tools/packaging/check_bundled_ocr.py || { kill "$backend"; exit 1; }
           fi
           kill "$backend" 2>/dev/null || true
           if [ "$ready" -ne 1 ]; then echo "The bundled backend did not become ready." >&2; exit 1; fi
