@@ -90,3 +90,8 @@ For a folder, select **Choose image folder** or **Use workspace folder**. The ap
 Calibration stays in this session when navigating between screens. It does not yet persist inside study records or import saved profiles; export the JSON to retain it. It does not change the current angular measurements or add anatomical disc-height definitions. The original-image canvas keeps references accessible outside the segmentation crop.
 
 DICOM `PixelSpacing` preserves row and column spacing; detector-plane spacing is not silently substituted. Screenshot scale is derived from the printed annotation, not independently corrected for projection magnification. Capped straight rulers are supported; arrows, graduated scales and angle markers are not yet supported. Manual reference placement remains available when automatic OCR fails. The preview installers bundle Tesseract; development on macOS needs `brew install tesseract`.
+
+
+## Clear the study library
+
+On **Studies**, select **Delete all studies**, then confirm the displayed count. This clears every study, including entries hidden by search and the demo studies, plus saved segmentation results. Original radiograph files are kept. Demo studies remain hidden after restarting. The action is unavailable during segmentation or when the saved library cannot safely be written. If a saved result cannot be deleted, its study remains in the library and the app reports the failure.

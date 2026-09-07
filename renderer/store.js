@@ -6,6 +6,7 @@ let state = {
   settingsOpen: false,
 
   studies: [],
+  deletingStudies: false,
   query: '',
   openId: null,
   compareId: null,

@@ -1,6 +1,6 @@
 import { getState, setState, subscribe } from './store.js';
 import { renderRoute } from './router.js';
-import { loadStudies, saveStudies, disablePersistence, storeLoadNotice, persistenceDisabledReason } from './api.js';
+import { demoStudiesHidden, loadStudies, saveStudies, disablePersistence, storeLoadNotice, persistenceDisabledReason } from './api.js';
 import { merge, createStudySaver } from './data/persistence.js';
 import { clinicalFieldNames } from './data/csv.js';
 import { showToast } from './components/toast.js';
@@ -28,7 +28,10 @@ try {
   loadError = error;
   disablePersistence(error.message);
 }
-const studies = merge(real);
+let hideDemos = false;
+try { hideDemos = await demoStudiesHidden(); }
+catch (error) { console.warn('Could not read demo visibility:', error.message); }
+const studies = merge(real, { hideDemos });
 // `fields` (which clinical columns the drawer shows) is session state and is never written to
 // disk -- the version-1 store holds Study records only. The VALUES are on each record's
 // `clinical`, so seed the columns once from every name that has a stored value: after a

@@ -36,8 +36,8 @@ export function nextId(studies) {
  * @param {object[]} realStudies
  * @returns {object[]} real studies first, then all nine demo studies
  */
-export function merge(realStudies) {
-  return [...(realStudies || []), ...DEMO_STUDIES];
+export function merge(realStudies, { hideDemos = false } = {}) {
+  return [...(realStudies || []), ...(hideDemos ? [] : DEMO_STUDIES)];
 }
 
 function finite(n) {

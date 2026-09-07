@@ -184,6 +184,17 @@ function sidecarMoveFailedNotice(storeFile) {
     + 'of them can be overwritten. Quit and move the predictions folder aside to recover.';
 }
 
+ipcMain.handle('demo-studies-hidden', async () => {
+  const preferences = await readJsonOrNull(path.join(app.getPath('userData'), 'library-preferences.json'));
+  return preferences?.hideDemoStudies === true;
+});
+
+ipcMain.handle('hide-demo-studies', async () => {
+  const file = path.join(app.getPath('userData'), 'library-preferences.json');
+  const preferences = await readJsonOrNull(file);
+  await writeJsonAtomic(file, { ...preferences, hideDemoStudies: true });
+});
+
 ipcMain.handle('load-studies', async () => {
   const store = await readStudyStore(storePath());
   if (!store.quarantined) return { ...store, notice: null };

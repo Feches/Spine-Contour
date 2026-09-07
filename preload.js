@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('spineContour', {
   measure: (geometry) => ipcRenderer.invoke('measure', geometry),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   saveCsv: (request) => ipcRenderer.invoke('save-csv', request),
+  demoStudiesHidden: () => ipcRenderer.invoke('demo-studies-hidden'),
+  hideDemoStudies: () => ipcRenderer.invoke('hide-demo-studies'),
   loadStudies: () => ipcRenderer.invoke('load-studies'),
   saveStudies: (studies) => ipcRenderer.invoke('save-studies', studies),
   loadPrediction: (id) => ipcRenderer.invoke('load-prediction', id),

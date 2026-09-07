@@ -181,3 +181,7 @@
 .studies-delete-confirm:hover {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
+
+.studies-bulk-actions { margin: 12px 0 18px; }
+.studies-bulk-prompt { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--accent); border-radius: 12px; background: var(--card); color: var(--body); font-size: 14px; }
+.studies-bulk-prompt span { flex: 1 1 260px; }

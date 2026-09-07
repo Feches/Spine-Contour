@@ -182,3 +182,6 @@ export function pathForFile(file) {
 // Optional original-image calibration; independent of prediction and landmark editing.
 export async function calibrate(request) { return invoke('calibrate', request); }
 export async function learnCalibrationProfile(request) { return invoke('learnCalibrationProfile', request); }
+
+export async function demoStudiesHidden() { return invoke('demoStudiesHidden'); }
+export async function hideDemoStudies() { assertWritable(); return invoke('hideDemoStudies'); }

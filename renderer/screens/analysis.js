@@ -187,6 +187,7 @@ async function runSegmentation(studyId) {
   // The id, not a boolean: with a Studies list the user can open study B while A's /predict
   // is in flight, and the viewer and the list have to be able to ask WHICH study is running.
   // Every existing truthiness check still reads "a run is in flight" (one run at a time).
+  if (getState().deletingStudies) { showToast('Wait for study deletion to finish.'); return; }
   setState({ running: studyId });
   try {
     const response = await predict({
