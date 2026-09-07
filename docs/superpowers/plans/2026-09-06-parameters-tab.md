@@ -2286,3 +2286,26 @@ Task 12.
 
 Task 11 human gate (2026-09-07): all eight checks pass on the user's real library; clicking the
 indeterminate select-all selects every visible row; no bar wrap issue. Task 11 complete.
+
+## Execution record, addendum (2026-09-07) — rulings and deferred findings carried out of the scratch ledger
+
+Addendum complete at `211a2b8`: Tasks 9–12, one fix round on Task 10, one human gate on Task 11, a whole-addendum review ("with fixes"), one fix wave, one scoped re-review (clean). Unit 333/333; `smoke-parameters.mjs` 33/33; `smoke-studies.mjs` 60/60; `smoke-workspace.mjs` 96/96.
+
+- - Ruling: the addendum fix wave (ONE dispatch, Opus) takes the three Importants — the spec sentence; a prune of the deleted id in deleteStudy via withIds plus a smoke check that a deleted ticked study's id is gone from paramSelected; aria-label on the two <th>s — and the README unit figure while that file is touched for the new smoke total — cost if wrong: a larger fix diff for the re-review.
+- - Ruling: the accessible-name finding is FIXED now rather than promoted to the roadmap — the fix is two attributes and §10.2's reason for table semantics is accessibility — cost if wrong: an aria-label on a <th> that a screen reader handles differently than expected; the human can check with Narrator later.
+- - Ruling: the Analysis screen's title-only disabled reason and the absence of a clear-selection control go to the ROADMAP at the session wrap, with HANDOFF's stale lines (22 checks, "docs only", four keys, toCsv(studies, opts)) — cost if wrong: one more session before they are addressed.
+
+Deferred minors from the addendum reviews — the whole-addendum review triaged the three that mattered into its fix wave; the rest may stay deferred:
+
+- Task 9: minor (deferred): contract:594 one 106-char line not reflowed.
+- Task 9: minor (deferred, out of scope by brief): tools/smoke/out/task6-export.mjs (git-ignored scratch) still pins the old header with Source.
+- Task 10: minor (deferred): withIds(off) with empty ids not pinned as a new array (a same-reference short-circuit would pass).
+- Task 10: minor (deferred, brief's insertion point): contract:283-284 the "All four are read by…" comment now trails five keys — should say five; store.js:10-13 block comment lists four concerns.
+- Task 10: minor (deferred): includes-inside-filter is O(n·m); irrelevant at library scale.
+- Task 11: minor (deferred): the row <th scope=row> and the STUDY <th scope=col> accessible names now include the tick's aria-label text; if a screen reader confirms the doubling, aria-labelledby on the two <th>s pointing at the name/sort button is the fix.
+- Task 11: minor (deferred): a selection of only demo rows shows `Export N selected` greyed with the note "Demo studies are not exported" — accurate but the label and note describe different things.
+- Task 11: minor (deferred): `label: null` as the bare-box switch in checkbox() is subtle; `bare: true` would be harder to misuse.
+- Task 11: minor (deferred): `flex: none` on .param-pick is inert (parents are table cells).
+- Task 11: minor (deferred): stale ids accumulate in paramSelected when a ticked study leaves the library; harmless (selectedVisible ignores them), session-only, nothing prunes.
+- Task 12: minor (deferred): smoke check :119 `includes('1 SELECTED')` also matches `11 SELECTED` (its sibling label check catches the bug); :152's title claims the untick landed but the note reads the same either way; :141 is a negative assertion; :127 degenerates without demos; README sentence has two "and"s (brief-verbatim); nothing pins withIds leaving hidden ticks alone or the `Nothing to export` note branch.
+- Task 12: minor (for the wrap): HANDOFF.md:34 still says the suite has 22 checks (now 32) and README:259 claims parity with HANDOFF's baseline paragraph.
