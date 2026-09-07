@@ -28,6 +28,7 @@ let state = {
   running: null, // string|null — the id of the study whose /predict is in flight; one run at a time
   runStage: null,
 
+  calibrationRequest: null, // folder-upload handoff; session only
   wsFolder: null,
   wsFiles: [],
   wsCsv: null,

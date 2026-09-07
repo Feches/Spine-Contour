@@ -32,6 +32,12 @@ export function createFolderCalibration(root, calibration, selectRadiograph) {
     stop.disabled = !busy;
     download.disabled = cache.size === 0;
     select.disabled = busy;
+    const reference = calibration.snapshot();
+    root.dispatchEvent(new CustomEvent('foldercalibrationstate', { detail: {
+      canContinue: !busy && !loading && Boolean(currentFile && reference.spacing)
+        && (reference.endpoints.length === 2 || reference.spacing?.source === 'dicom_pixel_spacing'),
+      busy,
+    } }));
     for (let i = 0; i < files.length; i += 1) {
       const result = cache.get(files[i].id);
       const label = result?.error ? 'error' : result?.status || 'pending';
@@ -89,13 +95,14 @@ export function createFolderCalibration(root, calibration, selectRadiograph) {
           : 'No automatic reference found. Draw a reference on an image below to teach its appearance.')
         : `Folder processed. Each image has its own scale. Choose an image to review its result; ambiguous and missing references need correction.`;
       if (findFirst && files.length) await show(Math.max(0, firstFound), token);
+      return token === generation;
     } finally {
       if (token === generation) { busy = false; update(); }
     }
   }
-  async function openFolder(folderPath) {
+  async function openFolder(folderPath, knownFiles = null) {
     if (!folderPath) return;
-    const scanned = await scanFolder(folderPath);
+    const scanned = knownFiles ? { files: knownFiles } : await scanFolder(folderPath);
     reset(); files = scanned.files.map(filePath => ({ id: filePath, name: filePath.split(/[\\/]/).pop() }));
     folderName = folderPath.split(/[\\/]/).pop(); panel.hidden = false;
     select.replaceChildren(...files.map((file, index) => new Option(file.name, String(index))));
@@ -107,11 +114,12 @@ export function createFolderCalibration(root, calibration, selectRadiograph) {
     catch (error) { panel.hidden = false; message.textContent = error.message; }
   });
   select.addEventListener('change', () => { generation += 1; show(Number(select.value)); });
-  stop.addEventListener('click', () => {
+  function stopScanning() {
     generation += 1; busy = false; loading = false;
     message.textContent = 'Stopped. Completed results are kept; choose an image to review.'; update();
-  });
-  learn.addEventListener('click', async () => {
+  }
+  stop.addEventListener('click', stopScanning);
+  async function learnReference() {
     const reference = calibration.snapshot();
     if (!currentFile || !reference.spacing || reference.endpoints.length !== 2) return;
     const token = ++generation; busy = true; update();
@@ -127,12 +135,14 @@ export function createFolderCalibration(root, calibration, selectRadiograph) {
         candidates: [{ value_mm: reference.value_mm, endpoints: reference.endpoints, length_px: length,
           raw_text: `${reference.value_mm} mm (corrected)`, status: 'accepted' }] });
       message.textContent = 'Reference appearance learned. Ready to process the folder.';
+      return true;
     } catch (error) {
       if (token === generation) message.textContent = `Could not learn reference appearance: ${error.message}`;
     } finally {
       if (token === generation) { busy = false; update(); }
     }
-  });
+  }
+  learn.addEventListener('click', learnReference);
   run.addEventListener('click', () => scan(false));
   download.addEventListener('click', () => {
     const output = { folder: folderName, detection_profile: profile,
@@ -153,5 +163,14 @@ export function createFolderCalibration(root, calibration, selectRadiograph) {
     }
     update();
   });
-  return { reset, openFolder };
+  async function calibrateAndContinue() {
+    if (busy || loading || !currentFile) return false;
+    if (calibration.snapshot().spacing?.source === 'dicom_pixel_spacing') return scan(false);
+    if (!(await learnReference())) return false;
+    return scan(false);
+  }
+  function reviewCount() {
+    return files.filter(file => !['detected', 'corrected', 'dicom'].includes(cache.get(file.id)?.status)).length;
+  }
+  return { reset, openFolder, stopScanning, calibrateAndContinue, reviewCount };
 }

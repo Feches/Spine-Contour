@@ -138,8 +138,12 @@ export function render(state) {
       if (!folder) return;
       const { files, skipped } = await scanFolder(folder);
       lastScan = { folder, skipped };
-      setState({ wsFolder: folder, wsFiles: files });
-      refresh();
+      setState({
+        wsFolder: folder, wsFiles: files,
+        calibrationRequest: files.length ? { folder, files: [...files] } : null,
+        ...(files.length ? { screen: 'calibration' } : {}),
+      });
+      if (!files.length) refresh();
     } catch (error) {
       showToast(`Could not read folder: ${error.message}`);
     }

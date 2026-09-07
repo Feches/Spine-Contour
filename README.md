@@ -81,7 +81,9 @@ datasets is bundled with, or endorsed by, this project.
 
 ## Image and folder calibration
 
-Open **Image calibration** in the sidebar. **Choose one image** reads a PNG's printed length label and capped ruler without running segmentation. Green points mark the reference: drag either endpoint, correct the length in millimeters, and select **Apply reference**. **Measure distance** places two yellow points and displays their distance using that scale.
+Choosing an image folder in **Workspace** now opens calibration automatically. Review the reference, then select **Calibrate folder and continue** to process the folder and return to workspace setup. **Skip for now** returns without requiring a reference. Changing the folder starts a fresh calibration step.
+
+You can also open **Image calibration** in the sidebar. **Choose one image** reads a PNG's printed length label and capped ruler without running segmentation. Green points mark the reference: drag either endpoint, correct the length in millimeters, and select **Apply reference**. **Measure distance** places two yellow points and displays their distance using that scale.
 
 For a folder, select **Choose image folder** or **Use workspace folder**. The app searches until it finds a reference to review. Correct and apply it, then select **Use reference appearance for folder** and **Process folder**. The corrected shaft supplies foreground-color settings that supplement ruler detection and OCR on the remaining images. Each image gets its own scale; the reference image's zoom-dependent scale is never copied to other films. Review missing, ambiguous or conflicting results in the image list. **Save calibration results** exports the detection profile and per-image references as JSON.
 

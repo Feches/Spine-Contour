@@ -21,3 +21,5 @@ Repeat the desktop checks:
 8. Test light and dark themes. Try manual calibration with OCR unavailable. Check the installed preview separately on its target OS.
 
 The Windows and macOS workflows test the packaged backend's actual OCR endpoint before publishing previews. Local source checks do not replace installation testing. Session calibration is exported separately and is not yet persisted in study records.
+
+Folder-upload follow-up: verified in Electron that Workspace → Choose folder automatically opens reference calibration, changing a reference disables Continue until it is applied, Continue processes the folder and returns with the workspace files intact, changing the folder prompts again, and Skip returns without blocking. Empty folders stay in Workspace. Existing standalone calibration remains available.
