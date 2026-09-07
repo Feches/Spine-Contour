@@ -1992,3 +1992,68 @@ Rulings from the brainstorm and planning session (HANDOFF decisions 27–36 carr
   its tip whenever the other session moves it, merged back when task 1 is done; pushed to `fork` as
   a backup, which publishes nothing — the preview workflows fire only on `ui-redesign-cw` — cost if
   wrong: none identified; the branch name can never build an installer.
+
+Session 2026-09-06 (execution, subagent-driven) — pre-flight rulings before Task 1. The full scan table is
+in `.superpowers/sdd/2026-09-06-parameters-tab/progress.md` (git-ignored; these lines are the durable copy).
+
+- Ruling: Task 7's acceptance is 22/22, not the "21/22" its step 2 prints — the same task writes 22/22
+  into the README baseline and the user said 22/22; a failing check is a finding to investigate — cost if
+  wrong: one fix loop on a check the author expected to fail.
+- Ruling: Task 7's README edit targets the second "Known baseline" paragraph (the one listing
+  smoke-studies/workspace/persist) and corrects that line's stale unit figure (291) to 318 while touching
+  it — cost if wrong: one number in a README.
+- Ruling: Task 7's README sentence "can run before or after any other suite on the same instance" becomes
+  "run it first on a fresh launch, before the suites that add real films"; the suite code stays as written,
+  because its `Added by hand` check assumes only demos have no workspace root — cost if wrong: a README
+  sentence.
+- Ruling: Task 8 replaces the existing HANDOFF section "Pre-op/post-op organisation — spec and plan
+  written, nothing implemented" with the plan's new "Parameters tab — task 1 …" section at the same
+  position, rather than inserting beside it and leaving two sections that contradict each other — cost if
+  wrong: a paragraph restored from git.
+- Ruling: CLAUDE.md's branch paragraph and NEXT-SESSION.md are left to the session wrap, not to Task 8 —
+  cost if wrong: the next session reads one stale paragraph before HANDOFF corrects it.
+
+Rulings made during execution (2026-09-06, before the Task 4 gate):
+
+- Ruling: Tasks 4, 5 and 6 commit their code BEFORE the human gate with the body line "Manual
+  verification: pending the human gate — outcomes recorded here by amendment before the next task
+  starts", and the controller amends that still-unpushed HEAD commit's message with the user's
+  outcomes afterwards — the plan wants the outcomes in the commit body, the user wants each gate
+  stopped at and asked, and an uncommitted working tree across a session boundary is fragile — cost
+  if wrong: one unpushed commit message rewritten.
+- Ruling: before each human gate the DOM task's implementer drives the same manual checks over the
+  CDP harness on a scratch profile (clicks, typed text, Tab/Enter, screenshots, console errors) and
+  records the outcomes in its report, so the human's run is a confirmation with real gestures — each
+  stop costs a whole round trip and the harness exists for exactly this — cost if wrong: one extra
+  launch per DOM task.
+- Ruling: `sameKey` stays a module-private three-line predicate in `screens/parameters.js`
+  (Task 4's review flagged the verbatim copy as plan-mandated duplication) — five copies already
+  exist (`components/clinical-data.js`, `components/measurements.js`, `components/viewer.js`,
+  `screens/studies.js`, and this one), the plan followed that established per-module redraw-gate
+  pattern, and consolidating all five into `dom.js` is a cross-cutting refactor outside this plan;
+  Task 8 records it as a ROADMAP item — cost if wrong: a three-line predicate lives in five files
+  until someone consolidates it.
+
+Harness note (Task 4's dry run): `tools/smoke/cdp-lib.mjs`'s `key('Enter')` dispatches keyDown/keyUp
+with no `text`, so Blink emits no keypress and a native `<button>` never activates; sending the same
+event with `text: '\r'` works. A harness gap, not a product defect; Task 7's suite clicks and never
+presses Enter. Worth fixing in `key()` when the harness is next touched.
+
+Session paused 2026-09-06: Tasks 1–3 complete (bee39cf, 68dbac2, 6b5d4ed; unit 318/318). Task 4 code
+complete at 76695ad, reviewed clean (one parked finding above), harness dry run 6/6 — **awaiting the
+human gate** (the six checks in Task 4 step 5). Resume by amending 76695ad's message with the
+outcomes, then Task 5 (brief already generated; Opus implementer).
+
+Task 4 human gate (2026-09-06): checks 1–5 pass on the user's real library (112 studies, 13 segmented);
+check 6 (console) not run by the human.
+
+- Ruling: Task 4's check 6 is recorded as "not checked by the human" and closed on combined evidence —
+  the harness dry run at the same commit asserted 0 console errors/exceptions over the same six steps,
+  and checks 2–3 rendered correctly, which `update()` could not have done had it thrown — with a human
+  console check repeated at Task 5's gate (its step 11) — cost if wrong: a console error specific to the
+  user's library goes unseen for one task.
+- Process note: no docs commit goes between a DOM task's commit and its gate from here on (the ledger
+  commit above Task 4's commit forced both to be re-created to amend the body); the plan ledger is
+  written to disk uncommitted during a pause and committed after the amend.
+
+Task 4 complete. Resume at Task 5 (brief generated; Opus implementer).
