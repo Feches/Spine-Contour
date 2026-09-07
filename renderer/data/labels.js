@@ -26,9 +26,9 @@ export function studyName(study) {
   return defaultName(study.fileName) ?? study.id;
 }
 
-// The last segment of a path, either separator, with trailing separators ignored.
-// 'C:\\Studies\\CohortA\\' -> 'CohortA'. Returns '' for a path with nothing in it.
-function lastSegment(path) {
+// The last segment of a path, either separator, with trailing separators ignored. Exported for
+// data/parameters.js, which labels a workspace root the same way workspaceLabel labels a study.
+export function lastSegment(path) {
   const parts = String(path).split(/[\\/]/).filter((part) => part !== '');
   return parts.length > 0 ? parts[parts.length - 1] : '';
 }

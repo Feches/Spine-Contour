@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle } from '../renderer/data/labels.js';
+import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle, lastSegment } from '../renderer/data/labels.js';
 
 const DASH = '\u2014';
 
@@ -72,4 +72,11 @@ test('pathTitle carries the full path, or nothing', () => {
   assert.equal(pathTitle({ filePath: 'C:\\a\\b.jpg' }), 'C:\\a\\b.jpg');
   assert.equal(pathTitle({ filePath: null }), null);
   assert.equal(pathTitle(null), null);
+});
+
+test('lastSegment reads the final path segment under either separator and ignores trailing separators', () => {
+  assert.equal(lastSegment('C:\\Studies\\CohortA\\'), 'CohortA');
+  assert.equal(lastSegment('/data/films/Fusion2025'), 'Fusion2025');
+  assert.equal(lastSegment('Fusion2025'), 'Fusion2025');
+  assert.equal(lastSegment(''), '');
 });
