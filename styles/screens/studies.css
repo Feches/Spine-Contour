@@ -419,3 +419,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.param-export {
+  flex: none;
+}

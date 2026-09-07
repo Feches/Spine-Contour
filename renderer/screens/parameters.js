@@ -15,12 +15,15 @@
  */
 import { el, clear } from '../dom.js';
 import { setState } from '../store.js';
+import { saveCsv } from '../api.js';
+import { showToast } from '../components/toast.js';
+import { toCsv } from '../data/csv.js';
 import { isConsistent } from '../data/measurements.js';
 import { studyName, workspaceLabel, folderLabel, pathTitle } from '../data/labels.js';
 import {
   HAND_ADDED, DEFAULT_SORT, measurementColumns, parameterValues, formatParameter,
   workspaceOptions, folderOptions, normaliseFilters, filterParameters, hiddenUnsegmented,
-  sortParameters, emptyReason,
+  sortParameters, emptyReason, exportFileName,
 } from '../data/parameters.js';
 
 const EMPTY_COPY = {
@@ -66,6 +69,21 @@ export function mountParameters(host, { onOpen }) {
     });
   }
 
+  // The visible rows, as one long-format file (spec §11.1). toCsv drops demo rows itself; the
+  // button is disabled when that would leave nothing, so the user is told why instead of being
+  // handed a header with no data. A cancelled dialog resolves null and must not toast.
+  async function exportVisible(visible, filters) {
+    const real = visible.filter((study) => study.source === 'real');
+    if (real.length === 0) return;
+    const csv = toCsv(visible, {});
+    try {
+      const savedTo = await saveCsv({ text: csv, suggestedName: exportFileName(filters.workspace) });
+      if (savedTo) showToast(`Exported ${real.length} ${real.length === 1 ? 'row' : 'rows'} to ${savedTo}`);
+    } catch (error) {
+      showToast(`Could not export: ${error.message}`);
+    }
+  }
+
   function buildFilterBar(live, queried, visible, filters) {
     const workspaceSelect = el('select', {
       class: 'param-select param-select-workspace', 'aria-label': 'Filter by workspace', 'data-param-key': 'workspace',
@@ -103,9 +121,19 @@ export function mountParameters(host, { onOpen }) {
       onChange: (event) => setState({ paramLevels: event.target.checked }),
     });
 
+    const exportable = visible.filter((study) => study.source === 'real').length;
+    const exportButton = el('button', {
+      type: 'button', class: 'btn btn-small param-export', 'data-param-key': 'export',
+      disabled: exportable === 0,
+      // No tooltip on the enabled button: it would only repeat the label it sits on.
+      title: exportable > 0 ? '' : (visible.length === 0 ? 'Nothing to export' : 'Demo studies are not exported'),
+      onClick: () => exportVisible(visible, filters),
+    }, 'Export CSV');
+
     return el('div', { class: 'param-bar' },
       workspaceSelect, folderSelect, segmented, levels,
-      el('div', { class: 'param-count', 'data-param-key': 'count' }, `${visible.length} OF ${live.studies.length} STUDIES SHOWN`));
+      el('div', { class: 'param-count', 'data-param-key': 'count' }, `${visible.length} OF ${live.studies.length} STUDIES SHOWN`),
+      exportButton);
   }
 
   function sortableHeader(key, label, sort, extraClass) {
