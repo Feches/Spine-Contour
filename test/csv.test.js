@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toCsv, parse, autoMap, KNOWN_FIELDS, fileStem, findJoinHeader, joinClinical, clinicalFieldNames } from '../renderer/data/csv.js';
+import {
+  toCsv, parse, autoMap, KNOWN_FIELDS, fileStem, findJoinHeader, joinClinical, clinicalFieldNames,
+  findStructuralHeaders, structuralField, STRUCTURAL_LABELS, structuralFromRow,
+} from '../renderer/data/csv.js';
 
 function study(overrides) {
   return {
@@ -422,7 +425,7 @@ test('joinClinical with no study_id column links nothing and counts every row as
     mapping: [{ src: 'id', dest: null }, { src: 'age_yrs', dest: 'Age' }],
   });
   assert.deepEqual(join, {
-    joinHeader: null, byFile: new Map(), matched: 0, unmatched: 3, duplicates: 0, ambiguous: 0,
+    joinHeader: null, byFile: new Map(), rowByFile: new Map(), matched: 0, unmatched: 3, duplicates: 0, ambiguous: 0,
   });
 });
 
@@ -504,4 +507,57 @@ test('clinicalFieldNames returns [] with no clinical data and never repeats a fi
     clinicalFieldNames([{ id: 'SP-1000', clinical: { Age: '58' } }, { id: 'SP-1001', clinical: { Age: '61' } }]),
     ['Age'],
   );
+});
+
+// ---------------------------------------------------------------------------
+// Structural columns (pre-op/post-op spec §8.2): subject, timepoint, film date, view.
+
+test('findStructuralHeaders recognises the §8.2 aliases by normalised name, first header wins, and never a bare date', () => {
+  assert.deepEqual(findStructuralHeaders(['study_id', 'Subject ID', 'Time_Point', 'Study Date', 'Position']),
+    { subjectId: 'Subject ID', timepoint: 'Time_Point', filmDate: 'Study Date', view: 'Position' });
+  assert.deepEqual(findStructuralHeaders(['subject', 'visit', 'film_date', 'view', 'subject_id']),
+    { subjectId: 'subject', timepoint: 'visit', filmDate: 'film_date', view: 'view' });
+  assert.deepEqual(findStructuralHeaders(['study_id', 'date', 'age']), { subjectId: null, timepoint: null, filmDate: null, view: null });
+  assert.deepEqual(findStructuralHeaders([]), { subjectId: null, timepoint: null, filmDate: null, view: null });
+  assert.equal(structuralField('Time_Point', ['study_id', 'Time_Point']), 'timepoint');
+  assert.equal(structuralField('subject_id', ['subject', 'subject_id']), null);
+  assert.equal(structuralField('age', ['age']), null);
+  assert.deepEqual(STRUCTURAL_LABELS, { subjectId: 'Subject', timepoint: 'Timepoint', filmDate: 'Film date', view: 'View' });
+});
+
+test('structuralFromRow trims, normalises a known timepoint, keeps a custom one, and parses both date forms', () => {
+  const structural = findStructuralHeaders(['subject_id', 'timepoint', 'film_date', 'view']);
+  assert.deepEqual(structuralFromRow({ subject_id: ' S001 ', timepoint: 'preop', film_date: '3/2/2025', view: ' Supine lateral ' }, structural),
+    { subjectId: 'S001', timepoint: 'Pre-op', filmDate: '2025-03-02', view: 'Supine lateral', badDate: false });
+  assert.deepEqual(structuralFromRow({ subject_id: 'S002', timepoint: '6 weeks', film_date: '2025-09-14', view: '' }, structural),
+    { subjectId: 'S002', timepoint: '6 wk', filmDate: '2025-09-14', view: null, badDate: false });
+  assert.deepEqual(structuralFromRow({ subject_id: '', timepoint: 'baseline', film_date: '', view: 'flexion' }, structural),
+    { subjectId: null, timepoint: 'baseline', filmDate: null, view: 'flexion', badDate: false });
+  // A rejected date is not written and is flagged; a column the CSV lacks supplies nothing.
+  assert.deepEqual(structuralFromRow({ subject_id: 'S003', timepoint: '', film_date: '2025-02-30', view: '' }, structural),
+    { subjectId: 'S003', timepoint: null, filmDate: null, view: null, badDate: true });
+  assert.deepEqual(structuralFromRow({ subject_id: 'S004' }, findStructuralHeaders(['study_id', 'subject_id'])),
+    { subjectId: 'S004', timepoint: null, filmDate: null, view: null, badDate: false });
+});
+
+test('autoMap never claims a structural header as a clinical field', () => {
+  assert.deepEqual(autoMap(['subject_id', 'timepoint', 'film_date', 'view', 'age']), [
+    { src: 'subject_id', dest: null }, { src: 'timepoint', dest: null }, { src: 'film_date', dest: null },
+    { src: 'view', dest: null }, { src: 'age', dest: 'Age' },
+  ]);
+  // A second subject column is not structural (the first wins) and is not a known field either.
+  assert.deepEqual(autoMap(['subject', 'subject_id']), [{ src: 'subject', dest: null }, { src: 'subject_id', dest: null }]);
+});
+
+test('joinClinical hands back the matched raw row under the same file key, and a structural column never reaches clinical', () => {
+  const join = joinClinical({
+    files: ['C:\\films\\a.png', 'C:\\films\\b.png'],
+    headers: ['study_id', 'timepoint', 'age_yrs'],
+    rows: [{ study_id: 'a', timepoint: 'preop', age_yrs: '58' }, { study_id: 'zzz', timepoint: 'postop', age_yrs: '1' }],
+    mapping: [{ src: 'study_id', dest: null }, { src: 'timepoint', dest: null }, { src: 'age_yrs', dest: 'Age' }],
+  });
+  assert.deepEqual(join.rowByFile.get('C:\\films\\a.png'), { study_id: 'a', timepoint: 'preop', age_yrs: '58' });
+  assert.equal(join.rowByFile.has('C:\\films\\b.png'), false);
+  assert.equal(join.rowByFile.size, 1);
+  assert.deepEqual(join.byFile.get('C:\\films\\a.png'), { Age: '58' });
 });

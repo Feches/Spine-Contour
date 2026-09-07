@@ -1,3 +1,5 @@
+import { normaliseTimepoint, parseFilmDate } from './timepoints.js';
+
 const MEASUREMENT_COLUMNS = [
   'LL L1-S1', 'PI', 'PT', 'SS', 'PI-LL Mismatch', 'L1PA',
   'LL L2-S1', 'LL L3-S1', 'LL L4-S1', 'LL L5-S1',
@@ -208,7 +210,12 @@ function normalizeFieldName(value) {
 export function autoMap(headers) {
   const known = KNOWN_FIELDS.map((field) => ({ field, key: normalizeFieldName(field) }));
   const claimed = new Set();
+  // A structural header (subject_id, timepoint, film_date, view -- pre-op/post-op spec §8.2) is
+  // read by the load itself and is never a clinical field, whatever a known field's prefix might
+  // otherwise match.
+  const reserved = new Set(Object.values(findStructuralHeaders(headers)).filter((header) => header !== null));
   return headers.map((src) => {
+    if (reserved.has(src)) return { src, dest: null };
     const key = normalizeFieldName(src);
     if (key === '') return { src, dest: null };
     const match = known.find((f) => key === f.key || key.startsWith(f.key));
@@ -233,6 +240,59 @@ export function findJoinHeader(headers) {
   return found === undefined ? null : found;
 }
 
+// The four structural columns (pre-op/post-op spec §8.2), recognised the way study_id is -- by
+// normalised header -- and never offered as clinical fields. The first header naming each field
+// wins; a second `subject` column is an ordinary (unmapped) chip. A bare `date` column is
+// deliberately not recognised: in a clinical sheet it is as likely the surgery date.
+const STRUCTURAL_KEYS = {
+  subjectId: ['subjectid', 'subject'],
+  timepoint: ['timepoint', 'visit'],
+  filmDate: ['studydate', 'filmdate'],
+  view: ['view', 'position'],
+};
+
+// What the mapping card writes beside a structural header.
+export const STRUCTURAL_LABELS = Object.freeze({ subjectId: 'Subject', timepoint: 'Timepoint', filmDate: 'Film date', view: 'View' });
+
+// → {subjectId, timepoint, filmDate, view}: the header that supplies each field, or null.
+export function findStructuralHeaders(headers) {
+  const found = { subjectId: null, timepoint: null, filmDate: null, view: null };
+  for (const header of headers ?? []) {
+    const key = normalizeFieldName(header);
+    for (const [field, keys] of Object.entries(STRUCTURAL_KEYS)) {
+      if (found[field] === null && keys.includes(key)) found[field] = header;
+    }
+  }
+  return found;
+}
+
+// The structural field `header` supplies among `headers`, or null.
+export function structuralField(header, headers) {
+  const found = findStructuralHeaders(headers);
+  return Object.keys(found).find((field) => found[field] === header) ?? null;
+}
+
+// The structural values one CSV row supplies (§8.2): subject and view as typed after trimming;
+// the timepoint normalised through §7.2 when it names a known label (`preop` → Pre-op,
+// `6 weeks` → 6 wk) and otherwise as typed; the film date as YYYY-MM-DD when it parses.
+// `badDate` says the row carried a date the parser rejected -- the text is stored nowhere and
+// the load counts it (§8.4).
+export function structuralFromRow(row, structural) {
+  const read = (header) => (header === null || header === undefined ? '' : String(row?.[header] ?? '').trim());
+  const subject = read(structural?.subjectId);
+  const timepoint = read(structural?.timepoint);
+  const date = read(structural?.filmDate);
+  const view = read(structural?.view);
+  const filmDate = date === '' ? null : parseFilmDate(date);
+  return {
+    subjectId: subject === '' ? null : subject,
+    timepoint: timepoint === '' ? null : (normaliseTimepoint(timepoint) ?? timepoint),
+    filmDate,
+    view: view === '' ? null : view,
+    badDate: date !== '' && filmDate === null,
+  };
+}
+
 // Joins CSV rows to films on the film's filename stem, case-insensitively. A film has no id
 // before it is loaded, so its filename is the only identity a row can name. Per row, in
 // order: a blank study_id is unmatched; a study_id already seen is a duplicate (the first
@@ -241,10 +301,12 @@ export function findJoinHeader(headers) {
 // otherwise the row is matched and every mapping with a dest copies row[src], trimmed,
 // skipping empty values so absent data stays absent. byFile is keyed by the exact string
 // given in `files`, so the caller reads it back with the same paths it passed in.
+// rowByFile holds the matched RAW row under the same key, for the structural columns the load
+// reads itself (spec §8.2); the mapping never copies those.
 export function joinClinical({ files, headers, rows, mapping }) {
   const joinHeader = findJoinHeader(headers);
   if (joinHeader === null) {
-    return { joinHeader: null, byFile: new Map(), matched: 0, unmatched: rows.length, duplicates: 0, ambiguous: 0 };
+    return { joinHeader: null, byFile: new Map(), rowByFile: new Map(), matched: 0, unmatched: rows.length, duplicates: 0, ambiguous: 0 };
   }
 
   const filmsByStem = new Map();
@@ -258,6 +320,7 @@ export function joinClinical({ files, headers, rows, mapping }) {
   const mapped = mapping.filter((m) => m.dest);
   const seen = new Set();
   const byFile = new Map();
+  const rowByFile = new Map();
   let matched = 0;
   let unmatched = 0;
   let duplicates = 0;
@@ -290,9 +353,10 @@ export function joinClinical({ files, headers, rows, mapping }) {
       if (value !== '') clinical[m.dest] = value;
     }
     byFile.set(films[0], clinical);
+    rowByFile.set(films[0], row);
   }
 
-  return { joinHeader, byFile, matched, unmatched, duplicates, ambiguous };
+  return { joinHeader, byFile, rowByFile, matched, unmatched, duplicates, ambiguous };
 }
 
 // The union of clinical field names over the studies: KNOWN_FIELDS order first, then custom
