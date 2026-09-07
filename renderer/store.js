@@ -7,6 +7,14 @@ let state = {
 
   studies: [],
   query: '',
+  // The Studies screen's second tab (pre-op/post-op spec §10). Which tab is up, and the
+  // Parameters tab's filters, sort and lordosis-level toggle. Store state rather than screen
+  // scope so coming back from Analysis lands on the tab, filters and sort the user left. Each
+  // is replaced wholesale on change -- the screen's gate compares by reference.
+  studiesTab: 'find',
+  paramFilters: { workspace: null, folder: null, segmentedOnly: true },
+  paramSort: { key: 'study', dir: 'asc' },
+  paramLevels: false,
   openId: null,
   compareId: null,
 

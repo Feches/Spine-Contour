@@ -269,6 +269,12 @@ a draw function must blank a layer, never freeze the application.
 
   studies: [],              // Study[] — demo + real, merged
   query: '',
+  studiesTab: 'find',       // 'find'|'parameters' (2026-09-06, pre-op/post-op spec §10.1)
+  paramFilters: { workspace: null, folder: null, segmentedOnly: true },   // data/parameters.js DEFAULT_FILTERS;
+                            // `workspace` is a stored root, HAND_ADDED ('__hand__') or null
+  paramSort: { key: 'study', dir: 'asc' },   // key: 'study'|'workspace'|a measurement column key
+  paramLevels: false,       // show LL L2–S1..L5–S1 columns
+                            // All four are read by screens/studies.js's own subscription, never by SCREEN_KEYS.
   openId: null,
   compareId: null,
 
