@@ -14,6 +14,7 @@ import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle } from '
 import { nextId } from '../data/persistence.js';
 import { setFilePayload, releaseStudy } from './analysis.js';
 import { forgetPrediction } from '../components/viewer.js';
+import { mountParameters } from './parameters.js';
 
 const UPLOAD_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16 V4"></path><path d="M7.5 8.5 L12 4 L16.5 8.5"></path><path d="M4.5 19.5 H19.5"></path></svg>';
 
@@ -339,9 +340,48 @@ export function render(state) {
     onInput: (event) => { confirmingId = null; setState({ query: event.target.value }); },
   });
   const tableHost = el('div', { class: 'studies-table-host' });
+
+  // Two tabs. FIND is everything this screen was: the dropzone, the list and the search.
+  // PARAMETERS is the grid of every segmented study's numbers (screens/parameters.js). The list
+  // is for finding a study and the grid is for reading its numbers -- the split that paid for
+  // deleting LORDOSIS from the list. The active tab is store state (studiesTab), so coming back
+  // from Analysis lands on the tab the user left. The search box applies to both.
+  const tabFind = el('button', {
+    type: 'button', class: 'studies-tab', role: 'tab', id: 'studies-tab-find', 'data-param-key': 'tab-find',
+    onClick: () => setState({ studiesTab: 'find' }),
+  }, 'Find');
+  const tabParameters = el('button', {
+    type: 'button', class: 'studies-tab', role: 'tab', id: 'studies-tab-parameters', 'data-param-key': 'tab-parameters',
+    onClick: () => setState({ studiesTab: 'parameters' }),
+  }, 'Parameters');
+  const tabs = el('div', { class: 'studies-tabs', role: 'tablist', 'aria-label': 'Studies views' }, tabFind, tabParameters);
+  const findPanel = el('div', {
+    class: 'studies-tabpanel', role: 'tabpanel', 'aria-labelledby': 'studies-tab-find',
+  }, dropzone(), tableHost);
+  const parametersHost = el('div', {
+    class: 'studies-tabpanel studies-parameters-host', role: 'tabpanel', 'aria-labelledby': 'studies-tab-parameters',
+  });
+  const parameters = mountParameters(parametersHost, { onOpen: openStudy });
   let lastKey = null;
 
   function update(live) {
+    // Tab visibility first, unconditionally: class toggles are idempotent and cheap, and the
+    // tab is not in the list's key below.
+    const onParameters = live.studiesTab === 'parameters';
+    tabFind.classList.toggle('is-active', !onParameters);
+    tabFind.setAttribute('aria-selected', String(!onParameters));
+    tabParameters.classList.toggle('is-active', onParameters);
+    tabParameters.setAttribute('aria-selected', String(onParameters));
+    findPanel.classList.toggle('is-hidden', onParameters);
+    parametersHost.classList.toggle('is-hidden', !onParameters);
+
+    const studies = live.studies || [];
+    const query = (live.query || '').trim().toLowerCase();
+    const queried = studies.filter((study) => matchesQuery(study, query));
+    // The grid keeps its own reference-keyed gate; the search result is computed once here and
+    // shared with the list below.
+    parameters.update(live, queried);
+
     // live.running is in the key so the table repaints when a run starts or ends: the row
     // badge is derived from it, and nothing else in the key changes at either moment.
     // confirmingId is module scope, not store state; listing it here is what lets a
@@ -350,13 +390,11 @@ export function render(state) {
     const key = [live.studies, live.query, live.running, confirmingId];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
-    const studies = live.studies || [];
     // The summary always describes the whole library, not the filtered view, and counts the
     // queue with exactly the rule buildRow badges it with.
     const queued = studies.filter((study) => (live.running === study.id ? 'proc' : deriveStatus(study)) === 'proc').length;
     summary.textContent = `${studies.length} STUDIES · ${queued} IN QUEUE`;
-    const query = (live.query || '').trim().toLowerCase();
-    mount(tableHost, buildTable(studies.filter((study) => matchesQuery(study, query)), live.running, query !== ''));
+    mount(tableHost, buildTable(queried, live.running, query !== ''));
   }
 
   const root = el('main', { class: 'studies-page' },
@@ -365,8 +403,9 @@ export function render(state) {
         el('div', {}, el('h1', { class: 'studies-heading' }, 'Studies'), summary),
         el('div', { class: 'studies-header-spacer' }),
         search),
-      dropzone(),
-      tableHost));
+      tabs,
+      findPanel,
+      parametersHost));
   mounted = { update, host: tableHost };
   update(state);
   return root;
