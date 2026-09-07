@@ -22,8 +22,8 @@ import { isConsistent } from '../data/measurements.js';
 import { studyName, workspaceLabel, folderLabel, pathTitle } from '../data/labels.js';
 import {
   HAND_ADDED, DEFAULT_SORT, measurementColumns, parameterValues, formatParameter,
-  workspaceOptions, folderOptions, normaliseFilters, filterParameters, hiddenUnsegmented,
-  sortParameters, emptyReason, exportFileName,
+  workspaceOptions, folderOptions, normaliseFilters, patchFilters, filterParameters,
+  hiddenUnsegmented, sortParameters, emptyReason, exportFileName,
 } from '../data/parameters.js';
 
 const EMPTY_COPY = {
@@ -56,9 +56,12 @@ export function mountParameters(host, { onOpen }) {
   host.append(root);
   let lastKey = null;
 
-  // Filters are one object replaced wholesale, so the screen's gate sees every change.
+  // Filters are one object replaced wholesale, so the screen's gate sees every change. The patch
+  // is merged over the NORMALISED filters -- the ones the controls below are showing -- not over
+  // the raw stored object: patching a stale stored workspace back in makes normaliseFilters drop
+  // the folder with it, and the pick is swallowed. patchFilters owns that rule and is tested.
   function setFilters(patch) {
-    setState((s) => ({ paramFilters: { ...s.paramFilters, ...patch } }));
+    setState((s) => ({ paramFilters: patchFilters(s.paramFilters, s.studies, patch) }));
   }
 
   function toggleSort(key) {
@@ -169,7 +172,10 @@ export function mountParameters(host, { onOpen }) {
       ...columns.map((column) => {
         // The panel's consistency warning, on the PI cell: the residual |PI − (PT + SS)| is over
         // the limit, so the three pelvic numbers on this row do not agree with each other.
-        const flag = column.key === 'PI' && inconsistent;
+        // Only on a cell that shows a number: a record with measurements but no PI/PT/SS makes the
+        // residual NaN, and isConsistent false, which would paint an em dash in the warning colour
+        // with a tooltip about numbers that are not there.
+        const flag = column.key === 'PI' && inconsistent && values.PI !== null;
         return el('td', {
           class: `param-cell-num${flag ? ' is-inconsistent' : ''}`, ...(flag ? { title: INCONSISTENT_TITLE } : {}),
         }, formatParameter(values[column.key]));
@@ -197,6 +203,15 @@ export function mountParameters(host, { onOpen }) {
   }
 
   function update(live, queried) {
+    // A hidden panel is not rebuilt: typing in the Studies search box notifies on every keystroke
+    // and the Find tab is what the user is looking at. Returning BEFORE lastKey is assigned leaves
+    // the key stale, so the first notification after the tab is shown rebuilds if anything the
+    // grid reads has changed, and skips if nothing has.
+    if (live.studiesTab !== 'parameters') return;
+
+    // This array is the tab's single point of failure. Every store key the grid reads must be
+    // listed here or the grid silently stops repainting for it -- the same warning router.js
+    // carries for SCREEN_KEYS.
     const key = [live.studies, live.query, live.paramFilters, live.paramSort, live.paramLevels, live.fields];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
@@ -207,6 +222,13 @@ export function mountParameters(host, { onOpen }) {
     const active = document.activeElement;
     const focusKey = root.contains(active) ? active.getAttribute('data-param-key') : null;
 
+    // The scroll container is replaced by the rebuild, so a new node starts at 0. Nothing else
+    // restores it -- a keystroke in the search box has focus outside this panel -- and a wide grid
+    // scrolled right would jump back to PI on every keystroke. The browser clamps a larger offset
+    // than the new table allows, which is the right answer when the columns changed.
+    const oldWrap = root.querySelector('.param-table-wrap');
+    const scroll = oldWrap ? { left: oldWrap.scrollLeft, top: oldWrap.scrollTop } : null;
+
     clear(root);
     const filters = normaliseFilters(live.paramFilters, live.studies);
     const visible = sortParameters(filterParameters(queried, filters), live.paramSort);
@@ -216,6 +238,14 @@ export function mountParameters(host, { onOpen }) {
       root.append(el('div', { class: 'studies-empty card param-empty', 'data-param-key': 'empty' }, EMPTY_COPY[reason]));
     } else {
       root.append(buildGrid(live, visible));
+    }
+
+    if (scroll !== null) {
+      const newWrap = root.querySelector('.param-table-wrap');
+      if (newWrap) {
+        newWrap.scrollLeft = scroll.left;
+        newWrap.scrollTop = scroll.top;
+      }
     }
 
     if (focusKey !== null) {

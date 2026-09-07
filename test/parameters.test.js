@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   HAND_ADDED, DEFAULT_FILTERS, DEFAULT_SORT, CORE_COLUMNS, LEVEL_COLUMNS, measurementColumns,
   parameterValues, formatParameter, isSegmented, workspaceOptions, folderOptions, normaliseFilters,
-  filterParameters, hiddenUnsegmented, sortParameters, emptyReason, exportFileName,
+  patchFilters, filterParameters, hiddenUnsegmented, sortParameters, emptyReason, exportFileName,
 } from '../renderer/data/parameters.js';
 
 const DASH = '\u2014';
@@ -167,6 +167,34 @@ test('normaliseFilters clears a workspace that no study carries any more, and it
   assert.deepEqual(normaliseFilters({ workspace: ROOT, folder: 'pre-op', segmentedOnly: false }, LIBRARY),
     { workspace: ROOT, folder: 'pre-op', segmentedOnly: false });
   assert.deepEqual(normaliseFilters(undefined, LIBRARY), { ...DEFAULT_FILTERS });
+});
+
+test('patchFilters merges a folder pick over a STALE stored workspace without losing the folder', () => {
+  // The bug this exists for: patching the raw stored object writes { workspace: <gone>, folder },
+  // and normaliseFilters then clears the folder along with the dead workspace, so the pick is
+  // silently swallowed. Normalising FIRST means the patch is merged over what the user can see.
+  assert.deepEqual(patchFilters({ workspace: 'C:\\gone', folder: null, segmentedOnly: true }, LIBRARY, { folder: 'pre-op' }),
+    { workspace: null, folder: 'pre-op', segmentedOnly: true });
+});
+
+test('patchFilters lets a workspace patch win over any stored value', () => {
+  assert.deepEqual(patchFilters({ workspace: 'C:\\gone', folder: 'pre-op' }, LIBRARY, { workspace: ROOT, folder: null }),
+    { ...DEFAULT_FILTERS, workspace: ROOT });
+  assert.deepEqual(patchFilters({ workspace: HAND_ADDED, folder: 'loose', segmentedOnly: false }, LIBRARY, { workspace: ROOT, folder: null }),
+    { workspace: ROOT, folder: null, segmentedOnly: false });
+});
+
+test('patchFilters over absent stored filters is the defaults plus the patch', () => {
+  assert.deepEqual(patchFilters(undefined, LIBRARY, { segmentedOnly: false }), { ...DEFAULT_FILTERS, segmentedOnly: false });
+  assert.deepEqual(patchFilters(undefined, LIBRARY, {}), { ...DEFAULT_FILTERS });
+});
+
+test('patchFilters returns a new object and leaves the stored filters alone', () => {
+  const stored = { workspace: 'C:\\gone', folder: 'pre-op', segmentedOnly: true };
+  const before = { ...stored };
+  const out = patchFilters(stored, LIBRARY, { folder: 'post-op' });
+  assert.notEqual(out, stored);
+  assert.deepEqual(stored, before);
 });
 
 // ---------------------------------------------------------------------------

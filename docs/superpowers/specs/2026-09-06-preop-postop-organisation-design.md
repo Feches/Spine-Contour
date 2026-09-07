@@ -368,14 +368,14 @@ Film date is the acquisition date (§7.1). The Find tab's DATE column is the dat
 to the library; the two are different facts and never share a label.
 
 Values render exactly as the measurements panel renders them (one decimal, `—` for absent, the
-consistency mark from spec §10.4 on the PI cell). Clicking a row opens the study, as in Find. The grid
-uses table semantics with a per-row link, not the Find table's single-control button row (roadmap 5,
-the accessibility note).
+consistency mark from spec §10.4 on the PI cell). The study name in each row is the link that opens
+the study; the rest of the row is not a click target. The grid uses table semantics with a per-row
+link, not the Find table's single-control button row (roadmap 5, the accessibility note).
 
 ### 10.3 Filters and sort
 
-A filter bar above the grid. Filters compose with AND; each shows its current value as a chip that
-clears it.
+A filter bar above the grid. Filters compose with AND; each control shows its current value and
+clears it in place (a dropdown's `All …` entry, a checkbox's untick); there are no separate chips.
 
 | Filter | Control | Notes |
 |---|---|---|

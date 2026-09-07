@@ -1,8 +1,9 @@
 /**
  * Pure logic for the Parameters tab of the Studies screen (pre-op/post-op spec, 2026-09-06 §10):
  * which columns the grid shows, each study's value in them, the filter options, the filter and
- * sort over Study[], why the grid is empty, and the export filename. No DOM. screens/parameters.js
- * renders what this module decides; test/parameters.test.js pins it.
+ * sort over Study[] and how a filter control's change is merged into the stored filters, why the
+ * grid is empty, and the export filename. No DOM. screens/parameters.js renders what this module
+ * decides; test/parameters.test.js pins it.
  *
  * Values come from the same row helpers the Measurements panel uses, so the grid and the panel
  * can never disagree about a number, and an absent value is null here and an em dash on screen --
@@ -115,6 +116,15 @@ export function normaliseFilters(filters, studies) {
     return { ...f, folder: null };
   }
   return f;
+}
+
+// How a filter control's change is merged into the stored filters. It exists because the screen
+// renders from normaliseFilters(stored) but used to write back over `stored` itself: with a stale
+// workspace in the store, a folder pick wrote { workspace: <gone>, folder: X } and normaliseFilters
+// then cleared the folder along with the dead workspace, so the pick vanished with no error. The
+// patch is merged over what the user is actually looking at, so a control's new value always wins.
+export function patchFilters(filters, studies, patch) {
+  return { ...normaliseFilters(filters, studies), ...patch };
 }
 
 export function filterParameters(studies, filters) {

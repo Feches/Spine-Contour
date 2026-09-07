@@ -211,6 +211,13 @@ Not code quality; these stand between the branch and a production release.
 - **The Studies row is a single control for assistive technology.** It keeps the button role it was
   given in plan 05, so some screen readers do not announce the in-row delete controls separately.
   Mouse and keyboard both work. Recorded for an accessibility pass.
+- **The Studies screen's `Find | Parameters` tab strip is an incomplete ARIA tabs pattern.** It
+  carries `role="tablist"`, `role="tab"` and `aria-selected`, but no `aria-controls`, no roving
+  `tabindex` and no Arrow-key handling, so a screen reader announces tabs that do not behave like
+  tabs. Either complete the pattern — ids on both panels, `aria-controls` on each tab,
+  `tabindex="-1"` on the inactive one, and ArrowLeft/ArrowRight plus Home/End moving the selection —
+  or drop the roles and let the two buttons be what the Analysis panel's plain buttons already are.
+  Mouse and Tab-then-Enter both work today.
 
 ---
 
