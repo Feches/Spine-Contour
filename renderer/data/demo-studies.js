@@ -21,6 +21,12 @@
  * (data/status.js); disc heights and slip are not computed in this build;
  * film is a mockup rendering hint; date is superseded by the ISO addedAt
  * below.
+ *
+ * 2026-09-07 (pre-op/post-op spec §7.4, user decision): SP-0042 and SP-0039 are ONE subject's
+ * Pre-op and Post-op films, so the dev build shows a pair without a fixture. SP-0039's patient
+ * fields (pt, age, bmi, odi, dx, plan, hx, outcome) were rewritten to match SP-0042's -- the
+ * L4–L5 TLIF its outcome already described is that patient's operation. Its measurements,
+ * confidence, view and dates are still the template's. The other seven carry no subject.
  */
 
 export const DEMO_STUDIES = [
@@ -32,6 +38,7 @@ export const DEMO_STUDIES = [
     geometry: null,
     qc: { femoral: { confidence: 0.96 } },
     clinical: {},
+    subjectId: 'P-8841', timepoint: 'Pre-op', filmDate: '2026-01-14',
     pt: 'P-8841', sex: 'F', age: 62, bmi: '27.4', odi: '46',
     dx: 'Anterior slip of L4 on L5 · Meyerding grade I', plan: 'Pending review', hx: 'L3 laminectomy, 2019',
     outcome: 'Awaiting operative decision. Baseline ODI 46.', conf: 96,
@@ -56,9 +63,10 @@ export const DEMO_STUDIES = [
     geometry: null,
     qc: { femoral: { confidence: 0.97 } },
     clinical: {},
-    pt: 'P-7712', sex: 'F', age: 15, bmi: '20.8', odi: '51',
-    dx: 'Adolescent idiopathic scoliosis, Lenke 1A', plan: 'L4–L5 TLIF', hx: 'None',
-    outcome: 'L4–L5 TLIF, posterior instrumentation. ODI 51→22 at 6 mo.', conf: 97,
+    subjectId: 'P-8841', timepoint: 'Post-op', filmDate: '2026-07-20',
+    pt: 'P-8841', sex: 'F', age: 62, bmi: '27.4', odi: '22',
+    dx: 'Anterior slip of L4 on L5 · after L4–L5 TLIF', plan: 'Routine follow-up', hx: 'L4–L5 TLIF, 2026; L3 laminectomy, 2019',
+    outcome: 'L4–L5 TLIF, posterior instrumentation. ODI 46→22 at 6 mo.', conf: 97,
   },
   {
     id: 'SP-0038', source: 'demo', filePath: null, fileName: 'SP-0038.jpg',

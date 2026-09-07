@@ -78,3 +78,23 @@ test('newStudy builds an unsegmented real study with nulls, never zeros', () => 
 test('newStudy stores a missing path as null', () => {
   assert.equal(newStudy({ id: 'SP-1001', fileName: 'a.png', filePath: undefined }).filePath, null);
 });
+
+test('newStudy carries the three study fields as null', () => {
+  const study = newStudy({ id: 'SP-1000', fileName: 'film.dcm', filePath: 'C:/films/film.dcm' });
+  assert.equal(study.subjectId, null);
+  assert.equal(study.timepoint, null);
+  assert.equal(study.filmDate, null);
+  assert.ok('subjectId' in study && 'timepoint' in study && 'filmDate' in study);
+});
+
+// The Parameters grid shows all three, and the search box applies to the grid: a visible column
+// you cannot search reads as broken.
+test('matchesQuery finds a study by its subject, timepoint or film date', () => {
+  const study = { id: 'SP-1000', view: 'Standing lateral', subjectId: 'S001', timepoint: 'Pre-op', filmDate: '2025-03-02', clinical: {} };
+  assert.equal(matchesQuery(study, 's001'), true);
+  assert.equal(matchesQuery(study, 'pre-op'), true);
+  assert.equal(matchesQuery(study, '2025-03'), true);
+  assert.equal(matchesQuery(study, 'post-op'), false);
+  // Null fields on an older record never throw and never match.
+  assert.equal(matchesQuery({ id: 'SP-1001', view: 'Standing lateral', subjectId: null, timepoint: null, filmDate: null }, 'null'), false);
+});

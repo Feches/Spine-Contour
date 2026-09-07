@@ -61,13 +61,18 @@ export function toCsv(studies) {
     '# Created by Cody Woodhouse, MD; Michael Jayasuriya, BS.',
     '# Investigational software. NOT FOR CLINICAL USE.',
   ];
-  const header = ['Study ID', 'View', ...MEASUREMENT_COLUMNS, ...fields];
+  // Subject, Timepoint and Film date sit after View (pre-op/post-op spec §11.1): the identity a
+  // paired analysis groups on, then the acquisition date. Absent values are empty, never 0 or —.
+  const header = ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date', ...MEASUREMENT_COLUMNS, ...fields];
 
   const lines = [...citation, header.map(escapeField).join(',')];
   for (const study of rows) {
     const cells = [
       study.id,
       study.view,
+      study.subjectId ?? '',
+      study.timepoint ?? '',
+      study.filmDate ?? '',
       ...MEASUREMENT_COLUMNS.map((column) => measurementValue(study, column)),
       ...fields.map((field) => (study.clinical && study.clinical[field] != null ? study.clinical[field] : '')),
     ];

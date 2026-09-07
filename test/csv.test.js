@@ -43,8 +43,8 @@ test('toCsv exports absent measurements as empty cells, never 0', () => {
   const csv = toCsv([study({ measurements: null })]);
   const dataLine = csv.split('\r\n').find((line) => line.startsWith('SP-1000'));
   const cells = dataLine.split(',');
-  // Study ID, View, then the ten measurement columns.
-  for (let i = 2; i < 2 + 10; i += 1) assert.equal(cells[i], '');
+  // Study ID, View, Subject, Timepoint, Film date, then the ten measurement columns.
+  for (let i = 5; i < 5 + 10; i += 1) assert.equal(cells[i], '');
 });
 
 test('toCsv exports real measurements including the derived PI-LL mismatch column', () => {
@@ -66,9 +66,9 @@ test('toCsv writes every clinical field present on the exported studies, KNOWN_F
   ]);
   const lines = csv.split('\r\n');
   const header = lines[3].split(',');
-  // Study ID, View, ten measurement columns, then the union: known fields in
-  // KNOWN_FIELDS order, then custom names in first-seen order.
-  assert.deepEqual(header.slice(12), ['Age', 'Diagnosis', 'Zeta']);
+  // Study ID, View, Subject, Timepoint, Film date, ten measurement columns, then the union: known
+  // fields in KNOWN_FIELDS order, then custom names in first-seen order.
+  assert.deepEqual(header.slice(15), ['Age', 'Diagnosis', 'Zeta']);
   const row1000 = lines[4];
   const row1001 = lines[5];
   assert.ok(row1000.startsWith('SP-1000'));
@@ -80,8 +80,8 @@ test('toCsv writes every clinical field present on the exported studies, KNOWN_F
 test('toCsv writes no clinical columns when no exported study carries a value', () => {
   const csv = toCsv([study({ clinical: {} }), study({ id: 'SP-1001' })]);
   const header = csv.split('\r\n')[3].split(',');
-  assert.equal(header.length, 12);
-  assert.equal(header[11], 'LL L5-S1');
+  assert.equal(header.length, 15);
+  assert.equal(header[14], 'LL L5-S1');
 });
 
 test("toCsv ignores an excluded demo study's clinical keys when choosing the columns", () => {
@@ -90,7 +90,7 @@ test("toCsv ignores an excluded demo study's clinical keys when choosing the col
     study({ id: 'SP-0042', source: 'demo', clinical: { Notes: 'demo only' } }),
   ]);
   const header = csv.split('\r\n')[3].split(',');
-  assert.deepEqual(header.slice(12), ['Age']);
+  assert.deepEqual(header.slice(15), ['Age']);
   assert.ok(!csv.includes('demo only'));
 });
 
@@ -179,6 +179,17 @@ test('toCsv exports a real measured 0 as 0, not an empty cell', () => {
   const llL1Index = header.indexOf('LL L1-S1');
   assert.equal(dataLine[ssIndex], '0');
   assert.equal(dataLine[llL1Index], '0');
+});
+
+test('toCsv writes Subject, Timepoint and Film date after View, empty when absent (spec §11.1)', () => {
+  const csv = toCsv([
+    study({ id: 'SP-1000', subjectId: 'S001', timepoint: 'Pre-op', filmDate: '2025-03-02' }),
+    study({ id: 'SP-1001' }),
+  ]);
+  const lines = csv.split('\r\n');
+  assert.deepEqual(lines[3].split(',').slice(0, 5), ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date']);
+  assert.ok(lines[4].startsWith('SP-1000,Standing lateral,S001,Pre-op,2025-03-02,'), lines[4]);
+  assert.ok(lines[5].startsWith('SP-1001,Standing lateral,,,,'), lines[5]);
 });
 
 // ---------------------------------------------------------------------------

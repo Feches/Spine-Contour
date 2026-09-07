@@ -12,6 +12,7 @@ import { showToast } from '../components/toast.js';
 import { deriveStatus, statusLabel } from '../data/status.js';
 import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle } from '../data/labels.js';
 import { nextId } from '../data/persistence.js';
+import { DEFAULT_VIEW } from '../data/timepoints.js';
 import { withIds } from '../data/parameters.js';
 import { setFilePayload, releaseStudy } from './analysis.js';
 import { forgetPrediction } from '../components/viewer.js';
@@ -38,12 +39,13 @@ export function formatDate(iso) {
 // diagnosis the user imported a minute ago could be typed here and find nothing. Values are
 // user text of any shape, so the string filter below still guards the join. The study's name,
 // its workspace and its containing folder are searchable because the table shows all three and
-// a visible column you cannot search reads as broken. The FULL file path is still not: only the
+// a visible column you cannot search reads as broken. The subject, timepoint and film date are
+// on the Parameters grid, which the box also filters. The FULL file path is still not: only the
 // two folder names the cells actually display are matched.
 export function matchesQuery(study, query) {
   const needle = (query ?? '').trim().toLowerCase();
   if (!needle) return true;
-  return [study.id, studyName(study), workspaceLabel(study), folderLabel(study), study.pt, study.dx, study.view, ...Object.values(study.clinical ?? {})]
+  return [study.id, studyName(study), study.subjectId, study.timepoint, study.filmDate, workspaceLabel(study), folderLabel(study), study.pt, study.dx, study.view, ...Object.values(study.clinical ?? {})]
     .filter((value) => typeof value === 'string')
     .join(' ')
     .toLowerCase()
@@ -60,7 +62,9 @@ export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
   return {
     id, source: 'real', filePath: filePath ?? null, fileName,
     name: defaultName(fileName), workspaceFolder,
-    addedAt: new Date().toISOString(), view: 'Standing lateral', thumbnail: null,
+    // Pre-op/post-op spec §7.1: set by a workspace load, the CSV or the drawer; null until then.
+    subjectId: null, timepoint: null, filmDate: null,
+    addedAt: new Date().toISOString(), view: DEFAULT_VIEW, thumbnail: null,
     measurements: null, geometry: null, qc: null, clinical: {},
   };
 }
@@ -338,7 +342,7 @@ export function render(state) {
   const summary = el('div', { class: 'studies-summary' });
   const search = el('input', {
     type: 'search', class: 'studies-search', value: state.query || '',
-    placeholder: 'Search name, workspace, folder, patient…', 'aria-label': 'Search studies',
+    placeholder: 'Search name, subject, workspace, folder, patient…', 'aria-label': 'Search studies',
     // A keystroke here can filter the confirming row out of the table; clearing the prompt
     // first stops it reappearing, primed on Delete, when the search is cleared again.
     // The setState notification repaints through the same gate (confirmingId is in the key),

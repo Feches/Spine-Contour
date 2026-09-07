@@ -12,6 +12,7 @@
  */
 
 import { DEMO_STUDIES } from './demo-studies.js';
+import { FILM_DATE } from './timepoints.js';
 
 export const STORE_VERSION = 1;
 
@@ -42,6 +43,11 @@ export function merge(realStudies) {
 
 function finite(n) {
   return typeof n === 'number' && Number.isFinite(n);
+}
+
+// A non-empty string as given, else null: the rule for every optional text field on the record.
+function optionalText(value) {
+  return typeof value === 'string' && value.trim() !== '' ? value : null;
 }
 
 function point(p) {
@@ -126,6 +132,14 @@ function validateStudy(entry, index) {
   if (!complete && (entry.measurements != null || entry.geometry != null)) {
     console.warn(`persistence: ${entry.id} has a malformed measurements/geometry payload; it will need to be re-run.`);
   }
+  // (2026-09-07, pre-op/post-op spec §7.1) three more optional, null-default text fields, on the
+  // same terms as name and workspaceFolder below. A film date that is not YYYY-MM-DD is dropped
+  // with a warning rather than failing the record (§7.4): a bad date is not fatal.
+  const filmDateText = optionalText(entry.filmDate);
+  const filmDate = filmDateText !== null && FILM_DATE.test(filmDateText) ? filmDateText : null;
+  if (filmDateText !== null && filmDate === null) {
+    console.warn(`persistence: ${entry.id} has a film date that is not YYYY-MM-DD ("${filmDateText}"); it is dropped.`);
+  }
   return {
     id: entry.id, source: 'real',
     filePath: typeof entry.filePath === 'string' ? entry.filePath : null,
@@ -136,6 +150,9 @@ function validateStudy(entry, index) {
     // like the column working all session and going blank after a restart.
     name: typeof entry.name === 'string' && entry.name.trim() !== '' ? entry.name : null,
     workspaceFolder: typeof entry.workspaceFolder === 'string' ? entry.workspaceFolder : null,
+    subjectId: optionalText(entry.subjectId),
+    timepoint: optionalText(entry.timepoint),
+    filmDate,
     thumbnail: typeof entry.thumbnail === 'string' && entry.thumbnail.startsWith('data:image/') ? entry.thumbnail : null,
     measurements: complete ? measurements : null,
     geometry: complete ? geometry : null,

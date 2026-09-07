@@ -90,7 +90,10 @@ test('every demo study has null geometry and a null thumbnail (no film to show)'
 const EXPECTED = {
   'SP-0042': { PI: 54.1, PT: 18.3, SS: 35.8, LL: 48.2, conf: 96, pt: 'P-8841', sex: 'F', age: 62, bmi: '27.4', odi: '46', view: 'Standing lateral', fileName: 'SP-0042.jpg', addedAt: '2026-08-21T12:10:00.000Z' },
   'SP-0041': { PI: 48.9, PT: 22.6, SS: 26.3, LL: 31.7, conf: 88, pt: 'P-3306', sex: 'M', age: 57, bmi: '31.2', odi: '52', view: 'Flexion lateral', fileName: 'SP-0041.jpg', addedAt: '2026-08-21T12:00:00.000Z' },
-  'SP-0039': { PI: 49.8, PT: 12.1, SS: 37.7, LL: 52.4, conf: 97, pt: 'P-7712', sex: 'F', age: 15, bmi: '20.8', odi: '51', view: 'Standing lateral', fileName: 'SP-0039.jpg', addedAt: '2026-08-20T12:00:00.000Z' },
+  // SP-0039's patient fields were changed on 2026-09-07 so it is SP-0042's post-op film (pre-op/post-op
+  // spec §7.4, user decision); its measurements, confidence, view, fileName and addedAt are still the
+  // template's. The values below are the intended edit, transcribed here independently of the record.
+  'SP-0039': { PI: 49.8, PT: 12.1, SS: 37.7, LL: 52.4, conf: 97, pt: 'P-8841', sex: 'F', age: 62, bmi: '27.4', odi: '22', view: 'Standing lateral', fileName: 'SP-0039.jpg', addedAt: '2026-08-20T12:00:00.000Z' },
   'SP-0038': { PI: 52.3, PT: 29.8, SS: 22.5, LL: 24.9, conf: 92, pt: 'P-1054', sex: 'M', age: 71, bmi: '29.6', odi: '58', view: 'Extension lateral', fileName: 'SP-0038.jpg', addedAt: '2026-08-19T12:00:00.000Z' },
   'SP-0036': { PI: 55.6, PT: 21.4, SS: 34.2, LL: 44.7, conf: 94, pt: 'P-6420', sex: 'F', age: 44, bmi: '24.1', odi: '42', view: 'Standing lateral', fileName: 'SP-0036.jpg', addedAt: '2026-08-18T12:00:00.000Z' },
   'SP-0035': { PI: 46.2, PT: 25.1, SS: 21.1, LL: 27.9, conf: 82, pt: 'P-9013', sex: 'M', age: 66, bmi: '28.3', odi: '49', view: 'Lateral lumbar', fileName: 'SP-0035.jpg', addedAt: '2026-08-17T12:00:00.000Z' },
@@ -123,4 +126,25 @@ test('EXPECTED covers exactly the ids in DEMO_STUDIES, no more and no fewer', ()
   const demoIds = new Set(DEMO_STUDIES.map((s) => s.id));
   const expectedIds = new Set(Object.keys(EXPECTED));
   assert.deepEqual([...demoIds].sort(), [...expectedIds].sort());
+});
+
+test('SP-0042 and SP-0039 are one subject\'s Pre-op and Post-op films; no other demo carries the study fields', () => {
+  const byId = Object.fromEntries(DEMO_STUDIES.map((s) => [s.id, s]));
+  assert.equal(byId['SP-0042'].subjectId, 'P-8841');
+  assert.equal(byId['SP-0042'].timepoint, 'Pre-op');
+  assert.equal(byId['SP-0042'].filmDate, '2026-01-14');
+  assert.equal(byId['SP-0039'].subjectId, 'P-8841');
+  assert.equal(byId['SP-0039'].timepoint, 'Post-op');
+  assert.equal(byId['SP-0039'].filmDate, '2026-07-20');
+  // One patient: the post-op film's patient fields match the pre-op film's.
+  assert.equal(byId['SP-0039'].pt, byId['SP-0042'].pt);
+  assert.equal(byId['SP-0039'].sex, byId['SP-0042'].sex);
+  assert.equal(byId['SP-0039'].age, byId['SP-0042'].age);
+  assert.equal(byId['SP-0039'].bmi, byId['SP-0042'].bmi);
+  for (const study of DEMO_STUDIES) {
+    if (study.id === 'SP-0042' || study.id === 'SP-0039') continue;
+    assert.equal(study.subjectId ?? null, null, study.id);
+    assert.equal(study.timepoint ?? null, null, study.id);
+    assert.equal(study.filmDate ?? null, null, study.id);
+  }
 });

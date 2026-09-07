@@ -261,3 +261,29 @@ test('createStudySaver with a disabledReason never saves and reports once', asyn
   assert.match(errors[0], /not being saved/);
   assert.match(errors[0], /newer version/);
 });
+
+test('validate returns the three study fields and defaults them to null (pre-op/post-op spec §7.1)', () => {
+  const [bare] = validate({ version: STORE_VERSION, studies: [identity('SP-1000')] });
+  assert.equal(bare.subjectId, null);
+  assert.equal(bare.timepoint, null);
+  assert.equal(bare.filmDate, null);
+  // Listed on the returned object, or the saver writes them and the next load drops them.
+  assert.ok('subjectId' in bare && 'timepoint' in bare && 'filmDate' in bare);
+  const [full] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1001'), subjectId: 'S001', timepoint: 'Pre-op', filmDate: '2025-03-02' }] });
+  assert.equal(full.subjectId, 'S001');
+  assert.equal(full.timepoint, 'Pre-op');
+  assert.equal(full.filmDate, '2025-03-02');
+});
+
+test('validate nulls a blank or non-string study field silently, and a malformed film date with one warning', (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const [study] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1000'), subjectId: '  ', timepoint: 42, filmDate: 20250302 }] });
+  assert.equal(study.subjectId, null);
+  assert.equal(study.timepoint, null);
+  assert.equal(study.filmDate, null);
+  assert.equal(warn.mock.callCount(), 0);
+  const [dated] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1001'), filmDate: '3/2/2025' }] });
+  assert.equal(dated.filmDate, null);
+  assert.equal(warn.mock.callCount(), 1);
+  assert.match(warn.mock.calls[0].arguments[0], /SP-1001/);
+});
