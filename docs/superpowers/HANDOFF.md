@@ -1,10 +1,10 @@
 # Handoff — Spine Contour UI Redesign
 
 **Last updated:** 2026-09-07
-**Branch:** `claude/studies-ui-updates-bb040d` (7 commits on top of `origin/ui-redesign-cw` @ `0022d91`)
+**Branch:** `claude/studies-ui-updates-bb040d` (the studies work plus the Parameters tab, on top of `origin/ui-redesign-cw` @ `0022d91`)
 **Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
 **This copy is on:** `claude/preop-postop-xray-org-2c4d80` (the Parameters tab and its addendum, code and
-docs, above the branch above; the merge back is pending at the user's say-so), worktree
+docs; merged back into the branch above on 2026-09-07 by fast-forward, so both are at the same commit), worktree
 `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628` — see the first
 section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
@@ -28,8 +28,8 @@ Spec: `docs/superpowers/specs/2026-09-06-preop-postop-organisation-design.md` §
 `docs/superpowers/plans/2026-09-06-parameters-tab.md` (Tasks 1–8, then the 2026-09-07 addendum
 Tasks 9–12; its `## Ledger` carries every ruling and every deferred review finding). Commits:
 `git log --oneline 9735202..HEAD` on that branch. Two whole-branch reviews (one per range), each
-"with fixes"; the fixes landed and were re-reviewed clean. **The merge back into
-`claude/studies-ui-updates-bb040d` is pending, at the user's say-so.**
+"with fixes"; the fixes landed and were re-reviewed clean. **Merged back into
+`claude/studies-ui-updates-bb040d` on 2026-09-07 (fast-forward, at the user's say-so).**
 
 **Verified at the wrap (2026-09-07):** unit 333/333; `smoke-parameters.mjs` 33/33; `smoke-studies.mjs`
 60/60; `smoke-workspace.mjs` 96/96 — on a fresh scratch profile at `211a2b8`. Tasks 4, 5, 6 and 11

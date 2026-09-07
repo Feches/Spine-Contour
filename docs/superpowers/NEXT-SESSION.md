@@ -35,11 +35,12 @@ ticked rows export a chosen subset) — above `claude/studies-ui-updates-bb040d`
 6. `docs/ROADMAP.md` — deferred work with no plan
 
 **Resume point.** Two things, in order:
-1. **The merge back into `claude/studies-ui-updates-bb040d`** — the user's call; never merge unasked.
-   First `git fetch fork` and check whether that branch moved
-   (`git log --oneline HEAD..fork/claude/studies-ui-updates-bb040d`); if it did, dry-run with
-   `git merge-tree --write-tree fork/claude/studies-ui-updates-bb040d HEAD` and rebase before anything
-   else. Use superpowers:finishing-a-development-branch to present the options.
+1. **The merge back into `claude/studies-ui-updates-bb040d` is DONE** (fast-forward on 2026-09-07,
+   at the user's say-so; both branches are at the same commit on `fork`). Start spec task 2 on a NEW
+   branch off the studies branch, created in this worktree with
+   `git checkout -b claude/preop-postop-task2-<suffix> claude/studies-ui-updates-bb040d`; the old
+   branch can then be deleted (`git branch -d claude/preop-postop-xray-org-2c4d80`). Fetch `fork` first
+   and check the studies branch has not moved.
 2. **Spec task 2** — subject, timepoint, film date and view on the record (§7), seeding from folders
    and the CSV with the Workspace card's per-folder assignment table (§8, §8.5), the drawer's Study
    row group (§9), the timepoint/view/subject/paired-only filters and the subject sort on the

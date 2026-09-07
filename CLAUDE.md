@@ -29,8 +29,7 @@ the pre-op/post-op organisation spec
 **Parameters tab**, complete: the plan `docs/superpowers/plans/2026-09-06-parameters-tab.md`
 (Tasks 1–8 plus an addendum, Tasks 9–12: the CSV's `Source` column removed, ticked rows export as a
 chosen subset), all reviewed, the DOM tasks verified by the user. Unit 333/333; `smoke-parameters.mjs`
-33/33. Pushed to `fork`. **The merge back into the studies branch is pending, at the user's say-so;
-the next work is spec task 2 (subject, timepoint, film date, view and the Workspace folder table),
+33/33. Pushed to `fork`. **Merged back into the studies branch on 2026-09-07 (fast-forward); the next work is spec task 2 (subject, timepoint, film date, view and the Workspace folder table),
 which needs its own plan first.** `docs/superpowers/NEXT-SESSION.md` is the prompt.
 
 ## Read these first

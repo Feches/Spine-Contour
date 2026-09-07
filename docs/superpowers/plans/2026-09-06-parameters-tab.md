@@ -2324,3 +2324,6 @@ spec §7–§9, then superpowers:writing-plans, then subagent-driven execution a
 - Ruling: HANDOFF's header, its Parameters section, decisions 37–39 and four new traps, CLAUDE.md's
   branch paragraph and NEXT-SESSION.md are edited in place at the wrap; the scratch SDD workspace
   under `.superpowers/sdd/` is kept (git-ignored) until the branch is finished — cost if wrong: prose.
+
+Merged back into `claude/studies-ui-updates-bb040d` on 2026-09-07 by fast-forward, at the user's say-so; both
+branches pushed to `fork` at the same commit. Spec task 2 starts on a new branch off the studies branch.
