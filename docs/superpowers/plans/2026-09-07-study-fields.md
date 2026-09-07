@@ -3618,3 +3618,38 @@ with output captured to a file.
 
 Session ended 2026-09-07 (planning): resume at **Task 1** (nothing implemented; unit 333/333 at the
 wrap; branch `claude/preop-postop-study-fields` at `76e86b7` plus this plan's commit).
+
+Execution record (2026-09-07, subagent-driven; the scratch ledger `.superpowers/sdd/2026-09-07-study-fields/progress.md`
+holds the per-task detail, these lines are the durable copy). Rulings, in order:
+
+- Ruling: Task 3's `newStudy` writes `view: DEFAULT_VIEW` (imported from data/timepoints.js) instead of the literal,
+  so the default view has one source of truth — cost if wrong: one import line.
+- Ruling: Task 2's test expectations for `sources.view` are `'row'`, not `'default'`, in the `fresh` and
+  `folderSubject` cases — with no row given, `seedFields` derives the row as `folderRows` does (view defaulting to
+  Standing lateral), so a defaulted view reports `'row'`; `'default'` fires only for a row object carrying no view.
+  The module stands as written — cost if wrong: one label no UI reads.
+- Ruling: `loadWorkspaceStudies` returns `clinicalUpdated` beside `updated`, and `workspaceLoadedMessage` gates its
+  honesty clause on it, reworded "no blank clinical fields to fill" — folding study-field fills into `updated` let the
+  first Load over a library that predates the fields claim "clinical data linked" while writing no clinical data
+  (Task 5's review) — cost if wrong: one counter, four test strings, one smoke constant.
+- Ruling: the two bare `.workspace-card-note` selectors in smoke-workspace.mjs are scoped to
+  `.workspace-card-stack .workspace-card-note` in Task 7 (the folder table's note carries the class too) — cost if
+  wrong: none.
+- Ruling: the drawer's study cells write the STORED form back onto the node after the deferred commit, from both
+  commit paths (`commitStudyCell`) — `setStudyField` pre-arms the rebuild gate, so a typed `postop` stayed on
+  screen while the record held Post-op (Task 7's dry run and review) — cost if wrong: one helper.
+- Ruling: the contract's `paramSort` domain comment gains `'subject'` in Task 9; a stale `pairedWith` stays
+  displayed (the select appends the stored label) rather than being reset — cost if wrong: an empty grid until the
+  user re-picks.
+- Ruling (user, at the Task 9 gate): the `with` dropdown gains `All paired` (`ANY_POST`, `'__any__'`) as its first
+  entry and default — a subject pairs when it has a Pre-op film and at least one other labelled film; a specific
+  label narrows; a film with no timepoint never pairs. Spec §10.3's "default Post-op" is amended — cost if wrong:
+  one default string.
+- Fix rounds: Task 5 (1, the `clinicalUpdated` gate), Task 7 (1, the write-back on the blur path), the All-paired
+  change (1, two edge-case tests). Every other task reviewed clean first time. Deferred minors are in the scratch
+  ledger and were triaged by the final whole-branch review.
+
+Session ended 2026-09-07: Tasks 1–11 complete; three human gates passed on the user's machine (outcomes in the
+commits' bodies); unit 379/379; `smoke-parameters.mjs` 46/46; `smoke-seeding.mjs` 36/36; `smoke-workspace.mjs`
+100/100. Resume at: the final whole-branch review's residuals if any, then the merge back into
+`claude/studies-ui-updates-bb040d` at the user's say-so, then spec task 3 or 4.

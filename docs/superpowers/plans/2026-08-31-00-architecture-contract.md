@@ -105,8 +105,11 @@ renderer/                         (new)
   dom.js                          el() helper, tiny render utilities
 
   screens/landing.js
-  screens/workspace.js            exports render(state), loadWorkspaceStudies(state),
-                                  workspaceLoadedMessage({added, known, updated, join, mapping}) (plan 06)
+  screens/workspace.js            exports render(state), loadWorkspaceStudies(state) → {…, updated, clinicalUpdated, seeding}
+                                  (2026-09-07), workspaceLoadedMessage({added, known, updated, join, mapping, seeding,
+                                  clinicalUpdated}) (plan 06; §8.4 clauses 2026-09-07); the folder table (§8.5) and fixed chips
+                                  for structural columns; clinicalUpdated gates the "no blank clinical fields to fill" clause
+                                  (2026-09-07)
   screens/studies.js              exports render(state), formatDate, matchesQuery, newStudy; mounts screens/parameters.js
                                   under a Find | Parameters tab strip (2026-09-06)
   screens/analysis.js             exports setFilePayload, releaseStudy(studyId) (plan 06)
@@ -123,7 +126,7 @@ renderer/                         (new)
   components/measurements.js      right panel, Measurements tab
   components/similar.js           right panel, Find similar tab
   components/clinical-data.js     drawer; exports mountClinicalData(host) → {update} (plan 06) — rows from
-                                  visibleStudies(state), [open] until plan 07
+                                  visibleStudies(state), [open] until plan 07; a Study group of four cells (2026-09-07, spec §9)
   components/toast.js
 
   viewer/canvas.js                layered rendering
@@ -140,6 +143,10 @@ renderer/                         (new)
   data/status.js                  status derivation
   data/csv.js                     parse, auto-map, export
   data/labels.js                  how a study names itself and where it came from
+  data/timepoints.js              (2026-09-07) pure: timepoint and view vocabularies, token normalisation, §7.2 sort order,
+                                  parseFilmDate, the drawer's suggestion lists
+  data/seeding.js                 (2026-09-07) pure: folder segments, §8.1 inference from folders and stems, folderRows for the
+                                  Workspace card's table, seedFields for the §8.3 precedence
   data/parameters.js              (2026-09-06) pure: columns, values, filter options, filter, sort, empty reason, export
                                   filename for the Parameters tab -- see the file header for the exported names;
                                   selection helpers toggleId/withIds/selectedVisible/rowsToExport (2026-09-07)
@@ -174,8 +181,12 @@ The single record type. Demo and real studies share it exactly.
  * @property {string|null} name    display name, defaulted from fileName's stem and renamable
  * @property {string|null} workspaceFolder  the workspace ROOT this film was loaded from;
  *                                          null for a film added with the picker or dropped
+ * @property {string|null} subjectId   (2026-09-07, pre-op/post-op spec §7.1) study code shared by every film of one
+ *                                     subject; compared case-insensitively after trimming; never an MRN, never burned in
+ * @property {string|null} timepoint   'Pre-op' | 'Intra-op' | 'Post-op' | 'N wk' | 'N mo' | 'N yr' | any user label (§7.2)
+ * @property {string|null} filmDate    'YYYY-MM-DD', the acquisition date; never addedAt
  * @property {string}  addedAt     ISO 8601
- * @property {string}  view        'Standing lateral'
+ * @property {string}  view        'Standing lateral' by default; seeded per folder by a workspace load and editable in the drawer (2026-09-07); '' when cleared
  * @property {string|null} thumbnail  data URI, max 128px long edge; null if none
  * @property {Measurements|null} measurements  null when never segmented
  * @property {Geometry|null}     geometry
@@ -186,13 +197,14 @@ The single record type. Demo and real studies share it exactly.
 
 `status` is **derived, never stored** — see `data/status.js`.
 
-`name` and `workspaceFolder` are both **optional and default to `null`**, so they carry no
+`name`, `workspaceFolder`, `subjectId`, `timepoint` and `filmDate` are all **optional and default to `null`**, so they carry no
 `STORE_VERSION` bump: a record written before they existed loads unchanged and simply reads as
 its `SP-nnnn` id with no workspace. Both must appear in `validateStudy`'s returned object or the
 saver writes them and the next load silently drops them. `id` remains the record's identity —
 it names the sidecar, keys the delete, and is the CSV's `Study ID` — so a rename is cosmetic by
 construction and can never orphan a file. The folder shown beside the workspace is **derived
-from `filePath`**, never stored, so it stays correct when a moved film is relocated.
+from `filePath`**, never stored, so it stays correct when a moved film is relocated. `filmDate`
+must match `/^\d{4}-\d{2}-\d{2}$/` or `validateStudy` nulls it with a warning.
 
 Demo studies additionally carry `dx`, `plan`, `hx`, `outcome`, `pt`, `sex`, `age`,
 `bmi`, `odi`, `conf` for display. Real studies leave these absent; the UI renders `—`.
@@ -567,14 +579,20 @@ export const KNOWN_FIELDS = ['Age','Sex','BMI','Diagnosis','ODI',
 
 export function parse(text)              // → {headers: string[], rows: Object[]}
 export function autoMap(headers)         // → Mapping[]   dest null when unmatched
-export function toCsv(studies)           // → string   (2026-09-07) demo rows are never written; the Source column and
-                                         //   the includeDemo option are gone. (2026-09-06) clinical columns are
-                                         //   clinicalFieldNames() over the exported rows -- the `fields` parameter is
-                                         //   gone; see the pre-op/post-op spec §11.1
+export function toCsv(studies)           // → string   (2026-09-07) Study ID,View,Subject,Timepoint,Film date, then the
+                                         //   measurement columns, then the clinical union; demo rows are never written;
+                                         //   the Source column and the includeDemo option are gone. (2026-09-06) clinical
+                                         //   columns are clinicalFieldNames() over the exported rows -- the `fields`
+                                         //   parameter is gone; see the pre-op/post-op spec §11.1
 export function fileStem(name)           // → string   (plan 06) basename without its last extension
 export function findJoinHeader(headers)  // → string|null   (plan 06) the first header normalising to 'studyid'
-export function joinClinical({files, headers, rows, mapping})   // (plan 06) → {joinHeader, byFile, matched, unmatched, duplicates, ambiguous}
+export function joinClinical({files, headers, rows, mapping})   // (plan 06) → {joinHeader, byFile, rowByFile, matched,
+                                         //   unmatched, duplicates, ambiguous} (rowByFile: the matched raw row, 2026-09-07)
 export function clinicalFieldNames(studies)   // → string[]   (plan 06) union of clinical keys, KNOWN_FIELDS order first
+export function findStructuralHeaders(headers)   // (2026-09-07, spec §8.2) → {subjectId, timepoint, filmDate, view}: header names or null
+export function structuralField(header, headers) // → the field a header supplies, or null
+export function structuralFromRow(row, structural)   // → {subjectId, timepoint, filmDate, view, badDate}
+export const STRUCTURAL_LABELS                   // {subjectId: 'Subject', …} for the mapping card's fixed chips
 ```
 
 `parse` handles quoted fields, embedded commas, doubled quotes, and CRLF. It strips a UTF-8 BOM
@@ -588,6 +606,10 @@ header wins (plan 06). It is a **convenience, not an authority**.
 It deliberately has no medical synonym table: `dx_text` does not map to `Diagnosis`,
 because teaching it `dx` would force teaching it `tx`, and a guess that silently maps
 the wrong column is worse than one that maps nothing.
+
+`autoMap` never claims a structural header (`subject_id`/`subject`, `timepoint`/`time_point`/`visit`,
+`study_date`/`film_date`, `view`/`position`, by normalised name, first header wins; a bare `date` is
+not recognised); the mapping card shows those and the join key as fixed chips.
 
 Instead, **the mapping is user-editable**. Each chip on the Workspace screen renders a
 `<select>` of `KNOWN_FIELDS` plus `Unmapped`, a field already claimed by another column

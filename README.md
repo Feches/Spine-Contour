@@ -19,11 +19,21 @@ clinical-data CSV.
 - **Choose folder…** scans the folder and its subfolders for `.dcm`, `.dicom`, `.png`, `.jpg`,
   `.jpeg`, `.tif`, `.tiff` and `.bmp` files in any letter case. Other files, links and junctions
   are skipped and counted, as is any subfolder that cannot be read; links are never followed.
+- After a scan, card 01 lists every folder that holds films with the **timepoint** and **view** the
+  load will assign to the films in it — read off folder names such as `pre-op`, `post-op`, `6wk`,
+  `flexion` or `prone`, else `none` and `Standing lateral` — and lets you change any row, or a whole
+  column with **Set all…**, before pressing Load. A film's own name is more specific than its folder
+  (`S001_preop_flexion.png` sets both), and the first folder below the root that names neither a
+  timepoint nor a view is the film's **subject** (`pre-op/S001.png` and `S001/post-op.png` both read
+  `S001`). Nothing overwrites a value a film already has; the study's drawer does that.
 - **Choose CSV…** (optional) reads a file with one row per study and a `study_id` column. Rows
   join films on the film's filename without its extension, case-insensitively — `SP001.dcm`
   takes the row whose `study_id` is `SP001` or `sp001`. Rows that match no film are counted in
   the load message and not stored; when two rows share a `study_id` the first wins; when two
-  films share a stem the row is attached to neither.
+  films share a stem the row is attached to neither. Four columns are read as study details rather
+  than clinical fields: `subject_id` (or `subject`), `timepoint` (or `visit`), `film_date` (or
+  `study_date`; `YYYY-MM-DD` or `M/D/YYYY` — a bare `date` column is not read), and `view` (or
+  `position`). They beat what the folder names say.
 - Only the nine known clinical fields auto-map — Age, Sex, BMI, Diagnosis, ODI, Treatment plan,
   Surgical history, Follow-up, Notes — by prefix on the column name (`age_yrs` → Age,
   `odi_base` → ODI). Any other column can be mapped from the dropdown on its chip or left
@@ -32,12 +42,21 @@ clinical-data CSV.
   values. Films already in the library (same path) are not added again; the CSV only **fills
   in** clinical fields they are missing and never overwrites a value that is already there
   (use **Import from CSV** on the study's Analysis screen to replace values deliberately).
-  Open a study and run segmentation from its Analysis screen; nothing runs automatically.
+  Open a study and run segmentation from its Analysis screen; nothing runs automatically. The
+  message also says how many films had a subject, timepoint or view read from folder or file
+  names or set from the CSV, how many still have no subject or no timepoint, and how many film
+  dates could not be read.
 - On the Analysis screen the **Clinical data** drawer shows the study's fields. **Import from
   CSV** pulls the matching row from the workspace CSV loaded this session. Values are saved
   with the study; demo studies are not saved and their cells are read-only. The `×` on a
   column head **hides** that column for the session — the values stay on the studies, and the
   column comes back at the next launch if any study still holds a value for it.
+- The drawer's **Study** group holds each film's **Subject**, **Timepoint**, **Film date** and
+  **View**. Subject is a study code, not a name and not a medical record number — the library is not
+  a place for identifiers, and nothing you type there is checked. Timepoint and View suggest the
+  labels the app knows (`Pre-op`, `Intra-op`, `Post-op`, `6 wk`, `1 yr`, `2 yr`; the five lateral
+  positions); anything else is kept as typed. **Import from CSV** also brings these four in when the
+  CSV has the columns.
 - Deleting a study from the Studies list removes its record and its saved segmentation
   (`predictions/<id>.json` in the app's data folder). The film on disk is not touched.
 
@@ -48,18 +67,23 @@ fix has to make first.
 ## Parameters tab
 
 The Studies screen has two tabs. **Find** is the list. **Parameters** shows every segmented study's
-measurements in one grid — PI, PT, SS, LL L1–S1, PI–LL, L1PA, the L2–S1…L5–S1 levels behind a
-**Levels** toggle, any clinical fields in use, and the workspace and folder each film came from.
+measurements in one grid — subject, timepoint, view and film date, then PI, PT, SS, LL L1–S1, PI–LL,
+L1PA, the L2–S1…L5–S1 levels behind a **Levels** toggle, any clinical fields in use, and the
+workspace and folder each film came from.
 
-- Filter by workspace, by folder within it, and by **Segmented only** (on by default; the note beside
-  it says how many unsegmented films are hidden). The search box applies to the grid as well as the
-  list. Click a column header to sort; absent values sort last.
+- Filter by workspace, by folder within it, by timepoint (including films with none), by view, by a
+  subject substring, and **Paired only** (subjects with a Pre-op film and, by default, any other
+  labelled film — **All paired**; pick a label in the `with` dropdown to narrow to that visit), and by
+  **Segmented only** (on by default; the note beside it says how many unsegmented films are hidden).
+  The search box applies to the grid as well as the list. Click a column header to sort; absent
+  values sort last. Sorting by **Subject** groups each subject's films, Pre-op first, with a rule
+  between subjects.
 - Click a study name to open it. Tick rows to choose a subset: the button reads **Export N selected**
   and writes the ticked rows that are visible; with nothing ticked, **Export CSV** writes every
   visible row. Hidden picks stay ticked and return with the filter.
 - The file has three `#` comment lines, then the header
-  `Study ID,View,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1` followed
-  by every clinical field present on the exported studies. Absent values are empty cells. Demo
+  `Study ID,View,Subject,Timepoint,Film date,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1`
+  followed by every clinical field present on the exported studies. Absent values are empty cells. Demo
   studies are never exported.
 
 ## Models

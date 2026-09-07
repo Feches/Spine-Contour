@@ -65,6 +65,9 @@ counted and named in the load message, as unmatched rows already are.
   does not exist in this library, which needs its own reporting.
   (c) Give every study a stable external identifier and export that. Cleanest long term, and it is
   the same conversation as item 3 below, but it changes the stored record and forces a version bump.
+  **2026-09-07:** the record now carries `subjectId` and `timepoint` (pre-op/post-op spec task 2),
+  which is the stable external identity for analysis; whether the import should join on them is
+  still this decision.
 - **Comment lines: skip or forbid?** Skipping lines that begin with `#` before the header is a small
   change to `parse` and makes the app's own export readable. It also silently changes how a
   third-party CSV whose first column legitimately starts with `#` is read. Decide, then test it.
@@ -227,6 +230,19 @@ Not code quality; these stand between the branch and a production release.
   that are visible (HANDOFF decision 38): a tick hidden by a filter is still a tick. Clicking an
   indeterminate select-all selects everything visible, so clearing a partial pick is two clicks. A
   `Clear selection` control shown whenever any pick exists, visible or not, would blunt both.
+- **The folder table on the Workspace card has no collapsed form.** A layout with one folder per
+  subject gives one row per subject; the rows scroll inside the card and the column-header `Set all…`
+  sets a whole column, which is workable. If it proves not to be, spec §16's escalation is to collapse
+  rows whose inferred values are identical into one summary row with an expand control — never to hide
+  the table, because its point is that every assignment was on screen before Load.
+- **A film loaded before 2026-09-07 keeps `Standing lateral` for ever under the fill-blanks rule**
+  (HANDOFF decision 32): `view` is never blank, so a later Load cannot correct it, and the drawer is the
+  only path — one film at a time. A bulk relabel (select rows on the Parameters grid, set a view) would
+  close this; it needs a decision on whether Load may overwrite a value the app itself hard-coded.
+- **The Parameters tab's Subject box rebuilds the grid on every keystroke with no debounce.** Fine at library
+  scale so far; on a several-hundred-film workspace with `Levels` on it will be felt, and destroying the focused
+  input mid-keystroke would cut an IME composition. A debounce, or excluding the filter bar from the rebuild, is
+  the fix when it is needed (2026-09-07, Task 9's review).
 
 ---
 

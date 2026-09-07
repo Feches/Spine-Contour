@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-07
 **Branch:** `claude/studies-ui-updates-bb040d` (the studies work plus the Parameters tab, on top of `origin/ui-redesign-cw` @ `0022d91`)
 **Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
-**This copy is on:** `claude/preop-postop-xray-org-2c4d80` (the Parameters tab and its addendum, code and
-docs; merged back into the branch above on 2026-09-07 by fast-forward, so both are at the same commit), worktree
+**This copy is on:** `claude/preop-postop-study-fields` (task 2 of the pre-op/post-op spec, code and
+docs; branched 2026-09-07 off the studies tip `76e86b7`; merge back is the user's call), worktree
 `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628` — see the first
 section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
@@ -21,6 +21,43 @@ section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 ---
 
 ## Where things stand
+
+### Study fields — task 2 of the pre-op/post-op spec, DONE (branch `claude/preop-postop-study-fields`)
+
+Spec: `docs/superpowers/specs/2026-09-06-preop-postop-organisation-design.md` §7, §8 (with §8.5), §9,
+the §10.3 filters and subject sort, §11.1's three columns. Plan: `docs/superpowers/plans/2026-09-07-study-fields.md`
+(its `## Ledger` carries every ruling and every deferred finding). Commits: `git log --oneline 76e86b7..HEAD`.
+
+- Every record carries `subjectId`, `timepoint`, `filmDate` (optional, null-default, no `STORE_VERSION`
+  bump; `validateStudy` returns them and nulls a malformed date with a warning). `view` is editable
+  and seeded per folder; a cleared view stores `''`, never null.
+- `renderer/data/timepoints.js` (vocabulary, §7.2 order, `parseFilmDate`) and `renderer/data/seeding.js`
+  (folder/stem inference, `folderRows`, `seedFields` for §8.3) are pure and unit-tested. The workspace
+  load seeds the four fields under fill-blanks, reads the CSV's `subject_id`/`timepoint`/`film_date`/`view`
+  columns (never into `clinical`), and its toast carries the §8.4 clauses.
+- The Workspace card shows the folder table (`state.wsFolderRows`, rebuilt by every scan, never
+  persisted) with per-row and set-all selects; the mapping card shows the join key and structural
+  columns as fixed chips.
+- The drawer has a Study group (SUBJECT, TIMEPOINT with a datalist, FILM DATE as a date input, VIEW with a
+  datalist) ahead of the clinical fields; a typed timepoint normalises to a known label; Import from
+  CSV also writes the four fields.
+- The Parameters grid shows the four columns after STUDY, filters by timepoint (with `No timepoint`),
+  view, subject substring and paired-only (`with` a post label whose default is `All paired` — any
+  labelled non-Pre-op film — evaluated before the timepoint filter), sorts by subject (no subject last
+  in both directions; a block always reads Pre-op first) with a rule between blocks; `toCsv` writes
+  `Subject,Timepoint,Film date` after `View`.
+- The dev build's demo pair: SP-0042 (Pre-op) and SP-0039 (Post-op) are subject `P-8841`; SP-0039's
+  patient fields were rewritten to match.
+- Verified: unit 379/379; `smoke-parameters.mjs` 46/46; `smoke-seeding.mjs` 36/36;
+  `smoke-workspace.mjs` 100/100. Tasks 6, 7 and 9 were verified by the user; the outcomes are in
+  those commits' bodies.
+- Not built here, by design: the paired export (§11.2, task 4) and compare-with-pre-op (§12, task 3,
+  after plan 07).
+
+**Traps:** `list` is a read-only accessor on `HTMLInputElement`, so it must never be an `el()` prop —
+`setAttribute('list', …)` after construction (the `style` trap's sibling). The drawer's group row
+carries `clinical-grid-group`, not `clinical-grid-head`; a smoke reader that filters rows by the
+head class alone counts it as a data row.
 
 ### Parameters tab — task 1 of the pre-op/post-op spec, DONE with an addendum (branch `claude/preop-postop-xray-org-2c4d80`)
 
@@ -1199,6 +1236,29 @@ are implemented on the same branch (the plan's addendum, Tasks 9–12).
     the spec's sticky first column and `<th scope="row">` semantics stay untouched; a whole-row click
     fights the table's other affordances; a chip would repeat the select beside it.
 
+The following were settled with the user in chat on **2026-09-07**, before the study-fields plan was
+written, and are implemented on `claude/preop-postop-study-fields`.
+
+40. **The dev build seeds one demo pair: SP-0042 (Pre-op) and SP-0039 (Post-op) as subject `P-8841`,
+    with SP-0039's patient fields rewritten to match SP-0042's** (spec §7.4 asked for two demos with the
+    fields; the user chose to seed a pair over skipping it). *Cost if wrong:* two demo records diverge
+    from the design template's STUDIES array; the file header says so.
+41. **The drawer's timepoint and view "chips" are native `<datalist>` suggestions** on the text cells.
+    *Cost if wrong:* a chip row would be a small addition.
+42. **Import from CSV also overwrites Subject, Timepoint, Film date and View** from the row's structural
+    columns, counted separately in the toast. *Cost if wrong:* a clinical-only re-import retypes four cells.
+43. **Task 2 is on a new branch off the studies tip** (`claude/preop-postop-study-fields`), merged back
+    by fast-forward at the user's say-so.
+44. **Planner rulings recorded in the plan's header** (a typed timepoint normalises to a known label; a
+    cleared view stores `''`; the grid and the CSV show the film date as stored; a `No timepoint` filter
+    entry; paired-only is evaluated before the timepoint filter; the subject sort keeps a block Pre-op
+    first in both directions; the load clause reads "folder or file names"; fixed chips; focus restore by
+    `data-ws-key`). Each carries its cost in `docs/superpowers/plans/2026-09-07-study-fields.md`.
+45. **The paired-only `with` dropdown's first entry and default is `All paired`** (value `'__any__'`, `ANY_POST`): a
+    subject pairs when it has a Pre-op film and at least one other labelled film; a specific label narrows to that
+    pair; a film with no timepoint never pairs. *Why:* the user's follow-up films were labelled `6 wk`, and nothing
+    paired under `Post-op`. *Cost if wrong:* one default string; the spec's §10.3 is amended.
+
 ## Release prerequisites — before a production release
 
 These are about shipping `latest-windows`, not about any remaining plan work; plan 07 is
@@ -1235,6 +1295,13 @@ production release:
   and the app alive on port 9222; `SendMessage` is not available in this harness, so it cannot be
   resumed. Say "run each suite in the foreground and capture its output to a file" in every dispatch
   that runs one; the recovery is a fresh finisher told the working-tree state.
+- **`list` is a read-only accessor on `HTMLInputElement`** (it returns the bound datalist), so
+  `el('input', { list: 'x' })` throws in strict mode the way `style` does. `setAttribute('list', …)`
+  after construction. (2026-09-07, the drawer's Study group.)
+- **A commit that pre-arms the rebuild gate must write the stored form back onto the node** when the store keeps
+  something other than what was typed (a timepoint normalised to its label, a trimmed subject): nothing else
+  repaints the cell, and the restore's blur listener is the only commit path after an external rebuild. The
+  drawer's `commitStudyCell` does this for both paths (2026-09-07, Task 7's review).
 - **`cdp-lib.mjs`'s `key('Enter')` and Space send no `text`**, so Blink emits no keypress and a native
   `<button>` or checkbox never activates from them; dispatch the key event with `text` yourself. The
   suites click; the human's real Enter works.

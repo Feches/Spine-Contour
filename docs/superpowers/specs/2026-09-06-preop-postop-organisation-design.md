@@ -226,7 +226,8 @@ the timepoint, not the view (decision 4). A folder named `prone` does.
 `validateStudy` returns the three fields, each `null` unless a non-empty string. `filmDate` is
 additionally checked against `/^\d{4}-\d{2}-\d{2}$/` and nulled with a console warning otherwise (a
 malformed date is not fatal to the record). Demo studies may carry the fields; two of the nine should,
-so the dev build demonstrates pairing without a fixture.
+so the dev build demonstrates pairing without a fixture. **Done 2026-09-07 as SP-0042 (Pre-op) and
+SP-0039 (Post-op), subject `P-8841`; SP-0039's patient fields were rewritten to match (user decision).**
 
 ## 8. Seeding on load
 
@@ -293,11 +294,17 @@ drawer overwrites anything.
 
 `workspaceLoadedMessage` gains up to three clauses, each present only when its count is non-zero:
 
-- `· subject, timepoint or view read from folder names for N films`
+- `· subject, timepoint or view read from folder or file names for N films`
 - `· subject, timepoint, film date or view set from the CSV for N films`
 - `· N films have no subject` (or `no timepoint`; both when both)
 - `· N film dates could not be read` — the rejected text is stored nowhere; the film's empty Film date cell in
   the Parameters grid is how the user finds which one
+
+The "or file names" wording was added at implementation (2026-09-07): a flat folder seeds every
+subject from the film's own stem. The load's own parenthesis reads `(blank fields filled for N)` and
+the honesty clause `CSV matched N rows; no blank clinical fields to fill …` is gated on clinical
+fills only, so a subject filled from a folder name never makes the message claim a clinical write
+(review finding, 2026-09-07).
 
 ### 8.5 The folder table
 
@@ -333,6 +340,11 @@ so the new cells sit beside that study's clinical values. These four columns can
 do not appear in the `ADD FIELD` chips, because they are not clinical fields. The same deferred
 commit pattern the clinical grid uses (HANDOFF, "two deferred commits") applies, so a rebuild does not
 strand typed text. Edits go through `setState` with a new `studies` reference, never in place.
+
+**Implemented 2026-09-07:** the chips are native `<datalist>` suggestions on the Timepoint and View
+cells (user decision); a typed timepoint that names a known label is stored as that label, so it
+pairs; a cleared View cell stores `''` (the store requires a string) and renders as a dash; Import
+from CSV also writes the four fields from the row's structural columns (user decision).
 
 ## 10. Parameters tab
 
@@ -386,7 +398,7 @@ clears it in place (a dropdown's `All …` entry, a checkbox's untick); there ar
 | Timepoint | dropdown of labels present, in §7.2 order | |
 | View | dropdown of views present | flexion against extension, or standing against prone |
 | Subject | text, substring | |
-| Paired only | checkbox + a `with` dropdown of post-side labels, default `Post-op` | keeps subjects having both a `Pre-op` film and the chosen label; hides everyone else and says how many |
+| Paired only | checkbox + a `with` dropdown whose first entry and default is `All paired` (any labelled film that is not Pre-op), then Post-op and the other labels present | keeps subjects having a `Pre-op` film and, under All paired, any other labelled film, else the chosen label; hides everyone else and says how many (user decision at the task-2 gate, 2026-09-07: a follow-up study labels its post films 6 wk or 1 yr as often as Post-op.) |
 | Segmented only | checkbox, default on | shows `N unsegmented hidden` beside it |
 
 Sort: by subject (then §7.2 order, then film date), by study name (the id is on the name's tooltip,
@@ -507,9 +519,9 @@ implementation plan, each merged back before the next starts:
 1. **Parameters tab** — DONE (plan `2026-09-06-parameters-tab.md`) — with workspace, folder and
    segmented-only filters, sort, and long export of the visible set with the union-of-clinical-keys
    rule. No new fields; nothing in §7–§9. Independently useful, and every later piece lands in it.
-2. **Subject, timepoint, film date and view**: §7, §8 including the folder table, §9, the timepoint,
-   view, subject and paired-only filters, subject sort, the load message, the three new export
-   columns.
+2. **Subject, timepoint, film date and view** — DONE (plan `2026-09-07-study-fields.md`): §7, §8
+   including the folder table, §9, the timepoint, view, subject and paired-only filters, subject
+   sort, the load message, the three new export columns.
 3. **Compare with pre-op** (§12), after plan 07 has built comparison mode.
 4. **Paired export** (§11.2, §11.3).
 
