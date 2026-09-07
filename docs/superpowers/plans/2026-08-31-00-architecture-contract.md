@@ -813,3 +813,10 @@ bundle can be asked what it offers.
 
 Nothing about `measurements`, `geometry`, `/measure`, persistence shapes or
 `STORE_VERSION` changes.
+
+
+## 2026-09-07 amendment: image calibration
+
+User-authorized addition on ui-redesign-cw: `screen: 'calibration'` mounts a persistent, session-only original-image calibration screen. It uses the existing sidebar shell, tokens, workspace folder scanner and IPC API wrappers. `renderer/components/calibration-viewer.js` owns pointer handling for its separate reference canvas; the anatomical stage remains exclusively owned by `components/viewer.js`. Pure distance/spacing logic is in `renderer/data/calibration.js` with Node test coverage. Calibration never mutates study geometry or reuses one image's pixel scale for another. Folder color feedback supplements detection, not neural-model training. Study persistence has not been extended; JSON export is explicit.
+
+New optional backend endpoints: `POST /calibrate` (file, optional color profile, preview controls) and `POST /calibration-profile` (file and corrected endpoints). OCR failures preserve manual calibration. Desktop bundles include Tesseract and language data. No new npm dependencies or CSP changes.

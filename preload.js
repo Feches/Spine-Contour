@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('spineContour', {
+  calibrate: (request) => ipcRenderer.invoke('calibrate', request),
+  learnCalibrationProfile: (request) => ipcRenderer.invoke('calibration-profile', request),
   selectFile: () => ipcRenderer.invoke('select-file'),
   predict: (request) => ipcRenderer.invoke('predict', request),
   measure: (geometry) => ipcRenderer.invoke('measure', geometry),
