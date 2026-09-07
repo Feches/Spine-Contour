@@ -2065,3 +2065,24 @@ in Task 5 step 4; its step 11 also closes Task 4's unchecked console step). Resu
 
 Task 5 human gate (2026-09-07): all eleven checks pass on the user's real library (112 studies, 13
 segmented); no lag on search; the console check also closes Task 4's unchecked step 6. Task 5 complete.
+
+Session paused 2026-09-07 (third gate): Task 6 code complete at c2409dd, reviewed clean, harness
+13/13 on the reachable parts — **awaiting the human gate** (the five checks in Task 6 step 6: the
+native save dialog, cancel without a toast, the toast's row count, the file's header). Resume by
+amending c2409dd's message with the outcomes (it is HEAD), then Task 7.
+
+Decisions with the user (2026-09-07, at the Task 6 gate):
+- Ruling (user): the CSV's `Source` column and the unused `includeDemo` option are removed from `toCsv`
+  — the export dialog that would have set the option was never built, nothing passes it, and no
+  installer ships demos, so the column reads `real` on every row of every file the app can write; the
+  import does not read it — cost if wrong: a fabricated demo row could no longer be marked, and no path
+  writes one. Lands as a task appended after Task 8 and the final review.
+- Ruling (user): "export selected studies" (checkbox column, header select-all, selection as a store key
+  replaced wholesale, `Export N selected` when any visible row is selected else all visible, `N SELECTED`
+  on the count line, the toast names the count) is a spec addendum to §10.4 with its own reviewed tasks
+  and one more human gate, sequenced after Tasks 7–8 and the final whole-branch review and before the
+  merge back — cost if wrong: one more gate before the merge.
+
+Task 6 human gate (2026-09-07): checks 2, 3, 4, 5 pass on the user's real library; check 1 and the
+`<root>-parameters.csv` half of check 3 are not reachable there (no demos-only view, no workspace
+root) and stand on the harness's assertions on the scratch profile. Task 6 complete.
