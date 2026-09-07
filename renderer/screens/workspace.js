@@ -41,6 +41,8 @@ let lastScan = null; // { folder, skipped }
 // being filled. `seeding` counts, over the scanned films, how many had something read from the
 // folder layout or the film's own name, how many took something from the CSV, how many end the
 // load with no subject or no timepoint, and how many CSV dates could not be read (§8.4).
+// `clinicalUpdated` counts only the records that had a clinical key filled; `updated` counts any
+// blank filled, a study field included.
 export function loadWorkspaceStudies(state) {
   const join = state.wsCsv
     ? joinClinical({ files: state.wsFiles, headers: state.wsCsvHeaders, rows: state.wsCsvRows, mapping: state.wsMapping })
@@ -67,6 +69,7 @@ export function loadWorkspaceStudies(state) {
   const replacements = new Map(); // study id -> the updated record
   let known = 0;
   let updated = 0;
+  let clinicalUpdated = 0;
   const seeding = { fromFolders: 0, fromCsv: 0, noSubject: 0, noTimepoint: 0, badDates: 0 };
 
   for (const filePath of state.wsFiles) {
@@ -102,6 +105,11 @@ export function loadWorkspaceStudies(state) {
       if (record !== existing) {
         replacements.set(existing.id, record);
         updated += 1;
+        // Counted apart from `updated`: the toast's "no blank clinical fields to fill" clause is
+        // about clinical data, and a subject filled from a folder name must not make it claim a
+        // clinical write (the first Load over a library that predates the study fields fills
+        // subjects and nothing else).
+        if (Object.keys(fills).length > 0) clinicalUpdated += 1;
       }
       countMissing(seeding, record);
       continue;
@@ -123,7 +131,7 @@ export function loadWorkspaceStudies(state) {
   }
 
   const existingWithUpdates = state.studies.map((study) => replacements.get(study.id) ?? study);
-  return { studies: [...added, ...existingWithUpdates], added: added.length, known, updated, join, seeding };
+  return { studies: [...added, ...existingWithUpdates], added: added.length, known, updated, clinicalUpdated, join, seeding };
 }
 
 // "read from folder or file names" counts a film when any field came from a folder segment, the
@@ -172,7 +180,8 @@ function seedingClauses(seeding) {
 
 // The post-load toast. Every clause describes something the load actually did. `updated` counts
 // records that had a blank filled -- a clinical key or one of the four study fields.
-export function workspaceLoadedMessage({ added, known, updated, join, mapping, seeding = null }) {
+// `clinicalUpdated` defaults to `updated` for a caller that does not separate them.
+export function workspaceLoadedMessage({ added, known, updated, join, mapping, seeding = null, clinicalUpdated = updated }) {
   return `Workspace loaded — ${added} ${added === 1 ? 'study' : 'studies'} added`
     + (known ? ` · ${known} already in the library` : '')
     + (updated ? ` (blank fields filled for ${updated})` : '')
@@ -181,13 +190,14 @@ export function workspaceLoadedMessage({ added, known, updated, join, mapping, s
         ? ` · CSV has no study_id column — ${join.unmatched} row${join.unmatched === 1 ? '' : 's'} not linked`
         : (mapping.every((m) => !m.dest)
           ? ' · no columns mapped'
-          // Nothing added and nothing updated, with rows that did match: the load wrote no
-          // clinical data at all. That is the correction workflow -- fix a wrong Age in the
-          // CSV, re-pick it, press Load -- and Load fills only BLANKS, so "clinical data
-          // linked" would describe a write that did not happen. Say what happened instead,
-          // and name the control that does overwrite.
-          : (added === 0 && updated === 0 && join.matched > 0
-            ? ` · CSV matched ${join.matched} row${join.matched === 1 ? '' : 's'}; no blank fields to fill (use Import from CSV to replace existing values)`
+          // Nothing added and no clinical key filled, with rows that did match: the load wrote no
+          // clinical data at all -- a subject or view filled from a folder name does not change
+          // that, which is why the gate is `clinicalUpdated`, not `updated`. That is the
+          // correction workflow -- fix a wrong Age in the CSV, re-pick it, press Load -- and Load
+          // fills only BLANKS, so "clinical data linked" would describe a write that did not
+          // happen. Say what happened instead, and name the control that does overwrite.
+          : (added === 0 && clinicalUpdated === 0 && join.matched > 0
+            ? ` · CSV matched ${join.matched} row${join.matched === 1 ? '' : 's'}; no blank clinical fields to fill (use Import from CSV to replace existing values)`
             : ` · clinical data linked (${join.matched} matched`
               + (join.unmatched ? `, ${join.unmatched} unmatched` : '')
               + (join.duplicates ? `, ${join.duplicates} duplicate study_id` : '')

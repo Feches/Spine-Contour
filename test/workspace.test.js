@@ -86,6 +86,7 @@ test('loadWorkspaceStudies fills only the blank clinical keys of a known record 
   assert.equal(result.known, 2);
   // Only `a` had something to fill; `b`'s single CSV key (Age) is already set on the record.
   assert.equal(result.updated, 1);
+  assert.equal(result.clinicalUpdated, 1);
   assert.equal(result.join.matched, 2);
   assert.equal(result.studies.length, 4);
   const merged = result.studies[1];
@@ -203,12 +204,18 @@ test('workspaceLoadedMessage says nothing was written when a re-Load found no bl
   const join = { joinHeader: 'study_id', byFile: new Map(), matched: 2, unmatched: 0, duplicates: 0, ambiguous: 0 };
   assert.equal(workspaceLoadedMessage({ added: 0, known: 3, updated: 0, join, mapping }),
     'Workspace loaded — 0 studies added · 3 already in the library'
-    + ' · CSV matched 2 rows; no blank fields to fill (use Import from CSV to replace existing values)');
+    + ' · CSV matched 2 rows; no blank clinical fields to fill (use Import from CSV to replace existing values)');
   // Only that exact combination changes. One field filled, and the load DID write: the linked
   // clause and its counts come back verbatim.
   assert.equal(workspaceLoadedMessage({ added: 0, known: 3, updated: 1, join, mapping }),
     'Workspace loaded — 0 studies added · 3 already in the library (blank fields filled for 1)'
     + ' · clinical data linked (2 matched)');
+  // The upgrade path: a library that predates the study fields gets its subjects filled from
+  // folder names and nothing clinical -- `updated` is 1, `clinicalUpdated` is 0, and the message
+  // must still say that no clinical data was written.
+  assert.equal(workspaceLoadedMessage({ added: 0, known: 3, updated: 1, clinicalUpdated: 0, join, mapping }),
+    'Workspace loaded — 0 studies added · 3 already in the library (blank fields filled for 1)'
+    + ' · CSV matched 2 rows; no blank clinical fields to fill (use Import from CSV to replace existing values)');
   // A new film was added, so the load wrote its row: unchanged as well.
   assert.equal(workspaceLoadedMessage({ added: 1, known: 3, updated: 0, join, mapping }),
     'Workspace loaded — 1 study added · 3 already in the library · clinical data linked (2 matched)');
@@ -226,7 +233,7 @@ test('workspaceLoadedMessage says "1 row" for a single CSV match with nothing to
   const join = { joinHeader: 'study_id', byFile: new Map(), matched: 1, unmatched: 0, duplicates: 0, ambiguous: 0 };
   assert.equal(workspaceLoadedMessage({ added: 0, known: 3, updated: 0, join, mapping }),
     'Workspace loaded — 0 studies added · 3 already in the library'
-    + ' · CSV matched 1 row; no blank fields to fill (use Import from CSV to replace existing values)');
+    + ' · CSV matched 1 row; no blank clinical fields to fill (use Import from CSV to replace existing values)');
 });
 
 // ---------------------------------------------------------------------------
@@ -273,6 +280,8 @@ test('loadWorkspaceStudies fills a known record\'s blank study fields on a new o
   assert.equal(result.added, 0);
   assert.equal(result.known, 2);
   assert.equal(result.updated, 1);
+  // A study field filled is not a clinical write.
+  assert.equal(result.clinicalUpdated, 0);
   const filled = result.studies.find((s) => s.id === 'SP-1000');
   assert.notEqual(filled, blank);
   assert.deepEqual(pick(filled), { subjectId: 'S001', timepoint: 'Pre-op', filmDate: null, view: 'Standing lateral' });

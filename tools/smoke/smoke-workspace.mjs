@@ -83,7 +83,7 @@ const TOAST_FIRST_LOAD = `Workspace loaded — 3 studies added · ${LINKED_CLAUS
 // clause; `matched` is still 2 (a and b), which is the number it reports. The subjects are
 // stored now, so nothing is read from names; the three timepoints are still missing.
 const TOAST_SECOND_LOAD = 'Workspace loaded — 0 studies added · 3 already in the library'
-  + ' · CSV matched 2 rows; no blank fields to fill (use Import from CSV to replace existing values)'
+  + ' · CSV matched 2 rows; no blank clinical fields to fill (use Import from CSV to replace existing values)'
   + ' · 3 films have no timepoint';
 const CLINICAL_A = { Age: '58', Sex: 'F', 'Treatment plan': 'Fusion' };
 const CLINICAL_B = { Age: '61', Sex: 'M', 'Treatment plan': 'Observation' };
