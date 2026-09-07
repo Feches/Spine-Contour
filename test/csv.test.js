@@ -20,7 +20,7 @@ function study(overrides) {
 }
 
 test('toCsv leads with the attribution and NOT FOR CLINICAL USE comment block', () => {
-  const csv = toCsv([], [], {});
+  const csv = toCsv([], {});
   const lines = csv.split('\r\n');
   assert.equal(lines[0], '# Spine Contour export');
   assert.match(lines[1], /^# Created by /);
@@ -34,15 +34,15 @@ test('toCsv leads with the attribution and NOT FOR CLINICAL USE comment block', 
 
 test('toCsv excludes demo studies by default and includes them with opts.includeDemo', () => {
   const studies = [study({ id: 'SP-1000', source: 'real' }), study({ id: 'SP-0030', source: 'demo' })];
-  const excluded = toCsv(studies, [], {});
+  const excluded = toCsv(studies, {});
   assert.ok(excluded.includes('SP-1000'));
   assert.ok(!excluded.includes('SP-0030'));
-  const included = toCsv(studies, [], { includeDemo: true });
+  const included = toCsv(studies, { includeDemo: true });
   assert.ok(included.includes('SP-0030'));
 });
 
 test('toCsv exports absent measurements as empty cells, never 0', () => {
-  const csv = toCsv([study({ measurements: null })], [], {});
+  const csv = toCsv([study({ measurements: null })], {});
   const dataLine = csv.split('\r\n').find((line) => line.startsWith('SP-1000'));
   const cells = dataLine.split(',');
   // Study ID, Source, View, then the ten measurement columns.
@@ -54,27 +54,52 @@ test('toCsv exports real measurements including the derived PI-LL mismatch colum
     SS: 38.2, PI: 52.7, PT: 14.6, L1PA: 21.3,
     LL: { 'L1-S1': 47.1, 'L2-S1': 40.0, 'L3-S1': 30.5, 'L4-S1': 18.2, 'L5-S1': 6.4 },
   };
-  const csv = toCsv([study({ measurements })], [], {});
+  const csv = toCsv([study({ measurements })], {});
   const header = csv.split('\r\n')[3].split(',');
   const dataLine = csv.split('\r\n')[4].split(',');
   const mismatchIndex = header.indexOf('PI-LL Mismatch');
   assert.ok(Math.abs(Number(dataLine[mismatchIndex]) - (52.7 - 47.1)) < 1e-9);
 });
 
-test('toCsv appends one column per clinical field and quotes fields containing commas', () => {
-  const csv = toCsv(
-    [study({ clinical: { Diagnosis: 'Spondylolisthesis, grade 2' } })],
-    ['Diagnosis'],
-    {},
-  );
-  const dataLine = csv.split('\r\n').find((line) => line.startsWith('SP-1000'));
-  assert.ok(dataLine.includes('"Spondylolisthesis, grade 2"'));
+test('toCsv writes every clinical field present on the exported studies, KNOWN_FIELDS order first, then custom', () => {
+  const csv = toCsv([
+    study({ id: 'SP-1000', clinical: { Zeta: 'z', Age: '58' } }),
+    study({ id: 'SP-1001', clinical: { Diagnosis: 'Spondylolisthesis, grade 2' } }),
+  ], {});
+  const lines = csv.split('\r\n');
+  const header = lines[3].split(',');
+  // Study ID, Source, View, ten measurement columns, then the union: known fields in
+  // KNOWN_FIELDS order, then custom names in first-seen order.
+  assert.deepEqual(header.slice(13), ['Age', 'Diagnosis', 'Zeta']);
+  const row1000 = lines[4];
+  const row1001 = lines[5];
+  assert.ok(row1000.startsWith('SP-1000'));
+  assert.ok(row1000.endsWith(',58,,z'));
+  assert.ok(row1001.startsWith('SP-1001'));
+  assert.ok(row1001.endsWith(',,"Spondylolisthesis, grade 2",'));
+});
+
+test('toCsv writes no clinical columns when no exported study carries a value', () => {
+  const csv = toCsv([study({ clinical: {} }), study({ id: 'SP-1001' })], {});
+  const header = csv.split('\r\n')[3].split(',');
+  assert.equal(header.length, 13);
+  assert.equal(header[12], 'LL L5-S1');
+});
+
+test("toCsv ignores an excluded demo study's clinical keys when choosing the columns", () => {
+  const csv = toCsv([
+    study({ id: 'SP-1000', clinical: { Age: '58' } }),
+    study({ id: 'SP-0042', source: 'demo', clinical: { Notes: 'demo only' } }),
+  ], {});
+  const header = csv.split('\r\n')[3].split(',');
+  assert.deepEqual(header.slice(13), ['Age']);
+  assert.ok(!csv.includes('demo only'));
 });
 
 test('toCsv is safe against incompletely populated measurements', () => {
   // Study with LL absent but PI/PT/SS/L1PA present: those values should export, LL-dependent columns empty
   const missingLl = study({ id: 'SP-2000', measurements: { PI: 52.7, PT: 14.6, SS: 38.2, L1PA: 21.3 } });
-  const csvNoLl = toCsv([missingLl], [], {});
+  const csvNoLl = toCsv([missingLl], {});
   const headerNoLl = csvNoLl.split('\r\n')[3].split(',');
   const dataLineNoLl = csvNoLl.split('\r\n')[4].split(',');
 
@@ -104,7 +129,7 @@ test('toCsv is safe against incompletely populated measurements', () => {
 
   // Study with LL present but PI absent: LL values export, PI-LL Mismatch empty, no NaN
   const missingPi = study({ id: 'SP-2001', measurements: { PT: 14.6, SS: 38.2, L1PA: 21.3, LL: { 'L1-S1': 47.1, 'L2-S1': 40.0, 'L3-S1': 30.5, 'L4-S1': 18.2, 'L5-S1': 6.4 } } });
-  const csvNoPi = toCsv([missingPi], [], {});
+  const csvNoPi = toCsv([missingPi], {});
   assert.ok(!csvNoPi.includes('NaN'));
   const headerNoPi = csvNoPi.split('\r\n')[3].split(',');
   const dataLineNoPi = csvNoPi.split('\r\n')[4].split(',');
@@ -135,7 +160,7 @@ test('toCsv rounds the derived PI-LL mismatch to one decimal, clearing float noi
     SS: 42.7, PI: 48.6, PT: 5.9, L1PA: 3.8,
     LL: { 'L1-S1': 49.0, 'L2-S1': 40.0, 'L3-S1': 30.5, 'L4-S1': 18.2, 'L5-S1': 6.4 },
   };
-  const csv = toCsv([study({ measurements })], [], {});
+  const csv = toCsv([study({ measurements })], {});
   const header = csv.split('\r\n')[3].split(',');
   const dataLine = csv.split('\r\n')[4].split(',');
   const mismatchIndex = header.indexOf('PI-LL Mismatch');
@@ -149,7 +174,7 @@ test('toCsv exports a real measured 0 as 0, not an empty cell', () => {
     SS: 0, PI: 52.7, PT: 14.6, L1PA: 21.3,
     LL: { 'L1-S1': 0, 'L2-S1': 40.0, 'L3-S1': 30.5, 'L4-S1': 18.2, 'L5-S1': 6.4 },
   };
-  const csv = toCsv([study({ measurements })], [], {});
+  const csv = toCsv([study({ measurements })], {});
   const header = csv.split('\r\n')[3].split(',');
   const dataLine = csv.split('\r\n')[4].split(',');
   const ssIndex = header.indexOf('SS');

@@ -467,7 +467,7 @@ export function render(state) {
     // No includeDemo. It is a no-op today (openId is always a real study), but plan 05
     // makes the nine demo studies openable, at which point `includeDemo: true` would
     // silently write fabricated measurements into a research CSV.
-    const csv = toCsv(live.studies.filter((s) => s.id === live.openId), live.fields, {});
+    const csv = toCsv(live.studies.filter((s) => s.id === live.openId), {});
     const open = currentStudy(live);
     try {
       const savedTo = await saveCsv({ text: csv, suggestedName: `${open ? open.id : 'export'}.csv` });

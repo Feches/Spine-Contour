@@ -551,7 +551,8 @@ export const KNOWN_FIELDS = ['Age','Sex','BMI','Diagnosis','ODI',
 
 export function parse(text)              // → {headers: string[], rows: Object[]}
 export function autoMap(headers)         // → Mapping[]   dest null when unmatched
-export function toCsv(studies, fields, opts)   // → string
+export function toCsv(studies, opts)     // → string   (2026-09-06) clinical columns are clinicalFieldNames() over the
+                                         //   exported rows -- the `fields` parameter is gone; see the pre-op/post-op spec §11.1
 export function fileStem(name)           // → string   (plan 06) basename without its last extension
 export function findJoinHeader(headers)  // → string|null   (plan 06) the first header normalising to 'studyid'
 export function joinClinical({files, headers, rows, mapping})   // (plan 06) → {joinHeader, byFile, matched, unmatched, duplicates, ambiguous}

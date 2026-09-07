@@ -42,9 +42,17 @@ function escapeField(value) {
   return text;
 }
 
-export function toCsv(studies, fields, opts = {}) {
+export function toCsv(studies, opts = {}) {
   const includeDemo = opts.includeDemo === true;
   const rows = studies.filter((study) => includeDemo || study.source !== 'demo');
+
+  // Every clinical key present on the exported rows, KNOWN_FIELDS order then custom -- NOT the
+  // session's visible field list. A column hidden in the drawer for the session used to vanish
+  // from the file with nothing in the file to say so (roadmap item 1); now the file carries every
+  // stored value, and a reader can tell an absent value from a hidden column because there are
+  // no hidden columns. Computed over `rows`, after the demo filter, so an excluded demo study
+  // cannot add a column.
+  const fields = clinicalFieldNames(rows);
 
   const citation = [
     '# Spine Contour export',
