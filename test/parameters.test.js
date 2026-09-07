@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  HAND_ADDED, DEFAULT_FILTERS, DEFAULT_SORT, CORE_COLUMNS, LEVEL_COLUMNS, measurementColumns,
+  HAND_ADDED, NO_TIMEPOINT, DEFAULT_FILTERS, DEFAULT_SORT, CORE_COLUMNS, LEVEL_COLUMNS, measurementColumns,
   parameterValues, formatParameter, isSegmented, workspaceOptions, folderOptions, normaliseFilters,
   patchFilters, filterParameters, hiddenUnsegmented, sortParameters, emptyReason, exportFileName,
   toggleId, withIds, selectedVisible, rowsToExport,
+  subjectKey, timepointOptions, viewOptions, pairedWithOptions, pairedSubjects, hiddenUnpaired, subjectBreaks,
 } from '../renderer/data/parameters.js';
 
 const DASH = '\u2014';
@@ -18,6 +19,7 @@ function study(overrides) {
   return {
     id: 'SP-1000', source: 'real', filePath: `${ROOT}\\pre-op\\a.png`, fileName: 'a.png', name: null,
     workspaceFolder: ROOT, addedAt: '2026-09-01T00:00:00.000Z', view: 'Standing lateral', thumbnail: null,
+    subjectId: null, timepoint: null, filmDate: null,
     measurements: null, geometry: null, qc: null, clinical: {},
     ...overrides,
   };
@@ -166,7 +168,7 @@ test('normaliseFilters clears a workspace that no study carries any more, and it
   assert.deepEqual(normaliseFilters({ workspace: 'C:\\gone', folder: 'pre-op' }, LIBRARY), { ...DEFAULT_FILTERS });
   assert.deepEqual(normaliseFilters({ workspace: ROOT, folder: 'nowhere' }, LIBRARY), { ...DEFAULT_FILTERS, workspace: ROOT });
   assert.deepEqual(normaliseFilters({ workspace: ROOT, folder: 'pre-op', segmentedOnly: false }, LIBRARY),
-    { workspace: ROOT, folder: 'pre-op', segmentedOnly: false });
+    { ...DEFAULT_FILTERS, workspace: ROOT, folder: 'pre-op', segmentedOnly: false });
   assert.deepEqual(normaliseFilters(undefined, LIBRARY), { ...DEFAULT_FILTERS });
 });
 
@@ -175,14 +177,14 @@ test('patchFilters merges a folder pick over a STALE stored workspace without lo
   // and normaliseFilters then clears the folder along with the dead workspace, so the pick is
   // silently swallowed. Normalising FIRST means the patch is merged over what the user can see.
   assert.deepEqual(patchFilters({ workspace: 'C:\\gone', folder: null, segmentedOnly: true }, LIBRARY, { folder: 'pre-op' }),
-    { workspace: null, folder: 'pre-op', segmentedOnly: true });
+    { ...DEFAULT_FILTERS, workspace: null, folder: 'pre-op', segmentedOnly: true });
 });
 
 test('patchFilters lets a workspace patch win over any stored value', () => {
   assert.deepEqual(patchFilters({ workspace: 'C:\\gone', folder: 'pre-op' }, LIBRARY, { workspace: ROOT, folder: null }),
     { ...DEFAULT_FILTERS, workspace: ROOT });
   assert.deepEqual(patchFilters({ workspace: HAND_ADDED, folder: 'loose', segmentedOnly: false }, LIBRARY, { workspace: ROOT, folder: null }),
-    { workspace: ROOT, folder: null, segmentedOnly: false });
+    { ...DEFAULT_FILTERS, workspace: ROOT, folder: null, segmentedOnly: false });
 });
 
 test('patchFilters over absent stored filters is the defaults plus the patch', () => {
@@ -373,4 +375,132 @@ test('rowsToExport returns a new array equal to visible when nothing visible is 
   const stale = rowsToExport(visible, ['ghost']); // selected, but no visible match
   assert.notEqual(stale, visible);
   assert.deepEqual(stale, visible);
+});
+
+// ---------------------------------------------------------------------------
+// task 2: subject, timepoint, view, paired-only (spec §10.3)
+
+const S = (id, subjectId, timepoint, extra = {}) => study({
+  id, subjectId, timepoint, fileName: `${id}.png`, filePath: `${ROOT}\\${id}.png`,
+  measurements: measurements(50, 10, 40, 45), ...extra,
+});
+const COHORT = [
+  S('SP-1000', 'S001', 'Pre-op', { filmDate: '2025-03-02', addedAt: '2026-09-01T00:00:00.000Z' }),
+  S('SP-1001', 'S001', 'Post-op', { filmDate: '2025-09-14', addedAt: '2026-09-02T00:00:00.000Z' }),
+  S('SP-1002', 's002', 'Pre-op', { view: 'Flexion lateral' }),
+  S('SP-1003', 'S002', '1 yr'),
+  S('SP-1004', null, null, { measurements: null }),
+  S('SP-1005', 'S003', 'Pre-op', { workspaceFolder: null, filePath: 'C:\\loose\\SP-1005.png' }),
+  S('SP-1006', 'S003', 'Post-op', { workspaceFolder: null, filePath: 'C:\\loose\\SP-1006.png' }),
+  S('SP-1007', null, 'baseline', { view: '' }),
+];
+
+test('DEFAULT_FILTERS carries the four new filters at rest', () => {
+  assert.deepEqual(DEFAULT_FILTERS, {
+    workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: 'Post-op',
+  });
+  assert.equal(NO_TIMEPOINT, '__none__');
+});
+
+test('subjectKey is the trimmed lower-cased subject, or null', () => {
+  assert.equal(subjectKey(study({ subjectId: ' S001 ' })), 's001');
+  assert.equal(subjectKey(study({ subjectId: null })), null);
+  assert.equal(subjectKey(study({ subjectId: '   ' })), null);
+});
+
+test('timepointOptions lists the labels present in §7.2 order, then No timepoint when any study lacks one', () => {
+  assert.deepEqual(timepointOptions(COHORT), [
+    { value: 'Pre-op', label: 'Pre-op' }, { value: 'Post-op', label: 'Post-op' }, { value: '1 yr', label: '1 yr' },
+    { value: 'baseline', label: 'baseline' }, { value: NO_TIMEPOINT, label: 'No timepoint' },
+  ]);
+  assert.deepEqual(timepointOptions(COHORT.slice(0, 2)), [{ value: 'Pre-op', label: 'Pre-op' }, { value: 'Post-op', label: 'Post-op' }]);
+  assert.deepEqual(timepointOptions([]), []);
+});
+
+test('viewOptions lists the distinct views present, first seen first, skipping a cleared view', () => {
+  assert.deepEqual(viewOptions(COHORT), [{ value: 'Standing lateral', label: 'Standing lateral' }, { value: 'Flexion lateral', label: 'Flexion lateral' }]);
+});
+
+test('pairedWithOptions always offers Post-op, then every other non-Pre-op label present, in §7.2 order', () => {
+  assert.deepEqual(pairedWithOptions([]), [{ value: 'Post-op', label: 'Post-op' }]);
+  assert.deepEqual(pairedWithOptions(COHORT).map((o) => o.value), ['Post-op', '1 yr', 'baseline']);
+});
+
+test('pairedSubjects is the set of subject keys with a Pre-op film and a film with the chosen label', () => {
+  assert.deepEqual([...pairedSubjects(COHORT, 'Post-op')].sort(), ['s001', 's003']);
+  assert.deepEqual([...pairedSubjects(COHORT, '1 yr')], ['s002']);
+  assert.deepEqual([...pairedSubjects(COHORT, 'baseline')], []);
+  // Subject keys compare case-insensitively: s002's Pre-op pairs with S002's 1 yr.
+});
+
+test('filterParameters narrows by timepoint, by No timepoint, by view and by subject substring', () => {
+  const ids = (filters) => filterParameters(COHORT, filters).map((s) => s.id);
+  assert.deepEqual(ids({ timepoint: 'Pre-op' }), ['SP-1000', 'SP-1002', 'SP-1005']);
+  assert.deepEqual(ids({ timepoint: NO_TIMEPOINT, segmentedOnly: false }), ['SP-1004']);
+  assert.deepEqual(ids({ view: 'Flexion lateral' }), ['SP-1002']);
+  assert.deepEqual(ids({ subject: 's00' }), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003', 'SP-1005', 'SP-1006']);
+  assert.deepEqual(ids({ subject: '  S002 ' }), ['SP-1002', 'SP-1003']);
+  assert.deepEqual(ids({ subject: '' }), ids({}));
+  // Composes with AND, and with the workspace filter.
+  assert.deepEqual(ids({ workspace: ROOT, timepoint: 'Pre-op', subject: '2' }), ['SP-1002']);
+});
+
+test('filterParameters paired-only keeps paired subjects within the other filters, before the timepoint filter', () => {
+  const ids = (filters) => filterParameters(COHORT, filters).map((s) => s.id);
+  assert.deepEqual(ids({ pairedOnly: true }), ['SP-1000', 'SP-1001', 'SP-1005', 'SP-1006']);
+  assert.deepEqual(ids({ pairedOnly: true, pairedWith: '1 yr' }), ['SP-1002', 'SP-1003']);
+  // Within a workspace: S003's pair is hand-added and drops out with the workspace filter.
+  assert.deepEqual(ids({ pairedOnly: true, workspace: ROOT }), ['SP-1000', 'SP-1001']);
+  // Paired only + Pre-op is "the pre-op films of paired subjects", not nothing.
+  assert.deepEqual(ids({ pairedOnly: true, timepoint: 'Pre-op' }), ['SP-1000', 'SP-1005']);
+  // A missing pairedWith means Post-op.
+  assert.deepEqual(ids({ pairedOnly: true, pairedWith: null }), ['SP-1000', 'SP-1001', 'SP-1005', 'SP-1006']);
+});
+
+test('hiddenUnpaired counts the rows the paired-only step removes, ignoring the timepoint filter', () => {
+  assert.equal(hiddenUnpaired(COHORT, { pairedOnly: false }), 0);
+  // Seven segmented rows; four are paired under Post-op.
+  assert.equal(hiddenUnpaired(COHORT, { pairedOnly: true }), 3);
+  assert.equal(hiddenUnpaired(COHORT, { pairedOnly: true, timepoint: 'Pre-op' }), 3);
+  assert.equal(hiddenUnpaired(COHORT, { pairedOnly: true, pairedWith: '1 yr' }), 5);
+});
+
+test('normaliseFilters clears a timepoint or view no study carries any more', () => {
+  assert.deepEqual(normaliseFilters({ timepoint: '6 wk', view: 'Prone lateral' }, COHORT), { ...DEFAULT_FILTERS });
+  assert.deepEqual(normaliseFilters({ timepoint: 'Pre-op', view: 'Flexion lateral', subject: 'x', pairedOnly: true, pairedWith: '1 yr' }, COHORT),
+    { ...DEFAULT_FILTERS, timepoint: 'Pre-op', view: 'Flexion lateral', subject: 'x', pairedOnly: true, pairedWith: '1 yr' });
+  assert.deepEqual(normaliseFilters({ timepoint: NO_TIMEPOINT }, COHORT), { ...DEFAULT_FILTERS, timepoint: NO_TIMEPOINT });
+  assert.deepEqual(normaliseFilters({ timepoint: NO_TIMEPOINT }, COHORT.slice(0, 2)), { ...DEFAULT_FILTERS });
+});
+
+test('sortParameters by subject groups films by subject with no subject last in both directions, and Pre-op first inside a block', () => {
+  const ids = (dir) => sortParameters(COHORT, { key: 'subject', dir }).map((s) => s.id);
+  // s001 < s002 < s003, then the two with no subject in timepoint order (a label before none);
+  // inside S001 Pre-op precedes Post-op, inside S002 Pre-op precedes 1 yr.
+  assert.deepEqual(ids('asc'), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003', 'SP-1005', 'SP-1006', 'SP-1007', 'SP-1004']);
+  // Descending reverses the subject order only: a block still reads Pre-op first, no subject still last.
+  assert.deepEqual(ids('desc'), ['SP-1005', 'SP-1006', 'SP-1002', 'SP-1003', 'SP-1000', 'SP-1001', 'SP-1007', 'SP-1004']);
+  // Same timepoint: film date, then addedAt, break the tie.
+  const twins = [
+    S('SP-2000', 'T', 'Post-op', { filmDate: null, addedAt: '2026-09-03T00:00:00.000Z' }),
+    S('SP-2001', 'T', 'Post-op', { filmDate: '2025-05-01', addedAt: '2026-09-04T00:00:00.000Z' }),
+    S('SP-2002', 'T', 'Post-op', { filmDate: '2025-04-01', addedAt: '2026-09-05T00:00:00.000Z' }),
+    S('SP-2003', 'T', 'Post-op', { filmDate: null, addedAt: '2026-09-01T00:00:00.000Z' }),
+  ];
+  assert.deepEqual(sortParameters(twins, { key: 'subject', dir: 'asc' }).map((s) => s.id), ['SP-2002', 'SP-2001', 'SP-2003', 'SP-2000']);
+});
+
+test('subjectBreaks marks the first row of each new subject under the subject sort, and nothing otherwise', () => {
+  const sorted = sortParameters(COHORT, { key: 'subject', dir: 'asc' });
+  assert.deepEqual(subjectBreaks(sorted, { key: 'subject', dir: 'asc' }), [false, false, true, false, true, false, true, false]);
+  assert.deepEqual(subjectBreaks(sorted, { key: 'study', dir: 'asc' }), sorted.map(() => false));
+  assert.deepEqual(subjectBreaks([], { key: 'subject', dir: 'asc' }), []);
+});
+
+test('emptyReason blames a timepoint, view, subject or paired-only filter the user set', () => {
+  assert.equal(emptyReason({ total: 2, visible: 0, filters: { timepoint: 'Pre-op' }, query: '' }), 'filtered');
+  assert.equal(emptyReason({ total: 2, visible: 0, filters: { view: 'Prone lateral' }, query: '' }), 'filtered');
+  assert.equal(emptyReason({ total: 2, visible: 0, filters: { subject: 'S0' }, query: '' }), 'filtered');
+  assert.equal(emptyReason({ total: 2, visible: 0, filters: { pairedOnly: true }, query: '' }), 'filtered');
+  assert.equal(emptyReason({ total: 2, visible: 0, filters: { subject: '   ' }, query: '' }), 'unsegmented');
 });

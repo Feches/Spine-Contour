@@ -1,8 +1,9 @@
 /**
  * Pure logic for the Parameters tab of the Studies screen (pre-op/post-op spec, 2026-09-06 §10):
- * which columns the grid shows, each study's value in them, the filter options, the filter and
- * sort over Study[] and how a filter control's change is merged into the stored filters, why the
- * grid is empty, the export filename, and the selection of rows to export. No DOM.
+ * which columns the grid shows, each study's value in them, the filter options, the timepoint,
+ * view and paired-with options, the filter and sort over Study[] and how a filter control's
+ * change is merged into the stored filters, why the grid is empty, the export filename, and the
+ * selection of rows to export. No DOM.
  * screens/parameters.js renders what this module decides; test/parameters.test.js pins it.
  *
  * Values come from the same row helpers the Measurements panel uses, so the grid and the panel
@@ -11,6 +12,7 @@
  */
 import { sagittalRows, lordosisRows } from './measurements.js';
 import { studyName, workspaceLabel, folderLabel, lastSegment } from './labels.js';
+import { compareTimepoints, PRE_OP, POST_OP } from './timepoints.js';
 
 const DASH = '\u2014';
 
@@ -18,7 +20,14 @@ const DASH = '\u2014';
 // dropped on the list. A sentinel, not null, because null means "no workspace filter".
 export const HAND_ADDED = '__hand__';
 
-export const DEFAULT_FILTERS = Object.freeze({ workspace: null, folder: null, segmentedOnly: true });
+// The timepoint filter's value for "this film has no timepoint" (spec §10.3) -- the HAND_ADDED
+// pattern: a sentinel, because null means "no timepoint filter".
+export const NO_TIMEPOINT = '__none__';
+
+export const DEFAULT_FILTERS = Object.freeze({
+  workspace: null, folder: null, segmentedOnly: true,
+  timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: POST_OP,
+});
 export const DEFAULT_SORT = Object.freeze({ key: 'study', dir: 'asc' });
 
 // Labels are the Measurements panel's names. `LL` is L1–S1; `PILL` is the derived PI − LL.
@@ -104,17 +113,94 @@ export function folderOptions(studies, workspace) {
   return seen.map((value) => ({ value, label: value }));
 }
 
-// A stored filter can name a root or folder that no study carries any more (the studies were
-// deleted). Clear it for rendering and filtering rather than applying a filter the dropdown
-// cannot show. Pure: the stale store value is harmless and is not rewritten here.
+// Subjects compare case-insensitively after trimming (spec §7.1), as the stem join does.
+export function subjectKey(study) {
+  const subject = study?.subjectId;
+  if (typeof subject !== 'string') return null;
+  const key = subject.trim().toLowerCase();
+  return key === '' ? null : key;
+}
+
+function timepointOf(study) {
+  const label = study?.timepoint;
+  return typeof label === 'string' && label.trim() !== '' ? label : null;
+}
+
+// Timepoint labels present, in §7.2 order, then `No timepoint` when any study lacks one.
+export function timepointOptions(studies) {
+  const labels = [];
+  let missing = false;
+  for (const study of studies) {
+    const label = timepointOf(study);
+    if (label === null) { missing = true; continue; }
+    if (!labels.includes(label)) labels.push(label);
+  }
+  labels.sort(compareTimepoints);
+  const options = labels.map((value) => ({ value, label: value }));
+  if (missing) options.push({ value: NO_TIMEPOINT, label: 'No timepoint' });
+  return options;
+}
+
+// Views present, first seen first. A cleared view ('') is not an option: the column shows a dash.
+export function viewOptions(studies) {
+  const seen = [];
+  for (const study of studies) {
+    const view = study?.view;
+    if (typeof view === 'string' && view.trim() !== '' && !seen.includes(view)) seen.push(view);
+  }
+  return seen.map((value) => ({ value, label: value }));
+}
+
+// The post side of a pair: every label present other than Pre-op, in §7.2 order, with Post-op
+// always offered -- it is the default, and the control must show it before any study carries it.
+export function pairedWithOptions(studies) {
+  const labels = [POST_OP];
+  for (const study of studies) {
+    const label = timepointOf(study);
+    if (label !== null && label !== PRE_OP && !labels.includes(label)) labels.push(label);
+  }
+  labels.sort(compareTimepoints);
+  return labels.map((value) => ({ value, label: value }));
+}
+
+// Subject keys with at least one Pre-op film and at least one film labelled `post` among
+// `studies`. A film with no subject pairs with nothing.
+export function pairedSubjects(studies, post) {
+  const pre = new Set();
+  const after = new Set();
+  for (const study of studies) {
+    const key = subjectKey(study);
+    if (key === null) continue;
+    const label = timepointOf(study);
+    if (label === PRE_OP) pre.add(key);
+    if (label === post) after.add(key);
+  }
+  return new Set([...pre].filter((key) => after.has(key)));
+}
+
+function matchesTimepoint(study, timepoint) {
+  if (!timepoint) return true;
+  const label = timepointOf(study);
+  return timepoint === NO_TIMEPOINT ? label === null : label === timepoint;
+}
+
+function matchesSubject(study, needle) {
+  const query = String(needle ?? '').trim().toLowerCase();
+  if (query === '') return true;
+  const key = subjectKey(study);
+  return key !== null && key.includes(query);
+}
+
+// A stored filter can name a root, folder, timepoint or view that no study carries any more
+// (the studies were deleted or relabelled). Clear it for rendering and filtering rather than
+// applying a filter the dropdown cannot show. Pure: the stale store value is harmless and is
+// not rewritten here.
 export function normaliseFilters(filters, studies) {
-  const f = { ...DEFAULT_FILTERS, ...(filters ?? {}) };
-  if (f.workspace && !workspaceOptions(studies).some((o) => o.value === f.workspace)) {
-    return { ...f, workspace: null, folder: null };
-  }
-  if (f.folder && !folderOptions(studies, f.workspace).some((o) => o.value === f.folder)) {
-    return { ...f, folder: null };
-  }
+  let f = { ...DEFAULT_FILTERS, ...(filters ?? {}) };
+  if (f.workspace && !workspaceOptions(studies).some((o) => o.value === f.workspace)) f = { ...f, workspace: null, folder: null };
+  if (f.folder && !folderOptions(studies, f.workspace).some((o) => o.value === f.folder)) f = { ...f, folder: null };
+  if (f.timepoint && !timepointOptions(studies).some((o) => o.value === f.timepoint)) f = { ...f, timepoint: null };
+  if (f.view && !viewOptions(studies).some((o) => o.value === f.view)) f = { ...f, view: null };
   return f;
 }
 
@@ -159,11 +245,28 @@ export function rowsToExport(visible, selected) {
   return chosen.length > 0 ? chosen : [...visible];
 }
 
+// Every filter but one composes with AND per study. Paired-only is evaluated over the studies
+// the other filters keep -- so a workspace filter pairs within that workspace -- and BEFORE the
+// timepoint filter, so `Paired only` with `Pre-op` reads as the pre-op films of paired subjects
+// rather than as nothing (planning ruling, 2026-09-07).
 export function filterParameters(studies, filters) {
   const f = { ...DEFAULT_FILTERS, ...(filters ?? {}) };
-  return studies.filter((study) => matchesWorkspace(study, f.workspace)
+  const kept = studies.filter((study) => matchesWorkspace(study, f.workspace)
     && (!f.folder || folderLabel(study) === f.folder)
-    && (!f.segmentedOnly || isSegmented(study)));
+    && (!f.segmentedOnly || isSegmented(study))
+    && (!f.view || study.view === f.view)
+    && matchesSubject(study, f.subject));
+  const paired = f.pairedOnly ? pairedSubjects(kept, f.pairedWith || POST_OP) : null;
+  return kept.filter((study) => (paired === null || paired.has(subjectKey(study)))
+    && matchesTimepoint(study, f.timepoint));
+}
+
+// How many rows the paired-only step removes, before the timepoint filter narrows further.
+export function hiddenUnpaired(studies, filters) {
+  const f = { ...DEFAULT_FILTERS, ...(filters ?? {}) };
+  if (!f.pairedOnly) return 0;
+  return filterParameters(studies, { ...f, pairedOnly: false, timepoint: null }).length
+    - filterParameters(studies, { ...f, timepoint: null }).length;
 }
 
 // How many studies the segmented-only filter is hiding from the current workspace and folder.
@@ -179,12 +282,53 @@ const TEXT_SORTS = {
   workspace: (study) => `${workspaceLabel(study)}\u0000${folderLabel(study)}\u0000${studyName(study)}`.toLowerCase(),
 };
 
-// A sorted COPY. Text keys compare case-insensitively. Any other key is a measurement column:
-// absent values go last in both directions (an em dash is not a small number), and ties keep
-// the input order, so the list never shuffles under a stable sort.
+// Inside one subject (§7.2): timepoint order, then film date ascending (absent last), then
+// addedAt ascending, then input order.
+function compareWithinSubject(a, b) {
+  const byTimepoint = compareTimepoints(a.study.timepoint, b.study.timepoint);
+  if (byTimepoint !== 0) return byTimepoint;
+  const da = a.study.filmDate ?? null;
+  const db = b.study.filmDate ?? null;
+  if (da !== db) {
+    if (da === null) return 1;
+    if (db === null) return -1;
+    return da < db ? -1 : 1;
+  }
+  const aa = a.study.addedAt ?? '';
+  const ab = b.study.addedAt ?? '';
+  if (aa !== ab) return aa < ab ? -1 : 1;
+  return a.index - b.index;
+}
+
+// Where a new subject block starts in a list sorted by subject: true at i when the row's subject
+// key differs from the previous row's. Every row is false under any other sort, and the first
+// row always is -- a rule above the first row would separate it from nothing.
+export function subjectBreaks(visible, sort) {
+  const { key } = { ...DEFAULT_SORT, ...(sort ?? {}) };
+  return visible.map((study, i) => key === 'subject' && i > 0 && subjectKey(study) !== subjectKey(visible[i - 1]));
+}
+
+// A sorted COPY. 'subject' groups by subject (below); text keys compare case-insensitively. Any
+// other key is a measurement column: absent values go last in both directions (an em dash is not
+// a small number), and ties keep the input order, so the list never shuffles under a stable sort.
 export function sortParameters(studies, sort) {
   const { key, dir } = { ...DEFAULT_SORT, ...(sort ?? {}) };
   const sign = dir === 'desc' ? -1 : 1;
+  if (key === 'subject') {
+    const indexed = studies.map((study, index) => ({ study, index }));
+    indexed.sort((a, b) => {
+      const ka = subjectKey(a.study);
+      const kb = subjectKey(b.study);
+      // No subject last in BOTH directions; the direction flips the subject order only, so a
+      // block always reads Pre-op → Post-op (planning ruling, 2026-09-07).
+      if (ka === null && kb === null) return compareWithinSubject(a, b);
+      if (ka === null) return 1;
+      if (kb === null) return -1;
+      if (ka !== kb) return (ka < kb ? -1 : 1) * sign;
+      return compareWithinSubject(a, b);
+    });
+    return indexed.map((entry) => entry.study);
+  }
   if (key in TEXT_SORTS) {
     const read = TEXT_SORTS[key];
     const indexed = studies.map((study, index) => ({ study, index, text: read(study) }));
@@ -204,13 +348,14 @@ export function sortParameters(studies, sort) {
 // Why the grid is empty, so the screen never blames a filter the user did not set:
 //   null           something is visible
 //   'none'         the library is empty
-//   'filtered'     a workspace or folder filter, or the search box, removed everything
+//   'filtered'     a workspace, folder, timepoint, view, subject or paired-only filter, or the search box, removed everything
 //   'unsegmented'  studies exist, but none has measurements and segmented-only is on
 export function emptyReason({ total, visible, filters, query }) {
   if (visible > 0) return null;
   if (total === 0) return 'none';
   const f = { ...DEFAULT_FILTERS, ...(filters ?? {}) };
-  if (f.workspace || f.folder || String(query ?? '').trim() !== '') return 'filtered';
+  if (f.workspace || f.folder || f.timepoint || f.view || String(f.subject ?? '').trim() !== '' || f.pairedOnly === true
+    || String(query ?? '').trim() !== '') return 'filtered';
   return 'unsegmented';
 }
 

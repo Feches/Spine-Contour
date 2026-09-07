@@ -276,8 +276,9 @@ a draw function must blank a layer, never freeze the application.
   studies: [],              // Study[] — demo + real, merged
   query: '',
   studiesTab: 'find',       // 'find'|'parameters' (2026-09-06, pre-op/post-op spec §10.1)
-  paramFilters: { workspace: null, folder: null, segmentedOnly: true },   // data/parameters.js DEFAULT_FILTERS;
-                            // `workspace` is a stored root, HAND_ADDED ('__hand__') or null
+  paramFilters: { workspace: null, folder: null, segmentedOnly: true,       // data/parameters.js DEFAULT_FILTERS;
+                  timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: 'Post-op' },   // (2026-09-07, spec §10.3)
+                            // `workspace` is a stored root, HAND_ADDED ('__hand__') or null; `timepoint` a label, NO_TIMEPOINT ('__none__') or null
   paramSort: { key: 'study', dir: 'asc' },   // key: 'study'|'workspace'|a measurement column key
   paramLevels: false,       // show LL L2–S1..L5–S1 columns
   paramSelected: [],        // string[] study ids ticked on the Parameters grid (2026-09-07); replaced wholesale; session-only; screens/studies.js clears a deleted study's id from it
