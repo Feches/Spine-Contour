@@ -175,3 +175,104 @@
   font: 400 13.5px 'Source Sans 3', sans-serif;
   color: var(--muted);
 }
+
+/* Card 01 grows a folder table below its row (pre-op/post-op spec §8.5): what Load will assign
+   to the films directly in each folder, editable before Load. */
+.workspace-card-folder {
+  display: block;
+}
+
+.workspace-card-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.workspace-folders-wrap {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* Past roughly ten folders the rows scroll inside the card; the card never outgrows the window. */
+.workspace-folders-scroll {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.workspace-folders {
+  width: 100%;
+  border-collapse: collapse;
+  font: 400 13px 'Source Sans 3', sans-serif;
+  color: var(--ink);
+}
+
+.workspace-folders th {
+  text-align: left;
+  padding: 2px 12px 8px 0;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.workspace-folders td {
+  padding: 5px 12px 5px 0;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.workspace-folders-name {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+}
+
+.workspace-folders-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.workspace-folder-select {
+  font: 400 13px 'Source Sans 3', sans-serif;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.workspace-folder-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.workspace-folder-all {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.workspace-folders-note {
+  margin-top: 12px;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* A chip the load consumes itself: the join key and the structural columns. */
+.workspace-chip-fixed {
+  border-color: color-mix(in srgb, var(--sage) 40%, var(--border));
+  background: color-mix(in srgb, var(--sage) 8%, transparent);
+}
+
+.workspace-chip-dest {
+  font-weight: 600;
+}

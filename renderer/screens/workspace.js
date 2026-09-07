@@ -10,9 +10,12 @@
 import { el, mount } from '../dom.js';
 import { getState, setState } from '../store.js';
 import { chooseFolder, scanFolder, chooseCsv, readCsv } from '../api.js';
-import { parse, autoMap, KNOWN_FIELDS, findJoinHeader, joinClinical, clinicalFieldNames, findStructuralHeaders, structuralFromRow } from '../data/csv.js';
+import {
+  parse, autoMap, KNOWN_FIELDS, findJoinHeader, joinClinical, clinicalFieldNames,
+  findStructuralHeaders, structuralFromRow, structuralField, STRUCTURAL_LABELS,
+} from '../data/csv.js';
 import { folderRows, folderKey, seedFields, STUDY_FIELDS } from '../data/seeding.js';
-import { DEFAULT_VIEW } from '../data/timepoints.js';
+import { DEFAULT_VIEW, TIMEPOINT_SUGGESTIONS, VIEW_SUGGESTIONS } from '../data/timepoints.js';
 import { nextId } from '../data/persistence.js';
 import { newStudy } from './studies.js';
 import { showToast } from '../components/toast.js';
@@ -212,9 +215,19 @@ export function render(state) {
   const root = el('main', { class: 'workspace-page' }, inner);
 
   // SCREEN_KEYS carries no ws* key, so this screen rebuilds itself after each of its own
-  // setState calls. Every caller is a DOM event handler, never a store subscriber.
+  // setState calls. Every caller is a DOM event handler, never a store subscriber. The rebuild
+  // replaces every node, which drops keyboard focus to <body>; a control carrying a data-ws-key
+  // gets focus back by that key (the Parameters panel's data-param-key pattern), so changing
+  // one folder row's select does not strand a keyboard user on the page body.
   function refresh(live = getState()) {
+    const active = document.activeElement;
+    const focusKey = root.contains(active) ? active.getAttribute('data-ws-key') : null;
     mount(inner, buildScreen(live));
+    if (focusKey !== null) {
+      for (const candidate of inner.querySelectorAll('[data-ws-key]')) {
+        if (candidate.getAttribute('data-ws-key') === focusKey) { candidate.focus(); break; }
+      }
+    }
   }
 
   async function onChooseFolder() {
@@ -223,7 +236,8 @@ export function render(state) {
       if (!folder) return;
       const { files, skipped } = await scanFolder(folder);
       lastScan = { folder, skipped };
-      setState({ wsFolder: folder, wsFiles: files });
+      // The folder table (spec §8.5) is rebuilt by every scan: the rows are what Load applies.
+      setState({ wsFolder: folder, wsFiles: files, wsFolderRows: folderRows(files, folder) });
       refresh();
     } catch (error) {
       showToast(`Could not read folder: ${error.message}`);
@@ -267,6 +281,83 @@ export function render(state) {
     showToast(workspaceLoadedMessage({ ...result, mapping: live.wsMapping }));
   }
 
+  // Folder table edits write only wsFolderRows, replaced wholesale; Load is the only writer of
+  // studies. Both refresh so the selects re-render from the store (and keep focus by key).
+  function setFolderRow(folder, patch) {
+    setState((s) => ({ wsFolderRows: s.wsFolderRows.map((row) => (row.folder === folder ? { ...row, ...patch } : row)) }));
+    refresh();
+  }
+
+  function setAllFolderRows(patch) {
+    setState((s) => ({ wsFolderRows: s.wsFolderRows.map((row) => ({ ...row, ...patch })) }));
+    refresh();
+  }
+
+  // A row's dropdown: `none` as the first entry when given (the timepoint column), then the choices.
+  function rowSelect({ key, label, value, choices, none, onChange }) {
+    const select = el('select', { class: 'workspace-folder-select', 'aria-label': label, 'data-ws-key': key, onChange });
+    if (none !== null) select.append(el('option', { value: '' }, none));
+    for (const choice of choices) select.append(el('option', { value: choice }, choice));
+    select.value = value ?? '';
+    return select;
+  }
+
+  // The column-header control that sets every row at once (§8.5): how a layout with one folder
+  // per subject is set in one action, and the whole-batch selector for a root with no subfolders.
+  // It rests on a `Set all…` placeholder and returns to it after the rebuild.
+  function setAllSelect({ key, label, choices, none, onChange }) {
+    const select = el('select', {
+      class: 'workspace-folder-select workspace-folder-all', 'aria-label': label, 'data-ws-key': key,
+      onChange: (event) => { if (event.target.value !== '__all__') onChange(event.target.value); },
+    });
+    select.append(el('option', { value: '__all__' }, 'Set all…'));
+    if (none !== null) select.append(el('option', { value: '' }, none));
+    for (const choice of choices) select.append(el('option', { value: choice }, choice));
+    select.value = '__all__';
+    return select;
+  }
+
+  // §8.5: one row per folder holding films, showing what Load will assign to the films directly
+  // in it. Every value is on screen before Load -- that is what makes `Standing lateral` on a
+  // loaded film an honest label rather than a hard-coded one. The timepoint choices are the
+  // drawer's suggestions plus any label a folder name inferred that the list lacks (`3 mo`).
+  function buildFolderTable(live) {
+    const rows = live.wsFolderRows ?? [];
+    if (rows.length === 0) return null;
+    const timepoints = [...TIMEPOINT_SUGGESTIONS];
+    for (const row of rows) if (row.timepoint && !timepoints.includes(row.timepoint)) timepoints.push(row.timepoint);
+    const views = [...VIEW_SUGGESTIONS];
+    const head = el('tr', {},
+      el('th', { scope: 'col' }, 'FOLDER'),
+      el('th', { scope: 'col', class: 'workspace-folders-num' }, 'FILMS'),
+      el('th', { scope: 'col' }, 'TIMEPOINT', setAllSelect({
+        key: 'all-timepoint', label: 'Set the timepoint of every folder', choices: timepoints, none: 'none',
+        onChange: (value) => setAllFolderRows({ timepoint: value === '' ? null : value }),
+      })),
+      el('th', { scope: 'col' }, 'VIEW', setAllSelect({
+        key: 'all-view', label: 'Set the view of every folder', choices: views, none: null,
+        onChange: (value) => setAllFolderRows({ view: value }),
+      })));
+    const body = rows.map((row) => el('tr', { 'data-ws-folder': row.folder },
+      el('td', { class: 'workspace-folders-name', title: row.folder }, row.folder),
+      el('td', { class: 'workspace-folders-num' }, String(row.count)),
+      el('td', {}, rowSelect({
+        key: `tp:${row.folder}`, label: `Timepoint for ${row.folder}`, value: row.timepoint, choices: timepoints, none: 'none',
+        onChange: (event) => setFolderRow(row.folder, { timepoint: event.target.value === '' ? null : event.target.value }),
+      })),
+      el('td', {}, rowSelect({
+        key: `view:${row.folder}`, label: `View for ${row.folder}`, value: row.view, choices: views, none: null,
+        onChange: (event) => setFolderRow(row.folder, { view: event.target.value }),
+      }))));
+    return el('div', { class: 'workspace-folders-wrap' },
+      el('div', { class: 'workspace-folders-scroll' },
+        el('table', { class: 'workspace-folders', 'data-ws-key': 'folders' },
+          el('thead', {}, head),
+          el('tbody', {}, ...body))),
+      el('div', { class: 'workspace-card-note workspace-folders-note' },
+        'What Load will assign to the films in each folder, unless a film\u2019s own name or the CSV says otherwise. Films already in the library keep their stored values.'));
+  }
+
   function buildFolderCard(live) {
     const hasFolder = Boolean(live.wsFolder);
     const n = live.wsFiles.length;
@@ -281,14 +372,16 @@ export function render(state) {
         meta += ` · ${lastScan.skipped} skipped (unsupported files, links, or folders that could not be read)`;
       }
     }
-    return el('div', { class: `card workspace-card${hasFolder ? ' workspace-card-set' : ''}` },
-      el('div', { class: 'workspace-card-icon', 'aria-hidden': 'true', innerHTML: FOLDER_SVG }),
-      el('div', { class: 'workspace-card-text' },
-        el('div', { class: 'eyebrow' }, '01 — IMAGE FOLDER'),
-        el('div', { class: 'workspace-card-value' }, hasFolder ? live.wsFolder : 'No folder selected'),
-        el('div', { class: 'workspace-card-meta' }, meta)),
-      el('button', { type: 'button', class: 'btn btn-small', onClick: onChooseFolder },
-        hasFolder ? 'Change…' : 'Choose folder…'));
+    return el('div', { class: `card workspace-card workspace-card-folder${hasFolder ? ' workspace-card-set' : ''}` },
+      el('div', { class: 'workspace-card-row' },
+        el('div', { class: 'workspace-card-icon', 'aria-hidden': 'true', innerHTML: FOLDER_SVG }),
+        el('div', { class: 'workspace-card-text' },
+          el('div', { class: 'eyebrow' }, '01 — IMAGE FOLDER'),
+          el('div', { class: 'workspace-card-value' }, hasFolder ? live.wsFolder : 'No folder selected'),
+          el('div', { class: 'workspace-card-meta' }, meta)),
+        el('button', { type: 'button', class: 'btn btn-small', onClick: onChooseFolder },
+          hasFolder ? 'Change…' : 'Choose folder…')),
+      hasFolder ? buildFolderTable(live) : null);
   }
 
   function buildCsvCard(live) {
@@ -317,10 +410,22 @@ export function render(state) {
   // autoMap) so manual overrides survive a re-render.
   function buildMappingCard(live) {
     const mapping = live.wsMapping;
+    const joinHeader = findJoinHeader(live.wsCsvHeaders);
     const chips = mapping.map((m, index) => {
+      // The join key and the four structural columns (spec §8.2) are read by the load itself: a
+      // fixed destination and no select, so a column the load consumes never reads `Unmapped`.
+      const field = structuralField(m.src, live.wsCsvHeaders);
+      const fixed = m.src === joinHeader ? 'Join key' : (field ? STRUCTURAL_LABELS[field] : null);
+      if (fixed !== null) {
+        return el('div', { class: 'workspace-chip workspace-chip-fixed' },
+          el('span', { class: 'workspace-chip-src' }, m.src),
+          el('span', { class: 'workspace-chip-arrow' }, '→'),
+          el('span', { class: 'workspace-chip-dest' }, fixed));
+      }
       const select = el('select', {
         class: 'workspace-chip-select',
         'aria-label': `Map ${m.src}`,
+        'data-ws-key': `map:${m.src}`,
         onChange: (event) => {
           const dest = event.target.value === '' ? null : event.target.value;
           setState((s) => ({

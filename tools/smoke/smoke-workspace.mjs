@@ -154,6 +154,8 @@ const chipsSnapshot = () => cdp.evaluate(`[...document.querySelectorAll('.worksp
   src: c.querySelector('.workspace-chip-src')?.textContent ?? null,
   mapped: c.classList.contains('workspace-chip-mapped'),
   unmapped: c.classList.contains('workspace-chip-unmapped'),
+  fixed: c.classList.contains('workspace-chip-fixed'),
+  dest: c.querySelector('.workspace-chip-dest')?.textContent ?? null,
   value: c.querySelector('.workspace-chip-select')?.value ?? null,
   label: c.querySelector('.workspace-chip-select')?.getAttribute('aria-label') ?? null,
   options: [...c.querySelectorAll('.workspace-chip-select option')].map((o) => o.textContent),
@@ -287,9 +289,10 @@ try {
   check('four chips in header order', same(chips.map((c) => c.src), EXPECTED_HEADERS), chips.map((c) => c.src));
   check('age_yrs and sex are mapped chips selecting Age and Sex',
     chips[1]?.mapped && !chips[1]?.unmapped && chips[1]?.value === 'Age' && chips[2]?.mapped && chips[2]?.value === 'Sex', [chips[1], chips[2]]);
-  check('study_id and tx_plan are unmapped chips with an empty selection',
-    chips[0]?.unmapped && !chips[0]?.mapped && chips[0]?.value === '' && chips[3]?.unmapped && chips[3]?.value === '', [chips[0], chips[3]]);
-  check('each select is labelled Map <src>', chips.every((c) => c.label === `Map ${c.src}`), chips.map((c) => c.label));
+  check('study_id is a fixed Join key chip; tx_plan is an unmapped chip with an empty selection',
+    chips[0]?.fixed && chips[0]?.dest === 'Join key' && chips[0]?.value === null && !chips[0]?.mapped && !chips[0]?.unmapped
+    && chips[3]?.unmapped && !chips[3]?.fixed && chips[3]?.value === '', [chips[0], chips[3]]);
+  check('each mapping select is labelled Map <src>', chips.filter((c) => !c.fixed).every((c) => c.label === `Map ${c.src}`), chips.map((c) => [c.src, c.label]));
   check('the tx_plan select offers Unmapped plus every known field not claimed elsewhere (no Age, no Sex)',
     same(chips[3]?.options, ['Unmapped', ...KNOWN_FIELDS.filter((f) => f !== 'Age' && f !== 'Sex')]), chips[3]?.options);
   check('the age_yrs select keeps its own Age and omits the Sex claimed by another chip',
