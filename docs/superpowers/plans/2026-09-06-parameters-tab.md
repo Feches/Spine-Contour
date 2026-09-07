@@ -2057,3 +2057,11 @@ check 6 (console) not run by the human.
   written to disk uncommitted during a pause and committed after the amend.
 
 Task 4 complete. Resume at Task 5 (brief generated; Opus implementer).
+
+Session paused 2026-09-06 (second gate): Task 5 code complete at 182f4d6, reviewed clean (8 deferred
+minors in the working ledger), harness dry run 11/11 — **awaiting the human gate** (the eleven checks
+in Task 5 step 4; its step 11 also closes Task 4's unchecked console step). Resume by amending
+182f4d6's message with the outcomes (it is HEAD; nothing is committed above it), then Task 6.
+
+Task 5 human gate (2026-09-07): all eleven checks pass on the user's real library (112 studies, 13
+segmented); no lag on search; the console check also closes Task 4's unchecked step 6. Task 5 complete.
