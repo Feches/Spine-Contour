@@ -2278,3 +2278,11 @@ Addendum approved by the user 2026-09-07 (bounded path, design in chat): Tasks 9
 - Ruling: the row checkbox lives inside the sticky STUDY cell rather than in a new first column — the
   spec's sticky first column and the `<th scope="row">` semantics stay untouched — cost if wrong: a
   crowded first cell on narrow windows.
+
+Session paused 2026-09-07 (fourth gate): Task 11 code complete at 956894e, reviewed clean, harness dry
+run 11/11 — **awaiting the human gate** (the eight checks in Task 11 step 7, plus clicking select-all
+while it is indeterminate). Resume by amending 956894e's message with the outcomes (it is HEAD), then
+Task 12.
+
+Task 11 human gate (2026-09-07): all eight checks pass on the user's real library; clicking the
+indeterminate select-all selects every visible row; no bar wrap issue. Task 11 complete.
