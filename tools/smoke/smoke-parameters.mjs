@@ -5,9 +5,10 @@
 // segmented and the backend is never called, so it runs in a few seconds. Precondition: the app
 // is running from source (demo studies present), any screen.
 //
-// Two records are injected straight into the store -- SP-9100 unsegmented, SP-9101 segmented
-// under a workspace root -- and removed in `finally`, so a later suite never meets a stray
-// Processing row. SP-9101 has measurements but no geometry, which is fine in-session (status is
+// Four records are injected straight into the store -- SP-9100 unsegmented, SP-9101, SP-9102 and
+// SP-9103 segmented under one workspace root (S001 Pre-op and Post-op, a pair, and S002 Pre-op,
+// unpaired) -- and removed in `finally`, so a later suite never meets a stray Processing row.
+// Each segmented record has measurements but no geometry, which is fine in-session (status is
 // derived from measurements alone) but would be nulled by validate() on a restart; that is one
 // more reason the cleanup runs unconditionally.
 //
@@ -20,6 +21,9 @@ function check(name, ok, detail) {
 }
 
 const WS_ROOT = 'C:\\smoke-fixture\\Fusion2025';
+// The injected records: one unsegmented hand-added film, and three segmented films under one
+// workspace root -- S001 Pre-op and Post-op (a pair) and S002 Pre-op (unpaired).
+const INJECTED = ['SP-9100', 'SP-9101', 'SP-9102', 'SP-9103'];
 const RESET = '{ query: "", studiesTab: "find", paramFilters: { workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: "", pairedOnly: false, pairedWith: "__any__" }, paramSort: { key: "study", dir: "asc" }, paramLevels: false, paramSelected: [] }';
 
 const cdp = await connect();
@@ -88,16 +92,27 @@ try {
   // 4. Inject an unsegmented film and a segmented one under a workspace root.
   await cdp.setState(`(s) => ({ studies: [
     { id: 'SP-9100', source: 'real', filePath: 'C:\\\\loose\\\\smoke-unseg.png', fileName: 'smoke-unseg.png', name: null, workspaceFolder: null,
+      subjectId: null, timepoint: null, filmDate: null,
       addedAt: new Date().toISOString(), view: 'Standing lateral', thumbnail: null, measurements: null, geometry: null, qc: null, clinical: {} },
-    { id: 'SP-9101', source: 'real', filePath: ${JSON.stringify(`${WS_ROOT}\\pre-op\\smoke-seg.png`)}, fileName: 'smoke-seg.png', name: null,
-      workspaceFolder: ${JSON.stringify(WS_ROOT)}, addedAt: new Date().toISOString(), view: 'Standing lateral', thumbnail: null,
+    { id: 'SP-9101', source: 'real', filePath: ${JSON.stringify(`${WS_ROOT}\\pre-op\\smoke-seg-a.png`)}, fileName: 'smoke-seg-a.png', name: null,
+      workspaceFolder: ${JSON.stringify(WS_ROOT)}, subjectId: 'S001', timepoint: 'Pre-op', filmDate: '2025-03-02',
+      addedAt: '2026-09-01T00:00:00.000Z', view: 'Standing lateral', thumbnail: null,
       measurements: { PI: 99.5, PT: 30.0, SS: 69.5, L1PA: 12.0, LL: { 'L1-S1': 60.0 } }, geometry: null, qc: null, clinical: {} },
-    ...s.studies.filter((x) => x.id !== 'SP-9100' && x.id !== 'SP-9101'),
+    { id: 'SP-9102', source: 'real', filePath: ${JSON.stringify(`${WS_ROOT}\\post-op\\smoke-seg-b.png`)}, fileName: 'smoke-seg-b.png', name: null,
+      workspaceFolder: ${JSON.stringify(WS_ROOT)}, subjectId: 'S001', timepoint: 'Post-op', filmDate: '2025-09-14',
+      addedAt: '2026-09-02T00:00:00.000Z', view: 'Standing lateral', thumbnail: null,
+      measurements: { PI: 50.0, PT: 15.0, SS: 35.0, LL: { 'L1-S1': 45.0 } }, geometry: null, qc: null, clinical: {} },
+    { id: 'SP-9103', source: 'real', filePath: ${JSON.stringify(`${WS_ROOT}\\pre-op\\smoke-seg-c.png`)}, fileName: 'smoke-seg-c.png', name: null,
+      workspaceFolder: ${JSON.stringify(WS_ROOT)}, subjectId: 'S002', timepoint: 'Pre-op', filmDate: null,
+      addedAt: '2026-09-03T00:00:00.000Z', view: 'Standing lateral', thumbnail: null,
+      measurements: { PI: 48.0, PT: 12.0, SS: 36.0, LL: { 'L1-S1': 44.0 } }, geometry: null, qc: null, clinical: {} },
+    ...s.studies.filter((x) => !${JSON.stringify(INJECTED)}.includes(x.id)),
   ] })`);
   await cdp.settle(100);
   const note = await text('.param-check-note');
   check('segmented-only reports the one unsegmented film it hides', note !== null && note.includes('1 unsegmented hidden'), note);
-  check('the segmented film is a row and the unsegmented one is not', (await rowIds()).includes('SP-9101') && !(await rowIds()).includes('SP-9100'));
+  const idsAfterInject = await rowIds();
+  check('the three segmented films are rows and the unsegmented one is not', ['SP-9101', 'SP-9102', 'SP-9103'].every((id) => idsAfterInject.includes(id)) && !idsAfterInject.includes('SP-9100'), idsAfterInject);
 
   // 5. Segmented-only off.
   await clickKey('segmented');
@@ -111,8 +126,8 @@ try {
   check('the workspace dropdown offers the injected root and Added by hand', wsOptions.includes(WS_ROOT) && wsOptions.includes('__hand__') && wsOptions[0] === '', wsOptions);
   await choose('.param-select-workspace', WS_ROOT);
   await cdp.settle(80);
-  check('choosing the root shows exactly its segmented film', JSON.stringify(await rowIds()) === JSON.stringify(['SP-9101']), await rowIds());
-  check('the folder dropdown offers only that root\'s subfolder', JSON.stringify(await options('.param-select-folder')) === JSON.stringify(['', 'pre-op']), await options('.param-select-folder'));
+  check('choosing the root shows exactly its three segmented films, by name', JSON.stringify(await rowIds()) === JSON.stringify(['SP-9101', 'SP-9102', 'SP-9103']), await rowIds());
+  check('the folder dropdown offers only that root\'s two subfolders', JSON.stringify(await options('.param-select-folder')) === JSON.stringify(['', 'pre-op', 'post-op']), await options('.param-select-folder'));
   check('export is enabled with a real segmented film visible', (await cdp.evaluate("document.querySelector('[data-param-key=\"export\"]').disabled")) === false);
   await choose('.param-select-workspace', '__hand__');
   await cdp.settle(80);
@@ -183,6 +198,83 @@ try {
   s = await cdp.state();
   check('back on Studies, the Parameters tab and the PI sort are still in place', s.studiesTab === 'parameters' && s.paramSort.key === 'PI' && s.paramSort.dir === 'desc' && (await has('[data-param-key="grid"]')), { tab: s.studiesTab, sort: s.paramSort });
 
+  // 12. The study columns and the task-2 filters and sort (spec §10.2–§10.3). SP-9101 (S001 Pre-op)
+  // and SP-9102 (S001 Post-op) pair; SP-9103 (S002 Pre-op) does not; the demo pair SP-0042/SP-0039
+  // (P-8841) pairs as well. Every selector is a data-param-key, a class the grid owns, or an id.
+  await cdp.setState('{ paramSort: { key: "study", dir: "asc" } }');
+  await cdp.settle(80);
+  const textCells = (id) => cdp.evaluate(`(() => { const row = document.querySelector('.param-row[data-study-id="${id}"]'); return row ? [...row.querySelectorAll('.param-cell-text')].slice(0, 4).map((c) => c.textContent) : null; })()`);
+  const cellsA = await textCells('SP-9101');
+  const cellsC = await textCells('SP-9103');
+  check('a row shows subject, timepoint, view and film date, with an em dash where a value is absent',
+    JSON.stringify(cellsA) === JSON.stringify(['S001', 'Pre-op', 'Standing lateral', '2025-03-02'])
+    && JSON.stringify(cellsC) === JSON.stringify(['S002', 'Pre-op', 'Standing lateral', '\u2014']), { cellsA, cellsC });
+
+  const timepointValues = await options('.param-select-timepoint');
+  check('the timepoint dropdown lists the labels present in §7.2 order, then No timepoint',
+    JSON.stringify(timepointValues) === JSON.stringify(['', 'Pre-op', 'Post-op', '__none__']), timepointValues);
+  await choose('.param-select-timepoint', 'Post-op');
+  await cdp.settle(80);
+  const postIds = await rowIds();
+  check('filtering by Post-op keeps the two post-op films', postIds.length === 2 && postIds.includes('SP-9102') && postIds.includes('SP-0039'), postIds);
+  await choose('.param-select-timepoint', '__none__');
+  await cdp.settle(80);
+  const noneIds = await rowIds();
+  check('No timepoint keeps the segmented films with none (the seven other demos)', noneIds.length === 7 && noneIds.every((id) => /^SP-00\d\d$/.test(id)), noneIds);
+  await choose('.param-select-timepoint', '');
+  await cdp.settle(80);
+
+  const viewValues = await options('.param-select-view');
+  check('the view dropdown lists the distinct views present', viewValues[0] === '' && viewValues.includes('Standing lateral') && viewValues.includes('Flexion lateral'), viewValues);
+  await choose('.param-select-view', 'Flexion lateral');
+  await cdp.settle(80);
+  check('filtering by view keeps only the flexion film', JSON.stringify(await rowIds()) === JSON.stringify(['SP-0041']), await rowIds());
+  await choose('.param-select-view', '');
+  await cdp.settle(80);
+
+  await clickKey('subject');
+  await cdp.typeText('S00');
+  await cdp.settle(150);
+  const subjectIds = await rowIds();
+  const subjectFocus = await cdp.evaluate("(() => { const e = document.activeElement; return { key: e?.getAttribute('data-param-key') ?? null, value: e?.value ?? null, caret: e?.selectionStart ?? null }; })()");
+  check('typing in the subject box narrows to the matching subjects and keeps focus and the caret',
+    subjectIds.length === 3 && subjectIds.every((id) => /^SP-910[123]$/.test(id)) && subjectFocus.key === 'subject' && subjectFocus.value === 'S00' && subjectFocus.caret === 3, { subjectIds, subjectFocus });
+  await cdp.evaluate("(() => { const e = document.querySelector('[data-param-key=\"subject\"]'); e.value = ''; e.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  await cdp.settle(80);
+
+  const visibleBeforePaired = (await rowIds()).length;
+  await clickKey('paired');
+  s = await cdp.state();
+  const pairedIds = await rowIds();
+  const pairedNote = await cdp.evaluate("(() => { const e = document.querySelector('[data-param-key=\"paired\"]'); return e?.closest('.param-check')?.querySelector('.param-check-note')?.textContent ?? null; })()");
+  check('paired-only keeps the two paired subjects (four films) and says how many it hid',
+    s.paramFilters.pairedOnly === true && pairedIds.length === 4 && ['SP-9101', 'SP-9102', 'SP-0042', 'SP-0039'].every((id) => pairedIds.includes(id))
+    && pairedNote === ` \u00B7 ${visibleBeforePaired - 4} unpaired hidden`, { pairedIds, pairedNote, visibleBeforePaired });
+  const withState = await cdp.evaluate("(() => { const e = document.querySelector('[data-param-key=\"paired-with\"]'); return { disabled: e.disabled, value: e.value }; })()");
+  check('the with dropdown is enabled and reads All paired', withState.disabled === false && withState.value === '__any__', withState);
+  await choose('.param-select-timepoint', 'Pre-op');
+  await cdp.settle(80);
+  const pairedPreIds = await rowIds();
+  check('paired-only with Pre-op shows the pre-op halves of the pairs', pairedPreIds.length === 2 && pairedPreIds.includes('SP-9101') && pairedPreIds.includes('SP-0042'), pairedPreIds);
+  await choose('.param-select-timepoint', '');
+  await cdp.settle(80);
+  await clickKey('paired');
+
+  await clickKey('sort-subject');
+  const sortedIds = await rowIds();
+  const breaks = await cdp.evaluate("[...document.querySelectorAll('.param-row')].map((r) => r.classList.contains('param-row-break'))");
+  // p-8841 < s001 < s002, then the seven demos with no subject; Pre-op before Post-op inside a subject.
+  check('sorting by subject groups the pairs with Pre-op first and puts films with no subject last',
+    JSON.stringify(sortedIds.slice(0, 5)) === JSON.stringify(['SP-0042', 'SP-0039', 'SP-9101', 'SP-9102', 'SP-9103']) && sortedIds.slice(5).every((id) => /^SP-00\d\d$/.test(id)), sortedIds);
+  check('a rule starts each new subject block and never the first row',
+    breaks.length === sortedIds.length && breaks[0] === false && breaks[1] === false && breaks[2] === true && breaks[3] === false && breaks[4] === true && breaks[5] === true && breaks.slice(6).every((b) => b === false), breaks);
+  await clickKey('sort-subject');
+  const descIds = await rowIds();
+  check('descending reverses the subject order, a pair still reads Pre-op first, no-subject films still last',
+    JSON.stringify(descIds.slice(0, 5)) === JSON.stringify(['SP-9103', 'SP-9101', 'SP-9102', 'SP-0042', 'SP-0039']) && descIds.slice(5).every((id) => /^SP-00\d\d$/.test(id)), descIds);
+  await cdp.setState('{ paramSort: { key: "PI", dir: "desc" } }');
+  await cdp.settle(80);
+
   // 10. Deleting a ticked study prunes its tick. data/persistence.js's nextId is max+1 over the
   // surviving records, so deleting the highest-numbered study puts its id straight back in
   // circulation; a tick left behind on that id would arrive on the grid already selected and the
@@ -216,7 +308,7 @@ try {
   check('no console errors or exceptions during the run', cdp.errors.length === 0, cdp.errors);
 } finally {
   // Remove the injected records and reset the tab state whatever happened above.
-  await cdp.setState(`(s) => ({ studies: s.studies.filter((x) => x.id !== 'SP-9100' && x.id !== 'SP-9101'), openId: s.openId === 'SP-9101' ? null : s.openId, ...${RESET} })`).catch(() => {});
+  await cdp.setState(`(s) => ({ studies: s.studies.filter((x) => !${JSON.stringify(INJECTED)}.includes(x.id)), openId: ${JSON.stringify(INJECTED)}.includes(s.openId) ? null : s.openId, ...${RESET} })`).catch(() => {});
   cdp.close();
 }
 

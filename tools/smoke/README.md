@@ -254,9 +254,9 @@ folders that could not be read)` clause — `screens/workspace.js` records the s
 module scope only when its own folder handler ran the scan, so a state-seeded scan renders
 `3 radiographs found` without the clause, and that is what the suite asserts.
 
-**Known baseline** (fresh scratch profile, this branch tip): unit 333/333
-(`node --test test/*.test.js`); `smoke-studies.mjs` 60/60; `smoke-workspace.mjs` 96/96;
-`smoke-parameters.mjs` 33/33; `smoke-persist.mjs` 34/34 then 44/44 — the same figures as
+**Known baseline** (fresh scratch profile, this branch tip): unit 379/379
+(`node --test test/*.test.js`); `smoke-studies.mjs` 60/60; `smoke-workspace.mjs` 100/100;
+`smoke-parameters.mjs` 46/46; `smoke-seeding.mjs` 36/36; `smoke-persist.mjs` 34/34 then 44/44 — the same figures as
 `docs/superpowers/HANDOFF.md`'s baseline paragraph. Every check in the suite runs
 unconditionally; there is no skip path.
 
@@ -266,7 +266,7 @@ unconditionally; there is no skip path.
 the tab strip, the grid over the demo library, the segmented-only and workspace filters, a
 measurement sort, the export button's disabled state, and ticking rows to export a chosen
 subset, and the tab and sort surviving a trip to Analysis. DOM-only, no segmentation, no backend
-call; a few seconds. It injects `SP-9100` (unsegmented) and `SP-9101` (segmented, workspace root
+call; a few seconds. It injects `SP-9100` (unsegmented) and `SP-9101`–`SP-9103` (segmented, subjects S001 Pre-op/Post-op and S002 Pre-op, workspace root
 `C:\smoke-fixture\Fusion2025`) into the store and removes both in `finally`. Run it first on a
 fresh launch, before the suites that add real films (`smoke-studies.mjs`, `smoke-workspace.mjs`,
 `smoke-persist.mjs`): its `Added by hand` check assumes only the demo studies lack a workspace
@@ -276,7 +276,29 @@ root.
 node tools/smoke/smoke-parameters.mjs
 ```
 
-Every selector is a `data-param-key` or `data-study-id`. Baseline: 33/33.
+Every selector is a `data-param-key` or `data-study-id`. Baseline: 46/46 (2026-09-07: the study columns, the timepoint, view, subject and paired-only filters, and the subject sort).
+
+## Running the seeding suite
+
+`smoke-seeding.mjs` drives task 2 of the pre-op/post-op spec: the Workspace card's folder table over
+a fixture with `pre-op/`, `post-op/` and `flexion/` subfolders and a CSV carrying `subject_id`,
+`timepoint`, `film_date` and `view`; a row changed before Load; Load and its message; the four
+study fields read back from the store and from disk; the Parameters grid under the timepoint,
+paired-only and subject filters; the export's header and first row through the page's own
+`toCsv`; and the drawer's Study group, including a typed timepoint, a date, a cleared view and
+Import from CSV. DOM-only, nothing segments; about ten seconds.
+
+```
+node tools/smoke/launch.mjs
+node tools/smoke/smoke-seeding.mjs
+node tools/smoke/cdp.mjs --quit
+```
+
+It writes its fixture under `tools/smoke/out/seeding-fixture/` (git-ignored) and the CSV beside it
+on every run, adds five records through Load and removes them in `finally`. It may run before or
+after the other suites on one instance, but never between `smoke-persist.mjs --phase run` and
+`--phase restart`. Not driveable: the native pickers, the datalist and date-picker popups, and
+the save dialog. A silent run has thrown — re-run it bare. Baseline: 36/36.
 
 ## Library
 
