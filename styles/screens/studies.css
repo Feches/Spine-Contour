@@ -425,3 +425,53 @@
 .param-export {
   flex: none;
 }
+
+/* The bare tick box, with no visible label: the row select inside each sticky STUDY cell, and the
+   select-all in the STUDY header before the sort button. Inline-flex, rather than making
+   .param-cell-study itself a flex row: that selector is already defined above and this file is
+   only appended to, so a second rule for it would be a duplicate, and the cell stays a real
+   table cell -- CSS table fixup wraps a <th> whose display is not table-cell in an anonymous
+   cell, and the sticky first column is the cell. (Measured 2026-09-07: Chromium 152 keeps such a
+   cell sticky anyway, so this is robustness, not a bug fix.) Either way the box and the row's
+   name sit on one line, vertically centred, with the same gap. */
+.param-pick {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 10px;
+  flex: none;
+}
+
+/* Select-all with only some of the visible rows ticked. The shared .checkbox-box paints a tick
+   for :checked and nothing otherwise, so without this an indeterminate box is indistinguishable
+   from an empty one and the header reads as "nothing selected" while rows are selected. A dash,
+   the platform convention, on the filled ground the tick uses. */
+.param-pick input[type="checkbox"]:indeterminate ~ .checkbox-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.param-pick input[type="checkbox"]:indeterminate ~ .checkbox-box::after {
+  content: '';
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--on-accent);
+}
+
+/* Chromium shows no tooltip on a disabled control, so the export's reason is visible beside it,
+   and the two wrap as one item so the reason never lands on a line of its own. */
+.param-export-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
+.param-export-note {
+  flex: none;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}

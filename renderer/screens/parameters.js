@@ -24,6 +24,7 @@ import {
   HAND_ADDED, DEFAULT_SORT, measurementColumns, parameterValues, formatParameter,
   workspaceOptions, folderOptions, normaliseFilters, patchFilters, filterParameters,
   hiddenUnsegmented, sortParameters, emptyReason, exportFileName,
+  toggleId, withIds, selectedVisible, rowsToExport,
 } from '../data/parameters.js';
 
 const EMPTY_COPY = {
@@ -42,12 +43,23 @@ function sameKey(a, b) {
 }
 
 // Real booleans on purpose: el() assigns `checked` as a property, and the string 'false' is true.
-function checkbox({ key, label, checked, note, onChange }) {
-  const input = el('input', { type: 'checkbox', checked, 'data-param-key': key, onChange });
-  return el('label', { class: 'checkbox-row param-check' },
+// `label: null` builds the bare tick box the grid uses (row select and select-all), which carries
+// its name in `ariaLabel` instead: a visible label in the STUDY column would repeat the row's own
+// name in every row. The hidden input stays inside the <label> so a click anywhere on the box --
+// including a synthetic click at the 1x1 input's own rect, which is how the smoke suite drives it
+// -- lands on the label and toggles the control.
+function checkbox({ key, label, checked, note, ariaLabel, indeterminate, onChange }) {
+  const input = el('input', {
+    type: 'checkbox', checked, 'data-param-key': key, onChange,
+    ...(ariaLabel ? { 'aria-label': ariaLabel } : {}),
+  });
+  // A property, not an attribute, and it has no markup form: it must be assigned on the node.
+  if (indeterminate === true) input.indeterminate = true;
+  return el('label', { class: `checkbox-row param-check${label === null ? ' param-pick' : ''}` },
     input,
     el('span', { class: 'checkbox-box', innerHTML: CHECK_SVG }),
-    el('span', { class: 'param-check-label' }, label, note ? el('span', { class: 'param-check-note' }, note) : null));
+    label === null ? null
+      : el('span', { class: 'param-check-label' }, label, note ? el('span', { class: 'param-check-note' }, note) : null));
 }
 
 export function mountParameters(host, { onOpen }) {
@@ -72,13 +84,15 @@ export function mountParameters(host, { onOpen }) {
     });
   }
 
-  // The visible rows, as one long-format file (spec §11.1). toCsv drops demo rows itself; the
-  // button is disabled when that would leave nothing, so the user is told why instead of being
-  // handed a header with no data. A cancelled dialog resolves null and must not toast.
-  async function exportVisible(visible, filters) {
-    const real = visible.filter((study) => study.source === 'real');
+  // Writes the rows it is given, as one long-format file (spec §11.1): the visible rows, or -- when
+  // any visible row is ticked -- the visible selected ones (rowsToExport decides which). toCsv
+  // drops demo rows itself; the button is disabled when that would leave nothing, so the user is
+  // told why instead of being handed a header with no data. A cancelled dialog resolves null and
+  // must not toast.
+  async function exportVisible(rows, filters) {
+    const real = rows.filter((study) => study.source === 'real');
     if (real.length === 0) return;
-    const csv = toCsv(visible);
+    const csv = toCsv(rows);
     try {
       const savedTo = await saveCsv({ text: csv, suggestedName: exportFileName(filters.workspace) });
       if (savedTo) showToast(`Exported ${real.length} ${real.length === 1 ? 'row' : 'rows'} to ${savedTo}`);
@@ -124,27 +138,44 @@ export function mountParameters(host, { onOpen }) {
       onChange: (event) => setState({ paramLevels: event.target.checked }),
     });
 
-    const exportable = visible.filter((study) => study.source === 'real').length;
+    // What Export would write, and how much of it the user picked. A tick on a row the current
+    // filter hides counts for neither: `chosen` is the ticked rows that are VISIBLE, so the label,
+    // the count and the file all describe the same set. The hidden tick stays in the store and
+    // comes back with the filter.
+    const chosen = selectedVisible(visible, live.paramSelected);
+    const rows = rowsToExport(visible, live.paramSelected);
+    const exportable = rows.filter((study) => study.source === 'real').length;
+    // Chromium shows no tooltip on a disabled control, so the reason is both the title and a
+    // visible note beside the button.
+    const reason = visible.length === 0 ? 'Nothing to export' : 'Demo studies are not exported';
     const exportButton = el('button', {
       type: 'button', class: 'btn btn-small param-export', 'data-param-key': 'export',
       disabled: exportable === 0,
       // No tooltip on the enabled button: it would only repeat the label it sits on.
-      title: exportable > 0 ? '' : (visible.length === 0 ? 'Nothing to export' : 'Demo studies are not exported'),
-      onClick: () => exportVisible(visible, filters),
-    }, 'Export CSV');
+      title: exportable > 0 ? '' : reason,
+      onClick: () => exportVisible(rows, filters),
+    }, chosen.length > 0 ? `Export ${chosen.length} selected` : 'Export CSV');
 
     return el('div', { class: 'param-bar' },
       workspaceSelect, folderSelect, segmented, levels,
-      el('div', { class: 'param-count', 'data-param-key': 'count' }, `${visible.length} OF ${live.studies.length} STUDIES SHOWN`),
-      exportButton);
+      el('div', { class: 'param-count', 'data-param-key': 'count' },
+        `${visible.length} OF ${live.studies.length} STUDIES SHOWN${chosen.length > 0 ? ` \u00B7 ${chosen.length} SELECTED` : ''}`),
+      // Button and note in one group: the bar wraps, and on their own they land on separate lines
+      // with the reason at the far left, reading as a stray line rather than as this button's.
+      el('div', { class: 'param-export-group' },
+        exportButton,
+        exportable === 0 ? el('span', { class: 'param-export-note', 'data-param-key': 'export-note' }, reason) : null));
   }
 
-  function sortableHeader(key, label, sort, extraClass) {
+  // `lead` is a node placed before the sort button inside the header cell -- the STUDY column's
+  // select-all box. Null for every other column.
+  function sortableHeader(key, label, sort, extraClass, lead) {
     const active = sort.key === key;
     return el('th', {
       scope: 'col', class: `param-th${extraClass ? ` ${extraClass}` : ''}`,
       'aria-sort': active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none',
     },
+      lead ?? null,
       el('button', {
         type: 'button', class: `param-sort${active ? ' is-active' : ''}`, 'data-param-key': `sort-${key}`,
         onClick: () => toggleSort(key),
@@ -157,10 +188,18 @@ export function mountParameters(host, { onOpen }) {
     return el('th', { scope: 'col', class: 'param-th' }, label);
   }
 
-  function buildRow(study, columns, fields) {
+  function buildRow(study, columns, fields, selected) {
     const values = parameterValues(study);
     const inconsistent = study.measurements != null && !isConsistent(study.measurements);
+    // The tick sits inside the sticky STUDY cell, before the name, so it scrolls with the column
+    // it belongs to and stays on screen with the row's identity. toggleId returns a new array:
+    // the store's selection is replaced, never mutated.
     const nameCell = el('th', { scope: 'row', class: 'param-cell-study' },
+      checkbox({
+        key: `select-${study.id}`, label: null, checked: selected.includes(study.id),
+        ariaLabel: `Select ${studyName(study)}`,
+        onChange: () => setState((s) => ({ paramSelected: toggleId(s.paramSelected, study.id) })),
+      }),
       el('button', {
         type: 'button', class: 'param-open', 'data-param-key': `open-${study.id}`, title: study.id,
         onClick: () => onOpen(study),
@@ -190,14 +229,30 @@ export function mountParameters(host, { onOpen }) {
     const columns = measurementColumns(live.paramLevels === true);
     const fields = live.fields ?? [];
     const sort = { ...DEFAULT_SORT, ...(live.paramSort ?? {}) };
+    const selected = live.paramSelected ?? [];
+    // Select-all is about the VISIBLE rows only, so it never ticks a film the filter is hiding.
+    // `ids` is this render's own array, captured by the handler exactly as the Export button
+    // captures `visible`; withIds leaves ticks outside it alone.
+    const ids = visible.map((study) => study.id);
+    const picked = ids.filter((id) => selected.includes(id)).length;
+    const selectAll = checkbox({
+      key: 'select-all', label: null, ariaLabel: 'Select all visible studies',
+      checked: ids.length > 0 && picked === ids.length,
+      indeterminate: picked > 0 && picked < ids.length,
+      onChange: (event) => {
+        // Read before setState: the rebuild it triggers replaces this input.
+        const on = event.target.checked;
+        setState((s) => ({ paramSelected: withIds(s.paramSelected, ids, on) }));
+      },
+    });
     const head = el('thead', {}, el('tr', {},
-      sortableHeader('study', 'STUDY', sort, 'param-col-study'),
+      sortableHeader('study', 'STUDY', sort, 'param-col-study', selectAll),
       plainHeader('VIEW'),
       ...columns.map((column) => sortableHeader(column.key, column.label.toUpperCase(), sort, 'param-col-num')),
       ...fields.map((field) => plainHeader(field.toUpperCase())),
       sortableHeader('workspace', 'WORKSPACE', sort),
       plainHeader('FOLDER')));
-    const body = el('tbody', {}, ...visible.map((study) => buildRow(study, columns, fields)));
+    const body = el('tbody', {}, ...visible.map((study) => buildRow(study, columns, fields, selected)));
     return el('div', { class: 'param-table-wrap card', 'data-param-key': 'grid' },
       el('table', { class: 'param-table' }, head, body));
   }
@@ -212,7 +267,8 @@ export function mountParameters(host, { onOpen }) {
     // This array is the tab's single point of failure. Every store key the grid reads must be
     // listed here or the grid silently stops repainting for it -- the same warning router.js
     // carries for SCREEN_KEYS.
-    const key = [live.studies, live.query, live.paramFilters, live.paramSort, live.paramLevels, live.fields];
+    const key = [live.studies, live.query, live.paramFilters, live.paramSort, live.paramLevels, live.fields,
+      live.paramSelected];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
 
