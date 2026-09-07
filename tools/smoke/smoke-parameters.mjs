@@ -19,7 +19,7 @@ function check(name, ok, detail) {
 }
 
 const WS_ROOT = 'C:\\smoke-fixture\\Fusion2025';
-const RESET = '{ query: "", studiesTab: "find", paramFilters: { workspace: null, folder: null, segmentedOnly: true }, paramSort: { key: "study", dir: "asc" }, paramLevels: false }';
+const RESET = '{ query: "", studiesTab: "find", paramFilters: { workspace: null, folder: null, segmentedOnly: true }, paramSort: { key: "study", dir: "asc" }, paramLevels: false, paramSelected: [] }';
 
 const cdp = await connect();
 const count = (selector) => cdp.evaluate(`document.querySelectorAll(${JSON.stringify(selector)}).length`);
@@ -111,7 +111,49 @@ try {
   check('two clicks on PI sort descending, with the highest PI first', s.paramSort.key === 'PI' && s.paramSort.dir === 'desc' && topAfterDesc === 'SP-9101', { sort: s.paramSort, top: topAfterDesc });
   check('the sort header keeps keyboard focus across the rebuild', (await cdp.evaluate("document.activeElement?.getAttribute('data-param-key')")) === 'sort-PI');
 
-  // 8. Open a row, come back: tab and sort survive.
+  // 8. Row selection: ticking a row and select-all move the export label and count line together;
+  // a tick on a row a later filter hides stays in the store and comes back with the filter.
+  await clickKey('select-SP-9101');
+  const countAfterTick = await text('[data-param-key="count"]');
+  const exportAfterTick = await text('[data-param-key="export"]');
+  check('ticking a row adds 1 SELECTED to the count line', countAfterTick !== null && countAfterTick.includes('1 SELECTED'), countAfterTick);
+  check('ticking a row changes the export label to Export 1 selected', exportAfterTick === 'Export 1 selected', exportAfterTick);
+
+  const visibleBeforeSelectAll = await rowIds();
+  await clickKey('select-all');
+  const checkedAfterSelectAll = await cdp.evaluate(`[...document.querySelectorAll('.param-row input[type="checkbox"]')].map((i) => i.checked)`);
+  const exportAfterSelectAll = await text('[data-param-key="export"]');
+  check('select-all ticks every visible row\'s checkbox', checkedAfterSelectAll.length === visibleBeforeSelectAll.length && checkedAfterSelectAll.length > 0 && checkedAfterSelectAll.every(Boolean), { rows: visibleBeforeSelectAll.length, checked: checkedAfterSelectAll });
+  check('select-all\'s label reads Export <rows> selected', exportAfterSelectAll === `Export ${visibleBeforeSelectAll.length} selected`, { rows: visibleBeforeSelectAll.length, label: exportAfterSelectAll });
+
+  await clickKey('select-all');
+  const checkedAfterClear = await cdp.evaluate(`[...document.querySelectorAll('.param-row input[type="checkbox"]')].map((i) => i.checked)`);
+  const exportAfterClear = await text('[data-param-key="export"]');
+  check('clicking select-all again unticks every row', checkedAfterClear.length > 0 && checkedAfterClear.every((c) => c === false), checkedAfterClear);
+  check('with nothing ticked the label is back to Export CSV', exportAfterClear === 'Export CSV', exportAfterClear);
+
+  await clickKey('select-SP-9101');
+  await choose('.param-select-workspace', '__hand__');
+  await cdp.settle(80);
+  const exportHidden = await text('[data-param-key="export"]');
+  const countHidden = await text('[data-param-key="count"]');
+  check('a tick hidden by the workspace filter drops the export label back to Export CSV', exportHidden === 'Export CSV', exportHidden);
+  check('and drops out of the count line too', countHidden !== null && !countHidden.includes('SELECTED'), countHidden);
+
+  await choose('.param-select-workspace', '');
+  await cdp.settle(80);
+  const exportRestored = await text('[data-param-key="export"]');
+  check('clearing the workspace filter brings the hidden tick back into the label', exportRestored === 'Export 1 selected', exportRestored);
+
+  await clickKey('select-SP-9101');
+  await choose('.param-select-workspace', '__hand__');
+  await cdp.settle(80);
+  const exportNote = await text('[data-param-key="export-note"]');
+  check('with the tick cleared and only demos visible, the export note explains the disabled button', exportNote === 'Demo studies are not exported', exportNote);
+  await choose('.param-select-workspace', '');
+  await cdp.settle(80);
+
+  // 9. Open a row, come back: tab and sort survive.
   await clickKey('open-SP-9101');
   s = await cdp.state();
   check('clicking a study name opens it on Analysis', s.screen === 'analysis' && s.openId === 'SP-9101', { screen: s.screen, openId: s.openId });
@@ -120,7 +162,7 @@ try {
   s = await cdp.state();
   check('back on Studies, the Parameters tab and the PI sort are still in place', s.studiesTab === 'parameters' && s.paramSort.key === 'PI' && s.paramSort.dir === 'desc' && (await has('[data-param-key="grid"]')), { tab: s.studiesTab, sort: s.paramSort });
 
-  // 9. No console errors or exceptions during the run.
+  // 10. No console errors or exceptions during the run.
   check('no console errors or exceptions during the run', cdp.errors.length === 0, cdp.errors);
 } finally {
   // Remove the injected records and reset the tab state whatever happened above.

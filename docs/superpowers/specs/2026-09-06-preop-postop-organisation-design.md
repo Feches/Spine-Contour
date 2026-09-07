@@ -369,8 +369,10 @@ to the library; the two are different facts and never share a label.
 
 Values render exactly as the measurements panel renders them (one decimal, `—` for absent, the
 consistency mark from spec §10.4 on the PI cell). The study name in each row is the link that opens
-the study; the rest of the row is not a click target. The grid uses table semantics with a per-row
-link, not the Find table's single-control button row (roadmap 5, the accessibility note).
+the study; the rest of the row is not a click target. Each row's Study cell also carries a
+checkbox, and the STUDY header a select-all for the visible rows (2026-09-07). The grid uses table
+semantics with a per-row link, not the Find table's single-control button row (roadmap 5, the
+accessibility note).
 
 ### 10.3 Filters and sort
 
@@ -397,8 +399,11 @@ subject draws a thin rule between subjects so a pair reads as a block. The empty
 
 Two buttons on the filter bar: **Export CSV** (§11.1, the rows the filters show) and, once task 4
 lands, **Export paired CSV** (§11.2). Suggested filename `<workspace>-parameters.csv` or
-`library-parameters.csv` when no workspace filter is set. The Analysis screen's per-study export stays
-as it is.
+`library-parameters.csv` when no workspace filter is set. Ticking rows narrows the export to the
+ticked rows that are visible, in grid order; the button reads `Export N selected` and the count
+line `· N SELECTED`; hidden picks stay ticked and return with the filter; with nothing ticked the
+export is the visible rows (decided 2026-09-07). The reason a disabled Export button cannot act is
+written beside it, not in a tooltip. The Analysis screen's per-study export stays as it is.
 
 ## 11. Exports
 

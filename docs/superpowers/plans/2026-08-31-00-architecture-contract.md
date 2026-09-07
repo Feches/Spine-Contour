@@ -111,7 +111,7 @@ renderer/                         (new)
                                   under a Find | Parameters tab strip (2026-09-06)
   screens/analysis.js             exports setFilePayload, releaseStudy(studyId) (plan 06)
   screens/parameters.js           (2026-09-06) the Parameters tab: exports mountParameters(host, {onOpen}) → {update(live, queried)};
-                                  reads paramFilters/paramSort/paramLevels, writes them; never imports screens/
+                                  reads paramFilters/paramSort/paramLevels/paramSelected, writes them; never imports screens/
 
   components/sidebar.js
   components/viewer.js            toolbar, canvas host, every pointer/keyboard listener on the stage;
