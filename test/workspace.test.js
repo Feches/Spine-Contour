@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { loadWorkspaceStudies, workspaceLoadedFields, workspaceLoadedMessage } from '../renderer/screens/workspace.js';
 
 // A persisted real record, the shape validate() returns (renderer/data/persistence.js).
-function real(id, filePath, clinical = {}) {
+function real(id, filePath, clinical = {}, extra = {}) {
   return {
     id, source: 'real', filePath, fileName: filePath.split(/[\\/]/).pop(),
     addedAt: '2026-08-21T12:00:00.000Z', view: 'Standing lateral', thumbnail: null,
-    measurements: null, geometry: null, qc: null, clinical,
+    subjectId: null, timepoint: null, filmDate: null,
+    measurements: null, geometry: null, qc: null, clinical, ...extra,
   };
 }
 
@@ -44,7 +45,8 @@ test('loadWorkspaceStudies front-inserts new films in scan order with consecutiv
 });
 
 test('loadWorkspaceStudies skips films already in the library, matching filePath case-insensitively, and counts them', () => {
-  const known = real('SP-1000', 'C:\\Films\\A.PNG');
+  // K is stored, so the load has no blank subject to fill and the record comes back by reference.
+  const known = real('SP-1000', 'C:\\Films\\A.PNG', {}, { subjectId: 'K' });
   const state = baseState({
     studies: [known, DEMO],
     wsFiles: ['c:\\films\\a.png', 'C:\\films\\b.png'],
@@ -65,7 +67,7 @@ test('loadWorkspaceStudies fills only the blank clinical keys of a known record 
   // plus BMI. Load must fill Sex and BMI, leave Age alone, and replace the record with a NEW
   // object; `b` has nothing to fill and must come back by reference, uncounted.
   const a = real('SP-1000', 'C:\\films\\a.png', { Notes: 'keep me', Age: '61', Sex: '' });
-  const b = real('SP-1002', 'C:\\films\\b.png', { Age: '44' });
+  const b = real('SP-1002', 'C:\\films\\b.png', { Age: '44' }, { subjectId: 'B' });
   const other = real('SP-1001', 'C:\\films\\other.png');
   const state = baseState({
     studies: [other, a, b, DEMO],
@@ -91,6 +93,9 @@ test('loadWorkspaceStudies fills only the blank clinical keys of a known record 
   // (a) absent and empty keys are filled; (b) the existing Age is NOT overwritten by the CSV's 58.
   assert.deepEqual(merged.clinical, { Notes: 'keep me', Age: '61', Sex: 'F', BMI: '27' });
   assert.deepEqual(a.clinical, { Notes: 'keep me', Age: '61', Sex: '' });
+  // The stem `a` fills the record's blank subject on the same new object; the original is untouched.
+  assert.equal(merged.subjectId, 'a');
+  assert.equal(a.subjectId, null);
   // (c) nothing to fill -> the same object, and no `updated` count for it.
   assert.equal(result.studies[2], b);
   assert.equal(result.studies[0], other);
@@ -167,7 +172,7 @@ test('workspaceLoadedMessage reports films already in the library and clinical u
   assert.equal(workspaceLoadedMessage({ added: 0, known: 4, updated: 0, join: null, mapping: [] }),
     'Workspace loaded — 0 studies added · 4 already in the library');
   assert.equal(workspaceLoadedMessage({ added: 1, known: 4, updated: 2, join: null, mapping: [] }),
-    'Workspace loaded — 1 study added · 4 already in the library (clinical data updated for 2)');
+    'Workspace loaded — 1 study added · 4 already in the library (blank fields filled for 2)');
 });
 
 test('workspaceLoadedMessage says when the CSV could not be linked or nothing was mapped', () => {
@@ -202,7 +207,7 @@ test('workspaceLoadedMessage says nothing was written when a re-Load found no bl
   // Only that exact combination changes. One field filled, and the load DID write: the linked
   // clause and its counts come back verbatim.
   assert.equal(workspaceLoadedMessage({ added: 0, known: 3, updated: 1, join, mapping }),
-    'Workspace loaded — 0 studies added · 3 already in the library (clinical data updated for 1)'
+    'Workspace loaded — 0 studies added · 3 already in the library (blank fields filled for 1)'
     + ' · clinical data linked (2 matched)');
   // A new film was added, so the load wrote its row: unchanged as well.
   assert.equal(workspaceLoadedMessage({ added: 1, known: 3, updated: 0, join, mapping }),
@@ -222,4 +227,95 @@ test('workspaceLoadedMessage says "1 row" for a single CSV match with nothing to
   assert.equal(workspaceLoadedMessage({ added: 0, known: 3, updated: 0, join, mapping }),
     'Workspace loaded — 0 studies added · 3 already in the library'
     + ' · CSV matched 1 row; no blank fields to fill (use Import from CSV to replace existing values)');
+});
+
+// ---------------------------------------------------------------------------
+// Seeding the study fields on load (pre-op/post-op spec §8).
+
+const WS = 'C:\\ws\\Fusion2025';
+const at = (relative) => `${WS}\\${relative.replace(/\//g, '\\')}`;
+const pick = (s) => ({ subjectId: s.subjectId, timepoint: s.timepoint, filmDate: s.filmDate, view: s.view });
+
+test('loadWorkspaceStudies seeds subject, timepoint and view from the layout, and counts what it read', () => {
+  const result = loadWorkspaceStudies(baseState({
+    wsFolder: WS,
+    wsFiles: [at('pre-op/S001.png'), at('post-op/S001.png'), at('flexion/S003.png'), at('S004_postop.png'), at('IMG_0001.png')],
+  }));
+  const by = (relative) => result.studies.find((s) => s.filePath === at(relative));
+  assert.deepEqual(pick(by('pre-op/S001.png')), { subjectId: 'S001', timepoint: 'Pre-op', filmDate: null, view: 'Standing lateral' });
+  assert.deepEqual(pick(by('post-op/S001.png')), { subjectId: 'S001', timepoint: 'Post-op', filmDate: null, view: 'Standing lateral' });
+  assert.deepEqual(pick(by('flexion/S003.png')), { subjectId: 'S003', timepoint: null, filmDate: null, view: 'Flexion lateral' });
+  assert.deepEqual(pick(by('S004_postop.png')), { subjectId: 'S004', timepoint: 'Post-op', filmDate: null, view: 'Standing lateral' });
+  assert.deepEqual(pick(by('IMG_0001.png')), { subjectId: 'IMG_0001', timepoint: null, filmDate: null, view: 'Standing lateral' });
+  assert.deepEqual(result.seeding, { fromFolders: 5, fromCsv: 0, noSubject: 0, noTimepoint: 2, badDates: 0 });
+});
+
+test('loadWorkspaceStudies applies the folder table: a user-set row beats the default, the film\'s own stem beats the row', () => {
+  const result = loadWorkspaceStudies(baseState({
+    wsFolder: WS,
+    wsFiles: [at('pre-op/S001.png'), at('pre-op/S002_flexion.png'), at('S003.png')],
+    wsFolderRows: [
+      { folder: 'pre-op', count: 2, timepoint: 'Intra-op', view: 'Extension lateral' },
+      { folder: '.', count: 1, timepoint: null, view: 'Standing lateral' },
+    ],
+  }));
+  const by = (relative) => result.studies.find((s) => s.filePath === at(relative));
+  assert.deepEqual(pick(by('pre-op/S001.png')), { subjectId: 'S001', timepoint: 'Intra-op', filmDate: null, view: 'Extension lateral' });
+  assert.deepEqual(pick(by('pre-op/S002_flexion.png')), { subjectId: 'S002', timepoint: 'Intra-op', filmDate: null, view: 'Flexion lateral' });
+  assert.deepEqual(pick(by('S003.png')), { subjectId: 'S003', timepoint: null, filmDate: null, view: 'Standing lateral' });
+  assert.deepEqual(result.seeding, { fromFolders: 3, fromCsv: 0, noSubject: 0, noTimepoint: 1, badDates: 0 });
+});
+
+test('loadWorkspaceStudies fills a known record\'s blank study fields on a new object, never overwrites, and counts it', () => {
+  const blank = real('SP-1000', at('pre-op/S001.png'));
+  const full = real('SP-1001', at('flexion/S002.png'), {}, { subjectId: 'KEEP', timepoint: '6 wk', filmDate: '2020-01-01', view: 'Prone lateral' });
+  const result = loadWorkspaceStudies(baseState({ studies: [blank, full, DEMO], wsFolder: WS, wsFiles: [at('pre-op/S001.png'), at('flexion/S002.png')] }));
+  assert.equal(result.added, 0);
+  assert.equal(result.known, 2);
+  assert.equal(result.updated, 1);
+  const filled = result.studies.find((s) => s.id === 'SP-1000');
+  assert.notEqual(filled, blank);
+  assert.deepEqual(pick(filled), { subjectId: 'S001', timepoint: 'Pre-op', filmDate: null, view: 'Standing lateral' });
+  assert.deepEqual(pick(blank), { subjectId: null, timepoint: null, filmDate: null, view: 'Standing lateral' });
+  // Everything stored stays, including a view the folder name contradicts, and the record is the same object.
+  assert.equal(result.studies.find((s) => s.id === 'SP-1001'), full);
+  assert.equal(result.studies[2], DEMO);
+  assert.deepEqual(result.seeding, { fromFolders: 1, fromCsv: 0, noSubject: 0, noTimepoint: 0, badDates: 0 });
+});
+
+test('loadWorkspaceStudies takes the CSV\'s structural columns over the layout, never into clinical, and counts a bad date', () => {
+  const headers = ['study_id', 'subject_id', 'timepoint', 'film_date', 'view', 'age_yrs'];
+  const result = loadWorkspaceStudies(baseState({
+    wsFolder: WS,
+    wsFiles: [at('pre-op/S001.png'), at('post-op/S002.png')],
+    wsCsv: 'C:\\ws\\clinical.csv', wsCsvHeaders: headers,
+    wsCsvRows: [
+      { study_id: 'S001', subject_id: 'P-1', timepoint: 'preop', film_date: '3/2/2025', view: 'Supine lateral', age_yrs: '58' },
+      { study_id: 'S002', subject_id: '', timepoint: '', film_date: '2025-02-30', view: '', age_yrs: '' },
+    ],
+    wsMapping: [{ src: 'study_id', dest: null }, { src: 'subject_id', dest: null }, { src: 'timepoint', dest: null },
+      { src: 'film_date', dest: null }, { src: 'view', dest: null }, { src: 'age_yrs', dest: 'Age' }],
+  }));
+  const by = (relative) => result.studies.find((s) => s.filePath === at(relative));
+  assert.deepEqual(pick(by('pre-op/S001.png')), { subjectId: 'P-1', timepoint: 'Pre-op', filmDate: '2025-03-02', view: 'Supine lateral' });
+  assert.deepEqual(by('pre-op/S001.png').clinical, { Age: '58' });
+  // Blank CSV cells supply nothing: the layout fills in, and the rejected date is counted, not stored.
+  assert.deepEqual(pick(by('post-op/S002.png')), { subjectId: 'S002', timepoint: 'Post-op', filmDate: null, view: 'Standing lateral' });
+  assert.deepEqual(by('post-op/S002.png').clinical, {});
+  assert.deepEqual(result.seeding, { fromFolders: 1, fromCsv: 1, noSubject: 0, noTimepoint: 0, badDates: 1 });
+});
+
+test('workspaceLoadedMessage appends the §8.4 seeding clauses, each only when its count is non-zero', () => {
+  const base = { added: 2, known: 0, updated: 0, join: null, mapping: [] };
+  assert.equal(workspaceLoadedMessage({ ...base, seeding: { fromFolders: 2, fromCsv: 0, noSubject: 0, noTimepoint: 0, badDates: 0 } }),
+    'Workspace loaded — 2 studies added · subject, timepoint or view read from folder or file names for 2 films');
+  assert.equal(workspaceLoadedMessage({ ...base, seeding: { fromFolders: 0, fromCsv: 1, noSubject: 1, noTimepoint: 2, badDates: 1 } }),
+    'Workspace loaded — 2 studies added · subject, timepoint, film date or view set from the CSV for 1 film'
+    + ' · 1 film has no subject · 2 films have no timepoint · 1 film date could not be read');
+  assert.equal(workspaceLoadedMessage({ ...base, seeding: { fromFolders: 0, fromCsv: 0, noSubject: 0, noTimepoint: 0, badDates: 3 } }),
+    'Workspace loaded — 2 studies added · 3 film dates could not be read');
+  assert.equal(workspaceLoadedMessage({ ...base, seeding: { fromFolders: 0, fromCsv: 0, noSubject: 0, noTimepoint: 0, badDates: 0 } }),
+    'Workspace loaded — 2 studies added');
+  // No seeding record at all (an older caller): no clauses.
+  assert.equal(workspaceLoadedMessage(base), 'Workspace loaded — 2 studies added');
 });

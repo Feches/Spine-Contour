@@ -38,6 +38,7 @@ test('getState returns the documented initial shape', () => {
   assert.deepEqual(state.wsCsvHeaders, []);
   assert.deepEqual(state.wsCsvRows, []);
   assert.deepEqual(state.wsMapping, []);
+  assert.deepEqual(state.wsFolderRows, []);
   assert.deepEqual(state.fields, []);
   assert.equal(state.dataOpen, true);
   assert.equal(state.toast, '');

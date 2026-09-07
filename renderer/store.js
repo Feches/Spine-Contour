@@ -46,6 +46,11 @@ let state = {
   wsCsvRows: [],
   wsMapping: [],
 
+  // (2026-09-07, pre-op/post-op spec §8.5) One row per scanned folder that holds films --
+  // { folder, count, timepoint, view } -- the assignment the Workspace card shows before Load.
+  // Rebuilt by every scan, replaced wholesale on every change, never persisted.
+  wsFolderRows: [],
+
   fields: [],
   dataOpen: true,
   toast: '',

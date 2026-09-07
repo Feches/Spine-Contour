@@ -72,14 +72,19 @@ const KNOWN_FIELDS = ['Age', 'Sex', 'BMI', 'Diagnosis', 'ODI', 'Treatment plan',
 // The join for this fixture: a and b match, zzz is unmatched, A is a duplicate of a.
 const NOTE_PREVIEW = '2 of 4 rows match a film · 1 unmatched · 1 duplicate study_id';
 const LINKED_CLAUSE = 'clinical data linked (2 matched, 1 unmatched, 1 duplicate study_id)';
-// workspaceLoadedMessage: added=3, known=0, updated=0, join present, tx_plan mapped by then.
-const TOAST_FIRST_LOAD = `Workspace loaded — 3 studies added · ${LINKED_CLAUSE}`;
+// workspaceLoadedMessage: added=3, known=0, updated=0, join present, tx_plan mapped by then. Since
+// 2026-09-07 the load also seeds the study fields (spec §8.4): a.png and b.PNG take their subject
+// from the stem, batch/c.jpg from its folder, and no folder in the fixture names a timepoint.
+const SEEDING_FIRST_LOAD = ' · subject, timepoint or view read from folder or file names for 3 films · 3 films have no timepoint';
+const TOAST_FIRST_LOAD = `Workspace loaded — 3 studies added · ${LINKED_CLAUSE}${SEEDING_FIRST_LOAD}`;
 // Second load: added=0, known=3, updated=0 -- a and b already carry every CSV key from the
 // first load and Load only fills BLANKS, so this load wrote NOTHING. The message says so and
 // names the control that does overwrite, instead of the success-shaped `clinical data linked`
-// clause; `matched` is still 2 (a and b), which is the number it reports.
+// clause; `matched` is still 2 (a and b), which is the number it reports. The subjects are
+// stored now, so nothing is read from names; the three timepoints are still missing.
 const TOAST_SECOND_LOAD = 'Workspace loaded — 0 studies added · 3 already in the library'
-  + ' · CSV matched 2 rows; no blank fields to fill (use Import from CSV to replace existing values)';
+  + ' · CSV matched 2 rows; no blank fields to fill (use Import from CSV to replace existing values)'
+  + ' · 3 films have no timepoint';
 const CLINICAL_A = { Age: '58', Sex: 'F', 'Treatment plan': 'Fusion' };
 const CLINICAL_B = { Age: '61', Sex: 'M', 'Treatment plan': 'Observation' };
 const NOTE_TEXT = 'smoke note';

@@ -308,6 +308,8 @@ a draw function must blank a layer, never freeze the application.
   wsCsvHeaders: [],
   wsCsvRows: [],            // Object<string,string>[]
   wsMapping: [],            // Mapping[] — see data/csv.js
+  wsFolderRows: [],         // (2026-09-07, spec §8.5) {folder, count, timepoint, view}[] — one per scanned folder holding
+                            // films, from data/seeding.js folderRows; rebuilt by every scan, replaced wholesale, never persisted
 
   fields: [],               // string[] active clinical field names — seeded at bootstrap with
                             // clinicalFieldNames(studies) (plan 06); session-only otherwise

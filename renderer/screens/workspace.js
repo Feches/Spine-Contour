@@ -10,7 +10,9 @@
 import { el, mount } from '../dom.js';
 import { getState, setState } from '../store.js';
 import { chooseFolder, scanFolder, chooseCsv, readCsv } from '../api.js';
-import { parse, autoMap, KNOWN_FIELDS, findJoinHeader, joinClinical, clinicalFieldNames } from '../data/csv.js';
+import { parse, autoMap, KNOWN_FIELDS, findJoinHeader, joinClinical, clinicalFieldNames, findStructuralHeaders, structuralFromRow } from '../data/csv.js';
+import { folderRows, folderKey, seedFields, STUDY_FIELDS } from '../data/seeding.js';
+import { DEFAULT_VIEW } from '../data/timepoints.js';
 import { nextId } from '../data/persistence.js';
 import { newStudy } from './studies.js';
 import { showToast } from '../components/toast.js';
@@ -33,10 +35,25 @@ let lastScan = null; // { folder, skipped }
 // NEW object -- an existing value is never overwritten, and a record with nothing to fill is
 // kept by reference and not counted. New records are front-inserted in scan order with
 // consecutive ids; nextId is read once.
+//
+// The four study fields (pre-op/post-op spec §8.3) follow the same fill-blanks rule: seedFields
+// hands back the stored value where there is one, so a change here is by construction a blank
+// being filled. `seeding` counts, over the scanned films, how many had something read from the
+// folder layout or the film's own name, how many took something from the CSV, how many end the
+// load with no subject or no timepoint, and how many CSV dates could not be read (§8.4).
 export function loadWorkspaceStudies(state) {
   const join = state.wsCsv
     ? joinClinical({ files: state.wsFiles, headers: state.wsCsvHeaders, rows: state.wsCsvRows, mapping: state.wsMapping })
     : null;
+  const structural = state.wsCsv ? findStructuralHeaders(state.wsCsvHeaders) : null;
+  const root = state.wsFolder ?? null;
+  // The folder table the card showed (§8.5). A state seeded without one -- the smoke harness, a
+  // unit test -- falls back to the rows the scan would have built, which is exactly what the card
+  // shows before the user touches it.
+  const rows = Array.isArray(state.wsFolderRows) && state.wsFolderRows.length > 0
+    ? state.wsFolderRows
+    : folderRows(state.wsFiles, root);
+  const rowByFolder = new Map(rows.map((row) => [row.folder, row]));
 
   const knownByPath = new Map();
   for (const study of state.studies) {
@@ -50,9 +67,16 @@ export function loadWorkspaceStudies(state) {
   const replacements = new Map(); // study id -> the updated record
   let known = 0;
   let updated = 0;
+  const seeding = { fromFolders: 0, fromCsv: 0, noSubject: 0, noTimepoint: 0, badDates: 0 };
 
   for (const filePath of state.wsFiles) {
-    const existing = knownByPath.get(filePath.toLowerCase());
+    const existing = knownByPath.get(filePath.toLowerCase()) ?? null;
+    const csvRow = join ? (join.rowByFile.get(filePath) ?? null) : null;
+    const csv = csvRow ? structuralFromRow(csvRow, structural) : null;
+    if (csv && csv.badDate) seeding.badDates += 1;
+    const seeded = seedFields({ filePath, root, existing, csv, row: rowByFolder.get(folderKey(filePath, root)) ?? null });
+    countSeeding(seeding, seeded);
+
     if (existing) {
       known += 1;
       const fromCsv = join ? join.byFile.get(filePath) : undefined;
@@ -61,32 +85,62 @@ export function loadWorkspaceStudies(state) {
       // folder scanned with a stale CSV -- must not silently replace it. Only the keys whose
       // current value is absent or empty are taken; if none is, the record is kept BY
       // REFERENCE and not counted, so `updated` never reports work that did not happen.
-      // The explicit overwrite path is `Import from CSV` in the drawer (Task 5).
+      // The explicit overwrite path is `Import from CSV` in the drawer.
       const fills = {};
       for (const [key, value] of Object.entries(fromCsv ?? {})) {
         const current = existing.clinical ? existing.clinical[key] : undefined;
         if (current == null || current === '') fills[key] = value;
       }
-      if (Object.keys(fills).length > 0) {
-        replacements.set(existing.id, { ...existing, clinical: { ...existing.clinical, ...fills } });
+      const studyFills = {};
+      for (const field of STUDY_FIELDS) {
+        const current = existing[field];
+        if ((current == null || current === '') && seeded.fields[field] != null) studyFills[field] = seeded.fields[field];
+      }
+      const record = Object.keys(fills).length > 0 || Object.keys(studyFills).length > 0
+        ? { ...existing, ...studyFills, clinical: { ...existing.clinical, ...fills } }
+        : existing;
+      if (record !== existing) {
+        replacements.set(existing.id, record);
         updated += 1;
       }
+      countMissing(seeding, record);
       continue;
     }
     const id = `SP-${String(next++).padStart(4, '0')}`;
-    added.push({
+    const record = {
       // state.wsFolder is the ROOT the user picked. The scan recurses, so a film below it keeps
       // its own containing folder in filePath; the table shows both, and the pair is what tells
       // two same-named films under different workspaces apart.
-      ...newStudy({ id, fileName: filePath.split(/[\\/]/).pop(), filePath, workspaceFolder: state.wsFolder ?? null }),
-      // Spread, never the join's own object: Task 3's note guarantees the store never holds
-      // a reference the join still owns.
+      ...newStudy({ id, fileName: filePath.split(/[\\/]/).pop(), filePath, workspaceFolder: root }),
+      // The seeded subject, timepoint, film date and view (§8.3). view is never null here: the
+      // folder row always holds one, and it was on screen before Load.
+      ...seeded.fields,
+      // Spread, never the join's own object: the store never holds a reference the join still owns.
       clinical: { ...(join?.byFile.get(filePath) ?? {}) },
-    });
+    };
+    added.push(record);
+    countMissing(seeding, record);
   }
 
   const existingWithUpdates = state.studies.map((study) => replacements.get(study.id) ?? study);
-  return { studies: [...added, ...existingWithUpdates], added: added.length, known, updated, join };
+  return { studies: [...added, ...existingWithUpdates], added: added.length, known, updated, join, seeding };
+}
+
+// "read from folder or file names" counts a film when any field came from a folder segment, the
+// stem, or a folder-table row holding something other than the default view; "set from the CSV"
+// when any came from the row. A stored value counts for neither: nothing was read for it.
+function countSeeding(seeding, seeded) {
+  const sources = seeded.sources;
+  const inferred = STUDY_FIELDS.some((field) => sources[field] === 'folder' || sources[field] === 'stem')
+    || sources.timepoint === 'row'
+    || (sources.view === 'row' && seeded.fields.view !== DEFAULT_VIEW);
+  if (inferred) seeding.fromFolders += 1;
+  if (STUDY_FIELDS.some((field) => sources[field] === 'csv')) seeding.fromCsv += 1;
+}
+
+function countMissing(seeding, record) {
+  if (record.subjectId == null || record.subjectId === '') seeding.noSubject += 1;
+  if (record.timepoint == null || record.timepoint === '') seeding.noTimepoint += 1;
 }
 
 // The drawer's columns after a load. `fields` is what the session already shows, in its
@@ -100,11 +154,28 @@ export function workspaceLoadedFields(fields, studies) {
   return [...fields, ...loaded.filter((name) => !fields.includes(name))];
 }
 
-// The post-load toast. Every clause describes something the load actually did.
-export function workspaceLoadedMessage({ added, known, updated, join, mapping }) {
+function films(n) {
+  return `${n} film${n === 1 ? '' : 's'}`;
+}
+
+// §8.4: each clause only when its count is non-zero. The rejected dates are stored nowhere; the
+// film's empty Film date cell on the Parameters grid is how the user finds which.
+function seedingClauses(seeding) {
+  if (!seeding) return '';
+  const { fromFolders = 0, fromCsv = 0, noSubject = 0, noTimepoint = 0, badDates = 0 } = seeding;
+  return (fromFolders ? ` · subject, timepoint or view read from folder or file names for ${films(fromFolders)}` : '')
+    + (fromCsv ? ` · subject, timepoint, film date or view set from the CSV for ${films(fromCsv)}` : '')
+    + (noSubject ? ` · ${films(noSubject)} ${noSubject === 1 ? 'has' : 'have'} no subject` : '')
+    + (noTimepoint ? ` · ${films(noTimepoint)} ${noTimepoint === 1 ? 'has' : 'have'} no timepoint` : '')
+    + (badDates ? ` · ${badDates} film date${badDates === 1 ? '' : 's'} could not be read` : '');
+}
+
+// The post-load toast. Every clause describes something the load actually did. `updated` counts
+// records that had a blank filled -- a clinical key or one of the four study fields.
+export function workspaceLoadedMessage({ added, known, updated, join, mapping, seeding = null }) {
   return `Workspace loaded — ${added} ${added === 1 ? 'study' : 'studies'} added`
     + (known ? ` · ${known} already in the library` : '')
-    + (updated ? ` (clinical data updated for ${updated})` : '')
+    + (updated ? ` (blank fields filled for ${updated})` : '')
     + (join
       ? (join.joinHeader === null
         ? ` · CSV has no study_id column — ${join.unmatched} row${join.unmatched === 1 ? '' : 's'} not linked`
@@ -122,7 +193,8 @@ export function workspaceLoadedMessage({ added, known, updated, join, mapping })
               + (join.duplicates ? `, ${join.duplicates} duplicate study_id` : '')
               + (join.ambiguous ? `, ${join.ambiguous} ambiguous filename` : '')
               + ')')))
-      : '');
+      : '')
+    + seedingClauses(seeding);
 }
 
 export function render(state) {
