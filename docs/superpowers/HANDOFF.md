@@ -21,23 +21,25 @@ section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
 ## Where things stand
 
-### Pre-op/post-op organisation — spec and plan written, nothing implemented (branch `claude/preop-postop-xray-org-2c4d80`)
+### Parameters tab — task 1 of the pre-op/post-op spec (branch `claude/preop-postop-xray-org-2c4d80`)
 
-Branched from `claude/studies-ui-updates-bb040d` @ `9735202` on 2026-09-06, rebased onto that tip
-once when the other session moved it, and pushed to `fork` (publishes nothing). Docs only; no code
-has changed and unit is 293/293 at the wrap.
+Spec: `docs/superpowers/specs/2026-09-06-preop-postop-organisation-design.md` §10, §11.1. Plan:
+`docs/superpowers/plans/2026-09-06-parameters-tab.md`. Commits: `git log --oneline 9735202..HEAD` on
+that branch.
 
-| What | Where |
-|---|---|
-| The approved design: subject, timepoint, film date and view on the film record; folder and CSV seeding with a per-folder assignment table on the Workspace card; a Parameters tab on Studies; long and paired CSV exports; the compare-with-pre-op entry into comparison mode | `docs/superpowers/specs/2026-09-06-preop-postop-organisation-design.md` |
-| The plan for spec task 1, the Parameters tab: eight TDD tasks, a DOM-only smoke suite, the records | `docs/superpowers/plans/2026-09-06-parameters-tab.md` (its `## Ledger` is the progress file) |
-| The next-session prompt | `docs/superpowers/NEXT-SESSION.md` |
+- The Studies screen has a `Find | Parameters` tab strip; the tab, the grid's filters, sort and
+  level toggle are store keys (`studiesTab`, `paramFilters`, `paramSort`, `paramLevels`), read by
+  the screen's own subscription, never by `SCREEN_KEYS`.
+- `renderer/data/parameters.js` is pure and fully unit-tested; `renderer/screens/parameters.js` is
+  DOM and is covered by `tools/smoke/smoke-parameters.mjs` (22 checks, DOM-only) plus the manual
+  steps recorded in each task's commit message.
+- `toCsv(studies, opts)`: the `fields` parameter is gone; clinical columns are the union of keys on
+  the exported rows (roadmap item 1's third decision, now made).
+- Not built here, by design: subject, timepoint, view, film date, the paired-only filter, the
+  paired export and compare-with-pre-op -- spec tasks 2–4.
 
-**Resume at plan Task 1**, subagent-driven (the user's choice: a fresh subagent per task, Sonnet for
-Tasks 1, 2, 3, 7, 8, Opus for the DOM Tasks 4, 5, 6). The spec's tasks 2–4 — the new fields and
-seeding; compare-with-pre-op, which waits on plan 07; the paired export — each get their own plan
-later. Decisions 27–36 below are this session's. The intent is to merge this branch back into
-`claude/studies-ui-updates-bb040d` when task 1 is done, at the user's say-so.
+**Trap:** the panel rebuilds on every change to its key and restores focus by `data-param-key`;
+a new control without that attribute drops keyboard focus to `<body>` after its own change event.
 
 ### Session 2026-09-06 — studies and UI updates (7 commits, `e82ea42`..`93e4850`)
 

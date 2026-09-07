@@ -43,10 +43,10 @@ Three separate things then block the import, and all three have to be dealt with
    the film's **filename stem**, while the export writes the **record id** (`SP-1000`). Nothing
    matches, and every row is reported unmatched. The two identifiers were designed for different
    moments: a film on disk has no id until it is loaded, which is why the import joins on filename.
-3. **Only currently-visible clinical columns are exported.** `toCsv(studies, fields, …)` takes the
+3. ~~**Only currently-visible clinical columns are exported.** `toCsv(studies, fields, …)` takes the
    session's active field list, and the drawer's column control hides a field for the session. So a
    hidden column is absent from the export with nothing in the file to say so, and a round trip
-   through that file would drop those values even once 1 and 2 are fixed.
+   through that file would drop those values even once 1 and 2 are fixed.~~ **Fixed 2026-09-06.**
 
 ### What "done" looks like
 
@@ -68,9 +68,9 @@ counted and named in the load message, as unmatched rows already are.
 - **Comment lines: skip or forbid?** Skipping lines that begin with `#` before the header is a small
   change to `parse` and makes the app's own export readable. It also silently changes how a
   third-party CSV whose first column legitimately starts with `#` is read. Decide, then test it.
-- **Export hidden fields or not?** Either export every clinical key present on the exported studies
-  rather than the visible list, or say in the export dialog that hidden columns are omitted. The
-  current behaviour is defensible but undocumented, which is the worst of the three.
+- ~~**Export hidden fields or not?**~~ **Decided and done (2026-09-06, Parameters tab task):** the export
+  writes every clinical key present on the exported studies, KNOWN_FIELDS order then custom, and
+  `toCsv` no longer takes the visible field list. A hidden column can no longer vanish from the file.
 
 ### Where the code is
 
@@ -211,3 +211,14 @@ Not code quality; these stand between the branch and a production release.
 - **The Studies row is a single control for assistive technology.** It keeps the button role it was
   given in plan 05, so some screen readers do not announce the in-row delete controls separately.
   Mouse and keyboard both work. Recorded for an accessibility pass.
+
+---
+
+## 6. Consolidate the five `sameKey` copies
+
+The identical three-line reference-equality redraw-gate predicate lives, by convention rather than
+import, in `renderer/components/clinical-data.js`, `renderer/components/measurements.js`,
+`renderer/components/viewer.js`, `renderer/screens/studies.js` and `renderer/screens/parameters.js`. It
+belongs in `renderer/dom.js` as one export — the contract already lists `dom.js` as "el() helper, tiny
+render utilities" — but consolidating touches five files and the contract's `dom.js` block, so it waits
+for its own small change rather than riding on a feature task.

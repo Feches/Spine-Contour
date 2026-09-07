@@ -387,10 +387,11 @@ clears it.
 | Paired only | checkbox + a `with` dropdown of post-side labels, default `Post-op` | keeps subjects having both a `Pre-op` film and the chosen label; hides everyone else and says how many |
 | Segmented only | checkbox, default on | shows `N unsegmented hidden` beside it |
 
-Sort: by subject (then §7.2 order, then film date), by study id, by workspace then folder, or by any
-measurement column (absent last). Sorting by subject draws a thin rule between subjects so a pair
-reads as a block. The empty grid distinguishes "no segmented films" from "nothing matches these
-filters", as the Find table does.
+Sort: by subject (then §7.2 order, then film date), by study name (the id is on the name's tooltip,
+not a column), by workspace then folder, or by any measurement column (absent last). The Studies
+search box applies to the grid as well as the Find list, composing with the filters. Sorting by
+subject draws a thin rule between subjects so a pair reads as a block. The empty grid distinguishes
+"no segmented films" from "nothing matches these filters", as the Find table does.
 
 ### 10.4 Export the visible set
 
@@ -498,9 +499,9 @@ nothing has thrown, so a silent run is re-run bare and its stack read before any
 Four tasks, each its own branch off `claude/studies-ui-updates-bb040d`, each with its own
 implementation plan, each merged back before the next starts:
 
-1. **Parameters tab** with workspace, folder and segmented-only filters, sort, and long export of the
-   visible set with the union-of-clinical-keys rule. No new fields; nothing in §7–§9. Independently
-   useful, and every later piece lands in it.
+1. **Parameters tab** — DONE (plan `2026-09-06-parameters-tab.md`) — with workspace, folder and
+   segmented-only filters, sort, and long export of the visible set with the union-of-clinical-keys
+   rule. No new fields; nothing in §7–§9. Independently useful, and every later piece lands in it.
 2. **Subject, timepoint, film date and view**: §7, §8 including the folder table, §9, the timepoint,
    view, subject and paired-only filters, subject sort, the load message, the three new export
    columns.

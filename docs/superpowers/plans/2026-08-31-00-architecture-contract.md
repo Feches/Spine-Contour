@@ -107,8 +107,11 @@ renderer/                         (new)
   screens/landing.js
   screens/workspace.js            exports render(state), loadWorkspaceStudies(state),
                                   workspaceLoadedMessage({added, known, updated, join, mapping}) (plan 06)
-  screens/studies.js
+  screens/studies.js              exports render(state), formatDate, matchesQuery, newStudy; mounts screens/parameters.js
+                                  under a Find | Parameters tab strip (2026-09-06)
   screens/analysis.js             exports setFilePayload, releaseStudy(studyId) (plan 06)
+  screens/parameters.js           (2026-09-06) the Parameters tab: exports mountParameters(host, {onOpen}) → {update(live, queried)};
+                                  reads paramFilters/paramSort/paramLevels, writes them; never imports screens/
 
   components/sidebar.js
   components/viewer.js            toolbar, canvas host, every pointer/keyboard listener on the stage;
@@ -137,6 +140,8 @@ renderer/                         (new)
   data/status.js                  status derivation
   data/csv.js                     parse, auto-map, export
   data/labels.js                  how a study names itself and where it came from
+  data/parameters.js              (2026-09-06) pure: columns, values, filter options, filter, sort, empty reason, export
+                                  filename for the Parameters tab -- see the file header for the exported names
 
 test/                             (new) mirrors renderer/ — node --test
   geometry.test.js  similarity.test.js  status.test.js
