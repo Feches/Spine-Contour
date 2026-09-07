@@ -347,7 +347,7 @@ table does not gain columns; the previous decision that LORDOSIS added nothing t
 ### 10.2 The grid
 
 One row per film. Real studies always; demo studies only in the dev build, with the DEMO pill, and
-excluded from export unless the export dialog includes them (spec §10.7).
+never exported (2026-09-07: there is no include-demo option and no `Source` column).
 
 Columns, left to right, first column sticky, the grid scrolling horizontally inside its own container
 (the page never scrolls horizontally):
@@ -415,9 +415,9 @@ The per-study export on the Analysis screen changes with it, since both call `to
 contract amendment rather than leaving a parameter that is silently ignored.
 
 ```
-Study ID,Source,View,Subject,Timepoint,Film date,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,...,Age,Sex,ODI
-SP-1000,real,Standing lateral,S001,Pre-op,2025-03-02,38.2,52.1,21.4,30.7,13.9,...,61,F,44
-SP-1001,real,Standing lateral,S001,Post-op,2025-09-14,49.1,52.3,14.0,38.3,3.2,...,61,F,18
+Study ID,View,Subject,Timepoint,Film date,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,...,Age,Sex,ODI
+SP-1000,Standing lateral,S001,Pre-op,2025-03-02,38.2,52.1,21.4,30.7,13.9,...,61,F,44
+SP-1001,Standing lateral,S001,Post-op,2025-09-14,49.1,52.3,14.0,38.3,3.2,...,61,F,18
 ```
 
 ### 11.2 Paired (wide) format

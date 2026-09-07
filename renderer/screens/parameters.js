@@ -78,7 +78,7 @@ export function mountParameters(host, { onOpen }) {
   async function exportVisible(visible, filters) {
     const real = visible.filter((study) => study.source === 'real');
     if (real.length === 0) return;
-    const csv = toCsv(visible, {});
+    const csv = toCsv(visible);
     try {
       const savedTo = await saveCsv({ text: csv, suggestedName: exportFileName(filters.workspace) });
       if (savedTo) showToast(`Exported ${real.length} ${real.length === 1 ? 'row' : 'rows'} to ${savedTo}`);

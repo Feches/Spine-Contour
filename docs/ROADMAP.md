@@ -29,8 +29,8 @@ Export (`toCsv` in `renderer/data/csv.js`) writes:
 # Spine Contour export
 # Created by Cody Woodhouse, MD; Michael Jayasuriya, BS.
 # Investigational software. NOT FOR CLINICAL USE.
-Study ID,Source,View,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,...,<active clinical fields>
-SP-1000,real,Standing lateral,49.0,48.6,12.1,36.5,-0.4,...,58,F,Fusion
+Study ID,View,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,...,<active clinical fields>
+SP-1000,Standing lateral,49.0,48.6,12.1,36.5,-0.4,...,58,F,Fusion
 ```
 
 Three separate things then block the import, and all three have to be dealt with:

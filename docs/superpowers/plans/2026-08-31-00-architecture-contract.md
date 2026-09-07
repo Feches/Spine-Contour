@@ -562,8 +562,10 @@ export const KNOWN_FIELDS = ['Age','Sex','BMI','Diagnosis','ODI',
 
 export function parse(text)              // → {headers: string[], rows: Object[]}
 export function autoMap(headers)         // → Mapping[]   dest null when unmatched
-export function toCsv(studies, opts)     // → string   (2026-09-06) clinical columns are clinicalFieldNames() over the
-                                         //   exported rows -- the `fields` parameter is gone; see the pre-op/post-op spec §11.1
+export function toCsv(studies)           // → string   (2026-09-07) demo rows are never written; the Source column and
+                                         //   the includeDemo option are gone. (2026-09-06) clinical columns are
+                                         //   clinicalFieldNames() over the exported rows -- the `fields` parameter is
+                                         //   gone; see the pre-op/post-op spec §11.1
 export function fileStem(name)           // → string   (plan 06) basename without its last extension
 export function findJoinHeader(headers)  // → string|null   (plan 06) the first header normalising to 'studyid'
 export function joinClinical({files, headers, rows, mapping})   // (plan 06) → {joinHeader, byFile, matched, unmatched, duplicates, ambiguous}
@@ -587,8 +589,9 @@ Instead, **the mapping is user-editable**. Each chip on the Workspace screen ren
 is not offered twice, and edits write back to `state.wsMapping`. Rendering reads
 `state.wsMapping`, never `autoMap()` directly, so overrides survive re-render; choosing
 a new CSV resets to `autoMap`'s output.
-`toCsv` emits the citation comment block first, absent values as empty, and excludes
-`source === 'demo'` unless `opts.includeDemo` is true. **Measurement columns are written to
+`toCsv` emits the citation comment block first, absent values as empty, and never writes a
+`source === 'demo'` study (2026-09-07: the `includeDemo` option and the `Source` column are
+gone — no dialog ever set the option and no installer ships demos). **Measurement columns are written to
 one decimal**, matching what the Measurements panel displays, so a value read off the screen
 and the same value in the file agree. This also keeps float noise out of the data: for a
 study with `PI` 48.6 and `LL['L1-S1']` 49.0, the derived `PI-LL Mismatch` computes to

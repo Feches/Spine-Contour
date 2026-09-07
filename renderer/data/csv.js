@@ -42,9 +42,11 @@ function escapeField(value) {
   return text;
 }
 
-export function toCsv(studies, opts = {}) {
-  const includeDemo = opts.includeDemo === true;
-  const rows = studies.filter((study) => includeDemo || study.source !== 'demo');
+export function toCsv(studies) {
+  // Demo rows are never written: the option that once included them was wired to no dialog,
+  // and no installer ships demos, so the Source column that marked them is gone with it
+  // (2026-09-07).
+  const rows = studies.filter((study) => study.source !== 'demo');
 
   // Every clinical key present on the exported rows, KNOWN_FIELDS order then custom -- NOT the
   // session's visible field list. A column hidden in the drawer for the session used to vanish
@@ -59,13 +61,12 @@ export function toCsv(studies, opts = {}) {
     '# Created by Cody Woodhouse, MD; Michael Jayasuriya, BS.',
     '# Investigational software. NOT FOR CLINICAL USE.',
   ];
-  const header = ['Study ID', 'Source', 'View', ...MEASUREMENT_COLUMNS, ...fields];
+  const header = ['Study ID', 'View', ...MEASUREMENT_COLUMNS, ...fields];
 
   const lines = [...citation, header.map(escapeField).join(',')];
   for (const study of rows) {
     const cells = [
       study.id,
-      study.source,
       study.view,
       ...MEASUREMENT_COLUMNS.map((column) => measurementValue(study, column)),
       ...fields.map((field) => (study.clinical && study.clinical[field] != null ? study.clinical[field] : '')),
