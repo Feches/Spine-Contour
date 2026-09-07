@@ -799,3 +799,26 @@
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+
+/* The Study group (pre-op/post-op spec §9): four fixed columns ahead of the clinical fields, under
+   a group row. The group row spans with grid-column; the head and data rows keep one cell per
+   column, so --clinical-cols stays one template for the whole grid. */
+.clinical-grid-group { background: var(--well); }
+.clinical-grid-group .clinical-grid-cell {
+  padding: 6px 12px 4px;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+.clinical-grid-group-study { grid-column: 2 / span 4; }
+.clinical-grid-group-clinical { grid-column: 6 / -1; }
+.clinical-grid-head-study { background: color-mix(in srgb, var(--sage) 6%, var(--well)); }
+.clinical-cell-study { background: color-mix(in srgb, var(--sage) 4%, transparent); }
+.clinical-cell-date {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.clinical-cell-date::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: pointer; }

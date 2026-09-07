@@ -68,6 +68,9 @@ const EXPECTED_MAPPING = [
   { src: 'tx_plan', dest: null },
 ];
 const KNOWN_FIELDS = ['Age', 'Sex', 'BMI', 'Diagnosis', 'ODI', 'Treatment plan', 'Surgical history', 'Follow-up', 'Notes'];
+// The drawer's head row since 2026-09-07 (pre-op/post-op spec §9): the Study group's four fixed
+// columns sit between STUDY and the clinical fields.
+const STUDY_HEADS = ['STUDY', 'SUBJECT', 'TIMEPOINT', 'FILM DATE', 'VIEW'];
 
 // The join for this fixture: a and b match, zzz is unmatched, A is a duplicate of a.
 const NOTE_PREVIEW = '2 of 4 rows match a film · 1 unmatched · 1 duplicate study_id';
@@ -167,7 +170,7 @@ const drawerGrid = () => cdp.evaluate(`(() => {
   const d = document.querySelector('.clinical-data');
   if (!d) return null;
   const heads = [...d.querySelectorAll('.clinical-grid-head .clinical-grid-cell')].map((c) => (c.querySelector('span') ? c.querySelector('span').textContent : c.textContent));
-  const rows = [...d.querySelectorAll('.clinical-grid-row')].filter((r) => !r.classList.contains('clinical-grid-head')).map((r) => ({
+  const rows = [...d.querySelectorAll('.clinical-grid-row')].filter((r) => !r.classList.contains('clinical-grid-head') && !r.classList.contains('clinical-grid-group')).map((r) => ({
     id: r.querySelector('.clinical-grid-id')?.textContent ?? null,
     cells: [...r.querySelectorAll('.clinical-cell')].map((i) => ({ value: i.value, disabled: i.disabled, placeholder: i.placeholder, title: i.title })),
   }));
@@ -271,7 +274,7 @@ try {
       count: cards.length, c1: read(cards[0]), c2: read(cards[1]), c3Eyebrow: cards[2]?.querySelector('.eyebrow')?.textContent ?? null,
       loadDisabled: load ? load.disabled : null, loadText: load ? load.textContent.trim() : null,
       hint: document.querySelector('.workspace-load-hint')?.textContent ?? null,
-      note: document.querySelector('.workspace-card-note')?.textContent ?? null,
+      note: document.querySelector('.workspace-card-stack .workspace-card-note')?.textContent ?? null,
     };
   })()`);
   check('three cards render with the folder and CSV cards in the set state', cards.count === 3 && cards.c1?.set === true && cards.c2?.set === true, cards);
@@ -311,7 +314,7 @@ try {
   chips = await chipsSnapshot();
   check('the tx_plan chip re-renders as mapped and selected', chips[3]?.mapped && !chips[3]?.unmapped && chips[3]?.value === 'Treatment plan', chips[3]);
   check('Treatment plan is no longer offered on the age_yrs select', Array.isArray(chips[1]?.options) && !chips[1].options.includes('Treatment plan'), chips[1]?.options);
-  check('the note preview is unchanged by the mapping (the join is by study_id)', ((await text('.workspace-card-note')) || '').includes(NOTE_PREVIEW), await text('.workspace-card-note'));
+  check('the note preview is unchanged by the mapping (the join is by study_id)', ((await text('.workspace-card-stack .workspace-card-note')) || '').includes(NOTE_PREVIEW), await text('.workspace-card-stack .workspace-card-note'));
 
   // 4. Load workspace: one setState, Studies, the toast, three new records at the top.
   const loadRect = await rectBy("() => document.querySelector('.workspace-load')");
@@ -396,10 +399,14 @@ try {
   check('the loaded fields render as a grid, with no empty state', drawer.empty === false && drawer.grid === true, { empty: drawer.empty, grid: drawer.grid });
   const loadedGrid = await drawerGrid();
   const loadedCells = cellsByField(loadedGrid);
-  check('the columns are AGE, SEX and TREATMENT PLAN, holding the values the load linked',
-    loadedGrid && same([...loadedGrid.heads.slice(1)].sort(), ['AGE', 'SEX', 'TREATMENT PLAN'])
+  check('the head row is the Study group then AGE, SEX and TREATMENT PLAN, holding the values the load linked',
+    loadedGrid && same(loadedGrid.heads.slice(0, 5), STUDY_HEADS) && same([...loadedGrid.heads.slice(5)].sort(), ['AGE', 'SEX', 'TREATMENT PLAN'])
     && loadedGrid.rows.length === 1 && loadedGrid.rows[0].id === 'a'
     && loadedCells.AGE?.value === '58' && loadedCells.SEX?.value === 'F' && loadedCells['TREATMENT PLAN']?.value === 'Fusion', { heads: loadedGrid?.heads, loadedCells });
+  check('the Study group cells hold the seeded subject and view, and an empty timepoint and film date',
+    loadedCells.SUBJECT?.value === 'a' && loadedCells.TIMEPOINT?.value === '' && loadedCells['FILM DATE']?.value === '' && loadedCells.VIEW?.value === 'Standing lateral'
+    && [loadedCells.SUBJECT, loadedCells.TIMEPOINT, loadedCells['FILM DATE'], loadedCells.VIEW].every((c) => c && c.disabled === false),
+    { SUBJECT: loadedCells.SUBJECT, TIMEPOINT: loadedCells.TIMEPOINT, FILM: loadedCells['FILM DATE'], VIEW: loadedCells.VIEW });
   check('ADD FIELD offers the six known fields that are not columns yet, plus the custom input',
     same(drawer.chips, KNOWN_FIELDS.filter((f) => !['Age', 'Sex', 'Treatment plan'].includes(f))) && drawer.custom === '+ Custom field…', { chips: drawer.chips, custom: drawer.custom });
 
@@ -418,12 +425,12 @@ try {
   // The drawer's first cell shows the study's NAME (a.png -> 'a'), not its SP-nnnn id; the id
   // stays on every data-attribute the focus-restore machinery looks the row up by.
   check('the grid has one row, for the open study', grid && grid.rows.length === 1 && grid.rows[0].id === 'a', grid?.rows);
-  check('the head row is STUDY then the three fields, each with a Hide button',
-    grid && grid.heads[0] === 'STUDY' && same([...grid.heads.slice(1)].sort(), ['AGE', 'SEX', 'TREATMENT PLAN']) && same([...grid.removeLabels].sort(), ['Hide Age', 'Hide Sex', 'Hide Treatment plan']), { heads: grid?.heads, removeLabels: grid?.removeLabels });
+  check('the head row is the Study group then the three fields, each field with a Hide button',
+    grid && same(grid.heads.slice(0, 5), STUDY_HEADS) && same([...grid.heads.slice(5)].sort(), ['AGE', 'SEX', 'TREATMENT PLAN']) && same([...grid.removeLabels].sort(), ['Hide Age', 'Hide Sex', 'Hide Treatment plan']), { heads: grid?.heads, removeLabels: grid?.removeLabels });
   check('AGE, SEX and TREATMENT PLAN cells hold the CSV values, enabled',
     cells.AGE?.value === '58' && cells.SEX?.value === 'F' && cells['TREATMENT PLAN']?.value === 'Fusion' && [cells.AGE, cells.SEX, cells['TREATMENT PLAN']].every((c) => c && c.disabled === false), cells);
   check('the count label reads 3 FIELDS · 1 STUDY', grid?.count === '3 FIELDS · 1 STUDY', grid?.count);
-  check('--clinical-cols is set for three fields', grid?.cols === '110px repeat(3, minmax(150px, 1fr))', grid?.cols);
+  check('--clinical-cols is set for three fields', grid?.cols === '110px repeat(4, minmax(130px, 1fr)) repeat(3, minmax(150px, 1fr))', grid?.cols);
   check('the imported fields leave the ADD FIELD row', same(grid?.chips, KNOWN_FIELDS.filter((f) => !['Age', 'Sex', 'Treatment plan'].includes(f))), grid?.chips);
 
   // 8. Add the Notes field from its chip.
@@ -443,7 +450,7 @@ try {
     const d = document.querySelector('.clinical-data');
     const heads = [...d.querySelectorAll('.clinical-grid-head .clinical-grid-cell')].map((c) => (c.querySelector('span') ? c.querySelector('span').textContent : c.textContent));
     const i = heads.indexOf('NOTES') - 1;
-    const row = [...d.querySelectorAll('.clinical-grid-row')].find((r) => !r.classList.contains('clinical-grid-head'));
+    const row = [...d.querySelectorAll('.clinical-grid-row')].find((r) => !r.classList.contains('clinical-grid-head') && !r.classList.contains('clinical-grid-group'));
     return i >= 0 && row ? row.querySelectorAll('.clinical-cell')[i] : null;
   }`);
   check('the NOTES cell has layout', Boolean(notesCellRect), notesCellRect);
@@ -462,6 +469,21 @@ try {
   // during the blur-dispatched `change` would strand focus on <body>); the cell the user typed
   // into keeps its value and the next cell keeps the focus Tab just gave it.
   check('the cell still shows the typed note after the commit', cells.NOTES?.value === NOTE_TEXT, cells.NOTES);
+
+  // 9b. The Study group's Timepoint cell: type a token, leave it, and the record holds the
+  // normalised label (`postop` → Post-op), so a typed timepoint pairs.
+  const timepointCellRect = await rectBy("() => document.querySelector('.clinical-cell[data-kind=\"study\"][data-field=\"timepoint\"]')");
+  check('the TIMEPOINT cell has layout and suggests from the datalist', Boolean(timepointCellRect)
+    && (await cdp.evaluate("(() => { const e = document.querySelector('.clinical-cell[data-kind=\"study\"][data-field=\"timepoint\"]'); return e?.getAttribute('list') === 'clinical-timepoints' && [...document.querySelectorAll('#clinical-timepoints option')].map((o) => o.value).join('|'); })()")) === 'Pre-op|Intra-op|Post-op|6 wk|1 yr|2 yr', timepointCellRect);
+  await cdp.click(timepointCellRect.cx, timepointCellRect.cy);
+  await cdp.typeText('postop');
+  await cdp.key('Tab');
+  const timepointCommitted = await waitForState(`(s.studies.find((x) => x.id === ${JSON.stringify(ID_A)}) || {}).timepoint === 'Post-op'`, 3000);
+  s = await cdp.state();
+  check('leaving the TIMEPOINT cell writes the normalised label on the record', timepointCommitted === true && s.studies.find((x) => x.id === ID_A)?.timepoint === 'Post-op', s.studies.find((x) => x.id === ID_A)?.timepoint);
+  grid = await drawerGrid();
+  cells = cellsByField(grid);
+  check('the TIMEPOINT cell shows the label after the commit', cells.TIMEPOINT?.value === 'Post-op', cells.TIMEPOINT);
 
   // 10. The persisted store, through the bridge: real records only, with the clinical values.
   const persisted = await waitForStore(`studies.some((x) => x.id === ${JSON.stringify(ID_A)} && x.clinical && x.clinical.Notes === ${JSON.stringify(NOTE_TEXT)})`, 5000);
@@ -503,8 +525,8 @@ try {
     const cells = [...(d ? d.querySelectorAll('.clinical-cell') : [])].map((i) => ({ disabled: i.disabled, title: i.title }));
     return { present: Boolean(d), importDisabled: imp ? imp.disabled : null, importTitle: imp ? imp.title : null, cells, count: d?.querySelector('.clinical-count')?.textContent ?? null };
   })()`);
-  check('a demo study mounts the drawer with every cell disabled and titled Demo studies are not saved',
-    demoDrawer.present && demoDrawer.cells.length === 4 && demoDrawer.cells.every((c) => c.disabled === true && c.title === 'Demo studies are not saved') && demoDrawer.count === '4 FIELDS · 1 STUDY', demoDrawer);
+  check('a demo study mounts the drawer with every cell (four study, four clinical) disabled and titled Demo studies are not saved',
+    demoDrawer.present && demoDrawer.cells.length === 8 && demoDrawer.cells.every((c) => c.disabled === true && c.title === 'Demo studies are not saved') && demoDrawer.count === '4 FIELDS · 1 STUDY', demoDrawer);
   check('Import from CSV is disabled on a demo study and says why', demoDrawer.importDisabled === true && demoDrawer.importTitle === 'Demo studies are not saved', { importDisabled: demoDrawer.importDisabled, importTitle: demoDrawer.importTitle });
   const backRect2 = await cdp.rect('.icon-btn[aria-label="Back to studies"]');
   await cdp.click(backRect2.cx, backRect2.cy);

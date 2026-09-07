@@ -51,7 +51,7 @@ function study(fileName, filePath) {
 
 test('importRowFor returns the matched row for a scanned film whose stem is unique', () => {
   const decision = importRowFor(csvState(), study('SP002.png', 'C:\\batch1\\SP002.png'));
-  assert.deepEqual(decision, { ok: true, values: { Age: '44' } });
+  assert.deepEqual(decision, { ok: true, values: { Age: '44' }, fields: {}, badDate: false });
 });
 
 test('importRowFor refuses a film whose stem is shared by another scanned film', () => {
@@ -69,10 +69,10 @@ test('importRowFor refuses a film whose stem is shared by another scanned film',
 
 test('importRowFor falls back to the filename for a film with no path, and for one outside the scan', () => {
   // No path at all: the film is not in the workspace, so the scan has no opinion about it.
-  assert.deepEqual(importRowFor(csvState(), study('SP002.png', null)), { ok: true, values: { Age: '44' } });
+  assert.deepEqual(importRowFor(csvState(), study('SP002.png', null)), { ok: true, values: { Age: '44' }, fields: {}, badDate: false });
   // A picked or dropped film from outside the scanned folder keeps the same one-film join.
   assert.deepEqual(importRowFor(csvState(), study('SP002.png', 'D:\\elsewhere\\SP002.png')),
-    { ok: true, values: { Age: '44' } });
+    { ok: true, values: { Age: '44' }, fields: {}, badDate: false });
   // The scan is consulted case-insensitively, so a differently-cased path is still IN it.
   assert.deepEqual(importRowFor(csvState(), study('SP001.DCM', 'c:\\BATCH1\\sp001.dcm')),
     { ok: false, reason: 'ambiguous', stem: 'SP001' });
@@ -85,4 +85,22 @@ test('importRowFor reports no-row when nothing matches and no-csv when no CSV is
     { ok: false, reason: 'no-row', stem: 'SP404' });
   assert.deepEqual(importRowFor(csvState({ wsCsv: null }), study('SP002.png', 'C:\\batch1\\SP002.png')),
     { ok: false, reason: 'no-csv', stem: 'SP002' });
+});
+
+// The four study fields ride along with Import from CSV (user decision 2026-09-07): the drawer is
+// the overwrite path, and one click re-syncs a corrected row instead of retyping four cells.
+test('importRowFor carries the row\'s structural columns as fields, only where the row supplies one', () => {
+  const headers = ['study_id', 'subject_id', 'timepoint', 'film_date', 'view', 'age_yrs'];
+  const rows = [
+    { study_id: 'SP002', subject_id: 'P-2', timepoint: 'postop', film_date: '9/14/2025', view: '', age_yrs: '44' },
+    { study_id: 'SP003', subject_id: '', timepoint: '', film_date: '2025-02-30', view: 'flexion', age_yrs: '' },
+  ];
+  const mapping = [{ src: 'study_id', dest: null }, { src: 'subject_id', dest: null }, { src: 'timepoint', dest: null },
+    { src: 'film_date', dest: null }, { src: 'view', dest: null }, { src: 'age_yrs', dest: 'Age' }];
+  const state = csvState({ wsCsvHeaders: headers, wsCsvRows: rows, wsMapping: mapping });
+  assert.deepEqual(importRowFor(state, study('SP002.png', 'C:\\batch1\\SP002.png')),
+    { ok: true, values: { Age: '44' }, fields: { subjectId: 'P-2', timepoint: 'Post-op', filmDate: '2025-09-14' }, badDate: false });
+  // Blank cells supply nothing; a rejected date is reported, never written.
+  assert.deepEqual(importRowFor(state, study('SP003.png', 'C:\\batch1\\SP003.png')),
+    { ok: true, values: {}, fields: { view: 'flexion' }, badDate: true });
 });

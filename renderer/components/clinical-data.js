@@ -14,8 +14,9 @@
 import { el, clear } from '../dom.js';
 import { getState, setState } from '../store.js';
 import { showToast } from './toast.js';
-import { KNOWN_FIELDS, joinClinical, fileStem } from '../data/csv.js';
+import { KNOWN_FIELDS, joinClinical, fileStem, findStructuralHeaders, structuralFromRow } from '../data/csv.js';
 import { studyName } from '../data/labels.js';
+import { TIMEPOINT_SUGGESTIONS, VIEW_SUGGESTIONS, normaliseTimepoint } from '../data/timepoints.js';
 
 // 12x12 chevron pointing UP (the drawer is open by default); .clinical-toggle-closed rotates
 // it 180deg in CSS. Same construction as sidebar.js's CHEVRON_SVG.
@@ -26,6 +27,17 @@ const UPLOAD_SVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" 
 const EMPTY_COPY = 'No clinical fields yet — add the fields you want above, or import from the CSV.';
 const DEMO_TITLE = 'Demo studies are not saved';
 const NO_CSV_TITLE = 'Load a CSV in the Workspace first';
+
+// The Study group's four fixed columns (pre-op/post-op spec §9), ahead of the clinical fields:
+// top-level record fields, not clinical keys, so they cannot be hidden and never appear under
+// ADD FIELD. Timepoint and View suggest from a datalist (user decision 2026-09-07: native
+// suggestions, not chip buttons); Film date is a date input, whose value is already YYYY-MM-DD.
+const STUDY_COLUMNS = Object.freeze([
+  { field: 'subjectId', head: 'SUBJECT', title: 'Subject', type: 'text', list: null },
+  { field: 'timepoint', head: 'TIMEPOINT', title: 'Timepoint', type: 'text', list: 'clinical-timepoints' },
+  { field: 'filmDate', head: 'FILM DATE', title: 'Film date', type: 'date', list: null },
+  { field: 'view', head: 'VIEW', title: 'View', type: 'text', list: 'clinical-views' },
+]);
 
 export function fieldCountLabel(fieldCount, studyCount) {
   if (!fieldCount) return 'NO FIELDS';
@@ -47,7 +59,7 @@ function openStudy(state) {
 // not in the workspace, so the scan has no opinion about it. Membership is by filePath,
 // case-insensitively, the same rule loadWorkspaceStudies uses for "already in the library".
 //
-// → {ok: true, values} | {ok: false, reason: 'no-csv'|'ambiguous'|'no-row', stem}
+// → {ok: true, values, fields, badDate} | {ok: false, reason: 'no-csv'|'ambiguous'|'no-row', stem}
 export function importRowFor(state, study) {
   const stem = fileStem(study.fileName);
   if (!state.wsCsv) return { ok: false, reason: 'no-csv', stem };
@@ -74,9 +86,17 @@ export function importRowFor(state, study) {
     rows: state.wsCsvRows,
     mapping: state.wsMapping,
   });
-  const values = join.byFile.get(key);
-  if (!values) return { ok: false, reason: 'no-row', stem };
-  return { ok: true, values };
+  const row = join.rowByFile.get(key);
+  if (!row) return { ok: false, reason: 'no-row', stem };
+  const values = join.byFile.get(key) ?? {};
+  // The study fields the row supplies (spec §8.2), only where it supplies one: a blank CSV cell
+  // never clears a stored value -- the rule the clinical values already follow.
+  const structural = structuralFromRow(row, findStructuralHeaders(state.wsCsvHeaders));
+  const fields = {};
+  for (const name of ['subjectId', 'timepoint', 'filmDate', 'view']) {
+    if (structural[name] !== null) fields[name] = structural[name];
+  }
+  return { ok: true, values, fields, badDate: structural.badDate };
 }
 
 // The studies the grid shows, one row each, in row order. Plan 07 replaces this one
@@ -142,6 +162,41 @@ export function mountClinicalData(host) {
     });
   }
 
+  // The four study fields (spec §9) are top-level record fields, not clinical keys, with the same
+  // one new-array write and the same pre-armed gate as setValue. Subject is stored trimmed. A
+  // timepoint that names a known label is stored as that label (`preop` → Pre-op, `6 weeks` →
+  // 6 wk) so a typed label pairs; anything else as typed. A date input's value is already
+  // YYYY-MM-DD. An emptied cell stores null -- except view, which validateStudy requires to be
+  // a string (it throws on anything else and would refuse the whole store at the next launch),
+  // so it stores '' and renders as an em dash.
+  function setStudyField(studyId, field, value) {
+    const text = String(value ?? '').trim();
+    let next;
+    if (field === 'view') next = text;
+    else if (field === 'timepoint') next = text === '' ? null : (normaliseTimepoint(text) ?? text);
+    else next = text === '' ? null : text;
+    setState((s) => {
+      const studies = s.studies.map((study) => (study.id === studyId ? { ...study, [field]: next } : study));
+      if (lastKey !== null) lastKey = [studies, ...lastKey.slice(1)];
+      return { studies };
+    });
+  }
+
+  // Commits a study cell and puts the STORED form back on the node. A timepoint is stored as its
+  // label (`postop` → Post-op) and a subject trimmed, and setStudyField pre-arms the rebuild gate so
+  // nothing repaints -- without this the cell would keep showing the typed text while the record
+  // held something else. Both commit paths use it: the cell's own change handler, and the
+  // restore's blur listener, which is the ONLY path after an external rebuild (assigning .value
+  // there resets the change baseline, so no further `change` fires). A node the removal race has
+  // already detached is harmless to write to; the visible node is written by whichever of the two
+  // paths runs on it. A study that has left the store between the event and the microtask (a
+  // delete landing mid-edit) gets no write-back: the rebuild that follows replaces the node.
+  function commitStudyCell(node, studyId, field, value) {
+    setStudyField(studyId, field, value);
+    const record = getState().studies.find((x) => x.id === studyId);
+    if (record) node.value = String(record[field] ?? '');
+  }
+
   function onToggleOpen() {
     setState((s) => ({ dataOpen: !s.dataOpen }));
     refresh();
@@ -167,18 +222,23 @@ export function mountClinicalData(host) {
       return;
     }
     const fromCsv = decision.values;
+    const fields = decision.fields;
     // A matched row whose mapped cells are all empty imports zero fields; the toast says 0
-    // rather than claiming no row matched.
+    // rather than claiming no row matched. The study fields it carried are counted apart.
     const keys = Object.keys(fromCsv);
+    const fieldKeys = Object.keys(fields);
     setState((s) => ({
       studies: s.studies.map((x) => (x.id === study.id
-        ? { ...x, clinical: { ...x.clinical, ...fromCsv } }
+        ? { ...x, ...fields, clinical: { ...x.clinical, ...fromCsv } }
         : x)),
       fields: [...s.fields, ...keys.filter((key) => !s.fields.includes(key))],
       dataOpen: true,
     }));
     refresh();
-    showToast(`Imported ${keys.length} field${keys.length === 1 ? '' : 's'} from CSV`);
+    showToast(`Imported ${keys.length} field${keys.length === 1 ? '' : 's'}`
+      + (fieldKeys.length > 0 ? ` and ${fieldKeys.length} study detail${fieldKeys.length === 1 ? '' : 's'}` : '')
+      + ' from CSV'
+      + (decision.badDate ? ' · the film date could not be read' : ''));
   }
 
   // ---- builders. Pure functions of the state they are handed. ------------------------
@@ -245,12 +305,52 @@ export function mountClinicalData(host) {
       custom);
   }
 
+  function studyCell(study, column, isDemo) {
+    const value = study[column.field];
+    const input = el('input', {
+      type: column.type,
+      class: `clinical-cell clinical-cell-study${column.type === 'date' ? ' clinical-cell-date' : ''}`,
+      value: value != null ? String(value) : '',
+      // A date input draws its own empty mask; a placeholder there is ignored.
+      placeholder: column.type === 'date' ? undefined : '—',
+      'aria-label': `${studyName(study)} ${column.title}`,
+      'data-focus-key': `study:${study.id}:${column.field}`,
+      'data-study-id': study.id,
+      'data-field': column.field,
+      // How rebuild() tells this cell from a clinical cell whose field happens to be called `view`.
+      'data-kind': 'study',
+      disabled: isDemo,
+      title: isDemo ? DEMO_TITLE : undefined,
+      // Deferred one microtask for the same reason as the clinical cells: `change` also fires on
+      // REMOVAL of an edited cell, inside a store notification, where setState throws. The node
+      // is captured with the value: the write-back in commitStudyCell needs it.
+      onChange: (event) => {
+        const node = event.target;
+        const next = node.value;
+        queueMicrotask(() => commitStudyCell(node, study.id, column.field, next));
+      },
+    });
+    // `list` is a read-only accessor on HTMLInputElement (it returns the datalist node), so el()
+    // must not receive it as a prop -- the assignment throws in strict mode. An attribute it is.
+    if (column.list) input.setAttribute('list', column.list);
+    return input;
+  }
+
   function buildGrid(state, studies) {
-    if (state.fields.length === 0) return el('div', { class: 'clinical-empty' }, EMPTY_COPY);
+    const fields = state.fields;
+    // The group row: a blank over the name column, STUDY over the four fixed columns, CLINICAL
+    // DATA over the fields (absent when there are none). Not a .clinical-grid-head row: the smoke
+    // suite reads the head cells by that class and the data rows by its absence.
+    const group = el('div', { class: 'clinical-grid-row clinical-grid-group' },
+      el('div', { class: 'clinical-grid-cell' }),
+      el('div', { class: 'clinical-grid-cell clinical-grid-group-study' }, 'STUDY'),
+      fields.length > 0 ? el('div', { class: 'clinical-grid-cell clinical-grid-group-clinical' }, 'CLINICAL DATA') : null);
 
     const head = el('div', { class: 'clinical-grid-row clinical-grid-head' },
       el('div', { class: 'clinical-grid-cell' }, 'STUDY'),
-      ...state.fields.map((name) => el('div', { class: 'clinical-grid-cell' },
+      // No Hide button: the four are not fields and cannot leave the grid.
+      ...STUDY_COLUMNS.map((column) => el('div', { class: 'clinical-grid-cell clinical-grid-head-study' }, el('span', {}, column.head))),
+      ...fields.map((name) => el('div', { class: 'clinical-grid-cell' },
         el('span', {}, name.toUpperCase()),
         el('button', {
           type: 'button',
@@ -269,7 +369,8 @@ export function mountClinicalData(host) {
         // The visible label is the study's name; every `data-` attribute below stays keyed on
         // the id, which is what the focus-restore machinery looks the row back up by.
         el('div', { class: 'clinical-grid-cell clinical-grid-id', title: study.id }, studyName(study)),
-        ...state.fields.map((name) => el('input', {
+        ...STUDY_COLUMNS.map((column) => studyCell(study, column, isDemo)),
+        ...fields.map((name) => el('input', {
           type: 'text',
           class: 'clinical-cell',
           // A present value renders as itself -- String() keeps a numeric 0 from a hand-edited
@@ -283,6 +384,7 @@ export function mountClinicalData(host) {
           // are written as attribute names and not as a forbidden `dataset` prop.
           'data-study-id': study.id,
           'data-field': name,
+          'data-kind': 'clinical',
           disabled: isDemo,
           title: isDemo ? DEMO_TITLE : undefined,
           // Chromium fires `change` SYNCHRONOUSLY when a rebuild's clear(host) removes a
@@ -302,11 +404,20 @@ export function mountClinicalData(host) {
         })));
     });
 
-    const grid = el('div', { class: 'clinical-grid' }, head, ...rows);
+    const grid = el('div', { class: 'clinical-grid' }, group, head, ...rows);
     // A CSS custom property set AFTER construction. `style` must never be an el() prop: the
     // `key in node` branch would assign to the read-only CSSStyleDeclaration and throw.
-    grid.style.setProperty('--clinical-cols', `110px repeat(${state.fields.length}, minmax(150px, 1fr))`);
-    return grid;
+    // repeat(0, …) is invalid CSS and would drop the whole declaration, hence the conditional.
+    grid.style.setProperty('--clinical-cols',
+      `110px repeat(4, minmax(130px, 1fr))${fields.length > 0 ? ` repeat(${fields.length}, minmax(150px, 1fr))` : ''}`);
+    // The two datalists the Timepoint and View cells suggest from. Ids are document-wide; the
+    // drawer is mounted once per Analysis screen and rebuilt whole, so one pair per rebuild.
+    const lists = [
+      el('datalist', { id: 'clinical-timepoints' }, ...TIMEPOINT_SUGGESTIONS.map((label) => el('option', { value: label }))),
+      el('datalist', { id: 'clinical-views' }, ...VIEW_SUGGESTIONS.map((label) => el('option', { value: label }))),
+    ];
+    // With no clinical field the grid still shows the Study group; the empty state sits below it.
+    return [grid, ...lists, fields.length === 0 ? el('div', { class: 'clinical-empty' }, EMPTY_COPY) : null];
   }
 
   // ---- rebuild -------------------------------------------------------------------------
@@ -330,9 +441,11 @@ export function mountClinicalData(host) {
     let typed = null;
     if (inHost && active.classList.contains('clinical-cell')) {
       typed = {
+        kind: active.getAttribute('data-kind') === 'study' ? 'study' : 'clinical',
         studyId: active.getAttribute('data-study-id'),
         field: active.getAttribute('data-field'),
         value: active.value,
+        // A date cell reports null for both (no text selection); the restore below skips the caret.
         selectionStart: active.selectionStart,
         selectionEnd: active.selectionEnd,
       };
@@ -361,7 +474,8 @@ export function mountClinicalData(host) {
       } else {
         for (const candidate of host.querySelectorAll('.clinical-cell')) {
           if (candidate.getAttribute('data-study-id') === typed.studyId
-            && candidate.getAttribute('data-field') === typed.field) { field = candidate; break; }
+            && candidate.getAttribute('data-field') === typed.field
+            && candidate.getAttribute('data-kind') === typed.kind) { field = candidate; break; }
         }
       }
       if (field && !field.disabled) {
@@ -388,12 +502,16 @@ export function mountClinicalData(host) {
           field.addEventListener('blur', () => {
             queueMicrotask(() => {
               const s = getState();
-              const stored = s.studies.find((x) => x.id === typed.studyId)?.clinical?.[typed.field] ?? '';
-              if (field.value !== stored) setValue(typed.studyId, typed.field, field.value);
+              const record = s.studies.find((x) => x.id === typed.studyId);
+              const stored = typed.kind === 'study' ? (record?.[typed.field] ?? '') : (record?.clinical?.[typed.field] ?? '');
+              if (field.value !== stored) {
+                if (typed.kind === 'study') commitStudyCell(field, typed.studyId, typed.field, field.value);
+                else setValue(typed.studyId, typed.field, field.value);
+              }
             });
           }, { once: true });
         }
-        // Both controls are type="text", so setSelectionRange is supported; a null selection
+        // Text controls carry a caret; a date cell reports a null selection and is skipped here, and
         // (never seen on a text input, but cheap to tolerate) just skips the caret restore.
         if (typed.selectionStart !== null && typed.selectionEnd !== null) {
           field.setSelectionRange(typed.selectionStart, typed.selectionEnd);
