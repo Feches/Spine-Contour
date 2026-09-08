@@ -102,6 +102,8 @@ renderer/                         (new)
   store.js                        state container
   router.js                       screen switching
   api.js                          wraps window.spineContour
+  batch.js                        (2026-09-08, batch spec §8.2) startBatch(ids), stopBatch() — the one wiring of data/batch.js's
+                                  createBatchDriver to the store, the toast, persistenceDisabledReason and segmentStudy; module scope
   dom.js                          el() helper, tiny render utilities
 
   screens/landing.js
@@ -117,7 +119,9 @@ renderer/                         (new)
                                   reads UNSEGMENTED
   screens/analysis.js             exports setFilePayload, releaseStudy(studyId) (plan 06); segmentStudy(studyId, {batch})
                                   → {ok, warning?} | {ok: false, reason} (2026-09-08, batch spec §8.3) — the run core,
-                                  never throws; state.running set and cleared inside
+                                  never throws; state.running set and cleared inside; restoreFilm's run guard is per study
+                                  (a per-study run counter, not the global runRevision) so a batch's turns do not drop an
+                                  unrelated restore (2026-09-08, batch spec §8.3)
   screens/parameters.js           (2026-09-06) the Parameters tab: exports mountParameters(host, {onOpen}) → {update(live, queried)};
                                   reads paramFilters/paramSort/paramLevels/paramSelected, writes them; never imports screens/; the paired export button and its note (2026-09-08, spec §10.4)
 
@@ -145,8 +149,6 @@ renderer/                         (new)
   viewer/measure-queue.js         (plan 04) createMeasureQueue({measure, getState, setState, showToast, debounceMs})
                                   → {commitGeometry, replaceMeasured}: per-study revisions, one owner-tracked
                                   debounce, flush on study switch, failure restores the last measured geometry
-  batch.js                        (2026-09-08, batch spec §8.2) startBatch(ids), stopBatch() — the one wiring of data/batch.js's
-                                  createBatchDriver to the store, the toast, persistenceDisabledReason and segmentStudy; module scope
   viewer/geometry.js              circle fit, coordinate transforms
 
   data/demo-studies.js            the nine fabricated studies

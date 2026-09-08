@@ -413,8 +413,9 @@ null for the milliseconds the next film's bytes take to read, and the card must 
 **The closing toast**, from `batchMessage`, clauses joined as `pairedExportMessage` joins them and
 raised only when nonzero, names capped at five then an ellipsis:
 
-- `Segmented {ok} of {total} films.` — or `…, then stopped.` when `stopping` was set; `film` when the
-  total is one.
+- `Segmented {ok} of {total} films.` — or `…, then stopped.` when `stopping` was set and a film was left
+  unrun (Stop pressed during the last film reads as a clean run; `batchMessage` tests `done < total`);
+  `film` when the total is one.
 - `{n} could not be segmented: {name} ({reason}), {name} ({reason}), …` — a failure names the study by
   its display name, e.g. `S003 (file not found), S007 (…)`, never by the file name.
 - `{n} segmented without stored images: {name} ({reason}), …`

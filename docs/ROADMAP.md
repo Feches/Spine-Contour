@@ -220,7 +220,11 @@ Not code quality; these stand between the branch and a production release.
   given in plan 05, so some screen readers do not announce the in-row delete controls separately.
   Mouse and keyboard both work. Recorded for an accessibility pass. (2026-09-08) The row now nests a real
   checkbox — a second tab stop per row under a `role="button"` parent whose children some readers treat as
-  presentational. Mouse and keyboard both work; the accessibility pass owns it.
+  presentational. Mouse and keyboard both work; the accessibility pass owns it. The Find tab's focus
+  restore falls back between Segment and Stop, and either can be disabled at that moment (Stop after it
+  is pressed; Segment after a batch over ticked rows ends): `.focus()` on a disabled control is a no-op
+  and focus drops to `<body>`; test `!target.disabled` and fall back to the bar. (Found at the final
+  whole-branch review, 2026-09-08.)
 - **The Studies screen's `Find | Parameters` tab strip is an incomplete ARIA tabs pattern.** It
   carries `role="tablist"`, `role="tab"` and `aria-selected`, but no `aria-controls`, no roving
   `tabindex` and no Arrow-key handling, so a screen reader announces tabs that do not behave like
