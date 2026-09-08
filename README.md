@@ -145,4 +145,4 @@ DICOM `PixelSpacing` preserves row and column spacing; detector-plane spacing is
 
 ## Clear the study library
 
-On **Studies**, select **Delete all studies**, then confirm the displayed count. This clears every study, including entries hidden by search and the demo studies, plus saved segmentation results. Original radiograph files are kept. Demo studies remain hidden after restarting. The action is unavailable during segmentation or when the saved library cannot safely be written. If a saved result cannot be deleted, its study remains in the library and the app reports the failure.
+On **Studies**, select **Delete all studies**, then confirm the displayed count. This clears every study, including entries hidden by search, plus saved segmentation results; in a development build that includes the demo studies (a packaged build has none). Original radiograph files are kept. Demo studies remain hidden after restarting. The action is unavailable during segmentation or when the saved library cannot safely be written. If a saved result cannot be deleted, its study remains in the library and the app reports the failure.

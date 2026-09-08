@@ -412,6 +412,9 @@ async function deleteAllStudies() {
     setState(current => ({
       studies: current.studies.filter(study => !ids.has(study.id)),
       deletingStudies: false, query: '',
+      // Same reasoning as deleteStudy's own setState above: nextId reuses a deleted id
+      // immediately, so a tick left on it would land on the next film added.
+      paramSelected: withIds(current.paramSelected, [...ids], false),
       ...(ids.has(current.openId) ? { openId: null, screen: 'studies', ...FRESH_VIEW } : {}),
       ...(ids.has(current.compareId) ? { compareId: null } : {}),
     }));
@@ -539,6 +542,11 @@ export function render(state) {
     tabParameters.setAttribute('aria-selected', String(onParameters));
     findPanel.classList.toggle('is-hidden', onParameters);
     parametersHost.classList.toggle('is-hidden', !onParameters);
+
+    // The store is the source of truth for the query; deleteAllStudies clears it without
+    // touching the input. While the user types, the two are already equal so this never
+    // moves the caret.
+    if (search.value !== (live.query || '')) search.value = live.query || '';
 
     const studies = live.studies || [];
     const query = (live.query || '').trim().toLowerCase();
