@@ -18,6 +18,7 @@ import { el, clear } from '../dom.js';
 import { setState } from '../store.js';
 import { saveCsv } from '../api.js';
 import { showToast } from '../components/toast.js';
+import { checkbox } from '../components/checkbox.js';
 import { toCsv, toPairedCsv } from '../data/csv.js';
 import { isConsistent } from '../data/measurements.js';
 import { studyName, workspaceLabel, folderLabel, pathTitle } from '../data/labels.js';
@@ -41,30 +42,8 @@ const INCONSISTENT_TITLE = 'Parameters inconsistent \u2014 check S1 and femoral 
 
 const DASH = '\u2014';
 
-const CHECK_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 L10 17.5 L19 7"></path></svg>';
-
 function sameKey(a, b) {
   return a !== null && b !== null && a.length === b.length && a.every((v, i) => v === b[i]);
-}
-
-// Real booleans on purpose: el() assigns `checked` as a property, and the string 'false' is true.
-// `label: null` builds the bare tick box the grid uses (row select and select-all), which carries
-// its name in `ariaLabel` instead: a visible label in the STUDY column would repeat the row's own
-// name in every row. The hidden input stays inside the <label> so a click anywhere on the box --
-// including a synthetic click at the 1x1 input's own rect, which is how the smoke suite drives it
-// -- lands on the label and toggles the control.
-function checkbox({ key, label, checked, note, ariaLabel, indeterminate, onChange }) {
-  const input = el('input', {
-    type: 'checkbox', checked, 'data-param-key': key, onChange,
-    ...(ariaLabel ? { 'aria-label': ariaLabel } : {}),
-  });
-  // A property, not an attribute, and it has no markup form: it must be assigned on the node.
-  if (indeterminate === true) input.indeterminate = true;
-  return el('label', { class: `checkbox-row param-check${label === null ? ' param-pick' : ''}` },
-    input,
-    el('span', { class: 'checkbox-box', innerHTML: CHECK_SVG }),
-    label === null ? null
-      : el('span', { class: 'param-check-label' }, label, note ? el('span', { class: 'param-check-note' }, note) : null));
 }
 
 export function mountParameters(host, { onOpen }) {

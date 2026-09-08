@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   HAND_ADDED, NO_TIMEPOINT, ANY_POST, DEFAULT_FILTERS, DEFAULT_SORT, CORE_COLUMNS, LEVEL_COLUMNS, measurementColumns,
   parameterValues, formatParameter, isSegmented, workspaceOptions, folderOptions, normaliseFilters,
-  patchFilters, filterParameters, hiddenUnsegmented, sortParameters, emptyReason, exportFileName,
+  patchFilters, filterParameters, matchesLocation, hiddenUnsegmented, sortParameters, emptyReason, exportFileName,
   toggleId, withIds, selectedVisible, rowsToExport,
   subjectKey, timepointOptions, viewOptions, pairedWithOptions, pairedSubjects, hiddenUnpaired, subjectBreaks,
 } from '../renderer/data/parameters.js';
@@ -534,4 +534,31 @@ test('emptyReason blames a timepoint, view, subject or paired-only filter the us
   assert.equal(emptyReason({ total: 2, visible: 0, filters: { subject: 'S0' }, query: '' }), 'filtered');
   assert.equal(emptyReason({ total: 2, visible: 0, filters: { pairedOnly: true }, query: '' }), 'filtered');
   assert.equal(emptyReason({ total: 2, visible: 0, filters: { subject: '   ' }, query: '' }), 'unsegmented');
+});
+
+// ---------------------------------------------------------------------------
+// matchesLocation (batch spec 7.1): the Find tab filters by these two alone
+// ---------------------------------------------------------------------------
+
+test('matchesLocation is the workspace and folder halves of filterParameters, and a missing filter is no filter', () => {
+  const rows = [
+    study({ id: 'SP-1000' }),                                                              // Fusion2025 / pre-op
+    study({ id: 'SP-1001', filePath: `${ROOT}\\post-op\\b.png` }),                          // Fusion2025 / post-op
+    study({ id: 'SP-1002', workspaceFolder: 'C:\\films\\Other', filePath: 'C:\\films\\Other\\pre-op\\c.png' }),
+    study({ id: 'SP-1003', workspaceFolder: null, filePath: 'C:\\Users\\me\\Desktop\\d.png' }), // added by hand
+    study({ id: 'SP-1004', workspaceFolder: null, filePath: null }),                        // no path at all
+  ];
+  const keep = (filters) => rows.filter((row) => matchesLocation(row, filters)).map((row) => row.id);
+  assert.deepEqual(keep({}), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003', 'SP-1004']);
+  assert.deepEqual(keep(null), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003', 'SP-1004']);
+  assert.deepEqual(keep({ workspace: ROOT }), ['SP-1000', 'SP-1001']);
+  assert.deepEqual(keep({ workspace: ROOT, folder: 'pre-op' }), ['SP-1000']);
+  assert.deepEqual(keep({ folder: 'pre-op' }), ['SP-1000', 'SP-1002']);
+  assert.deepEqual(keep({ workspace: HAND_ADDED }), ['SP-1003', 'SP-1004']);
+  assert.deepEqual(keep({ workspace: HAND_ADDED, folder: 'Desktop' }), ['SP-1003']);
+  // Agreement with the grid's filter, with every other filter open.
+  const open = { ...DEFAULT_FILTERS, segmentedOnly: false };
+  for (const filters of [{ workspace: ROOT }, { workspace: ROOT, folder: 'post-op' }, { folder: 'pre-op' }, { workspace: HAND_ADDED }]) {
+    assert.deepEqual(keep(filters), filterParameters(rows, { ...open, ...filters }).map((row) => row.id), JSON.stringify(filters));
+  }
 });

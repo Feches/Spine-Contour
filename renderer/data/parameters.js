@@ -84,6 +84,14 @@ function matchesWorkspace(study, workspace) {
   return workspace === HAND_ADDED ? root === null : root === workspace;
 }
 
+// The workspace and folder halves of filterParameters, as one predicate (batch spec 7.1): the Find
+// tab's list filters by these two alone and must agree with the grid about which folder a film is
+// in. `filters` may be partial or null; a missing key is no filter.
+export function matchesLocation(study, filters) {
+  const f = filters ?? {};
+  return matchesWorkspace(study, f.workspace ?? null) && (!f.folder || folderLabel(study) === f.folder);
+}
+
 // Distinct workspace roots in first-seen order, each labelled by its last path segment -- the
 // same label the WORKSPACE column shows. Two roots that share a last segment are labelled by
 // their full paths instead, so the dropdown never offers two identical entries. "Added by hand"
@@ -258,8 +266,7 @@ export function rowsToExport(visible, selected) {
 // rather than as nothing (planning ruling, 2026-09-07).
 export function filterParameters(studies, filters) {
   const f = { ...DEFAULT_FILTERS, ...(filters ?? {}) };
-  const kept = studies.filter((study) => matchesWorkspace(study, f.workspace)
-    && (!f.folder || folderLabel(study) === f.folder)
+  const kept = studies.filter((study) => matchesLocation(study, f)
     && (!f.segmentedOnly || isSegmented(study))
     && (!f.view || study.view === f.view)
     && matchesSubject(study, f.subject));
