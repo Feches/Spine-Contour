@@ -54,6 +54,11 @@ the §10.3 filters and subject sort, §11.1's three columns. Plan: `docs/superpo
 - Not built here, by design: the paired export (§11.2, task 4) and compare-with-pre-op (§12, task 3,
   after plan 07).
 
+- Final whole-branch review (2026-09-07): clean after one fix wave — views normalise like timepoints (decision 46),
+  a cleared view renders `—` everywhere, `rowForSegments` shared by `folderRows` and `seedFields`, four records the
+  new content had contradicted. Branch tip `4c60ccf` plus the wrap's docs commit; pushed to `fork`; the merge back
+  is the user's call.
+
 **Traps:** `list` is a read-only accessor on `HTMLInputElement`, so it must never be an `el()` prop —
 `setAttribute('list', …)` after construction (the `style` trap's sibling). The drawer's group row
 carries `clinical-grid-group`, not `clinical-grid-head`; a smoke reader that filters rows by the
@@ -1259,6 +1264,13 @@ written, and are implemented on `claude/preop-postop-study-fields`.
     subject pairs when it has a Pre-op film and at least one other labelled film; a specific label narrows to that
     pair; a film with no timepoint never pairs. *Why:* the user's follow-up films were labelled `6 wk`, and nothing
     paired under `Post-op`. *Cost if wrong:* one default string; the spec's §10.3 is amended.
+
+46. **A CSV `view` and a view typed in the drawer that name a known position are stored as the §7.3 label**
+    (`flexion` → Flexion lateral), as a timepoint already is; anything else stays as typed (user decision at the
+    final whole-branch review, 2026-09-07). *Why:* spec §8.2 said "stored as typed", so a CSV `standing` and a
+    `standing/` folder gave two View values for one position — two dropdown entries, films that did not filter
+    together, two spellings in the export. *Cost if wrong:* a user who wants the literal text `standing` cannot
+    have it; §8.2 is amended.
 
 ## Release prerequisites — before a production release
 

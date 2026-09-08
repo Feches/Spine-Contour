@@ -23,14 +23,17 @@ what plan 06 changed under plan 07 (the contract was amended in step; the plan-0
 not), and "Release prerequisites" for what stands between this branch and a production release.
 `docs/ROADMAP.md` carries the deferred work that has no plan yet.
 
-**Branch `claude/preop-postop-xray-org-2c4d80` (2026-09-07)** sits above the studies branch and holds
-the pre-op/post-op organisation spec
-(`docs/superpowers/specs/2026-09-06-preop-postop-organisation-design.md`) and its task 1, the
-**Parameters tab**, complete: the plan `docs/superpowers/plans/2026-09-06-parameters-tab.md`
-(Tasks 1–8 plus an addendum, Tasks 9–12: the CSV's `Source` column removed, ticked rows export as a
-chosen subset), all reviewed, the DOM tasks verified by the user. Unit 333/333; `smoke-parameters.mjs`
-33/33. Pushed to `fork`. **Merged back into the studies branch on 2026-09-07 (fast-forward); the next work is spec task 2 (subject, timepoint, film date, view and the Workspace folder table),
-which needs its own plan first.** `docs/superpowers/NEXT-SESSION.md` is the prompt.
+**Branch `claude/preop-postop-study-fields` (2026-09-07)** sits above the studies branch (which
+already carries spec task 1, the Parameters tab) and holds **spec task 2 complete**: subject, timepoint,
+film date and an editable view on the record; the Workspace card's per-folder assignment table; the
+drawer's Study group; the Parameters grid's timepoint, view, subject and paired-only filters (paired-only
+defaults to `All paired`) and subject sort; three export columns. Plan
+`docs/superpowers/plans/2026-09-07-study-fields.md` (Tasks 1–11, its `## Ledger` at the end), all
+reviewed, three human gates passed, the final whole-branch review clean after one fix wave. Unit 379/379;
+`smoke-parameters.mjs` 46/46; `smoke-seeding.mjs` 36/36; `smoke-workspace.mjs` 100/100. Pushed to `fork`.
+**The merge back into the studies branch is the user's call (a fast-forward); the next work is spec task 4
+(the paired export) or task 3 (compare with pre-op, after plan 07), each needing its own plan.**
+`docs/superpowers/NEXT-SESSION.md` is the prompt.
 
 ## Read these first
 
@@ -141,7 +144,7 @@ packages; keep `--collect-all timm` in both workflows.
 
 ## Git
 
-This worktree is on branch `claude/preop-postop-xray-org-2c4d80`, branched from
+This worktree is on branch `claude/preop-postop-study-fields`, branched from
 `claude/studies-ui-updates-bb040d` and meant to merge back into it. Two remotes:
 
 - `fork` → `github.com/Feches/Spine-Contour` — **push here**

@@ -3669,3 +3669,14 @@ branch-wide; no ruling contradicted; no deferred minor must be fixed before merg
 - Deferred to the roadmap (not blocking): countSeeding counts a user-set non-default row as "read from names";
   store.js duplicates DEFAULT_FILTERS as a literal; the demo pair's PI differs between its two films (kept from the
   template); a cleared view is re-seeded by a later Load (fill-blanks, by design).
+
+Session ended 2026-09-07 (execution): the branch is complete at `4c60ccf` plus the wrap's docs commit above it —
+eleven tasks, three human gates passed on the user's machine, the final whole-branch review clean after one fix
+wave (its scoped re-review: all 18 items addressed, no new breakage); unit 379/379; `smoke-parameters.mjs` 46/46;
+`smoke-seeding.mjs` 36/36; `smoke-workspace.mjs` 100/100. Nothing is half-done and no finding is open. Resume at:
+(1) the merge back into `claude/studies-ui-updates-bb040d` — the user's call, never unasked (a fast-forward: the
+studies branch has not moved); (2) spec task 4 (the paired export, §11.2–§11.3) or task 3 (compare with pre-op,
+§12, which needs plan 07's comparison mode first) — each needs its own plan. Deferred minors worth a small
+change: `persistence.js:147-148`'s comment still says "Both are optional" above five fields; `countSeeding`
+counts a user-set non-default folder row as "read from names"; `store.js` duplicates `DEFAULT_FILTERS` as a
+literal.
