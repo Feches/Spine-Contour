@@ -279,6 +279,14 @@ test('exportFileName names the workspace, or the library when there is no single
   assert.equal(exportFileName('/'), 'workspace-parameters.csv');
 });
 
+test('exportFileName takes a kind for the paired file and defaults to parameters', () => {
+  assert.equal(exportFileName(null, 'paired'), 'library-paired.csv');
+  assert.equal(exportFileName(HAND_ADDED, 'paired'), 'library-paired.csv');
+  assert.equal(exportFileName('C:\\films\\Fusion2025', 'paired'), 'Fusion2025-paired.csv');
+  assert.equal(exportFileName('/', 'paired'), 'workspace-paired.csv');
+  assert.equal(exportFileName('C:\\films\\Fusion2025'), 'Fusion2025-parameters.csv');
+});
+
 // ---------------------------------------------------------------------------
 // selection
 // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import { normaliseTimepoint, normaliseView, parseFilmDate } from './timepoints.js';
+import { normaliseTimepoint, normaliseView, parseFilmDate, PRE_OP } from './timepoints.js';
 
 const MEASUREMENT_COLUMNS = [
   'LL L1-S1', 'PI', 'PT', 'SS', 'PI-LL Mismatch', 'L1PA',
@@ -13,6 +13,17 @@ const MEASUREMENT_COLUMNS = [
 // accuracy, so nothing meaningful is lost.
 function round1(value) {
   return typeof value === 'number' && Number.isFinite(value) ? Number(value.toFixed(1)) : '';
+}
+
+// The later value minus the earlier, over the one-decimal forms of each (pre-op/post-op spec §11.2):
+// the file writes both sides to one decimal, so the delta is computed from what is written and
+// the three cells always agree to the digit. Empty when either side is absent, never 0. Exported
+// for comparison mode (plan 07) to apply the same rule.
+export function delta1(pre, post) {
+  const a = round1(pre);
+  const b = round1(post);
+  if (a === '' || b === '') return '';
+  return Number((b - a).toFixed(1));
 }
 
 function measurementValue(study, column) {
@@ -77,6 +88,66 @@ export function toCsv(studies) {
       study.filmDate ?? '',
       ...MEASUREMENT_COLUMNS.map((column) => measurementValue(study, column)),
       ...fields.map((field) => (study.clinical && study.clinical[field] != null ? study.clinical[field] : '')),
+    ];
+    lines.push(cells.map(escapeField).join(','));
+  }
+  return `${lines.join('\r\n')}\r\n`;
+}
+
+// The paired (wide) file (pre-op/post-op spec §11.2) from what data/pairing.js's pairStudies
+// returns; this function only writes text. Layout B, measurement-major: Subject; `<label> study`,
+// `<label> view`, `<label> film date` per visit (Pre-op first); then per measurement column
+// `<M> Pre-op` followed by `<M> <label>`, `Delta <M> <label>` per later visit; then `<F> <label>`
+// per clinical key present on the written films. Headers use the stored label and ASCII `Delta`,
+// following `PI-LL Mismatch` for the on-screen `PI–LL`, so Excel and R read them without a
+// byte-order mark. Demo rows never reach this function: pairStudies drops them.
+export function toPairedCsv(pairing) {
+  const { visits, subjects } = pairing;
+  const labels = [PRE_OP, ...visits];
+  const written = subjects.flatMap((row) => [...row.films.values()]);
+  const fields = clinicalFieldNames(written);
+
+  const citation = [
+    '# Spine Contour export',
+    '# Created by Cody Woodhouse, MD; Michael Jayasuriya, BS.',
+    '# Investigational software. NOT FOR CLINICAL USE.',
+  ];
+  const header = [
+    'Subject',
+    ...labels.map((label) => `${label} study`),
+    ...labels.map((label) => `${label} view`),
+    ...labels.map((label) => `${label} film date`),
+    ...MEASUREMENT_COLUMNS.flatMap((column) => [
+      `${column} ${PRE_OP}`,
+      ...visits.flatMap((label) => [`${column} ${label}`, `Delta ${column} ${label}`]),
+    ]),
+    ...fields.flatMap((field) => labels.map((label) => `${field} ${label}`)),
+  ];
+
+  const lines = [...citation, header.map(escapeField).join(',')];
+  for (const row of subjects) {
+    const film = (label) => row.films.get(label) ?? null;
+    const pre = film(PRE_OP);
+    const cells = [
+      row.subject,
+      ...labels.map((label) => film(label)?.id ?? ''),
+      ...labels.map((label) => film(label)?.view ?? ''),
+      ...labels.map((label) => film(label)?.filmDate ?? ''),
+      ...MEASUREMENT_COLUMNS.flatMap((column) => {
+        const before = pre ? measurementValue(pre, column) : '';
+        return [
+          before,
+          ...visits.flatMap((label) => {
+            const later = film(label);
+            const value = later ? measurementValue(later, column) : '';
+            return [value, delta1(before, value)];
+          }),
+        ];
+      }),
+      ...fields.flatMap((field) => labels.map((label) => {
+        const study = film(label);
+        return study && study.clinical && study.clinical[field] != null ? study.clinical[field] : '';
+      })),
     ];
     lines.push(cells.map(escapeField).join(','));
   }

@@ -366,11 +366,11 @@ export function emptyReason({ total, visible, filters, query }) {
   return 'unsegmented';
 }
 
-// `<root last segment>-parameters.csv` for a workspace filter, else the whole library. The
-// segment is reduced to letters, digits, underscore and hyphen so the suggested name is a valid
-// filename on every platform.
-export function exportFileName(workspace) {
-  if (!workspace || workspace === HAND_ADDED) return 'library-parameters.csv';
+// `<root last segment>-<kind>.csv` for a workspace filter, else the whole library; `kind` is
+// 'parameters' (the long export) or 'paired' (spec §10.4). The segment is reduced to letters,
+// digits, underscore and hyphen so the suggested name is a valid filename on every platform.
+export function exportFileName(workspace, kind = 'parameters') {
+  if (!workspace || workspace === HAND_ADDED) return `library-${kind}.csv`;
   const stem = lastSegment(workspace).replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
-  return `${stem || 'workspace'}-parameters.csv`;
+  return `${stem || 'workspace'}-${kind}.csv`;
 }
