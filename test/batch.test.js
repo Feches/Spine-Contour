@@ -17,7 +17,7 @@ const segmented = (id, overrides = {}) => film(id, { measurements: { PI: 50, PT:
 const demo = (id) => film(id, { source: 'demo', filePath: null, measurements: { PI: 50, PT: 12, SS: 38, LL: { 'L1-S1': 49 } } });
 
 // ---------------------------------------------------------------------------
-// planBatch (spec \u00A77.3)
+// planBatch (spec 7.3)
 // ---------------------------------------------------------------------------
 
 test('planBatch with nothing ticked offers every visible real unsegmented film, in table order', () => {
@@ -80,7 +80,7 @@ test('planBatch never mutates its inputs', () => {
 });
 
 // ---------------------------------------------------------------------------
-// the batch object (spec \u00A78.1)
+// the batch object (spec 8.1)
 // ---------------------------------------------------------------------------
 
 test('newBatch copies the ids and starts at zero', () => {
@@ -126,7 +126,7 @@ test('isQueued is true from the film whose turn is starting to the last, false b
 });
 
 // ---------------------------------------------------------------------------
-// texts (spec \u00A77.4, \u00A79)
+// texts (spec 7.4, 9)
 // ---------------------------------------------------------------------------
 
 test('progressText and sidebarText count attempts, and say STOPPING once Stop is pressed', () => {
@@ -166,7 +166,7 @@ test('batchMessage adds one clause per thing left out, only when nonzero, names 
 });
 
 // ---------------------------------------------------------------------------
-// createBatchDriver (spec \u00A78.2)
+// createBatchDriver (spec 8.2)
 // ---------------------------------------------------------------------------
 
 // A fake store with the getState/setState contract of renderer/store.js, and a segment() whose

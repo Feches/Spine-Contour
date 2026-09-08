@@ -363,6 +363,16 @@ async function deleteStudy(id) {
       return;
     }
   }
+  // The check above is stale: the await opens a window in which a batch can reach this study,
+  // pass segmentStudy's own identity check and start its run (batch spec 8.2/11). Tearing the
+  // record down now would leave the finished run's sidecar and prediction snapshot behind under
+  // an id the next film can reuse. So refuse late, exactly as the early check does: the record
+  // stays and the run segments it, and an unsegmented study had no sidecar to lose.
+  if (getState().running === id) {
+    showToast('Wait for the segmentation to finish before deleting this study.');
+    refreshTable(`.studies-row[data-study-id="${id}"] .studies-delete`);
+    return;
+  }
   forgetPrediction(id);
   releaseStudy(id);
   // The screen is already 'studies'. Naming it again is a no-op for the router (same value,
@@ -513,8 +523,8 @@ export function render(state) {
     // The summary always describes the whole library, not the filtered view, and counts the
     // films without measurements with exactly the rule buildRow badges them: UNSEGMENTED, never
     // "in queue" -- the batch's queue is the bar's business (spec decision 7).
-    const queued = studies.filter((study) => (live.running === study.id ? 'proc' : deriveStatus(study)) === 'proc').length;
-    summary.textContent = `${studies.length} STUDIES · ${queued} UNSEGMENTED`;
+    const unsegmented = studies.filter((study) => (live.running === study.id ? 'proc' : deriveStatus(study)) === 'proc').length;
+    summary.textContent = `${studies.length} STUDIES · ${unsegmented} UNSEGMENTED`;
 
     const filters = normaliseFilters(live.paramFilters, studies);
     const visible = queried.filter((study) => matchesLocation(study, filters));

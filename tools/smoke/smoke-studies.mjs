@@ -385,7 +385,10 @@ try {
   // on data-find-key; every store read goes through the page's own module.
   // ---------------------------------------------------------------------------------------------
   const errorsAfter9 = cdp.errors.length;
-  const SAMPLE_BASE64 = /atob\('([^']+)'\)/.exec(injectExpression)[1];
+  // No check here: a null sample makes section 12's own checks FAIL by name (an injected film
+  // with no bytes cannot segment) instead of throwing out of the try and printing nothing.
+  const sampleMatch = /atob\('([^']+)'\)/.exec(injectExpression);
+  const SAMPLE_BASE64 = sampleMatch ? sampleMatch[1] : null;
 
   // Parks bytes (when given) for a new unsegmented real study and front-inserts it, like addStudy,
   // without opening it. A filePath under a workspace root gives the Workspace select a root to

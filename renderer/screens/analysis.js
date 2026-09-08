@@ -26,7 +26,7 @@ export function formatConfidence(qc) {
 // plan 05 persists state.studies to disk and validates its shape, so anything
 // hung on the record ships. See BD-6 and BD-7.
 
-// Raw file bytes, keyed by study id. screens/studies.js writes; runSegmentation reads.
+// Raw file bytes, keyed by study id. screens/studies.js writes; segmentStudy reads.
 // Transitional: plan 06 scans folders into studies that carry a filePath and no payload.
 const filePayloads = new Map();
 
@@ -245,6 +245,17 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       return { ok: false, reason: 'superseded' };
     }
 
+    // The record's identity again, before any side effect (batch spec 11): deleteStudy refuses
+    // while `running` is this id, so today nothing can remove the record between the check above
+    // and here -- this guards a future removal path. A vanished record gets no sidecar, no cache
+    // entry, no prediction snapshot and no commit; `running` was set for it and is cleared here.
+    const stillHere = getState().studies.find((s) => s.id === studyId);
+    if (!stillHere || stillHere.addedAt !== addedAt) {
+      disposeStudyImages(images);
+      setState({ running: null });
+      return { ok: false, reason: 'The study is no longer in the library.' };
+    }
+
     const thumbnail = thumbnailDataUri(images.image);
 
     // The sidecar first, then the record: a record that says "segmented" must point at a film
@@ -318,8 +329,8 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
 
 // A persisted study opened after a restart has numbers but no bitmaps. Read its sidecar,
 // decode, hand the bitmaps to the live viewer, and re-record the prediction snapshot with the
-// STORED geometry as the measured one. Guarded like runSegmentation: a newer restore, a run
-// started meanwhile, or the study being deleted drops this one's result; navigation does not,
+// STORED geometry as the measured one. Guarded like segmentStudy but per study: a newer
+// restore, a run for THIS study, or its deletion drops this one's result; navigation does not,
 // and `imageCache` deliberately survives it.
 async function restoreFilm(studyId) {
   const revision = ++restoreRevision;
