@@ -824,6 +824,7 @@ git commit -m "feat: toPairedCsv writes the layout-B wide file; delta1 over the 
 **Files:**
 - Modify: `renderer/components/toast.js`
 - Create: `test/toast.test.js`
+- Modify: `tools/smoke/smoke-persist.mjs` (two comments that quote the old fixed 2200 ms)
 
 **Interfaces:**
 - Consumes: nothing new. `toast.js` imports `el` from `../dom.js` and `setState` from `../store.js`, neither of which touches `document` at import time, so the module loads under Node.
@@ -895,15 +896,24 @@ export function render(state) {
 }
 ```
 
+Then, in `tools/smoke/smoke-persist.mjs`, two comments quote the old fixed duration and become false:
+
+1. Line 231: change `linger 2200 ms (components/toast.js). Without this, a nudge issued shortly after the forced` to `linger 2.2 s to 8 s by length (toastDuration in components/toast.js). Without this, a nudge issued shortly after the forced`.
+2. Line 251: change `racy: showToast clears the message after 2200 ms (components/toast.js), so a slow poll could` to `racy: showToast clears the message after 2.2 s to 8 s by length (toastDuration in components/toast.js), so a slow poll could`.
+
+No check in either suite asserts the duration itself.
+
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `node --test test/toast.test.js`
 Expected: 1 passing. Then `node --test test/*.test.js` — 402 passing.
 
+`smoke-persist.mjs` and `smoke-gate2.mjs` are NOT re-run by this plan (the first needs two real restarts, the second segmentation). Say so in the report, and name the one check to watch if a long toast ever precedes it: `smoke-gate2.mjs:120`, `a 1px radius is accepted by /measure (no toast)`, reads `!s.toast` after a 300 ms settle. Every toast that suite raises is under forty characters, so its duration is unchanged there.
+
 - [ ] **Step 5: Commit**
 
 ```bash
-git add renderer/components/toast.js test/toast.test.js
+git add renderer/components/toast.js test/toast.test.js tools/smoke/smoke-persist.mjs
 git commit -m "feat: a toast stays as long as its text needs, 2.2 s to 8 s (spec §11.3)"
 ```
 
@@ -1111,9 +1121,16 @@ Expected: `9/9 checks passed`. Then `node tools/smoke/cdp.mjs --quit`. Paste the
 
 - [ ] **Step 6: Commit before the gate**
 
+Write the message below to `tools/smoke/out/task4-commit.txt` (git-ignored) with the Write tool — not a heredoc; long or quote-heavy heredocs fail to parse in this harness — then:
+
 ```bash
-git add renderer/screens/parameters.js
-git commit -F - <<'EOF'
+git add renderer/screens/parameters.js styles/screens/studies.css
+git commit -F tools/smoke/out/task4-commit.txt
+```
+
+(`styles/screens/studies.css` is a no-op when Step 3's fallback was not needed.) The message:
+
+```
 feat: Export paired CSV on the Parameters filter bar (spec §10.4, §11.2, §11.3)
 
 A second button beside Export CSV over the same rows (visible, or ticked visible): reads
@@ -1125,7 +1142,6 @@ Manual verification: pending the human gate (7 checks) — outcomes recorded her
 before Task 5 starts.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
-EOF
 ```
 
 - [ ] **Step 7: MANUAL VERIFICATION — the human gate**
@@ -1152,7 +1168,7 @@ Record every outcome in the commit body by amending (`git commit --amend`); a ch
 
 **Interfaces:**
 - Consumes: `connect()` from `tools/smoke/cdp-lib.mjs`; the `data-param-key` values `export`, `export-note`, `export-paired`, `export-paired-note`, `select-<id>`, `paired`, `subject` and the `.param-select-workspace` / `.param-select-paired-with` classes from Task 4 and the existing bar; the page's own `renderer/data/pairing.js`, `csv.js`, `parameters.js` and `store.js`.
-- Produces: `smoke-parameters.mjs` at 57 checks, DOM-only.
+- Produces: `smoke-parameters.mjs` at 58 checks (section 13 adds twelve), DOM-only.
 
 Run every suite in the FOREGROUND with output captured to a file under `tools/smoke/out/`. A suite that prints nothing has thrown: re-run it bare and read the stack.
 
@@ -1161,7 +1177,13 @@ Run every suite in the FOREGROUND with output captured to a file under `tools/sm
 In `tools/smoke/smoke-parameters.mjs`:
 
 1. Change the header comment's first sentence to end `… the export button's disabled state, the paired export's button and its file and toast text through the page's own modules, the tab and sort surviving a trip to Analysis and back, and a deleted study's tick being pruned from the selection.`
-2. Replace the line `const RESET = '{ query: "", studiesTab: "find", paramFilters: { … }, paramSort: { key: "study", dir: "asc" }, paramLevels: false, paramSelected: [] }';` with:
+2. Replace line 27, which reads in full
+
+   ```js
+   const RESET = '{ query: "", studiesTab: "find", paramFilters: { workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: "", pairedOnly: false, pairedWith: "__any__" }, paramSort: { key: "study", dir: "asc" }, paramLevels: false, paramSelected: [] }';
+   ```
+
+   with:
 
 ```js
 const RESET_FILTERS = '{ workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: "", pairedOnly: false, pairedWith: "__any__" }';
@@ -1228,6 +1250,15 @@ Insert the following between the end of section 12 (the line `await cdp.setState
   await choose('.param-select-workspace', '');
   await cdp.settle(80);
 
+  await cdp.evaluate("(() => { const e = document.querySelector('[data-param-key=\"subject\"]'); e.value = 'ZZZ'; e.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  await cdp.settle(120);
+  pb = await pairedButton();
+  check('with nothing visible both buttons read Nothing to export and one note stands for both',
+    pb.disabled === true && pb.title === 'Nothing to export' && (await text('[data-param-key="export-note"]')) === 'Nothing to export'
+    && !(await has('[data-param-key="export-paired-note"]')) && (await longDisabled()) === true, pb);
+  await cdp.evaluate("(() => { const e = document.querySelector('[data-param-key=\"subject\"]'); e.value = ''; e.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  await cdp.settle(80);
+
   await clickKey('paired');
   await choose('.param-select-paired-with', 'Post-op');
   await cdp.settle(80);
@@ -1256,6 +1287,7 @@ Insert the following between the end of section 12 (the line `await cdp.setState
   check('its one row is S001 with both films, the deltas over the written values, and empty cells where a value is absent', paired.lines[4] === PAIRED_ROW, paired.lines[4]);
   check('the file ends after that row', paired.lines.length === 6 && paired.lines[5] === '', paired.lines.length);
   check('the toast names the one subject written and the one unpaired', paired.message === 'Exported 1 subject to X \u00B7 1 unpaired (S002)', paired.message);
+  // Back to the sort section 12 left, so section 10 sees exactly what it saw before this section.
   await cdp.setState('{ paramSort: { key: "PI", dir: "desc" } }');
   await cdp.settle(80);
 ```
@@ -1268,21 +1300,21 @@ node tools/smoke/smoke-parameters.mjs > tools/smoke/out/task5-smoke-parameters.t
 node tools/smoke/cdp.mjs --quit
 ```
 
-Expected: `57/57 checks passed`. If a check fails, read its detail in the file; if the file is empty the suite threw — re-run it bare. Never re-run on an instance where a suite was killed mid-run.
+Expected: `58/58 checks passed`. If a check fails, read its detail in the file; if the file is empty the suite threw — re-run it bare. Never re-run on an instance where a suite was killed mid-run.
 
 - [ ] **Step 4: The smoke README**
 
 In `tools/smoke/README.md`:
 
 1. In `## Running the Parameters suite`, change `the export button's disabled state, and ticking rows to export a chosen subset, and the tab and sort surviving a trip to Analysis.` to `the export button's disabled state, ticking rows to export a chosen subset, the paired export's button states and its file and toast text through the page's own \`pairStudies\` and \`toPairedCsv\` (2026-09-08; the save dialog is the human's), and the tab and sort surviving a trip to Analysis.`
-2. Change `Baseline: 46/46 (2026-09-07: the study columns, the timepoint, view, subject and paired-only filters, and the subject sort).` to `Baseline: 57/57 (2026-09-07: the study columns, the timepoint, view, subject and paired-only filters, and the subject sort; 2026-09-08: the paired export).`
-3. In the `**Known baseline**` paragraph under the plan-06 suite, change `` `smoke-parameters.mjs` 46/46 `` to `` `smoke-parameters.mjs` 57/57 ``.
+2. Change `Baseline: 46/46 (2026-09-07: the study columns, the timepoint, view, subject and paired-only filters, and the subject sort).` to `Baseline: 58/58 (2026-09-07: the study columns, the timepoint, view, subject and paired-only filters, and the subject sort; 2026-09-08: the paired export).`
+3. In the `**Known baseline**` paragraph under the plan-06 suite, change `unit 379/379` to `unit 402/402` and `` `smoke-parameters.mjs` 46/46 `` to `` `smoke-parameters.mjs` 58/58 ``. Its "the same figures as `docs/superpowers/HANDOFF.md`'s baseline paragraph" then points at the task-4 section Task 6 adds; the task-2 section keeps its own historical figures.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add tools/smoke/smoke-parameters.mjs tools/smoke/README.md
-git commit -m "test: smoke-parameters covers the paired export's button and file (57 checks)"
+git commit -m "test: smoke-parameters covers the paired export's button and file (58 checks)"
 ```
 
 ---
@@ -1295,11 +1327,11 @@ git commit -m "test: smoke-parameters covers the paired export's button and file
 - Modify: `README.md` (Parameters tab section)
 - Modify: `docs/superpowers/specs/2026-09-06-preop-postop-organisation-design.md` (§15 item 4)
 
-`CLAUDE.md`'s branch paragraph and `docs/superpowers/NEXT-SESSION.md` are the session wrap's, not this task's (the previous plans' ruling). `docs/ROADMAP.md` changes only if the ledger deferred something to it. Fill the verification figures from the reports of Tasks 1–5 (unit count, `smoke-parameters.mjs` 57/57, the gate's outcomes).
+`CLAUDE.md`'s branch paragraph and `docs/superpowers/NEXT-SESSION.md` are the session wrap's, not this task's (the previous plans' ruling). `docs/ROADMAP.md` changes only if the ledger deferred something to it. The verification figures are unit 402/402 and `smoke-parameters.mjs` 58/58, from the reports of Tasks 1–5; if a report's figure differs, the report wins and the ledger says why. The gate's outcomes are in Task 4's commit body.
 
 - [ ] **Step 1: Contract**
 
-1. In the module list, after the two `data/parameters.js` lines, add:
+1. In the module list, after the three `data/parameters.js` lines (the entry ending `rowsToExport (2026-09-07)`) and before the blank line that precedes the `test/` block, add:
    ```
      data/pairing.js                 (2026-09-08) pure: pairStudies(rows, {post}) → {visits, post, subjects: [{key, subject, films: Map}],
                                      unpaired, ambiguous, noSubject, noTimepoint, otherVisits} for the paired export (spec §11.2);
@@ -1311,7 +1343,7 @@ git commit -m "test: smoke-parameters covers the paired export's button and file
                                      then 40 ms per character, capped at 8 s, for every toast
    ```
 3. Change the `data/csv.js` line to `  data/csv.js                     parse, auto-map, export; toPairedCsv and delta1 (2026-09-08)`.
-4. Append to the second `data/parameters.js` line: `; exportFileName(workspace, kind = 'parameters') (2026-09-08)`.
+4. Append to the LAST `data/parameters.js` line (the one ending `rowsToExport (2026-09-07)`): `; exportFileName(workspace, kind = 'parameters') (2026-09-08)`.
 5. Append to the `screens/parameters.js` block's last line: `; the paired export button and its note (2026-09-08, spec §10.4)`.
 6. In the `test/` listing, change `csv.test.js  measurements.test.js  persistence.test.js` to `csv.test.js  measurements.test.js  persistence.test.js  pairing.test.js  toast.test.js`.
 7. In the `data/csv.js` block, after the `toCsv` lines, add:
@@ -1329,7 +1361,7 @@ git commit -m "test: smoke-parameters covers the paired export's button and file
 
 In `docs/superpowers/HANDOFF.md`:
 
-1. Header: change `**This copy is on:**` to `` `claude/preop-postop-paired-export` (task 4 of the pre-op/post-op spec, the paired export, code and docs; branched 2026-09-08 off the studies tip `adf3c19`; merge back is the user's call) `` and keep the worktree path.
+1. Header: after the label `**This copy is on:**`, replace the branch and its parenthetical with `` `claude/preop-postop-paired-export` (task 4 of the pre-op/post-op spec, the paired export, code and docs; branched 2026-09-08 off the studies tip `adf3c19`; merge back is the user's call) ``, keeping the label and the worktree path that follows.
 2. Under `## Where things stand`, insert BEFORE `### Study fields — task 2 …`:
 
 ```markdown
@@ -1353,7 +1385,7 @@ Spec §10.4, §11.2, §11.3 as laid out at the 2026-09-08 brainstorm (decisions 
   with its own `No paired subjects in these rows`; suggested name `<workspace>-paired.csv` / `library-paired.csv`.
 - `toastDuration(text)` in `components/toast.js`: 2.2 s to forty characters, then 40 ms per character, capped at 8 s;
   every toast, the workspace load message included.
-- Verified: unit <N>/<N>; `smoke-parameters.mjs` 57/57; Task 4's human gate (outcomes in its commit body).
+- Verified: unit 402/402; `smoke-parameters.mjs` 58/58; Task 4's human gate (outcomes in its commit body).
 ```
 
 3. After decision 47, append:
@@ -1372,6 +1404,7 @@ Spec §10.4, §11.2, §11.3 as laid out at the 2026-09-08 brainstorm (decisions 
 ```
 
 4. Under `## Known traps`, add a bullet only for a trap execution actually hit (the ledger says); otherwise add nothing.
+5. The task-2 section's `Verified: unit 379/379; smoke-parameters.mjs 46/46; …` line is that task's historical record; leave it.
 
 - [ ] **Step 3: README**
 
@@ -1426,3 +1459,12 @@ Task 6. Planner rulings are in "Rulings made while planning" above. Execution me
 a fresh subagent per task with two-stage review; Sonnet for Tasks 1, 2, 3, 5, 6, Opus for Task 4; never
 Fable. Task 4 commits before its human gate with a pending line and is amended after; the ledger stays
 uncommitted during the gate; every suite in the foreground with output captured to a file.
+
+Independent review of the plan (Opus, 2026-09-08): rebuilt Tasks 1–3 in a sandbox and ran their tests, reproduced
+the smoke expectations offline, checked every anchor — no blocking finding; every expected value, count and anchor
+verified. Six should-fix items folded: the contract's three-line `data/parameters.js` entry; `smoke-persist.mjs`'s two
+comments quoting 2200 ms, and the two suites not re-run named; the smoke suite's `RESET` anchor quoted in full; the
+README's unit figure and its HANDOFF cross-reference; the third disabled reason (`Nothing to export`) added to
+section 13 (58 checks); Task 4's commit staging the CSS fallback and using a message file. Nits recorded, not
+acted on: the ambiguity check uses the candidates, not the emitted visits (deliberate, the plan's ruling);
+`.param-export-paired` is a hook with no CSS rule; section 13 dereferences the button after its first guarded check.
