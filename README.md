@@ -128,3 +128,21 @@ lateral lumbar films, or with a public dataset:
 
 Each dataset has its own access terms and licence; check them before use. None of these
 datasets is bundled with, or endorsed by, this project.
+
+
+## Image and folder calibration
+
+Choosing an image folder in **Workspace** now opens calibration automatically. Review the reference, then select **Calibrate folder and continue** to process the folder and return to workspace setup. **Skip for now** returns without requiring a reference. Changing the folder starts a fresh calibration step.
+
+You can also open **Image calibration** in the sidebar. **Choose one image** reads a PNG's printed length label and capped ruler without running segmentation. Green points mark the reference: drag either endpoint, correct the length in millimeters, and select **Apply reference**. **Measure distance** places two yellow points and displays their distance using that scale.
+
+For a folder, select **Choose image folder** or **Use workspace folder**. The app searches until it finds a reference to review. Correct and apply it, then select **Use reference appearance for folder** and **Process folder**. The corrected shaft supplies foreground-color settings that supplement ruler detection and OCR on the remaining images. Each image gets its own scale; the reference image's zoom-dependent scale is never copied to other films. Review missing, ambiguous or conflicting results in the image list. **Save calibration results** exports the detection profile and per-image references as JSON.
+
+Calibration stays in this session when navigating between screens. It does not yet persist inside study records or import saved profiles; export the JSON to retain it. It does not change the current angular measurements or add anatomical disc-height definitions. The original-image canvas keeps references accessible outside the segmentation crop.
+
+DICOM `PixelSpacing` preserves row and column spacing; detector-plane spacing is not silently substituted. Screenshot scale is derived from the printed annotation, not independently corrected for projection magnification. Capped straight rulers are supported; arrows, graduated scales and angle markers are not yet supported. Manual reference placement remains available when automatic OCR fails. The preview installers bundle Tesseract; development on macOS needs `brew install tesseract`.
+
+
+## Clear the study library
+
+On **Studies**, select **Delete all studies**, then confirm the displayed count. This clears every study, including entries hidden by search and the demo studies, plus saved segmentation results. Original radiograph files are kept. Demo studies remain hidden after restarting. The action is unavailable during segmentation or when the saved library cannot safely be written. If a saved result cannot be deleted, its study remains in the library and the app reports the failure.

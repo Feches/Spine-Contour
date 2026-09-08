@@ -76,6 +76,37 @@ ipcMain.handle('select-file', async () => {
   };
 });
 
+ipcMain.handle('calibrate', async (_event, request) => {
+  if (!backendBaseUrl) throw new Error('The backend is not ready.');
+  const bytes = request.data instanceof Uint8Array
+    ? request.data : Uint8Array.from(request.data?.data || request.data || []);
+  if (!bytes.byteLength || bytes.byteLength > MAX_UPLOAD_BYTES) throw new Error('Select an image smaller than 50 MB.');
+  const form = new FormData();
+  form.append('file', new Blob([bytes]), request.name);
+  if (request.profile) form.append('profile', JSON.stringify(request.profile));
+  form.append('include_preview', request.includePreview === false ? 'false' : 'true');
+  form.append('preview_only', request.previewOnly ? 'true' : 'false');
+  const response = await fetch(`${backendBaseUrl}/calibrate`, { method: 'POST', body: form });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || 'Image calibration failed.');
+  }
+  return response.json();
+});
+
+ipcMain.handle('calibration-profile', async (_event, request) => {
+  if (!backendBaseUrl) throw new Error('The backend is not ready.');
+  const bytes = request.data instanceof Uint8Array ? request.data : Uint8Array.from(request.data?.data || request.data || []);
+  if (!bytes.byteLength || bytes.byteLength > MAX_UPLOAD_BYTES) throw new Error('Select an image smaller than 50 MB.');
+  const form = new FormData();
+  form.append('file', new Blob([bytes]), request.name);
+  form.append('endpoints', JSON.stringify(request.endpoints));
+  const response = await fetch(`${backendBaseUrl}/calibration-profile`, { method: 'POST', body: form });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.detail || 'Could not learn reference appearance.');
+  return body;
+});
+
 ipcMain.handle('predict', async (_event, request) => {
   if (!backendBaseUrl) throw new Error('The bundled backend is not ready.');
   if (!request || typeof request.name !== 'string') throw new Error('No radiograph was selected.');
@@ -171,6 +202,17 @@ function sidecarMoveFailedNotice(storeFile) {
     + 'segmentation images could not be moved with them. Nothing is being saved this session, so none '
     + 'of them can be overwritten. Quit and move the predictions folder aside to recover.';
 }
+
+ipcMain.handle('demo-studies-hidden', async () => {
+  const preferences = await readJsonOrNull(path.join(app.getPath('userData'), 'library-preferences.json'));
+  return preferences?.hideDemoStudies === true;
+});
+
+ipcMain.handle('hide-demo-studies', async () => {
+  const file = path.join(app.getPath('userData'), 'library-preferences.json');
+  const preferences = await readJsonOrNull(file);
+  await writeJsonAtomic(file, { ...preferences, hideDemoStudies: true });
+});
 
 ipcMain.handle('load-studies', async () => {
   const store = await readStudyStore(storePath());

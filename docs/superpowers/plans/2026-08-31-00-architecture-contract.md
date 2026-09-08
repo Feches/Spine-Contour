@@ -916,3 +916,18 @@ bundle can be asked what it offers.
 
 Nothing about `measurements`, `geometry`, `/measure`, persistence shapes or
 `STORE_VERSION` changes.
+
+
+## 2026-09-07 amendment: image calibration
+
+User-authorized addition on ui-redesign-cw: `screen: 'calibration'` mounts a persistent, session-only original-image calibration screen. It uses the existing sidebar shell, tokens, workspace folder scanner and IPC API wrappers. `renderer/components/calibration-viewer.js` owns pointer handling for its separate reference canvas; the anatomical stage remains exclusively owned by `components/viewer.js`. Pure distance/spacing logic is in `renderer/data/calibration.js` with Node test coverage. Calibration never mutates study geometry or reuses one image's pixel scale for another. Folder color feedback supplements detection, not neural-model training. Study persistence has not been extended; JSON export is explicit.
+
+New optional backend endpoints: `POST /calibrate` (file, optional color profile, preview controls) and `POST /calibration-profile` (file and corrected endpoints). OCR failures preserve manual calibration. Desktop bundles include Tesseract and language data. No new npm dependencies or CSP changes.
+
+Folder upload handoff: `state.calibrationRequest` is a session-only `{folder, files}` request, passed together with `wsFolder`, `wsFiles`, and `screen: 'calibration'` after a nonempty workspace scan. `SCREEN_KEYS` includes it. The calibration screen consumes each request once, after mounting via a microtask, and returns to Workspace on Continue or Skip without changing study or CSV state. Folder processing reports uncalibrated images for later review instead of fabricating their scale.
+
+## 2026-09-07 amendment: delete all studies
+
+The user requested a complete library clear. Studies now offers a count-based confirmation covering the entire unfiltered library. `renderer/data/delete-studies.js` deletes real prediction sidecars by id before removing their records and reports per-item failures. It never deletes source films. `state.deletingStudies` blocks new prediction dispatch while clearing. The existing study saver writes the resulting real-study list; caches and open/compare references are cleared for successfully removed ids. Demo visibility is stored separately in `userData/library-preferences.json` through `demoStudiesHidden`/`hideDemoStudies` IPC so cleared demos do not reappear at startup. The default `merge(real)` behavior is preserved; bootstrap passes `{hideDemos: true}` only after that explicit preference. The persistence-disabled guard also applies to hiding demos.
+
+Verified: 280 Node tests; a running Electron scratch-profile test covering confirmation, cancellation, deletion through a filtered view, sidecar removal, source-file retention, and an empty library after relaunch. No live user studies were deleted during verification.

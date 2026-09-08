@@ -11,3 +11,5 @@ timm
 torch
 torchvision
 uvicorn[standard]
+scipy
+pytesseract

@@ -47,6 +47,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r backend/requirements.txt pyinstaller==6.22.2
 
+      - name: Bundle OCR runtime
+        run: |
+          brew install tesseract
+          python tools/packaging/bundle_ocr_macos.py build/ocr
+
       - name: Test backend
         run: python -m pytest backend/tests -q
 
@@ -88,6 +93,7 @@ jobs:
           --collect-all torchvision
           --collect-all uvicorn
           --add-data "backend/weights:backend/weights"
+          --add-data "build/ocr:ocr"
           backend/standalone.py
 
       - name: Verify bundled backend
@@ -100,6 +106,9 @@ jobs:
             if curl -sf http://127.0.0.1:8765/health | grep -q '"ok"'; then ready=1; break; fi
             sleep 1
           done
+          if [ "$ready" -eq 1 ]; then
+            python tools/packaging/check_bundled_ocr.py || { kill "$backend"; exit 1; }
+          fi
           kill "$backend" 2>/dev/null || true
           if [ "$ready" -ne 1 ]; then echo "The bundled backend did not become ready." >&2; exit 1; fi
           echo "OK: bundled backend answered /health"

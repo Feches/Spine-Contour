@@ -223,6 +223,15 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     return { ok: false, reason: 'The study is no longer in the library.' };
   }
 
+  // A bulk delete is clearing the library: it is about to remove records under these very ids,
+  // so nothing new starts. Like every other refusal here this is an OUTCOME, never a bare
+  // return -- a batch turn that got nothing back would resolve undefined and the driver would
+  // read `ok` off it. Only the interactive path toasts.
+  if (getState().deletingStudies) {
+    const reason = 'Wait for study deletion to finish.';
+    if (!batch) showToast(reason);
+    return { ok: false, reason };
+  }
   // The id, not a boolean: with a Studies list the user can open study B while A's /predict
   // is in flight, and the viewer and the list have to be able to ask WHICH study is running.
   // Every existing truthiness check still reads "a run is in flight" (one run at a time).

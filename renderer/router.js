@@ -1,3 +1,4 @@
+import { render as renderCalibration } from './screens/calibration.js';
 import { el, mount } from './dom.js';
 import { render as renderLanding } from './screens/landing.js';
 import { render as renderWorkspace } from './screens/workspace.js';
@@ -7,6 +8,7 @@ import { render as renderSidebar } from './components/sidebar.js';
 import { render as renderToast } from './components/toast.js';
 
 const SCREENS = {
+  calibration: renderCalibration,
   workspace: renderWorkspace,
   studies: renderStudies,
   analysis: renderAnalysis,
@@ -85,7 +87,7 @@ export const SIDEBAR_KEYS = [
 // true. When in doubt, ask whether the key can change many times per second
 // under a held-down pointer; if so, it belongs in a module-scope
 // subscription inside the screen, never in this array.
-export const SCREEN_KEYS = ['screen', 'ack'];
+export const SCREEN_KEYS = ['screen', 'ack', 'calibrationRequest'];
 
 export const TOAST_KEYS = ['toast'];
 

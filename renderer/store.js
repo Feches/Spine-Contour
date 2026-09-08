@@ -6,6 +6,7 @@ let state = {
   settingsOpen: false,
 
   studies: [],
+  deletingStudies: false,
   query: '',
   // The Studies screen's second tab (pre-op/post-op spec §10). Which tab is up, and the
   // Parameters tab's filters, sort and lordosis-level toggle. Store state rather than screen
@@ -42,6 +43,7 @@ let state = {
   // stopping }. Replaced wholesale on every change by renderer/batch.js; never persisted.
   batch: null,
 
+  calibrationRequest: null, // folder-upload handoff; session only
   wsFolder: null,
   wsFiles: [],
   wsCsv: null,

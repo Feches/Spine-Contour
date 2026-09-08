@@ -10,3 +10,5 @@ tools/smoke/out/
 .DS_Store
 # PyInstaller writes its spec file into the working directory
 spine-contour-backend.spec
+
+artifacts/

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 
 import numpy as np
 import pydicom
@@ -13,12 +14,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 
 try:
+    from .calibration import calibration_from_payload, learn_profile, validate_profile
     from .models import MODEL_CHOICES, VERTEBRA_LABELS, spinopelvic_prediction
     from .utils import (
         spinopelvic_measurements_from_geometry,
         spinopelvic_measurements_from_landmarks,
     )
 except ImportError:  # Support `uvicorn server:app` from backend/.
+    from calibration import calibration_from_payload, learn_profile, validate_profile
     from models import MODEL_CHOICES, VERTEBRA_LABELS, spinopelvic_prediction
     from utils import (
         spinopelvic_measurements_from_geometry,
@@ -140,3 +143,29 @@ def models() -> dict[str, list[str]]:
 @app.get("/health", include_in_schema=False)
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/calibrate", summary="Read image scale from an original radiograph")
+async def calibrate(file: UploadFile = File(...), profile: str | None = Form(None),
+                    include_preview: bool = Form(True), preview_only: bool = Form(False)) -> dict[str, object]:
+    payload = await file.read(MAX_UPLOAD_BYTES + 1)
+    if not payload:
+        raise HTTPException(status_code=400, detail="The selected file is empty")
+    if len(payload) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="The selected file exceeds 50 MB")
+    try:
+        settings = validate_profile(json.loads(profile)) if profile else None
+        return await run_in_threadpool(calibration_from_payload, payload, settings, include_preview, preview_only)
+    except Exception as error:
+        raise HTTPException(status_code=422, detail="Could not read the image for calibration") from error
+
+
+@app.post("/calibration-profile", summary="Learn annotation color from a corrected reference")
+async def calibration_profile(file: UploadFile = File(...), endpoints: str = Form(...)):
+    payload = await file.read(MAX_UPLOAD_BYTES + 1)
+    if not payload or len(payload) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="Select an image smaller than 50 MB")
+    try:
+        return await run_in_threadpool(learn_profile, payload, json.loads(endpoints))
+    except (ValueError, TypeError, KeyError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error

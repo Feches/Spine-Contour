@@ -2,7 +2,7 @@ import { getState, setState, subscribe } from './store.js';
 import { renderRoute } from './router.js';
 import {
   loadStudies, saveStudies, disablePersistence, storeLoadNotice, persistenceDisabledReason,
-  demoStudiesAllowed,
+  demoStudiesAllowed, demoStudiesHidden,
 } from './api.js';
 import { merge, createStudySaver } from './data/persistence.js';
 import { clinicalFieldNames } from './data/csv.js';
@@ -32,10 +32,17 @@ try {
   loadError = error;
   disablePersistence(error.message);
 }
-// main.js decides this: the demos are a development fixture, so an installed app opens empty and
-// every study in it is one the user put there. demoStudiesAllowed() is false until a load
-// actually returned the flag, so the catch above falls through to the real (empty) library.
-const studies = demoStudiesAllowed() ? merge(real) : real;
+// Two independent gates, and the demos appear only if BOTH allow them. main.js decides the
+// first: the demos are a development fixture, so an installed app opens empty and every study
+// in it is one the user put there. demoStudiesAllowed() is false until a load actually returned
+// the flag, so the catch above falls through to the real (empty) library. The second is the
+// user's own: "Delete all studies" records the choice in userData, and a development build that
+// read that preference keeps the library empty across restarts. A failed read is not a choice,
+// so it leaves the demos to the first gate.
+let hideDemos = false;
+try { hideDemos = await demoStudiesHidden(); }
+catch (error) { console.warn('Could not read demo visibility:', error.message); }
+const studies = demoStudiesAllowed() && !hideDemos ? merge(real) : real;
 // `fields` (which clinical columns the drawer shows) is session state and is never written to
 // disk -- the version-1 store holds Study records only. The VALUES are on each record's
 // `clinical`, so seed the columns once from every name that has a stored value: after a

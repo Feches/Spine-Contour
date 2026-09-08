@@ -236,9 +236,18 @@ export function render(state) {
       if (!folder) return;
       const { files, skipped } = await scanFolder(folder);
       lastScan = { folder, skipped };
-      // The folder table (spec §8.5) is rebuilt by every scan: the rows are what Load applies.
-      setState({ wsFolder: folder, wsFiles: files, wsFolderRows: folderRows(files, folder) });
-      refresh();
+      // One setState for both flows. The folder table (spec §8.5) is rebuilt by every scan: the
+      // rows are what Load applies, and they are read back from state when this screen remounts.
+      // A nonempty scan also hands the folder to the calibration screen (upstream's folder-upload
+      // handoff), which returns here with `calibrationRequest: null, screen: 'workspace'`; the
+      // remount rebuilds the card from wsFolder/wsFiles/wsFolderRows, so refresh() is only needed
+      // on the branch that stays on this screen.
+      setState({
+        wsFolder: folder, wsFiles: files, wsFolderRows: folderRows(files, folder),
+        calibrationRequest: files.length ? { folder, files: [...files] } : null,
+        ...(files.length ? { screen: 'calibration' } : {}),
+      });
+      if (!files.length) refresh();
     } catch (error) {
       showToast(`Could not read folder: ${error.message}`);
     }

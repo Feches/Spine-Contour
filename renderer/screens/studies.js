@@ -6,9 +6,10 @@
  * module-scope subscription, because router.js remounts this host only on screen/ack.
  */
 
+import { deleteStudyBatch } from '../data/delete-studies.js';
 import { el, mount } from '../dom.js';
 import { getState, setState, subscribe } from '../store.js';
-import { selectFile, pathForFile, deletePrediction, persistenceDisabledReason } from '../api.js';
+import { selectFile, pathForFile, deletePrediction, hideDemoStudies, persistenceDisabledReason } from '../api.js';
 import { showToast } from '../components/toast.js';
 import { deriveStatus, statusLabel } from '../data/status.js';
 import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle } from '../data/labels.js';
@@ -301,10 +302,11 @@ let mounted = null;
 // state shape. The store cannot see it, so update() lists it in its key explicitly and every
 // change to it below repaints through refreshTable().
 let confirmingId = null;
+let confirmingAll = false;
 
 subscribe((state) => {
   // Navigation withdraws an open prompt along with the mount.
-  if (state.screen !== 'studies') { mounted = null; confirmingId = null; return; }
+  if (state.screen !== 'studies') { mounted = null; confirmingId = null; confirmingAll = false; return; }
   if (mounted) mounted.update(state);
 });
 
@@ -325,6 +327,8 @@ function refreshTable(focusSelector) {
 // Enter or Space. Delete is one Tab (or one click) away, and its own :focus-visible ring
 // makes the difference visible before it is pressed.
 function askToDelete(id) {
+  if (getState().deletingStudies) return;
+  confirmingAll = false;
   confirmingId = id;
   refreshTable('.studies-delete-cancel');
 }
@@ -343,6 +347,7 @@ function cancelDelete() {
 // persistence disabled the sidecar is left alone on purpose: a sidecar under this id may
 // belong to the newer library this build cannot read, and the disabled saver writes nothing.
 async function deleteStudy(id) {
+  if (getState().deletingStudies) return;
   confirmingId = null;
   // Read the name before the record leaves the list -- the toast below fires after the setState
   // that removes it, and the user knows this study by its name, not by SP-nnnn.
@@ -390,8 +395,34 @@ async function deleteStudy(id) {
   showToast(`Deleted ${label}`);
 }
 
+async function deleteAllStudies() {
+  const live = getState();
+  if (live.running || live.deletingStudies || persistenceDisabledReason()) return;
+  const targets = [...live.studies];
+  confirmingAll = false;
+  confirmingId = null;
+  setState({ deletingStudies: true });
+  try {
+    const { deleted, failed } = await deleteStudyBatch(targets, { deletePrediction, hideDemos: hideDemoStudies });
+    const ids = new Set(deleted);
+    for (const id of ids) { forgetPrediction(id); releaseStudy(id); }
+    setState(current => ({
+      studies: current.studies.filter(study => !ids.has(study.id)),
+      deletingStudies: false, query: '',
+      ...(ids.has(current.openId) ? { openId: null, screen: 'studies', ...FRESH_VIEW } : {}),
+      ...(ids.has(current.compareId) ? { compareId: null } : {}),
+    }));
+    showToast(failed.length
+      ? `Deleted ${deleted.length} studies. ${failed.length} could not be deleted and remain in the library: ${failed[0].message}`
+      : `Deleted ${deleted.length} studies. Original image files were kept.`);
+  } finally {
+    if (getState().deletingStudies) setState({ deletingStudies: false });
+  }
+}
+
 export function render(state) {
   confirmingId = null;
+  confirmingAll = false;
   const summary = el('div', { class: 'studies-summary' });
   const search = el('input', {
     type: 'search', class: 'studies-search', value: state.query || '',
@@ -404,6 +435,9 @@ export function render(state) {
   });
   const tableHost = el('div', { class: 'studies-table-host' });
   const barHost = el('div', { class: 'studies-filters-host' });
+  // Library-level, so it sits above the tab strip: it acts on every study, the ones a search or a
+  // filter is hiding included, and it is the same control whichever tab is showing.
+  const bulkHost = el('div', { class: 'studies-bulk-actions' });
 
   // Two tabs. FIND is everything this screen was: the dropzone, the list and the search.
   // PARAMETERS is the grid of every segmented study's numbers (screens/parameters.js). The list
@@ -515,9 +549,11 @@ export function render(state) {
     // confirmingId is module scope, not store state; listing it here is what lets a
     // refreshTable() after a change to it get past the gate, while a notification that
     // changed nothing the table shows (a pan frame, a toast) still returns early.
-    // paramFilters, paramSelected and batch are what the bar and the ticks read (batch spec 7):
-    // every store key this list reads must be here, or it silently stops repainting for it.
-    const key = [live.studies, live.query, live.running, confirmingId, live.paramFilters, live.paramSelected, live.batch];
+    // paramFilters, paramSelected and batch are what the bar and the ticks read (batch spec 7);
+    // confirmingAll and deletingStudies are what the bulk row below reads: every store key this
+    // screen reads must be here, or it silently stops repainting for it.
+    const key = [live.studies, live.query, live.running, confirmingId, confirmingAll,
+      live.deletingStudies, live.paramFilters, live.paramSelected, live.batch];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
     // The summary always describes the whole library, not the filtered view, and counts the
@@ -525,6 +561,20 @@ export function render(state) {
     // "in queue" -- the batch's queue is the bar's business (spec decision 7).
     const unsegmented = studies.filter((study) => (live.running === study.id ? 'proc' : deriveStatus(study)) === 'proc').length;
     summary.textContent = `${studies.length} STUDIES · ${unsegmented} UNSEGMENTED`;
+    const blocked = Boolean(live.running || live.deletingStudies || persistenceDisabledReason());
+    mount(bulkHost, confirmingAll
+      ? el('div', { class: 'studies-bulk-prompt', role: 'group', 'aria-label': 'Confirm deleting all studies' },
+        el('span', {}, `Delete all ${studies.length} studies, including demos and saved results? Original image files will be kept.`),
+        el('button', { type: 'button', class: 'btn btn-small', disabled: blocked,
+          onClick: deleteAllStudies }, 'Delete all permanently'),
+        el('button', { type: 'button', class: 'btn btn-small studies-bulk-cancel',
+          onClick: () => { confirmingAll = false; refreshTable(); } }, 'Cancel'))
+      : el('button', { type: 'button', class: 'btn btn-small', disabled: blocked || !studies.length,
+        title: live.running ? 'Wait for segmentation to finish' : 'Delete every study, including studies hidden by search',
+        onClick: () => {
+          confirmingAll = true; confirmingId = null; refreshTable();
+          bulkHost.querySelector('.studies-bulk-cancel')?.focus();
+        } }, live.deletingStudies ? 'Deleting studies…' : 'Delete all studies'));
 
     const filters = normaliseFilters(live.paramFilters, studies);
     const visible = queried.filter((study) => matchesLocation(study, filters));
@@ -556,6 +606,7 @@ export function render(state) {
         el('div', {}, el('h1', { class: 'studies-heading' }, 'Studies'), summary),
         el('div', { class: 'studies-header-spacer' }),
         search),
+      bulkHost,
       tabs,
       findPanel,
       parametersHost));

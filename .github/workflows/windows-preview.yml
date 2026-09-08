@@ -47,6 +47,14 @@ jobs:
           python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           python -m pip install -r backend/requirements.txt pyinstaller==6.22.2
 
+      - name: Install OCR runtime
+        shell: pwsh
+        run: |
+          choco install tesseract --yes --no-progress
+          $ocr = "C:/Program Files/Tesseract-OCR"
+          if (-not (Test-Path "$ocr/tesseract.exe")) { throw "Tesseract runtime not found." }
+          $ocr | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Test backend
         run: python -m pytest backend/tests -q
 
@@ -88,6 +96,7 @@ jobs:
           --collect-all torchvision
           --collect-all uvicorn
           --add-data "backend/weights;backend/weights"
+          --add-data "C:/Program Files/Tesseract-OCR;ocr"
           backend/standalone.py
 
       - name: Verify bundled backend
@@ -105,6 +114,8 @@ jobs:
               }
             }
             if (-not $ready) { throw "The bundled backend did not become ready." }
+            python tools/packaging/check_bundled_ocr.py
+            if ($LASTEXITCODE -ne 0) { throw "Bundled OCR verification failed." }
           } finally {
             Stop-Process -Id $backend.Id -Force -ErrorAction SilentlyContinue
           }
