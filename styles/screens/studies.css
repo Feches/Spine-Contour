@@ -99,11 +99,37 @@
 /* The study's name -- a filename, not an SP-nnnn token any more, so the monospace tracking that
    suited a fixed-width id is dropped. Filenames get long; ellipsis rather than reflow the row. */
 .studies-cell-id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
   font: 600 14px 'Source Sans 3', sans-serif;
   color: var(--ink);
+}
+
+/* The tick box before the name (batch spec 7.2) keeps its size; the name truncates. The box is
+   the grid's control (components/checkbox.js) and keeps the grid's class names. */
+.studies-cell-id > .param-check {
+  flex: none;
+  margin-right: 0; /* .param-pick carries a 10px right margin for the grid; the gap here does that job */
+}
+
+.studies-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.studies-head-study {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.studies-head-study > .param-check {
+  flex: none;
+  margin-right: 0;
 }
 
 /* Provenance. WORKSPACE is the root the film was loaded from and is an em dash for anything
@@ -523,4 +549,40 @@
 .param-row-break td,
 .param-row-break th {
   border-top: 2px solid color-mix(in srgb, var(--ink) 30%, var(--border));
+}
+
+/* The Find tab's filter bar (batch spec 7.1): the grid's Workspace and Folder selects over the
+   same shared keys, then the segment button with its note (the grid's export-group and note
+   classes), or -- while a batch runs -- the progress group. Wraps like .param-bar. */
+.studies-filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.studies-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
+/* Indeterminate on purpose: /predict has no progress channel (spec decision 6). The viewer's
+   run-card ring at bar size; @keyframes spin is in styles/base.css. */
+.studies-progress-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin .8s linear infinite;
+}
+
+.studies-progress-text {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--muted);
 }
