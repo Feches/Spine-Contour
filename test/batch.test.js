@@ -172,7 +172,7 @@ test('batchMessage adds one clause per thing left out, only when nonzero, names 
 // A fake store with the getState/setState contract of renderer/store.js, and a segment() whose
 // promises the test resolves or rejects by hand. `inFlight` proves the loop is strictly serial.
 function harness({ studies, persistence = null, running = null }) {
-  let state = { studies, running, batch: null };
+  let state = { studies, running, batch: null, deletingStudies: false };
   const calls = [];
   const toasts = [];
   let inFlight = 0;
@@ -237,6 +237,15 @@ test('startBatch refuses while a batch or a single run is up, and for an empty l
   await first;
   assert.equal(h.state.batch, null);
   assert.deepEqual(h.toasts, ['Segmented 1 of 1 film.']);
+});
+
+test('startBatch refuses while a bulk delete is clearing the library', async () => {
+  const h = harness({ studies: [film('SP-1'), film('SP-2')] });
+  h.patch({ deletingStudies: true });
+  assert.equal(await h.driver.startBatch(['SP-1', 'SP-2']), false);
+  assert.equal(h.calls.length, 0, 'no film is segmented');
+  assert.equal(h.state.batch, null, 'no batch was ever started');
+  assert.deepEqual(h.toasts, []);
 });
 
 test('stopBatch ends the loop after the film in flight; the toast says so', async () => {

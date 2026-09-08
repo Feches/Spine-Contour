@@ -113,7 +113,10 @@ export function createBatchDriver({ segment, getState, setState, showToast, pers
 
   async function startBatch(ids) {
     const state = getState();
-    if (state.batch || state.running || !Array.isArray(ids) || ids.length === 0) return false;
+    // deletingStudies as well: a bulk delete is removing the records these ids name, and the
+    // first turn's segmentStudy would refuse anyway -- every film would be counted as a failure
+    // and named in the closing toast. Refusing here means no batch was ever started.
+    if (state.batch || state.running || state.deletingStudies || !Array.isArray(ids) || ids.length === 0) return false;
     identity.clear();
     for (const id of ids) {
       const study = state.studies.find((item) => item.id === id);

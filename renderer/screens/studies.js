@@ -18,7 +18,7 @@ import { DEFAULT_VIEW } from '../data/timepoints.js';
 import {
   withIds, toggleId, workspaceOptions, folderOptions, normaliseFilters, patchFilters, matchesLocation, HAND_ADDED,
 } from '../data/parameters.js';
-import { planBatch, progressText } from '../data/batch.js';
+import { planBatch, progressText, WAIT_FOR_BATCH } from '../data/batch.js';
 import { checkbox } from '../components/checkbox.js';
 import { startBatch, stopBatch } from '../batch.js';
 import { setFilePayload, releaseStudy } from './analysis.js';
@@ -395,9 +395,12 @@ async function deleteStudy(id) {
   showToast(`Deleted ${label}`);
 }
 
+// live.batch as well as live.running: a batch holds `running` only while a film is in flight,
+// so the gap between two films would let this through and clear the library out from under the
+// driver's remaining ids.
 async function deleteAllStudies() {
   const live = getState();
-  if (live.running || live.deletingStudies || persistenceDisabledReason()) return;
+  if (live.running || live.batch || live.deletingStudies || persistenceDisabledReason()) return;
   const targets = [...live.studies];
   confirmingAll = false;
   confirmingId = null;
@@ -561,16 +564,22 @@ export function render(state) {
     // "in queue" -- the batch's queue is the bar's business (spec decision 7).
     const unsegmented = studies.filter((study) => (live.running === study.id ? 'proc' : deriveStatus(study)) === 'proc').length;
     summary.textContent = `${studies.length} STUDIES · ${unsegmented} UNSEGMENTED`;
-    const blocked = Boolean(live.running || live.deletingStudies || persistenceDisabledReason());
+    // live.batch blocks the row for the same reason deleteAllStudies refuses on it, and the
+    // title says which of the two is holding it. A packaged build has no demos, so the prompt
+    // promises to delete them only when the library actually holds one.
+    const blocked = Boolean(live.running || live.batch || live.deletingStudies || persistenceDisabledReason());
+    const withDemos = studies.some((study) => study.source === 'demo') ? 'demos and ' : '';
     mount(bulkHost, confirmingAll
       ? el('div', { class: 'studies-bulk-prompt', role: 'group', 'aria-label': 'Confirm deleting all studies' },
-        el('span', {}, `Delete all ${studies.length} studies, including demos and saved results? Original image files will be kept.`),
+        el('span', {}, `Delete all ${studies.length} studies, including ${withDemos}saved results? Original image files will be kept.`),
         el('button', { type: 'button', class: 'btn btn-small', disabled: blocked,
           onClick: deleteAllStudies }, 'Delete all permanently'),
         el('button', { type: 'button', class: 'btn btn-small studies-bulk-cancel',
           onClick: () => { confirmingAll = false; refreshTable(); } }, 'Cancel'))
       : el('button', { type: 'button', class: 'btn btn-small', disabled: blocked || !studies.length,
-        title: live.running ? 'Wait for segmentation to finish' : 'Delete every study, including studies hidden by search',
+        title: live.batch
+          ? WAIT_FOR_BATCH
+          : (live.running ? 'Wait for segmentation to finish' : 'Delete every study, including studies hidden by search'),
         onClick: () => {
           confirmingAll = true; confirmingId = null; refreshTable();
           bulkHost.querySelector('.studies-bulk-cancel')?.focus();
