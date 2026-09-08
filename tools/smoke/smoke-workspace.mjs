@@ -116,7 +116,7 @@ const cdp = await connect();
 const text = (selector) => cdp.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); return e ? e.textContent : null; })()`);
 const rowCount = () => cdp.evaluate("document.querySelectorAll('.studies-row').length");
 const summaryParts = async () => {
-  const m = /^(\d+) STUDIES · (\d+) IN QUEUE$/.exec(((await text('.studies-summary')) || '').trim());
+  const m = /^(\d+) STUDIES · (\d+) UNSEGMENTED$/.exec(((await text('.studies-summary')) || '').trim());
   return m ? { studies: Number(m[1]), queued: Number(m[2]) } : null;
 };
 // Client-space centre of the element a page-side finder returns, scrolled into view first (the

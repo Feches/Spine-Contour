@@ -110,10 +110,10 @@ it here; if the drawn plate is ever revived, that is the plan that owns this fil
 step-5 check asserts the summary grows to `n+1` studies after `inject-study.js` runs,
 but `inject-study.js` de-duplicates by id (it filters `SP-9000` out before prepending
 it), so on a profile where an earlier suite already created that study the count does
-not grow and the check fails — measured `"14 STUDIES · 1 IN QUEUE"` that way. On a
-fresh profile every one of its checks runs unconditionally (56 of them after Task 9's
-sections were added; it was 28 before them). Same class of precondition as
-`smoke-gate3.mjs`'s above.
+not grow and the check fails — measured `"14 STUDIES · 1 UNSEGMENTED"` that way (the summary
+read IN QUEUE until 2026-09-08). On a fresh profile every one of its checks runs
+unconditionally (103 of them after the batch sections were added on 2026-09-08; 60 before
+them, 28 before Task 9's). Same class of precondition as `smoke-gate3.mjs`'s above.
 
 **`smoke-studies.mjs` segments `SP-9000` twice** (sections 7 and 8, ~9 s each), so it needs
 the Python backend up and takes about 20 s longer than a DOM-only suite. `state.running` is
@@ -127,6 +127,11 @@ consequences:
 - **It ends on Studies with `SP-9000` segmented and nothing open on Analysis.** Every suite
   documented as "assumes a segmented study open on Analysis" needs its own
   `inject-study.js` + `run-and-wait.js` pair *after* this one, not before it.
+
+**Sections 10–14 (2026-09-08) segment three more injected copies of the sample film** in two
+batches and fail a third on purpose (`SP-9001` has no bytes and no file). They leave
+`SP-9002`, `SP-9003` and `SP-9005` segmented and `SP-9001`, `SP-9004` unsegmented, so the
+summary ends `n+6 STUDIES · 2 UNSEGMENTED`.
 
 **Two of its checks race the backend and can legitimately read 54/56** (found 2026-09-04, on a
 machine warm from repeated runs; four consecutive runs on hand-cleared profiles gave 56, 54, 56,
@@ -254,13 +259,14 @@ folders that could not be read)` clause — `screens/workspace.js` records the s
 module scope only when its own folder handler ran the scan, so a state-seeded scan renders
 `3 radiographs found` without the clause, and that is what the suite asserts.
 
-**Known baseline** (fresh scratch profile, this branch tip): unit 402/402
-(`node --test test/*.test.js`); `smoke-studies.mjs` 59/60 — since `0f8f821` (2026-09-07) the demo pair share a
-diagnosis, so `searching the diagnosis text leaves only SP-0042` finds SP-0039 too; that one name is a stale
-expectation to fix in the suite, not a regression, and the suite must run on a FRESH launch, never after
-`smoke-workspace.mjs` on the same instance, whose loaded films are still queued (`summary reads n+1 studies, 1 in
-queue` then reads `3 IN QUEUE`, 2026-09-08); `smoke-workspace.mjs` 100/100;
-`smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36; `smoke-persist.mjs` 34/34 then 44/44 — the same figures as
+**Known baseline** (fresh scratch profile, this branch tip): unit 426/426
+(`node --test test/*.test.js`); `smoke-studies.mjs` 103/103 — its stale diagnosis check was fixed 2026-09-08 (it
+searches "meyerding", a word only SP-0042 carries); sections 10–14 run three real batches (two films, one
+unreadable film, two films with a Stop), about three more real runs, so the suite takes roughly a minute longer;
+it must run on a FRESH launch, never after `smoke-workspace.mjs` on the same instance, whose loaded films are
+still unsegmented (summary reads n+1 studies, 1 unsegmented then reads 3 UNSEGMENTED, 2026-09-08);
+`smoke-workspace.mjs` 100/100;
+`smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36; `smoke-persist.mjs` 36/36 then 44/44 — the same figures as
 `docs/superpowers/HANDOFF.md`'s baseline paragraph. Every check in the suite runs
 unconditionally; there is no skip path.
 

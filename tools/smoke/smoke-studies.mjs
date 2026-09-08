@@ -9,6 +9,8 @@
 // This suite SEGMENTS SP-9000 twice (sections 7 and 8), so it takes about 20 s longer than the
 // DOM-only sections and needs the Python backend up. Both runs are deliberate: `state.running`
 // is an id, and the only way to prove the list badges the RIGHT study is to watch a real run.
+// Sections 10–14 (2026-09-08) add three batches over injected copies of the same film — two
+// films, one unreadable film, and two films with a Stop — about three more real runs.
 //
 // Two consequences for whoever sequences the suites:
 //   * NEVER run this between `smoke-persist.mjs --phase run` and `--phase restart`. Section 5
@@ -56,8 +58,8 @@ try {
   check('heading reads Studies', heading === 'Studies', heading);
 
   const summaryText = (await text(cdp, '.studies-summary') || '').trim();
-  const summaryMatch = /^(\d+) STUDIES · (\d+) IN QUEUE$/.exec(summaryText);
-  check('summary matches "{n} STUDIES · {m} IN QUEUE" with n >= 9', Boolean(summaryMatch) && Number(summaryMatch[1]) >= 9, summaryText);
+  const summaryMatch = /^(\d+) STUDIES · (\d+) UNSEGMENTED$/.exec(summaryText);
+  check('summary matches "{n} STUDIES · {m} UNSEGMENTED" with n >= 9', Boolean(summaryMatch) && Number(summaryMatch[1]) >= 9, summaryText);
   const n = summaryMatch ? Number(summaryMatch[1]) : null;
 
   const initialRows = await rowCount(cdp);
@@ -112,10 +114,10 @@ try {
   check('summary is unchanged while filtering', summaryAfterSearch === summaryText, summaryAfterSearch);
 
   await clearSearch(cdp);
-  await cdp.typeText('anterior slip');
+  await cdp.typeText('meyerding');
   await cdp.settle();
   const dxRows = await cdp.evaluate("[...document.querySelectorAll('.studies-row')].map((r) => r.dataset.studyId)");
-  check('searching the diagnosis text leaves only SP-0042', dxRows.length === 1 && dxRows[0] === 'SP-0042', dxRows);
+  check('searching a diagnosis phrase only SP-0042 carries leaves one row', dxRows.length === 1 && dxRows[0] === 'SP-0042', dxRows);
 
   await clearSearch(cdp);
   await cdp.typeText('zzzznomatch');
@@ -146,7 +148,7 @@ try {
 
   // 4b. A demo study opens to the demo card (Task 9). A demo record has measurements but no
   // geometry and no film, so without its own branch it would read as an unprocessed real
-  // study: a QUEUED card and a Run segmentation button whose only outcome is a toast.
+  // study: an UNSEGMENTED card and a Run segmentation button whose only outcome is a toast.
   const demoRect = await cdp.rect('.studies-row[data-study-id="SP-0042"]');
   check('SP-0042 row has layout for the demo-open section', Boolean(demoRect), demoRect);
   await cdp.click(demoRect.cx, demoRect.cy);
@@ -196,8 +198,8 @@ try {
   s = await cdp.state();
   const sp9000 = s.studies.find((x) => x.id === 'SP-9000');
   check('SP-9000 is unsegmented (measurements === null)', Boolean(sp9000) && sp9000.measurements === null, sp9000);
-  const runCard = await cdp.evaluate("(() => { const card = document.querySelector('.run-card'); const btn = document.querySelector('.run-button'); return { visible: Boolean(card) && !card.classList.contains('is-hidden'), label: btn ? btn.textContent : null }; })()");
-  check('the run card is visible with a Run segmentation button', runCard.visible === true && runCard.label === 'Run segmentation', runCard);
+  const runCard = await cdp.evaluate("(() => { const card = document.querySelector('.run-card'); const btn = document.querySelector('.run-button'); return { visible: Boolean(card) && !card.classList.contains('is-hidden'), label: btn ? btn.textContent : null, eyebrow: document.querySelector('.run-eyebrow')?.textContent }; })()");
+  check('the run card is visible, UNSEGMENTED, with a Run segmentation button', runCard.visible === true && runCard.label === 'Run segmentation' && runCard.eyebrow === 'UNSEGMENTED', runCard);
 
   const backRect2 = await cdp.rect('.icon-btn[aria-label="Back to studies"]');
   await cdp.click(backRect2.cx, backRect2.cy);
@@ -225,7 +227,7 @@ try {
     newRow && newRow.workspace === '—' && newRow.folder === 'design_src',
     newRow && { workspace: newRow.workspace, folder: newRow.folder });
   const summaryAfterAdd = (await text(cdp, '.studies-summary') || '').trim();
-  check('summary reads n+1 studies, 1 in queue', summaryAfterAdd === `${n + 1} STUDIES · 1 IN QUEUE`, summaryAfterAdd);
+  check('summary reads n+1 studies, 1 unsegmented', summaryAfterAdd === `${n + 1} STUDIES · 1 UNSEGMENTED`, summaryAfterAdd);
 
   // 6. The unsegmented record round-trips through the persisted store.
   const persisted = await cdp.evaluate(`(async () => {
@@ -280,7 +282,7 @@ try {
   const listWhileRunning = await cdp.evaluate(`(() => {
     const row = document.querySelector('.studies-row[data-study-id="${RUNNING_ID}"]');
     const summary = document.querySelector('.studies-summary')?.textContent || '';
-    const m = /(\\d+) STUDIES · (\\d+) IN QUEUE/.exec(summary);
+    const m = /(\\d+) STUDIES · (\\d+) UNSEGMENTED/.exec(summary);
     return {
       badgeProc: Boolean(row && row.querySelector('.badge-proc')),
       badgeText: row ? row.querySelector('.badge')?.textContent : null,
@@ -289,7 +291,7 @@ try {
     };
   })()`);
   check('the running study is badged Processing in the list', listWhileRunning.badgeProc === true && listWhileRunning.badgeText === 'Processing', listWhileRunning);
-  check('the summary IN QUEUE count matches the Processing badges', listWhileRunning.queued !== null && listWhileRunning.queued === listWhileRunning.procRows && listWhileRunning.queued >= 1, listWhileRunning);
+  check('the summary UNSEGMENTED count matches the Processing badges', listWhileRunning.queued !== null && listWhileRunning.queued === listWhileRunning.procRows && listWhileRunning.queued >= 1, listWhileRunning);
 
   // The lie the id change exists to prevent: opening a DIFFERENT study mid-run must not make
   // that study's card read RUNNING. The `running` re-read is part of the assertion, not
@@ -353,7 +355,7 @@ try {
   const badgeWhileRerunning = await cdp.evaluate(`(() => {
     const row = document.querySelector('.studies-row[data-study-id="${RUNNING_ID}"]');
     const summary = document.querySelector('.studies-summary')?.textContent || '';
-    const m = /(\\d+) STUDIES · (\\d+) IN QUEUE/.exec(summary);
+    const m = /(\\d+) STUDIES · (\\d+) UNSEGMENTED/.exec(summary);
     return {
       proc: Boolean(row && row.querySelector('.badge-proc')),
       text: row ? row.querySelector('.badge')?.textContent : null,
@@ -362,7 +364,7 @@ try {
     };
   })()`);
   check('a SEGMENTED study reads Processing while it is the running study', badgeWhileRerunning.proc === true && badgeWhileRerunning.text === 'Processing', badgeWhileRerunning);
-  check('the summary counts the re-running study in the queue', badgeWhileRerunning.queued === badgeWhileRerunning.procRows && badgeWhileRerunning.queued >= 1, badgeWhileRerunning);
+  check('the summary counts the re-running study as unsegmented', badgeWhileRerunning.queued === badgeWhileRerunning.procRows && badgeWhileRerunning.queued >= 1, badgeWhileRerunning);
 
   const rerunFinished = await waitForState('s.running === null', 400000);
   s = await cdp.state();
@@ -376,6 +378,214 @@ try {
 
   // 9. No console errors or exceptions during the run.
   check('no console errors or exceptions during the run', cdp.errors.length === 0, cdp.errors);
+
+  // ---------------------------------------------------------------------------------------------
+  // 10–14 (2026-09-08, batch spec 7, 8, 9, 10, 11). The Find tab's filter bar and ticks, then three
+  // real batches over films injected the way inject-study.js injects SP-9000. Every selector keys
+  // on data-find-key; every store read goes through the page's own module.
+  // ---------------------------------------------------------------------------------------------
+  const errorsAfter9 = cdp.errors.length;
+  const SAMPLE_BASE64 = /atob\('([^']+)'\)/.exec(injectExpression)[1];
+
+  // Parks bytes (when given) for a new unsegmented real study and front-inserts it, like addStudy,
+  // without opening it. A filePath under a workspace root gives the Workspace select a root to
+  // offer; no bytes and no such file is the batch's file-not-found case.
+  const injectFilm = ({ id, fileName, filePath, workspaceFolder, base64 }) => cdp.evaluate(`(async () => {
+    const store = await import('./renderer/store.js');
+    const analysis = await import('./renderer/screens/analysis.js');
+    const base64 = ${JSON.stringify(base64)};
+    if (base64) {
+      const bin = atob(base64); const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      analysis.setFilePayload(${JSON.stringify(id)}, bytes);
+    }
+    const record = { id: ${JSON.stringify(id)}, source: 'real', filePath: ${JSON.stringify(filePath)}, fileName: ${JSON.stringify(fileName)}, name: null, workspaceFolder: ${JSON.stringify(workspaceFolder)}, subjectId: null, timepoint: null, filmDate: null, addedAt: new Date().toISOString(), view: 'Standing lateral', thumbnail: null, measurements: null, geometry: null, qc: null, clinical: {} };
+    store.setState((s) => ({ studies: [record, ...s.studies.filter((x) => x.id !== record.id)] }));
+    return store.getState().studies.length;
+  })()`);
+  const readBar = () => cdp.evaluate(`(() => {
+    const b = document.querySelector('[data-find-key="segment"]');
+    return { label: b ? b.textContent : null, disabled: b ? b.disabled : null, note: document.querySelector('[data-find-key="segment-note"]')?.textContent ?? null };
+  })()`);
+  const readProgress = () => cdp.evaluate(`(() => ({
+    text: document.querySelector('[data-find-key="progress"] .studies-progress-text')?.textContent ?? null,
+    stopDisabled: document.querySelector('[data-find-key="stop"]')?.disabled ?? null,
+    segmentButton: Boolean(document.querySelector('[data-find-key="segment"]')),
+    sidebar: document.querySelector('.nav-row[aria-label="Studies"] .nav-sublabel')?.textContent ?? null,
+    procRows: document.querySelectorAll('.studies-row .badge-proc').length,
+  }))()`);
+  // A select is driven by setting its value and dispatching change (cdp-lib's key() cannot pick).
+  const pick = (key, value) => cdp.evaluate(`(() => { const el = document.querySelector('[data-find-key="${key}"]'); el.value = ${JSON.stringify(value)}; el.dispatchEvent(new Event('change', { bubbles: true })); return el.value; })()`);
+  const summaryParts = async () => {
+    const m = /^(\d+) STUDIES · (\d+) UNSEGMENTED$/.exec(((await text(cdp, '.studies-summary')) || '').trim());
+    return m ? { studies: Number(m[1]), unsegmented: Number(m[2]) } : null;
+  };
+  // A missing element is a FAIL in the results, never a throw: the suite prints its results only at
+  // the end, and a throw here would print nothing (HANDOFF's silent-suite trap).
+  const clickAt = async (selector) => { const r = await cdp.rect(selector); if (r) await cdp.click(r.cx, r.cy); return Boolean(r); };
+  const FILTERS_RESET = '{ workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: "", pairedOnly: false, pairedWith: "__any__" }';
+
+  // 10. The filter bar and the ticks. SP-9001 sits under a workspace root, with no bytes and no
+  // such file; SP-9000 is segmented (section 8).
+  await cdp.setState(`{ screen: "studies", query: "", paramFilters: ${FILTERS_RESET}, paramSelected: [] }`);
+  await cdp.settle(200);
+  const countBefore10 = (await cdp.state()).studies.length;
+  await injectFilm({ id: 'SP-9001', fileName: 'S001.png', filePath: 'C:\\smoke\\Fusion2025\\pre-op\\S001.png', workspaceFolder: 'C:\\smoke\\Fusion2025', base64: null });
+  await cdp.settle(200);
+  const bar10 = await cdp.evaluate(`(() => {
+    const opts = (key) => [...document.querySelectorAll('[data-find-key="' + key + '"] option')].map((o) => o.textContent);
+    return { workspace: opts('workspace'), folder: opts('folder'), rows: document.querySelectorAll('.studies-row').length };
+  })()`);
+  check('the Workspace select offers the injected root, then Added by hand', JSON.stringify(bar10.workspace) === JSON.stringify(['All workspaces', 'Fusion2025', 'Added by hand']), bar10.workspace);
+  check('the Folder select offers every folder shown, first seen first', JSON.stringify(bar10.folder) === JSON.stringify(['All folders', 'pre-op', 'design_src']), bar10.folder);
+  check('the injected film is a row', bar10.rows === countBefore10 + 1, bar10.rows);
+  const bar10Plain = await readBar();
+  check('with nothing ticked the button offers every visible unsegmented film', bar10Plain.label === 'Segment 1 unsegmented' && bar10Plain.disabled === false && bar10Plain.note === null, bar10Plain);
+
+  await pick('workspace', 'C:\\smoke\\Fusion2025');
+  await cdp.settle(150);
+  const ws10 = await cdp.evaluate(`(() => ({
+    rows: [...document.querySelectorAll('.studies-row')].map((r) => r.dataset.studyId),
+    folder: [...document.querySelectorAll('[data-find-key="folder"] option')].map((o) => o.textContent),
+    value: document.querySelector('[data-find-key="workspace"]').value,
+  }))()`);
+  check('filtering by workspace leaves the one film under that root', JSON.stringify(ws10.rows) === JSON.stringify(['SP-9001']), ws10.rows);
+  check('the Folder select narrows to that root and the select keeps its value across the rebuild', JSON.stringify(ws10.folder) === JSON.stringify(['All folders', 'pre-op']) && ws10.value === 'C:\\smoke\\Fusion2025', ws10);
+  const summary10 = await summaryParts();
+  check('the summary still describes the whole library', summary10 !== null && summary10.studies === countBefore10 + 1 && summary10.unsegmented === 1, summary10);
+  const shared10 = (await cdp.state()).paramFilters;
+  check('the filter lives in the shared paramFilters key', shared10.workspace === 'C:\\smoke\\Fusion2025' && shared10.folder === null, shared10);
+  await pick('folder', 'pre-op');
+  await cdp.settle(150);
+  check('filtering by folder keeps the film in it', (await rowCount(cdp)) === 1, await rowCount(cdp));
+  await clickAt('.studies-search');
+  await cdp.typeText('zzzznomatch');
+  await cdp.settle();
+  const empty10 = (await text(cdp, '.studies-empty') || '').trim();
+  check('with a filter set and nothing left, the empty state names the filters', empty10 === 'No studies match these filters.', empty10);
+  await clearSearch(cdp);
+  await pick('workspace', '');
+  await cdp.settle(150);
+  check('clearing the workspace clears the folder and restores every row', (await rowCount(cdp)) === countBefore10 + 1 && (await cdp.state()).paramFilters.folder === null, await rowCount(cdp));
+
+  const tickRect = await cdp.rect('input[data-find-key="row-SP-9000"]');
+  const demoTick = await cdp.evaluate(`Boolean(document.querySelector('input[data-find-key="row-SP-0042"]'))`);
+  check('a real row carries a tick box and a demo row does not', Boolean(tickRect) && demoTick === false, { tickRect, demoTick });
+  if (tickRect) await cdp.click(tickRect.cx, tickRect.cy);
+  await cdp.settle(150);
+  s = await cdp.state();
+  check('ticking a row selects it without opening the study', s.screen === 'studies' && JSON.stringify(s.paramSelected) === JSON.stringify(['SP-9000']), { screen: s.screen, selected: s.paramSelected });
+  const bar10Ticked = await readBar();
+  check('with only a segmented row ticked the button is disabled and says so', bar10Ticked.label === 'Segment 0 selected' && bar10Ticked.disabled === true && bar10Ticked.note === 'All selected studies are segmented', bar10Ticked);
+  const all10 = await cdp.evaluate(`(() => { const el = document.querySelector('input[data-find-key="select-all"]'); return { checked: el.checked, indeterminate: el.indeterminate }; })()`);
+  check('select-all is indeterminate with one of two real rows ticked', all10.checked === false && all10.indeterminate === true, all10);
+  await clickAt('input[data-find-key="select-all"]');
+  await cdp.settle(150);
+  s = await cdp.state();
+  check('an indeterminate select-all ticks every visible real row', s.paramSelected.length === 2 && s.paramSelected.includes('SP-9000') && s.paramSelected.includes('SP-9001'), s.paramSelected);
+  const bar10Both = await readBar();
+  check('with a segmented and an unsegmented row ticked the button runs one and notes the other', bar10Both.label === 'Segment 1 selected' && bar10Both.disabled === false && bar10Both.note === '1 already segmented', bar10Both);
+  const focus10 = await cdp.evaluate(`document.activeElement ? document.activeElement.getAttribute('data-find-key') : null`);
+  check('the rebuild hands focus back to the select-all box', focus10 === 'select-all', focus10);
+  await clickAt('input[data-find-key="select-all"]');
+  await cdp.settle(150);
+  s = await cdp.state();
+  check('a checked select-all clears every visible real row', s.paramSelected.length === 0, s.paramSelected);
+
+  // 11. A batch over a film that is not on disk ends in seconds with the failure named (spec 10).
+  await cdp.setState('{ paramSelected: ["SP-9001"] }');
+  await cdp.settle(150);
+  const bar11 = await readBar();
+  check('with the unreadable film ticked the button offers it', bar11.label === 'Segment 1 selected' && bar11.disabled === false, bar11);
+  await clickAt('[data-find-key="segment"]');
+  const failed11 = await waitForState('s.toast.startsWith("Segmented 0 of 1")', 15000);
+  s = await cdp.state();
+  const sp9001 = s.studies.find((x) => x.id === 'SP-9001');
+  check('the batch ends with the film counted as failed and named in the toast', failed11 === true && s.toast === 'Segmented 0 of 1 film. · 1 could not be segmented: S001 (file not found)', s.toast);
+  check('the unreadable film is untouched and the batch is cleared', s.batch === null && s.running === null && sp9001 && sp9001.measurements === null, { batch: s.batch, running: s.running });
+
+  // 12. A real two-film batch (spec 9's worked example at fixture scale): the count, the badges,
+  // the sidebar, the cards mid-batch, the toast, the ticks afterwards.
+  await injectFilm({ id: 'SP-9002', fileName: 'batch-a.jpg', filePath: null, workspaceFolder: null, base64: SAMPLE_BASE64 });
+  await injectFilm({ id: 'SP-9003', fileName: 'batch-b.jpg', filePath: null, workspaceFolder: null, base64: SAMPLE_BASE64 });
+  await cdp.setState('{ paramSelected: [] }');
+  await cdp.settle(200);
+  const bar12Plain = await readBar();
+  check('with nothing ticked the button counts every visible unsegmented film', bar12Plain.label === 'Segment 3 unsegmented' && bar12Plain.disabled === false, bar12Plain);
+  await cdp.setState('{ paramSelected: ["SP-9002", "SP-9003"] }');
+  await cdp.settle(150);
+  const bar12 = await readBar();
+  check('ticking the two real films offers exactly them', bar12.label === 'Segment 2 selected' && bar12.disabled === false && bar12.note === null, bar12);
+  const summaryBefore12 = await summaryParts();
+  await clickAt('[data-find-key="segment"]');
+  const started12 = await waitForState('s.batch !== null && s.running !== null', 5000);
+  s = await cdp.state();
+  check('the click starts a batch over the ticked films in table order, the first in flight', started12 === true && s.batch && JSON.stringify(s.batch.ids) === JSON.stringify(['SP-9003', 'SP-9002']) && s.batch.done === 0 && s.running === 'SP-9003', { batch: s.batch, running: s.running });
+  const progress12a = await readProgress();
+  check('the bar shows 0 of 2 done, an enabled Stop and no segment button', progress12a.text === '0 of 2 done' && progress12a.stopDisabled === false && progress12a.segmentButton === false, progress12a);
+  check('the sidebar Studies row reads 0 OF 2 DONE', progress12a.sidebar === '0 OF 2 DONE', progress12a.sidebar);
+  check('the running, the queued and the unreadable film all read Processing', progress12a.procRows === 3, progress12a.procRows);
+
+  // The cards mid-batch. The injected film segments in roughly 9 s; two openings take about 1 s.
+  await clickAt('.studies-row[data-study-id="SP-9002"]');
+  await cdp.settle(200);
+  const queuedCard = await cdp.evaluate(`(() => ({
+    eyebrow: document.querySelector('.run-eyebrow')?.textContent, title: document.querySelector('.run-title')?.textContent,
+    disabled: document.querySelector('.run-button')?.disabled, buttonTitle: document.querySelector('.run-button')?.title,
+  }))()`);
+  check('a queued film opened mid-batch reads QUEUED, waiting for its turn, its run button disabled', queuedCard.eyebrow === 'QUEUED' && queuedCard.title === 'Waiting for its turn in the batch' && queuedCard.disabled === true && queuedCard.buttonTitle === 'Wait for the batch to finish', queuedCard);
+  await clickAt('.icon-btn[aria-label="Back to studies"]');
+  await cdp.settle(150);
+  await clickAt('.studies-row[data-study-id="SP-9001"]');
+  await cdp.settle(200);
+  const outsideCard = await cdp.evaluate(`(() => ({ eyebrow: document.querySelector('.run-eyebrow')?.textContent, title: document.querySelector('.run-title')?.textContent, disabled: document.querySelector('.run-button')?.disabled, buttonTitle: document.querySelector('.run-button')?.title }))()`);
+  check('an unsegmented film outside the batch reads UNSEGMENTED with its run button disabled for the batch', outsideCard.eyebrow === 'UNSEGMENTED' && outsideCard.title === 'No segmentation yet' && outsideCard.disabled === true && outsideCard.buttonTitle === 'Wait for the batch to finish', outsideCard);
+  await clickAt('.icon-btn[aria-label="Back to studies"]');
+  await cdp.settle(150);
+
+  // Bounded to two minutes: one film, up to a minute on a cold backend. A missed window fails fast.
+  const oneDone12 = await waitForState('s.batch !== null && s.batch.done === 1', 120000);
+  const progress12b = await readProgress();
+  check('after the first film the bar reads 1 of 2 done and the sidebar 1 OF 2 DONE', oneDone12 === true && progress12b.text === '1 of 2 done' && progress12b.sidebar === '1 OF 2 DONE', progress12b);
+  const finished12 = await waitForState('s.batch === null', 400000);
+  s = await cdp.state();
+  const a12 = s.studies.find((x) => x.id === 'SP-9002');
+  const b12 = s.studies.find((x) => x.id === 'SP-9003');
+  check('both films carry measurements and geometry when the batch ends', finished12 === true && Boolean(a12 && a12.measurements && a12.geometry) && Boolean(b12 && b12.measurements && b12.geometry), { a: Boolean(a12 && a12.measurements), b: Boolean(b12 && b12.measurements) });
+  check('the closing toast reports the batch', s.toast === 'Segmented 2 of 2 films.', s.toast);
+  const after12 = await readProgress();
+  check('running is clear, the sidebar sublabel is gone and the segment button is back', s.running === null && after12.sidebar === null && after12.segmentButton === true, { running: s.running, ...after12 });
+  const summaryAfter12 = await summaryParts();
+  check('the summary lost two unsegmented films', summaryBefore12 !== null && summaryAfter12 !== null && summaryAfter12.unsegmented === summaryBefore12.unsegmented - 2, { before: summaryBefore12, after: summaryAfter12 });
+  const bar12After = await readBar();
+  check('the ticks survive the batch and the button says every selected film is segmented', s.paramSelected.includes('SP-9002') && s.paramSelected.includes('SP-9003') && bar12After.label === 'Segment 0 selected' && bar12After.note === 'All selected studies are segmented', { selected: s.paramSelected, ...bar12After });
+
+  // 13. Stop finishes the film in flight and starts no other (spec 11).
+  await injectFilm({ id: 'SP-9004', fileName: 'batch-c.jpg', filePath: null, workspaceFolder: null, base64: SAMPLE_BASE64 });
+  await injectFilm({ id: 'SP-9005', fileName: 'batch-d.jpg', filePath: null, workspaceFolder: null, base64: SAMPLE_BASE64 });
+  await cdp.setState('{ paramSelected: ["SP-9004", "SP-9005"] }');
+  await cdp.settle(200);
+  await clickAt('[data-find-key="segment"]');
+  const started13 = await waitForState('s.batch !== null && s.running !== null', 5000);
+  const running13 = (await cdp.state()).running;
+  check('the second batch starts with SP-9005 in flight', started13 === true && running13 === 'SP-9005', running13);
+  await clickAt('[data-find-key="stop"]');
+  await cdp.settle(150);
+  const stopping13 = await readProgress();
+  s = await cdp.state();
+  check('Stop marks the batch stopping: the text, the disabled Stop and the sidebar say so', stopping13.text === 'Stopping after this film…' && stopping13.stopDisabled === true && stopping13.sidebar === 'STOPPING', stopping13);
+  check('the film in flight keeps running after Stop', s.running === 'SP-9005' && s.batch && s.batch.stopping === true, { running: s.running, batch: s.batch });
+  const finished13 = await waitForState('s.batch === null', 400000);
+  s = await cdp.state();
+  const c13 = s.studies.find((x) => x.id === 'SP-9004');
+  const d13 = s.studies.find((x) => x.id === 'SP-9005');
+  check('the batch ends after the film in flight, the other left unsegmented', finished13 === true && Boolean(d13 && d13.measurements) && c13 && c13.measurements === null, { c: Boolean(c13 && c13.measurements), d: Boolean(d13 && d13.measurements) });
+  check('the toast says the batch stopped', s.toast === 'Segmented 1 of 2 films, then stopped.', s.toast);
+  const bar13 = await readBar();
+  check('the bar offers the film Stop left behind and notes the one it segmented', bar13.label === 'Segment 1 selected' && bar13.disabled === false && bar13.note === '1 already segmented', bar13);
+
+  // 14. No new console errors or exceptions across the batch sections.
+  check('no console errors or exceptions during the batch sections', cdp.errors.length === errorsAfter9, cdp.errors.slice(errorsAfter9));
 } finally {
   cdp.close();
 }
