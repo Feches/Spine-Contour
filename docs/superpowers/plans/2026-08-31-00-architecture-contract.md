@@ -589,10 +589,11 @@ export function toCsv(studies)           // → string   (2026-09-07) Study ID,V
                                          //   columns are clinicalFieldNames() over the exported rows -- the `fields`
                                          //   parameter is gone; see the pre-op/post-op spec §11.1
 export function toPairedCsv(pairing)     // → string   (2026-09-08, spec §11.2) the wide file from data/pairing.js's pairStudies:
-                                         //   citation block; layout-B header (`<label> study`, view, film date per visit, then per
-                                         //   measurement `<M> Pre-op`, `<M> <label>`, `Delta <M> <label>` per later visit, then
-                                         //   `<F> <label>` per clinical key on the written films); one row per subject. Demo rows
-                                         //   never reach it; headers use the stored label and ASCII `Delta`
+                                         //   citation block; layout-B header (every visit's `<label> study`, then every visit's
+                                         //   view, then every visit's film date, then per measurement `<M> Pre-op`, `<M> <label>`,
+                                         //   `Delta <M> <label>` per later visit, then `<F> <label>` per clinical key on the
+                                         //   written films); one row per subject. Demo rows never reach it; headers use the
+                                         //   stored label and ASCII `Delta`
 export function delta1(pre, post)        // → number|''   post minus pre over the one-decimal forms of each, to one decimal; ''
                                          //   when either is not finite. Comparison mode (plan 07) applies the same rule
 export function fileStem(name)           // → string   (plan 06) basename without its last extension

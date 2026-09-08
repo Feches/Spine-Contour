@@ -52,8 +52,8 @@ export function postFromFilters(filters) {
 // `rows` are the rows the long export would write (visible, or ticked visible). `post` is a
 // timepoint label for the two-visit file, or ANY_POST for one visit per later label present.
 export function pairStudies(rows, { post = ANY_POST } = {}) {
-  const single = typeof post === 'string' && post !== '' && post !== ANY_POST ? post : null;
-  const real = (rows ?? []).filter((study) => study.source !== 'demo');
+  const single = typeof post === 'string' && post !== '' && post !== ANY_POST && post !== PRE_OP ? post : null;
+  const real = (rows ?? []).filter((study) => study.source === 'real');
 
   // Group by subject key in first-appearance order; count the films no group can hold.
   const groups = new Map();

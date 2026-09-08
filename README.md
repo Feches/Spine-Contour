@@ -86,14 +86,15 @@ workspace and folder each film came from.
   `Study ID,View,Subject,Timepoint,Film date,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1`
   followed by every clinical field present on the exported studies. Absent values are empty cells. Demo
   studies are never exported.
-- **Export paired CSV** writes one row per subject over the same rows: `Subject`, then `<label> study`, `<label> view`
-  and `<label> film date` per visit (`Pre-op` first, then every later timepoint present — Intra-op, Post-op, then
-  durations by length, then other labels), then for each measurement `<M> Pre-op`, `<M> <label>` and `Delta <M> <label>`
-  (the later value minus the Pre-op value over the values as written; empty when either is absent), then each clinical
-  field per visit. A subject needs exactly one Pre-op film and one film per later visit it has; a subject with two films
-  on one visit is left out and named in the message, as are subjects with no pair, films with no subject and films with
-  no timepoint. With **Paired only** ticked and a label chosen in `with`, the file has that visit only and the message
-  counts the films of other visits it left out. Suggested name `<workspace>-paired.csv`.
+- **Export paired CSV** writes one row per subject over the same rows: `Subject`, then every visit's `<label> study`,
+  then every visit's `<label> view`, then every visit's `<label> film date` (`Pre-op` first within each kind, then
+  every later timepoint present — Intra-op, Post-op, then durations by length, then other labels), then for each
+  measurement `<M> Pre-op`, `<M> <label>` and `Delta <M> <label>` (the later value minus the Pre-op value over the
+  values as written; empty when either is absent), then each clinical field per visit. A subject needs exactly one
+  Pre-op film and one film per later visit it has; a subject with two films on one visit is left out and named in the
+  message, as are subjects with no pair; films with no subject and films with no timepoint are counted. With **Paired
+  only** ticked and a label chosen in `with`, the file has that visit only and the message counts the films of other
+  visits it left out. Suggested name `<workspace>-paired.csv`.
 
 ## Models
 

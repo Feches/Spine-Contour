@@ -47,6 +47,11 @@ test('pairStudies defaults to All paired when no options are given', () => {
   assert.equal(pairing.post, null);
   assert.deepEqual(pairing.visits, ['6 wk']);
   assert.deepEqual(pairing.subjects.map((s) => s.subject), ['S001']);
+  // Pre-op as the post label would pair a film with itself; it is read as All paired instead.
+  const preAsPost = pairStudies(rows, { post: 'Pre-op' });
+  assert.equal(preAsPost.post, null);
+  assert.deepEqual(preAsPost.visits, ['6 wk']);
+  assert.deepEqual([...preAsPost.subjects[0].films.keys()], ['Pre-op', '6 wk']);
 });
 
 test('pairStudies reports a subject unpaired when it has no Pre-op film, or no film on any visit the file writes, and emits no column group for a label only unpaired subjects carry', () => {
