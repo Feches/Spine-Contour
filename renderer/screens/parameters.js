@@ -1,6 +1,7 @@
 /**
  * Parameters tab of the Studies screen (pre-op/post-op spec, 2026-09-06 §10). One row per film
- * with every measurement, a filter bar, sortable headers and an export of the visible rows.
+ * with every measurement, a filter bar, sortable headers and two exports of the visible rows: long
+ * (one row per film) and paired (one row per subject, spec §11.2).
  * All the deciding is in data/parameters.js; this file renders and writes to the store.
  *
  * Mounted once by screens/studies.js's render(); update(live, queried) is called from that
@@ -17,7 +18,7 @@ import { el, clear } from '../dom.js';
 import { setState } from '../store.js';
 import { saveCsv } from '../api.js';
 import { showToast } from '../components/toast.js';
-import { toCsv } from '../data/csv.js';
+import { toCsv, toPairedCsv } from '../data/csv.js';
 import { isConsistent } from '../data/measurements.js';
 import { studyName, workspaceLabel, folderLabel, pathTitle } from '../data/labels.js';
 import {
@@ -27,6 +28,7 @@ import {
   toggleId, withIds, selectedVisible, rowsToExport,
   timepointOptions, viewOptions, pairedWithOptions, hiddenUnpaired, subjectBreaks,
 } from '../data/parameters.js';
+import { pairStudies, postFromFilters, pairedExportMessage } from '../data/pairing.js';
 
 const EMPTY_COPY = {
   none: 'No studies yet \u2014 choose or drop a radiograph on the Find tab, or load a workspace folder.',
@@ -99,6 +101,22 @@ export function mountParameters(host, { onOpen }) {
     try {
       const savedTo = await saveCsv({ text: csv, suggestedName: exportFileName(filters.workspace) });
       if (savedTo) showToast(`Exported ${real.length} ${real.length === 1 ? 'row' : 'rows'} to ${savedTo}`);
+    } catch (error) {
+      showToast(`Could not export: ${error.message}`);
+    }
+  }
+
+  // Writes one row per subject over the same rows (spec §11.2). pairStudies has already dropped
+  // the demo rows, grouped the rest and judged each subject, and the button is disabled when it
+  // found no subject to write, so this never hands the user a header with no data. The toast is
+  // §11.3's report of what was written and what was left out; a cancelled dialog resolves null and
+  // must not toast.
+  async function exportPaired(pairing, filters) {
+    if (pairing.subjects.length === 0) return;
+    const csv = toPairedCsv(pairing);
+    try {
+      const savedTo = await saveCsv({ text: csv, suggestedName: exportFileName(filters.workspace, 'paired') });
+      if (savedTo) showToast(pairedExportMessage(pairing, savedTo));
     } catch (error) {
       showToast(`Could not export: ${error.message}`);
     }
@@ -207,15 +225,35 @@ export function mountParameters(host, { onOpen }) {
       onClick: () => exportVisible(rows, filters),
     }, chosen.length > 0 ? `Export ${chosen.length} selected` : 'Export CSV');
 
+    // The paired export over the same rows (spec §10.4, §11.2). The `with` label shapes the file
+    // only while Paired only is ticked (postFromFilters); pairStudies decides on every rebuild
+    // whether anything would be written, and that is what disables the button. Its reason is the
+    // long button's when that one is disabled too, else §10.4's third reason.
+    const pairing = pairStudies(rows, { post: postFromFilters(filters) });
+    const pairedReason = exportable === 0 ? reason : 'No paired subjects in these rows';
+    const pairedButton = el('button', {
+      type: 'button', class: 'btn btn-small param-export param-export-paired', 'data-param-key': 'export-paired',
+      disabled: pairing.subjects.length === 0,
+      title: pairing.subjects.length > 0 ? '' : pairedReason,
+      onClick: () => exportPaired(pairing, filters),
+    }, chosen.length > 0 ? `Export paired \u00B7 ${chosen.length} selected` : 'Export paired CSV');
+
+    // One note for the group: when the long button is disabled its reason applies to both buttons
+    // and one note after them stands for both; the paired button's own reason shows only when the
+    // long one is enabled. Each disabled button still carries its reason in its title.
+    const note = exportable === 0
+      ? el('span', { class: 'param-export-note', 'data-param-key': 'export-note' }, reason)
+      : (pairing.subjects.length === 0
+        ? el('span', { class: 'param-export-note', 'data-param-key': 'export-paired-note' }, pairedReason)
+        : null);
+
     return el('div', { class: 'param-bar' },
       workspaceSelect, folderSelect, timepointSelect, viewSelect, subjectInput, pairedGroup, segmented, levels,
       el('div', { class: 'param-count', 'data-param-key': 'count' },
         `${visible.length} OF ${live.studies.length} STUDIES SHOWN${chosen.length > 0 ? ` \u00B7 ${chosen.length} SELECTED` : ''}`),
-      // Button and note in one group: the bar wraps, and on their own they land on separate lines
-      // with the reason at the far left, reading as a stray line rather than as this button's.
-      el('div', { class: 'param-export-group' },
-        exportButton,
-        exportable === 0 ? el('span', { class: 'param-export-note', 'data-param-key': 'export-note' }, reason) : null));
+      // Buttons and note in one group: the bar wraps, and on their own they land on separate lines
+      // with the reason at the far left, reading as a stray line rather than as the buttons'.
+      el('div', { class: 'param-export-group' }, exportButton, pairedButton, note));
   }
 
   // `lead` is a node placed before the sort button inside the header cell -- the STUDY column's
