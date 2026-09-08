@@ -254,9 +254,9 @@ folders that could not be read)` clause — `screens/workspace.js` records the s
 module scope only when its own folder handler ran the scan, so a state-seeded scan renders
 `3 radiographs found` without the clause, and that is what the suite asserts.
 
-**Known baseline** (fresh scratch profile, this branch tip): unit 379/379
+**Known baseline** (fresh scratch profile, this branch tip): unit 402/402
 (`node --test test/*.test.js`); `smoke-studies.mjs` 60/60; `smoke-workspace.mjs` 100/100;
-`smoke-parameters.mjs` 46/46; `smoke-seeding.mjs` 36/36; `smoke-persist.mjs` 34/34 then 44/44 — the same figures as
+`smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36; `smoke-persist.mjs` 34/34 then 44/44 — the same figures as
 `docs/superpowers/HANDOFF.md`'s baseline paragraph. Every check in the suite runs
 unconditionally; there is no skip path.
 
@@ -264,8 +264,10 @@ unconditionally; there is no skip path.
 
 `smoke-parameters.mjs` drives the Studies screen's Parameters tab (pre-op/post-op spec task 1):
 the tab strip, the grid over the demo library, the segmented-only and workspace filters, a
-measurement sort, the export button's disabled state, and ticking rows to export a chosen
-subset, and the tab and sort surviving a trip to Analysis. DOM-only, no segmentation, no backend
+measurement sort, the export button's disabled state, ticking rows to export a chosen
+subset, the paired export's button states and its file and toast text through the page's own
+`pairStudies` and `toPairedCsv` (2026-09-08; the save dialog is the human's), and the tab and
+sort surviving a trip to Analysis. DOM-only, no segmentation, no backend
 call; a few seconds. It injects `SP-9100` (unsegmented) and `SP-9101`–`SP-9103` (segmented, subjects S001 Pre-op/Post-op and S002 Pre-op, workspace root
 `C:\smoke-fixture\Fusion2025`) into the store and removes all four in `finally`. Run it first on a
 fresh launch, before the suites that add real films (`smoke-studies.mjs`, `smoke-workspace.mjs`,
@@ -276,7 +278,7 @@ root.
 node tools/smoke/smoke-parameters.mjs
 ```
 
-Every selector is a `data-param-key` or `data-study-id`. Baseline: 46/46 (2026-09-07: the study columns, the timepoint, view, subject and paired-only filters, and the subject sort).
+Every selector is a `data-param-key` or `data-study-id`. Baseline: 58/58 (2026-09-07: the study columns, the timepoint, view, subject and paired-only filters, and the subject sort; 2026-09-08: the paired export).
 
 ## Running the seeding suite
 

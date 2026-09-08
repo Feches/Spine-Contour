@@ -1,7 +1,8 @@
 // Parameters tab smoke (task 1 of the pre-op/post-op spec, 2026-09-06 §10): the tab strip, the
 // grid over the demo library, the segmented-only and workspace filters, sort by a measurement
-// column, the export button's disabled state, the tab and sort surviving a trip to Analysis and
-// back, and a deleted study's tick being pruned from the selection. DOM-only: nothing is
+// column, the export button's disabled state, the paired export's button and its file and toast
+// text through the page's own modules, the tab and sort surviving a trip to Analysis and back,
+// and a deleted study's tick being pruned from the selection. DOM-only: nothing is
 // segmented and the backend is never called, so it runs in a few seconds. Precondition: the app
 // is running from source (demo studies present), any screen.
 //
@@ -24,7 +25,21 @@ const WS_ROOT = 'C:\\smoke-fixture\\Fusion2025';
 // The injected records: one unsegmented hand-added film, and three segmented films under one
 // workspace root -- S001 Pre-op and Post-op (a pair) and S002 Pre-op (unpaired).
 const INJECTED = ['SP-9100', 'SP-9101', 'SP-9102', 'SP-9103'];
-const RESET = '{ query: "", studiesTab: "find", paramFilters: { workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: "", pairedOnly: false, pairedWith: "__any__" }, paramSort: { key: "study", dir: "asc" }, paramLevels: false, paramSelected: [] }';
+const RESET_FILTERS = '{ workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: "", pairedOnly: false, pairedWith: "__any__" }';
+const RESET = `{ query: "", studiesTab: "find", paramFilters: ${RESET_FILTERS}, paramSort: { key: "study", dir: "asc" }, paramLevels: false, paramSelected: [] }`;
+
+// The paired file over the injected records under All paired (spec §11.2): S001 is the only real
+// pair (the demo pair is never written; S002 is unpaired), so the one visit is Post-op. SP-9101
+// (PI 99.5, PT 30, SS 69.5, L1PA 12, LL 60) against SP-9102 (PI 50, PT 15, SS 35, LL 45): PI-LL is
+// 39.5 then 5; every delta is post minus pre over those one-decimal values; L1PA and the four
+// levels are absent on one or both films, so their cells and deltas are empty. Built from arrays
+// so the empty cells are counted, not eyeballed.
+const PAIRED_MEASURES = ['LL L1-S1', 'PI', 'PT', 'SS', 'PI-LL Mismatch', 'L1PA', 'LL L2-S1', 'LL L3-S1', 'LL L4-S1', 'LL L5-S1'];
+const PAIRED_HEADER = ['Subject', 'Pre-op study', 'Post-op study', 'Pre-op view', 'Post-op view', 'Pre-op film date', 'Post-op film date',
+  ...PAIRED_MEASURES.flatMap((m) => [`${m} Pre-op`, `${m} Post-op`, `Delta ${m} Post-op`])].join(',');
+const PAIRED_ROW = ['S001', 'SP-9101', 'SP-9102', 'Standing lateral', 'Standing lateral', '2025-03-02', '2025-09-14',
+  '60', '45', '-15', '99.5', '50', '-49.5', '30', '15', '-15', '69.5', '35', '-34.5', '39.5', '5', '-34.5', '12', '', '',
+  ...Array(12).fill('')].join(',');
 
 const cdp = await connect();
 const count = (selector) => cdp.evaluate(`document.querySelectorAll(${JSON.stringify(selector)}).length`);
@@ -272,6 +287,89 @@ try {
   const descIds = await rowIds();
   check('descending reverses the subject order, a pair still reads Pre-op first, no-subject films still last',
     JSON.stringify(descIds.slice(0, 5)) === JSON.stringify(['SP-9103', 'SP-9101', 'SP-9102', 'SP-0042', 'SP-0039']) && descIds.slice(5).every((id) => /^SP-00\d\d$/.test(id)), descIds);
+  await cdp.setState('{ paramSort: { key: "PI", dir: "desc" } }');
+  await cdp.settle(80);
+
+  // 13. The paired export (spec §10.4, §11.2, §11.3): the button's labels and reasons, and the file
+  // and toast text through the page's own modules. The save dialog is the human's. S001 (SP-9101
+  // Pre-op, SP-9102 Post-op) is the only real pair; the demo pair is never written; S002 is unpaired.
+  await cdp.setState(`{ paramFilters: ${RESET_FILTERS}, paramSort: { key: "study", dir: "asc" }, paramSelected: [] }`);
+  await cdp.settle(80);
+  const pairedButton = () => cdp.evaluate("(() => { const b = document.querySelector('[data-param-key=\"export-paired\"]'); return b ? { disabled: b.disabled, title: b.title, text: b.textContent } : null; })()");
+  const longDisabled = () => cdp.evaluate("document.querySelector('[data-param-key=\"export\"]').disabled");
+  let pb = await pairedButton();
+  check('the paired button is enabled over the library with the real pair visible and reads Export paired CSV',
+    pb !== null && pb.disabled === false && pb.title === '' && pb.text === 'Export paired CSV' && !(await has('[data-param-key="export-paired-note"]')), pb);
+
+  await clickKey('select-SP-9101');
+  pb = await pairedButton();
+  const pairedNoteOne = await text('[data-param-key="export-paired-note"]');
+  check('ticking one film of a pair reads Export paired · 1 selected, disabled, with the no-paired-subjects note',
+    pb.disabled === true && pb.text === 'Export paired \u00B7 1 selected' && pb.title === 'No paired subjects in these rows' && pairedNoteOne === 'No paired subjects in these rows', { pb, pairedNoteOne });
+  check('the long button stays enabled beside it', (await longDisabled()) === false);
+
+  await clickKey('select-SP-9102');
+  pb = await pairedButton();
+  check('ticking its partner enables the paired button and reads Export paired · 2 selected',
+    pb.disabled === false && pb.text === 'Export paired \u00B7 2 selected' && !(await has('[data-param-key="export-paired-note"]')), pb);
+  await cdp.setState('{ paramSelected: [] }');
+  await cdp.settle(80);
+
+  await cdp.evaluate("(() => { const e = document.querySelector('[data-param-key=\"subject\"]'); e.value = 'S002'; e.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  await cdp.settle(120);
+  pb = await pairedButton();
+  const s002Rows = await rowIds();
+  check('with only S002 visible the paired button is disabled with its own note and the long button is enabled',
+    JSON.stringify(s002Rows) === JSON.stringify(['SP-9103']) && pb.disabled === true && (await text('[data-param-key="export-paired-note"]')) === 'No paired subjects in these rows' && (await longDisabled()) === false, { s002Rows, pb });
+  await cdp.evaluate("(() => { const e = document.querySelector('[data-param-key=\"subject\"]'); e.value = ''; e.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  await cdp.settle(80);
+
+  await choose('.param-select-workspace', '__hand__');
+  await cdp.settle(80);
+  pb = await pairedButton();
+  check('with only demos visible both buttons are disabled and the one note is the long button\'s',
+    pb.disabled === true && pb.title === 'Demo studies are not exported' && (await text('[data-param-key="export-note"]')) === 'Demo studies are not exported' && !(await has('[data-param-key="export-paired-note"]')), pb);
+  await choose('.param-select-workspace', '');
+  await cdp.settle(80);
+
+  await cdp.evaluate("(() => { const e = document.querySelector('[data-param-key=\"subject\"]'); e.value = 'ZZZ'; e.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  await cdp.settle(120);
+  pb = await pairedButton();
+  check('with nothing visible both buttons read Nothing to export and one note stands for both',
+    pb.disabled === true && pb.title === 'Nothing to export' && (await text('[data-param-key="export-note"]')) === 'Nothing to export'
+    && !(await has('[data-param-key="export-paired-note"]')) && (await longDisabled()) === true, pb);
+  await cdp.evaluate("(() => { const e = document.querySelector('[data-param-key=\"subject\"]'); e.value = ''; e.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  await cdp.settle(80);
+
+  await clickKey('paired');
+  await choose('.param-select-paired-with', 'Post-op');
+  await cdp.settle(80);
+  const singlePairing = await cdp.evaluate(`Promise.all([import('./renderer/store.js'), import('./renderer/data/pairing.js'), import('./renderer/data/parameters.js')]).then(([st, pr, pm]) => {
+    const s = st.getState();
+    const f = pm.normaliseFilters(s.paramFilters, s.studies);
+    const rows = pm.rowsToExport(pm.sortParameters(pm.filterParameters(s.studies, f), s.paramSort), s.paramSelected);
+    const p = pr.pairStudies(rows, { post: pr.postFromFilters(f) });
+    return { post: p.post, visits: p.visits, subjects: p.subjects.map((x) => x.subject) };
+  })`);
+  pb = await pairedButton();
+  check('Paired only with Post-op collapses the pairing to that one visit and keeps the button enabled',
+    singlePairing.post === 'Post-op' && JSON.stringify(singlePairing.visits) === JSON.stringify(['Post-op']) && JSON.stringify(singlePairing.subjects) === JSON.stringify(['S001']) && pb.disabled === false, { singlePairing, pb });
+  await choose('.param-select-paired-with', '__any__');
+  await cdp.settle(80);
+  await clickKey('paired');
+
+  const paired = await cdp.evaluate(`Promise.all([import('./renderer/store.js'), import('./renderer/data/pairing.js'), import('./renderer/data/csv.js'), import('./renderer/data/parameters.js')]).then(([st, pr, csvm, pm]) => {
+    const s = st.getState();
+    const f = pm.normaliseFilters(s.paramFilters, s.studies);
+    const rows = pm.rowsToExport(pm.sortParameters(pm.filterParameters(s.studies, f), s.paramSort), s.paramSelected);
+    const p = pr.pairStudies(rows, { post: pr.postFromFilters(f) });
+    return { lines: csvm.toPairedCsv(p).split('\\r\\n'), message: pr.pairedExportMessage(p, 'X') };
+  })`);
+  check('the paired file\'s header is layout B over the one visit present, Post-op', paired.lines[3] === PAIRED_HEADER, paired.lines[3]);
+  check('its one row is S001 with both films, the deltas over the written values, and empty cells where a value is absent', paired.lines[4] === PAIRED_ROW, paired.lines[4]);
+  check('the file ends after that row', paired.lines.length === 6 && paired.lines[5] === '', paired.lines.length);
+  check('the toast names the one subject written and the one unpaired', paired.message === 'Exported 1 subject to X \u00B7 1 unpaired (S002)', paired.message);
+  // Back to the sort section 12 left, so section 10 sees exactly what it saw before this section.
   await cdp.setState('{ paramSort: { key: "PI", dir: "desc" } }');
   await cdp.settle(80);
 
