@@ -404,17 +404,19 @@ non-null:
 | not in the batch | `UNSEGMENTED` | `No segmentation yet` | as today | `Run segmentation`, disabled, title `Wait for the batch to finish` |
 
 With no batch, the card is as today except that the plain eyebrow reads `UNSEGMENTED` (decision 7).
-The `FILM UNAVAILABLE` card's re-run button and the toolbar's re-run button are disabled while a
-batch runs, with the same title. "Waiting in the batch" means the id is in `batch.ids` at an index
-greater than `batch.done`; the film at index `batch.done` is the one in flight, and it is
-`state.running` that says so.
+The `FILM UNAVAILABLE` card's re-run button is disabled while a batch runs, with the same title; the
+toolbar's re-run button is disabled too (its tooltip is its label, as today). "Waiting in the batch"
+means the id is in `batch.ids` at an index at or after `batch.done` and it is not the film in
+flight; `state.running` says which film that is (planning ruling: between two films `running` is
+null for the milliseconds the next film's bytes take to read, and the card must not flash).
 
 **The closing toast**, from `batchMessage`, clauses joined as `pairedExportMessage` joins them and
 raised only when nonzero, names capped at five then an ellipsis:
 
 - `Segmented {ok} of {total} films.` — or `…, then stopped.` when `stopping` was set; `film` when the
   total is one.
-- `{n} could not be segmented: {name} ({reason}), {name} ({reason}), …`
+- `{n} could not be segmented: {name} ({reason}), {name} ({reason}), …` — a failure names the study by
+  its display name, e.g. `S003 (file not found), S007 (…)`, never by the file name.
 - `{n} segmented without stored images: {name} ({reason}), …`
 - `{n} skipped (deleted, or segmented meanwhile).`
 

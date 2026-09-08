@@ -199,7 +199,7 @@ Three step cards:
 
 ### 9.4 Studies
 
-Scrolling, max 1160 px. Heading **"Studies"** with a `{n} STUDIES · {m} IN QUEUE` summary. Search filters across the study's name, its workspace, its containing folder, the id, patient, diagnosis, view, and every clinical value. The full file path is **not** searchable — only the two folder names the cells actually show.
+Scrolling, max 1160 px. Heading **"Studies"** with a `{n} STUDIES · {m} UNSEGMENTED` summary. Search filters across the study's name, its workspace, its containing folder, the id, patient, diagnosis, view, and every clinical value. The full file path is **not** searchable — only the two folder names the cells actually show. A filter bar (2026-09-08, batch spec §7) carries `Workspace` and `Folder` selects, shared with the Parameters tab, and the segment button — `Segment N unsegmented`, or `Segment N selected` over the ticked rows — which a running batch replaces with its count and a Stop. Each real row's STUDY cell carries a tick box; the header a select-all.
 
 Dashed dropzone: **"Drop a DICOM series or lateral radiograph"**, subtext **"De-identified files only. Segmentation runs locally on the workstation."**, and a `Use sample film` button. Drop and click both accept files.
 
@@ -225,7 +225,7 @@ The design labels that badge `SEGMENTATION CONFIDENCE`. The backend has no such 
 
 Floating glass toolbar: zoom out, zoom percentage, zoom in, fit, pan toggle, overlay toggle, and a `FILL` opacity slider. Per-pane chip shows the study ID, match score in comparison mode, and a close button. Footer watermark: `{id} · {patient} · {sex} · {age} — NOT FOR CLINICAL USE`.
 
-**Needs-run overlay** — scrim and card over the viewer when a study has no segmentation, with `QUEUED` / `RUNNING` state, explanatory copy, and a `Run segmentation` button wired to `/predict`.
+**Needs-run overlay** — scrim and card over the viewer when a study has no segmentation, with `UNSEGMENTED` / `QUEUED` (in the running batch) / `RUNNING` state (2026-09-08), explanatory copy, and a `Run segmentation` button wired to `/predict`.
 
 **The running state is honestly indeterminate.** `/predict` is a single
 request/response with no progress channel, and §11 rules out adding one. The renderer

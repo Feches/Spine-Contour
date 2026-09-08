@@ -3,11 +3,9 @@
 **Last updated:** 2026-09-08
 **Branch:** `claude/studies-ui-updates-bb040d` (the studies work plus the Parameters tab, on top of `origin/ui-redesign-cw` @ `0022d91`)
 **Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
-**This copy is on:** `claude/batch-segmentation` (batch segmentation of loaded films — spec and plan written and
-reviewed 2026-09-08, nothing implemented; branched 2026-09-08 off the studies tip `192f303`, where the paired export
-had just been merged back), worktree
-`C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628` — see the first
-section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
+**This copy is on:** `claude/batch-segmentation` (batch segmentation of loaded films; branched 2026-09-08 off the
+studies tip `192f303`), worktree `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628`
+— see the first section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
 > The redesign line moved. `origin/ui-redesign-cw` (upstream, `mjayasur/Spine-Contour`) is the real
 > trunk: it carries the redesigned renderer **and** the newer backend — `backend/framing.py`,
@@ -23,27 +21,29 @@ section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
 ## Where things stand
 
-### Batch segmentation — PLANNED, not built (branch `claude/batch-segmentation`)
+### Batch segmentation — DONE (branch `claude/batch-segmentation`)
 
-Brainstormed and planned on 2026-09-08 in one session; execution is the next session's work. Spec
-`docs/superpowers/specs/2026-09-08-batch-segmentation-design.md` (sixteen §6 decisions, to be recorded below as 51–66 by
-the plan's Task 7); plan `docs/superpowers/plans/2026-09-08-batch-segmentation.md` (Tasks 1–7, "Rulings made while
-planning" in its header, `## Ledger` at the end), independently reviewed on Opus with the review folded (`caaede6`).
-Nothing implemented; unit 402/402 at the wrap.
+Spec `docs/superpowers/specs/2026-09-08-batch-segmentation-design.md` (decisions 51–66 below); plan
+`docs/superpowers/plans/2026-09-08-batch-segmentation.md` (Tasks 1–7, its `## Ledger` at the end). Commits:
+`git log --oneline 192f303..HEAD`.
 
-- What it builds: a pure planner and driver (`renderer/data/batch.js`, `renderer/batch.js`); the analysis screen's run
-  core exported as `segmentStudy(studyId, {batch})` with three guards (the run handler and the core refuse while a batch
-  is up, the relocate picker re-checks when it resolves, `restoreFilm`'s run guard becomes per-study); the Find tab's
-  Workspace and Folder selects over the shared `paramFilters` keys, a tick in every real row and a select-all over the
-  shared `paramSelected`, a `Segment N unsegmented` / `Segment N selected` button with a visible note and, while a batch
-  runs, a spinner, `{done} of {total} done` and Stop; the summary reads `{n} STUDIES · {m} UNSEGMENTED`; the viewer's card
-  reads `UNSEGMENTED` / `QUEUED` (in the running batch) / `RUNNING`; the sidebar's Studies row reads `{done} OF {total}
-  DONE`; one closing toast names every film not segmented.
-- Constraints kept: `state.running` stays a single id (decision 13); strictly serial; count-only progress (decision 6);
-  already-segmented films are never re-run in a batch; nothing about the queue is persisted.
-- Execution: subagent-driven, Sonnet for Tasks 1, 2, 4, 6, 7 and Opus for Tasks 3 and 5; Task 5 has the human gate
-  (seven checks on the real library); then a final whole-branch review; the merge back into
-  `claude/studies-ui-updates-bb040d` only at the user's say-so. `docs/superpowers/NEXT-SESSION.md` is the prompt.
+- `renderer/data/batch.js` (pure): `planBatch` decides what the Find tab's segment button runs and says (ticked visible
+  real unsegmented rows, else every visible one; the notes of spec §7.3); `newBatch`/`advance`/`withStopping` are the
+  batch object's transitions; `progressText`, `sidebarText`, `batchMessage`; `createBatchDriver` is the loop over
+  injected dependencies. `renderer/batch.js` wires it (`startBatch`, `stopBatch`).
+- `screens/analysis.js` exports `segmentStudy(studyId, {batch})`, the run core: an outcome, never a throw; in batch
+  mode no picker, no toast, no image-cache write off screen, bytes not parked. Three guards: the run handler and the
+  core refuse while `state.batch` is set (the picker re-checks when it resolves), `restoreFilm`'s run guard is per
+  study, the viewer's Run and re-run buttons are disabled during a batch.
+- The Find tab: Workspace and Folder selects over the shared `paramFilters` keys; a tick in every real row's STUDY
+  cell and a select-all, over the shared `paramSelected`; `Segment N unsegmented` / `Segment N selected` with a
+  visible note; while a batch runs a spinner, `{done} of {total} done` and `Stop`; the summary reads
+  `{n} STUDIES · {m} UNSEGMENTED`; two empty-state wordings. The sidebar's Studies row reads `{done} OF {total} DONE`
+  / `STOPPING`. The viewer's card reads `UNSEGMENTED` / `QUEUED` (in the batch) / `RUNNING`.
+- Verified: unit 426/426; `smoke-studies.mjs` 103/103 (the stale diagnosis check fixed); `smoke-workspace.mjs`
+  100/100; `smoke-parameters.mjs` 58/58; `smoke-persist.mjs` 36/36 then 44/44. Task 5's human gate passed 2026-09-08
+  (user): all seven checks on the real library — filter bar, ticks, the button, a batch, Stop, completion and export,
+  console clean.
 
 ### Paired export — task 4 of the pre-op/post-op spec, DONE (branch `claude/preop-postop-paired-export`)
 
@@ -1349,9 +1349,65 @@ the spec's §10.4, §11.2 and §11.3. Implemented by plan `2026-09-08-paired-exp
     8 s, for every toast, the workspace load message included. *Cost if wrong:* long toasts linger; nothing dismisses
     one early.
 
-**Decisions 51–66 (2026-09-08, the batch-segmentation brainstorm)** are the sixteen entries of
-`docs/superpowers/specs/2026-09-08-batch-segmentation-design.md` §6, each with its why and its cost if wrong; the plan's
-Task 7 writes them here in this form. Until then the spec is the record.
+The following were settled with the user in chat on **2026-09-08**, at the batch-segmentation brainstorm, and are
+the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan `2026-09-08-batch-segmentation.md`.
+
+51. **The batch starts from the Find tab, and the button follows the export rule.** *Why:* ticked visible rows when
+    any visible row is ticked, else every visible unsegmented film; the label says which and how many (HANDOFF
+    decision 38, applied to a second action). The Find tab is where the status column and the count already are, and
+    the workspace load lands there. *Cost if wrong:* a user who wants the whole library with a filter set has to
+    clear the filter first.
+52. **Already-segmented rows are skipped, never re-run.** *Why:* a batch re-run would overwrite the record's
+    corrected geometry and the sidecar for many films at once, unrecoverably; the viewer's single re-run button
+    still covers one study. Bulk re-run waits for ROADMAP item 3's provenance field. *Cost if wrong:* re-running a
+    cohort with a new model stays one study at a time until then.
+53. **One selection for both tabs.** *Why:* the Find tab reads and writes `state.paramSelected`, the key the
+    Parameters grid uses; the name is kept because renaming it touches the grid, its tests and the smoke suite for
+    no behaviour. Tick twelve films, segment them, switch tabs, export them. *Cost if wrong:* the key's name says
+    `param`; a tick made for one purpose carries to the other, which is the feature.
+54. **The workspace and folder filters are shared between the tabs.** *Why:* the Find tab's two selects read and
+    write `paramFilters.workspace` and `paramFilters.folder`, exactly as the search box already applies to both tabs
+    (decision 35). *Cost if wrong:* a folder chosen for segmenting narrows the grid too, until cleared.
+55. **Strictly serial; `state.running` is unchanged.** *Why:* one `/predict` in flight, the batch a sequence of
+    single runs; decision 13 stands. *Cost if wrong:* no throughput gain on a multi-core desktop; a later
+    concurrency of two needs the backend's thread budget considered first.
+56. **Progress is a count of attempts.** *Why:* `{done} of {total} done`, where `done` counts every film whose turn
+    has ended — segmented, failed or skipped — so the count always reaches the total. The toast splits the outcome.
+    Nothing per film, nothing timed (spec decision 6). *Cost if wrong:* none identified beyond decision 6's.
+57. **`IN QUEUE` becomes `UNSEGMENTED`, and the viewer's plain `QUEUED` eyebrow becomes `UNSEGMENTED` too; `QUEUED`
+    is reserved for a film in the running batch.** *Why:* both counts are films without measurements. Once a real
+    queue exists the old words would label a number and a film as something they are not. *Cost if wrong:* four
+    expectations in the studies smoke suite, one in the workspace suite, one in the persist suite, the smoke
+    README's baselines, spec §9.4 and §9.5.
+58. **No fourth status pill.** *Why:* the running film and every queued film read `Processing`, as spec §13.1
+    defines it; the filter bar and the sidebar say what the batch is doing. *Cost if wrong:* a row alone does not
+    say whether its film is in the batch.
+59. **Stop finishes the film in flight and starts no other.** *Why:* there is no abort: `/predict` cannot be
+    cancelled, the backend would keep computing, and an ignored result would waste a minute for nothing. *Cost if
+    wrong:* up to a minute's wait after Stop.
+60. **Failures are collected and reported once; the batch continues.** *Why:* a film that cannot be read, or that
+    the backend rejects, is recorded with its display-ready reason and the next film starts. *Cost if wrong:* a dead
+    backend fails every remaining film in seconds, and the toast says so.
+61. **A batch is allowed with persistence disabled, with one warning at the start.** *Why:* the results are real for
+    the session; the toast says they will be lost. *Cost if wrong:* a long batch whose results vanish at quit —
+    after being told.
+62. **Approach 1 of three: a driver module beside the router, a pure planner under `data/`, and the run core
+    exported from the analysis screen.** *Why:* moving the byte map and the identity guards out of
+    `screens/analysis.js` was rejected as relocating code a human gated in plans 05 and 06 for no behaviour gain; a
+    main-process queue was rejected because the completion path needs the renderer anyway. *Cost if wrong:* the
+    Studies screen depends on the analysis module a little more than it does now.
+63. **Nothing about the queue is persisted; no quit prompt.** *Why:* the saver writes on every commit, so a quit
+    loses only the film in flight; the remaining films are still unsegmented at relaunch and one click resumes.
+    *Cost if wrong:* the user re-clicks.
+64. **Model choice is read at each film's turn**, as a single run reads it. *Why:* changing it mid-batch applies
+    from the next film; every result records `qc.models`. *Cost if wrong:* a batch's results can mix models, and the
+    result says which.
+65. **Ticks survive the batch** (decision 38: nothing clears a selection by itself). *Why:* after a batch over
+    ticked rows the button reads `Segment 0 selected` with its note, until the ticks are cleared or the selection
+    changes. *Cost if wrong:* a disabled button with a true note.
+66. **Demo rows have no tick box on the Find tab**, as they have no delete control there: nothing on that tab can
+    act on a demo study. *Why:* a demo id ticked on the Parameters grid is simply not counted by the Find tab. *Cost
+    if wrong:* a tick made on one tab is invisible on the other for a dev-only fixture.
 
 ## Release prerequisites — before a production release
 
@@ -1384,6 +1440,12 @@ production release:
 
 ## Known traps
 
+- **The Bash tool halves a doubled backslash in command text** (2026-09-08, batch execution): `\\\\` arrives as
+  `\\`, so a `grep -P '\\u[0-9A-Fa-f]{4}'` written the natural way reaches PCRE as `\u` and errors, and a Python
+  heredoc with `"\\u"` in a string hits a SyntaxError. Single escapes such as `\x00` are untouched. Double every
+  doubled backslash, or write the script to a file first. The Write tool also turned three `\uXXXX` escapes into
+  glyphs in one new file (caught by the byte-check, repaired with the venv python), which the existing bullet below
+  already describes.
 - **The Edit and Write tools can rewrite a `\uXXXX` escape in JS source as the literal glyph, and once turned
   a `§` in a JS comment into the six characters `\u00A7`** (2026-09-08, three times in one session: `\u2026`/`\u00B7`
   in `pairing.js` and `smoke-parameters.mjs`, `§` in `screens/parameters.js`). Both forms compare equal at
@@ -1392,10 +1454,9 @@ production release:
   too. Check the diff for stray glyphs or `\u00` sequences before every commit that touches such a line.
 - **`smoke-studies.mjs` must run on a fresh launch, never after `smoke-workspace.mjs` on the same instance.** The
   workspace suite's loaded films are still queued when the studies suite counts the queue, so `summary reads n+1
-  studies, 1 in queue` reads `3 IN QUEUE` — a false failure that vanished on a fresh launch (2026-09-08). And since
-  `0f8f821` (2026-09-07) the suite's `searching the diagnosis text leaves only SP-0042` is a stale expectation, because
-  decision 40 gave the demo pair matching patient fields and both diagnoses contain "Anterior slip": 59/60 with exactly
-  that name is green; the fix belongs in the suite (`docs/ROADMAP.md` §5).
+  studies, 1 unsegmented` reads `3 UNSEGMENTED` — a false failure that vanished on a fresh launch (2026-09-08). Its
+  stale diagnosis check was fixed 2026-09-08 (the suite searches "meyerding", a word only SP-0042 carries); 103/103
+  is green.
 - **A Sonnet implementer that starts a multi-minute suite in the background and "waits for the
   Monitor" ends its turn mid-task** (twice on 2026-09-07), leaving files edited, nothing committed
   and the app alive on port 9222; `SendMessage` is not available in this harness, so it cannot be

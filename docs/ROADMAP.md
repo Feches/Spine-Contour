@@ -135,6 +135,10 @@ not the full path — the deferral recorded in `screens/studies.js` stands for t
 > `validate` preserves, a status that asks for a re-run, a way to re-run a selection — is
 > unchanged and still needs its own plan.
 
+> **2026-09-08:** the batch driver (`renderer/batch.js`, `startBatch(ids)`) is the vehicle for "re-run a selection":
+> it skips segmented films by rule today (batch spec decision 2), and an explicit re-run flag that lifts that rule —
+> after the provenance field exists — is the remaining piece.
+
 **Read this before merging a new segmentation model.**
 
 A study's `measurements`, `geometry` and `qc` are stored with no indication of what produced them.
@@ -214,7 +218,9 @@ Not code quality; these stand between the branch and a production release.
   set on commit and cleared on the result, read by the status rule.
 - **The Studies row is a single control for assistive technology.** It keeps the button role it was
   given in plan 05, so some screen readers do not announce the in-row delete controls separately.
-  Mouse and keyboard both work. Recorded for an accessibility pass.
+  Mouse and keyboard both work. Recorded for an accessibility pass. (2026-09-08) The row now nests a real
+  checkbox — a second tab stop per row under a `role="button"` parent whose children some readers treat as
+  presentational. Mouse and keyboard both work; the accessibility pass owns it.
 - **The Studies screen's `Find | Parameters` tab strip is an incomplete ARIA tabs pattern.** It
   carries `role="tablist"`, `role="tab"` and `aria-selected`, but no `aria-controls`, no roving
   `tabindex` and no Arrow-key handling, so a screen reader announces tabs that do not behave like
@@ -260,9 +266,17 @@ Not code quality; these stand between the branch and a production release.
   unaffected today; if it ever fails there, clear the toast through the store before the drag at line 113.
 - **`smoke-studies.mjs` reads 59/60 since `0f8f821`** (2026-09-07): `searching the diagnosis text leaves only SP-0042`
   finds SP-0039 too, because decision 40 gave the demo pair matching patient fields and both diagnoses contain
-  "Anterior slip". The product is right; fix the expectation in the suite (expect the pair, or search a phrase only
-  SP-0042 carries). Run that suite on a fresh launch, never after `smoke-workspace.mjs` on one instance, whose loaded
-  films are still queued and turn `1 IN QUEUE` into `3 IN QUEUE`.
+  "Anterior slip". **Fixed 2026-09-08** — the suite searches "meyerding". Run that suite on a fresh launch, never
+  after `smoke-workspace.mjs` on one instance, whose loaded films are still queued and turn `1 UNSEGMENTED` into
+  `3 UNSEGMENTED`.
+- **`/predict` has no timeout.** Neither a single run nor a batch bounds the wait for the backend; a hung backend
+  hangs the run, and a batch's Stop then never returns. Bound the fetch in `main.js`'s predict handler (a generous
+  ceiling, minutes, since a film takes up to a minute on the tested laptop) and surface the timeout as the run's
+  failure reason. Recorded at the batch-segmentation brainstorm (2026-09-08).
+- **A throw from the thumbnail or the prediction snapshot leaves decoded bitmaps undisposed.** In `segmentStudy`
+  (screens/analysis.js) a throw from `thumbnailDataUri` or `recordPrediction` lands in the outer catch without
+  `disposeStudyImages`; inherited from the old run path, and a batch amplifies it (one orphaned bitmap set per
+  film). Hoist the `images` binding out of the `try` and dispose in the catch. Found at Task 3's review, 2026-09-08.
 
 ---
 

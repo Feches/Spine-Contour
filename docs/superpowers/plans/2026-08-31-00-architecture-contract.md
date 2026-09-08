@@ -111,8 +111,13 @@ renderer/                         (new)
                                   for structural columns; clinicalUpdated gates the "no blank clinical fields to fill" clause
                                   (2026-09-07)
   screens/studies.js              exports render(state), formatDate, matchesQuery, newStudy; mounts screens/parameters.js
-                                  under a Find | Parameters tab strip (2026-09-06)
-  screens/analysis.js             exports setFilePayload, releaseStudy(studyId) (plan 06)
+                                  under a Find | Parameters tab strip (2026-09-06); (2026-09-08) the Find tab's filter bar
+                                  (workspace and folder selects over the shared keys), row ticks and select-all over the
+                                  shared paramSelected, the segment button and the batch's progress group; the summary
+                                  reads UNSEGMENTED
+  screens/analysis.js             exports setFilePayload, releaseStudy(studyId) (plan 06); segmentStudy(studyId, {batch})
+                                  → {ok, warning?} | {ok: false, reason} (2026-09-08, batch spec §8.3) — the run core,
+                                  never throws; state.running set and cleared inside
   screens/parameters.js           (2026-09-06) the Parameters tab: exports mountParameters(host, {onOpen}) → {update(live, queried)};
                                   reads paramFilters/paramSort/paramLevels/paramSelected, writes them; never imports screens/; the paired export button and its note (2026-09-08, spec §10.4)
 
@@ -122,19 +127,26 @@ renderer/                         (new)
                                   (plan 04; plan 05 added the third argument — the geometry the study's CURRENT
                                   numbers describe, for a corrected study restored from disk). The viewer object
                                   mountViewer returns gains setFilmStatus('loading'|'missing'|null) (plan 05).
-                                  Exports forgetPrediction(studyId) (plan 06).
+                                  Exports forgetPrediction(studyId) (plan 06). The run card's eyebrow is UNSEGMENTED
+                                  for a real study without a result, QUEUED only for a film in the running batch,
+                                  RUNNING for the film in flight (2026-09-08); the Run and re-run buttons are disabled
+                                  while a batch is up.
   components/measurements.js      right panel, Measurements tab
   components/similar.js           right panel, Find similar tab
   components/clinical-data.js     drawer; exports mountClinicalData(host) → {update} (plan 06) — rows from
                                   visibleStudies(state), [open] until plan 07; a Study group of four cells (2026-09-07, spec §9)
   components/toast.js             showToast(message), render(state); toastDuration(text) (2026-09-08): 2.2 s to forty characters,
                                   then 40 ms per character, capped at 8 s, for every toast
+  components/checkbox.js          (2026-09-08) checkbox({key, keyAttr, label, checked, note, ariaLabel, indeterminate, onChange, onClick})
+                                  — the tick box both Studies tabs build; keyAttr is data-param-key (grid) or data-find-key (list)
 
   viewer/canvas.js                layered rendering
   viewer/interactions.js          pure interaction logic: zoom steps, hit tests, Tab order, nudge, debounce (no DOM)
   viewer/measure-queue.js         (plan 04) createMeasureQueue({measure, getState, setState, showToast, debounceMs})
                                   → {commitGeometry, replaceMeasured}: per-study revisions, one owner-tracked
                                   debounce, flush on study switch, failure restores the last measured geometry
+  batch.js                        (2026-09-08, batch spec §8.2) startBatch(ids), stopBatch() — the one wiring of data/batch.js's
+                                  createBatchDriver to the store, the toast, persistenceDisabledReason and segmentStudy; module scope
   viewer/geometry.js              circle fit, coordinate transforms
 
   data/demo-studies.js            the nine fabricated studies
@@ -150,15 +162,19 @@ renderer/                         (new)
                                   Workspace card's table, seedFields for the §8.3 precedence
   data/parameters.js              (2026-09-06) pure: columns, values, filter options, filter, sort, empty reason, export
                                   filename for the Parameters tab -- see the file header for the exported names;
-                                  selection helpers toggleId/withIds/selectedVisible/rowsToExport (2026-09-07); exportFileName(workspace, kind = 'parameters') (2026-09-08)
+                                  selection helpers toggleId/withIds/selectedVisible/rowsToExport (2026-09-07); exportFileName(workspace, kind = 'parameters') (2026-09-08);
+                                  matchesLocation(study, filters) (2026-09-08)
   data/pairing.js                 (2026-09-08) pure: pairStudies(rows, {post}) → {visits, post, subjects: [{key, subject, films: Map}],
                                   unpaired, ambiguous, noSubject, noTimepoint, otherVisits} for the paired export (spec §11.2);
                                   postFromFilters(filters); pairedExportMessage(pairing, savedTo) (§11.3)
+  data/batch.js                   (2026-09-08) pure: planBatch({visible, selected, running}) → {ids, label, note, enabled};
+                                  newBatch, advance, withStopping, isQueued, progressText, sidebarText, batchMessage;
+                                  createBatchDriver({segment, getState, setState, showToast, persistenceDisabledReason})
 
 test/                             (new) mirrors renderer/ — node --test
   geometry.test.js  similarity.test.js  status.test.js
   csv.test.js  measurements.test.js  persistence.test.js  pairing.test.js  toast.test.js
-  scan-folder.test.js  workspace.test.js  clinical-data.test.js
+  scan-folder.test.js  workspace.test.js  clinical-data.test.js  batch.test.js
 
 electron-builder.preview.yml      (new, plan 01)
 .github/workflows/windows-preview.yml   (new, plan 01)
@@ -294,10 +310,10 @@ a draw function must blank a layer, never freeze the application.
   studiesTab: 'find',       // 'find'|'parameters' (2026-09-06, pre-op/post-op spec §10.1)
   paramFilters: { workspace: null, folder: null, segmentedOnly: true,       // data/parameters.js DEFAULT_FILTERS;
                   timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: '__any__' },   // (2026-09-07, spec §10.3)
-                            // `workspace` is a stored root, HAND_ADDED ('__hand__') or null; `timepoint` a label, NO_TIMEPOINT ('__none__') or null; `pairedWith` is a label or ANY_POST ('__any__', the default: any labelled non-Pre-op film)
+                            // `workspace` is a stored root, HAND_ADDED ('__hand__') or null; `timepoint` a label, NO_TIMEPOINT ('__none__') or null; `pairedWith` is a label or ANY_POST ('__any__', the default: any labelled non-Pre-op film); (2026-09-08) `workspace` and `folder` are shared with the Find tab's selects
   paramSort: { key: 'study', dir: 'asc' },   // key: 'study'|'subject'|'workspace'|a measurement column key (2026-09-07: 'subject' sorts by subject, then §7.2 order)
   paramLevels: false,       // show LL L2–S1..L5–S1 columns
-  paramSelected: [],        // string[] study ids ticked on the Parameters grid (2026-09-07); replaced wholesale; session-only; screens/studies.js clears a deleted study's id from it
+  paramSelected: [],        // string[] study ids ticked on the Parameters grid (2026-09-07); replaced wholesale; session-only; screens/studies.js clears a deleted study's id from it; (2026-09-08) also ticked on the Find tab's rows — one selection for both tabs
                             // All four are read by screens/studies.js's own subscription, never by SCREEN_KEYS.
   openId: null,
   compareId: null,
@@ -318,6 +334,9 @@ a draw function must blank a layer, never freeze the application.
                             // one run at a time. `if (state.running)` still means "a run is in flight";
                             // the viewer and the Studies list compare it with a study's id.
   runStage: null,           // string | null
+  batch: null,              // (2026-09-08, batch spec §8.1) the running batch or null: { ids, done, failed,
+                            // warnings, skipped, stopping }, replaced wholesale by renderer/batch.js; never persisted;
+                            // in SIDEBAR_KEYS and in the Studies screen's own update() key; state.running is untouched
 
   wsFolder: null,
   wsFiles: [],              // string[] absolute paths
@@ -544,7 +563,10 @@ both yield `'seg'`. Missing `qc` does not by itself force `'rev'`. `RESIDUAL_LIM
 `data/measurements.js`'s constant re-exported, and the residual comes from its `piResidual`,
 so the list's status and the panel's consistency warning cannot disagree. Spec 13.1's second
 `proc` condition — "currently running" — is a property of `state.running`, not of the record:
-the Studies screen applies it (`state.running === study.id`), `deriveStatus` does not.
+the Studies screen applies it (`state.running === study.id`), `deriveStatus` does not. A batch's
+queued films are 'proc' by rule 1 and are badged Processing like any unsegmented film; the Studies
+summary counts them as UNSEGMENTED and the batch's own progress is the filter bar's and the
+sidebar's (2026-09-08, batch spec decisions 7–8).
 
 **There is exactly one rule, and demo studies are not exempt from it.** All nine demo
 studies have internally consistent parameters (residual ≈ 0) and confidence 0.82–0.97,

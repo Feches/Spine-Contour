@@ -409,7 +409,9 @@ Sort: by subject (then §7.2 order, then film date), by study name (the id is on
 not a column), by workspace then folder, or by any measurement column (absent last). The Studies
 search box applies to the grid as well as the Find list, composing with the filters. Sorting by
 subject draws a thin rule between subjects so a pair reads as a block. The empty grid distinguishes
-"no segmented films" from "nothing matches these filters", as the Find table does.
+"no segmented films" from "nothing matches these filters", as the Find table does. (2026-09-08) The
+workspace and folder filters are the Studies screen's: the Find tab shows the same two selects over
+the same keys.
 
 ### 10.4 Export the visible set
 
