@@ -22,7 +22,7 @@ Copied from `CLAUDE.md` and the spec. Every task's requirements include these.
 - **Never mutate store state in place.** Every `setState` patch passes a NEW object or array; `batch` is replaced wholesale on every change. `setState` must not be called from inside a subscriber: the Studies screen's `update()` and the viewer's `updateViewer()` run inside store notifications and only DOM event handlers and the driver's own async loop call `setState`.
 - **The Studies screen's `update()` key array must list every store key the Find tab reads** — this plan adds `paramFilters`, `paramSelected` and `batch` to it (Task 5). `router.js`'s `SIDEBAR_KEYS` gains `batch` (Task 4). Miss either and the surface silently stops repainting.
 - **`el()` assigns to the property when the key exists on the node.** Pass real booleans (`disabled: false`, `checked: true`), never `'false'`. Never pass `style`, `list`, `dataset` or `form` as an `el()` prop.
-- **Never change the form of a non-ASCII character on a line you touch, and write any NEW non-ASCII character in JS source as a `\uXXXX` escape** (HANDOFF known trap, 2026-09-08: the Edit and Write tools rewrite escapes as glyphs and once turned a `§` in a JS comment into its escape; both forms compare equal at runtime, so no test catches it). Some existing lines carry glyphs (`·` in the Studies summary, `…` in the viewer's card): leave those as they are. Byte-check the diff before every commit that touches such a line — `git diff -- <files> | grep -nP '[^\x00-\x7F]'` must show only lines that carried the same glyphs before — and repair with a small Python script written to a file, never with `sed` or a `bash -c` one-liner.
+- **Never change the form of a non-ASCII character on a line you touch, and write any NEW non-ASCII character in JS source as a `\uXXXX` escape** (HANDOFF known trap, 2026-09-08: the Edit and Write tools rewrite escapes as glyphs and once turned a `§` in a JS comment into its escape; both forms compare equal at runtime, so no test catches it). Some existing lines carry glyphs (`·` in the Studies summary, `…` in the viewer's card): leave those as they are. Byte-check the diff before every commit that touches such a line — `git diff -U0 -- <files> | grep -nP '^[+-].*[^\x00-\x7F]'` must show every `+` line that carries a glyph paired with a `-` twin carrying the same glyph, and no other `+` line (`-U0` keeps unchanged context lines, such as store.js's `running:` comment, out of the check) — and repair with a small Python script written to a file, never with `sed` or a `bash -c` one-liner.
 - **No bundler, no framework, no runtime dependencies.** `dependencies` stays empty; `devDependencies` stays exactly `electron` and `electron-builder`. **Do not loosen the CSP.** No allowlist change: both electron-builder allowlists already ship `renderer/**/*` and `styles/**/*` by glob, and the two new modules are under `renderer/`.
 - **Unit tests run as `node --test test/*.test.js`** (the glob form; the directory form fails on Node 24). Baseline before this plan: 402/402.
 - **Pure-logic modules get real `node --test` coverage. DOM code gets explicit manual verification and smoke checks.** Never write a fake test.
@@ -49,7 +49,7 @@ Copied from `CLAUDE.md` and the spec. Every task's requirements include these.
 | `renderer/store.js` | `batch: null` | modify |
 | `renderer/data/parameters.js` | `matchesLocation(study, filters)` exported; `filterParameters` uses it | modify |
 | `renderer/screens/parameters.js` | imports the shared checkbox; nothing else changes | modify |
-| `renderer/screens/analysis.js` | `segmentStudy(studyId, { batch })` exported; `filmBytes` takes `park`; per-study run counter for `restoreFilm`; the run handler refuses during a batch | modify |
+| `renderer/screens/analysis.js` | `segmentStudy(studyId, { batch })` exported; `filmBytes` takes `park`; per-study run counter for `restoreFilm`; the run handler refuses during a batch; imports `WAIT_FOR_BATCH` from `data/batch.js` | modify |
 | `renderer/components/viewer.js` | the card's `UNSEGMENTED` / `QUEUED` states and the batch gating of the run and re-run buttons | modify |
 | `renderer/components/sidebar.js`, `renderer/router.js` | the Studies row's sublabel; `batch` in `SIDEBAR_KEYS` | modify |
 | `renderer/screens/studies.js`, `styles/screens/studies.css` | the filter bar, the ticks, the select-all, the segment button, the progress group, the summary wording, the empty-state kinds | modify |
@@ -59,7 +59,7 @@ Copied from `CLAUDE.md` and the spec. Every task's requirements include these.
 | `tools/smoke/smoke-persist.mjs`, `tools/smoke/smoke-workspace.mjs`, `tools/smoke/README.md` | the renamed words; baselines | modify |
 | the contract, `docs/superpowers/HANDOFF.md`, `docs/ROADMAP.md`, the redesign spec §9.4/§9.5, the pre-op/post-op spec §10.3 | records | modify |
 
-Boundaries: `renderer/data/*` never imports from `renderer/screens/`, `renderer/components/` or `renderer/batch.js`. `data/batch.js` imports `selectedVisible` and `isSegmented` from `data/parameters.js` and `studyName` from `data/labels.js`. `renderer/batch.js` imports `store.js`, `components/toast.js`, `api.js`, `screens/analysis.js` and `data/batch.js`; `screens/studies.js` imports `renderer/batch.js` (it already imports `screens/analysis.js`); `screens/analysis.js` imports neither. `components/checkbox.js` imports only `dom.js`. No cycle.
+Boundaries: `renderer/data/*` never imports from `renderer/screens/`, `renderer/components/` or `renderer/batch.js`. `data/batch.js` imports `selectedVisible` and `isSegmented` from `data/parameters.js` and `studyName` from `data/labels.js`. `renderer/batch.js` imports `store.js`, `components/toast.js`, `api.js`, `screens/analysis.js` and `data/batch.js`; `screens/studies.js` imports `renderer/batch.js` (it already imports `screens/analysis.js`); `screens/analysis.js` imports neither `renderer/batch.js` nor `screens/studies.js` (it imports one string, `WAIT_FOR_BATCH`, from `data/batch.js`). `components/checkbox.js` imports only `dom.js`. No cycle.
 
 ## Rulings made while planning (2026-09-08)
 
@@ -76,7 +76,7 @@ Settled with the user at the brainstorm (in the spec's §6, and HANDOFF decision
 - **Ruling: the store key `batch` lands in Task 1** with its test, so every later task can read it. — Cost if wrong: none.
 - **Ruling: `startBatch` returns `true` when it started a batch and `false` when it refused**, so the driver is testable; the Find tab ignores the value. — Cost if wrong: none.
 - **Ruling: the driver wraps `segment()` in try/catch** and counts a rejection as a failure with the error's message, although the core promises never to reject: a batch must never be left with `state.batch` stuck non-null. — Cost if wrong: four lines.
-- **Ruling: `segmentStudy` returns internal reasons (`superseded`, `another run is in flight`, `A file dialog is already open.`) on the early returns the interactive path used to take silently.** They never reach a toast: interactive callers ignore the outcome, and in batch mode those branches cannot be taken (one run at a time, no picker). — Cost if wrong: none.
+- **Ruling: `segmentStudy` returns internal reasons (`superseded`, `a batch is running`, `A file dialog is already open.`) on the early returns the interactive path used to take silently.** They never reach a toast: interactive callers ignore the outcome, and in batch mode those branches cannot be taken (one run at a time, no picker). — Cost if wrong: none.
 - **Ruling: the stale studies smoke check (`searching the diagnosis text leaves only SP-0042`, 59/60 since `0f8f821`) is fixed in Task 6** by searching `meyerding`, a word only SP-0042's diagnosis carries — this plan rewrites that suite anyway, and ROADMAP §5 named exactly this fix. — Cost if wrong: one string.
 - **Ruling: the new smoke sections are numbered 10–14 and appended after the existing section 9** (the no-errors check), which stays where it is; section 14 asserts no NEW errors by comparing `cdp.errors.length` with the count recorded at section 9. — Cost if wrong: none.
 - **Ruling: Task 3 runs `smoke-studies.mjs` (expect 59/60, the stale name) and both phases of `smoke-persist.mjs` (34/34 then 44/44)**, because it changes the run core a human gated in plans 05–06 and edits the persist suite. Task 2 runs `smoke-parameters.mjs` (58/58) because it moves the grid's checkbox. — Cost if wrong: minutes.
@@ -610,8 +610,8 @@ Expected: 425/425 (402 + 23).
 
 - [ ] **Step 5: Byte-check and commit**
 
-Run: `git diff -- renderer test | grep -nP '[^\x00-\x7F]'`
-Expected: nothing (every non-ASCII glyph in the two JS files is written as an escape).
+Run: `git diff -U0 -- renderer test | grep -nP '^\+.*[^\x00-\x7F]'`
+Expected: nothing (every non-ASCII character the two new JS files carry is written as an escape; `-U0` keeps store.js's unchanged `running:` comment line, which carries an em dash, out of the check).
 
 ```bash
 git add renderer/data/batch.js test/batch.test.js renderer/store.js test/store.test.js
@@ -623,10 +623,10 @@ git commit -m "feat: batch planner, transitions, texts and driver factory in dat
 ### Task 2: `matchesLocation` in `data/parameters.js`; the shared checkbox component
 
 **Files:**
-- Modify: `renderer/data/parameters.js` (the private `matchesWorkspace` is at ~line 80; `filterParameters` at ~line 259)
+- Modify: `renderer/data/parameters.js` (the private `matchesWorkspace` is at ~line 81; `filterParameters` at ~line 259)
 - Modify: `test/parameters.test.js` (append)
 - Create: `renderer/components/checkbox.js`
-- Modify: `renderer/screens/parameters.js` (delete the local `CHECK_SVG` and `checkbox()`, ~lines 45–68; add one import)
+- Modify: `renderer/screens/parameters.js` (delete `CHECK_SVG` at ~line 44 and `checkbox()` with its comment block at ~lines 50–68 — `sameKey` at ~47–49 stays, the grid's gate uses it; add one import)
 
 **Interfaces:**
 - Produces: `matchesLocation(study, filters)` → `boolean` — true when `filters.workspace` (a root, `HAND_ADDED`, or null/absent) and `filters.folder` (a folder label or null/absent) both keep the study; exactly the workspace-and-folder half of `filterParameters`.
@@ -770,7 +770,7 @@ Expected: the last line of `tools/smoke/out/task2-parameters.txt` reads `58/58 c
 
 - [ ] **Step 7: Byte-check and commit**
 
-Run: `git diff -- renderer | grep -nP '[^\x00-\x7F]'`
+Run: `git diff -U0 -- renderer | grep -nP '^\+.*[^\x00-\x7F]'`
 Expected: nothing.
 
 ```bash
@@ -783,7 +783,7 @@ git commit -m "feat: matchesLocation in data/parameters.js; the grid's checkbox 
 ### Task 3: The run core — `segmentStudy` in `screens/analysis.js`; the viewer's card and gating
 
 **Files:**
-- Modify: `renderer/screens/analysis.js` — `filmBytes` (~line 121), the module-scope counters (~line 74), `releaseStudy` (~line 63), `runSegmentation` (~lines 150–266, replaced by `segmentStudy`), `restoreFilm` (~lines 273–319, two guard lines), the run handler in `render()` (~line 450)
+- Modify: `renderer/screens/analysis.js` — `filmBytes` (~line 121), the module-scope counters (~line 74), `releaseStudy` (~line 63), `runSegmentation` (~lines 150–266, replaced by `segmentStudy`), `restoreFilm` (~lines 273–321, two guard lines), the run handler in `render()` (~line 450)
 - Modify: `renderer/components/viewer.js` — `describeCard` (~lines 704–741), the `rerunButton.disabled` line (~line 899)
 - Modify: `tools/smoke/smoke-persist.mjs:301-302` (the `QUEUED` expectation)
 
@@ -875,15 +875,17 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
   // Spec 10: in a batch a missing film is a named failure; the record is untouched and the user
   // relocates it from this screen, where the picker still opens.
   if (!data) return { ok: false, reason: 'file not found' };
-  if (revision !== runRevision) return { ok: false, reason: 'superseded' };
   // The picker is modeless and `locating` is this module's own, so a batch can have started while
   // it was open (batch spec 8.3). Running now would set `running` over the batch's id and put a
   // second /predict in flight. The record and the payload map already carry the relocated film;
-  // the run itself waits for the user.
-  if (!batch && (getState().batch || getState().running)) {
-    showToast(getState().batch ? WAIT_FOR_BATCH : WAIT_FOR_RUN);
-    return { ok: false, reason: 'another run is in flight' };
+  // the run itself waits for the user. ABOVE the revision check on purpose: the batch's own first
+  // run has already moved runRevision, so the check below would refuse silently and the toast that
+  // says why would never show. Only a batch can have started: `running` is set nowhere but here.
+  if (!batch && getState().batch) {
+    showToast(WAIT_FOR_BATCH);
+    return { ok: false, reason: 'a batch is running' };
   }
+  if (revision !== runRevision) return { ok: false, reason: 'superseded' };
   // After a relocation the record carries the NEW name; the `study` binding above is stale.
   // The filename matters: its extension drives the backend's decoder, so relocating a .jpg
   // to a .png has to send the new name with the new bytes.
@@ -925,7 +927,7 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     const thumbnail = thumbnailDataUri(images.image);
 
     // The sidecar first, then the record: a record that says "segmented" must point at a film
-    // that exists. A failed sidecar write is reported and the run still completes -- the study
+    // that exists. A failed sidecar write is reported and the run still completes — the study
     // opens to FILM UNAVAILABLE next time, and a re-run recreates it. Neither toast starts with
     // "Could not": tools/smoke/run-and-wait.js treats that prefix as a failed run. In a batch the
     // persistence notice was raised once at the start, and the sidecar failure is the outcome's
@@ -1044,7 +1046,7 @@ with
 Add to the file's imports, after the `describeModels` import line:
 
 ```js
-import { WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
+import { WAIT_FOR_BATCH } from '../data/batch.js';
 ```
 
 - [ ] **Step 5: The viewer's card and gating**
@@ -1055,7 +1057,7 @@ In `renderer/components/viewer.js`, add after the `import { studyName } ...`-sty
 import { isQueued, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
 ```
 
-In `describeCard`, replace the block from `const busy = state.running === study.id;` through the end of the `filmStatus === 'missing'` return (the two `return { ... }` objects that carry a `button`) with:
+In `describeCard`, replace the region from the three-line comment that begins `` // `busy` is THIS study's run `` through the `return null;` that ends the real-study path (`viewer.js:703–740` today) with the block below — it begins with the replacement comment and ends with `return null;`, so nothing of the old region survives:
 
 ```js
     // `busy` is THIS study's run; `otherRunning` is somebody else's. Everything the card SAYS
@@ -1072,7 +1074,7 @@ In `describeCard`, replace the block from `const busy = state.running === study.
     if (!hasResult || busy) {
       return {
         eyebrow: busy ? 'RUNNING' : (queued ? 'QUEUED' : 'UNSEGMENTED'),
-        title: busy ? 'Segmenting and measuring\u2026' : (queued ? 'Waiting for its turn in the batch' : 'No segmentation yet'),
+        title: busy ? 'Segmenting and measuring…' : (queued ? 'Waiting for its turn in the batch' : 'No segmentation yet'),
         // Describes what the pipeline does; never which model is executing (BD-4).
         body: busy
           ? 'Runs three models: vertebral segmentation, S1 keypoint detection, and femoral head fitting.'
@@ -1081,14 +1083,14 @@ In `describeCard`, replace the block from `const busy = state.running === study.
             : 'This study was uploaded but has not been processed. Run segmentation to generate measurements.'),
         spinner: busy,
         button: {
-          text: busy ? 'Working\u2026' : 'Run segmentation',
+          text: busy ? 'Working…' : 'Run segmentation',
           disabled: Boolean(state.running) || Boolean(batch),
           title: waitTitle,
         },
       };
     }
     if (filmStatus === 'loading') {
-      return { eyebrow: 'LOADING', title: 'Loading the film\u2026', body: 'Reading the saved segmentation for this study.', spinner: true, button: null };
+      return { eyebrow: 'LOADING', title: 'Loading the film…', body: 'Reading the saved segmentation for this study.', spinner: true, button: null };
     }
     if (filmStatus === 'missing') {
       return {
@@ -1106,7 +1108,7 @@ In `describeCard`, replace the block from `const busy = state.running === study.
     return null;
 ```
 
-Check the current file for how the two `…` characters in the titles are written (`'Segmenting and measuring…'` as a glyph, or `\u2026`) and keep whichever form the file already uses on those lines — the diff must not turn a glyph into an escape or the reverse on a line this task did not mean to change. The strings above use escapes; if the file has glyphs, keep the glyphs.
+The three `…` in the block (`Segmenting and measuring…`, `Working…`, `Loading the film…`) are glyphs in the file today and are written as glyphs above; keep them glyphs, so the byte-check pairs each `+` line with its `-` twin.
 
 In `updateViewer`, replace
 
@@ -1160,8 +1162,8 @@ Expected: `task3-studies.txt` ends `59/60 checks passed`, the one FAIL being exa
 
 - [ ] **Step 8: Byte-check and commit**
 
-Run: `git diff -- renderer tools | grep -nP '[^\x00-\x7F]'`
-Expected: only lines that ALREADY carried a glyph before this task (compare against `git show HEAD:renderer/components/viewer.js | grep -nP '[^\x00-\x7F]'`); no new glyph, no escape where a glyph was.
+Run: `git diff -U0 -- renderer tools | grep -nP '^[+-].*[^\x00-\x7F]'`
+Expected: every `+` line that carries a glyph has a `-` twin with the same glyph — the three `…` titles in viewer.js and the `—` in analysis.js's sidecar comment — and there is no `+` line with a new glyph and no `+` line with an escape where its `-` twin had a glyph.
 
 Write the message to a file and commit:
 
@@ -1288,7 +1290,7 @@ Expected: `function function` (the module and everything it imports load under N
 
 - [ ] **Step 5: Byte-check and commit**
 
-Run: `git diff -- renderer | grep -nP '[^\x00-\x7F]'`
+Run: `git diff -U0 -- renderer | grep -nP '^\+.*[^\x00-\x7F]'`
 Expected: nothing.
 
 ```bash
@@ -1377,11 +1379,12 @@ with
 Replace the whole `buildTable` function and the comment above it with:
 
 ```js
-// Why the table is empty (batch spec 7.5). 'search' and 'filters' used to be one sentence, because
-// the nine demo studies made a genuinely empty library unreachable; now that an installed app opens
-// with nothing, "No studies match that search." over a library the user has not filled yet would
-// blame a search they never made. The search wording is pinned by tools/smoke/smoke-studies.mjs
-// -- keep it exactly. The 'none' string is the one the file always carried.
+// Why the table is empty (batch spec 7.5). 'search' and 'none' are what the file carried: they used
+// to be one sentence, because the nine demo studies made a genuinely empty library unreachable, and
+// now that an installed app opens with nothing, "No studies match that search." over a library the
+// user has not filled yet would blame a search they never made. 'filters' is new -- a workspace or
+// folder set with nothing left. The search wording is pinned by tools/smoke/smoke-studies.mjs --
+// keep it exactly. The 'none' string is byte-identical to the one the file always carried.
 const EMPTY_COPY = {
   search: 'No studies match that search.',
   filters: 'No studies match these filters.',
@@ -1504,7 +1507,7 @@ In `render()`:
   }
 ```
 
-(d) Replace the body of `update(live)` from the line `const studies = live.studies || [];` to the end of the function with:
+(d) Replace `update(live)`'s body AND its own closing brace — from the line `const studies = live.studies || [];` through the two-space `  }` that closes `update` (`studies.js:388–408` today; the four lines after it, `const root = …` to `return root;`, stay) — with this block, whose last line is that closing brace:
 
 ```js
     const studies = live.studies || [];
@@ -1545,7 +1548,11 @@ In `render()`:
     mount(barHost, buildFilterBar(live, filters, visible));
     mount(tableHost, buildTable(visible, live.running, emptyKind, selected));
     if (focusKey !== null) {
-      const target = barHost.querySelector(`[data-find-key="${focusKey}"]`) ?? tableHost.querySelector(`[data-find-key="${focusKey}"]`);
+      // The control that was focused may be gone: clicking Segment replaces the button with the
+      // progress group, and the batch's end replaces the group with the button. Land on the other.
+      const fallback = { segment: 'stop', stop: 'segment' }[focusKey] ?? null;
+      const target = barHost.querySelector(`[data-find-key="${focusKey}"]`) ?? tableHost.querySelector(`[data-find-key="${focusKey}"]`)
+        ?? (fallback ? barHost.querySelector(`[data-find-key="${fallback}"]`) : null);
       if (target) target.focus();
     }
   }
@@ -1583,6 +1590,7 @@ with
    the grid's control (components/checkbox.js) and keeps the grid's class names. */
 .studies-cell-id > .param-check {
   flex: none;
+  margin-right: 0; /* .param-pick carries a 10px right margin for the grid; the gap here does that job */
 }
 
 .studies-name {
@@ -1596,6 +1604,11 @@ with
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.studies-head-study > .param-check {
+  flex: none;
+  margin-right: 0;
 }
 ```
 
@@ -1672,8 +1685,8 @@ Expected on that instance (SP-9000 segmented by the suite, nine demos): `workspa
 
 - [ ] **Step 7: Byte-check, commit with the gate pending**
 
-Run: `git diff -- renderer styles | grep -nP '[^\x00-\x7F]'`
-Expected: exactly the lines that carried a glyph before (the `·` in the summary and the header comment, the `—` in the moved `none` string); compare with `git show HEAD:renderer/screens/studies.js | grep -nP '[^\x00-\x7F]'`.
+Run: `git diff -U0 -- renderer styles | grep -nP '^[+-].*[^\x00-\x7F]'`
+Expected: every `+` line that carries a glyph has a `-` twin with the same glyph — the `·` in the summary template and in the header comment, the `—` in the moved `none` string — and no other `+` line.
 
 Write the message to a file and commit; the gate outcomes are amended into this commit afterwards:
 
@@ -1727,7 +1740,8 @@ In `tools/smoke/smoke-studies.mjs`:
 
 - Line ~59–60: `IN QUEUE` → `UNSEGMENTED` in the regex and the check name (`summary matches "{n} STUDIES · {m} UNSEGMENTED" with n >= 9`).
 - Line ~228: the literal `${n + 1} STUDIES · 1 IN QUEUE` → `${n + 1} STUDIES · 1 UNSEGMENTED`; the check name → `summary reads n+1 studies, 1 unsegmented`.
-- Lines ~283 and ~356: the two `/(\\d+) STUDIES · (\\d+) IN QUEUE/` regexes → `UNSEGMENTED`; the check names at ~292 (`the summary UNSEGMENTED count matches the Processing badges`) and ~365 (`the summary counts the re-running study as unsegmented`).
+- Lines ~283 and ~356: the two `/(\\d+) STUDIES · (\\d+) IN QUEUE/` regexes → `UNSEGMENTED`; the check names at ~292 (`the summary UNSEGMENTED count matches the Processing badges`) and ~364 (`the summary counts the re-running study as unsegmented`).
+- Line ~149 (section 4b's comment): `a QUEUED card` → `an UNSEGMENTED card`.
 - Section 3: replace `await cdp.typeText('anterior slip');` with `await cdp.typeText('meyerding');` and the check name with `searching a diagnosis phrase only SP-0042 carries leaves one row` (since `0f8f821` the demo pair share "Anterior slip"; `Meyerding` is on SP-0042 alone — `renderer/data/demo-studies.js`).
 - Section 5: extend the `runCard` probe and its check so the plain eyebrow is asserted:
 
@@ -1786,6 +1800,9 @@ In `tools/smoke/smoke-studies.mjs`, directly after section 9's check (`check('no
     const m = /^(\d+) STUDIES · (\d+) UNSEGMENTED$/.exec(((await text(cdp, '.studies-summary')) || '').trim());
     return m ? { studies: Number(m[1]), unsegmented: Number(m[2]) } : null;
   };
+  // A missing element is a FAIL in the results, never a throw: the suite prints its results only at
+  // the end, and a throw here would print nothing (HANDOFF's silent-suite trap).
+  const clickAt = async (selector) => { const r = await cdp.rect(selector); if (r) await cdp.click(r.cx, r.cy); return Boolean(r); };
   const FILTERS_RESET = '{ workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: "", pairedOnly: false, pairedWith: "__any__" }';
 
   // 10. The filter bar and the ticks. SP-9001 sits under a workspace root, with no bytes and no
@@ -1821,8 +1838,7 @@ In `tools/smoke/smoke-studies.mjs`, directly after section 9's check (`check('no
   await pick('folder', 'pre-op');
   await cdp.settle(150);
   check('filtering by folder keeps the film in it', (await rowCount(cdp)) === 1, await rowCount(cdp));
-  const searchRect10 = await cdp.rect('.studies-search');
-  await cdp.click(searchRect10.cx, searchRect10.cy);
+  await clickAt('.studies-search');
   await cdp.typeText('zzzznomatch');
   await cdp.settle();
   const empty10 = (await text(cdp, '.studies-empty') || '').trim();
@@ -1835,7 +1851,7 @@ In `tools/smoke/smoke-studies.mjs`, directly after section 9's check (`check('no
   const tickRect = await cdp.rect('input[data-find-key="row-SP-9000"]');
   const demoTick = await cdp.evaluate(`Boolean(document.querySelector('input[data-find-key="row-SP-0042"]'))`);
   check('a real row carries a tick box and a demo row does not', Boolean(tickRect) && demoTick === false, { tickRect, demoTick });
-  await cdp.click(tickRect.cx, tickRect.cy);
+  if (tickRect) await cdp.click(tickRect.cx, tickRect.cy);
   await cdp.settle(150);
   s = await cdp.state();
   check('ticking a row selects it without opening the study', s.screen === 'studies' && JSON.stringify(s.paramSelected) === JSON.stringify(['SP-9000']), { screen: s.screen, selected: s.paramSelected });
@@ -1843,8 +1859,7 @@ In `tools/smoke/smoke-studies.mjs`, directly after section 9's check (`check('no
   check('with only a segmented row ticked the button is disabled and says so', bar10Ticked.label === 'Segment 0 selected' && bar10Ticked.disabled === true && bar10Ticked.note === 'All selected studies are segmented', bar10Ticked);
   const all10 = await cdp.evaluate(`(() => { const el = document.querySelector('input[data-find-key="select-all"]'); return { checked: el.checked, indeterminate: el.indeterminate }; })()`);
   check('select-all is indeterminate with one of two real rows ticked', all10.checked === false && all10.indeterminate === true, all10);
-  const allRect = await cdp.rect('input[data-find-key="select-all"]');
-  await cdp.click(allRect.cx, allRect.cy);
+  await clickAt('input[data-find-key="select-all"]');
   await cdp.settle(150);
   s = await cdp.state();
   check('an indeterminate select-all ticks every visible real row', s.paramSelected.length === 2 && s.paramSelected.includes('SP-9000') && s.paramSelected.includes('SP-9001'), s.paramSelected);
@@ -1852,8 +1867,7 @@ In `tools/smoke/smoke-studies.mjs`, directly after section 9's check (`check('no
   check('with a segmented and an unsegmented row ticked the button runs one and notes the other', bar10Both.label === 'Segment 1 selected' && bar10Both.disabled === false && bar10Both.note === '1 already segmented', bar10Both);
   const focus10 = await cdp.evaluate(`document.activeElement ? document.activeElement.getAttribute('data-find-key') : null`);
   check('the rebuild hands focus back to the select-all box', focus10 === 'select-all', focus10);
-  const allRect2 = await cdp.rect('input[data-find-key="select-all"]');
-  await cdp.click(allRect2.cx, allRect2.cy);
+  await clickAt('input[data-find-key="select-all"]');
   await cdp.settle(150);
   s = await cdp.state();
   check('a checked select-all clears every visible real row', s.paramSelected.length === 0, s.paramSelected);
@@ -1863,8 +1877,7 @@ In `tools/smoke/smoke-studies.mjs`, directly after section 9's check (`check('no
   await cdp.settle(150);
   const bar11 = await readBar();
   check('with the unreadable film ticked the button offers it', bar11.label === 'Segment 1 selected' && bar11.disabled === false, bar11);
-  const segRect11 = await cdp.rect('[data-find-key="segment"]');
-  await cdp.click(segRect11.cx, segRect11.cy);
+  await clickAt('[data-find-key="segment"]');
   const failed11 = await waitForState('s.toast.startsWith("Segmented 0 of 1")', 15000);
   s = await cdp.state();
   const sp9001 = s.studies.find((x) => x.id === 'SP-9001');
@@ -1884,8 +1897,7 @@ In `tools/smoke/smoke-studies.mjs`, directly after section 9's check (`check('no
   const bar12 = await readBar();
   check('ticking the two real films offers exactly them', bar12.label === 'Segment 2 selected' && bar12.disabled === false && bar12.note === null, bar12);
   const summaryBefore12 = await summaryParts();
-  const segRect12 = await cdp.rect('[data-find-key="segment"]');
-  await cdp.click(segRect12.cx, segRect12.cy);
+  await clickAt('[data-find-key="segment"]');
   const started12 = await waitForState('s.batch !== null && s.running !== null', 5000);
   s = await cdp.state();
   check('the click starts a batch over the ticked films in table order, the first in flight', started12 === true && s.batch && JSON.stringify(s.batch.ids) === JSON.stringify(['SP-9003', 'SP-9002']) && s.batch.done === 0 && s.running === 'SP-9003', { batch: s.batch, running: s.running });
@@ -1895,28 +1907,24 @@ In `tools/smoke/smoke-studies.mjs`, directly after section 9's check (`check('no
   check('the running, the queued and the unreadable film all read Processing', progress12a.procRows === 3, progress12a.procRows);
 
   // The cards mid-batch. The injected film segments in roughly 9 s; two openings take about 1 s.
-  const queuedRect = await cdp.rect('.studies-row[data-study-id="SP-9002"]');
-  await cdp.click(queuedRect.cx, queuedRect.cy);
+  await clickAt('.studies-row[data-study-id="SP-9002"]');
   await cdp.settle(200);
   const queuedCard = await cdp.evaluate(`(() => ({
     eyebrow: document.querySelector('.run-eyebrow')?.textContent, title: document.querySelector('.run-title')?.textContent,
     disabled: document.querySelector('.run-button')?.disabled, buttonTitle: document.querySelector('.run-button')?.title,
-    rerunDisabled: document.querySelector('.viewer-tool[aria-label="Re-run segmentation"]')?.disabled,
   }))()`);
   check('a queued film opened mid-batch reads QUEUED, waiting for its turn, its run button disabled', queuedCard.eyebrow === 'QUEUED' && queuedCard.title === 'Waiting for its turn in the batch' && queuedCard.disabled === true && queuedCard.buttonTitle === 'Wait for the batch to finish', queuedCard);
-  let backRect12 = await cdp.rect('.icon-btn[aria-label="Back to studies"]');
-  await cdp.click(backRect12.cx, backRect12.cy);
+  await clickAt('.icon-btn[aria-label="Back to studies"]');
   await cdp.settle(150);
-  const outsideRect = await cdp.rect('.studies-row[data-study-id="SP-9001"]');
-  await cdp.click(outsideRect.cx, outsideRect.cy);
+  await clickAt('.studies-row[data-study-id="SP-9001"]');
   await cdp.settle(200);
   const outsideCard = await cdp.evaluate(`(() => ({ eyebrow: document.querySelector('.run-eyebrow')?.textContent, title: document.querySelector('.run-title')?.textContent, disabled: document.querySelector('.run-button')?.disabled, buttonTitle: document.querySelector('.run-button')?.title }))()`);
   check('an unsegmented film outside the batch reads UNSEGMENTED with its run button disabled for the batch', outsideCard.eyebrow === 'UNSEGMENTED' && outsideCard.title === 'No segmentation yet' && outsideCard.disabled === true && outsideCard.buttonTitle === 'Wait for the batch to finish', outsideCard);
-  backRect12 = await cdp.rect('.icon-btn[aria-label="Back to studies"]');
-  await cdp.click(backRect12.cx, backRect12.cy);
+  await clickAt('.icon-btn[aria-label="Back to studies"]');
   await cdp.settle(150);
 
-  const oneDone12 = await waitForState('s.batch !== null && s.batch.done === 1', 400000);
+  // Bounded to two minutes: one film, up to a minute on a cold backend. A missed window fails fast.
+  const oneDone12 = await waitForState('s.batch !== null && s.batch.done === 1', 120000);
   const progress12b = await readProgress();
   check('after the first film the bar reads 1 of 2 done and the sidebar 1 OF 2 DONE', oneDone12 === true && progress12b.text === '1 of 2 done' && progress12b.sidebar === '1 OF 2 DONE', progress12b);
   const finished12 = await waitForState('s.batch === null', 400000);
@@ -1937,12 +1945,11 @@ In `tools/smoke/smoke-studies.mjs`, directly after section 9's check (`check('no
   await injectFilm({ id: 'SP-9005', fileName: 'batch-d.jpg', filePath: null, workspaceFolder: null, base64: SAMPLE_BASE64 });
   await cdp.setState('{ paramSelected: ["SP-9004", "SP-9005"] }');
   await cdp.settle(200);
-  const segRect13 = await cdp.rect('[data-find-key="segment"]');
-  await cdp.click(segRect13.cx, segRect13.cy);
+  await clickAt('[data-find-key="segment"]');
   const started13 = await waitForState('s.batch !== null && s.running !== null', 5000);
-  check('the second batch starts with SP-9005 in flight', started13 === true && (await cdp.state()).running === 'SP-9005', (await cdp.state()).running);
-  const stopRect = await cdp.rect('[data-find-key="stop"]');
-  await cdp.click(stopRect.cx, stopRect.cy);
+  const running13 = (await cdp.state()).running;
+  check('the second batch starts with SP-9005 in flight', started13 === true && running13 === 'SP-9005', running13);
+  await clickAt('[data-find-key="stop"]');
   await cdp.settle(150);
   const stopping13 = await readProgress();
   s = await cdp.state();
@@ -1981,13 +1988,14 @@ Expected: `task6-studies.txt` ends `103/103 checks passed` (60 existing, the sta
 In `tools/smoke/README.md`:
 
 - ~line 113: `measured "14 STUDIES · 1 IN QUEUE" that way` → `measured "14 STUDIES · 1 UNSEGMENTED" that way (the summary read IN QUEUE until 2026-09-08)`.
-- The "Known baseline" paragraph (~lines 257–264): replace the `smoke-studies.mjs` clause so it reads `smoke-studies.mjs 103/103 — its stale diagnosis check was fixed 2026-09-08 (it searches "meyerding", a word only SP-0042 carries); sections 10–14 run three real batches (two films, one unreadable film, two films with a Stop), about three more real runs, so the suite takes roughly a minute longer; it must run on a FRESH launch, never after smoke-workspace.mjs on the same instance, whose loaded films are still unsegmented (summary reads n+1 studies, 1 unsegmented then reads 3 UNSEGMENTED, 2026-09-08)`. Keep the rest of the paragraph (unit 426/426 now; `smoke-workspace.mjs` 100/100; `smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36; `smoke-persist.mjs` 34/34 then 44/44).
+- ~line 114: `(56 of them after Task 9's sections were added; it was 28 before them)` → `(103 of them after the batch sections were added on 2026-09-08; 60 before them, 28 before Task 9's)`.
+- The "Known baseline" paragraph (~lines 257–264): replace the `smoke-studies.mjs` clause so it reads `smoke-studies.mjs 103/103 — its stale diagnosis check was fixed 2026-09-08 (it searches "meyerding", a word only SP-0042 carries); sections 10–14 run three real batches (two films, one unreadable film, two films with a Stop), about three more real runs, so the suite takes roughly a minute longer; it must run on a FRESH launch, never after smoke-workspace.mjs on the same instance, whose loaded films are still unsegmented (summary reads n+1 studies, 1 unsegmented then reads 3 UNSEGMENTED, 2026-09-08)`. In the rest of the paragraph change `unit 402/402` to `unit 426/426` and keep the other figures ( `smoke-workspace.mjs` 100/100; `smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36; `smoke-persist.mjs` 34/34 then 44/44).
 - In the plan-05 section, after the paragraph beginning "**`smoke-studies.mjs` segments `SP-9000` twice**", add: "**Sections 10–14 (2026-09-08) segment three more injected copies of the sample film** in two batches and fail a third on purpose (`SP-9001` has no bytes and no file). They leave `SP-9002`, `SP-9003` and `SP-9005` segmented and `SP-9001`, `SP-9004` unsegmented, so the summary ends `n+6 STUDIES · 2 UNSEGMENTED`."
 
 - [ ] **Step 5: Byte-check and commit**
 
-Run: `git diff -- tools | grep -nP '[^\x00-\x7F]'`
-Expected: the glyph lines this task wrote on purpose (`·`, `…`, `—`) and nothing that used to be an escape.
+Run: `git diff -U0 -- tools | grep -nP '^[+-].*[^\x00-\x7F]'`
+Expected: the `+` glyph lines this task wrote on purpose (`·`, `…`, `—`) and the `-` lines they replace; no `+` line that turned an escape into a glyph or a glyph into an escape.
 
 ```bash
 git add tools/smoke/smoke-studies.mjs tools/smoke/smoke-workspace.mjs tools/smoke/README.md
@@ -2086,19 +2094,19 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
 
 Write each of the sixteen from the spec's §6, in order, keeping the spec's wording of the claim, the why and the cost; number them 51 to 66. Do not paraphrase the costs.
 
-(d) In `## Known traps`, add a bullet ONLY for a trap execution actually hit (the ledger says which); otherwise nothing.
+(d) In `## Known traps`, the `smoke-studies.mjs` bullet (~line 1369): `turn \`1 IN QUEUE\` into \`3 IN QUEUE\`` → `turn \`1 UNSEGMENTED\` into \`3 UNSEGMENTED\``, and replace its second sentence (from `And since \`0f8f821\`` to the bullet's end) with `Its stale diagnosis check was fixed 2026-09-08 (the suite searches "meyerding", a word only SP-0042 carries); 103/103 is green.` Add a NEW bullet only for a trap execution actually hit (the ledger says which); otherwise nothing more.
 
 - [ ] **Step 3: ROADMAP, the two older specs, the batch spec**
 
 (a) `docs/ROADMAP.md` item 3: after the 2026-09-04 note at the top, add a `> **2026-09-08:**` note: `the batch driver (\`renderer/batch.js\`, \`startBatch(ids)\`) is the vehicle for "re-run a selection": it skips segmented films by rule today (batch spec decision 2), and an explicit re-run flag that lifts that rule — after the provenance field exists — is the remaining piece.`
 
-(b) `docs/ROADMAP.md` §5: mark the `smoke-studies.mjs reads 59/60` bullet done (`**Fixed 2026-09-08** — the suite searches "meyerding".`), and add a bullet: `**`/predict` has no timeout.** Neither a single run nor a batch bounds the wait for the backend; a hung backend hangs the run, and a batch's Stop then never returns. Bound the fetch in `main.js`'s predict handler (a generous ceiling, minutes, since a film takes up to a minute on the tested laptop) and surface the timeout as the run's failure reason. Recorded at the batch-segmentation brainstorm (2026-09-08).`
+(b) `docs/ROADMAP.md` §5: mark the `smoke-studies.mjs reads 59/60` bullet done (`**Fixed 2026-09-08** — the suite searches "meyerding".`) and change its `1 IN QUEUE`/`3 IN QUEUE` wording to `UNSEGMENTED`; append to the `The Studies row is a single control for assistive technology` bullet: `(2026-09-08) The row now nests a real checkbox — a second tab stop per row under a \`role="button"\` parent whose children some readers treat as presentational. Mouse and keyboard both work; the accessibility pass owns it.`; and add a bullet: `**`/predict` has no timeout.** Neither a single run nor a batch bounds the wait for the backend; a hung backend hangs the run, and a batch's Stop then never returns. Bound the fetch in `main.js`'s predict handler (a generous ceiling, minutes, since a film takes up to a minute on the tested laptop) and surface the timeout as the run's failure reason. Recorded at the batch-segmentation brainstorm (2026-09-08).`
 
 (c) Redesign spec §9.4: change `{n} STUDIES · {m} IN QUEUE` to `{n} STUDIES · {m} UNSEGMENTED`, and after the search sentence add: `A filter bar (2026-09-08, batch spec §7) carries \`Workspace\` and \`Folder\` selects, shared with the Parameters tab, and the segment button — \`Segment N unsegmented\`, or \`Segment N selected\` over the ticked rows — which a running batch replaces with its count and a Stop. Each real row's STUDY cell carries a tick box; the header a select-all.` In §9.5, change `` `QUEUED` / `RUNNING` state `` to `` `UNSEGMENTED` / `QUEUED` (in the running batch) / `RUNNING` state (2026-09-08) ``.
 
 (d) Pre-op/post-op spec §10.3: add at the end of the filters paragraph: `(2026-09-08) The workspace and folder filters are the Studies screen's: the Find tab shows the same two selects over the same keys.`
 
-(e) Batch spec §9: replace the sentence `"Waiting in the batch" means the id is in \`batch.ids\` at an index greater than \`batch.done\`; the film at index \`batch.done\` is the one in flight, and it is \`state.running\` that says so.` with `"Waiting in the batch" means the id is in \`batch.ids\` at an index at or after \`batch.done\` and it is not the film in flight; \`state.running\` says which film that is (planning ruling: between two films \`running\` is null for the milliseconds the next film's bytes take to read, and the card must not flash).` And in the toast example under §9's table, `S003.png (file not found), S007.png (…)` → `S003 (file not found), S007 (…)` with a note that a failure names the study by its display name.
+(e) Batch spec §9: replace the sentence `"Waiting in the batch" means the id is in \`batch.ids\` at an index greater than \`batch.done\`; the film at index \`batch.done\` is the one in flight, and it is \`state.running\` that says so.` with `"Waiting in the batch" means the id is in \`batch.ids\` at an index at or after \`batch.done\` and it is not the film in flight; \`state.running\` says which film that is (planning ruling: between two films \`running\` is null for the milliseconds the next film's bytes take to read, and the card must not flash).` And in the toast example under §9's table, `S003.png (file not found), S007.png (…)` → `S003 (file not found), S007 (…)` with a note that a failure names the study by its display name; and replace `The \`FILM UNAVAILABLE\` card's re-run button and the toolbar's re-run button are disabled while a batch runs, with the same title.` with `The \`FILM UNAVAILABLE\` card's re-run button is disabled while a batch runs, with the same title; the toolbar's re-run button is disabled too (its tooltip is its label, as today).`
 
 - [ ] **Step 4: Verify and commit**
 
@@ -2134,3 +2142,19 @@ bytes not parked). Planner rulings are in "Rulings made while planning" above. E
 subagent per task with two-stage review; Sonnet for Tasks 1, 2, 4, 6, 7, Opus for Tasks 3 and 5; never Fable. Task 5 commits
 before its human gate with a pending line and is amended after; the ledger stays uncommitted during the gate; every suite in
 the foreground with output captured to a file.
+
+Independent review of the plan (Opus, 2026-09-08, in its own worktree): rebuilt Tasks 1 and 2 from the plan's code blocks
+and ran the suite — 402 → 425 → 426, every new test green at the first run; every quoted anchor verified against the tree;
+the 43 new smoke checks counted; the toast strings recomputed by hand from the built module. Two blocking items folded: the
+byte-checks now look at added lines only (`-U0`, `^+`), because the store's unchanged `running:` comment carries an em dash
+and the first form flagged it; Task 5's `update()` replacement names the closing brace it includes. Ten should-fix items
+folded: the `describeCard` region is named by its comment and its `return null;`; its three `…` are written as the glyphs
+the file carries; analysis.js's sidecar-comment em dash is kept; the post-picker guard sits ABOVE the revision check and
+tests `state.batch` only (below it, the batch's own first run had already moved `runRevision` and the toast was dead code);
+Task 2's Files line no longer spans `sameKey`; the README's stale `56 of them` count; a `margin-right: 0` so `.param-pick`'s
+grid margin does not stack with the cell's gap; the smoke sections click through a null-safe `clickAt`, read the store once
+per check and bound the mid-batch wait to two minutes. Nits folded: the `buildTable` comment's history, the section-4b
+comment, three record anchors, three line numbers, a focus fallback between Segment and Stop, an accessibility note for
+ROADMAP, the boundary note. Not folded: `studies-filters-host` has no CSS rule (a bare host like `studies-table-host`).
+Spec gap found and routed: §9's "the toolbar's re-run button … with the same title" — the toolbar button's title is fixed
+at construction; Task 7 amends the sentence.
