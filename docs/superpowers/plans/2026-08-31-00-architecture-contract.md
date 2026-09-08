@@ -114,7 +114,7 @@ renderer/                         (new)
                                   under a Find | Parameters tab strip (2026-09-06)
   screens/analysis.js             exports setFilePayload, releaseStudy(studyId) (plan 06)
   screens/parameters.js           (2026-09-06) the Parameters tab: exports mountParameters(host, {onOpen}) → {update(live, queried)};
-                                  reads paramFilters/paramSort/paramLevels/paramSelected, writes them; never imports screens/
+                                  reads paramFilters/paramSort/paramLevels/paramSelected, writes them; never imports screens/; the paired export button and its note (2026-09-08, spec §10.4)
 
   components/sidebar.js
   components/viewer.js            toolbar, canvas host, every pointer/keyboard listener on the stage;
@@ -127,7 +127,8 @@ renderer/                         (new)
   components/similar.js           right panel, Find similar tab
   components/clinical-data.js     drawer; exports mountClinicalData(host) → {update} (plan 06) — rows from
                                   visibleStudies(state), [open] until plan 07; a Study group of four cells (2026-09-07, spec §9)
-  components/toast.js
+  components/toast.js             showToast(message), render(state); toastDuration(text) (2026-09-08): 2.2 s to forty characters,
+                                  then 40 ms per character, capped at 8 s, for every toast
 
   viewer/canvas.js                layered rendering
   viewer/interactions.js          pure interaction logic: zoom steps, hit tests, Tab order, nudge, debounce (no DOM)
@@ -141,7 +142,7 @@ renderer/                         (new)
   data/measurements.js            API response → display rows
   data/similarity.js              weighted distance
   data/status.js                  status derivation
-  data/csv.js                     parse, auto-map, export
+  data/csv.js                     parse, auto-map, export; toPairedCsv and delta1 (2026-09-08)
   data/labels.js                  how a study names itself and where it came from
   data/timepoints.js              (2026-09-07) pure: timepoint and view vocabularies, token normalisation, §7.2 sort order,
                                   parseFilmDate, the drawer's suggestion lists
@@ -149,11 +150,14 @@ renderer/                         (new)
                                   Workspace card's table, seedFields for the §8.3 precedence
   data/parameters.js              (2026-09-06) pure: columns, values, filter options, filter, sort, empty reason, export
                                   filename for the Parameters tab -- see the file header for the exported names;
-                                  selection helpers toggleId/withIds/selectedVisible/rowsToExport (2026-09-07)
+                                  selection helpers toggleId/withIds/selectedVisible/rowsToExport (2026-09-07); exportFileName(workspace, kind = 'parameters') (2026-09-08)
+  data/pairing.js                 (2026-09-08) pure: pairStudies(rows, {post}) → {visits, post, subjects: [{key, subject, films: Map}],
+                                  unpaired, ambiguous, noSubject, noTimepoint, otherVisits} for the paired export (spec §11.2);
+                                  postFromFilters(filters); pairedExportMessage(pairing, savedTo) (§11.3)
 
 test/                             (new) mirrors renderer/ — node --test
   geometry.test.js  similarity.test.js  status.test.js
-  csv.test.js  measurements.test.js  persistence.test.js
+  csv.test.js  measurements.test.js  persistence.test.js  pairing.test.js  toast.test.js
   scan-folder.test.js  workspace.test.js  clinical-data.test.js
 
 electron-builder.preview.yml      (new, plan 01)
@@ -584,6 +588,13 @@ export function toCsv(studies)           // → string   (2026-09-07) Study ID,V
                                          //   the Source column and the includeDemo option are gone. (2026-09-06) clinical
                                          //   columns are clinicalFieldNames() over the exported rows -- the `fields`
                                          //   parameter is gone; see the pre-op/post-op spec §11.1
+export function toPairedCsv(pairing)     // → string   (2026-09-08, spec §11.2) the wide file from data/pairing.js's pairStudies:
+                                         //   citation block; layout-B header (`<label> study`, view, film date per visit, then per
+                                         //   measurement `<M> Pre-op`, `<M> <label>`, `Delta <M> <label>` per later visit, then
+                                         //   `<F> <label>` per clinical key on the written films); one row per subject. Demo rows
+                                         //   never reach it; headers use the stored label and ASCII `Delta`
+export function delta1(pre, post)        // → number|''   post minus pre over the one-decimal forms of each, to one decimal; ''
+                                         //   when either is not finite. Comparison mode (plan 07) applies the same rule
 export function fileStem(name)           // → string   (plan 06) basename without its last extension
 export function findJoinHeader(headers)  // → string|null   (plan 06) the first header normalising to 'studyid'
 export function joinClinical({files, headers, rows, mapping})   // (plan 06) → {joinHeader, byFile, rowByFile, matched,

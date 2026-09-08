@@ -623,7 +623,7 @@ implementation plan, each merged back before the next starts:
    including the folder table, §9, the timepoint, view, subject and paired-only filters, subject
    sort, the load message, the three new export columns.
 3. **Compare with pre-op** (§12), after plan 07 has built comparison mode.
-4. **Paired export** (§11.2, §11.3).
+4. **Paired export** (§11.2, §11.3) — DONE (plan `2026-09-08-paired-export.md`, branch `claude/preop-postop-paired-export`).
 
 ## 16. Risks and open questions
 

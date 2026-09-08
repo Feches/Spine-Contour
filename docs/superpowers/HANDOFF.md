@@ -3,9 +3,8 @@
 **Last updated:** 2026-09-08
 **Branch:** `claude/studies-ui-updates-bb040d` (the studies work plus the Parameters tab, on top of `origin/ui-redesign-cw` @ `0022d91`)
 **Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
-**This copy is on:** `claude/preop-postop-paired-export` (task 4 of the pre-op/post-op spec, the paired export:
-brainstormed, spec amended and plan written and reviewed on 2026-09-08, nothing implemented; branched 2026-09-08 off the
-studies tip `adf3c19`, where task 2 was merged back on 2026-09-07; merge back is the user's call), worktree
+**This copy is on:** `claude/preop-postop-paired-export` (task 4 of the pre-op/post-op spec, the paired export, code
+and docs; branched 2026-09-08 off the studies tip `adf3c19`; merge back is the user's call), worktree
 `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628` — see the first
 section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
@@ -23,15 +22,27 @@ section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
 ## Where things stand
 
-### Paired export — task 4 of the pre-op/post-op spec, PLANNED, nothing implemented (branch `claude/preop-postop-paired-export`)
+### Paired export — task 4 of the pre-op/post-op spec, DONE (branch `claude/preop-postop-paired-export`)
 
-Brainstormed and planned on 2026-09-08 off the studies tip `adf3c19` (which has not moved). Spec §10.4, §11.2 and
-§11.3 were laid out at the brainstorm from two worked tables and two example toasts (decisions 47–50; commit
-`651d72b`). Plan `docs/superpowers/plans/2026-09-08-paired-export.md` (Tasks 1–6 — `data/pairing.js`; `toPairedCsv`
-and `delta1`; `toastDuration`; the button with one human gate; smoke section 13; records — its `## Ledger` at the
-end) was independently reviewed on Opus with no blocking finding, and the six should-fix items were folded
-(`83ab3a8`). Resume at **Task 1** with subagent-driven development; `docs/superpowers/NEXT-SESSION.md` is the
-prompt. Unit 379/379 at the wrap; no code touched; nothing pushed but docs.
+Spec §10.4, §11.2, §11.3 as laid out at the 2026-09-08 brainstorm (decisions 47–50). Plan
+`docs/superpowers/plans/2026-09-08-paired-export.md` (Tasks 1–6, its `## Ledger` at the end). Commits:
+`git log --oneline adf3c19..HEAD`.
+
+- `renderer/data/pairing.js` (pure): `pairStudies(rows, {post})` drops demo rows, groups by subject key, judges each
+  subject (unpaired first — no Pre-op film or no film on a candidate visit — then ambiguous — two films on any label
+  the file writes), and returns the visits with columns (candidates a written subject carries), one entry per written
+  subject (`films` a Map by label, Pre-op first) and the §11.3 counts; `postFromFilters` reads the `with` label only
+  while Paired only is ticked; `pairedExportMessage` builds the toast, five names per clause then `…`.
+- `toPairedCsv(pairing)` in `renderer/data/csv.js` writes layout B (measurement-major): `<label> study`, `<label> view`,
+  `<label> film date` per visit, then per measurement `<M> Pre-op`, `<M> <label>`, `Delta <M> <label>`, then `<F> <label>`
+  per clinical key over the written films. `delta1(pre, post)` is post minus pre over the one-decimal values, empty
+  when either is absent, exported for plan 07.
+- `Export paired CSV` sits beside `Export CSV` on the Parameters filter bar over the same rows (visible, or ticked
+  visible); reads `Export paired · N selected`; disabled with the long button's note when that one is disabled, else
+  with its own `No paired subjects in these rows`; suggested name `<workspace>-paired.csv` / `library-paired.csv`.
+- `toastDuration(text)` in `components/toast.js`: 2.2 s to forty characters, then 40 ms per character, capped at 8 s;
+  every toast, the workspace load message included.
+- Verified: unit 402/402; `smoke-parameters.mjs` 58/58; Task 4's human gate (outcomes in its commit body).
 
 ### Study fields — task 2 of the pre-op/post-op spec, DONE (branch `claude/preop-postop-study-fields`)
 
@@ -1337,6 +1348,12 @@ production release:
 
 ## Known traps
 
+- **The Edit and Write tools can rewrite a `\uXXXX` escape in JS source as the literal glyph, and once turned
+  a `§` in a JS comment into the six characters `\u00A7`** (2026-09-08, three times in one session: `\u2026`/`\u00B7`
+  in `pairing.js` and `smoke-parameters.mjs`, `§` in `screens/parameters.js`). Both forms compare equal at
+  runtime, so no test catches it; only a byte-level look at the diff does (`od`, or `cat -A`). Repair with a small
+  Python script — Git Bash `sed` drops backslashes from replacement text, and a `bash -c` one-liner mangles them
+  too. Check the diff for stray glyphs or `\u00` sequences before every commit that touches such a line.
 - **A Sonnet implementer that starts a multi-minute suite in the background and "waits for the
   Monitor" ends its turn mid-task** (twice on 2026-09-07), leaving files edited, nothing committed
   and the app alive on port 9222; `SendMessage` is not available in this harness, so it cannot be
