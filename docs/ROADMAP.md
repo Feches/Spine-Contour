@@ -182,6 +182,11 @@ Not code quality; these stand between the branch and a production release.
 
 ## 5. Smaller known limitations
 
+> **2026-09-08, reconcile:** the release list in §4 gains the Tesseract runtime — the preview and production
+> workflows now `choco install tesseract` and `--add-data` it into the backend bundle, and `check_bundled_ocr.py`
+> verifies the bundle. None of that has been exercised by an installer yet, and `pytest backend` has not been run
+> on the merged backend from this side.
+
 - **A bulk load has no ceiling.** The scan, the IPC payload and the load are unbounded. The realistic
   input is a public dataset of thousands of films, not a mistaken drive root.
 - **Five things have no automated coverage**, and each would stay green if broken: the two deferred
@@ -288,6 +293,26 @@ Not code quality; these stand between the branch and a production release.
   review's fix wave, 2026-09-08.
 - **`tools/smoke/smoke-persist.mjs` comments (around lines 561, 590 and 683) still name `runSegmentation`**, which
   became `segmentStudy` on 2026-09-08. A word sweep the next time that suite is edited.
+- **The segment button is not disabled during a bulk delete.** `startBatch` refuses while `state.deletingStudies` is
+  set (the reconcile's ruling R-M5), but the Find tab's button still reads `Segment N …` for the seconds a "Delete
+  all studies" takes, and a click in that window does nothing and says nothing. Feed `deletingStudies` to `planBatch`
+  as a `note`, the way `running` is. Reconcile of 2026-09-08.
+- **Hiding the demo studies is one-way.** "Delete all studies" in a development build writes
+  `hideDemoStudies: true` to `library-preferences.json` in userData and nothing writes it back, so the nine fixtures
+  the smoke suites and every manual check lean on are gone until the file is edited by hand (the scratch profile the
+  smoke harness uses is fresh per launch and is not affected). A packaged build has no demos and is unaffected.
+  Upstream's design (2026-09-07); worth a "Show demo studies" toggle in Settings for development builds.
+- **The calibration detour has no automated coverage, and leaving it by the sidebar strands its request.** Every
+  nonempty workspace folder scan sets `calibrationRequest` and `screen: 'calibration'`; only Skip / Continue clear
+  the request. Leaving through the sidebar leaves it set, so the next visit through the sidebar's "Image
+  calibration" row shows the onboarding block with the pickers hidden. `smoke-workspace.mjs` drives `scanFolder`
+  directly and never meets the screen. Upstream's design (2026-09-07); needs a smoke section and a human
+  click-through with and without the Tesseract runtime.
+- **Bulk-delete polish** (upstream's feature, 2026-09-07; found at the reconcile review): the per-row trash buttons
+  are not disabled during a bulk delete and the guards return silently; the bulk row sits outside the Find tab's
+  focus snapshot, so focus drops to `<body>` after Cancel; `blocked` reads `persistenceDisabledReason()`, which is not
+  a store key, so persistence disabled mid-session does not repaint the row until another key changes; the
+  partial-failure toast names only the first failure.
 
 ---
 

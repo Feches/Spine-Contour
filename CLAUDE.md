@@ -61,6 +61,19 @@ stays a single id; `segmentStudy(studyId, {batch})` is the exported run core. Ta
 `192f303`); after it, the release prerequisites and the ROADMAP items; spec task 3 waits for plan 07.
 `docs/superpowers/NEXT-SESSION.md` is the prompt.
 
+**Branch `claude/upstream-reconcile-2026-09-08` (2026-09-08)** is the handover tip: the batch was merged back into
+`claude/studies-ui-updates-bb040d` (fast-forward to `b7789b3`), then the backend developer's trunk
+`origin/ui-redesign-cw` @ `5078b1c` (ruler-based folder calibration and its screen, OCR packaging, a calibration
+prompt after every nonempty folder scan, "Delete all studies" with a one-way demo-hiding preference) was merged in
+as `2bf3d21`, with `5cf52c7` and `245cae2` reconciling the two sides (both demo gates coexist; delete-all,
+batch and single run are mutually exclusive; delete-all prunes the shared selection). Unit 433/433; every smoke
+suite green (`smoke-studies.mjs` 103/103 on a fresh launch). The studies branch is fast-forwarded to this tip and
+**the same tip is pushed as `fork/ui-redesign-cw`, the branch the backend developer takes** (his merge is a
+fast-forward); that push builds the first preview installer to carry plan 06 and everything after it. **Owed by the
+human:** install that build, open it on an empty library, run one batch, and walk the calibration screen once (Skip
+with Tesseract absent). HANDOFF's "Handing this to the backend author" is rewritten for him.
+`docs/superpowers/NEXT-SESSION.md` is the prompt.
+
 ## Read these first
 
 | Document | What it is |
@@ -130,7 +143,9 @@ Backend tests:
 
 ## Backend API
 
-Local only, on a random port. Four endpoints:
+Local only, on a random port. Four endpoints the measurement UI uses, plus the backend developer's two calibration
+endpoints (`POST /calibrate`, `POST /calibration-profile`, 2026-09-07; `scipy`, `pytesseract` and the Tesseract runtime
+are theirs — the venv needs the two packages for the backend to start):
 
 - `POST /predict` — multipart file upload. Returns `image_png`, `mask_png`,
   `femoral_mask_png`, `measurements`, `geometry`, `qc`, `labels` (all base64 where
@@ -170,8 +185,8 @@ packages; keep `--collect-all timm` in both workflows.
 
 ## Git
 
-This worktree is on branch `claude/batch-segmentation` (2026-09-08), branched from
-`claude/studies-ui-updates-bb040d` and meant to merge back into it. Two remotes:
+This worktree is on branch `claude/upstream-reconcile-2026-09-08` (2026-09-08), the handover tip described above;
+`claude/studies-ui-updates-bb040d` and `fork/ui-redesign-cw` point at the same commit. Two remotes:
 
 - `fork` → `github.com/Feches/Spine-Contour` — **push here**
 - `origin` → `github.com/mjayasur/Spine-Contour` — upstream, read-only in practice

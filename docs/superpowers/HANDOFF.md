@@ -3,9 +3,11 @@
 **Last updated:** 2026-09-08
 **Branch:** `claude/studies-ui-updates-bb040d` (the studies work plus the Parameters tab, on top of `origin/ui-redesign-cw` @ `0022d91`)
 **Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
-**This copy is on:** `claude/batch-segmentation` (batch segmentation of loaded films; branched 2026-09-08 off the
-studies tip `192f303`), worktree `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628`
-— see the first section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
+**This copy is on:** `claude/upstream-reconcile-2026-09-08` — the UI branch (batch segmentation included) with the
+backend developer's trunk `origin/ui-redesign-cw` @ `5078b1c` merged in (2026-09-08); the studies branch was
+fast-forwarded to it and the same tip is pushed as `fork/ui-redesign-cw`, the branch the backend developer takes.
+Worktree `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628` — see the first two
+sections under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
 > The redesign line moved. `origin/ui-redesign-cw` (upstream, `mjayasur/Spine-Contour`) is the real
 > trunk: it carries the redesigned renderer **and** the newer backend — `backend/framing.py`,
@@ -20,6 +22,40 @@ studies tip `192f303`), worktree `C:\Users\codyj\spine contour\.claude\worktrees
 ---
 
 ## Where things stand
+
+### Upstream reconcile and handover — DONE (branch `claude/upstream-reconcile-2026-09-08`, pushed as `fork/ui-redesign-cw`)
+
+On 2026-09-08, after the batch was merged back into `claude/studies-ui-updates-bb040d` (fast-forward to `b7789b3`), the
+backend developer's trunk `origin/ui-redesign-cw` @ `5078b1c` — four commits from 2026-09-07: ruler-based folder
+calibration (backend `calibration.py`, `ruler_extraction.py`, `/calibrate` and `/calibration-profile`; a renderer
+`screens/calibration.js` with `components/calibration-viewer.js`, `components/folder-calibration.js`,
+`data/calibration.js`), OCR packaging in the workflows (`tools/packaging/*.py`, a Tesseract `--add-data`), a calibration
+prompt after every nonempty workspace folder scan, and "Delete all studies" with a one-way `hideDemoStudies` preference —
+was merged into the UI branch as `2bf3d21`, followed by `5cf52c7` and `245cae2` (the reconcile fixes). Four
+files conflicted (`renderer/main.js`, `screens/studies.js`, `screens/workspace.js`, `styles/screens/studies.css`);
+the rulings, each with its cost, are in the reconcile ledger (git-ignored) and summarised here:
+
+- Demo gating keeps both mechanisms: `demoStudiesAllowed() && !hideDemos ? merge(real) : real` — a packaged build never
+  shows demos (decision 19), and a development build hides them after "Delete all studies" (his preference file
+  `library-preferences.json` in userData). The empty-state wording is ours (`EMPTY_COPY`).
+- "Delete all studies" is kept as his feature, mounted library-level between the Studies header and the Find | Parameters
+  tab strip; it also refuses while a batch is up (`WAIT_FOR_BATCH`), says "including demos" only when a demo is present,
+  and prunes the deleted ids from the shared `paramSelected` (as the single delete does; `nextId` reuses a freed id at
+  once). The search input mirrors `live.query`, which the bulk delete clears.
+- His run-path guard is an outcome in `segmentStudy` (`{ ok: false, reason }`, toast only when interactive); the batch
+  driver refuses `startBatch` while `deletingStudies` (one test); `deleteAllStudies` sets `deletingStudies` before its
+  first await, so run, batch and bulk delete are mutually exclusive.
+- The workspace folder-choose handler sets our keys (`wsFolder`, `wsFiles`, `wsFolderRows`) and his
+  (`calibrationRequest`, `screen: 'calibration'`) in one `setState`; his screen returns to Workspace, where the folder
+  table is showing. **Every nonempty folder scan now detours through his calibration screen** (Skip for now / Calibrate
+  folder and continue); no smoke suite drives that path.
+- Verified: unit 433/433; `smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36; `smoke-workspace.mjs` 100/100;
+  `smoke-studies.mjs` 103/103; `smoke-persist.mjs` 36/36 then 44/44; both allowlists identical; CSP untouched. The
+  Python suite was not run on the merged backend here (the backend developer's); `scipy` and `pytesseract` were added to
+  the venv. Two reviews (the merge, then the fix) on Opus and Sonnet; findings in `docs/ROADMAP.md` §5.
+- **Human checks still owed** (from source, then from the preview installer the push builds): choose a workspace folder
+  and walk his calibration screen once with the Tesseract runtime absent (Skip) and once present; open an installed
+  build on an empty library; run one batch in the installed build.
 
 ### Batch segmentation — DONE (branch `claude/batch-segmentation`)
 
@@ -840,76 +876,76 @@ prerequisites, and the smaller known limitations.
 
 ### Handing this to the backend author — read this first
 
-This branch is being handed to the developer who wrote the Python backend, to merge a newer
-segmentation model into it. Five things matter more than anything else above.
+Updated 2026-09-08. **Take `fork/ui-redesign-cw`** (`github.com/Feches/Spine-Contour`). It contains your trunk
+`origin/ui-redesign-cw` @ `5078b1c` as a merge parent (`2bf3d21`), so merging it into your `ui-redesign-cw` is a
+fast-forward, and every UI change since your `0022d91` sits on top: the Studies screen's Find | Parameters tabs, the
+pre-op/post-op study fields and the paired export, batch segmentation, and the reconcile of your four 2026-09-07
+commits (what changed in your files during that merge is the "Upstream reconcile" section at the top of this
+document). Six things matter more than anything else below.
 
-**1. Nothing records which model produced a stored measurement.** A study's `measurements`,
-`geometry` and `qc` are stored with no provenance whatsoever — no model name, no version, no
-date of the run. The moment a second model exists, old and new numbers sit in one library, one
-exported CSV and one set of prediction sidecars with nothing to tell them apart, and there is no
-way to ask which studies need re-running and no bulk re-run. If the payload changes **shape**
-rather than only its values, `validate` (`renderer/data/persistence.js`) nulls **both**
-`measurements` and `geometry` on every affected record — they are all-or-nothing together — with
-one `console.warn` per record, those studies fall back to `Processing`, and each has to be re-run
-individually from its own Analysis screen. Nothing is lost from disk, but nothing is recovered
-automatically either. `docs/ROADMAP.md` item 3 has the shape of the fix: a provenance field on
-the record, `validate` preserving it, the status derivation treating an older model's numbers as
-needing a re-run, and a way to re-run a selection. It changes the stored record, so it needs a
-`STORE_VERSION` bump and a contract amendment, and it deserves its own plan rather than a patch.
+**1. Nothing at the store level records which model produced a stored measurement.** `qc.models` names the model per
+result since 2026-09-04, but a study's `measurements`, `geometry` and `qc` carry no store-level provenance, there is no
+"needs re-run" state, and bulk re-run is deliberately absent: a batch never re-runs a segmented film (decision 52). If
+your payload changes **shape** rather than only its values, `validate` (`renderer/data/persistence.js`) nulls **both**
+`measurements` and `geometry` on every affected record with one `console.warn` each; those studies fall back to
+`Processing` and can then be segmented again — one click on the Find tab now runs every unsegmented film in a batch.
+`docs/ROADMAP.md` item 3 has the shape of the full fix (a provenance field, `validate` preserving it, an explicit re-run
+flag on the batch driver); it needs a `STORE_VERSION` bump and a contract amendment and deserves its own plan.
 
-**2. The response contract your model has to satisfy.** The contract's **Measurements** and
-**Geometry** blocks (`docs/superpowers/plans/2026-08-31-00-architecture-contract.md`) are
-binding; what follows is only what the renderer enforces at load time. `POST /predict` returns
-`image_png`, `mask_png`, `femoral_mask_png` (base64 PNGs the viewer composites; `labels` drives
-the overlay colours), plus `measurements`, `geometry` and `qc`. `POST /measure` returns
-`{measurements, geometry}` from geometry alone, and is what makes live re-measurement after a
-landmark correction affordable. `isValidMeasurements` requires finite `PI`, `PT`, `SS` and
-`LL['L1-S1']`; `L1PA` and `LL['L2-S1']`…`['L5-S1']` may be absent, but a present non-finite value
-fails. `isValidGeometry` requires `vertebrae.L1`…`L5` each with `superior` and `inferior` as two
-points and `quadrilateral` as four, `s1_superior` as two points, `l1_center` and `hip_midpoint`
-as points, and exactly two `femoral_circles`, each `[cx, cy, r]` with a **positive** radius.
-`qc` is opaque; only `qc.femoral.confidence` is read. A record that fails either check keeps its
-film and its id and loses its numbers, as described above. Two project rules constrain the
-payload as much as the schema does: an absent value renders `—`, never `0` and never a guess, so
-do not substitute a placeholder for something the model could not produce; and `SS` is sacral
-slope, not sacral inclination — the backend once returned it under the key `SI`, and that rename
-is settled.
+**2. The response contract your model has to satisfy.** The contract's **Measurements** and **Geometry** blocks
+(`docs/superpowers/plans/2026-08-31-00-architecture-contract.md`) are binding. `POST /predict` (multipart; optional form
+fields `vertebra_model`, `femoral_model`, `s1_model`, a 422 for anything `GET /models` does not offer) returns
+`image_png`, `mask_png`, `femoral_mask_png`, `labels`, `measurements`, `geometry` and `qc`; `POST /measure` returns
+`{measurements, geometry}` from geometry alone and is what makes live re-measurement after a landmark correction
+affordable. `isValidMeasurements` requires finite `PI`, `PT`, `SS` and `LL['L1-S1']`; `L1PA` and `LL['L2-S1']`…`['L5-S1']`
+may be absent, but a present non-finite value fails. `isValidGeometry` requires `vertebrae.L1`…`L5` each with `superior`
+and `inferior` as two points and `quadrilateral` as four, `s1_superior` as two points, `l1_center` and `hip_midpoint` as
+points, and exactly two `femoral_circles`, each `[cx, cy, r]` with a **positive** radius. `qc` is opaque except
+`qc.femoral.confidence`, `qc.models` and `qc.framing`. Two project rules constrain the payload as much as the schema:
+an absent value renders `—`, never `0` and never a guess, so do not substitute a placeholder for something the model
+could not produce; and `SS` is sacral slope, not sacral inclination. Your `/calibrate` and `/calibration-profile`
+endpoints are yours; the renderer calls them only from your calibration screen.
 
 **3. How to prove you have not broken the renderer**, in this order:
 
-1. `node --test test/*.test.js` — 270/270, no Electron needed, a few seconds. Run this first
-   after any merge. (`node --test test/` without the glob fails on Node 24; use the glob.)
-2. Launch from source: see "Running from source" below — `SPINE_CONTOUR_PYTHON` must point at a
-   venv python or the backend exits `9009`, and a fatal startup error shows a *modal*, so a live
-   process is not evidence of a successful launch.
-3. The CDP smoke suites, in the order and with the preconditions in `tools/smoke/README.md`.
-   Baselines at `d1cb14d`: `smoke-studies` 56/56, `smoke-workspace` 96/96, `smoke-persist
-   --phase run` 33/33 and `--phase restart` 44/44, `smoke-parity` 15/15, `smoke-gate1` 25/25,
-   `smoke-gate2` 32/32, `smoke-gate3` 23/23, `smoke-chip` 20/20. Two rules the run order exists
-   for: **nothing may run between `smoke-persist`'s two phases** (the restart phase compares
-   against a store it did not expect to change), and `smoke-studies` and `smoke-workspace` each
-   need a **fresh scratch profile**. `smoke-label.superseded.mjs` is out of the run order on
-   purpose and fails 7 of 16 against correct code; do not run it and do not report it.
+1. `node --test test/*.test.js` — 433/433, no Electron needed, a few seconds. (`node --test test/` without the glob fails
+   on Node 24.)
+2. Launch from source: `SPINE_CONTOUR_PYTHON` must point at a venv python that has `backend/requirements.txt` installed
+   (now including `scipy` and `pytesseract`), or the backend exits `9009`; a fatal startup error shows a *modal*, so a
+   live process is not evidence of a successful launch.
+3. The CDP smoke suites, in the order and with the preconditions in `tools/smoke/README.md`. Baselines at this tip:
+   `smoke-parameters` 58/58, `smoke-seeding` 36/36, `smoke-workspace` 100/100 (one launch, in that order);
+   `smoke-studies` 103/103 (a FRESH launch; about ten minutes, seven real segmentations); `smoke-persist --phase run`
+   36/36 then `--phase restart` 44/44 across a real restart with `SMOKE_KEEP_PROFILE=1`; the viewer gates and the rest
+   as the README lists. Two rules the run order exists for: **nothing may run between `smoke-persist`'s two phases**,
+   and `smoke-studies` needs a **fresh scratch profile** (never after `smoke-workspace` on the same instance). A suite
+   that prints nothing has thrown. Do not run `pytest` while a canvas suite runs; both starve on a CPU-only laptop.
+4. `python -m pytest backend -q` — yours; not run here on the merged backend.
 
-**4. Three things have no automated coverage, and each would stay green if broken.** The two
-deferred commits in the clinical drawer (`queueMicrotask` in `renderer/components/clinical-data.js`)
-that stop a rebuild stranding text a user has typed — delete either one and the whole suite still
-passes. The delete path's data-safety branches (the sidecar removal and the id-keyed cache
-clears). And **the bootstrap step that seeds the drawer's columns from stored clinical values,
-which is `setState({ studies, fields: clinicalFieldNames(studies) })` in `renderer/main.js`** —
-that is the block a merge is most likely to conflict in, and if the `fields` term is lost the app
-looks fine while every stored clinical value becomes invisible and drops out of `Export CSV`.
+**4. Five things have no automated coverage, and each would stay green if broken.** The two deferred commits in the
+clinical drawer (`queueMicrotask` in `renderer/components/clinical-data.js`). The delete paths' data-safety branches —
+the sidecar removal, the id-keyed cache clears, the `paramSelected` prune in both the single and the bulk delete, and
+the late `running` re-check in `deleteStudy` that closes a delete/batch race. The bootstrap step that seeds the drawer's
+columns, `setState({ studies, fields: clinicalFieldNames(studies) })` in `renderer/main.js` — the block a merge is most
+likely to conflict in; if the `fields` term is lost the app looks fine while every stored clinical value becomes
+invisible and drops out of `Export CSV`. The relocate-picker path in `segmentStudy` and its post-picker
+`state.batch` re-check. And **your calibration detour**: the folder-choose handler in `screens/workspace.js` now sends
+every nonempty scan to `screens/calibration.js`; `smoke-workspace.mjs` calls `scanFolder` over CDP and never sees it.
 
-**5. What must not be merged to `main` yet.** See "Release prerequisites" below; three of them
-are yours to know about. `.github/workflows/windows.yml` — the production release path — runs no
-renderer tests and performs no packaging-allowlist check, while the preview workflow does both;
-the two allowlists (`package.json` `build.files` and `electron-builder.preview.yml`) are the
-files most likely to conflict in a merge, and dropping a root file from one of them ships an
-installer that opens a blank window with CI green. `windows.yml` also has no repository guard,
-only `branches: [main]`, so merging a descendant of this branch into a fork's `main` would run
-the production workflow there and publish a release tagged as the latest. And the nine demo
-studies still ship in every build; they are wanted in development and in the preview installer
-and must be absent from a production build. `docs/ROADMAP.md` item 4 carries all three.
+**5. Decisions that bind the UI** (`## Decisions already made`, 1–66): the nine demo studies are absent from every
+packaged build (19) — your `hideDemoStudies` preference coexists with that gate; `state.running` is one study id and
+the batch is a strict sequence of single runs (13, 55); progress is a count of attempts, never a stage or a time (6,
+56); `IN QUEUE` is `UNSEGMENTED` and `QUEUED` means only "in the running batch" (57); a batch never re-runs a segmented
+film (52); ticked rows are one selection shared by both Studies tabs (53). Reopen any of them with the user, not in code.
+
+**6. What must not be merged to `main` yet.** See "Release prerequisites". `.github/workflows/windows.yml` still has no
+repository guard (only `branches: [main]`; your OCR step did not add one) and runs no renderer tests and no
+packaging-allowlist check, while the preview workflows do both; the two allowlists (`package.json` `build.files` and
+`electron-builder.preview.yml`) are identical today and are the files most likely to conflict in a merge — dropping a
+root file from one ships an installer that opens a blank window with CI green. No installer has been built from this
+lineage yet: the push of `fork/ui-redesign-cw` on 2026-09-08 is the first preview build to carry plan 06 and everything
+after it, including your Tesseract `--add-data` and `check_bundled_ocr.py`. Known open defects are in `docs/ROADMAP.md`
+§5; one pre-existing prototype-key clinical leak is still open.
 
 ### Backend merge 2026-09-04 — crop search and model choice
 
@@ -1443,6 +1479,10 @@ production release:
   the files most likely to conflict in a merge, and a merge that drops a root file from one of
   them would publish an installer that opens a blank window with CI green. Named at plan 06's
   closing whole-branch review and deliberately not changed there.
+- **The first preview installer from this lineage is the one the 2026-09-08 push of `fork/ui-redesign-cw` builds.**
+  It carries plan 06 and everything after it, plus the backend developer's Tesseract `--add-data` and
+  `check_bundled_ocr.py`, none of which has ever been packaged. Install it, open it on an empty library, run one
+  batch, and walk the calibration screen once; record the outcome here.
 - **Test the branch through the preview installer before pushing to the fork's `main`.**
   (decision 16 above). **Open, and never yet done for plan 06's code.** The user decided on
   2026-09-04 that they do not need the installer to work, so plan 06's Task 9 pushed the branch
