@@ -415,7 +415,8 @@ try {
     procRows: document.querySelectorAll('.studies-row .badge-proc').length,
   }))()`);
   // A select is driven by setting its value and dispatching change (cdp-lib's key() cannot pick).
-  const pick = (key, value) => cdp.evaluate(`(() => { const el = document.querySelector('[data-find-key="${key}"]'); el.value = ${JSON.stringify(value)}; el.dispatchEvent(new Event('change', { bubbles: true })); return el.value; })()`);
+  // A missing element returns null rather than throwing (see the comment above clickAt).
+  const pick = (key, value) => cdp.evaluate(`(() => { const el = document.querySelector('[data-find-key="${key}"]'); if (!el) return null; el.value = ${JSON.stringify(value)}; el.dispatchEvent(new Event('change', { bubbles: true })); return el.value; })()`);
   const summaryParts = async () => {
     const m = /^(\d+) STUDIES · (\d+) UNSEGMENTED$/.exec(((await text(cdp, '.studies-summary')) || '').trim());
     return m ? { studies: Number(m[1]), unsegmented: Number(m[2]) } : null;
@@ -444,11 +445,14 @@ try {
 
   await pick('workspace', 'C:\\smoke\\Fusion2025');
   await cdp.settle(150);
-  const ws10 = await cdp.evaluate(`(() => ({
-    rows: [...document.querySelectorAll('.studies-row')].map((r) => r.dataset.studyId),
-    folder: [...document.querySelectorAll('[data-find-key="folder"] option')].map((o) => o.textContent),
-    value: document.querySelector('[data-find-key="workspace"]').value,
-  }))()`);
+  const ws10 = await cdp.evaluate(`(() => {
+    const el = document.querySelector('[data-find-key="workspace"]');
+    return {
+      rows: [...document.querySelectorAll('.studies-row')].map((r) => r.dataset.studyId),
+      folder: [...document.querySelectorAll('[data-find-key="folder"] option')].map((o) => o.textContent),
+      value: el ? el.value : null,
+    };
+  })()`);
   check('filtering by workspace leaves the one film under that root', JSON.stringify(ws10.rows) === JSON.stringify(['SP-9001']), ws10.rows);
   check('the Folder select narrows to that root and the select keeps its value across the rebuild', JSON.stringify(ws10.folder) === JSON.stringify(['All folders', 'pre-op']) && ws10.value === 'C:\\smoke\\Fusion2025', ws10);
   const summary10 = await summaryParts();
@@ -477,7 +481,7 @@ try {
   check('ticking a row selects it without opening the study', s.screen === 'studies' && JSON.stringify(s.paramSelected) === JSON.stringify(['SP-9000']), { screen: s.screen, selected: s.paramSelected });
   const bar10Ticked = await readBar();
   check('with only a segmented row ticked the button is disabled and says so', bar10Ticked.label === 'Segment 0 selected' && bar10Ticked.disabled === true && bar10Ticked.note === 'All selected studies are segmented', bar10Ticked);
-  const all10 = await cdp.evaluate(`(() => { const el = document.querySelector('input[data-find-key="select-all"]'); return { checked: el.checked, indeterminate: el.indeterminate }; })()`);
+  const all10 = await cdp.evaluate(`(() => { const el = document.querySelector('input[data-find-key="select-all"]'); if (!el) return { checked: null, indeterminate: null }; return { checked: el.checked, indeterminate: el.indeterminate }; })()`);
   check('select-all is indeterminate with one of two real rows ticked', all10.checked === false && all10.indeterminate === true, all10);
   await clickAt('input[data-find-key="select-all"]');
   await cdp.settle(150);
