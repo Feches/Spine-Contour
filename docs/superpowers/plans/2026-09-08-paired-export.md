@@ -1482,3 +1482,63 @@ this session, each also in the spec and HANDOFF 47–50:
 - Ruling (user): plan in this session, execute in a fresh one — cost if wrong: none; the prompt carries the state.
 - Ruling: decisions 48–50 and the task-4 "Where things stand" entry were written into HANDOFF at this wrap, so Task 6
   verifies rather than appends them — cost if wrong: none.
+
+Session 2026-09-08 (execution): the studies tip had not moved (`adf3c19`). Tasks 1–6 executed by subagent-driven
+development from `c3a4265` — Sonnet implementers for Tasks 1, 2, 3, 5, 6 and the fix rounds, Opus for Task 4, every task
+review and the final review; the scratch workspace `.superpowers/sdd/2026-09-08-paired-export/` (git-ignored) carried the
+briefs, reports, review packages and the running ledger and was deleted at the wrap. Pre-flight scan clean: fourteen rows,
+every anchor checked against the tree. Commits: `55447a5` (Task 1), `5869ea4` (Task 2), `3bcaddb` (Task 3), `19b8d43`
+(Task 4, amended after the gate), `1fbb588` (Task 5), `a6bb1cf` + `a60e6cd` (Task 6, one fix round), `b37b759` (the final
+review's fix wave). Every task review was clean at the first pass except Task 6 (one Important: the lead-in above
+decisions 48–50 still said "None is implemented yet"). Task 4's human gate passed 2026-09-08 — the user replied "ok
+checks pass", all seven, recorded in `19b8d43`'s body without per-check detail. Final whole-branch review (Opus,
+`c3a4265..a60e6cd`): ready to merge, no Critical or Important finding; its five minors and the 24 deferred task minors
+were triaged — fixed in `b37b759`: `pairStudies` reads `post === 'Pre-op'` as All paired (it self-paired with all-zero
+deltas; unreachable from the UI, since `pairedWithOptions` never offers it), the paired path's demo predicate aligned to
+`=== 'real'`, and the README and contract wordings (the identity columns come kind by kind; no-subject and no-timepoint
+films are counted, not named); everything else ships as is or went to `docs/ROADMAP.md` §5. Verified at the wrap on
+fresh scratch launches: unit 402/402; `smoke-parameters.mjs` 58/58 (at `b37b759`); `smoke-seeding.mjs` 36/36;
+`smoke-workspace.mjs` 100/100; `smoke-studies.mjs` 59/60 — the one failure is stale since `0f8f821`, see the ruling below.
+The dispatch trap of the session: the Edit and Write tools rewrote backslash-u escapes in JS source as the glyphs (Tasks
+1 and 5), turned a `§` in a JS comment into its escape (Task 4) and mangled the escapes inside the very HANDOFF bullet that
+warns about it (Task 6) — four times despite a warning in every brief; each was caught by a byte check of the diff and
+repaired with a Python script. Recorded as a Known trap.
+
+Rulings this session (the user's are marked; the rest are the controller's):
+- Ruling: Task 4's review-loop fixes amend the gated commit rather than stacking commits — a commit above it would force
+  a history rewrite to record the gate — cost if wrong: one squash. (Not exercised: Task 4's review was clean.)
+- Ruling: this `## Ledger` is written once, at the wrap, after the last amend; the scratch ledger carried execution and
+  the repo ledger stayed uncommitted through the gate — cost if wrong: none.
+- Ruling: the final whole-branch review's base is `c3a4265`, not the branch point `adf3c19` — the four commits between
+  are the spec amendment, the plan, its review fold and the planning wrap, all documentation reviewed on Opus at planning
+  and carrying no code; the Task 6 review checked the records against the code — cost if wrong: the spec amendment goes
+  unreviewed a second time.
+- Ruling: Task 6 adds one Known-traps bullet, for the escape mangling above — the plan said add a bullet only for a trap
+  execution actually hit, and this one cost four repairs — cost if wrong: one bullet to delete.
+- Ruling: the final fix wave is ONE dispatch over the `Pre-op` guard, the demo predicate and three wordings, with the
+  guard's assertions folded into an existing test so the recorded unit figure stays 402 — cost if wrong: one scoped
+  re-review.
+- Ruling: the prototype-key clinical leak (`study.clinical[field]` reaching `Object.prototype` for a custom field named
+  `constructor`; found by the final review) is pre-existing in the long export (`csv.js` ~:90) and the grid
+  (`screens/parameters.js` ~:328) and is NOT fixed on this branch — three sites, a shared helper and a grid change this
+  plan did not carry; ROADMAP §5 and a spawned task — cost if wrong: a fabricated cell for a field so named until that
+  lands (reachable only by typing that name in the drawer).
+- Ruling: `smoke-gate2.mjs:120` (the one assertion of toast absence, whose stale-toast window grew to 8 s) is not
+  edited — the suite is not run by this plan and a blind edit to an unrun suite is the trap HANDOFF warns about; ROADMAP
+  §5 carries the one-line fix — cost if wrong: a false failure in gate 2 after a long toast.
+- Ruling: the stale studies check `searching the diagnosis text leaves only SP-0042` is not fixed on this branch — it
+  has failed since `0f8f821` (2026-09-07, decision 40 gave SP-0039 a diagnosis containing "Anterior slip", so the
+  search finds both films of the P-8841 pair) and belongs to the studies branch; recorded in the smoke README's
+  baseline (59/60 with exactly that name is green), HANDOFF's traps and ROADMAP §5 with the fix (expect the pair, or
+  search a phrase only SP-0042 carries) — cost if wrong: the next reader of a 59/60 run has to find the note.
+- Ruling: `smoke-studies.mjs` runs on a FRESH launch, never after `smoke-workspace.mjs` on the same instance — run
+  fourth on one instance it read `3 IN QUEUE` where the workspace suite's loaded films were still queued; alone on a
+  fresh launch that check passed — cost if wrong: a false failure.
+- Ruling (user): "ok checks pass" stands for all seven gate checks — recorded as passed without per-check detail —
+  cost if wrong: a check the user skipped is recorded as passed; the harness covers checks 1 and 5 and the file's text
+  regardless.
+
+Session ended 2026-09-08 (execution): nothing to resume in this plan — all six tasks complete, the final review clean,
+branch tip `b37b759` plus the wrap's docs commit, pushed to `fork`. Next: the user's merge-back decision (never unasked);
+then spec task 3 (compare with pre-op, after plan 07) or a ROADMAP item, each needing its own brainstorm and plan.
+`docs/superpowers/NEXT-SESSION.md` is the prompt.

@@ -42,7 +42,14 @@ Spec §10.4, §11.2, §11.3 as laid out at the 2026-09-08 brainstorm (decisions 
   with its own `No paired subjects in these rows`; suggested name `<workspace>-paired.csv` / `library-paired.csv`.
 - `toastDuration(text)` in `components/toast.js`: 2.2 s to forty characters, then 40 ms per character, capped at 8 s;
   every toast, the workspace load message included.
-- Verified: unit 402/402; `smoke-parameters.mjs` 58/58; Task 4's human gate (outcomes in its commit body).
+- Verified at the wrap (2026-09-08, fresh scratch launches): unit 402/402; `smoke-parameters.mjs` 58/58;
+  `smoke-seeding.mjs` 36/36; `smoke-workspace.mjs` 100/100; `smoke-studies.mjs` 59/60 — the one failure,
+  `searching the diagnosis text leaves only SP-0042`, is stale since `0f8f821` (decision 40 gave SP-0039 a diagnosis
+  containing "Anterior slip"), not this branch's; see `docs/ROADMAP.md` §5. Task 4's human gate passed (the user:
+  "ok checks pass"; outcomes in `19b8d43`'s body). Final whole-branch review (Opus, 2026-09-08): ready to merge, no
+  Critical or Important finding; one fix wave (`b37b759`: `pairStudies` reads a `Pre-op` post label as All paired
+  instead of self-pairing; the demo predicate aligned to `=== 'real'`; two records reworded). Branch tip `b37b759`
+  plus the wrap's docs commit, pushed to `fork`. **Merge back into the studies branch is the user's call.**
 
 ### Study fields — task 2 of the pre-op/post-op spec, DONE (branch `claude/preop-postop-study-fields`)
 
@@ -1354,6 +1361,12 @@ production release:
   runtime, so no test catches it; only a byte-level look at the diff does (`od`, or `cat -A`). Repair with a small
   Python script — Git Bash `sed` drops backslashes from replacement text, and a `bash -c` one-liner mangles them
   too. Check the diff for stray glyphs or `\u00` sequences before every commit that touches such a line.
+- **`smoke-studies.mjs` must run on a fresh launch, never after `smoke-workspace.mjs` on the same instance.** The
+  workspace suite's loaded films are still queued when the studies suite counts the queue, so `summary reads n+1
+  studies, 1 in queue` reads `3 IN QUEUE` — a false failure that vanished on a fresh launch (2026-09-08). And since
+  `0f8f821` (2026-09-07) the suite's `searching the diagnosis text leaves only SP-0042` is a stale expectation, because
+  decision 40 gave the demo pair matching patient fields and both diagnoses contain "Anterior slip": 59/60 with exactly
+  that name is green; the fix belongs in the suite (`docs/ROADMAP.md` §5).
 - **A Sonnet implementer that starts a multi-minute suite in the background and "waits for the
   Monitor" ends its turn mid-task** (twice on 2026-09-07), leaving files edited, nothing committed
   and the app alive on port 9222; `SendMessage` is not available in this harness, so it cannot be

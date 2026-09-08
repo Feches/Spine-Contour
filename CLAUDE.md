@@ -36,11 +36,14 @@ reviewed, three human gates passed, the final whole-branch review clean after on
 `docs/superpowers/NEXT-SESSION.md` is the prompt.
 
 **Branch `claude/preop-postop-paired-export` (2026-09-08)** sits on the studies tip (`adf3c19`, where task 2 was
-merged back) and holds **spec task 4 planned, nothing implemented**: the brainstorm wrote the paired export's layout
-into spec §10.4, §11.2 and §11.3 (HANDOFF decisions 47–50), and plan
-`docs/superpowers/plans/2026-09-08-paired-export.md` (Tasks 1–6, one human gate on Task 4, its `## Ledger` at the end)
-was independently reviewed and amended. Resume at Task 1 via subagent-driven development; unit 379/379.
-`docs/superpowers/NEXT-SESSION.md` is the prompt.
+merged back) and holds **spec task 4 complete**: `renderer/data/pairing.js` (grouping, judging, the toast), `toPairedCsv`
+and `delta1` in `csv.js`, `toastDuration` in `components/toast.js`, the `Export paired CSV` button on the Parameters
+filter bar, smoke section 13 and the records. Plan `docs/superpowers/plans/2026-09-08-paired-export.md` (Tasks 1–6, its
+`## Ledger` at the end): every task reviewed, the human gate passed, the final whole-branch review clean after one fix
+wave (`b37b759`). Unit 402/402; `smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36; `smoke-workspace.mjs` 100/100;
+`smoke-studies.mjs` 59/60 (one stale check since `0f8f821`, see `docs/ROADMAP.md` §5). Pushed to `fork`. **Merge back
+into the studies branch is the user's call; the next work is spec task 3 (compare with pre-op, after plan 07) or a
+ROADMAP item, each needing its own plan.** `docs/superpowers/NEXT-SESSION.md` is the prompt.
 
 ## Read these first
 

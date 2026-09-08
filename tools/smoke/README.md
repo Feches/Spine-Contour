@@ -255,7 +255,11 @@ module scope only when its own folder handler ran the scan, so a state-seeded sc
 `3 radiographs found` without the clause, and that is what the suite asserts.
 
 **Known baseline** (fresh scratch profile, this branch tip): unit 402/402
-(`node --test test/*.test.js`); `smoke-studies.mjs` 60/60; `smoke-workspace.mjs` 100/100;
+(`node --test test/*.test.js`); `smoke-studies.mjs` 59/60 — since `0f8f821` (2026-09-07) the demo pair share a
+diagnosis, so `searching the diagnosis text leaves only SP-0042` finds SP-0039 too; that one name is a stale
+expectation to fix in the suite, not a regression, and the suite must run on a FRESH launch, never after
+`smoke-workspace.mjs` on the same instance, whose loaded films are still queued (`summary reads n+1 studies, 1 in
+queue` then reads `3 IN QUEUE`, 2026-09-08); `smoke-workspace.mjs` 100/100;
 `smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36; `smoke-persist.mjs` 34/34 then 44/44 — the same figures as
 `docs/superpowers/HANDOFF.md`'s baseline paragraph. Every check in the suite runs
 unconditionally; there is no skip path.

@@ -244,6 +244,25 @@ Not code quality; these stand between the branch and a production release.
   scale so far; on a several-hundred-film workspace with `Levels` on it will be felt, and destroying the focused
   input mid-keystroke would cut an IME composition. A debounce, or excluding the filter bar from the rebuild, is
   the fix when it is needed (2026-09-07, Task 9's review).
+- **A custom clinical field named after an `Object.prototype` key writes a fabricated value.** `study.clinical[field]`
+  guarded only by `!= null` — the long export (`renderer/data/csv.js`, `toCsv`), the paired export (`toPairedCsv`) and
+  the Parameters grid's clinical cell (`renderer/screens/parameters.js`) — resolves `constructor` or `toString` to the
+  inherited function on any study without an own key of that name, and its text lands in the file or the cell. The
+  drawer's `Add a custom field` accepts such a name. Fix all three with one own-property helper
+  (`clinicalValue(study, field)`) and a test per export. Found by the paired-export branch's final review
+  (2026-09-08); pre-existing, deliberately not fixed there. A custom field named like a measurement column (`PI`)
+  also gives a duplicate header in both exports, exactly so in the paired file.
+- **`renderer/data/csv.js` carries the citation block twice** (`toCsv` and `toPairedCsv`, 2026-09-08). Lift it to one
+  `CITATION` const the next time the file is touched, so the NOT FOR CLINICAL USE line cannot drift between the two
+  exports; the clinical-cell guard above is the natural companion.
+- **`smoke-gate2.mjs:120` asserts toast absence after a 300 ms settle**, and the window a stale toast can occupy grew
+  from 2.2 s to as much as 8 s with `toastDuration` (2026-09-08). Every toast that suite raises is short, so it is
+  unaffected today; if it ever fails there, clear the toast through the store before the drag at line 113.
+- **`smoke-studies.mjs` reads 59/60 since `0f8f821`** (2026-09-07): `searching the diagnosis text leaves only SP-0042`
+  finds SP-0039 too, because decision 40 gave the demo pair matching patient fields and both diagnoses contain
+  "Anterior slip". The product is right; fix the expectation in the suite (expect the pair, or search a phrase only
+  SP-0042 carries). Run that suite on a fresh launch, never after `smoke-workspace.mjs` on one instance, whose loaded
+  films are still queued and turn `1 IN QUEUE` into `3 IN QUEUE`.
 
 ---
 
