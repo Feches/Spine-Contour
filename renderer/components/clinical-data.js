@@ -16,7 +16,7 @@ import { getState, setState } from '../store.js';
 import { showToast } from './toast.js';
 import { KNOWN_FIELDS, joinClinical, fileStem, findStructuralHeaders, structuralFromRow } from '../data/csv.js';
 import { studyName } from '../data/labels.js';
-import { TIMEPOINT_SUGGESTIONS, VIEW_SUGGESTIONS, normaliseTimepoint } from '../data/timepoints.js';
+import { TIMEPOINT_SUGGESTIONS, VIEW_SUGGESTIONS, normaliseTimepoint, normaliseView } from '../data/timepoints.js';
 
 // 12x12 chevron pointing UP (the drawer is open by default); .clinical-toggle-closed rotates
 // it 180deg in CSS. Same construction as sidebar.js's CHEVRON_SVG.
@@ -163,16 +163,18 @@ export function mountClinicalData(host) {
   }
 
   // The four study fields (spec §9) are top-level record fields, not clinical keys, with the same
-  // one new-array write and the same pre-armed gate as setValue. Subject is stored trimmed. A
-  // timepoint that names a known label is stored as that label (`preop` → Pre-op, `6 weeks` →
-  // 6 wk) so a typed label pairs; anything else as typed. A date input's value is already
-  // YYYY-MM-DD. An emptied cell stores null -- except view, which validateStudy requires to be
-  // a string (it throws on anything else and would refuse the whole store at the next launch),
-  // so it stores '' and renders as an em dash.
+  // one new-array write and the same pre-armed gate as setValue. Subject is stored trimmed; a view
+  // that names a known position is stored as its label (`flexion` → Flexion lateral), anything
+  // else as typed. A timepoint that names a known label is stored as that label (`preop` →
+  // Pre-op, `6 weeks` → 6 wk) so a typed label pairs; anything else as typed. A date input's
+  // value is already YYYY-MM-DD. An emptied cell stores null -- except view, which validateStudy
+  // requires to be a string (it throws on anything else and would refuse the whole store at the
+  // next launch), so it stores '' and renders as an em dash (`normaliseView('')` is null, and the
+  // `?? text` keeps the empty string).
   function setStudyField(studyId, field, value) {
     const text = String(value ?? '').trim();
     let next;
-    if (field === 'view') next = text;
+    if (field === 'view') next = normaliseView(text) ?? text;
     else if (field === 'timepoint') next = text === '' ? null : (normaliseTimepoint(text) ?? text);
     else next = text === '' ? null : text;
     setState((s) => {

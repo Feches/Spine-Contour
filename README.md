@@ -33,7 +33,8 @@ clinical-data CSV.
   films share a stem the row is attached to neither. Four columns are read as study details rather
   than clinical fields: `subject_id` (or `subject`), `timepoint` (or `visit`), `film_date` (or
   `study_date`; `YYYY-MM-DD` or `M/D/YYYY` — a bare `date` column is not read), and `view` (or
-  `position`). They beat what the folder names say.
+  `position`) — a known position such as `flexion` or `standing` is stored as its label. They beat
+  what the folder names say.
 - Only the nine known clinical fields auto-map — Age, Sex, BMI, Diagnosis, ODI, Treatment plan,
   Surgical history, Follow-up, Notes — by prefix on the column name (`age_yrs` → Age,
   `odi_base` → ODI). Any other column can be mapped from the dropdown on its chip or left
@@ -55,8 +56,8 @@ clinical-data CSV.
   **View**. Subject is a study code, not a name and not a medical record number — the library is not
   a place for identifiers, and nothing you type there is checked. Timepoint and View suggest the
   labels the app knows (`Pre-op`, `Intra-op`, `Post-op`, `6 wk`, `1 yr`, `2 yr`; the five lateral
-  positions); anything else is kept as typed. **Import from CSV** also brings these four in when the
-  CSV has the columns.
+  positions); a known position or label is stored as its label, anything else is kept as typed.
+  **Import from CSV** also brings these four in when the CSV has the columns.
 - Deleting a study from the Studies list removes its record and its saved segmentation
   (`predictions/<id>.json` in the app's data folder). The film on disk is not touched.
 

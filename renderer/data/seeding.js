@@ -49,6 +49,14 @@ export function inferFromFolder(segments) {
   return { subjectId, timepoint, view };
 }
 
+// The folder table's row for a folder, derived from its own segments: the inferred timepoint (or
+// none) and the inferred view (or Standing lateral). folderRows builds every row through this,
+// and seedFields derives the same row when the caller gives none, so the two can never disagree.
+function rowForSegments(segments) {
+  const inferred = inferFromFolder(segments);
+  return { timepoint: inferred.timepoint, view: inferred.view ?? DEFAULT_VIEW };
+}
+
 // §8.1 rule 3 over the filename stem. Trailing tokens (separated by -, _ or space) are peeled
 // right to left for as long as they name a timepoint or a view. Each pass takes the SHORTEST
 // trailing run that names one, so `S001_pre-op` peels `pre-op` (not `op`) and `S001-6-wk` peels
@@ -93,8 +101,7 @@ export function folderRows(files, root) {
     const key = folderKey(filePath, root);
     let row = byKey.get(key);
     if (!row) {
-      const inferred = inferFromFolder(folderSegments(filePath, root));
-      row = { folder: key, count: 0, timepoint: inferred.timepoint, view: inferred.view ?? DEFAULT_VIEW };
+      row = { folder: key, count: 0, ...rowForSegments(folderSegments(filePath, root)) };
       byKey.set(key, row);
       rows.push(row);
     }
@@ -118,13 +125,14 @@ function present(value) {
 //   row       the folder table row for the film's folder, or null (then inferred from the path)
 //
 // Returns { fields: {subjectId, timepoint, filmDate, view}, sources: {…} }, each source one of
-// 'stored' | 'csv' | 'stem' | 'folder' | 'row' | 'default' | null, so the load message can say
-// how many films had something inferred.
+// 'stored' | 'csv' | 'stem' | 'folder' | 'row' | 'default' | null -- 'default' fires only for a
+// row object that carries no view, since a derived row always holds one -- so the load message
+// can say how many films had something inferred.
 export function seedFields({ filePath, root, existing = null, csv = null, row = null }) {
   const segments = folderSegments(filePath, root);
   const folder = inferFromFolder(segments);
   const stem = inferFromStem(fileStem(filePath));
-  const table = row ?? { timepoint: folder.timepoint, view: folder.view ?? DEFAULT_VIEW };
+  const table = row ?? rowForSegments(segments);
   const fields = {};
   const sources = {};
   function pick(name, candidates) {

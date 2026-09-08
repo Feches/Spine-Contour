@@ -379,7 +379,7 @@ export function render(state) {
           el('div', { class: 'eyebrow' }, '01 — IMAGE FOLDER'),
           el('div', { class: 'workspace-card-value' }, hasFolder ? live.wsFolder : 'No folder selected'),
           el('div', { class: 'workspace-card-meta' }, meta)),
-        el('button', { type: 'button', class: 'btn btn-small', onClick: onChooseFolder },
+        el('button', { type: 'button', class: 'btn btn-small', 'data-ws-key': 'choose-folder', onClick: onChooseFolder },
           hasFolder ? 'Change…' : 'Choose folder…')),
       hasFolder ? buildFolderTable(live) : null);
   }
@@ -433,7 +433,7 @@ export function render(state) {
           }));
           // Sibling selects drop or re-offer the field this chip just claimed or released,
           // and this chip's own mapped/unmapped styling changes; the change event has
-          // already committed, so rebuilding (and losing focus) is acceptable.
+          // already committed, and refresh() hands focus back by data-ws-key.
           refresh();
         },
       });

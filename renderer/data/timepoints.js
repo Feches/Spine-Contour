@@ -29,7 +29,7 @@ const FIXED_TIMEPOINTS = [
 ];
 
 const VIEWS = [
-  { label: 'Standing lateral', tokens: ['standing', 'upright', 'erect'] },
+  { label: DEFAULT_VIEW, tokens: ['standing', 'upright', 'erect'] },
   { label: 'Supine lateral', tokens: ['supine'] },
   { label: 'Prone lateral', tokens: ['prone'] },
   { label: 'Flexion lateral', tokens: ['flexion', 'flex'] },

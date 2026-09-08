@@ -73,7 +73,7 @@ function openStudyCard(state) {
   },
     el('div', { class: 'eyebrow' }, 'OPEN STUDY'),
     el('div', { class: 'open-study-id', title: study.id }, studyName(study)),
-    el('div', { class: 'open-study-meta' }, `${study.view} · ${study.pt || '—'}`),
+    el('div', { class: 'open-study-meta' }, `${study.view || '—'} · ${study.pt || '—'}`),
   );
 }
 

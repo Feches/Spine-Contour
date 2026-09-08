@@ -267,7 +267,7 @@ the tab strip, the grid over the demo library, the segmented-only and workspace 
 measurement sort, the export button's disabled state, and ticking rows to export a chosen
 subset, and the tab and sort surviving a trip to Analysis. DOM-only, no segmentation, no backend
 call; a few seconds. It injects `SP-9100` (unsegmented) and `SP-9101`–`SP-9103` (segmented, subjects S001 Pre-op/Post-op and S002 Pre-op, workspace root
-`C:\smoke-fixture\Fusion2025`) into the store and removes both in `finally`. Run it first on a
+`C:\smoke-fixture\Fusion2025`) into the store and removes all four in `finally`. Run it first on a
 fresh launch, before the suites that add real films (`smoke-studies.mjs`, `smoke-workspace.mjs`,
 `smoke-persist.mjs`): its `Added by hand` check assumes only the demo studies lack a workspace
 root.

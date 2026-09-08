@@ -102,5 +102,5 @@ test('importRowFor carries the row\'s structural columns as fields, only where t
     { ok: true, values: { Age: '44' }, fields: { subjectId: 'P-2', timepoint: 'Post-op', filmDate: '2025-09-14' }, badDate: false });
   // Blank cells supply nothing; a rejected date is reported, never written.
   assert.deepEqual(importRowFor(state, study('SP003.png', 'C:\\batch1\\SP003.png')),
-    { ok: true, values: {}, fields: { view: 'flexion' }, badDate: true });
+    { ok: true, values: {}, fields: { view: 'Flexion lateral' }, badDate: true });
 });

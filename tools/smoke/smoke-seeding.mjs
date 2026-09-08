@@ -14,7 +14,8 @@
 //     found by workspaceFolder, and the folder table is read by data-ws-folder.
 //   * NEVER between `smoke-persist.mjs --phase run` and `--phase restart`: the load writes the
 //     store through the saver, and the cleanup writes it again.
-//   * It leaves the app on Studies with the five fixture records removed and the ws* keys cleared.
+//   * It leaves the app on Studies with the five fixture records removed, the ws* keys cleared
+//     and state.fields as it found it.
 //
 // NOT DRIVEABLE HERE: the native folder and CSV pickers (the state is seeded the way the two
 // handlers would seed it), the datalist popup and the date picker popup (the values are set and
@@ -114,11 +115,16 @@ const tableRows = () => cdp.evaluate(`[...document.querySelectorAll('.workspace-
 const setTableSelect = (key, value) => cdp.evaluate(`(() => { const e = document.querySelector('[data-ws-key=${JSON.stringify(key)}]'); e.focus(); e.value = ${JSON.stringify(value)}; e.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
 const activeKey = () => cdp.evaluate("document.activeElement?.getAttribute('data-ws-key') ?? null");
 
+// The clinical field list the load adds Age to; the finally puts it back. Declared out here so
+// the finally can read it, and left null if the run never got as far as the snapshot.
+let fieldsAtStart = null;
+
 try {
   writeFixture();
 
   // 0. Ready, on Studies, with a clean workspace and grid state.
   check('precondition: the store has loaded (the demo studies are merged in at bootstrap)', await waitForState('s.studies.length > 0', 30000));
+  fieldsAtStart = await store('s.fields');
   await cdp.setState(`{ ack: true, screen: "studies", ...${RESET_WS}, ...${RESET_PARAMS} }`);
   await cdp.settle(100);
 
@@ -224,7 +230,7 @@ try {
 
   // 6. The Parameters grid over the fixture: every filter the task added, with segmented-only off
   // (nothing here is segmented) and the workspace filter on the fixture root.
-  await cdp.setState(`{ studiesTab: "parameters", paramFilters: { workspace: ${JSON.stringify(FIXTURE)}, folder: null, segmentedOnly: false, timepoint: null, view: null, subject: "", pairedOnly: false, pairedWith: "Post-op" } }`);
+  await cdp.setState(`{ studiesTab: "parameters", paramFilters: { workspace: ${JSON.stringify(FIXTURE)}, folder: null, segmentedOnly: false, timepoint: null, view: null, subject: "", pairedOnly: false, pairedWith: "__any__" } }`);
   await cdp.settle(120);
   const ids = records.map((x) => x.id);
   const idOf = (relative) => byPath(relative)?.id;
@@ -328,8 +334,10 @@ try {
   // 10. Console.
   check('no console errors or exceptions during the run', cdp.errors.length === errorsAtStart, cdp.errors.slice(errorsAtStart));
 } finally {
-  // Remove the fixture records (the saver writes the new list), clear the workspace and grid state.
-  await cdp.setState(`(s) => ({ studies: s.studies.filter((x) => !(${fixtureFilter})(x)), openId: null, screen: "studies", ...${RESET_WS}, ...${RESET_PARAMS} })`).catch(() => {});
+  // Remove the fixture records (the saver writes the new list), clear the workspace and grid
+  // state, and put back the clinical field list the load added Age to.
+  const restoreFields = fieldsAtStart === null ? '' : `fields: ${JSON.stringify(fieldsAtStart)}, `;
+  await cdp.setState(`(s) => ({ studies: s.studies.filter((x) => !(${fixtureFilter})(x)), openId: null, screen: "studies", ${restoreFields}...${RESET_WS}, ...${RESET_PARAMS} })`).catch(() => {});
   cdp.close();
 }
 

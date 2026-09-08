@@ -501,7 +501,7 @@ export function render(state) {
 
     // The rest of the header line. The name leads because that is what the user recognises; the
     // SP-nnnn id stays reachable on the title rather than disappearing entirely.
-    headerMeta.textContent = `${(open.view ?? '').toUpperCase()} · ${open.pt ?? '—'}`
+    headerMeta.textContent = `${(open.view || '—').toUpperCase()} · ${open.pt ?? '—'}`
       + (produced ? ` · ${produced.toUpperCase()}` : '');
     confidenceValue.textContent = formatConfidence(open.qc);
 

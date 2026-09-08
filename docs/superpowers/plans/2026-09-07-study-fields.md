@@ -3653,3 +3653,19 @@ Session ended 2026-09-07: Tasks 1–11 complete; three human gates passed on the
 commits' bodies); unit 379/379; `smoke-parameters.mjs` 46/46; `smoke-seeding.mjs` 36/36; `smoke-workspace.mjs`
 100/100. Resume at: the final whole-branch review's residuals if any, then the merge back into
 `claude/studies-ui-updates-bb040d` at the user's say-so, then spec task 3 or 4.
+
+Final whole-branch review (2026-09-07): ready to merge with fixes; no Critical; every non-negotiable verified
+branch-wide; no ruling contradicted; no deferred minor must be fixed before merge. One fix wave:
+
+- Ruling (user, at the final review): a CSV `view` and a view typed in the drawer that name a known position are
+  stored as the §7.3 label (`flexion` → Flexion lateral), as a timepoint already is; anything else stays as typed.
+  Spec §8.2 amended — the spec's "stored as typed" gave a CSV `standing` and a `standing/` folder two View values
+  for one position — cost if wrong: a user who wants the literal text `standing` cannot have it.
+- Fixed in the wave: a cleared view renders `—` in the sidebar and the Analysis header; `VIEWS[0].label` is
+  `DEFAULT_VIEW`; `rowForSegments` serves `folderRows` and `seedFields`; the mapping select's stale focus comment
+  and a `data-ws-key` on the Choose folder button; the seeding suite's inline `pairedWith` and its `fields`
+  restore; the contract's "All five must appear"; ROADMAP item 1's example header; the task-1 HANDOFF section's
+  superseded lines; the smoke README's record count.
+- Deferred to the roadmap (not blocking): countSeeding counts a user-set non-default row as "read from names";
+  store.js duplicates DEFAULT_FILTERS as a literal; the demo pair's PI differs between its two films (kept from the
+  template); a cleared view is re-seeded by a later Load (fill-blanks, by design).

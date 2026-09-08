@@ -23,14 +23,15 @@ load the file back. That does not work today, and it fails silently rather than 
 
 ### What happens today
 
-Export (`toCsv` in `renderer/data/csv.js`) writes:
+Export (`toCsv` in `renderer/data/csv.js`) writes (header as of 2026-09-07; `Subject`, `Timepoint`
+and `Film date` came with spec task 2):
 
 ```
 # Spine Contour export
 # Created by Cody Woodhouse, MD; Michael Jayasuriya, BS.
 # Investigational software. NOT FOR CLINICAL USE.
-Study ID,View,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,...,<active clinical fields>
-SP-1000,Standing lateral,49.0,48.6,12.1,36.5,-0.4,...,58,F,Fusion
+Study ID,View,Subject,Timepoint,Film date,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,...,<clinical fields present>
+SP-1000,Standing lateral,S001,Pre-op,2025-03-02,49.0,48.6,12.1,36.5,-0.4,...,58,F,Fusion
 ```
 
 Three separate things then block the import, and all three have to be dealt with:

@@ -274,7 +274,7 @@ Four structural columns, recognised the way `study_id` is (`findJoinHeader`'s no
 | `subject_id`, `subject` | `subjectId` | any non-empty text, trimmed |
 | `timepoint`, `time_point`, `visit` | `timepoint` | normalised through §7.2 if it matches a token, else stored as typed |
 | `study_date`, `film_date` | `filmDate` | `YYYY-MM-DD` or `M/D/YYYY` (Excel's US default); anything else is not written and is counted. A bare `date` column is deliberately not recognised: in a clinical CSV it is as likely to be the surgery date |
-| `view`, `position` | `view` | stored as typed after trimming |
+| `view`, `position` | `view` | normalised through §7.3 when it names a known position, else stored as typed (amended 2026-09-07, user decision at the final review: a CSV `standing` and a `standing/` folder must give one View) |
 
 The row joins the film by the existing rule (filename stem = `study_id`). Rows that match no film,
 duplicates and ambiguous stems are reported exactly as today.
@@ -343,8 +343,9 @@ strand typed text. Edits go through `setState` with a new `studies` reference, n
 
 **Implemented 2026-09-07:** the chips are native `<datalist>` suggestions on the Timepoint and View
 cells (user decision); a typed timepoint that names a known label is stored as that label, so it
-pairs; a cleared View cell stores `''` (the store requires a string) and renders as a dash; Import
-from CSV also writes the four fields from the row's structural columns (user decision).
+pairs; a typed view that names a known position is stored as its label (2026-09-07); a cleared View
+cell stores `''` (the store requires a string) and renders as a dash; Import from CSV also writes
+the four fields from the row's structural columns (user decision).
 
 ## 10. Parameters tab
 

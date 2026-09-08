@@ -199,7 +199,7 @@ The single record type. Demo and real studies share it exactly.
 
 `name`, `workspaceFolder`, `subjectId`, `timepoint` and `filmDate` are all **optional and default to `null`**, so they carry no
 `STORE_VERSION` bump: a record written before they existed loads unchanged and simply reads as
-its `SP-nnnn` id with no workspace. Both must appear in `validateStudy`'s returned object or the
+its `SP-nnnn` id with no workspace. All five must appear in `validateStudy`'s returned object or the
 saver writes them and the next load silently drops them. `id` remains the record's identity —
 it names the sidecar, keys the delete, and is the CSV's `Study ID` — so a rename is cosmetic by
 construction and can never orphan a file. The folder shown beside the workspace is **derived

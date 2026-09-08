@@ -525,14 +525,17 @@ test('findStructuralHeaders recognises the §8.2 aliases by normalised name, fir
   assert.deepEqual(STRUCTURAL_LABELS, { subjectId: 'Subject', timepoint: 'Timepoint', filmDate: 'Film date', view: 'View' });
 });
 
-test('structuralFromRow trims, normalises a known timepoint, keeps a custom one, and parses both date forms', () => {
+test('structuralFromRow trims, normalises a known timepoint or view, keeps a custom one, and parses both date forms', () => {
   const structural = findStructuralHeaders(['subject_id', 'timepoint', 'film_date', 'view']);
   assert.deepEqual(structuralFromRow({ subject_id: ' S001 ', timepoint: 'preop', film_date: '3/2/2025', view: ' Supine lateral ' }, structural),
     { subjectId: 'S001', timepoint: 'Pre-op', filmDate: '2025-03-02', view: 'Supine lateral', badDate: false });
   assert.deepEqual(structuralFromRow({ subject_id: 'S002', timepoint: '6 weeks', film_date: '2025-09-14', view: '' }, structural),
     { subjectId: 'S002', timepoint: '6 wk', filmDate: '2025-09-14', view: null, badDate: false });
   assert.deepEqual(structuralFromRow({ subject_id: '', timepoint: 'baseline', film_date: '', view: 'flexion' }, structural),
-    { subjectId: null, timepoint: 'baseline', filmDate: null, view: 'flexion', badDate: false });
+    { subjectId: null, timepoint: 'baseline', filmDate: null, view: 'Flexion lateral', badDate: false });
+  // An unknown position is kept as typed; a known one is stored as its label.
+  assert.deepEqual(structuralFromRow({ subject_id: 'S005', timepoint: '', film_date: '', view: 'Sitting' }, structural),
+    { subjectId: 'S005', timepoint: null, filmDate: null, view: 'Sitting', badDate: false });
   // A rejected date is not written and is flagged; a column the CSV lacks supplies nothing.
   assert.deepEqual(structuralFromRow({ subject_id: 'S003', timepoint: '', film_date: '2025-02-30', view: '' }, structural),
     { subjectId: 'S003', timepoint: null, filmDate: null, view: null, badDate: true });

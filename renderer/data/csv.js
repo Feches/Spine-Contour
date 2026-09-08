@@ -1,4 +1,4 @@
-import { normaliseTimepoint, parseFilmDate } from './timepoints.js';
+import { normaliseTimepoint, normaliseView, parseFilmDate } from './timepoints.js';
 
 const MEASUREMENT_COLUMNS = [
   'LL L1-S1', 'PI', 'PT', 'SS', 'PI-LL Mismatch', 'L1PA',
@@ -272,9 +272,11 @@ export function structuralField(header, headers) {
   return Object.keys(found).find((field) => found[field] === header) ?? null;
 }
 
-// The structural values one CSV row supplies (§8.2): subject and view as typed after trimming;
-// the timepoint normalised through §7.2 when it names a known label (`preop` → Pre-op,
-// `6 weeks` → 6 wk) and otherwise as typed; the film date as YYYY-MM-DD when it parses.
+// The structural values one CSV row supplies (§8.2): subject as typed after trimming; the view
+// normalised through §7.3 when it names a known position (`flexion` → Flexion lateral) and
+// otherwise as typed; the timepoint normalised through §7.2 when it names a known label
+// (`preop` → Pre-op, `6 weeks` → 6 wk) and otherwise as typed; the film date as YYYY-MM-DD
+// when it parses.
 // `badDate` says the row carried a date the parser rejected -- the text is stored nowhere and
 // the load counts it (§8.4).
 export function structuralFromRow(row, structural) {
@@ -288,7 +290,7 @@ export function structuralFromRow(row, structural) {
     subjectId: subject === '' ? null : subject,
     timepoint: timepoint === '' ? null : (normaliseTimepoint(timepoint) ?? timepoint),
     filmDate,
-    view: view === '' ? null : view,
+    view: view === '' ? null : (normaliseView(view) ?? view),
     badDate: date !== '' && filmDate === null,
   };
 }

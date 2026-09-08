@@ -84,15 +84,16 @@ bodies, including the checks that were not reachable there and stand on the harn
   (33 checks, DOM-only; run it FIRST on a fresh launch) plus the manual steps in the commit bodies.
 - `toCsv(studies)`: the `fields` parameter (2026-09-06: clinical columns are the union of keys on the
   exported rows) and then the `Source` column and the `includeDemo` option (2026-09-07) are gone;
-  demo rows are never written. Header: `Study ID,View,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1`
+  demo rows are never written. Header (task 1; task 2 later inserted `Subject,Timepoint,Film date`
+  after `View`): `Study ID,View,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1`
   then the clinical union.
 - Ticking rows exports a chosen subset: the export writes the selected rows that are VISIBLE, in
   grid order; hidden picks stay ticked and return with the filter; the button reads
   `Export N selected`, the count line `· N SELECTED`; a disabled Export button carries a visible
   note (Chromium shows no tooltip on a disabled control).
-- Not built here, by design: subject, timepoint, view, film date, the folder table, the
-  paired-only filter, the paired export and compare-with-pre-op — spec tasks 2–4. **Spec task 2
-  is next and has no plan yet.**
+- Not built in task 1: subject, timepoint, view, film date, the folder table and the paired-only
+  filter — **all built by spec task 2, the section above**; the paired export and
+  compare-with-pre-op (tasks 3–4) remain.
 
 **Traps:** the panel rebuilds on every change to its key array and restores focus (by
 `data-param-key`) and the grid's scroll position; a new store key the grid reads MUST be added to
