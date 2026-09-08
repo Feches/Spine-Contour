@@ -53,8 +53,9 @@ const SCREENS = {
 
 // Sidebar re-renders for: its own collapse/theme/settings toggles, the
 // active-nav highlight (`screen`), the "open study" card (`openId`,
-// `studies`), and the workspace status line (`wsFolder`, `wsFiles`,
-// `wsCsvRows`). See components/sidebar.js.
+// `studies`), the workspace status line (`wsFolder`, `wsFiles`,
+// `wsCsvRows`), and the Studies row's batch count (`batch`, 2026-09-08).
+// See components/sidebar.js.
 export const SIDEBAR_KEYS = [
   'navCollapsed',
   'settingsOpen',
@@ -62,6 +63,7 @@ export const SIDEBAR_KEYS = [
   'models',
   'screen',
   'openId',
+  'batch',
   'studies',
   'wsFolder',
   'wsFiles',

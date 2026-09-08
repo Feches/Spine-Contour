@@ -4,6 +4,7 @@ import { openExternal } from '../api.js';
 import { showToast } from './toast.js';
 import { DEFAULT_MODELS, VERTEBRA_MODELS, modelLabel } from '../data/models.js';
 import { studyName } from '../data/labels.js';
+import { sidebarText } from '../data/batch.js';
 
 const VERSION_LABEL = 'v0.1.0';
 const DOCS_URL = 'https://github.com/mjayasur/Spine-Contour#readme';
@@ -122,6 +123,9 @@ export function render(state) {
     navRow({
       icon: ICONS.studies,
       label: 'Studies',
+      // The running batch's count (batch spec 9), so it is visible from the Workspace and Analysis
+      // screens; nothing while no batch runs. `batch` is in router.js's SIDEBAR_KEYS for this.
+      subLabel: state.batch ? sidebarText(state.batch) : null,
       active: state.screen === 'studies',
       collapsed,
       onClick: () => setState({ screen: 'studies' }),
