@@ -3,9 +3,9 @@
 **Last updated:** 2026-09-08
 **Branch:** `claude/studies-ui-updates-bb040d` (the studies work plus the Parameters tab, on top of `origin/ui-redesign-cw` @ `0022d91`)
 **Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
-**This copy is on:** `claude/preop-postop-paired-export` (task 4 of the pre-op/post-op spec, the paired export, code
-and docs; branched 2026-09-08 off the studies tip `adf3c19`; merged back into `claude/studies-ui-updates-bb040d` the
-same day by fast-forward, both branches at the same commit), worktree
+**This copy is on:** `claude/batch-segmentation` (batch segmentation of loaded films — spec and plan written and
+reviewed 2026-09-08, nothing implemented; branched 2026-09-08 off the studies tip `192f303`, where the paired export
+had just been merged back), worktree
 `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628` — see the first
 section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
@@ -22,6 +22,28 @@ section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 ---
 
 ## Where things stand
+
+### Batch segmentation — PLANNED, not built (branch `claude/batch-segmentation`)
+
+Brainstormed and planned on 2026-09-08 in one session; execution is the next session's work. Spec
+`docs/superpowers/specs/2026-09-08-batch-segmentation-design.md` (sixteen §6 decisions, to be recorded below as 51–66 by
+the plan's Task 7); plan `docs/superpowers/plans/2026-09-08-batch-segmentation.md` (Tasks 1–7, "Rulings made while
+planning" in its header, `## Ledger` at the end), independently reviewed on Opus with the review folded (`caaede6`).
+Nothing implemented; unit 402/402 at the wrap.
+
+- What it builds: a pure planner and driver (`renderer/data/batch.js`, `renderer/batch.js`); the analysis screen's run
+  core exported as `segmentStudy(studyId, {batch})` with three guards (the run handler and the core refuse while a batch
+  is up, the relocate picker re-checks when it resolves, `restoreFilm`'s run guard becomes per-study); the Find tab's
+  Workspace and Folder selects over the shared `paramFilters` keys, a tick in every real row and a select-all over the
+  shared `paramSelected`, a `Segment N unsegmented` / `Segment N selected` button with a visible note and, while a batch
+  runs, a spinner, `{done} of {total} done` and Stop; the summary reads `{n} STUDIES · {m} UNSEGMENTED`; the viewer's card
+  reads `UNSEGMENTED` / `QUEUED` (in the running batch) / `RUNNING`; the sidebar's Studies row reads `{done} OF {total}
+  DONE`; one closing toast names every film not segmented.
+- Constraints kept: `state.running` stays a single id (decision 13); strictly serial; count-only progress (decision 6);
+  already-segmented films are never re-run in a batch; nothing about the queue is persisted.
+- Execution: subagent-driven, Sonnet for Tasks 1, 2, 4, 6, 7 and Opus for Tasks 3 and 5; Task 5 has the human gate
+  (seven checks on the real library); then a final whole-branch review; the merge back into
+  `claude/studies-ui-updates-bb040d` only at the user's say-so. `docs/superpowers/NEXT-SESSION.md` is the prompt.
 
 ### Paired export — task 4 of the pre-op/post-op spec, DONE (branch `claude/preop-postop-paired-export`)
 
@@ -1326,6 +1348,10 @@ the spec's §10.4, §11.2 and §11.3. Implemented by plan `2026-09-08-paired-exp
 50. **The toast's duration scales with its length**: 2.2 s to forty characters, then 40 ms per character, capped at
     8 s, for every toast, the workspace load message included. *Cost if wrong:* long toasts linger; nothing dismisses
     one early.
+
+**Decisions 51–66 (2026-09-08, the batch-segmentation brainstorm)** are the sixteen entries of
+`docs/superpowers/specs/2026-09-08-batch-segmentation-design.md` §6, each with its why and its cost if wrong; the plan's
+Task 7 writes them here in this form. Until then the spec is the record.
 
 ## Release prerequisites — before a production release
 

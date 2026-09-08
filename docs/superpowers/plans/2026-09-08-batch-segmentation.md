@@ -2158,3 +2158,22 @@ comment, three record anchors, three line numbers, a focus fallback between Segm
 ROADMAP, the boundary note. Not folded: `studies-filters-host` has no CSS rule (a bare host like `studies-table-host`).
 Spec gap found and routed: §9's "the toolbar's re-run button … with the same title" — the toolbar button's title is fixed
 at construction; Task 7 amends the sentence.
+
+Session ended 2026-09-08 (planning): resume at **Task 1** — nothing implemented; unit 402/402 at the wrap; branch
+`claude/batch-segmentation` at the wrap's docs commit above `caaede6`, pushed to `fork`. Rulings from chat this session (the
+user's are marked; each is also in the spec's §6 or in "Rulings made while planning"):
+- Ruling (user): the batch starts from the Find tab, which gains row ticks and workspace/folder filters — the user's
+  addition to option A of the three offered — cost if wrong: two selects and a tick column to remove.
+- Ruling (user): already-segmented ticked rows are skipped, never re-run — a bulk re-run would discard hand corrections
+  across many films, unrecoverably — cost if wrong: re-running a cohort with a new model stays one study at a time until
+  ROADMAP item 3.
+- Ruling (user): approach 1 of three — a driver beside the router, a pure planner under `data/`, the run core exported
+  from the analysis screen — cost if wrong: the Studies screen depends on the analysis module a little more.
+- Ruling (user): the design as presented in sections 1–6, the spec as written (including the `QUEUED`/`UNSEGMENTED`
+  eyebrow refinement the self-review added), and the plan — cost if wrong: recorded per decision in the spec's §6.
+- Ruling (user, standing): plan in this session, execute in a fresh one — cost if wrong: none; the prompt carries the state.
+- Ruling: the plan was reviewed independently on Opus in its own worktree before the wrap and the review folded as one
+  docs commit (`caaede6`); the reviewer's worktree and branch were removed (no unique commits) — cost if wrong: none; the
+  fold is itemised above.
+- Ruling: HANDOFF decisions 51–66 are written by Task 7, not at this wrap; HANDOFF carries a pointer to the spec's §6 until
+  then — cost if wrong: a session between now and Task 7 reads the spec for them.

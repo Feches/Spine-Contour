@@ -46,6 +46,16 @@ into the studies branch on 2026-09-08 (fast-forward; both branches at the same c
 segmentation of loaded films, ahead of a release — brainstorm it first; spec task 3 waits for plan 07 and the ROADMAP
 items wait behind it.** `docs/superpowers/NEXT-SESSION.md` is the prompt.
 
+**Branch `claude/batch-segmentation` (2026-09-08)** sits on the studies tip (`192f303`) and holds the **batch segmentation
+spec and plan, nothing implemented**: `docs/superpowers/specs/2026-09-08-batch-segmentation-design.md` (sixteen §6
+decisions) and `docs/superpowers/plans/2026-09-08-batch-segmentation.md` (Tasks 1–7, independently reviewed on Opus, the
+review folded). One click on the Find tab segments the ticked or visible unsegmented films one after another with
+count-only progress, a Stop and one closing toast; the Find tab gains workspace/folder filters and row ticks shared with
+the Parameters tab; `IN QUEUE` becomes `UNSEGMENTED`; `state.running` stays a single id. **The next session executes the
+plan by subagent-driven development from Task 1** (Sonnet for 1, 2, 4, 6, 7; Opus for 3 and 5; Task 5 has a human gate),
+then a final whole-branch review, then the merge back at the user's say-so. Unit 402/402 at the wrap.
+`docs/superpowers/NEXT-SESSION.md` is the prompt.
+
 ## Read these first
 
 | Document | What it is |
@@ -155,7 +165,7 @@ packages; keep `--collect-all timm` in both workflows.
 
 ## Git
 
-This worktree is on branch `claude/preop-postop-study-fields`, branched from
+This worktree is on branch `claude/batch-segmentation` (2026-09-08), branched from
 `claude/studies-ui-updates-bb040d` and meant to merge back into it. Two remotes:
 
 - `fork` → `github.com/Feches/Spine-Contour` — **push here**
