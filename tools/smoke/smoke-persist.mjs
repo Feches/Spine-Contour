@@ -228,7 +228,7 @@ async function nudgeAndSettle(times, timeoutMs = 20000) {
   const before = await openStudy();
   if (!before) return { before: null, selection: null, after: null, failed: null };
   // Clear the toast first: this helper treats a failure toast as the failure signal, and toasts
-  // linger 2200 ms (components/toast.js). Without this, a nudge issued shortly after the forced
+  // linger 2.2 s to 8 s by length (toastDuration in components/toast.js). Without this, a nudge issued shortly after the forced
   // failure in section D1 would read that stale toast and report its own /measure as failed.
   await cdp.setState('{ toast: "" }');
   const selection = await selectAndNudge(times);
@@ -248,7 +248,7 @@ async function nudgeAndSettle(times, timeoutMs = 20000) {
 
 // Arms an in-page listener for a toast containing `needle` BEFORE the action meant to raise it,
 // and returns a collector that resolves with the toast text, or null on timeout. Polling would be
-// racy: showToast clears the message after 2200 ms (components/toast.js), so a slow poll could
+// racy: showToast clears the message after 2.2 s to 8 s by length (toastDuration in components/toast.js), so a slow poll could
 // miss a toast that really did fire and report the opposite of the truth. Same subscribe-then-act
 // shape run-and-wait.js uses. The timeout is inside the page, so a toast that never comes fails
 // this section loudly instead of hanging it.
