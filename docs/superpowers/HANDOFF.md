@@ -1272,6 +1272,13 @@ written, and are implemented on `claude/preop-postop-study-fields`.
     together, two spellings in the export. *Cost if wrong:* a user who wants the literal text `standing` cannot
     have it; §8.2 is amended.
 
+47. **The paired (wide) export, spec task 4, is one row per subject with one column group per visit present**
+    (`Pre`, then each later label among the exported rows — `6 wk`, `1 yr`, `Post-op`, … — each later group with
+    its own Δ against Pre; a subject missing a visit gets empty cells in that group); with a single label chosen in
+    the `with` dropdown it collapses to the spec's original two-group file. Decided in chat 2026-09-07 after the
+    All-paired default made "which post film" a real question; it amends §11.2 at the task-4 brainstorm. *Cost if
+    wrong:* a wide file with more column groups than an Excel-first user wants — the long export stays primary.
+
 ## Release prerequisites — before a production release
 
 These are about shipping `latest-windows`, not about any remaining plan work; plan 07 is

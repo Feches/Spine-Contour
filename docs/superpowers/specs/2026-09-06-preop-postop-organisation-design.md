@@ -456,6 +456,13 @@ S001,SP-1000,SP-1001,Standing lateral,Standing lateral,2025-03-02,2025-09-14,21.
 The view columns are what let a reader tell a standing-versus-standing pair from a
 standing-versus-prone one without opening the app. They are not optional.
 
+**Amendment decided 2026-09-07 (user, HANDOFF decision 47), to be written into this section at the task-4
+brainstorm:** with paired-only defaulting to `All paired`, a subject may carry several later films, so the wide
+file is one row per subject with one column group per visit present among the exported rows (`Pre`, then each
+later label in §7.2 order), each later group carrying its own Δ against Pre and a subject missing a visit
+getting empty cells in that group; a single label chosen in the `with` dropdown collapses it to the two-group
+file above. `toPairedCsv`'s signature will change accordingly.
+
 ### 11.3 Reporting
 
 Both exports toast what they wrote and what they left out: `Exported N rows` for long;

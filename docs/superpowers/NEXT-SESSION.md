@@ -74,6 +74,9 @@ the spec's §6 has the design ones. From this session (HANDOFF 40–46 and the p
   pairs (45)
 - a CSV `view` and a drawer-typed view that name a known position are stored as the §7.3 label, like a
   timepoint (46)
+- the paired export (task 4) is one row per subject with one column group per visit present, each later
+  group with its own Δ against Pre; a single `with` label collapses it to two groups (47) — the task-4
+  brainstorm writes it into spec §11.2
 - from the plan's Ledger: `seedFields` reports a derived row's view as `'row'`; `loadWorkspaceStudies`
   returns `clinicalUpdated` and the honesty clause reads "no blank clinical fields to fill"; the
   drawer's `commitStudyCell` writes the stored form back onto the node from both commit paths;
