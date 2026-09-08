@@ -100,7 +100,7 @@ no delta between films of different positions without the positions shown, no si
 | CSV join on filename stem, `study_id` never a clinical field | `data/csv.js` `findJoinHeader`, `joinClinical` | Model for treating `subject_id` etc. as structural columns |
 | `toCsv(studies, fields, opts)` takes an array | `data/csv.js` | Exporting a filtered set is passing a different array |
 | Union of clinical field names over studies | `data/csv.js` (~line 284) | The hidden-fields decision in §11.1 |
-| `deltaRow(row, otherRow, threshold)` | `data/measurements.js` | Δ columns for both the viewer and the paired export |
+| `deltaRow(row, otherRow, threshold)` | `data/measurements.js` | Δ columns for the viewer; the paired export applies the same rule through `data/csv.js` (2026-09-08, decision 8) |
 | `compareId` in state, `COMPARING · {id}` header, split panes | `store.js`, spec §9.5 / §10.6 | Comparison mode; plan 07 builds it |
 | `view` stored as a free string; demo studies use five values | contract `Study`, `demo-studies.js` | No new field needed for position |
 | Optional null-default fields without a version bump | `name`, `workspaceFolder` | The persistence pattern for every new field here |
@@ -156,7 +156,10 @@ them by accident; any can be reversed before implementation starts.
 8. **Long format is the primary export; paired format is a convenience that ships last.** Every
    stats package wants long format and pivots it in one line. The wide export is for the Excel-first
    workflow and shares its delta code with comparison mode, so it lands after that mode exists.
-9. **Nothing drops silently.** Unpaired subjects, ambiguous subjects (two pre-op films), films with no
+   **2026-09-08:** plan 07 stays deferred past the first release, so task 4 lands first; the delta rule
+   (later minus earlier over the one-decimal values, empty when either side is absent) is exported from
+   `data/csv.js` for comparison mode to adopt when it is built.
+9. **Nothing drops silently.** Unpaired subjects, ambiguous subjects (two films on one visit, §11.2), films with no
    subject, unparseable dates: counted and named in the toast, never omitted without a word. This is
    the CSV import's existing rule applied to the new paths.
 
@@ -410,13 +413,16 @@ subject draws a thin rule between subjects so a pair reads as a block. The empty
 
 ### 10.4 Export the visible set
 
-Two buttons on the filter bar: **Export CSV** (§11.1, the rows the filters show) and, once task 4
-lands, **Export paired CSV** (§11.2). Suggested filename `<workspace>-parameters.csv` or
-`library-parameters.csv` when no workspace filter is set. Ticking rows narrows the export to the
-ticked rows that are visible, in grid order; the button reads `Export N selected` and the count
-line `· N SELECTED`; hidden picks stay ticked and return with the filter; with nothing ticked the
-export is the visible rows (decided 2026-09-07). The reason a disabled Export button cannot act is
-written beside it, not in a tooltip. The Analysis screen's per-study export stays as it is.
+Two buttons on the filter bar: **Export CSV** (§11.1) and **Export paired CSV** (§11.2, task 4), both
+over the rows the filters show. Suggested filename `<workspace>-parameters.csv` or
+`library-parameters.csv` when no workspace filter is set; the paired file is `<workspace>-paired.csv`
+or `library-paired.csv`. Ticking rows narrows either export to the ticked rows that are visible, in
+grid order; the long button reads `Export N selected`, the paired one `Export paired · N selected`,
+and the count line `· N SELECTED`; hidden picks stay ticked and return with the filter; with nothing
+ticked the export is the visible rows (decided 2026-09-07). The reason a disabled Export button cannot
+act is written beside it, not in a tooltip; the paired button carries a third reason, `No paired
+subjects in these rows`, when no subject among the rows would get a row (§11.2), and is otherwise
+disabled for the same two reasons as the long one. The Analysis screen's per-study export stays as it is.
 
 ## 11. Exports
 
@@ -440,35 +446,108 @@ SP-1001,Standing lateral,S001,Post-op,2025-09-14,49.1,52.3,14.0,38.3,3.2,...,61,
 
 ### 11.2 Paired (wide) format
 
-`toPairedCsv(studies, {post: 'Post-op'})` in `data/csv.js`, pure. One row per subject in the input
-that has exactly one `Pre-op` film and exactly one film with the chosen post label.
+Decided 2026-09-07 (HANDOFF decision 47) and laid out at the task-4 brainstorm on 2026-09-08, which
+replaced the two-group `toPairedCsv(studies, {post})` design that stood here. With paired-only
+defaulting to `All paired`, a subject may carry several later films, so the wide file is **one row per
+subject with one visit per later label present**, not one pair per row.
 
-Columns: `Subject`, `Pre study`, `Post study`, `Pre view`, `Post view`, `Pre film date`, `Post film date`; then
-for each measurement column `M pre`, `M post`, `Δ M` (post minus pre, signed, one decimal, empty when
-either side is absent); then for each clinical key in the union, `F pre` and `F post`. Every clinical
-field is exported both ways rather than guessing which are per-subject and which are per-visit.
+**Input.** The rows the long export would write: the visible rows, or the ticked visible ones (§10.4).
+Demo rows are never written. The candidate visits are every timepoint label other than `Pre-op` among
+those rows, in §7.2 order (`Intra-op` counts as a later visit, as the paired-only filter treats it),
+so a film a filter hides contributes nothing. With `Paired only` ticked and a specific label chosen
+in `with`, that label is the only candidate and the file collapses to the two-visit form; a disabled
+`with` control (the box unticked) does not shape the file. A candidate gets columns only when at
+least one subject that gets a row has a film on it, so a label carried only by unpaired subjects adds
+no empty group.
+
+**Rows.** A subject gets a row when it has exactly one `Pre-op` film and at least one film carrying a
+visit the file writes, with exactly one film per such label. Unpaired is judged first: a subject with
+no `Pre-op` film, or with no film on any visit the file writes, is **unpaired**. A subject that could
+pair but has two films on any label the file writes (`Pre-op` included) is **ambiguous** and gets no
+row — the user relabels one (`Pre-op flexion`) in the drawer and exports again; under a single-label
+export only `Pre-op` and that label are checked, so a duplicate on another label does not matter. A
+blank cell that meant "two films, neither chosen" is the silent omission this spec forbids, which is
+why the row is dropped and named rather than written with a gap (decided 2026-09-08). A subject
+missing a visit has empty cells in that visit's columns. Rows are in order of first appearance among
+the input rows, so the file follows the grid as the long export does. An unsegmented film that is
+visible because segmented-only is off writes empty measurement and delta cells; it is not dropped.
+
+**Columns**, measurement-major — each parameter's trajectory is contiguous, which is the range a reader
+selects for a chart or a mean (decided 2026-09-08 over a visit-major layout, from two worked tables):
+`Subject`; then `<label> study` per visit, `Pre-op` first; then `<label> view` per visit; then
+`<label> film date` per visit; then for each of the ten measurement columns of §11.1, `<M> Pre-op`
+followed by `<M> <label>`, `Delta <M> <label>` per later visit; then for each clinical key in the
+union (§11.1's rule), `<F> <label>` per visit. Every clinical field is exported per visit rather than
+guessing which are per-subject and which are per-visit. Headers use the stored label, never a
+`pre`/`post` shorthand, and `Delta` is spelled in ASCII, following the file's own precedent of
+`PI-LL Mismatch` for the on-screen `PI–LL`, so Excel and R read the header without a byte-order mark.
+A delta is the later value minus the `Pre-op` value, computed over the two one-decimal values written
+in the file so the three cells always agree to the digit; it is empty when either side is absent,
+never `0`. The `Levels` toggle does not affect the file: all ten measurement columns are written, as
+the long export writes them.
+
+Two subjects, PI and PT shown (the other eight measurements repeat the pattern; the view and film date
+columns are omitted here):
 
 ```
-Subject,Pre study,Post study,Pre view,Post view,Pre film date,Post film date,PT pre,PT post,Δ PT,...
-S001,SP-1000,SP-1001,Standing lateral,Standing lateral,2025-03-02,2025-09-14,21.4,14.0,-7.4,...
+Subject,Pre-op study,Post-op study,1 yr study,PI Pre-op,PI Post-op,Delta PI Post-op,PI 1 yr,Delta PI 1 yr,PT Pre-op,PT Post-op,Delta PT Post-op,PT 1 yr,Delta PT 1 yr
+S001,SP-1000,SP-1001,SP-1002,52.1,52.3,0.2,52.0,-0.1,21.4,14.0,-7.4,15.1,-6.3
+S002,SP-1003,,SP-1004,48.6,,,48.9,0.3,12.1,,,9.8,-2.3
+```
+
+Under `Paired only · with Post-op` the same library gives the two-visit file, S002 is unpaired, and the
+full column order shows:
+
+```
+Subject,Pre-op study,Post-op study,Pre-op view,Post-op view,Pre-op film date,Post-op film date,LL L1-S1 Pre-op,LL L1-S1 Post-op,Delta LL L1-S1 Post-op,PI Pre-op,PI Post-op,Delta PI Post-op,...,Age Pre-op,Age Post-op,...
+S001,SP-1000,SP-1001,Standing lateral,Standing lateral,2025-03-02,2025-09-14,38.2,49.1,10.9,52.1,52.3,0.2,...,61,61,...
 ```
 
 The view columns are what let a reader tell a standing-versus-standing pair from a
 standing-versus-prone one without opening the app. They are not optional.
 
-**Amendment decided 2026-09-07 (user, HANDOFF decision 47), to be written into this section at the task-4
-brainstorm:** with paired-only defaulting to `All paired`, a subject may carry several later films, so the wide
-file is one row per subject with one column group per visit present among the exported rows (`Pre`, then each
-later label in §7.2 order), each later group carrying its own Δ against Pre and a subject missing a visit
-getting empty cells in that group; a single label chosen in the `with` dropdown collapses it to the two-group
-file above. `toPairedCsv`'s signature will change accordingly.
+**Where it lives.** `data/pairing.js` (new, pure): `pairStudies(rows, {post})` does the grouping and
+returns the visits, the subjects that get a row, and the report of §11.3; `pairedExportMessage` builds
+the toast from that report. `data/csv.js`: `toPairedCsv(pairing)` writes the text only — the citation
+block, the header, one row per subject — and exports its delta helper beside `round1` so comparison
+mode (plan 07) applies the same rule. `screens/parameters.js` reads `pairedOnly` and `pairedWith` from
+the filters it already has to choose `post`; no new store key, so the grid's key array is unchanged.
 
 ### 11.3 Reporting
 
-Both exports toast what they wrote and what they left out: `Exported N rows` for long;
-`Exported N pairs · M subjects unpaired (S007, S012, …) · K ambiguous (two Pre-op films: S003)` for
-wide, naming up to five subjects per clause. Films with no subject are counted as unpaired. Nothing is
-omitted without a clause.
+Both exports toast what they wrote and what they left out. The long export says `Exported N rows to
+<path>`. The paired export says `Exported N subjects to <path>`, then one clause per thing left out,
+each present only when its count is nonzero, naming up to five subjects per clause and then an
+ellipsis (`…`):
+
+- `· M unpaired (S007, S012, S020)` — subjects among the rows with no `Pre-op` film, or with no film on
+  any visit the file writes (§11.2's first check);
+- `· K ambiguous (two Pre-op films: S003; two 6 wk films: S009)` — §11.2's duplicate rule, each subject
+  with the label it duplicated;
+- `· J films with no subject` and `· L films with no timepoint` — counted, not named, since they have
+  nothing to be named by; the second counts every film with a subject and no timepoint, whichever
+  subject it belongs to, because such a film can never be written;
+- `· P films of other visits not written (6 wk, 1 yr)` — only under a single-label export: the films of
+  WRITTEN subjects whose labels the file does not carry, the labels listed in §7.2 order. An unpaired
+  subject's films are already covered by its own clause and are not counted here.
+
+Under All paired:
+
+```
+Exported 12 subjects to C:\…\Fusion2025-paired.csv · 3 unpaired (S007, S012, S020) · 1 ambiguous (two 6 wk films: S003) · 2 films with no subject · 1 film with no timepoint
+```
+
+Under `Paired only · with Post-op`, where the rows also hold those subjects' 6 wk and 1 yr films:
+
+```
+Exported 12 subjects to C:\…\Fusion2025-paired.csv · 3 unpaired (S007, S012, S020) · 4 films of other visits not written (6 wk, 1 yr)
+```
+
+Nothing is omitted without a clause. A cancelled save dialog toasts nothing, as the long export's does.
+The toast's duration scales with its length — about 2.2 s for a short message, rising with the
+character count to a cap near 8 s — in one pure function in `components/toast.js` that every toast,
+the workspace load message included, then gets (decided 2026-09-08; cost if wrong: long toasts
+linger, and a click elsewhere does not dismiss them today either).
 
 ## 12. Compare with pre-op
 
@@ -501,9 +580,17 @@ Pure modules get `node --test` coverage:
   beats the default, and a film already in the library is untouched.
 - `data/timepoints.js`: normalisation of every token, the sort order across all four buckets, tie
   breaking by film date then `addedAt`, custom labels after known ones.
-- `data/csv.js`: the three new long columns, the union of clinical keys, `toPairedCsv` with paired,
-  unpaired, ambiguous, no-subject and absent-measurement cases, the four structural CSV headers
-  routed to fields and never to `clinical`, both date formats and a rejected one.
+- `data/csv.js`: the three new long columns, the union of clinical keys; `toPairedCsv` over a pairing —
+  both headers of §11.2 (three visits, and the single-label collapse), empty cells for a missing visit,
+  the delta over the written one-decimal values including a float-noise case, an empty delta when
+  either side is absent, the clinical union per visit, no demo row, the citation block; the four
+  structural CSV headers routed to fields and never to `clinical`, both date formats and a rejected one.
+- `data/pairing.js`: paired, unpaired, ambiguous on `Pre-op` and on a later label, unpaired judged
+  before ambiguous, the single-label export ignoring a duplicate on another label, the no-subject and
+  no-timepoint counts, films of other visits under a single label, visits in §7.2 order with `Intra-op`
+  as a later visit, subjects in order of first appearance, case-insensitive subject keys, demo rows
+  dropped, and every toast clause of §11.3 with the five-name cap.
+- `components/toast.js`: the duration function's floor, slope and cap.
 - `data/persistence.js`: the three fields survive validate, malformed date nulled, older records load
   unchanged.
 - The filter and sort functions of the Parameters tab, extracted as pure functions over `Study[]`.
@@ -518,6 +605,11 @@ HANDOFF's known traps apply directly: smoke selectors key on `data-study-id` (an
 for the new grid rows and filter chips), never on a visible label such as a subject or timepoint,
 because the point of several assertions is that a stored field survived; and a suite that prints
 nothing has thrown, so a silent run is re-run bare and its stack read before anything is concluded.
+
+Task 4 adds to `smoke-parameters.mjs`: the paired button's labels and its three disabled reasons, and
+the paired text read through the page's own `pairStudies` and `toPairedCsv` over the injected pair,
+the way the seeding suite reads the long export; the save dialog, the file opening in Excel and the
+toast's duration are human steps.
 
 ## 15. Sequencing
 
@@ -585,3 +677,8 @@ comparison pane; PDF export.
   where filtering by them actually happens.
 - **HANDOFF:** the drawer's Study row group and its deferred-commit pattern; the new smoke fixture.
 - **Spec §9.4 (Studies) and §10.7 (Export CSV):** the tab strip and the new columns.
+- **Architecture contract, task 4 (2026-09-08):** `data/pairing.js` (`pairStudies`, `pairedExportMessage`);
+  `toPairedCsv(pairing)` replaces the `toPairedCsv(studies, {post})` signature named above, and
+  `data/csv.js` exports its delta helper; `exportFileName(workspace, kind)` in `data/parameters.js`;
+  `toastDuration(text)` in `components/toast.js`; the paired button and its note in
+  `screens/parameters.js`.
