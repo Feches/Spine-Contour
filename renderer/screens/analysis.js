@@ -8,6 +8,7 @@ import { toCsv } from '../data/csv.js';
 import { loadStudyImages, disposeStudyImages, thumbnailDataUri } from '../viewer/canvas.js';
 import { mountViewer, recordPrediction } from '../components/viewer.js';
 import { describeModels } from '../data/models.js';
+import { WAIT_FOR_BATCH } from '../data/batch.js';
 import { studyName, defaultName } from '../data/labels.js';
 import { mountMeasurements } from '../components/measurements.js';
 import { mountClinicalData } from '../components/clinical-data.js';
@@ -62,6 +63,7 @@ let mounted = null;
 // would inherit the old film's bytes and decoded bitmaps.
 export function releaseStudy(studyId) {
   filePayloads.delete(studyId);
+  runsByStudy.delete(studyId);
   if (imageCache && imageCache.studyId === studyId) {
     // The entry always goes -- the next film can reuse this id. The bitmaps are CLOSED only
     // when no live viewer draws them (the same identity check cacheImages makes); a viewer
@@ -72,6 +74,12 @@ export function releaseStudy(studyId) {
 }
 
 let runRevision = 0;
+
+// Runs started per study, for restoreFilm's guard (batch spec 8.3): a restore is dropped only when
+// a run for the SAME study started meanwhile. runRevision above is global -- one run at a time --
+// and a batch bumps it at every film's turn, which would drop every restore caught in that window
+// and leave the card reading LOADING.
+const runsByStudy = new Map();
 
 // True while a relocate picker is open for a run that has not started. It refuses a second run
 // (and so a second native dialog) WITHOUT claiming a segmentation is running -- the card must
@@ -117,13 +125,15 @@ subscribe((state) => {
   mounted.update();
 });
 
-// The film bytes: this session's payload, else the file at filePath, else null (moved or never had a path).
-async function filmBytes(study) {
+// The film bytes: this session's payload, else the file at filePath, else null (moved or never had
+// a path). `park` keeps what was read for a later re-run; a batch passes false (batch spec 8.3), so
+// forty films' bytes are not held for the session.
+async function filmBytes(study, { park = true } = {}) {
   const cached = filePayloads.get(study.id);
   if (cached) return cached;
   if (!study.filePath) return null;
   const bytes = await readFile(study.filePath);
-  if (bytes) filePayloads.set(study.id, bytes);
+  if (bytes && park) filePayloads.set(study.id, bytes);
   return bytes;
 }
 
@@ -147,28 +157,56 @@ async function relocateFilm(study) {
   return chosen.data;
 }
 
-async function runSegmentation(studyId) {
-  if (locating) return;
+// The one path from a film to a committed record, for the viewer's button (interactive) and for a
+// batch (batch spec 8.3). Returns an outcome and never throws. `state.running` is set and cleared
+// here for both. In batch mode there is no relocate picker, no toast, no image-cache write for a
+// study that is not on screen, and the bytes read from disk are not parked; every message the
+// interactive path toasts becomes the outcome instead. Interactive callers ignore the outcome.
+export async function segmentStudy(studyId, { batch = false } = {}) {
+  // A relocate picker is already open for a run that has not started; a second click must not
+  // raise a second native dialog. It is not a run, so it never claims one (interactive only: a
+  // batch never opens the picker).
+  if (!batch && locating) return { ok: false, reason: 'A file dialog is already open.' };
   // The !study return sits ABOVE the revision bump on purpose: bumping and then returning
   // early invalidates an in-flight run, whose completion would then return at a revision
   // check WITHOUT clearing `running` -- and every card would read RUNNING forever.
   const study = getState().studies.find((s) => s.id === studyId);
-  if (!study) return;
+  if (!study) return { ok: false, reason: 'The study is no longer in the library.' };
   // The record's identity, carried alongside its id for the checks after every await below.
   // Ids are max+1, so a deleted id is reused by the next film added; addedAt is not.
   const addedAt = study.addedAt;
   const revision = ++runRevision;
+  runsByStudy.set(studyId, (runsByStudy.get(studyId) ?? 0) + 1);
   let data = null;
-  locating = true;
+  let readError = null;
+  if (!batch) locating = true;
   try {
-    data = await filmBytes(study);
-    if (!data) data = await relocateFilm(study);
+    data = await filmBytes(study, { park: !batch });
+    if (!data && !batch) data = await relocateFilm(study);
   } catch (error) {
-    showToast(`Could not read ${study.fileName}: ${error.message}`);
+    readError = error;
   } finally {
-    locating = false;
+    if (!batch) locating = false;
   }
-  if (!data || revision !== runRevision) return;
+  if (readError) {
+    const reason = `Could not read ${study.fileName}: ${readError.message}`;
+    if (!batch) showToast(reason);
+    return { ok: false, reason };
+  }
+  // Spec 10: in a batch a missing film is a named failure; the record is untouched and the user
+  // relocates it from this screen, where the picker still opens.
+  if (!data) return { ok: false, reason: 'file not found' };
+  // The picker is modeless and `locating` is this module's own, so a batch can have started while
+  // it was open (batch spec 8.3). Running now would set `running` over the batch's id and put a
+  // second /predict in flight. The record and the payload map already carry the relocated film;
+  // the run itself waits for the user. ABOVE the revision check on purpose: the batch's own first
+  // run has already moved runRevision, so the check below would refuse silently and the toast that
+  // says why would never show. Only a batch can have started: `running` is set nowhere but here.
+  if (!batch && getState().batch) {
+    showToast(WAIT_FOR_BATCH);
+    return { ok: false, reason: 'a batch is running' };
+  }
+  if (revision !== runRevision) return { ok: false, reason: 'superseded' };
   // After a relocation the record carries the NEW name; the `study` binding above is stale.
   // The filename matters: its extension drives the backend's decoder, so relocating a .jpg
   // to a .png has to send the new name with the new bytes.
@@ -182,13 +220,14 @@ async function runSegmentation(studyId) {
   // onto it would silently replace the film the user just added.
   if (!current || current.addedAt !== addedAt) {
     filePayloads.delete(studyId);
-    return;
+    return { ok: false, reason: 'The study is no longer in the library.' };
   }
 
   // The id, not a boolean: with a Studies list the user can open study B while A's /predict
   // is in flight, and the viewer and the list have to be able to ask WHICH study is running.
   // Every existing truthiness check still reads "a run is in flight" (one run at a time).
   setState({ running: studyId });
+  let warning = null;
   try {
     const response = await predict({
       name: current.fileName,
@@ -198,12 +237,12 @@ async function runSegmentation(studyId) {
       view: 'lateral',
       models: getState().models,
     });
-    if (revision !== runRevision) return;
+    if (revision !== runRevision) return { ok: false, reason: 'superseded' };
 
     const images = await loadStudyImages(response);
     if (revision !== runRevision) {
       disposeStudyImages(images);
-      return;
+      return { ok: false, reason: 'superseded' };
     }
 
     const thumbnail = thumbnailDataUri(images.image);
@@ -211,35 +250,44 @@ async function runSegmentation(studyId) {
     // The sidecar first, then the record: a record that says "segmented" must point at a film
     // that exists. A failed sidecar write is reported and the run still completes — the study
     // opens to FILM UNAVAILABLE next time, and a re-run recreates it. Neither toast starts with
-    // "Could not": tools/smoke/run-and-wait.js treats that prefix as a failed run.
+    // "Could not": tools/smoke/run-and-wait.js treats that prefix as a failed run. In a batch the
+    // persistence notice was raised once at the start, and the sidecar failure is the outcome's
+    // warning, one clause in the closing toast.
     if (persistenceDisabledReason()) {
-      showToast('Studies are not being saved this session, so the segmentation images were not stored.');
+      if (!batch) showToast('Studies are not being saved this session, so the segmentation images were not stored.');
     } else {
       try {
         await savePrediction(studyId, response);
       } catch (error) {
-        showToast(`Saved the measurements, but the segmentation images could not be stored: ${error.message}`);
+        warning = `the segmentation images could not be stored: ${error.message}`;
+        if (!batch) showToast(`Saved the measurements, but ${warning}`);
       }
     }
-    if (revision !== runRevision) { disposeStudyImages(images); return; }
+    if (revision !== runRevision) { disposeStudyImages(images); return { ok: false, reason: 'superseded' }; }
 
     // ORDER MATTERS (BD-6). setState notifies synchronously, so the module-scope
     // subscription's update() runs INSIDE the setState call below and asks the viewer to
     // repaint. The images have to be in place first, or that first paint sizes nothing
     // and draws nothing: every measurement populates while the stage stays black until
     // an unrelated click happens to fire the next update.
-    cacheImages(studyId, images);
+    //
     // Hand off to the live viewer only if it is still showing the study this run was
     // for. The user may have navigated to a different study (or back to Studies) while
     // /predict was in flight -- runRevision only guards against a SECOND run for the
     // SAME study, not against navigation, so without this check a slow-resolving run for
     // A can paint A's bitmaps into B's live viewer. This is the completion-time sibling
-    // of the re-hand guard below (`imageCache.studyId === study.id`): that one checks
+    // of the re-hand guard in render() (`imageCache.studyId === study.id`): that one checks
     // identity before handing a freshly mounted viewer its cached bitmaps, this one
     // checks identity before handing a freshly resolved run its live viewer. The cache
-    // write and the setState below stay unconditional -- A's results are real and belong
-    // in the store regardless of what's on screen; only the live paint is gated.
-    if (mounted && mounted.studyId === studyId) mounted.viewer.setImages(images);
+    // write and the setState below stay unconditional for an interactive run -- A's results are
+    // real and belong in the store regardless of what's on screen; only the live paint is gated.
+    // A BATCH writes the single-entry cache only for the study on screen (batch spec 8.3): forty
+    // films must not evict the open study's bitmaps, and the decoded bitmaps of a film nobody is
+    // looking at have served their thumbnail and are closed here.
+    const onScreen = Boolean(mounted && mounted.studyId === studyId);
+    if (!batch || onScreen) cacheImages(studyId, images);
+    if (onScreen) mounted.viewer.setImages(images);
+    else if (batch) disposeStudyImages(images);
 
     recordPrediction(studyId, response);
 
@@ -257,11 +305,14 @@ async function runSegmentation(studyId) {
         ? { ...s, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null, thumbnail }
         : s)),
     }));
+    return warning ? { ok: true, warning } : { ok: true };
   } catch (error) {
     if (revision === runRevision) {
       setState({ running: null });
-      showToast(`Could not segment: ${error.message}`);
+      if (!batch) showToast(`Could not segment: ${error.message}`);
+      return { ok: false, reason: error.message };
     }
+    return { ok: false, reason: 'superseded' };
   }
 }
 
@@ -272,7 +323,10 @@ async function runSegmentation(studyId) {
 // and `imageCache` deliberately survives it.
 async function restoreFilm(studyId) {
   const revision = ++restoreRevision;
-  const runAtStart = runRevision;
+  // Per study, not runRevision: a batch bumps the global counter at every film's turn (batch spec
+  // 8.3), and this restore is only stale if THIS study started a run meanwhile.
+  const runAtStart = runsByStudy.get(studyId) ?? 0;
+  const runMoved = () => (runsByStudy.get(studyId) ?? 0) !== runAtStart;
   // The record's identity at the start, checked again below. `undefined` cannot reach here
   // (the caller restores the OPEN study), and a null placeholder still fails the comparison
   // against any real record, which is the safe direction.
@@ -288,7 +342,7 @@ async function restoreFilm(studyId) {
     // missing sidecar, which already has a defined outcome (FILM UNAVAILABLE; a re-run
     // recreates it) rather than a wrong one.
     const sidecar = persistenceDisabledReason() ? null : await loadPrediction(studyId);
-    if (revision !== restoreRevision || runAtStart !== runRevision) return;
+    if (revision !== restoreRevision || runMoved()) return;
     if (!sidecar) {
       if (live()) mounted.viewer.setFilmStatus('missing');
       return;
@@ -302,7 +356,7 @@ async function restoreFilm(studyId) {
     // with RESET TO PREDICTION live over its numbers. Existence is not enough: ids are max+1,
     // so a record with this id may be the film added AFTER the delete. Identity is `addedAt`,
     // which a reused id never carries.
-    if (!study || study.addedAt !== addedAt || revision !== restoreRevision || runAtStart !== runRevision) {
+    if (!study || study.addedAt !== addedAt || revision !== restoreRevision || runMoved()) {
       disposeStudyImages(images);
       return;
     }
@@ -450,8 +504,10 @@ export function render(state) {
     const live = getState();
     // `locating` too: a relocate picker is already open for a run that has not started, and a
     // second click must not raise a second native dialog. It is not a run, so it never claims one.
-    if (live.running || locating) return;
-    runSegmentation(live.openId);
+    // `batch` (batch spec 8.3): no single run starts while a batch is up, including in the window
+    // between two films where `running` is null.
+    if (live.running || live.batch || locating) return;
+    segmentStudy(live.openId);
   });
 
   // Re-hand the cached bitmaps to the fresh viewer, so navigating back into an

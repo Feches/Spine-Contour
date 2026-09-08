@@ -298,8 +298,8 @@ try {
     // Read the card itself, not inject-study.js's `runButton`: that is only a querySelector
     // existence test, and .run-button is in the DOM from mount onward whatever the card shows.
     const queued = await stageState();
-    check('the run card is visible, QUEUED, offering Run segmentation',
-      queued.cardVisible === true && queued.eyebrow === 'QUEUED' && queued.buttonVisible === true
+    check('the run card is visible, UNSEGMENTED, offering Run segmentation',
+      queued.cardVisible === true && queued.eyebrow === 'UNSEGMENTED' && queued.buttonVisible === true
       && queued.buttonText === 'Run segmentation' && queued.buttonDisabled === false, queued);
 
     // 2. Run segmentation and wait for it, exactly as run-and-wait.js does (<= 400 s).

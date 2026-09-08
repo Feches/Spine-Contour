@@ -8,6 +8,7 @@ import {
 import { clientToImage, imageToClient, nearestLandmark, setLandmarkAt, femoralCircle, setFemoralCircle, fitCircle } from '../viewer/geometry.js';
 import { zoomIn, zoomOut, zoomAbout, isChordHeld, vertebraAt, sameHandle, hitTestFemoral, nextSelection, nudge, arrowKeyDelta } from '../viewer/interactions.js';
 import { createMeasureQueue } from '../viewer/measure-queue.js';
+import { isQueued, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
 
 // Icons lifted verbatim from design-reference/template.html's Study Analysis toolbar.
 // Same inline-SVG-through-innerHTML pattern plan 02 uses in components/sidebar.js and
@@ -702,22 +703,30 @@ export function mountViewer(container) {
     }
     // `busy` is THIS study's run; `otherRunning` is somebody else's. Everything the card SAYS
     // follows busy, so opening study B while A runs never claims B is running. Only the
-    // button's `disabled` looks at any run at all, because only one run is allowed at a time.
+    // button's `disabled` looks at any run at all, because only one run is allowed at a time,
+    // and at a batch (batch spec 9): while one is up no single run starts. `queued` is this
+    // study's place in the running batch -- QUEUED means that and nothing else; a film in no
+    // batch reads UNSEGMENTED (spec decision 7).
     const busy = state.running === study.id;
     const otherRunning = Boolean(state.running) && !busy;
+    const batch = state.batch ?? null;
+    const queued = !busy && isQueued(batch, study.id);
+    const waitTitle = batch ? WAIT_FOR_BATCH : (otherRunning ? WAIT_FOR_RUN : '');
     if (!hasResult || busy) {
       return {
-        eyebrow: busy ? 'RUNNING' : 'QUEUED',
-        title: busy ? 'Segmenting and measuring…' : 'No segmentation yet',
+        eyebrow: busy ? 'RUNNING' : (queued ? 'QUEUED' : 'UNSEGMENTED'),
+        title: busy ? 'Segmenting and measuring…' : (queued ? 'Waiting for its turn in the batch' : 'No segmentation yet'),
         // Describes what the pipeline does; never which model is executing (BD-4).
         body: busy
           ? 'Runs three models: vertebral segmentation, S1 keypoint detection, and femoral head fitting.'
-          : 'This study was uploaded but has not been processed. Run segmentation to generate measurements.',
+          : (queued
+            ? 'This study is in the running batch and will be segmented in turn.'
+            : 'This study was uploaded but has not been processed. Run segmentation to generate measurements.'),
         spinner: busy,
         button: {
           text: busy ? 'Working…' : 'Run segmentation',
-          disabled: Boolean(state.running),
-          title: otherRunning ? 'Wait for the current segmentation to finish' : '',
+          disabled: Boolean(state.running) || Boolean(batch),
+          title: waitTitle,
         },
       };
     }
@@ -732,8 +741,8 @@ export function mountViewer(container) {
         spinner: false,
         button: {
           text: 'Re-run segmentation',
-          disabled: Boolean(state.running),
-          title: otherRunning ? 'Wait for the current segmentation to finish' : '',
+          disabled: Boolean(state.running) || Boolean(batch),
+          title: waitTitle,
         },
       };
     }
@@ -896,7 +905,8 @@ export function mountViewer(container) {
     // only one run is allowed at a time. A demo study has neither measurements nor geometry,
     // so hasResult keeps both disabled for it.
     editButton.disabled = !hasResult || busy || filmStatus !== null;
-    rerunButton.disabled = !hasResult || Boolean(state.running) || filmStatus === 'loading';
+    // Re-run answers to ANY run in flight and to a batch, because only one run is allowed at a time.
+    rerunButton.disabled = !hasResult || Boolean(state.running) || Boolean(state.batch) || filmStatus === 'loading';
     editButton.setAttribute('aria-pressed', String(state.editing));
     editButton.classList.toggle('is-active', state.editing);
     const editLabel = state.editing ? 'Done editing' : 'Edit landmarks';
