@@ -1388,7 +1388,7 @@ Spec §10.4, §11.2, §11.3 as laid out at the 2026-09-08 brainstorm (decisions 
 - Verified: unit 402/402; `smoke-parameters.mjs` 58/58; Task 4's human gate (outcomes in its commit body).
 ```
 
-3. After decision 47, append:
+3. Decisions 48–50 are ALREADY in HANDOFF (written at the 2026-09-08 wrap, before execution); do not append them again. Verify they still describe the code as built, editing in place only if execution changed something:
 
 ```markdown
 48. **The paired file is layout B, measurement-major** (2026-09-08, chosen from two worked tables): identity columns
@@ -1468,3 +1468,17 @@ README's unit figure and its HANDOFF cross-reference; the third disabled reason 
 section 13 (58 checks); Task 4's commit staging the CSS fallback and using a message file. Nits recorded, not
 acted on: the ambiguity check uses the candidates, not the emitted visits (deliberate, the plan's ruling);
 `.param-export-paired` is a hook with no CSS rule; section 13 dereferences the button after its first guarded check.
+
+Session ended 2026-09-08 (planning): resume at **Task 1** — nothing implemented; unit 379/379 at the wrap; branch
+`claude/preop-postop-paired-export` at the wrap's docs commit above `83ab3a8`, pushed to `fork`. Rulings from chat
+this session, each also in the spec and HANDOFF 47–50:
+- Ruling (user): layout B, measurement-major — each parameter's trajectory contiguous is the range a reader charts or
+  averages — cost if wrong: a column reorder in `toPairedCsv`.
+- Ruling (user): a subject with two films on a label the file writes is ambiguous and gets no row — a blank that means
+  "two films, neither chosen" is the silent omission the spec forbids — cost if wrong: a retake hides the subject
+  until one film is relabelled.
+- Ruling (user): the button, file names, note and toast clauses as written in §10.4/§11.3, and a length-scaled toast
+  duration — five clauses cannot be read in 2.2 s — cost if wrong: long toasts linger.
+- Ruling (user): plan in this session, execute in a fresh one — cost if wrong: none; the prompt carries the state.
+- Ruling: decisions 48–50 and the task-4 "Where things stand" entry were written into HANDOFF at this wrap, so Task 6
+  verifies rather than appends them — cost if wrong: none.

@@ -1,10 +1,11 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-09-07
+**Last updated:** 2026-09-08
 **Branch:** `claude/studies-ui-updates-bb040d` (the studies work plus the Parameters tab, on top of `origin/ui-redesign-cw` @ `0022d91`)
 **Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
-**This copy is on:** `claude/preop-postop-study-fields` (task 2 of the pre-op/post-op spec, code and
-docs; branched 2026-09-07 off the studies tip `76e86b7`; merged back the same day by fast-forward, both branches at the same commit), worktree
+**This copy is on:** `claude/preop-postop-paired-export` (task 4 of the pre-op/post-op spec, the paired export:
+brainstormed, spec amended and plan written and reviewed on 2026-09-08, nothing implemented; branched 2026-09-08 off the
+studies tip `adf3c19`, where task 2 was merged back on 2026-09-07; merge back is the user's call), worktree
 `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628` — see the first
 section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
@@ -21,6 +22,16 @@ section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 ---
 
 ## Where things stand
+
+### Paired export — task 4 of the pre-op/post-op spec, PLANNED, nothing implemented (branch `claude/preop-postop-paired-export`)
+
+Brainstormed and planned on 2026-09-08 off the studies tip `adf3c19` (which has not moved). Spec §10.4, §11.2 and
+§11.3 were laid out at the brainstorm from two worked tables and two example toasts (decisions 47–50; commit
+`651d72b`). Plan `docs/superpowers/plans/2026-09-08-paired-export.md` (Tasks 1–6 — `data/pairing.js`; `toPairedCsv`
+and `delta1`; `toastDuration`; the button with one human gate; smoke section 13; records — its `## Ledger` at the
+end) was independently reviewed on Opus with no blocking finding, and the six should-fix items were folded
+(`83ab3a8`). Resume at **Task 1** with subagent-driven development; `docs/superpowers/NEXT-SESSION.md` is the
+prompt. Unit 379/379 at the wrap; no code touched; nothing pushed but docs.
 
 ### Study fields — task 2 of the pre-op/post-op spec, DONE (branch `claude/preop-postop-study-fields`)
 
@@ -1278,6 +1289,22 @@ written, and are implemented on `claude/preop-postop-study-fields`.
     the `with` dropdown it collapses to the spec's original two-group file. Decided in chat 2026-09-07 after the
     All-paired default made "which post film" a real question; it amends §11.2 at the task-4 brainstorm. *Cost if
     wrong:* a wide file with more column groups than an Excel-first user wants — the long export stays primary.
+
+The following were settled with the user in chat on **2026-09-08**, at the task-4 brainstorm, and are written into
+the spec's §10.4, §11.2 and §11.3. None is implemented yet; plan `2026-09-08-paired-export.md` builds them.
+
+48. **The paired file is layout B, measurement-major** (chosen from two worked tables): identity columns
+    (`<label> study`, view, film date) per visit first, then each parameter's trajectory — `<M> Pre-op`, then `<M> <label>`
+    and `Delta <M> <label>` per later visit — contiguous, then clinical keys per visit. Headers use the stored label and
+    ASCII `Delta` (the file's `PI-LL Mismatch` precedent); a delta is computed over the two one-decimal values written.
+    *Cost if wrong:* a reader who wants one visit's block contiguous scrolls; a column reorder in `toPairedCsv`.
+49. **A subject with two films on any label the file writes is ambiguous and gets no row**, named in the toast with
+    the label and count; unpaired (no Pre-op film, or no film on a written visit) is judged first; under a single label
+    only Pre-op and that label are checked. *Cost if wrong:* a retake at one visit hides the subject from the wide file
+    until one film is relabelled.
+50. **The toast's duration scales with its length**: 2.2 s to forty characters, then 40 ms per character, capped at
+    8 s, for every toast, the workspace load message included. *Cost if wrong:* long toasts linger; nothing dismisses
+    one early.
 
 ## Release prerequisites — before a production release
 
