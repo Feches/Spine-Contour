@@ -15,12 +15,14 @@ radiographs.
 Working directory (absolute): `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628`
 This is a git worktree, not the primary checkout; its directory name predates this work and means nothing. Run
 everything from here; do not `cd` to `C:\Users\codyj\spine contour`.
-Branch: `claude/preop-postop-paired-export`, at the docs commit above `b37b759` (the wrap), which sits above the
-seven execution commits `55447a5`..`b37b759` and the four planning commits, on the studies tip `adf3c19`
-(`claude/studies-ui-updates-bb040d`, which holds spec tasks 1 and 2 merged and had not moved at the wrap). Pushed
-to `fork`, which publishes nothing (both preview workflows fire only on a push to `ui-redesign-cw`; `windows.yml`
-only on `main`). Spec task 4 is COMPLETE: every plan task done and reviewed, the human gate passed, the final
-whole-branch review clean after one fix wave; no test fails (unit 402/402); no review finding is open.
+Branch: `claude/preop-postop-paired-export`, at the merge-record docs commit above `b73e02e` (the wrap), which sits
+above the seven execution commits `55447a5`..`b37b759` and the four planning commits, on the studies tip `adf3c19`.
+`claude/studies-ui-updates-bb040d` (spec tasks 1, 2 and now 4 merged) was fast-forwarded to the same commit on
+2026-09-08 at the user's say-so, so both branches are at the same tip and both are on `fork`, which publishes
+nothing (both preview workflows fire only on a push to `ui-redesign-cw`; `windows.yml` only on `main`). Spec task 4
+is COMPLETE: every plan task done and reviewed, the human gate passed, the final whole-branch review clean after one
+fix wave; no test fails (unit 402/402); no review finding is open. Start the next feature on a NEW branch off that
+tip.
 
 Read in this order before doing anything:
 
@@ -34,18 +36,19 @@ Read in this order before doing anything:
    §12 and §15
 6. `docs/superpowers/plans/2026-08-31-00-architecture-contract.md` — binding, wins over any plan
 
-Resume point. There is nothing to resume in the paired-export plan. Two things are open, in this order:
-
-* **The merge back into `claude/studies-ui-updates-bb040d`.** It is the user's call, never unasked. If HANDOFF's
-  header still says "merge back is the user's call", ask. When they say so: `git fetch fork`, confirm
-  `git log --oneline adf3c19..fork/claude/studies-ui-updates-bb040d` is empty (if it is not, dry-run with
-  `git merge-tree --write-tree fork/claude/studies-ui-updates-bb040d HEAD` and rebase first), fast-forward the studies
-  branch onto this tip as tasks 1–2 were merged on 2026-09-07, and push BOTH branches to `fork`.
-* **The next piece of work**, which needs its own brainstorm and plan (superpowers:brainstorming, then
-  superpowers:writing-plans, executed in a separate session by subagent-driven development). Candidates: spec task 3
-  (compare with pre-op, §12) waits for plan 07, which is deferred past the first release; the ROADMAP items — the CSV
-  round trip (§1), the prototype-key clinical leak and the stale studies check (§5, added 2026-09-08); the release
-  prerequisites in HANDOFF. Ask the user which before brainstorming anything.
+Resume point. There is nothing to resume in the paired-export plan, and the merge back is done. The user's next work,
+decided in chat on 2026-09-08: **batch segmentation of loaded films, ahead of a release.** It is new design — in
+neither the pre-op/post-op spec nor `docs/ROADMAP.md` — so it starts with superpowers:brainstorming (a short design
+conversation with worked examples, then a spec and a plan via superpowers:writing-plans, executed in a separate
+session by subagent-driven development), on a new branch off the studies tip. Constraints the brainstorm must respect:
+`state.running` is a single study id by decision (HANDOFF 13) and `sourceAvailable` was dropped with it; `/predict`
+takes one film per request at roughly five to sixty seconds each on this CPU-only laptop and has no progress channel,
+so per-film progress stays indeterminate and only a COUNT ("3 of 40 done") is honest status; the viewer's measure
+queue (`viewer/measure-queue.js`) owns `/measure` re-runs, not `/predict`; the Parameters grid already ticks rows and
+the Studies summary already counts films "in queue". The CSV round trip (ROADMAP §1), spec task 3 (after plan 07) and
+the smaller ROADMAP items wait behind it. The release prerequisites in HANDOFF still stand before any production
+build, batch segmentation included: no installer has been tested since before plan 06, and `windows.yml` lacks the
+repository guard and the allowlist check.
 
 Ledger. The plan's `## Ledger` (`docs/superpowers/plans/2026-09-08-paired-export.md`) travels with the repo and holds
 every ruling from planning and execution. The scratch SDD workspace `.superpowers/sdd/2026-09-08-paired-export/`
@@ -85,7 +88,8 @@ Remote rules.
 * Never merge to `main`. `main` does not contain the redesign at all.
 * Do not rename any branch onto `ui-redesign-cw` and do not push to `main`: those are the only two things that
   build an installer. A feature branch pushed to `fork` publishes nothing.
-* Merging this branch back into `claude/studies-ui-updates-bb040d` is the user's call, never unasked.
+* This branch was merged back on 2026-09-08. The next feature gets its own branch off the studies tip and is merged
+  back only at the user's say-so, never unasked; each task branch is merged before the next starts.
 
 Verification commands.
 

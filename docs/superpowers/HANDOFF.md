@@ -4,7 +4,8 @@
 **Branch:** `claude/studies-ui-updates-bb040d` (the studies work plus the Parameters tab, on top of `origin/ui-redesign-cw` @ `0022d91`)
 **Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
 **This copy is on:** `claude/preop-postop-paired-export` (task 4 of the pre-op/post-op spec, the paired export, code
-and docs; branched 2026-09-08 off the studies tip `adf3c19`; merge back is the user's call), worktree
+and docs; branched 2026-09-08 off the studies tip `adf3c19`; merged back into `claude/studies-ui-updates-bb040d` the
+same day by fast-forward, both branches at the same commit), worktree
 `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628` — see the first
 section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
@@ -49,7 +50,9 @@ Spec §10.4, §11.2, §11.3 as laid out at the 2026-09-08 brainstorm (decisions 
   "ok checks pass"; outcomes in `19b8d43`'s body). Final whole-branch review (Opus, 2026-09-08): ready to merge, no
   Critical or Important finding; one fix wave (`b37b759`: `pairStudies` reads a `Pre-op` post label as All paired
   instead of self-pairing; the demo predicate aligned to `=== 'real'`; two records reworded). Branch tip `b37b759`
-  plus the wrap's docs commit, pushed to `fork`. **Merge back into the studies branch is the user's call.**
+  plus the wrap's docs commit, pushed to `fork`. **Merged back into `claude/studies-ui-updates-bb040d` on 2026-09-08 at
+  the user's say-so (fast-forward; both branches at the same commit, both on `fork`).** The user's next work, decided
+  in chat the same day: batch segmentation of loaded films, ahead of a release — new design, brainstorm first.
 
 ### Study fields — task 2 of the pre-op/post-op spec, DONE (branch `claude/preop-postop-study-fields`)
 

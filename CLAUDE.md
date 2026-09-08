@@ -41,9 +41,10 @@ and `delta1` in `csv.js`, `toastDuration` in `components/toast.js`, the `Export 
 filter bar, smoke section 13 and the records. Plan `docs/superpowers/plans/2026-09-08-paired-export.md` (Tasks 1–6, its
 `## Ledger` at the end): every task reviewed, the human gate passed, the final whole-branch review clean after one fix
 wave (`b37b759`). Unit 402/402; `smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36; `smoke-workspace.mjs` 100/100;
-`smoke-studies.mjs` 59/60 (one stale check since `0f8f821`, see `docs/ROADMAP.md` §5). Pushed to `fork`. **Merge back
-into the studies branch is the user's call; the next work is spec task 3 (compare with pre-op, after plan 07) or a
-ROADMAP item, each needing its own plan.** `docs/superpowers/NEXT-SESSION.md` is the prompt.
+`smoke-studies.mjs` 59/60 (one stale check since `0f8f821`, see `docs/ROADMAP.md` §5). Pushed to `fork`. **Merged back
+into the studies branch on 2026-09-08 (fast-forward; both branches at the same commit). The user's next work is batch
+segmentation of loaded films, ahead of a release — brainstorm it first; spec task 3 waits for plan 07 and the ROADMAP
+items wait behind it.** `docs/superpowers/NEXT-SESSION.md` is the prompt.
 
 ## Read these first
 

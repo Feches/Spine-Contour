@@ -1542,3 +1542,7 @@ Session ended 2026-09-08 (execution): nothing to resume in this plan — all six
 branch tip `b37b759` plus the wrap's docs commit, pushed to `fork`. Next: the user's merge-back decision (never unasked);
 then spec task 3 (compare with pre-op, after plan 07) or a ROADMAP item, each needing its own brainstorm and plan.
 `docs/superpowers/NEXT-SESSION.md` is the prompt.
+
+Merged back 2026-09-08: at the user's say-so ("Ok merge now"), `claude/studies-ui-updates-bb040d` was fast-forwarded to
+this branch's tip (the merge-record docs commit above `b73e02e`) and both branches pushed to `fork`. The user's stated
+next work is batch segmentation of loaded films ahead of a release, to be brainstormed in a fresh session on a new branch.
