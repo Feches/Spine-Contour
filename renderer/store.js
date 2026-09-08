@@ -38,6 +38,9 @@ let state = {
   selection: null,
   running: null, // string|null — the id of the study whose /predict is in flight; one run at a time
   runStage: null,
+  // (2026-09-08, batch spec 8.1) The running batch, or null: { ids, done, failed, warnings, skipped,
+  // stopping }. Replaced wholesale on every change by renderer/batch.js; never persisted.
+  batch: null,
 
   wsFolder: null,
   wsFiles: [],
