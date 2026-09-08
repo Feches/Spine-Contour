@@ -281,6 +281,13 @@ Not code quality; these stand between the branch and a production release.
   (screens/analysis.js) a throw from `thumbnailDataUri` or `recordPrediction` lands in the outer catch without
   `disposeStudyImages`; inherited from the old run path, and a batch amplifies it (one orphaned bitmap set per
   film). Hoist the `images` binding out of the `try` and dispose in the catch. Found at Task 3's review, 2026-09-08.
+- **A delete that lands during a batch film's byte read is reported as a failure, not a skip.** `segmentStudy`
+  returns `The study is no longer in the library.` from its post-read identity check, and the driver files every
+  non-ok outcome under `could not be segmented`; the batch spec's §9 meant `skipped (deleted, or segmented
+  meanwhile)`. Cosmetic toast wording; a `skipped: true` outcome kind from the core would fix it. Found at the final
+  review's fix wave, 2026-09-08.
+- **`tools/smoke/smoke-persist.mjs` comments (around lines 561, 590 and 683) still name `runSegmentation`**, which
+  became `segmentStudy` on 2026-09-08. A word sweep the next time that suite is edited.
 
 ---
 

@@ -46,14 +46,19 @@ into the studies branch on 2026-09-08 (fast-forward; both branches at the same c
 segmentation of loaded films, ahead of a release — brainstorm it first; spec task 3 waits for plan 07 and the ROADMAP
 items wait behind it.** `docs/superpowers/NEXT-SESSION.md` is the prompt.
 
-**Branch `claude/batch-segmentation` (2026-09-08)** sits on the studies tip (`192f303`) and holds the **batch segmentation
-spec and plan, nothing implemented**: `docs/superpowers/specs/2026-09-08-batch-segmentation-design.md` (sixteen §6
-decisions) and `docs/superpowers/plans/2026-09-08-batch-segmentation.md` (Tasks 1–7, independently reviewed on Opus, the
-review folded). One click on the Find tab segments the ticked or visible unsegmented films one after another with
-count-only progress, a Stop and one closing toast; the Find tab gains workspace/folder filters and row ticks shared with
-the Parameters tab; `IN QUEUE` becomes `UNSEGMENTED`; `state.running` stays a single id. **The next session executes the
-plan by subagent-driven development from Task 1** (Sonnet for 1, 2, 4, 6, 7; Opus for 3 and 5; Task 5 has a human gate),
-then a final whole-branch review, then the merge back at the user's say-so. Unit 402/402 at the wrap.
+**Branch `claude/batch-segmentation` (2026-09-08)** sits on the studies tip (`192f303`) and holds **batch
+segmentation, DONE, reviewed and gated, awaiting the merge back**: spec
+`docs/superpowers/specs/2026-09-08-batch-segmentation-design.md` (its §6 is HANDOFF decisions 51–66) and plan
+`docs/superpowers/plans/2026-09-08-batch-segmentation.md` (Tasks 1–7, executed by subagent-driven development on
+2026-09-08; its `## Ledger` at the end holds every ruling). One click on the Find tab segments the ticked or visible
+unsegmented films one after another with count-only progress, a Stop and one closing toast; the Find tab has
+workspace/folder filters and row ticks shared with the Parameters tab; `IN QUEUE` is `UNSEGMENTED`; `state.running`
+stays a single id; `segmentStudy(studyId, {batch})` is the exported run core. Task 5's seven-check human gate passed
+2026-09-08 (user). The final whole-branch review (Opus) found one delete/batch race, fixed in `9d4b267` (docs
+`ec7ffff`). Unit 426/426; `smoke-studies.mjs` 103/103 (the stale diagnosis check fixed); `smoke-workspace.mjs`
+100/100; `smoke-parameters.mjs` 58/58; `smoke-persist.mjs` 36/36 then 44/44. Pushed to `fork`. **The merge back into
+`claude/studies-ui-updates-bb040d` waits for the user's say-so** (a fast-forward while the studies tip is still
+`192f303`); after it, the release prerequisites and the ROADMAP items; spec task 3 waits for plan 07.
 `docs/superpowers/NEXT-SESSION.md` is the prompt.
 
 ## Read these first

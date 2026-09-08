@@ -2177,3 +2177,50 @@ user's are marked; each is also in the spec's §6 or in "Rulings made while plan
   fold is itemised above.
 - Ruling: HANDOFF decisions 51–66 are written by Task 7, not at this wrap; HANDOFF carries a pointer to the spec's §6 until
   then — cost if wrong: a session between now and Task 7 reads the spec for them.
+
+Session 2026-09-08 (execution): Tasks 1–7 executed by subagent-driven development in the worktree
+`spine-contour-preview-audit-dd3628` — Sonnet for Tasks 1, 2, 4, 6, 7; Opus for Tasks 3 and 5, the final whole-branch
+review, its fix wave and the re-review; a fresh subagent per task, a spec-and-quality review after each. Commits:
+`c4aff7b` (Task 1), `25fe7ec` (Task 2), `e6b6f62` (Task 3), `2bd13fe` (Task 4), `095b53e` (Task 5, amended after the gate),
+`bd5cdc8` + `ab0b049` (Task 6 and its one fix round), `c342a6a` (Task 7), then the final review's fix wave `9d4b267` (code)
++ `ec7ffff` (docs). Task 5's human gate passed 2026-09-08 (user): all seven checks on the real library. Verified: unit
+426/426; `smoke-studies.mjs` 103/103; `smoke-workspace.mjs` 100/100; `smoke-parameters.mjs` 58/58 (Task 2);
+`smoke-persist.mjs` 36/36 then 44/44 (Task 3). The final review found one Important integration defect (a delete confirmed
+on a queued study during the film's byte-read window; see Ruling R5) and six one-line minors, all fixed in one wave; the
+re-review left nothing open. Traps hit: the Write tool turned three `\uXXXX` escapes into glyphs in the new
+`data/batch.js` (caught by the byte-check, repaired with the venv python); the Bash tool delivers a doubled backslash as one
+(new HANDOFF bullet); the Electron process vanished mid-suite twice while a second app instance was running (environment;
+both re-runs green; `/predict` took 130–140 s per film with two backends loaded). Rulings made during execution:
+- Ruling P1: the spec's "interactive wrapper `runSegmentation`" is the `batch: false` default of the one exported
+  `segmentStudy`; `setRunHandler` calls it directly and no private `runSegmentation` survives — behaviour identical, the
+  plan's independent review accepted it, the contract names only `segmentStudy` — cost if wrong: a two-line wrapper and one
+  contract name.
+- Ruling R2: the persist suite's run phase is 36/36, not the plan's 34/34 (HANDOFF already recorded 36; the README's figure
+  was stale) — the README and HANDOFF write 36/36 then 44/44 — cost if wrong: one number in two docs.
+- Ruling R3: a throw from `thumbnailDataUri`/`recordPrediction` leaving decoded bitmaps undisposed (pre-existing, found at
+  Task 3's review) is a ROADMAP §5 line, not a change here — cost if wrong: one bullet.
+- Ruling R4: two plan-mandated unguarded dereferences in the smoke sections (`pick()`, the select-all probe) were fixed
+  against the plan's own code block — the Global Constraints and spec §12 say a missing element is a FAIL, never a throw —
+  cost if wrong: two null guards in a suite (a third of the same shape, `ws10`, was found by the fix's scan).
+- Ruling R5: the delete/batch race is closed at both ends — `deleteStudy` re-checks `running === id` after its await and
+  refuses late (the record stays; the run in flight segments it), and `segmentStudy` re-checks the record's identity by
+  `addedAt` after the images decode and before any side effect — cost if wrong: a delete confirmed at that instant is
+  refused with a toast instead of proceeding.
+- Ruling R6: the `SAMPLE_BASE64` guard adds no new smoke check (a null sample makes section 12 FAIL by name), so 103 stands
+  — cost if wrong: one figure.
+- Ruling R7: `batchMessage`'s "then stopped" applies only when a film was left unrun; spec §9's sentence was amended to
+  match the code and its test — cost if wrong: one sentence.
+- Ruling R8 (parked): the late refuse in `deleteStudy` can leave a segmented record whose sidecar `deletePrediction` already
+  removed until the in-flight run's `savePrediction` recreates it — reachable only by an interactive re-run of a segmented
+  study during the IPC round trip, and a quit inside that window opens the study to `FILM UNAVAILABLE`, the documented
+  recoverable state — left as is — cost if wrong: one `FILM UNAVAILABLE` card after a re-run.
+- Ruling (process): fix rounds used a fresh implementer with the report file, because `SendMessage` is not available in
+  this harness — cost if wrong: none; the report file is the memory either way.
+Parked observations (no ruling needed): a delete landing in the byte-read window is filed as failed, not skipped (ROADMAP
+§5); `smoke-persist.mjs` comments still say `runSegmentation` (ROADMAP §5); neither half of the race fix has automated
+coverage (screen/store-coupled code, the project's convention).
+
+Session ended 2026-09-08 (execution): **resume at the merge back into `claude/studies-ui-updates-bb040d`, at the user's
+say-so** — no task, fix round, open finding or failing test remains; the branch is at the wrap's docs commit above
+`ec7ffff`, pushed to `fork`. The git-ignored SDD scratch workspace `.superpowers/sdd/2026-09-08-batch-segmentation/`
+(briefs, reports, review packages, the running ledger) still exists and is deleted when the branch is finished.

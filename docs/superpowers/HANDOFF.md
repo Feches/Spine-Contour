@@ -44,6 +44,18 @@ Spec `docs/superpowers/specs/2026-09-08-batch-segmentation-design.md` (decisions
   100/100; `smoke-parameters.mjs` 58/58; `smoke-persist.mjs` 36/36 then 44/44. Task 5's human gate passed 2026-09-08
   (user): all seven checks on the real library — filter bar, ticks, the button, a batch, Stop, completion and export,
   console clean.
+- Final whole-branch review (Opus, 2026-09-08, after Tasks 1–7): one Important finding, fixed in `9d4b267` —
+  `deleteStudy` checked `running` only BEFORE its `await deletePrediction`, so a delete confirmed on a queued study
+  during the film's byte-read window could remove the record while the run continued and `recordPrediction` re-added a
+  snapshot under an id `nextId` can reuse (RESET TO PREDICTION over another study's geometry). It now re-checks after
+  the await and refuses late with the existing toast, and `segmentStudy` re-checks the record's identity by `addedAt`
+  after the images decode, before the sidecar, the cache, the snapshot and the commit. Docs fixes in `ec7ffff`. Parked
+  with rulings in the plan's `## Ledger`: the late refuse can leave a segmented record without its sidecar until the
+  in-flight run rewrites it (interactive re-run only; recoverable as `FILM UNAVAILABLE`); a delete landing in the
+  byte-read window is filed as failed, not skipped (ROADMAP §5); `smoke-persist.mjs` comments still say
+  `runSegmentation` (ROADMAP §5); the race fix has no automated coverage.
+- **Not done here: the merge back into `claude/studies-ui-updates-bb040d`** — at the user's say-so only. While the
+  studies tip is still `192f303` it is a fast-forward.
 
 ### Paired export — task 4 of the pre-op/post-op spec, DONE (branch `claude/preop-postop-paired-export`)
 
