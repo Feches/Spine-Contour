@@ -38,7 +38,7 @@ fails, no review finding is open.** The final whole-branch review was clean afte
 6. `docs/ROADMAP.md` — deferred work with no plan
 
 **Resume point.** Two things, in order:
-1. **The merge back into `claude/studies-ui-updates-bb040d` — the user's call; never merge
+1. **The merge back into `claude/studies-ui-updates-bb040d` is DONE (fast-forward, 2026-09-07; both branches at the same commit on `fork`); branch the next task off the studies tip and never merge
    unasked.** First `git fetch fork` and check whether that branch moved
    (`git log --oneline HEAD..fork/claude/studies-ui-updates-bb040d`); if it did, dry-run with
    `git merge-tree --write-tree fork/claude/studies-ui-updates-bb040d HEAD` and rebase before anything

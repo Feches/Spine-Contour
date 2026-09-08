@@ -4,7 +4,7 @@
 **Branch:** `claude/studies-ui-updates-bb040d` (the studies work plus the Parameters tab, on top of `origin/ui-redesign-cw` @ `0022d91`)
 **Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
 **This copy is on:** `claude/preop-postop-study-fields` (task 2 of the pre-op/post-op spec, code and
-docs; branched 2026-09-07 off the studies tip `76e86b7`; merge back is the user's call), worktree
+docs; branched 2026-09-07 off the studies tip `76e86b7`; merged back the same day by fast-forward, both branches at the same commit), worktree
 `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628` — see the first
 section under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
@@ -56,7 +56,7 @@ the §10.3 filters and subject sort, §11.1's three columns. Plan: `docs/superpo
 
 - Final whole-branch review (2026-09-07): clean after one fix wave — views normalise like timepoints (decision 46),
   a cleared view renders `—` everywhere, `rowForSegments` shared by `folderRows` and `seedFields`, four records the
-  new content had contradicted. Branch tip `4c60ccf` plus the wrap's docs commit; pushed to `fork`; the merge back
+  new content had contradicted. Branch tip `4c60ccf` plus the wrap's docs commit; pushed to `fork`; merged back into `claude/studies-ui-updates-bb040d` on 2026-09-07 by fast-forward at the user's say-so, both branches at the same commit on `fork` — the merge back
   is the user's call.
 
 **Traps:** `list` is a read-only accessor on `HTMLInputElement`, so it must never be an `el()` prop —

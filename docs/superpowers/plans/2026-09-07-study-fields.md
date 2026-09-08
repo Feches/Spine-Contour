@@ -3680,3 +3680,8 @@ studies branch has not moved); (2) spec task 4 (the paired export, §11.2–§11
 change: `persistence.js:147-148`'s comment still says "Both are optional" above five fields; `countSeeding`
 counts a user-set non-default folder row as "read from names"; `store.js` duplicates `DEFAULT_FILTERS` as a
 literal.
+
+Merged back into `claude/studies-ui-updates-bb040d` on 2026-09-07 by fast-forward, at the user's say-so (option 1
+of the finishing menu); unit 379/379 on the merged tree; both branches pushed to `fork` at the same commit. The
+feature branch is kept, this worktree being checked out on it. Spec task 3 or 4 starts on a new branch off the
+studies tip.

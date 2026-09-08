@@ -31,7 +31,7 @@ defaults to `All paired`) and subject sort; three export columns. Plan
 `docs/superpowers/plans/2026-09-07-study-fields.md` (Tasks 1–11, its `## Ledger` at the end), all
 reviewed, three human gates passed, the final whole-branch review clean after one fix wave. Unit 379/379;
 `smoke-parameters.mjs` 46/46; `smoke-seeding.mjs` 36/36; `smoke-workspace.mjs` 100/100. Pushed to `fork`.
-**The merge back into the studies branch is the user's call (a fast-forward); the next work is spec task 4
+**Merged back into the studies branch on 2026-09-07 (fast-forward; both branches at the same commit); the next work is spec task 4
 (the paired export) or task 3 (compare with pre-op, after plan 07), each needing its own plan.**
 `docs/superpowers/NEXT-SESSION.md` is the prompt.
 
