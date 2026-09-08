@@ -1302,7 +1302,7 @@ written, and are implemented on `claude/preop-postop-study-fields`.
     wrong:* a wide file with more column groups than an Excel-first user wants — the long export stays primary.
 
 The following were settled with the user in chat on **2026-09-08**, at the task-4 brainstorm, and are written into
-the spec's §10.4, §11.2 and §11.3. None is implemented yet; plan `2026-09-08-paired-export.md` builds them.
+the spec's §10.4, §11.2 and §11.3. Implemented by plan `2026-09-08-paired-export.md` (spec task 4, DONE 2026-09-08).
 
 48. **The paired file is layout B, measurement-major** (chosen from two worked tables): identity columns
     (`<label> study`, view, film date) per visit first, then each parameter's trajectory — `<M> Pre-op`, then `<M> <label>`
