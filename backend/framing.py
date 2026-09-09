@@ -115,6 +115,36 @@ def prepare_crop(image: np.ndarray, window: Window) -> tuple[np.ndarray, CropTra
     return canvas, CropTransform(window, inner)
 
 
+def fallback_window(image: np.ndarray) -> Window:
+    """Keep the film when S1 is absent, trimming only broad near-black margins.
+
+    Screenshots can put a narrow radiograph inside a wide black viewport. Sparse
+    labels or a thin toolbar must not make those margins look like image content.
+    This is a framing fallback, not an anatomical crop or a new source image.
+    """
+    height, width = image.shape
+    whole = (0, 0, width, height)
+    foreground = _robust_rescale(image) > 8
+    columns = np.flatnonzero(foreground.mean(axis=0) >= .1)
+    rows = np.flatnonzero(foreground.mean(axis=1) >= .1)
+    if not len(columns) or not len(rows):
+        return whole
+    left, right = int(columns[0]), int(columns[-1]) + 1
+    top, bottom = int(rows[0]), int(rows[-1]) + 1
+    # Only discard broad strips that are at least 95% near-black. Keep a small
+    # margin so the content boundary is not a new clipping plane for landmarks.
+    pad_x, pad_y = max(2, round(width * .01)), max(2, round(height * .01))
+    if left < width * .1 or foreground[:, :left].mean() > .05: left = 0
+    else: left = max(0, left - pad_x)
+    if width - right < width * .1 or foreground[:, right:].mean() > .05: right = width
+    else: right = min(width, right + pad_x)
+    if top < height * .1 or foreground[:top].mean() > .05: top = 0
+    else: top = max(0, top - pad_y)
+    if height - bottom < height * .1 or foreground[bottom:].mean() > .05: bottom = height
+    else: bottom = min(height, bottom + pad_y)
+    return (left, top, right, bottom) if right - left >= 128 and bottom - top >= 128 else whole
+
+
 def clip_window(centre_x: float, centre_y: float, crop_w: float, crop_h: float,
                 height: int, width: int) -> Window:
     left = int(round(max(0.0, min(width - 2.0, centre_x - crop_w / 2))))

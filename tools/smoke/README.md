@@ -38,6 +38,11 @@ it skips the spawn, touches no profile, and its ready line says `"attached": tru
 
 ## Running the plan-04 suites
 
+For partial-segmentation regression, run `node tools/smoke/smoke-partial-segmentation.mjs`
+against the scratch app. It checks L1-only display, keyboard editing, the real `/measure`
+endpoint, reset and disk/page reload without screenshots. Optional local image paths run
+the production batch with the actual models and save its summary under `out/partial-segmentation/`.
+
 In order, against the launched app. Each suite expects a freshly segmented study.
 `smoke-gate1.mjs` and `smoke-gate2.mjs` drag landmarks and re-measure as part of their
 own checks, which is fine for those two, but it leaves the study's geometry different

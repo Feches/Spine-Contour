@@ -802,7 +802,7 @@ export function mountViewer(container) {
       if (event.target instanceof Element && event.target.closest('.viewer-editbar')) return;
       event.preventDefault();
       cancelRetrace(); // retrace is bound to the selected side; a new selection ends it
-      setState({ selection: nextSelection(state.selection, event.shiftKey ? -1 : 1) });
+      setState({ selection: nextSelection(state.selection, event.shiftKey ? -1 : 1, liveGeometry()) });
       return;
     }
     const delta = arrowKeyDelta(event.key, event.shiftKey);

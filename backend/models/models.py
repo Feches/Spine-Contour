@@ -296,7 +296,11 @@ def _s1_from_output(output: dict[str, torch.Tensor]) -> tuple[float, np.ndarray 
         return 0.0, None
     best = int(output["scores"].argmax())
     points = output["keypoints"][best, :, :2].detach().cpu().numpy().astype(np.float64)
-    return float(output["scores"][best]), points
+    confidence = float(output["scores"][best])
+    if (not np.isfinite(confidence) or points.shape != (2, 2) or not np.isfinite(points).all()
+            or np.linalg.norm(points[1] - points[0]) <= 0):
+        return 0.0, None
+    return confidence, points
 
 
 def _score_s1(letterboxed: list[np.ndarray]) -> list[tuple[float, np.ndarray | None]]:
@@ -321,15 +325,16 @@ def _read_frame(letterboxed: np.ndarray, choice: dict[str, str]) -> dict[str, ob
     with torch.inference_mode():
         femoral_logits = femoral(segmentation_input)
         s1_confidence, s1_points = _s1_from_output(s1_model([detection_input])[0])
+        # HRNet always regresses every slot, including anatomy outside the film.
+        # Use the labelled mask as presence evidence for either corner model.
+        vertebra = _load_model("vertebra", segmentation_device)
+        vertebra_labels = vertebra(segmentation_input)[0].argmax(0).detach().cpu().numpy()
         if choice["vertebrae"] == "unet":
-            vertebra = _load_model("vertebra", segmentation_device)
-            vertebra_labels = vertebra(segmentation_input)[0].argmax(0).detach().cpu().numpy()
             hrnet_points = None
         else:
             hrnet = _load_model("hrnet", segmentation_device)
             heat = hrnet(segmentation_input).float()
             hrnet_points = decode_heatmaps(heat, hrnet.heatmap_stride)[0].cpu().numpy()
-            vertebra_labels = None
     return {
         "vertebra_labels": None if vertebra_labels is None else vertebra_labels.astype(np.uint8),
         "hrnet_points": None if hrnet_points is None else hrnet_points.astype(np.float64),
@@ -380,39 +385,60 @@ def spinopelvic_prediction(
     image = _robust_rescale(raw)
 
     located = framing.locate(raw, _score_s1)
-    if located is None:
-        raise ValueError("Could not locate the lumbar spine on this radiograph")
+    fallback = located is None
+    if fallback:
+        # Upper-lumbar and cropped films need not contain a sacrum at all.
+        located = {"window": framing.fallback_window(raw), "searched": True,
+                   "whole_film_won": True, "whole_film_cost": None,
+                   "confidence": None, "cost": None, "candidates": 0}
     window = located["window"]
     canvas, transform = framing.prepare_crop(raw, window)
     frame = _read_frame(canvas, choice)
-    if frame["s1"] is None:
-        raise ValueError("S1 keypoint model did not return an endplate")
+    if _source_s1(frame, transform) is None and not located.get("whole_film_won"):
+        # A search crop without its anchor must not hide other visible levels.
+        window = framing.fallback_window(raw)
+        canvas, transform = framing.prepare_crop(raw, window)
+        frame = _read_frame(canvas, choice)
+        fallback = True
 
     # After a search, one reframe from the full-resolution detection, accepted
     # only if it agrees with the search; an unanchored re-detection is how a
     # crop drifts. A film taken whole is left whole: it is already the frame the
     # models expect, and re-cropping it would only change their input.
     reframed = False
-    proposed = (framing.reframe(transform.restore_points(frame["s1"]), raw.shape)
-                if not located.get("whole_film_won") else None)
+    s1_source = _source_s1(frame, transform)
+    proposed = (framing.reframe(s1_source, raw.shape)
+                if s1_source is not None and not fallback and not located.get("whole_film_won") else None)
     if proposed is not None and proposed != window and framing.accept_reframe(window, proposed):
         canvas, transform = framing.prepare_crop(raw, proposed)
         candidate = _read_frame(canvas, choice)
-        if candidate["s1"] is not None:
+        if _source_s1(candidate, transform) is not None:
             window, frame, reframed = proposed, candidate, True
         else:
             canvas, transform = framing.prepare_crop(raw, window)
 
     model_values = {level: index for index, level in enumerate(LUMBAR_LEVELS, start=1)}
+    s1_source = _source_s1(frame, transform)
+    # Without S1, U-Net can recover endplates but cannot establish anterior.
+    # Keep a stable image-coordinate ordering, marked explicitly as unconfirmed.
+    anterior = frame["s1"][0] - frame["s1"][1] if s1_source is not None else np.array([-1., 0.])
+    # Letterbox padding is not anatomy and must not supply presence evidence.
+    inner = transform.inner
+    labels = np.zeros_like(frame["vertebra_labels"])
+    region = np.s_[inner.top:inner.top + inner.resized_height, inner.left:inner.left + inner.resized_width]
+    labels[region] = frame["vertebra_labels"][region]
+    present = landmarks.corners_from_label_map(labels, model_values, anterior)
     if choice["vertebrae"] == "unet":
-        anterior = frame["s1"][0] - frame["s1"][1]
-        corners = landmarks.corners_from_label_map(frame["vertebra_labels"], model_values, anterior)
-        label_map = frame["vertebra_labels"]
+        corners = present
+        label_map = labels
     else:
         corners = {}
         for slot, (level, corner) in enumerate(HRNET_LANDMARKS):
-            if level in model_values:
+            if level in present:
                 corners.setdefault(level, {})[corner] = frame["hrnet_points"][slot]
+        # Invalid/off-film regressions cannot become border-clipped fake bodies.
+        corners = {level: quad for level, quad in corners.items()
+                   if _usable_quad(quad, transform, raw.shape)}
         label_map = landmarks.label_map_from_corners(corners, model_values, canvas.shape)
     common_labels = np.where(label_map > 0, label_map + int(VertebraLabel.L1) - 1, 0).astype(np.uint8)
 
@@ -421,19 +447,24 @@ def spinopelvic_prediction(
                 for name, point in quad.items()}
         for level, quad in corners.items()
     }
-    s1_source = _clip_to_film(transform.restore_points(frame["s1"]), raw.shape)
+    contract = landmarks.to_contract(corners_source)
+    if choice["vertebrae"] == "unet" and s1_source is None:
+        for body in contract.values():
+            body["anterior_confirmed"] = False
     return {
         "image": image,
         "mask": transform.restore_mask(common_labels, raw.shape),
         "femoral_mask": transform.restore_mask(frame["femoral"], raw.shape),
         "landmarks": {
-            "S1": {"superior": s1_source.tolist()},
-            "vertebrae": landmarks.to_contract(corners_source),
+            "S1": {"superior": None if s1_source is None else s1_source.tolist()},
+            "vertebrae": contract,
         },
         "models": choice,
         "framing": {
             "window": [int(v) for v in window],
             "reframed": reframed,
+            "fallback_whole_film": fallback,
+            "trimmed_black_margins": fallback and window != (0, 0, raw.shape[1], raw.shape[0]),
             "searched": located["searched"],
             "whole_film_won": bool(located.get("whole_film_won")),
             "whole_film_agrees": bool(located.get("whole_film_agrees")),
@@ -444,6 +475,31 @@ def spinopelvic_prediction(
             "s1_confidence": round(float(frame["s1_confidence"]), 4),
         },
     }
+
+
+def _source_s1(frame: dict, transform) -> np.ndarray | None:
+    if frame["s1"] is None:
+        return None
+    points = np.asarray(frame["s1"], dtype=np.float64)
+    if points.shape != (2, 2) or not np.isfinite(points).all():
+        return None
+    points = transform.restore_points(points)
+    left, top, right, bottom = transform.window
+    if (np.linalg.norm(points[1] - points[0]) <= 0 or (points[:, 0] < left).any()
+            or (points[:, 0] >= right).any() or (points[:, 1] < top).any()
+            or (points[:, 1] >= bottom).any()):
+        return None
+    return points
+
+
+def _usable_quad(quad: dict, transform, shape: tuple[int, int]) -> bool:
+    if set(quad) != {"SA", "SP", "IA", "IP"}:
+        return False
+    points = transform.restore_points(np.stack([quad[k] for k in ("SA", "SP", "IP", "IA")]))
+    return bool(np.isfinite(points).all() and (points >= 0).all()
+                and (points[:, 0] < shape[1]).all() and (points[:, 1] < shape[0]).all()
+                and cv2.isContourConvex(points.astype(np.float32))
+                and cv2.contourArea(points.astype(np.float32)) * transform.scale ** 2 >= 200)
 
 
 def vertebral_body_segmentation(

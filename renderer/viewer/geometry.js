@@ -42,8 +42,9 @@ export function fitCircle(points) {
 }
 
 export function landmarkAt(geometry, level, corner) {
-  if (level === 'S1') return geometry.s1_superior[corner === 'SA' ? 0 : 1];
-  const body = geometry.vertebrae[level];
+  if (level === 'S1') return geometry?.s1_superior?.[corner === 'SA' ? 0 : 1] ?? null;
+  const body = geometry?.vertebrae?.[level];
+  if (!body) return null;
   if (corner === 'SA') return body.superior[0];
   if (corner === 'SP') return body.superior[1];
   if (corner === 'IA') return body.inferior[0];
@@ -51,6 +52,7 @@ export function landmarkAt(geometry, level, corner) {
 }
 
 export function setLandmarkAt(geometry, level, corner, point) {
+  if (!landmarkAt(geometry, level, corner)) return geometry;
   if (level === 'S1') {
     geometry.s1_superior[corner === 'SA' ? 0 : 1] = point;
     return geometry;
@@ -85,6 +87,7 @@ export function nearestLandmark(geometry, clientX, clientY, canvas, radius = 14)
   for (const level of [...LEVELS, 'S1']) {
     for (const corner of level === 'S1' ? ['SA', 'SP'] : CORNERS) {
       const point = landmarkAt(geometry, level, corner);
+      if (!point) continue;
       const [x, y] = imageToClient(point, rect, canvas);
       const distance = Math.hypot(clientX - x, clientY - y);
       if (distance <= radius && (!nearest || distance < nearest.distance)) {
@@ -99,7 +102,7 @@ export function nearestLandmark(geometry, clientX, clientY, canvas, radius = 14)
 export const FEMORAL_SIDES = ['left', 'right'];
 
 export function femoralCircle(geometry, side) {
-  return geometry.femoral_circles[side === 'left' ? 0 : 1];
+  return geometry?.femoral_circles?.[side === 'left' ? 0 : 1] ?? null;
 }
 
 // Writes one circle and keeps hip_midpoint in sync, the way setLandmarkAt keeps

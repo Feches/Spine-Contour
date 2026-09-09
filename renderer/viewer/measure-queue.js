@@ -53,7 +53,8 @@ export function createMeasureQueue({ measure, getState, setState, showToast, deb
       const current = getState().studies.find((item) => item.id === studyId);
       if (!current || current.addedAt !== study.addedAt) { discardDraft(studyId); return; }
       measured.set(studyId, result.geometry);
-      writeStudy(studyId, { measurements: result.measurements, geometry: result.geometry });
+      writeStudy(studyId, { measurements: result.measurements, geometry: result.geometry,
+        ...(result.qc?.coverage ? { qc: { ...current.qc, coverage: result.qc.coverage } } : {}) });
     } catch (error) {
       if (revision !== revisions.get(studyId)) return;
       const known = measured.get(studyId);

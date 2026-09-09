@@ -238,16 +238,16 @@ Exactly the backend response, after the plan-02 rename.
 
 ```js
 {
-  SS: number,      // degrees — was SI before plan 02
-  PI: number,
-  PT: number,
-  L1PA?: number,   // optional since plan 05: absent on demo studies (no source data); renders —
-  LL: { 'L1-S1': number, 'L2-S1'?: number, 'L3-S1'?: number,
-        'L4-S1'?: number, 'L5-S1'?: number }   // the extra levels are optional for the same reason
+  SS: number|null,      // degrees — was SI before plan 02
+  PI: number|null,
+  PT: number|null,
+  L1PA?: number|null,   // null for missing anatomy; absent on older/demo studies
+  LL: { 'L1-S1': number|null, 'L2-S1'?: number|null, 'L3-S1'?: number|null,
+        'L4-S1'?: number|null, 'L5-S1'?: number|null }
 }
 ```
 
-The backend always returns every key. The optional ones exist for the nine demo studies, which
+The backend returns every key, with null for unavailable measurements. The optional ones exist for the nine demo studies, which
 have no source data for them; `validate` accepts them absent, and a missing or non-finite value
 is an absent row (`—`), never `0`.
 
@@ -258,16 +258,25 @@ is an absent row (`—`), never `0`.
   vertebrae: {
     L1: { superior: [[x,y],[x,y]], inferior: [[x,y],[x,y]],
           quadrilateral: [[x,y],[x,y],[x,y],[x,y]] },
-    L2: {...}, L3: {...}, L4: {...}, L5: {...}
+    L2: {...}, L3: {...}, L4: {...}, L5: {...} // only detected levels are present
   },
-  s1_superior:     [[x,y],[x,y]],     // [SA, SP]
-  l1_center:       [x,y],
-  hip_midpoint:    [x,y],
-  femoral_circles: [[cx,cy,r],[cx,cy,r]]   // index 0 = left, 1 = right
+  s1_superior:     [[x,y],[x,y]]|null,     // [SA, SP]
+  l1_center:       [x,y]|null,
+  hip_midpoint:    [x,y]|null,
+  femoral_circles: [[cx,cy,r],[cx,cy,r]]|[]   // index 0 = left, 1 = right
 }
 ```
 
 ### Qc
+
+**Partial results (2026-09-09):** `qc.coverage` contains `partial`, `available`, `missing`
+and `unoriented` arrays (except the boolean `partial`). Partial coverage requires review.
+Each body may carry `anterior_confirmed: false` when U-Net has no S1 orientation reference;
+preserve this flag through `/measure` and disk reload. Those bodies have neutral endpoint
+labels and support midpoint disc heights only. Do not compute a numeric PI–LL mismatch or
+PI residual from null inputs. `/measure` updates coverage while preserving model/framing
+and femoral-fit provenance. The payload always contains some usable anatomy; an entirely
+empty result is still rejected. See `docs/partial-segmentation.md` for dependencies.
 
 ```js
 { femoral: { method, component_count, circle_union_iou, radii_pixels,
@@ -762,11 +771,11 @@ to disk.
 string, `source !== 'real'`, `fileName`/`addedAt`/`view` not strings). It does **not** throw
 on a malformed payload: when `measurements` or `geometry` fails its shape check, **both** are
 set to `null` with one `console.warn` naming the study (its status derives to `Processing`;
-a re-run restores it). The shapes it guarantees are exactly what the draw code and the panel
-read unguarded: `measurements` with finite `PI`, `PT`, `SS` and `LL['L1-S1']` (`L1PA` and the
-other levels absent or finite); `geometry` with `vertebrae.L1`…`L5` (each `superior`/`inferior`
-two points, `quadrilateral` four), `s1_superior` two points, `l1_center`, `hip_midpoint`,
-`femoral_circles` exactly two `[cx, cy, r]` with `r > 0`. `thumbnail` must start `data:image/`
+a re-run restores it). The validator accepts the partial shapes above: supplied bodies have
+finite endplate pairs and four quadrilateral points; missing S1 and centers are null;
+femoral circles are empty or exactly two finite positive-radius circles. Numeric measurements
+require their corresponding anatomy. Drawing, picking and keyboard cycling skip absent
+structures. `thumbnail` must start `data:image/`
 or becomes `null`. Unknown keys are dropped. Why nulling rather than throwing: a throw discards
 every other record, and with save-on-change the next write would replace the file with less
 than it held.

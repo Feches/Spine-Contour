@@ -32,9 +32,14 @@ export function discRows(study) {
       const mm = calibrationMath.distance([a, b], calibration.spacing);
       return Number.isFinite(mm) ? mm : null;
     };
-    row.anterior = distance(top[0], bottom[0]);
     row.middle = distance(midpoint(top), midpoint(bottom));
-    row.posterior = distance(top[1], bottom[1]);
+    // U-Net has no anatomical A/P reference when S1 is absent. Midpoints
+    // remain measurable, but endpoint indices alone cannot name A/P heights.
+    if (geometry.vertebrae?.[upper]?.anterior_confirmed !== false
+        && geometry.vertebrae?.[lower]?.anterior_confirmed !== false) {
+      row.anterior = distance(top[0], bottom[0]);
+      row.posterior = distance(top[1], bottom[1]);
+    }
     return row;
   });
 }

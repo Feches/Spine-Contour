@@ -15,6 +15,14 @@ export const S1_CONFIDENCE_LIMIT = 0.6;
 
 export function landmarkReviewReasons(qc) {
   const reasons = [];
+  if (qc?.coverage?.partial) {
+    const missing = Array.isArray(qc.coverage.missing) ? qc.coverage.missing.join(', ') : 'landmarks';
+    reasons.push(`Partial segmentation — missing ${missing}. Only available landmarks are measured.`);
+  }
+  if (qc?.coverage?.unoriented?.length) reasons.push('Anterior/posterior orientation unavailable — only middle disc heights can be measured.');
+  if (qc?.femoral?.qc_pass === false) {
+    reasons.push(`Femoral measurements unavailable — ${qc.femoral.reason || 'no usable femoral fit'}.`);
+  }
   const confidence = qc?.femoral?.confidence;
   if (typeof confidence === 'number' && confidence < CONFIDENCE_LIMIT) {
     reasons.push('Low femoral fit confidence — check the femoral landmarks.');

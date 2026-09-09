@@ -8,6 +8,7 @@ from backend.framing import (
     CROP_BELOW_L,
     CropTransform,
     accept_reframe,
+    fallback_window,
     clip_window,
     locate,
     prepare_crop,
@@ -15,6 +16,31 @@ from backend.framing import (
     search_windows,
     select_candidate,
 )
+
+
+def test_partial_fallback_trims_black_viewport_margins_despite_a_thin_toolbar():
+    image = np.zeros((800, 1900), np.uint8)
+    image[:, 690:1210] = np.random.default_rng(5).integers(30, 220, (800, 520), dtype=np.uint8)
+    image[-20:] = 200
+    left, top, right, bottom = fallback_window(image)
+    assert (left, top, right, bottom) == (671, 0, 1229, 800)
+    _, transform = prepare_crop(image, (left, top, right, bottom))
+    source = np.array([[750., 100.], [1150., 650.]])
+    model = (source - [left, top]) * transform.scale + [transform.inner.left, transform.inner.top]
+    assert transform.restore_points(model) == pytest.approx(source)
+
+
+@pytest.mark.parametrize('image', [np.zeros((800, 600), np.uint8), np.full((800, 600), 120, np.uint8),
+    np.random.default_rng(6).integers(0, 255, (800, 600), dtype=np.uint8)])
+def test_partial_fallback_keeps_unpadded_and_empty_films_whole(image):
+    assert fallback_window(image) == (0, 0, 600, 800)
+
+
+def test_partial_fallback_does_not_crop_a_substantial_nonblack_edge():
+    image = np.zeros((800, 1200), np.uint8)
+    image[:, 400:800] = 100
+    image[:200, :400] = 100
+    assert fallback_window(image)[0] == 0
 
 
 def test_search_windows_stay_inside_the_film_and_bracket_its_lower_half():

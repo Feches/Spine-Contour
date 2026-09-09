@@ -95,8 +95,10 @@ function distanceToSegment(point, a, b) {
 
 export function vertebraAt(geometry, point, radius = 20) {
   for (const level of ['L1', 'L2', 'L3', 'L4', 'L5']) {
-    if (pointInPolygon(point, geometry.vertebrae[level].quadrilateral)) return level;
+    const body = geometry.vertebrae?.[level];
+    if (body && pointInPolygon(point, body.quadrilateral)) return level;
   }
+  if (!geometry.s1_superior) return null;
   const [sa, sp] = geometry.s1_superior;
   if (distanceToSegment(point, sa, sp) <= radius) return 'S1';
   return null;
@@ -143,23 +145,29 @@ function sameStop(stop, current) {
   return stop.side === current.side;
 }
 
-export function nextSelection(current, direction) {
+export function nextSelection(current, direction, geometry) {
+  const order = geometry ? FULL_ORDER.filter(stop => stop.kind === 'landmark'
+    ? landmarkAt(geometry, stop.level, stop.corner) : femoralCircle(geometry, stop.side)) : FULL_ORDER;
+  if (!order.length) return null;
   const step = direction < 0 ? -1 : 1;
-  const last = FULL_ORDER.length - 1;
-  const index = current ? FULL_ORDER.findIndex((stop) => sameStop(stop, current)) : -1;
-  if (index === -1) return step > 0 ? FULL_ORDER[0] : FULL_ORDER[last];
-  return FULL_ORDER[(index + step + FULL_ORDER.length) % FULL_ORDER.length];
+  const last = order.length - 1;
+  const index = current ? order.findIndex((stop) => sameStop(stop, current)) : -1;
+  if (index === -1) return step > 0 ? order[0] : order[last];
+  return order[(index + step + order.length) % order.length];
 }
 
 // Moves the selected handle by (dx, dy) image pixels. Mutates `geometry` -- callers hand it
 // a working copy, never the store's object (see components/viewer.js).
 export function nudge(geometry, selection, dx, dy) {
   if (selection.kind === 'landmark') {
+    if (!landmarkAt(geometry, selection.level, selection.corner)) return geometry;
     const [x, y] = landmarkAt(geometry, selection.level, selection.corner);
     setLandmarkAt(geometry, selection.level, selection.corner, [x + dx, y + dy]);
     return geometry;
   }
-  const [cx, cy, r] = femoralCircle(geometry, selection.side);
+  const circle = femoralCircle(geometry, selection.side);
+  if (!circle) return geometry;
+  const [cx, cy, r] = circle;
   if (selection.part === 'center') {
     return setFemoralCircle(geometry, selection.side, [cx + dx, cy + dy, r]);
   }
