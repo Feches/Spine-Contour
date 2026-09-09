@@ -5,6 +5,14 @@ contextBridge.exposeInMainWorld('spineContour', {
   learnCalibrationProfile: (request) => ipcRenderer.invoke('calibration-profile', request),
   selectFile: () => ipcRenderer.invoke('select-file'),
   predict: (request) => ipcRenderer.invoke('predict', request),
+  cancelPredict: (requestId) => ipcRenderer.invoke('cancel-predict', requestId),
+  loadPerformance: () => ipcRenderer.invoke('load-performance'),
+  savePerformance: (settings) => ipcRenderer.invoke('save-performance', settings),
+  onPredictionProgress: (callback) => {
+    const listener = (_event, progress) => callback(progress);
+    ipcRenderer.on('prediction-progress', listener);
+    return () => ipcRenderer.removeListener('prediction-progress', listener);
+  },
   measure: (geometry) => ipcRenderer.invoke('measure', geometry),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   saveCsv: (request) => ipcRenderer.invoke('save-csv', request),

@@ -324,3 +324,18 @@ the save dialog. A silent run has thrown — re-run it bare. Baseline: 36/36.
 DOM helpers (`rect`, `toClient`, `evaluate`), and `screenshot(path)`. Suite authors write
 screenshots under `tools/smoke/out/` (git-ignored). `cdp.mjs` is a small CLI wrapper over
 the same library for one-off calls.
+
+### Low-memory processing and live progress
+
+Launch with a scratch `SPINE_CONTOUR_USER_DATA` and `CDP_PORT`, then run:
+
+```sh
+CDP_PORT=9339 node tools/smoke/smoke-processing.mjs /absolute/example1.webp /absolute/example2.webp
+```
+
+This suite writes only to the scratch profile. It runs real models, cancels and
+restarts a batch, checks progress/cancellation and persisted results, and verifies
+low-memory settings across reload. Pass de-identified local examples; no images or
+screenshots are written into the repository. Results are ignored under
+`tools/smoke/out/processing/`. The CPU resource comparison is separately reproducible
+with `tools/benchmark_processing.py`; see `docs/low-memory-processing.md`.

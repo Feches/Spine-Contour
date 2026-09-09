@@ -362,6 +362,20 @@
 
 /* Settings: which model reads which structure. Only L1–L5 offers a choice; the other
    two rows are fixed labels so the user can see what runs. */
+.processing-note {
+  display: block;
+  font-family: 'Source Sans 3', sans-serif;
+  font-weight: 400;
+  letter-spacing: normal;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+.processing-settings select { width: 100%; margin-top: 8px; }
+.sidebar-processing { padding: 12px; margin: 8px; border: 1px solid var(--border); border-radius: 8px; }
+.processing-stage { font-size: 12px; line-height: 1.5; margin-top: 6px; }
 .sidebar-models {
   display: flex;
   flex-direction: column;

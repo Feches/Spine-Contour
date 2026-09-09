@@ -568,7 +568,7 @@
   flex: none;
 }
 
-/* Indeterminate on purpose: /predict has no progress channel (spec decision 6). The viewer's
+/* Counts and stage labels come from the backend; this spinner estimates no duration. The viewer's
    run-card ring at bar size; @keyframes spin is in styles/base.css. */
 .studies-progress-spinner {
   width: 14px;

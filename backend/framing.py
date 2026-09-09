@@ -34,6 +34,11 @@ import cv2
 import numpy as np
 
 try:
+    from . import runtime
+except ImportError:
+    import runtime
+
+try:
     from .models.models import LetterboxTransform, _letterbox, _robust_rescale
 except ImportError:  # Support running modules directly from backend/.
     from models.models import LetterboxTransform, _letterbox, _robust_rescale
@@ -216,13 +221,17 @@ Scorer = Callable[[list[np.ndarray]], list[tuple[float, np.ndarray | None]]]
 
 
 def _score_windows(image: np.ndarray, windows: list[Window], score_s1: Scorer,
-                   batch: int = SEARCH_BATCH) -> list[dict]:
+                   batch: int | None = None, offset: int = 0, total: int | None = None) -> list[dict]:
     """Every window that yields an S1 detection, as a fixed-point candidate."""
     candidates = []
+    batch = runtime.options().search_batch if batch is None else batch
+    total = len(windows) if total is None else total
     for start in range(0, len(windows), batch):
+        runtime.report("search", "Searching for the lumbar spine", offset + start, total)
         chunk = windows[start : start + batch]
         prepared = [prepare_crop(image, window) for window in chunk]
         scored = score_s1([canvas for canvas, _ in prepared])
+        runtime.report("search", "Searching for the lumbar spine", offset + start + len(chunk), total)
         for window, (_, transform), (confidence, keypoints) in zip(chunk, prepared, scored):
             if keypoints is None:
                 continue
@@ -288,8 +297,10 @@ def locate(image: np.ndarray, score_s1: Scorer,
              if factor < 1.0 else image)
     height, width = small.shape
 
-    candidates = _score_windows(small, search_windows(height, width), score_s1)
-    whole = _score_windows(small, [(0, 0, width, height)], score_s1)
+    windows = search_windows(height, width)
+    total = len(windows) + 1
+    candidates = _score_windows(small, windows, score_s1, total=total)
+    whole = _score_windows(small, [(0, 0, width, height)], score_s1, offset=len(windows), total=total)
     whole_cost = float(select_candidate(whole, above, below)["cost"]) if whole else None
     whole_agrees = bool(whole and candidates and whole_film_agrees(whole[0], candidates))
     if whole_agrees:

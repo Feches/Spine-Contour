@@ -1,4 +1,5 @@
 import { validate } from './data/persistence.js';
+import { getState } from './store.js';
 
 const GENERIC_FALLBACK_MESSAGE = 'The application encountered an unexpected error.';
 const BRIDGE_UNAVAILABLE_MESSAGE =
@@ -44,7 +45,14 @@ export async function selectFile() {
 }
 
 export async function predict(request) {
-  return invoke('predict', request);
+  return invoke('predict', { performance: getState().performance, ...request });
+}
+
+export async function loadPerformance() { return invoke('loadPerformance'); }
+export async function savePerformance(settings) { return invoke('savePerformance', settings); }
+export async function cancelPredict(requestId) { return invoke('cancelPredict', requestId); }
+export function onPredictionProgress(callback) {
+  return getBridge()?.onPredictionProgress?.(callback) ?? (() => {});
 }
 
 export async function measure(geometry) {
@@ -191,7 +199,7 @@ export function pathForFile(file) {
 }
 
 // Optional original-image calibration; independent of prediction and landmark editing.
-export async function calibrate(request) { return invoke('calibrate', request); }
+export async function calibrate(request) { return invoke('calibrate', { performance: getState().performance, ...request }); }
 export async function learnCalibrationProfile(request) { return invoke('learnCalibrationProfile', request); }
 
 export async function demoStudiesHidden() { return invoke('demoStudiesHidden'); }

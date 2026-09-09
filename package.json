@@ -1,6 +1,6 @@
 {
   "name": "spine-contour",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Automated measurements from radiographs.",
   "author": "Michael Jayasuriya",
@@ -25,6 +25,7 @@
       "assets/**/*",
       "index.html",
       "main.js",
+      "backend-client.cjs",
       "preload.js",
       "store-io.js",
       "scan-folder.js",

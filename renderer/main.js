@@ -7,8 +7,10 @@ import {
 import { merge, createStudySaver } from './data/persistence.js';
 import { clinicalFieldNames } from './data/csv.js';
 import { showToast } from './components/toast.js';
+import { initializeProcessing } from './processing.js';
 
 const root = document.querySelector('#app');
+await initializeProcessing();
 
 function applyTheme(state) {
   document.body.toggleAttribute('data-dark', state.theme === 'dark');

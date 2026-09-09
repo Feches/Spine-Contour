@@ -373,7 +373,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Needs-run / running overlay. One indeterminate state, never a stage sequence -- BD-4. */
+/* Needs-run / running overlay. Real backend stages; no estimated percentage. */
 .run-card {
   position: absolute;
   inset: 0;

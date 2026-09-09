@@ -6,6 +6,8 @@ import { DEFAULT_MODELS, VERTEBRA_MODELS, modelLabel } from '../data/models.js';
 import { studyName } from '../data/labels.js';
 import { sidebarText } from '../data/batch.js';
 import { VERSION_LABEL } from '../data/version.js';
+import { changePerformance, cancelProcessing } from '../processing.js';
+import { progressTitle, progressDetail } from '../data/processing.js';
 
 const DOCS_URL = 'https://github.com/Feches/Spine-Contour#readme';
 
@@ -26,6 +28,7 @@ function modelsBlock(state) {
     ...VERTEBRA_MODELS.map((model) => el('button', {
       type: 'button',
       class: 'model-choice-btn',
+      disabled: Boolean(state.running || state.batch),
       'aria-pressed': choice.vertebrae === model.id ? 'true' : 'false',
       onClick: () => setState((current) => ({ models: { ...current.models, vertebrae: model.id } })),
     }, model.label)));
@@ -36,6 +39,49 @@ function modelsBlock(state) {
     el('div', { class: 'sidebar-models-row' }, el('div', { class: 'sidebar-models-label' }, 'FEMORAL HEADS'), fixed(modelLabel('femoral', choice.femoral) ?? '—')),
     el('div', { class: 'sidebar-models-row' }, el('div', { class: 'sidebar-models-label' }, 'S1 ENDPLATE'), fixed(modelLabel('s1', choice.s1) ?? '—')),
   );
+}
+
+function performanceBlock(state) {
+  const settings = state.performance;
+  const busy = Boolean(state.running || state.batch);
+  const threads = el('select', { 'aria-label': 'Low-memory CPU threads',
+    disabled: busy || settings.mode !== 'low-memory',
+    onChange: (event) => changePerformance({ cpuThreads: Number(event.target.value) }) },
+    ...[1, 2, 4].map((n) => el('option', { value: String(n) }, `${n} CPU thread${n === 1 ? '' : 's'}`)));
+  threads.value = String(settings.cpuThreads);
+  return el('div', { class: 'sidebar-models processing-settings' },
+    el('div', { class: 'eyebrow' }, 'PROCESSING'),
+    el('div', { class: 'model-choice', role: 'group', 'aria-label': 'Processing mode' },
+      ...[['standard', 'Standard'], ['low-memory', 'Low memory']].map(([mode, label]) => el('button', {
+        type: 'button', class: 'model-choice-btn', disabled: busy,
+        'aria-pressed': settings.mode === mode ? 'true' : 'false',
+        onClick: () => changePerformance({ mode }),
+      }, label))),
+    threads,
+    el('p', { class: 'processing-note' }, settings.mode === 'low-memory'
+      ? 'Uses less memory and allows longer processing. Keeps the full image search and model resolution.'
+      : 'Keeps models loaded for faster repeated processing.'));
+}
+
+function processingBlock(state) {
+  if (!state.running) return null;
+  const progress = state.runStage;
+  const study = state.studies.find((item) => item.id === state.running);
+  return el('div', { class: 'sidebar-processing', role: 'status', 'aria-live': 'polite' },
+    el('div', { class: 'eyebrow' }, study ? studyName(study) : 'PROCESSING'),
+    el('div', { class: 'processing-stage' }, progressTitle(progress)),
+    el('div', { class: 'processing-note' }, progressDetail(progress)),
+    el('button', { type: 'button', class: 'btn btn-small', disabled: Boolean(progress?.cancelling) || progress?.stage === 'saving',
+      onClick: cancelProcessing }, 'Cancel processing'));
+}
+
+// Keep the live region and cancel control mounted while counts/heartbeats change.
+export function updateProcessing(sidebar, state) {
+  const card = sidebar?.querySelector('.sidebar-processing');
+  if (!card) return;
+  card.querySelector('.processing-stage').textContent = progressTitle(state.runStage);
+  card.querySelector('.processing-note').textContent = progressDetail(state.runStage);
+  card.querySelector('button').disabled = Boolean(state.runStage?.cancelling) || state.runStage?.stage === 'saving';
 }
 
 function navRow({ icon, label, subLabel, active, collapsed, onClick }) {
@@ -144,6 +190,8 @@ export function render(state) {
     }),
     themeRow,
     state.settingsOpen && !collapsed ? modelsBlock(state) : null,
+    state.settingsOpen && !collapsed ? performanceBlock(state) : null,
+    !collapsed ? processingBlock(state) : null,
     navRow({
       icon: ICONS.docs,
       label: 'Documentation',

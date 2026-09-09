@@ -10,19 +10,27 @@ import numpy as np
 import pytesseract
 from scipy.optimize import linear_sum_assignment
 
+try:
+    from . import runtime
+except ImportError:
+    import runtime
+
 MEASUREMENT = re.compile(r'(?<![\d.])(\d+(?:[.,]\d+)?)\s*(mm|cm|μm|um|in)\s*(\*)?', re.I)
 
 
-def read_labels(image):
+def read_labels(image, region="whole image"):
     """Whole-frame OCR with contrast variants, original-pixel boxes and consensus."""
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     variants = [(gray, 1.0, 'original'), (gray, 2.0, 'enlarged')]
     for threshold in (190, 225, 245):
         variants.append((255-cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)[1], 1.0, f'bright_{threshold}'))
     groups_out = []
-    for frame, scale, variant in variants:
+    for index, (frame, scale, variant) in enumerate(variants):
+        runtime.report("ocr", f"Reading scale labels: {region}", index, len(variants))
         enlarged = cv2.resize(frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-        data = pytesseract.image_to_data(enlarged, config='--psm 11', output_type=pytesseract.Output.DICT, timeout=8)
+        data = pytesseract.image_to_data(enlarged, config='--psm 11', output_type=pytesseract.Output.DICT,
+                                        timeout=runtime.options().ocr_timeout)
+        runtime.report("ocr", f"Reading scale labels: {region}", index + 1, len(variants))
         groups = {}
         for i, word in enumerate(data['text']):
             if word.strip():
@@ -135,6 +143,7 @@ def find_rulers(image, profile=None):
     for channel in channels:
         for threshold in (80,140,190,225,245):
             for polarity in (cv2.THRESH_BINARY,cv2.THRESH_BINARY_INV):
+                runtime.checkpoint()
                 mask = cv2.threshold(channel,threshold,255,polarity)[1]
                 count, components, stats, _ = cv2.connectedComponentsWithStats(mask,8)
                 for k in range(1,count):
@@ -200,16 +209,18 @@ def pair_measurements(labels,rulers):
 
 def extract(image, profile=None):
     labels=read_labels(image)
+    runtime.report("calibration", "Locating ruler endpoints")
     rulers=find_rulers(image, profile)
     # Ruler-guided OCR recovery uses relative neighborhoods, never fixed locations.
-    for ruler in rulers:
+    for index, ruler in enumerate(rulers):
+        runtime.checkpoint()
         midpoint=np.mean(ruler['endpoints'],axis=0)
         radius=max(90,ruler['length_px']*3)
         if any(np.linalg.norm(np.array(l['text_box'][:2])-midpoint)<radius for l in labels):
             continue
         x0,y0=np.maximum(0,np.floor(midpoint-radius).astype(int))
         x1,y1=np.minimum([image.shape[1],image.shape[0]],np.ceil(midpoint+radius).astype(int))
-        for label in read_labels(image[y0:y1,x0:x1]):
+        for label in read_labels(image[y0:y1,x0:x1], region=f"ruler region {index + 1} of {len(rulers)}"):
             label['text_box'][0]+=int(x0); label['text_box'][1]+=int(y0)
             if not any(np.linalg.norm(np.array(l['text_box'][:2])-np.array(label['text_box'][:2]))<15 for l in labels):
                 labels.append(label)
@@ -217,12 +228,12 @@ def extract(image, profile=None):
         color = np.asarray(profile['foreground_rgb'][::-1], dtype=float)
         delta = np.max(np.abs(image.astype(float) - color), axis=2)
         foreground = np.where(delta <= profile['tolerance'], 0, 255).astype(np.uint8)
-        for label in read_labels(cv2.cvtColor(foreground, cv2.COLOR_GRAY2BGR)):
+        for label in read_labels(cv2.cvtColor(foreground, cv2.COLOR_GRAY2BGR), region="learned annotation color"):
             if not any(np.linalg.norm(np.array(l['text_box'][:2])-np.array(label['text_box'][:2]))<20 for l in labels):
                 labels.append(label)
+    runtime.report("calibration", "Matching scale labels to ruler endpoints")
     measurements=pair_measurements(labels,rulers)
     used=[r['ruler'] for r in measurements if r.get('ruler')]
     return dict(image_size={'width':image.shape[1],'height':image.shape[0]},measurements=measurements,
                 unmatched_rulers=[r for r in rulers if r not in used],
                 scope='Printed length labels and straight rulers with two end caps; scores are heuristic, not calibrated probabilities.')
-
