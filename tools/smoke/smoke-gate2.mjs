@@ -16,7 +16,9 @@ const check = (name, ok, detail) => results.push({ name, ok: Boolean(ok), detail
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 
 const cdp = await connect();
-const geometry = () => cdp.evaluate(`import('./renderer/store.js').then((m) => { const st = m.getState(); return st.studies.find((x) => x.id === st.openId).geometry; })`);
+// Drag checks inspect the preview before the debounce settles. Measurements
+// below still come from the committed Study and must update through /measure.
+const geometry = () => cdp.evaluate(`import('./renderer/store.js').then((m) => { const st = m.getState(); return st.measurementDrafts?.[st.openId] ?? st.studies.find((x) => x.id === st.openId).geometry; })`);
 const measurements = () => cdp.evaluate(`import('./renderer/store.js').then((m) => { const st = m.getState(); return st.studies.find((x) => x.id === st.openId).measurements; })`);
 const editBarButton = (label) => cdp.evaluate(`(() => { const b = [...document.querySelectorAll('.viewer-editbar button')].find((x) => x.textContent.trim() === ${JSON.stringify(label)}); if (!b) return null; const r = b.getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, disabled: b.disabled, pressed: b.getAttribute('aria-pressed'), active: b.classList.contains('is-active') }; })()`);
 // Waits until the store's measurements object changes from `before` (a /measure landed), up to 4 s.

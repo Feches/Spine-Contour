@@ -164,7 +164,7 @@ are theirs — the venv needs the two packages for the backend to start):
 `measurements` is `{SS, PI, PT, L1PA, LL: {'L1-S1'…'L5-S1'}}` after the plan-02 rename.
 `PI–LL mismatch` is derived (`PI − LL['L1-S1']`), not returned.
 
-`qc` is opaque to the renderer except `qc.femoral.confidence`, and it carries two
+`qc` review warnings read `qc.femoral.confidence` and S1/search scores in `qc.framing`, and it carries two
 records the backend adds: `qc.models` (which model read each structure) and
 `qc.framing` (the crop the models ran on, and whether the whole film won). A stored
 result therefore says what produced it. See `backend/framing.py` for why a film is

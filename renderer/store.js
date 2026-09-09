@@ -6,6 +6,9 @@ let state = {
   settingsOpen: false,
 
   studies: [],
+  // Unmeasured edits are session-only. Study.geometry/measurements always form
+  // a complete pair, including when the saver runs or the app closes mid-edit.
+  measurementDrafts: {},
   deletingStudies: false,
   query: '',
   // The Studies screen's second tab (pre-op/post-op spec §10). Which tab is up, and the

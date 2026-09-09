@@ -66,6 +66,17 @@ def test_predict_endpoint_rejects_a_model_that_is_not_offered():
     assert "available: unet, hrnet" in response.json()["detail"]
 
 
+def test_predict_endpoint_rejects_an_ap_view_before_inference():
+    upload = io.BytesIO()
+    Image.fromarray(np.full((24, 16), 127, dtype=np.uint8)).save(upload, format="PNG")
+    response = TestClient(server.app).post(
+        "/predict", data={"modality": "xray", "body_part": "lumbar", "view": "AP"},
+        files={"file": ("ap.png", upload.getvalue(), "image/png")},
+    )
+    assert response.status_code == 422
+    assert "view='lateral'" in response.json()["detail"]
+
+
 def test_models_endpoint_lists_a_choice_only_for_the_vertebrae():
     response = TestClient(server.app).get("/models")
     assert response.status_code == 200

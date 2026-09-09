@@ -1,3 +1,4 @@
+import { landmarkReviewReasons } from '../data/status.js';
 import { el, clear } from '../dom.js';
 import { getState, setState } from '../store.js';
 import { calibrationSummary } from '../data/calibration.js';
@@ -95,9 +96,14 @@ export function mountMeasurements(container) {
   container.append(root);
 
   let lastKey = null;
+  let lastReviewKey = null;
 
   function updateMeasurements(study) {
     const state = getState();
+    // Quality metadata and a pending correction can change without new numbers.
+    const reviewKey = [study.qc, Boolean(state.measurementDrafts?.[study.id])];
+    if (!sameKey(reviewKey, lastReviewKey)) lastKey = null;
+    lastReviewKey = reviewKey;
 
     // Rebuild gate. screens/analysis.js calls this on every store notification, which
     // includes every pointermove pan frame; without the gate, a pan tears down and
@@ -126,7 +132,8 @@ export function mountMeasurements(container) {
     const focusKey = root.contains(activeElement) ? activeElement.getAttribute('data-row-key') : null;
 
     clear(root);
-    const measurements = study.measurements;
+    const pending = Boolean(state.measurementDrafts?.[study.id]);
+    const measurements = pending ? null : study.measurements;
     const rows = sagittalRows(measurements, { selectedLevel: state.selectedLevel });
 
     const section1 = section('01 \u2014 SAGITTAL PARAMETERS',
@@ -159,6 +166,11 @@ export function mountMeasurements(container) {
 
     if (!isConsistent(measurements)) {
       section1.append(el('div', { class: 'meas-warning' }, INCONSISTENCY_WARNING));
+    }
+
+    if (pending) section1.append(el('div', { class: 'meas-note', role: 'status' }, 'Updating measurements…'));
+    else for (const reason of study.measurements ? landmarkReviewReasons(study.qc) : []) {
+      section1.append(el('div', { class: 'meas-warning' }, reason));
     }
 
     const section2 = section('02 \u2014 DISC HEIGHTS \u00B7 MM',

@@ -148,7 +148,7 @@ renderer/                         (new)
   viewer/interactions.js          pure interaction logic: zoom steps, hit tests, Tab order, nudge, debounce (no DOM)
   viewer/measure-queue.js         (plan 04) createMeasureQueue({measure, getState, setState, showToast, debounceMs})
                                   → {commitGeometry, replaceMeasured}: per-study revisions, one owner-tracked
-                                  debounce, flush on study switch, failure restores the last measured geometry
+                                  debounce, flush on study switch; session-only drafts, atomic geometry/measurement commit
   viewer/geometry.js              circle fit, coordinate transforms
 
   data/demo-studies.js            the nine fabricated studies
@@ -275,7 +275,8 @@ is an absent row (`—`), never `0`.
              confidence /* 0..1 */, qc_pass, foreground_pixels } }
 ```
 
-Only `femoral.confidence` is read anywhere in the renderer. The other fields are
+The renderer reads `femoral.confidence` and the optional `framing` record
+(`s1_confidence`, `searched`, `search_confidence`) for review warnings. Other fields are
 optional: demo studies carry `{ femoral: { confidence } }` alone rather than invented values, and
 `validate` treats `qc` as opaque (any object, else `null`).
 
@@ -309,6 +310,7 @@ a draw function must blank a layer, never freeze the application.
   settingsOpen: false,
 
   studies: [],              // Study[] — demo + real, merged
+  measurementDrafts: {},    // study id → unmeasured Geometry; session-only, never saved
   query: '',
   studiesTab: 'find',       // 'find'|'parameters' (2026-09-06, pre-op/post-op spec §10.1)
   paramFilters: { workspace: null, folder: null, segmentedOnly: true,       // data/parameters.js DEFAULT_FILTERS;
@@ -551,6 +553,9 @@ renders `—`.
 ```js
 export const RESIDUAL_LIMIT = 1.0        // degrees
 export const CONFIDENCE_LIMIT = 0.6
+export const S1_CONFIDENCE_LIMIT = 0.6   // review threshold, not accuracy probability
+
+export function reviewReasons(study)    // → string[]; shared by status and Analysis warnings
 
 export function deriveStatus(study)      // → 'seg'|'rev'|'proc'
 export function statusLabel(status)      // → 'Segmented'|'Needs review'|'Processing'
@@ -559,7 +564,9 @@ export function statusLabel(status)      // → 'Segmented'|'Needs review'|'Proc
 Rules, in order:
 1. `measurements == null` → `'proc'`
 2. `piResidual > RESIDUAL_LIMIT` **or** `qc.femoral.confidence < CONFIDENCE_LIMIT` → `'rev'`
-3. otherwise `'seg'`
+3. A `qc.framing` record with missing/invalid S1 score or `s1_confidence < 0.6` → `'rev'`;
+   if `searched`, a missing/invalid `search_confidence` or score below `0.6` also requires review.
+4. otherwise `'seg'`
 
 Boundaries are inclusive-pass: residual exactly `1.0` and confidence exactly `0.6`
 both yield `'seg'`. Missing `qc` does not by itself force `'rev'`. `RESIDUAL_LIMIT` here is
@@ -902,7 +909,7 @@ defaults for anything omitted and rejects anything it does not offer with a 422 
 `detail` names the offered ids. `renderer/data/models.js` mirrors the backend's list for
 display; the backend is the authority.
 
-**`qc`** stays opaque and now carries two backend records beside `femoral`:
+**`qc`** is persisted as an opaque object and carries two backend records beside `femoral`:
 `qc.models` (`{vertebrae, femoral, s1}` — the ids that produced the result) and
 `qc.framing` (`{window: [left, top, right, bottom], searched, reframed, …}` — the film
 pixels the models ran on). `validate` keeps treating `qc` as any object. The Analysis
@@ -926,6 +933,24 @@ User-authorized addition on ui-redesign-cw: `screen: 'calibration'` mounts a per
 New optional backend endpoints: `POST /calibrate` (file, optional color profile, preview controls) and `POST /calibration-profile` (file and corrected endpoints). OCR failures preserve manual calibration. Desktop bundles include Tesseract and language data. No new npm dependencies or CSP changes.
 
 Folder upload handoff: `state.calibrationRequest` is a session-only `{folder, files}` request, passed together with `wsFolder`, `wsFiles`, and `screen: 'calibration'` after a nonempty workspace scan. `SCREEN_KEYS` includes it. The calibration screen consumes each request once, after mounting via a microtask, and returns to Workspace on Continue or Skip without changing study or CSV state. Folder processing reports uncalibrated images for later review instead of fabricating their scale.
+
+
+### Accuracy safeguards (2026-09-09)
+
+`data/inference-view.js` maps the existing lateral position vocabulary and legacy lateral
+labels to the backend's `lateral` model. Unsupported or unspecified labels are excluded
+from `planBatch`, reported in its note, and rejected again by the driver and `segmentStudy`
+(including after file reading). Metadata is not an automatic view classifier.
+
+`commitGeometry` now previews in `state.measurementDrafts[studyId]`. The Study keeps the
+last complete geometry/measurements pair until the latest `/measure` succeeds, when both
+fields and draft removal commit in one notification. Failure discards the preview; reset,
+delete and prediction replacement cancel that study's draft and stale responses. The viewer
+reads drafts for hit testing, repeated nudges and drawing. Analysis hides numeric values and
+shows “Updating measurements…” while a draft exists. Persistence never receives drafts;
+closing before recalculation completes retains the last successful pair. Table exports use
+that complete pair, and the Analysis export button is disabled during its pending edit.
+
 
 ## 2026-09-07 amendment: delete all studies
 
