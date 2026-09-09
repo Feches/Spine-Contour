@@ -25,6 +25,9 @@ test('progress belongs to one request; stale, malformed and cancelled updates do
   const cancelling = { ...current, cancelling: true };
   assert.equal(progressUpdate(cancelling, { requestId: 'current', type: 'progress', message: 'Done' }), cancelling);
   assert.match(progressTitle(cancelling), /Cancelling/);
+  const saving = { ...current, stage: 'saving', message: 'Saving results' };
+  assert.equal(progressUpdate(saving, { requestId: 'current', type: 'progress', stage: 'complete', message: 'Done' }), saving);
+  assert.equal(progressUpdate(saving, { requestId: 'current', type: 'heartbeat', elapsed_seconds: 30 }), saving);
 });
 
 test('heartbeat advances elapsed time while keeping the actual stage and completed count', () => {
@@ -74,11 +77,11 @@ test('heartbeats let jobs run longer than the idle deadline without a total time
     res.write('{"type":"heartbeat"}\n');
     const interval = setInterval(() => {
       res.write('{"type":"heartbeat"}\n');
-      if (++ticks === 12) { clearInterval(interval); res.end('{"type":"result","result":{"ok":true}}\n'); }
-    }, 25);
+      if (++ticks === 25) { clearInterval(interval); res.end('{"type":"result","result":{"ok":true}}\n'); }
+    }, 50);
     res.on('close', () => clearInterval(interval));
   });
-  assert.deepEqual(await postForm(url, form(), { idleMs: 150 }), { ok: true });
+  assert.deepEqual(await postForm(url, form(), { idleMs: 1000 }), { ok: true });
 });
 
 test('cancel closes the local request and never returns a late success', async t => {

@@ -285,7 +285,7 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     const stillHere = getState().studies.find((s) => s.id === studyId);
     if (!stillHere || stillHere.addedAt !== addedAt) {
       disposeStudyImages(images);
-      setState({ running: null });
+      setState({ running: null, runStage: null });
       return { ok: false, reason: 'The study is no longer in the library.' };
     }
 

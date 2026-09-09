@@ -6,7 +6,7 @@ export function validPerformance(value) {
 }
 
 export function progressUpdate(current, event) {
-  if (!current || current.requestId !== event?.requestId || current.cancelling) return current;
+  if (!current || current.requestId !== event?.requestId || current.cancelling || current.stage === 'saving') return current;
   if (!['progress', 'heartbeat'].includes(event.type)) return current;
   const elapsed = Number.isFinite(event.elapsed_seconds) && event.elapsed_seconds >= 0
     ? Math.max(current.elapsed_seconds ?? 0, event.elapsed_seconds) : current.elapsed_seconds;
