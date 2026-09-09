@@ -63,7 +63,7 @@ ipcMain.handle('select-file', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile'],
     filters: [
-      { name: 'Radiographs', extensions: ['dcm', 'dicom', 'png', 'jpg', 'jpeg', 'tif', 'tiff', 'bmp'] },
+      { name: 'Radiographs', extensions: ['dcm', 'dicom', 'png', 'jpg', 'jpeg', 'tif', 'tiff', 'bmp', 'webp'] },
       { name: 'All files', extensions: ['*'] },
     ],
   });

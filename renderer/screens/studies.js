@@ -108,7 +108,7 @@ async function handleChoose() {
 }
 
 // The same extensions the native picker offers (main.js's select-file filter).
-const FILM_EXTENSIONS = /\.(dcm|dicom|png|jpe?g|tiff?|bmp)$/i;
+const FILM_EXTENSIONS = /\.(dcm|dicom|png|jpe?g|tiff?|bmp|webp)$/i;
 
 async function handleDrop(files) {
   if (files.length > 1) {
