@@ -675,15 +675,11 @@ is built in `render()`, not `update()` — safe today only because every writer 
 the quarantined bytes are partially recoverable; plan 06 may want the toast (or the README) to
 say so.
 
-**A landmark correction is persisted before its `/measure` settles.** The corrected geometry is
-committed to the store — and so written to `studies.json` by the saver — while the 150 ms
-`/measure` debounce is still pending. An abrupt quit inside that window makes `geometry_new` +
-`measurements_old` durable together, and after a restart the panel shows stale numbers beside
-corrected landmarks with no marker that they disagree. The window is ~150 ms plus one round trip
-and the drift is one nudge, so it is small; it is recorded rather than fixed because there is no
-cheap fix that does not restructure the commit path (the commit would have to hold the new
-geometry back until `/measure` returns, or the record would need a "measurements are stale" flag
-the panel reads — both are plan-06-sized). Found in plan 05's final whole-branch review.
+**Resolved (2026-09-09): landmark correction persistence.** Unmeasured edits now stay in
+`state.measurementDrafts`, outside persisted Study records. The latest successful `/measure`
+commits its geometry and measurements together; failures discard the preview. Closing during
+a pending correction retains the last complete pair. See the architecture contract's
+“Accuracy safeguards” amendment and `docs/accuracy-safeguards.md`.
 
 ### Resume plan 07 here — what plan 06 changed under you
 

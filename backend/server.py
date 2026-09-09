@@ -56,6 +56,10 @@ def _dicom_pixel_array(payload: bytes) -> np.ndarray:
 def _decode_grayscale(payload: bytes) -> np.ndarray:
     try:
         with Image.open(io.BytesIO(payload)) as image:
+            # Preserve native grayscale precision until the model's percentile
+            # rescale. PIL's conversion to L clips 16-bit values above 255.
+            if image.mode in ("I", "F") or image.mode.startswith("I;16"):
+                return np.array(image)
             return np.asarray(image.convert("L"))
     except (UnidentifiedImageError, OSError):
         try:

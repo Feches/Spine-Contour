@@ -10,15 +10,41 @@ import { piResidual, RESIDUAL_LIMIT } from './measurements.js';
 
 export { RESIDUAL_LIMIT };
 export const CONFIDENCE_LIMIT = 0.6;
+// Review threshold, not an estimate of measurement accuracy.
+export const S1_CONFIDENCE_LIMIT = 0.6;
+
+export function landmarkReviewReasons(qc) {
+  const reasons = [];
+  const confidence = qc?.femoral?.confidence;
+  if (typeof confidence === 'number' && confidence < CONFIDENCE_LIMIT) {
+    reasons.push('Low femoral fit confidence — check the femoral landmarks.');
+  }
+  const framing = qc?.framing;
+  // Older results without framing metadata remain readable. A framing record
+  // must include usable scores; missing/invalid scores cannot silently pass.
+  if (framing) {
+    const weak = (score) => !Number.isFinite(score) || score < S1_CONFIDENCE_LIMIT || score > 1;
+    if (weak(framing.s1_confidence)) reasons.push('S1 detection needs review — check the S1 endplate.');
+    if (framing.searched && weak(framing.search_confidence)) {
+      reasons.push('Spine location needs review — check the crop and vertebral levels.');
+    }
+  }
+  return reasons;
+}
+
+export function reviewReasons(study) {
+  if (!study?.measurements) return [];
+  const reasons = landmarkReviewReasons(study.qc);
+  if (piResidual(study.measurements) > RESIDUAL_LIMIT) {
+    reasons.unshift('Parameters inconsistent — check S1 and femoral landmarks.');
+  }
+  return reasons;
+}
 
 /** @returns {'seg'|'rev'|'proc'} */
 export function deriveStatus(study) {
   if (!study || study.measurements == null) return 'proc';
-  const residual = piResidual(study.measurements);
-  const confidence = study.qc && study.qc.femoral ? study.qc.femoral.confidence : null;
-  if (residual > RESIDUAL_LIMIT) return 'rev';
-  if (typeof confidence === 'number' && confidence < CONFIDENCE_LIMIT) return 'rev';
-  return 'seg';
+  return reviewReasons(study).length ? 'rev' : 'seg';
 }
 
 export function statusLabel(status) {

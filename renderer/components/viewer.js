@@ -9,6 +9,7 @@ import { clientToImage, imageToClient, nearestLandmark, setLandmarkAt, femoralCi
 import { zoomIn, zoomOut, zoomAbout, isChordHeld, vertebraAt, sameHandle, hitTestFemoral, nextSelection, nudge, arrowKeyDelta } from '../viewer/interactions.js';
 import { createMeasureQueue } from '../viewer/measure-queue.js';
 import { isQueued, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
+import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
 
 // Icons lifted verbatim from design-reference/template.html's Study Analysis toolbar.
 // Same inline-SVG-through-innerHTML pattern plan 02 uses in components/sidebar.js and
@@ -124,7 +125,9 @@ function sameKey(a, b) {
 
 function currentStudy() {
   const state = getState();
-  return state.studies.find((s) => s.id === state.openId) ?? null;
+  const study = state.studies.find((s) => s.id === state.openId) ?? null;
+  const draft = state.measurementDrafts?.[state.openId];
+  return study && draft ? { ...study, geometry: draft } : study;
 }
 
 export function mountViewer(container) {
@@ -256,7 +259,7 @@ export function mountViewer(container) {
     const study = currentStudy();
     drawDynamicLayer(dynamicCtx, dynamicCanvas, geometry, {
       selectedLevel: state.selectedLevel,
-      measurements: study ? study.measurements : null,
+      measurements: study && !state.measurementDrafts?.[study.id] ? study.measurements : null,
       editing: state.editing,
       selection: state.selection,
       hover,
@@ -276,7 +279,8 @@ export function mountViewer(container) {
   function placeLabel(geometry) {
     const state = getState();
     const study = currentStudy();
-    const label = constructionLabel(geometry, state.selectedLevel, study ? study.measurements : null);
+    const label = constructionLabel(geometry, state.selectedLevel,
+      study && !state.measurementDrafts?.[study.id] ? study.measurements : null);
     labelChip.classList.toggle('is-hidden', !label);
     if (!label) return;
     const offset = labelOffsets.get(state.selectedLevel) ?? { dx: 0, dy: 0 };
@@ -712,6 +716,12 @@ export function mountViewer(container) {
     const batch = state.batch ?? null;
     const queued = !busy && isQueued(batch, study.id);
     const waitTitle = batch ? WAIT_FOR_BATCH : (otherRunning ? WAIT_FOR_RUN : '');
+    if (!hasResult && !busy && !inferenceView(study.view)) {
+      return {
+        eyebrow: 'UNSUPPORTED VIEW', title: 'Choose a lateral view',
+        body: unsupportedViewReason(study.view), spinner: false, button: null,
+      };
+    }
     if (!hasResult || busy) {
       return {
         eyebrow: busy ? 'RUNNING' : (queued ? 'QUEUED' : 'UNSEGMENTED'),
@@ -906,7 +916,8 @@ export function mountViewer(container) {
     // so hasResult keeps both disabled for it.
     editButton.disabled = !hasResult || busy || filmStatus !== null;
     // Re-run answers to ANY run in flight and to a batch, because only one run is allowed at a time.
-    rerunButton.disabled = !hasResult || Boolean(state.running) || Boolean(state.batch) || filmStatus === 'loading';
+    rerunButton.disabled = !hasResult || Boolean(state.running) || Boolean(state.batch) || filmStatus === 'loading' || !inferenceView(study.view);
+    rerunButton.title = inferenceView(study.view) ? 'Re-run segmentation' : unsupportedViewReason(study.view);
     editButton.setAttribute('aria-pressed', String(state.editing));
     editButton.classList.toggle('is-active', state.editing);
     const editLabel = state.editing ? 'Done editing' : 'Edit landmarks';
@@ -928,7 +939,7 @@ export function mountViewer(container) {
     // editing, selection and zoom are in the key: handles appear and disappear with
     // editing, follow selection, and are sized in CSS pixels so zoom changes their image-
     // space size. panX/panY are deliberately NOT here -- a pan moves the host, not the pixels.
-    const dynamicKey = [study.geometry, state.selectedLevel, study.measurements, state.editing, state.selection, state.zoom];
+    const dynamicKey = [study.geometry, state.measurementDrafts?.[study.id], state.selectedLevel, study.measurements, state.editing, state.selection, state.zoom];
     if (!sameKey(dynamicKey, lastDynamic)) {
       lastDynamic = dynamicKey;
       redrawDynamic(liveGeometry());
