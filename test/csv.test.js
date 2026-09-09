@@ -71,9 +71,9 @@ test('toCsv writes every clinical field present on the exported studies, KNOWN_F
   ]);
   const lines = csv.split('\r\n');
   const header = lines[3].split(',');
-  // Study ID, View, Subject, Timepoint, Film date, ten measurement columns, then the union: known
+  // Study ID, View, Subject, Timepoint, Film date, 25 measurement columns, then the union: known
   // fields in KNOWN_FIELDS order, then custom names in first-seen order.
-  assert.deepEqual(header.slice(15), ['Age', 'Diagnosis', 'Zeta']);
+  assert.deepEqual(header.slice(30), ['Age', 'Diagnosis', 'Zeta']);
   const row1000 = lines[4];
   const row1001 = lines[5];
   assert.ok(row1000.startsWith('SP-1000'));
@@ -85,8 +85,8 @@ test('toCsv writes every clinical field present on the exported studies, KNOWN_F
 test('toCsv writes no clinical columns when no exported study carries a value', () => {
   const csv = toCsv([study({ clinical: {} }), study({ id: 'SP-1001' })]);
   const header = csv.split('\r\n')[3].split(',');
-  assert.equal(header.length, 15);
-  assert.equal(header[14], 'LL L5-S1');
+  assert.equal(header.length, 30);
+  assert.equal(header[29], 'Disc height L5-S1 posterior (mm)');
 });
 
 test("toCsv ignores an excluded demo study's clinical keys when choosing the columns", () => {
@@ -95,7 +95,7 @@ test("toCsv ignores an excluded demo study's clinical keys when choosing the col
     study({ id: 'SP-0042', source: 'demo', clinical: { Notes: 'demo only' } }),
   ]);
   const header = csv.split('\r\n')[3].split(',');
-  assert.deepEqual(header.slice(15), ['Age']);
+  assert.deepEqual(header.slice(30), ['Age']);
   assert.ok(!csv.includes('demo only'));
 });
 
@@ -601,7 +601,9 @@ function pairedRows() {
   ];
 }
 
-const MEASURES = ['LL L1-S1', 'PI', 'PT', 'SS', 'PI-LL Mismatch', 'L1PA', 'LL L2-S1', 'LL L3-S1', 'LL L4-S1', 'LL L5-S1'];
+const MEASURES = ['LL L1-S1', 'PI', 'PT', 'SS', 'PI-LL Mismatch', 'L1PA', 'LL L2-S1', 'LL L3-S1', 'LL L4-S1', 'LL L5-S1',
+  ...['L1-L2', 'L2-L3', 'L3-L4', 'L4-L5', 'L5-S1'].flatMap(level =>
+    ['anterior', 'middle', 'posterior'].map(position => `Disc height ${level} ${position} (mm)`))];
 
 test('toPairedCsv leads with the citation block and writes the layout-B header over the visits present', () => {
   const lines = toPairedCsv(pairStudies(pairedRows())).split('\r\n');
@@ -622,7 +624,7 @@ test('toPairedCsv leads with the citation block and writes the layout-B header o
     ...MEASURES.flatMap((m) => [`${m} Pre-op`, `${m} Post-op`, `Delta ${m} Post-op`, `${m} 1 yr`, `Delta ${m} 1 yr`]),
     'Age Pre-op', 'Age Post-op', 'Age 1 yr', 'Sex Pre-op', 'Sex Post-op', 'Sex 1 yr', 'ODI Pre-op', 'ODI Post-op', 'ODI 1 yr',
   ]);
-  assert.equal(header.length, 69);
+  assert.equal(header.length, 144);
   assert.ok(!lines[3].includes('Notes'), 'an unpaired subject\'s clinical key adds no column');
   // Two subjects written, then the trailing CRLF.
   assert.equal(lines.length, 7);
@@ -643,6 +645,7 @@ test('toPairedCsv writes one row per subject with the deltas over the written on
     '25.1', '30.2', '5.1', '', '',                // LL L3-S1
     '15.6', '18', '2.4', '', '',                 // LL L4-S1
     '5.2', '6.4', '1.2', '', '',                 // LL L5-S1
+    ...Array(75).fill(''),                     // 15 disc heights × five value/delta cells; no geometry/scale
     '61', '61', '', 'F', '', '', '', '18', '',   // Age, Sex, ODI per visit
   ].join(','));
   assert.equal(lines[5], [
@@ -657,9 +660,10 @@ test('toPairedCsv writes one row per subject with the deltas over the written on
     '', '', '', '', '',
     '', '', '', '', '',
     '', '', '', '', '',
+    ...Array(75).fill(''),
     '58', '', '', '', '', '', '', '', '',
   ].join(','));
-  assert.equal(lines[5].split(',').length, 69);
+  assert.equal(lines[5].split(',').length, 144);
   assert.ok(!lines.join('\n').includes('NaN'));
 });
 
@@ -670,7 +674,7 @@ test('toPairedCsv under a single label writes the two-visit file with that label
     'Subject', 'Pre-op study', 'Post-op study', 'Pre-op view', 'Post-op view', 'Pre-op film date', 'Post-op film date',
     'LL L1-S1 Pre-op', 'LL L1-S1 Post-op', 'Delta LL L1-S1 Post-op',
   ]);
-  assert.equal(header.length, 43);
+  assert.equal(header.length, 88);
   assert.equal(lines.length, 6, 'S001 only: S002 has no Post-op film and S003 no Pre-op film');
   assert.ok(lines[4].startsWith('S001,SP-1000,SP-1001,Standing lateral,Standing lateral,2025-03-02,2025-09-14,38.2,49.1,10.9,52.1,52.3,0.2,'));
   assert.ok(!lines[3].includes('1 yr'));
@@ -685,7 +689,7 @@ test('toPairedCsv writes empty measurement and delta cells for an unsegmented fi
   const cells = lines[4].split(',');
   assert.deepEqual(cells.slice(0, 7), ['S001', 'SP-1000', 'SP-1001', 'Standing lateral', 'Standing lateral', '', '']);
   assert.deepEqual(cells.slice(7, 13), ['', '49.1', '', '', '52.3', '']);
-  assert.equal(cells.length, 37);
+  assert.equal(cells.length, 82);
 });
 
 test('toPairedCsv never writes a demo row and quotes a label or value that needs it', () => {
@@ -708,5 +712,5 @@ test('toPairedCsv over a pairing with nothing written is the citation block and 
   const lines = toPairedCsv(pairStudies([study({ id: 'SP-1000', subjectId: 'S001', timepoint: 'Pre-op' })])).split('\r\n');
   assert.equal(lines.length, 5);
   assert.ok(lines[3].startsWith('Subject,Pre-op study,Pre-op view,Pre-op film date,LL L1-S1 Pre-op,PI Pre-op,'));
-  assert.equal(lines[3].split(',').length, 14);
+  assert.equal(lines[3].split(',').length, 29);
 });

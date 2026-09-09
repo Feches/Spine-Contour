@@ -26,4 +26,4 @@ Screenshots and test outputs are written under ignored `tools/smoke/out/` and `a
 
 ## Scope
 
-The detector supports printed length labels paired with straight capped rulers. It does not infer a physical scale from anatomy alone, implement other ruler families, or compensate for unknown radiographic magnification. Current angular measurements and anatomical disc-height/slip definitions are unchanged. Pre-workspace results survive the session; loaded-study results persist to disk. Detection-profile import remains unsupported.
+The detector supports printed length labels paired with straight capped rulers. It does not infer a physical scale from anatomy alone, implement other ruler families, or compensate for unknown radiographic magnification. Calibrated anterior/middle/posterior disc heights are now derived from the facing endplates for L1–L2 through L5–S1 and included in both exports; see [disc-height definitions](disc-heights.md). Angular measurements are unchanged and slip remains unimplemented. Pre-workspace results survive the session; loaded-study results persist to disk. Detection-profile import remains unsupported.

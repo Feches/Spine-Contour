@@ -1,5 +1,6 @@
 import { normaliseTimepoint, normaliseView, parseFilmDate, PRE_OP } from './timepoints.js';
 import { normalizeCalibration } from './calibration.js';
+import { discRows, DISC_LEVEL_PAIRS, DISC_POSITIONS } from './disc-heights.js';
 
 const CALIBRATION_COLUMNS = ['Calibration status', 'Calibration source', 'Pixel spacing X (mm/px)',
   'Pixel spacing Y (mm/px)', 'Reference length (mm)', 'Reference length (px)', 'Reference label'];
@@ -11,10 +12,13 @@ function calibrationCells(study) {
     reference?.value_mm ?? '', reference?.length_px ?? '', reference?.raw_text ?? ''];
 }
 
-const MEASUREMENT_COLUMNS = [
+const ANGULAR_COLUMNS = [
   'LL L1-S1', 'PI', 'PT', 'SS', 'PI-LL Mismatch', 'L1PA',
   'LL L2-S1', 'LL L3-S1', 'LL L4-S1', 'LL L5-S1',
 ];
+const MEASUREMENT_COLUMNS = [...ANGULAR_COLUMNS,
+  ...DISC_LEVEL_PAIRS.flatMap(levels => DISC_POSITIONS.map(position =>
+    `Disc height ${levels.join('-')} ${position} (mm)`))];
 
 // Measurement columns are written to one decimal, matching what the Measurements panel
 // displays, so a value read off the screen and the same value in the file agree. It also
@@ -60,6 +64,11 @@ function measurementValue(study, column) {
   }
 }
 
+function measurementValues(study) {
+  return [...ANGULAR_COLUMNS.map(column => measurementValue(study, column)),
+    ...discRows(study).flatMap(row => DISC_POSITIONS.map(position => round1(row[position])))];
+}
+
 function escapeField(value) {
   const text = value == null ? '' : String(value);
   if (/[",\r\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
@@ -99,7 +108,7 @@ export function toCsv(studies) {
       study.subjectId ?? '',
       study.timepoint ?? '',
       study.filmDate ?? '',
-      ...MEASUREMENT_COLUMNS.map((column) => measurementValue(study, column)),
+      ...measurementValues(study),
       ...fields.map((field) => (study.clinical && study.clinical[field] != null ? study.clinical[field] : '')),
       ...(withCalibration ? calibrationCells(study) : []),
     ];
@@ -143,19 +152,18 @@ export function toPairedCsv(pairing) {
   const lines = [...citation, header.map(escapeField).join(',')];
   for (const row of subjects) {
     const film = (label) => row.films.get(label) ?? null;
-    const pre = film(PRE_OP);
+    const values = new Map(labels.map(label => [label, film(label) ? measurementValues(film(label)) : []]));
     const cells = [
       row.subject,
       ...labels.map((label) => film(label)?.id ?? ''),
       ...labels.map((label) => film(label)?.view ?? ''),
       ...labels.map((label) => film(label)?.filmDate ?? ''),
-      ...MEASUREMENT_COLUMNS.flatMap((column) => {
-        const before = pre ? measurementValue(pre, column) : '';
+      ...MEASUREMENT_COLUMNS.flatMap((_column, index) => {
+        const before = values.get(PRE_OP)[index] ?? '';
         return [
           before,
           ...visits.flatMap((label) => {
-            const later = film(label);
-            const value = later ? measurementValue(later, column) : '';
+            const value = values.get(label)[index] ?? '';
             return [value, delta1(before, value)];
           }),
         ];

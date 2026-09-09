@@ -518,7 +518,7 @@ Consequences that bind every plan:
 
 export function sagittalRows(measurements, opts)   // → Row[]
 export function lordosisRows(measurements)         // → Row[]  L2-S1..L5-S1
-export function discRows()                         // → Row[]  always absent
+export function discRows(study)                    // → DiscRow[]; 2026-09-09 disc-height amendment below
 export function alignmentRows(study)               // → Row[]  always absent
 export function piResidual(measurements)           // → number|null  |PI-(PT+SS)|
 export function isConsistent(measurements)         // → boolean (residual <= RESIDUAL_LIMIT)
@@ -941,3 +941,14 @@ Supersedes the session-only persistence restriction in the 2026-09-07 calibratio
 `POST /predict` accepts optional JSON form field `calibration`, validates its source digest and dimensions against the upload, and returns compact `calibration` alongside the existing response. When no matching result exists it runs the existing OpenCV/OCR extractor on the original upload. OCR failures return an unavailable calibration without losing a successful segmentation. Original image coordinates are never interpreted as model-crop coordinates. The serial batch driver and model selection stay unchanged.
 
 Folder scans automatically process all images without requiring an appearance profile. Stop keeps completed results; Continue permits uncalibrated films. A reference correction or clear updates its study immediately. A correction made while prediction is in flight wins only when the response has the same source hash and dimensions. `calibrationRequest` additionally supports `{studyId, filePath}` for review from the Measurements panel, with a return to that study. CSV and paired CSV append calibration columns when at least one exported film has a valid calibration record; there are no calibration deltas and unknown scales remain blank.
+
+
+## 2026-09-09 amendment: calibrated disc heights
+
+User-authorized addition: `renderer/data/disc-heights.js` owns `discRows(study)`, re-exported by `data/measurements.js`. It returns five `DiscRow` objects in L1–L2 through L5–S1 order: `{key, label, unit: 'mm', anterior, middle, posterior}`; the three values are finite millimetres or `null`. This supersedes the always-absent, single-value disc-row interface above. `DISC_LEVEL_PAIRS` and `DISC_POSITIONS` share the order with the panel and exports.
+
+Use the upper vertebra's `inferior` and lower vertebra's `superior` endplates (`s1_superior` for L5–S1), each ordered [anterior, posterior] in original-image coordinates. Anterior/posterior heights are corresponding endpoint-to-endpoint Euclidean distances. Middle height is the distance between the endplate midpoints, not the mean of the other two distances. Convert the x and y components using normalized calibration `column_mm` and `row_mm` respectively before taking their norm. Both facing endplates must have distinct, finite endpoints inside the calibrated image; absent/invalid geometry or scale produces three nulls for that disc. A measured zero remains zero.
+
+Heights are derived on read from the saved study geometry and calibration, never persisted as a second cache. The panel rebuild gate includes both references and a pending correction flag. It hides heights during a `measurementDrafts[study.id]` correction when combined with the accuracy-safeguards branch. No new `/measure` fields, store version, runtime dependency, construction target or CSP permission is introduced.
+
+Both CSV formats always include 15 disc-height columns after the ten angular columns and before clinical fields. Names are `Disc height L1-L2 anterior (mm)` etc. Paired CSV retains measurement-major layout and visit suffixes with `Delta` columns; `delta1` applies to each independently calibrated visit's written one-decimal value. Missing values and their deltas are empty, never zero. Calibration metadata remains appended per film as before. See `docs/disc-heights.md` for the full definitions and verification.

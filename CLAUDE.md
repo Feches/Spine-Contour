@@ -180,7 +180,7 @@ failed fit.
 independently. The residual is used as a landmark-quality signal, not assumed to be
 zero.
 
-Disc heights and spondylolisthesis slip are **not computed**. Image calibration now supplies spacing from printed rulers or DICOM metadata, but anatomical length definitions remain unimplemented.
+Anterior, middle and posterior disc heights (L1–L2 through L5–S1) are derived from facing endplate keypoints and per-image calibration in `renderer/data/disc-heights.js`, displayed in Measurements, and exported in ordinary/paired CSV. See `docs/disc-heights.md` for definitions and blank-value rules. Spondylolisthesis slip remains unimplemented.
 
 The backend bundle collects `timm` (the HRNet trunk) alongside the other model
 packages; keep `--collect-all timm` in both workflows.

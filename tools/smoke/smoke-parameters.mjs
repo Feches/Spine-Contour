@@ -34,12 +34,14 @@ const RESET = `{ query: "", studiesTab: "find", paramFilters: ${RESET_FILTERS}, 
 // 39.5 then 5; every delta is post minus pre over those one-decimal values; L1PA and the four
 // levels are absent on one or both films, so their cells and deltas are empty. Built from arrays
 // so the empty cells are counted, not eyeballed.
-const PAIRED_MEASURES = ['LL L1-S1', 'PI', 'PT', 'SS', 'PI-LL Mismatch', 'L1PA', 'LL L2-S1', 'LL L3-S1', 'LL L4-S1', 'LL L5-S1'];
+const PAIRED_MEASURES = ['LL L1-S1', 'PI', 'PT', 'SS', 'PI-LL Mismatch', 'L1PA', 'LL L2-S1', 'LL L3-S1', 'LL L4-S1', 'LL L5-S1',
+  ...['L1-L2', 'L2-L3', 'L3-L4', 'L4-L5', 'L5-S1'].flatMap(level =>
+    ['anterior', 'middle', 'posterior'].map(position => `Disc height ${level} ${position} (mm)`))];
 const PAIRED_HEADER = ['Subject', 'Pre-op study', 'Post-op study', 'Pre-op view', 'Post-op view', 'Pre-op film date', 'Post-op film date',
   ...PAIRED_MEASURES.flatMap((m) => [`${m} Pre-op`, `${m} Post-op`, `Delta ${m} Post-op`])].join(',');
 const PAIRED_ROW = ['S001', 'SP-9101', 'SP-9102', 'Standing lateral', 'Standing lateral', '2025-03-02', '2025-09-14',
   '60', '45', '-15', '99.5', '50', '-49.5', '30', '15', '-15', '69.5', '35', '-34.5', '39.5', '5', '-34.5', '12', '', '',
-  ...Array(12).fill('')].join(',');
+  ...Array(57).fill('')].join(',');
 
 const cdp = await connect();
 const count = (selector) => cdp.evaluate(`document.querySelectorAll(${JSON.stringify(selector)}).length`);

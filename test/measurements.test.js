@@ -148,11 +148,11 @@ test('sagittalRows highlight: selecting L3 (a lordosis-only level) highlights no
   rows.forEach((r) => assert.equal(r.highlight, false));
 });
 
-test('discRows is always five absent rows regardless of input', () => {
+test('discRows without a study has five levels with three absent heights', () => {
   const rows = discRows();
   assert.equal(rows.length, 5);
   assert.deepEqual(rows.map((r) => r.label), ['L1–L2', 'L2–L3', 'L3–L4', 'L4–L5', 'L5–S1']);
-  rows.forEach((r) => { assert.equal(r.absent, true); assert.equal(r.value, null); });
+  rows.forEach((r) => { for (const position of ['anterior', 'middle', 'posterior']) assert.equal(r[position], null); });
 });
 
 test('alignmentRows is always one absent spondylolisthesis row', () => {
