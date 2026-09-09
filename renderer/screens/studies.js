@@ -20,6 +20,7 @@ import {
   withIds, toggleId, workspaceOptions, folderOptions, normaliseFilters, patchFilters, matchesLocation, HAND_ADDED,
 } from '../data/parameters.js';
 import { planBatch, progressText, WAIT_FOR_BATCH } from '../data/batch.js';
+import { progressTitle, progressDetail } from '../data/processing.js';
 import { checkbox } from '../components/checkbox.js';
 import { startBatch, stopBatch } from '../batch.js';
 import { setFilePayload, releaseStudy } from './analysis.js';
@@ -511,11 +512,13 @@ export function render(state) {
 
     let action;
     if (live.batch) {
-      // Indeterminate ring plus a count of attempts. /predict has no progress channel, so there
-      // is nothing else honest to show (spec decision 6). Stop finishes the film in flight.
+      // Batch count plus live backend stages. Stop finishes the film in flight;
+      // the sidebar can also cancel the current image and stop the batch.
       action = el('div', { class: 'studies-progress', 'data-find-key': 'progress' },
         el('span', { class: 'studies-progress-spinner', 'aria-hidden': 'true' }),
-        el('span', { class: 'studies-progress-text' }, progressText(live.batch)),
+        el('span', { class: 'studies-progress-text' }, progressText(live.batch),
+          live.running ? el('span', { class: 'processing-note study-processing-detail' },
+            `${progressTitle(live.runStage)} · ${progressDetail(live.runStage)}`) : null),
         el('button', {
           type: 'button', class: 'btn btn-small', 'data-find-key': 'stop',
           disabled: live.batch.stopping === true,
@@ -560,6 +563,8 @@ export function render(state) {
     // The grid keeps its own reference-keyed gate; the search result is computed once here and
     // shared with the list below.
     parameters.update(live, queried);
+    const progressNode = barHost.querySelector('.study-processing-detail');
+    if (progressNode) progressNode.textContent = `${progressTitle(live.runStage)} · ${progressDetail(live.runStage)}`;
 
     // live.running is in the key so the table repaints when a run starts or ends: the row
     // badge is derived from it, and nothing else in the key changes at either moment.

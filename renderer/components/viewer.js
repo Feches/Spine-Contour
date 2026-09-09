@@ -10,6 +10,8 @@ import { zoomIn, zoomOut, zoomAbout, isChordHeld, vertebraAt, sameHandle, hitTes
 import { createMeasureQueue } from '../viewer/measure-queue.js';
 import { isQueued, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
 import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
+import { progressTitle, progressDetail } from '../data/processing.js';
+import { cancelProcessing } from '../processing.js';
 
 // Icons lifted verbatim from design-reference/template.html's Study Analysis toolbar.
 // Same inline-SVG-through-innerHTML pattern plan 02 uses in components/sidebar.js and
@@ -203,16 +205,15 @@ export function mountViewer(container) {
 
   const footer = el('div', { class: 'viewer-footer' });
 
-  // Indeterminate ring plus one static description. It conveys "working" and nothing
-  // more: /predict has no progress channel, so there is no stage to name and no
-  // percentage to report. See BD-4 -- do not add a stage timer here.
+  // Stages and counts come from the backend; elapsed time is not a percentage.
   const runEyebrow = el('div', { class: 'run-eyebrow' });
   const runTitle = el('div', { class: 'run-title' });
   const runBody = el('div', { class: 'run-body' });
   const runSpinner = el('div', { class: 'run-spinner is-hidden' });
   const runButton = el('button', { type: 'button', class: 'run-button' }, 'Run segmentation');
+  const cancelButton = el('button', { type: 'button', class: 'run-button is-hidden', onClick: cancelProcessing }, 'Cancel processing');
   const runCard = el('div', { class: 'run-card is-hidden' },
-    el('div', { class: 'run-card-inner' }, runEyebrow, runTitle, runBody, runSpinner, runButton));
+    el('div', { class: 'run-card-inner' }, runEyebrow, runTitle, runBody, runSpinner, runButton, cancelButton));
 
   stage.append(host, chip, toolbar, editBar, footer, runCard);
   container.append(stage);
@@ -725,10 +726,10 @@ export function mountViewer(container) {
     if (!hasResult || busy) {
       return {
         eyebrow: busy ? 'RUNNING' : (queued ? 'QUEUED' : 'UNSEGMENTED'),
-        title: busy ? 'Segmenting and measuring…' : (queued ? 'Waiting for its turn in the batch' : 'No segmentation yet'),
-        // Describes what the pipeline does; never which model is executing (BD-4).
+        title: busy ? progressTitle(state.runStage) : (queued ? 'Waiting for its turn in the batch' : 'No segmentation yet'),
+        // Only backend-reported stages are shown.
         body: busy
-          ? 'Runs three models: vertebral segmentation, S1 keypoint detection, and femoral head fitting.'
+          ? progressDetail(state.runStage)
           : (queued
             ? 'This study is in the running batch and will be segmented in turn.'
             : 'This study was uploaded but has not been processed. Run segmentation to generate measurements.'),
@@ -767,6 +768,9 @@ export function mountViewer(container) {
     runTitle.textContent = card.title;
     runBody.textContent = card.body;
     runSpinner.classList.toggle('is-hidden', !card.spinner);
+    cancelButton.classList.toggle('is-hidden', !card.spinner);
+    const progress = getState().runStage;
+    cancelButton.disabled = Boolean(progress?.cancelling) || progress?.stage === 'saving';
     runButton.classList.toggle('is-hidden', !card.button);
     runButton.textContent = card.button ? card.button.text : '';
     runButton.disabled = card.button ? card.button.disabled : true;

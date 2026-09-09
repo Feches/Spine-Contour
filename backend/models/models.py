@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from functools import lru_cache
 from pathlib import Path
+import gc
 
 import cv2
 import numpy as np
@@ -15,6 +16,11 @@ import torch
 import torch.nn as nn
 from torchvision.models.detection import keypointrcnn_resnet50_fpn
 from torchvision.models.detection.keypoint_rcnn import KeypointRCNNPredictor
+
+try:
+    from .. import runtime
+except ImportError:
+    import runtime
 
 try:
     from .hrnet import LANDMARKS as HRNET_LANDMARKS, build_hrnet_model, decode_heatmaps
@@ -197,6 +203,7 @@ def _detection_device() -> str:
 
 @lru_cache(maxsize=8)
 def _load_model(kind: str, device: str) -> nn.Module:
+    runtime.report("loading", f"Loading {MODEL_NAMES.get(kind, kind)}")
     if kind == "vertebra":
         path, classes = VERTEBRA_WEIGHTS_PATH, 6
     elif kind == "femoral":
@@ -221,6 +228,45 @@ def _load_model(kind: str, device: str) -> nn.Module:
     )
     model.load_state_dict(checkpoint["model"], strict=True)
     return model.to(torch.device(device)).eval()
+
+
+MODEL_NAMES = {"s1": "S1 detector", "vertebra": "vertebra model",
+               "femoral": "femoral-head model", "hrnet": "HRNet landmark model"}
+_resident_key = None
+
+
+def release_models():
+    """Drop cache ownership after a low-memory run, including failed/cancelled runs."""
+    global _resident_key
+    _load_model.cache_clear()
+    _resident_key = None
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    if hasattr(torch, "mps") and torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+
+
+def _infer(kind, device, operation, message):
+    # The operation returns CPU arrays/scalars, never tensors that retain model
+    # activations. A single cached model survives repeated S1 search windows;
+    # changing stages evicts it BEFORE loading the next model.
+    global _resident_key
+    runtime.checkpoint()
+    previous_progress = runtime.current_progress()
+    key = (kind, device)
+    if runtime.options().low_memory and key != _resident_key:
+        release_models()
+    model = _load_model(kind, device)
+    _resident_key = key
+    if message is not None:
+        runtime.report(kind, message)
+    elif previous_progress is not None:
+        runtime.report(**{key: previous_progress[key] for key in ('stage', 'message', 'completed', 'total')})
+    with torch.inference_mode():
+        result = operation(model)
+    runtime.checkpoint()
+    return result
 
 
 def _segmentation_input(image: np.ndarray, device: str) -> torch.Tensor:
@@ -307,10 +353,10 @@ def _score_s1(letterboxed: list[np.ndarray]) -> list[tuple[float, np.ndarray | N
     """Best S1 detection on each model-frame image, for the crop search."""
 
     device = _detection_device()
-    model = _load_model("s1", device)
-    with torch.inference_mode():
-        outputs = model([_detection_input(image, device) for image in letterboxed])
-    return [_s1_from_output(output) for output in outputs]
+    return _infer("s1", device,
+                  lambda model: [_s1_from_output(output) for output in
+                                 model([_detection_input(image, device) for image in letterboxed])],
+                  None)
 
 
 def _read_frame(letterboxed: np.ndarray, choice: dict[str, str]) -> dict[str, object]:
@@ -318,29 +364,26 @@ def _read_frame(letterboxed: np.ndarray, choice: dict[str, str]) -> dict[str, ob
 
     segmentation_device = _segmentation_device()
     detection_device = _detection_device()
-    femoral = _load_model("femoral", segmentation_device)
-    s1_model = _load_model("s1", detection_device)
     segmentation_input = _segmentation_input(letterboxed, segmentation_device)
-    detection_input = _detection_input(letterboxed, detection_device)
-    with torch.inference_mode():
-        femoral_logits = femoral(segmentation_input)
-        s1_confidence, s1_points = _s1_from_output(s1_model([detection_input])[0])
-        # HRNet always regresses every slot, including anatomy outside the film.
-        # Use the labelled mask as presence evidence for either corner model.
-        vertebra = _load_model("vertebra", segmentation_device)
-        vertebra_labels = vertebra(segmentation_input)[0].argmax(0).detach().cpu().numpy()
-        if choice["vertebrae"] == "unet":
-            hrnet_points = None
-        else:
-            hrnet = _load_model("hrnet", segmentation_device)
-            heat = hrnet(segmentation_input).float()
-            hrnet_points = decode_heatmaps(heat, hrnet.heatmap_stride)[0].cpu().numpy()
+    s1_confidence, s1_points = _infer("s1", detection_device,
+        lambda model: _s1_from_output(model([_detection_input(letterboxed, detection_device)])[0]),
+        "Detecting the S1 endplate")
+    femoral = _infer("femoral", segmentation_device,
+        lambda model: (torch.sigmoid(model(segmentation_input)[0, 0]).cpu().numpy()
+                       >= MODEL_THRESHOLD).astype(np.uint8), "Segmenting femoral heads")
+    # HRNet's presence check is retained in BOTH resource modes.
+    vertebra_labels = _infer("vertebra", segmentation_device,
+        lambda model: model(segmentation_input)[0].argmax(0).cpu().numpy(),
+        "Segmenting visible vertebrae")
+    hrnet_points = None
+    if choice["vertebrae"] == "hrnet":
+        hrnet_points = _infer("hrnet", segmentation_device,
+            lambda model: decode_heatmaps(model(segmentation_input).float(), model.heatmap_stride)[0].cpu().numpy(),
+            "Locating vertebral corners with HRNet")
     return {
         "vertebra_labels": None if vertebra_labels is None else vertebra_labels.astype(np.uint8),
         "hrnet_points": None if hrnet_points is None else hrnet_points.astype(np.float64),
-        "femoral": (
-            torch.sigmoid(femoral_logits[0, 0]).detach().cpu().numpy() >= MODEL_THRESHOLD
-        ).astype(np.uint8),
+        "femoral": femoral,
         "s1": s1_points,
         "s1_confidence": s1_confidence,
     }
@@ -382,11 +425,13 @@ def spinopelvic_prediction(
         raise ValueError("pixel_array must be a non-empty two-dimensional numeric grayscale array")
     if raw.dtype != np.uint8:
         raw = raw.astype(np.float32)
+    runtime.report("preparing", "Preparing the original radiograph")
     image = _robust_rescale(raw)
 
     located = framing.locate(raw, _score_s1)
     fallback = located is None
     if fallback:
+        runtime.report("framing", "S1 not found in the search; checking the visible film")
         # Upper-lumbar and cropped films need not contain a sacrum at all.
         located = {"window": framing.fallback_window(raw), "searched": True,
                    "whole_film_won": True, "whole_film_cost": None,
@@ -395,6 +440,7 @@ def spinopelvic_prediction(
     canvas, transform = framing.prepare_crop(raw, window)
     frame = _read_frame(canvas, choice)
     if _source_s1(frame, transform) is None and not located.get("whole_film_won"):
+        runtime.report("framing", "Checking the visible film after an incomplete crop")
         # A search crop without its anchor must not hide other visible levels.
         window = framing.fallback_window(raw)
         canvas, transform = framing.prepare_crop(raw, window)
@@ -410,6 +456,7 @@ def spinopelvic_prediction(
     proposed = (framing.reframe(s1_source, raw.shape)
                 if s1_source is not None and not fallback and not located.get("whole_film_won") else None)
     if proposed is not None and proposed != window and framing.accept_reframe(window, proposed):
+        runtime.report("framing", "Refining the selected spine region")
         canvas, transform = framing.prepare_crop(raw, proposed)
         candidate = _read_frame(canvas, choice)
         if _source_s1(candidate, transform) is not None:
@@ -417,6 +464,7 @@ def spinopelvic_prediction(
         else:
             canvas, transform = framing.prepare_crop(raw, window)
 
+    runtime.report("landmarks", "Extracting available vertebral endplates")
     model_values = {level: index for index, level in enumerate(LUMBAR_LEVELS, start=1)}
     s1_source = _source_s1(frame, transform)
     # Without S1, U-Net can recover endplates but cannot establish anterior.

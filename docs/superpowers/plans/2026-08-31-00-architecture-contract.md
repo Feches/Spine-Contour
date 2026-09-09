@@ -347,7 +347,8 @@ a draw function must blank a layer, never freeze the application.
   running: null,            // string | null — the id of the study whose /predict is in flight (plan 05);
                             // one run at a time. `if (state.running)` still means "a run is in flight";
                             // the viewer and the Studies list compare it with a study's id.
-  runStage: null,           // string | null
+  performance: { mode: 'standard', cpuThreads: 2 }, // saved in performance.json
+  runStage: null,           // live progress object | null; see v1.0.2 amendment
   batch: null,              // (2026-09-08, batch spec §8.1) the running batch or null: { ids, done, failed,
                             // warnings, skipped, stopping }, replaced wholesale by renderer/batch.js; never persisted;
                             // in SIDEBAR_KEYS and in the Studies screen's own update() key; state.running is untouched
@@ -986,3 +987,40 @@ Use the upper vertebra's `inferior` and lower vertebra's `superior` endplates (`
 Heights are derived on read from the saved study geometry and calibration, never persisted as a second cache. The panel rebuild gate includes both references and a pending correction flag. It hides heights during a `measurementDrafts[study.id]` correction when combined with the accuracy-safeguards branch. No new `/measure` fields, store version, runtime dependency, construction target or CSP permission is introduced.
 
 Both CSV formats always include 15 disc-height columns after the ten angular columns and before clinical fields. Names are `Disc height L1-L2 anterior (mm)` etc. Paired CSV retains measurement-major layout and visit suffixes with `Delta` columns; `delta1` applies to each independently calibrated visit's written one-decimal value. Missing values and their deltas are empty, never zero. Calibration metadata remains appended per film as before. See `docs/disc-heights.md` for the full definitions and verification.
+
+
+## 2026-09-09 amendment: low-memory mode and actual progress (v1.0.2)
+
+User-requested extension of the original indeterminate-progress rule: a new backend
+channel now reports real work. No timed stage labels or guessed whole-job percentage.
+
+- `state.performance = {mode: 'standard'|'low-memory', cpuThreads: 1..4}`. Desktop
+  Settings offers 1, 2, or 4 threads. Saved atomically in profile `performance.json`,
+  independently of studies; no study-store schema bump. Settings/model controls are
+  disabled during a prediction/batch. The setting also reaches standalone calibration.
+- `state.runStage = null | {requestId, mode, stage, message, completed?, total?,
+  elapsed_seconds, cancelling?}`. Request id rejects late events from older jobs.
+  It is session-only, replaced wholesale, cleared on completion/failure/cancellation.
+- `POST /predict` remains compatible and accepts `processing_mode`, `cpu_threads`.
+  Desktop uses `POST /predict-stream` with the same multipart fields. NDJSON events:
+  `progress` (stage/message/optional completed+total), `heartbeat` (elapsed time),
+  then one `result` (original prediction contract) or `error` (message).
+- `backend-client.cjs` uses Node HTTP with a 60-second inactivity timeout and no
+  total inference deadline. Two-second backend heartbeats keep healthy long jobs alive.
+  Backend startup allows ten minutes, with bounded health probes. Standalone calibration
+  uses `/calibrate-stream` with the same heartbeat/idle policy. Low-memory OCR allows sixty seconds per pass (standard: eight).
+- Preload exposes `onPredictionProgress(callback) → unsubscribe`, `cancelPredict(id)`,
+  `loadPerformance()`, `savePerformance(settings)`. `predict` optionally takes `requestId`.
+  The main process owns the loopback connection and cancellation; renderer CSP is unchanged.
+- Inference/calibration jobs share a serialized worker lock around process-wide Torch
+  thread/cache policy. Low-memory runs restore threads and clear models even on failure
+  or cancellation; repeated S1 search windows reuse one detector. No resolution, search
+  candidate, confidence-threshold, HRNet presence or calibration-coordinate changes.
+- `qc.processing` records mode, actual CPU thread count and search batch size.
+- `Cancel processing` disconnects the current request, triggers backend cooperative
+  cancellation between operations and stops its batch. A running native operation is
+  not killed mid-call. Cancelled re-runs preserve earlier results. Batch `cancelled`
+  optionally counts cancelled attempts within `skipped`; closing copy distinguishes them.
+- Sidebar progress and the Studies progress detail update in place, outside table/sidebar
+  remount gates. Viewer stages follow only the active study. Progress never redraws
+  segmentation canvases or persists per-heartbeat study writes.

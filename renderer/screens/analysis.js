@@ -250,10 +250,13 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     if (!batch) showToast(reason);
     return { ok: false, reason };
   }
-  setState({ running: studyId });
+  const requestId = crypto.randomUUID();
+  setState({ running: studyId, runStage: { requestId, mode: getState().performance.mode,
+    stage: 'starting', message: 'Sending the image to the processing worker', elapsed_seconds: 0 } });
   let warning = null;
   try {
     const response = await predict({
+      requestId,
       name: current.fileName,
       data,
       modality: 'xray',
@@ -264,6 +267,11 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     });
     if (revision !== runRevision) return { ok: false, reason: 'superseded' };
 
+    if (getState().runStage?.requestId === requestId && getState().runStage.cancelling) {
+      throw new Error('Processing cancelled.');
+    }
+    setState({ runStage: { ...getState().runStage, message: 'Preparing the viewer and saving results',
+      stage: 'saving', completed: null, total: null } });
     const images = await loadStudyImages(response);
     if (revision !== runRevision) {
       disposeStudyImages(images);
@@ -336,6 +344,7 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     // must not drop B out of edit mode. The error path below never touched either key.
     setState((state) => ({
       running: null,
+      runStage: null,
       editing: state.openId === studyId ? false : state.editing,
       selection: state.openId === studyId ? null : state.selection,
       studies: state.studies.map((s) => (s.id === studyId
@@ -346,7 +355,11 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     return warning ? { ok: true, warning } : { ok: true };
   } catch (error) {
     if (revision === runRevision) {
-      setState({ running: null });
+      setState({ running: null, runStage: null });
+      if (error.message === 'Processing cancelled.') {
+        if (!batch) showToast('Processing cancelled. Previous results were kept.');
+        return { skipped: true, cancelled: true };
+      }
       if (!batch) showToast(`Could not segment: ${error.message}`);
       return { ok: false, reason: error.message };
     }

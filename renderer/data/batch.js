@@ -62,6 +62,7 @@ export function advance(batch, outcome) {
   const next = { ...batch, done: batch.done + 1, failed: [...batch.failed], warnings: [...batch.warnings] };
   if (outcome.skipped) {
     next.skipped = batch.skipped + 1;
+    if (outcome.cancelled) next.cancelled = (batch.cancelled ?? 0) + 1;
   } else if (outcome.ok) {
     if (outcome.warning) next.warnings.push({ id: outcome.id, name: outcome.name, reason: outcome.warning });
   } else {
@@ -105,7 +106,9 @@ export function batchMessage(batch) {
   let text = `Segmented ${ok} of ${total} ${total === 1 ? 'film' : 'films'}${stopped ? ', then stopped' : ''}.`;
   if (batch.failed.length > 0) text += `${SEP}${batch.failed.length} could not be segmented: ${names(batch.failed)}`;
   if (batch.warnings.length > 0) text += `${SEP}${batch.warnings.length} segmented without stored images: ${names(batch.warnings)}`;
-  if (batch.skipped > 0) text += `${SEP}${batch.skipped} skipped (deleted, or segmented meanwhile)`;
+  const cancelled = batch.cancelled ?? 0;
+  if (cancelled) text += `${SEP}${cancelled} cancelled`;
+  if (batch.skipped > cancelled) text += `${SEP}${batch.skipped - cancelled} skipped (deleted, or segmented meanwhile)`;
   return text;
 }
 

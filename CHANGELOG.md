@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.2
+
+- Add a saved low-memory processing mode: one search crop at a time, one model
+  cached at a time, configurable CPU threads and longer calibration OCR waits.
+- Show real backend stages, region/pass counts and elapsed time for individual
+  images and batches. Keep long jobs alive with heartbeats; allow cancellation.
+- Keep the full anatomical search, model resolution, partial-anatomy handling,
+  original-image calibration and blank unsupported measurements.
+
+[Release notes](docs/releases/1.0.2.md)
+
 ## 1.0.1
 
 - Keep detected vertebrae, S1 and usable femoral geometry when other anatomy is

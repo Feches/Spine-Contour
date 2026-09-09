@@ -4,7 +4,7 @@ import { render as renderLanding } from './screens/landing.js';
 import { render as renderWorkspace } from './screens/workspace.js';
 import { render as renderStudies } from './screens/studies.js';
 import { render as renderAnalysis } from './screens/analysis.js';
-import { render as renderSidebar } from './components/sidebar.js';
+import { render as renderSidebar, updateProcessing } from './components/sidebar.js';
 import { render as renderToast } from './components/toast.js';
 
 const SCREENS = {
@@ -63,6 +63,8 @@ export const SIDEBAR_KEYS = [
   'settingsOpen',
   'theme',
   'models',
+  'performance',
+  'running',
   'screen',
   'openId',
   'batch',
@@ -251,5 +253,6 @@ export function renderRoute(root, state) {
     mount(toastHostNode, renderToast(state));
   }
 
+  if (mode === 'shell' && prevState?.runStage !== state.runStage) updateProcessing(sidebarNode, state);
   prevState = state;
 }

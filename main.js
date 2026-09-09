@@ -4,8 +4,10 @@ const fs = require('node:fs');
 const fsPromises = require('node:fs/promises');
 const net = require('node:net');
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
 const { readStudyStore, writeStudyStore, readJsonOrNull, writeJsonAtomic } = require('./store-io.js');
 const { scanFolder } = require('./scan-folder.js');
+const { postForm, normalizePerformance } = require('./backend-client.cjs');
 
 // buildChannel is injected by electron-builder.preview.yml via extraMetadata.
 // It is absent in development and in production builds, so both fall through
@@ -58,6 +60,28 @@ let backendProcess = null;
 let backendStartupError = null;
 let mainWindow = null;
 let quitting = false;
+const predictions = new Map();
+let performanceWrites = Promise.resolve();
+
+ipcMain.handle('load-performance', async () => normalizePerformance(
+  await readJsonOrNull(path.join(app.getPath('userData'), 'performance.json'))));
+ipcMain.handle('save-performance', (_event, value) => {
+  const settings = normalizePerformance(value);
+  performanceWrites = performanceWrites.catch(() => {}).then(() =>
+    writeJsonAtomic(path.join(app.getPath('userData'), 'performance.json'), settings));
+  return performanceWrites.then(() => settings);
+});
+ipcMain.handle('cancel-predict', (event, requestId) => {
+  const active = predictions.get(requestId);
+  if (active?.sender === event.sender) active.controller.abort();
+});
+
+function appendPerformance(form, value) {
+  const settings = normalizePerformance(value);
+  form.append('processing_mode', settings.mode);
+  form.append('cpu_threads', String(settings.cpuThreads));
+  return settings;
+}
 
 ipcMain.handle('select-file', async () => {
   const result = await dialog.showOpenDialog({
@@ -86,12 +110,8 @@ ipcMain.handle('calibrate', async (_event, request) => {
   if (request.profile) form.append('profile', JSON.stringify(request.profile));
   form.append('include_preview', request.includePreview === false ? 'false' : 'true');
   form.append('preview_only', request.previewOnly ? 'true' : 'false');
-  const response = await fetch(`${backendBaseUrl}/calibrate`, { method: 'POST', body: form });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || 'Image calibration failed.');
-  }
-  return response.json();
+  appendPerformance(form, request.performance);
+  return postForm(`${backendBaseUrl}/calibrate-stream`, form);
 });
 
 ipcMain.handle('calibration-profile', async (_event, request) => {
@@ -107,7 +127,7 @@ ipcMain.handle('calibration-profile', async (_event, request) => {
   return body;
 });
 
-ipcMain.handle('predict', async (_event, request) => {
+ipcMain.handle('predict', async (event, request) => {
   if (!backendBaseUrl) throw new Error('The bundled backend is not ready.');
   if (!request || typeof request.name !== 'string') throw new Error('No radiograph was selected.');
 
@@ -130,12 +150,26 @@ ipcMain.handle('predict', async (_event, request) => {
     if (typeof models[structure] === 'string' && models[structure]) form.append(field, models[structure]);
   }
 
-  const response = await fetch(`${backendBaseUrl}/predict`, { method: 'POST', body: form });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || `Segmentation failed with status ${response.status}.`);
+  appendPerformance(form, request.performance);
+  const requestId = request.requestId ?? randomUUID();
+  if (typeof requestId !== 'string' || !requestId || predictions.has(requestId)) {
+    throw new Error('A unique processing request is required.');
   }
-  return response.json();
+  const controller = new AbortController();
+  predictions.set(requestId, { controller, sender: event.sender });
+  const disconnected = () => controller.abort();
+  event.sender.once('destroyed', disconnected);
+  try {
+    return await postForm(`${backendBaseUrl}/predict-stream`, form, {
+      signal: controller.signal,
+      onProgress: (progress) => {
+        if (!event.sender.isDestroyed()) event.sender.send('prediction-progress', { ...progress, requestId });
+      },
+    });
+  } finally {
+    event.sender.removeListener('destroyed', disconnected);
+    predictions.delete(requestId);
+  }
 });
 
 ipcMain.handle('measure', async (_event, geometry) => {
@@ -408,21 +442,21 @@ function backendLaunch(port) {
 }
 
 async function waitForBackend() {
-  const deadline = Date.now() + 120000;
+  const deadline = Date.now() + 10 * 60 * 1000;
   while (Date.now() < deadline) {
     if (backendStartupError) throw backendStartupError;
     if (backendProcess?.exitCode !== null) {
       throw new Error(`The bundled backend exited with code ${backendProcess.exitCode}.`);
     }
     try {
-      const response = await fetch(`${backendBaseUrl}/health`);
+      const response = await fetch(`${backendBaseUrl}/health`, { signal: AbortSignal.timeout(2000) });
       if (response.ok) return;
     } catch (_error) {
       // The process is still importing its dependencies.
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error('The bundled backend did not start within 120 seconds.');
+  throw new Error('The bundled backend did not start within 10 minutes.');
 }
 
 async function startBackend() {

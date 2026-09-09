@@ -1,11 +1,11 @@
-# Spine Contour v1.0.1
+# Spine Contour v1.0.2
 
 Automated measurements from lateral lumbar radiographs, running locally.
 
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.0.1 release notes](docs/releases/1.0.1.md) and
+[changelog](CHANGELOG.md), [v1.0.2 release notes](docs/releases/1.0.2.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
@@ -13,6 +13,22 @@ Run segmentation on an individual study or a selected batch, review the landmark
 and image scale, then export measurements. The macOS app is unsigned and supports
 Apple Silicon; Intel Mac builds are not provided. Preview installers and their
 libraries remain separate from the numbered release.
+
+## Slower computers
+
+Open **Settings → Processing → Low memory**. This processes one search region at a
+time, keeps only the current model loaded, and allows longer calibration OCR waits.
+Choose 1, 2 (default), or 4 CPU threads to leave more capacity for other work. The
+choice is saved for the next launch. Model resolution and the full anatomical search
+are retained; this mode can take longer and still needs enough memory for one model.
+
+Processing shows the actual stage, completed search regions or OCR passes, and elapsed
+time. **Cancel processing** cancels the current image and stops a running batch;
+**Stop** on the batch bar finishes the current image first. Completed studies and
+previous results from a cancelled re-run are kept. Cancellation takes effect between
+operations; a model call or OCR pass already executing must finish first.
+
+See [processing modes and validation](docs/low-memory-processing.md).
 
 ## Workspace
 

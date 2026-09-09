@@ -1,5 +1,7 @@
 # Spine Contour
 
+**2026-09-09 low-memory mode:** `codex/low-memory-progress` starts from Cody's merged PR #6 (`ceff2ef`) and prepares v1.0.2. See `docs/low-memory-processing.md`. `/predict-stream` now provides actual stage/count events and heartbeats; no timer-generated stages or guessed overall percentages. Keep the full crop search and HRNet presence checks in both modes.
+
 **2026-09-09 partial-segmentation fix:** `codex/partial-segmentation` starts from the merged v1.0.0 main (`f177247`) and prepares v1.0.1. Missing anatomy is now a supported result, not a whole-image failure. See `docs/partial-segmentation.md` and the updated architecture contract. Preserve nulls and absent levels through editing, saving and export; do not reinstate all-five/S1/hip requirements or infer A/P from image side when S1 is absent.
 
 **2026-09-09 main promotion:** `codex/release-v1.0.0-main` starts at Cody's merged PR #4 (`594e63f`) and targets `Feches/Spine-Contour:main`. It retains all 305 incoming commits and prepares v1.0.0 numbered Windows/macOS releases. Current release instructions are in `docs/release-main.md`; `CHANGELOG.md` and `docs/releases/1.0.0-commits.md` summarize the incoming history. The older branch/status notes below are historical.
@@ -105,8 +107,8 @@ These come from the spec and apply to every change.
 - **Never label a value with a name it isn't.** The backend used to return sacral slope
   under the key `SI` (sacral inclination is its 90° complement). That rename is part of
   plan 02. Don't reintroduce the confusion.
-- **No fabricated status either.** Segmentation progress is deliberately indeterminate
-  because `/predict` has no progress channel. Do not add timed stage labels.
+- **No fabricated status either.** Segmentation stages/counts come from `/predict-stream`.
+  Heartbeats advance elapsed time only; never invent stage labels or overall percentages.
 - **Never draw a construction under the wrong measurement's name.** `state.selectedLevel`
   names which construction the viewer draws, and its domain is `'L1'`…`'L5'` | `'S1'` |
   `'PI'` | `'PT'` | `'SS'` | `'L1PA'` | `null` — not just a vertebral level. Anything

@@ -157,13 +157,13 @@ def _run_locate(film, scorer):
     factor = min(1.0, framing.SEARCH_DOWNSCALE / max(film.shape))
     original_score = framing._score_windows
 
-    def tracked(image, windows, score_s1, batch=framing.SEARCH_BATCH):
+    def tracked(image, windows, score_s1, batch=None, **progress):
         def with_windows(canvases):
             scorer.windows = windows[with_windows.at : with_windows.at + len(canvases)]
             with_windows.at += len(canvases)
             return scorer(canvases)
         with_windows.at = 0
-        return original_score(image, windows, with_windows, batch)
+        return original_score(image, windows, with_windows, batch, **progress)
 
     framing._score_windows = tracked
     try:
@@ -232,13 +232,13 @@ def test_locate_rejects_a_whole_film_whose_endplate_disagrees_with_the_windows()
     tracked_scorer.windows = None
 
     original = framing._score_windows
-    def tracked(image, windows, score_s1, batch=framing.SEARCH_BATCH):
+    def tracked(image, windows, score_s1, batch=None, **progress):
         def with_windows(canvases):
             tracked_scorer.windows = scorer.windows = windows[with_windows.at : with_windows.at + len(canvases)]
             with_windows.at += len(canvases)
             return tracked_scorer(canvases)
         with_windows.at = 0
-        return original(image, windows, with_windows, batch)
+        return original(image, windows, with_windows, batch, **progress)
     framing._score_windows = tracked
     try:
         found = locate(film, tracked_scorer)
@@ -294,7 +294,7 @@ def test_locate_admits_the_whole_film_when_the_windows_find_nothing_they_trust()
     scorer.lucky = None
 
     original = framing._score_windows
-    def tracked(image, windows, score_s1, batch=framing.SEARCH_BATCH):
+    def tracked(image, windows, score_s1, batch=None, **progress):
         if scorer.lucky is None:
             scorer.lucky = next(w for w in windows if w[0] <= target[0] <= w[2] and w[1] <= target[1] <= w[3])
         def with_windows(canvases):
@@ -302,7 +302,7 @@ def test_locate_admits_the_whole_film_when_the_windows_find_nothing_they_trust()
             with_windows.at += len(canvases)
             return scorer(canvases)
         with_windows.at = 0
-        return original(image, windows, with_windows, batch)
+        return original(image, windows, with_windows, batch, **progress)
     framing._score_windows = tracked
     try:
         found = locate(film, scorer)
