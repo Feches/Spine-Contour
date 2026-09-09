@@ -1,23 +1,26 @@
-Automated measurements from radiographs.
+# Spine Contour v1.0.0
 
-On Windows, download the current [Spine-Contour installer](https://github.com/mjayasur/Spine-Contour/releases/download/latest-windows/Spine-Contour-Windows.exe) and open it. Choose a radiograph, leave X-ray, Lumbar, and Lateral selected, then click **Measure radiograph**.
+Automated measurements from lateral lumbar radiographs, running locally.
 
-On a Mac with Apple Silicon, the same app builds as a disk image (`npm run package:mac`
-from source, or the `preview-macos` prerelease when the preview workflow has run). It is
-not signed with an Apple Developer ID, so the first time you open it macOS will say it
-cannot verify the developer: right-click the app in the disk image, choose **Open**, and
-confirm. Intel Macs are not built for.
+Download the Windows x64 installer or macOS Apple Silicon disk image from the
+[latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
+Each release includes both installers and `SHA256SUMS`. See the
+[changelog](CHANGELOG.md), [v1.0.0 release notes](docs/releases/1.0.0.md) and
+[complete incoming commit history](docs/releases/1.0.0-commits.md).
+
+Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
+Run segmentation on an individual study or a selected batch, review the landmarks
+and image scale, then export measurements. The macOS app is unsigned and supports
+Apple Silicon; Intel Mac builds are not provided. Preview installers and their
+libraries remain separate from the numbered release.
 
 ## Workspace
-
-The Workspace screen is part of the redesigned app on this branch; it is not in the current
-`latest-windows` installer linked above.
 
 It loads a folder of radiographs into the Studies library in one step, with an optional
 clinical-data CSV.
 
 - **Choose folder…** scans the folder and its subfolders for `.dcm`, `.dicom`, `.png`, `.jpg`,
-  `.jpeg`, `.tif`, `.tiff` and `.bmp` files in any letter case. Other files, links and junctions
+  `.jpeg`, `.tif`, `.tiff`, `.bmp` and `.webp` files in any letter case. Other files, links and junctions
   are skipped and counted, as is any subfolder that cannot be read; links are never followed.
 - After a scan, card 01 lists every folder that holds films with the **timepoint** and **view** the
   load will assign to the films in it — read off folder names such as `pre-op`, `post-op`, `6wk`,
@@ -84,7 +87,8 @@ workspace and folder each film came from.
   visible row. Hidden picks stay ticked and return with the filter.
 - The file has three `#` comment lines, then the header
   `Study ID,View,Subject,Timepoint,Film date,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1`
-  followed by every clinical field present on the exported studies. Absent values are empty cells. Demo
+  followed by 15 calibrated disc-height columns, every clinical field present on the exported studies,
+  and calibration metadata when present. Absent values are empty cells. Demo
   studies are never exported.
 - **Export paired CSV** writes one row per subject over the same rows: `Subject`, then every visit's `<label> study`,
   then every visit's `<label> view`, then every visit's `<label> film date` (`Pre-op` first within each kind, then

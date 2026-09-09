@@ -18,8 +18,20 @@ const archive = archives[0];
 const source = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const packaged = JSON.parse(asar.extractFile(archive, 'package.json').toString());
 assert.equal(packaged.version, source.version, 'Packaged version differs from source');
-assert.equal(packaged.buildChannel, 'preview');
-assert.equal(packaged.productName, 'Spine-Contour Preview');
+const channel = process.argv[3] || 'preview';
+assert.ok(['preview', 'release'].includes(channel), 'Unknown build channel');
+if (channel === 'preview') {
+  assert.equal(packaged.buildChannel, 'preview');
+  assert.equal(packaged.productName, 'Spine-Contour Preview');
+} else {
+  assert.equal(packaged.buildChannel, undefined, 'Production app must not use the preview profile');
+  assert.equal(packaged.name, source.name);
+}
+const productName = channel === 'preview' ? 'Spine-Contour Preview' : source.build.productName;
+const appExecutable = process.platform === 'win32'
+  ? path.join(path.dirname(archive), '..', `${productName}.exe`)
+  : path.join(path.dirname(archive), '..', 'MacOS', productName);
+assert.ok(fs.existsSync(appExecutable), 'Desktop executable or product branding differs from source');
 const shipped = ['index.html', 'main.js', 'preload.js', 'store-io.js', 'scan-folder.js',
   ...files('renderer'), ...files('styles')];
 for (const file of shipped) {
@@ -29,4 +41,4 @@ for (const file of shipped) {
 }
 const executable = process.platform === 'win32' ? 'spine-contour-backend.exe' : 'spine-contour-backend';
 assert.ok(fs.existsSync(path.join(path.dirname(archive), 'backend-runtime', executable)), 'Backend runtime missing');
-console.log(`Verified preview v${packaged.version}: ${shipped.length} source files match, backend present.`);
+console.log(`Verified ${channel} v${packaged.version}: ${shipped.length} source files match, backend present.`);

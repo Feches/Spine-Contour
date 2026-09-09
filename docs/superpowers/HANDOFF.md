@@ -1454,43 +1454,24 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
     act on a demo study. *Why:* a demo id ticked on the Parameters grid is simply not counted by the Find tab. *Cost
     if wrong:* a tick made on one tab is invisible on the other for a dev-only fixture.
 
-## Release prerequisites — before a production release
+## Release prerequisites — v1.0.0 main promotion
 
-These are about shipping `latest-windows`, not about any remaining plan work; plan 07 is
-deferred past the first release (decision 15). They must not be forgotten before a
-production release:
+Current instructions: [main release](../release-main.md). The earlier statements that
+plan 06 had never been packaged, or that installed previews contain demos, are superseded.
 
-- **Gate demo studies on build channel.** Dev and the preview installer keep the nine demo
-  studies; the production build must exclude them. Not yet implemented (decision 14 above).
-- **Add a repository guard to `windows.yml`.** It currently has only `branches: [main]`,
-  unlike `windows-preview.yml`'s `if: github.repository == ...`. Merging this branch's
-  descendants into the fork's `main` without that guard would run the production workflow on
-  the fork and publish a release tagged `latest-windows`. See "Distributing a build from this
-  branch" above.
-- ~~**Supply the README's public dataset links.**~~ — done (2026-09-03, decision 11 above).
-  BUU-LSPINE and VinDr-SpineXR link to both paper and dataset; Merlin links only to its paper
-  since no public dataset link was supplied for it, and the README says so rather than
-  guessing.
-- **`windows.yml` runs no renderer tests and no packaging-allowlist check.** The preview workflow
-  does both; the production one builds and publishes without either. The two allowlists are also
-  the files most likely to conflict in a merge, and a merge that drops a root file from one of
-  them would publish an installer that opens a blank window with CI green. Named at plan 06's
-  closing whole-branch review and deliberately not changed there.
-- **The first preview installer from this lineage is the one the 2026-09-08 push of `fork/ui-redesign-cw` builds.**
-  It carries plan 06 and everything after it, plus the backend developer's Tesseract `--add-data` and
-  `check_bundled_ocr.py`, none of which had ever been packaged. **Built and installed 2026-09-08/09** (run
-  34292966476, `Spine-Contour-Preview-Windows.exe` 882 MB, up from 681 MB for the Tesseract bundle and scipy). The
-  user's checks on it: no demo studies in the packaged build (54 real studies persisted from the earlier preview
-  install, as designed); a batch from the Find tab ran; the calibration screen was walked — the user reports it
-  asks for each image to be calibrated individually (the backend developer's design; raised with him, see ROADMAP
-  §5); console clean. The true empty-library first launch was not seen because the upgrade kept the preview's
-  data folder; the demo gate itself is proven.
-- **Test the branch through the preview installer before pushing to the fork's `main`.**
-  (decision 16 above). **Open, and never yet done for plan 06's code.** The user decided on
-  2026-09-04 that they do not need the installer to work, so plan 06's Task 9 pushed the branch
-  without running this test; the newest installer anyone has run was built from `6592228` on
-  2026-09-03, before the Workspace existed. Strike this bullet only when the test passes on a
-  build that contains plan 06.
+- The merged preview lineage was tested in the v0.2.0 macOS installer: empty library,
+  bundled backend and automatic calibration of three real WebP examples. Windows and
+  macOS preview builds passed 458 renderer and 109 backend tests before PR #4 merged.
+- The production workflow now runs renderer/backend tests, allowlist parity and actual
+  packaged source/version checks on both Windows and macOS, with project-repository
+  guards. Publication waits for both platforms.
+- Only main can publish a numbered release; PR/manual feature builds create artifacts.
+  Numbered versions retain their source and published binaries, while `latest-windows`
+  remains the moving compatibility download. Preview channels remain separate.
+- The source version advances main from 0.1.0 to 1.0.0. See the full release notes and
+  all 305 incoming commits in `docs/releases/`. Production build results belong in
+  the promotion PR. The macOS app remains unsigned; clinical validation and plan 07
+  remain outside this release.
 
 ## Known traps
 

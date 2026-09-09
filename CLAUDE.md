@@ -1,5 +1,7 @@
 # Spine Contour
 
+**2026-09-09 main promotion:** `codex/release-v1.0.0-main` starts at Cody's merged PR #4 (`594e63f`) and targets `Feches/Spine-Contour:main`. It retains all 305 incoming commits and prepares v1.0.0 numbered Windows/macOS releases. Current release instructions are in `docs/release-main.md`; `CHANGELOG.md` and `docs/releases/1.0.0-commits.md` summarize the incoming history. The older branch/status notes below are historical.
+
 **2026-09-09 combined release:** `codex/combined-next-release` combines calibration/disc-height PR #2 and accuracy PR #3, retaining both histories. It targets Cody's installer branch `ui-redesign-cw` for the v0.2.0 preview. Merging builds Windows and macOS installers; manual feature-branch builds produce review artifacts only. See `docs/releases/0.2.0.md` and `docs/release-preview.md`.
 
 **2026-09-09 calibration integration:** `codex/batch-opencv-calibration` is based on the latest Feches studies tip (`cbe5adb`). Single and batch predictions now return source-bound image calibration; loaded studies persist it and CSV exports include it. Folder scanning is automatic without reference teaching. See `docs/batch-calibration.md` and the 2026-09-09 architecture amendment.
