@@ -13,6 +13,7 @@
 
 import { DEMO_STUDIES } from './demo-studies.js';
 import { FILM_DATE } from './timepoints.js';
+import { normalizeCalibration } from './calibration.js';
 
 export const STORE_VERSION = 1;
 
@@ -157,6 +158,7 @@ function validateStudy(entry, index) {
     measurements: complete ? measurements : null,
     geometry: complete ? geometry : null,
     qc: entry.qc && typeof entry.qc === 'object' ? entry.qc : null,
+    calibration: normalizeCalibration(entry.calibration),
     clinical: entry.clinical && typeof entry.clinical === 'object' && !Array.isArray(entry.clinical) ? entry.clinical : {},
   };
 }

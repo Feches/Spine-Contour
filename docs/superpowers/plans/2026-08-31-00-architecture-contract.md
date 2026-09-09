@@ -213,6 +213,7 @@ The single record type. Demo and real studies share it exactly.
  * @property {Measurements|null} measurements  null when never segmented
  * @property {Geometry|null}     geometry
  * @property {Qc|null}           qc
+ * @property {Object|null}       calibration  compact original-image scale record (2026-09-09 amendment below)
  * @property {Object<string,string>} clinical   field name → value
  */
 ```
@@ -931,3 +932,12 @@ Folder upload handoff: `state.calibrationRequest` is a session-only `{folder, fi
 The user requested a complete library clear. Studies now offers a count-based confirmation covering the entire unfiltered library. `renderer/data/delete-studies.js` deletes real prediction sidecars by id before removing their records and reports per-item failures. It never deletes source films. `state.deletingStudies` blocks new prediction dispatch while clearing. The existing study saver writes the resulting real-study list; caches and open/compare references are cleared for successfully removed ids. Demo visibility is stored separately in `userData/library-preferences.json` through `demoStudiesHidden`/`hideDemoStudies` IPC so cleared demos do not reappear at startup. The default `merge(real)` behavior is preserved; bootstrap passes `{hideDemos: true}` only after that explicit preference. The persistence-disabled guard also applies to hiding demos.
 
 Verified: 280 Node tests; a running Electron scratch-profile test covering confirmation, cancellation, deletion through a filtered view, sidecar removal, source-file retention, and an empty library after relaunch. No live user studies were deleted during verification.
+
+
+## 2026-09-09 amendment: batch calibration integration
+
+Supersedes the session-only persistence restriction in the 2026-09-07 calibration amendment. `Study.calibration` is an optional null-default compact record, independent of geometry and angular measurements; `STORE_VERSION` remains 1. It contains `version: 1`, SHA-256 `source_sha256`, original `width`/`height`, `coordinate_space: 'original_image'`, `status`, `spacing`, `candidates`, `selected_index` and a display message. Preview bytes never enter this field. `renderer/data/calibration.js` validates it, formats its summary and resolves concurrent manual corrections; `renderer/calibration.js` keeps path-keyed folder results until study creation and writes reviewed results to matching studies. A replaced source never recalibrates old geometry from a different file.
+
+`POST /predict` accepts optional JSON form field `calibration`, validates its source digest and dimensions against the upload, and returns compact `calibration` alongside the existing response. When no matching result exists it runs the existing OpenCV/OCR extractor on the original upload. OCR failures return an unavailable calibration without losing a successful segmentation. Original image coordinates are never interpreted as model-crop coordinates. The serial batch driver and model selection stay unchanged.
+
+Folder scans automatically process all images without requiring an appearance profile. Stop keeps completed results; Continue permits uncalibrated films. A reference correction or clear updates its study immediately. A correction made while prediction is in flight wins only when the response has the same source hash and dimensions. `calibrationRequest` additionally supports `{studyId, filePath}` for review from the Measurements panel, with a return to that study. CSV and paired CSV append calibration columns when at least one exported film has a valid calibration record; there are no calibration deltas and unknown scales remain blank.

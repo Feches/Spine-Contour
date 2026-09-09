@@ -1,4 +1,15 @@
 import { normaliseTimepoint, normaliseView, parseFilmDate, PRE_OP } from './timepoints.js';
+import { normalizeCalibration } from './calibration.js';
+
+const CALIBRATION_COLUMNS = ['Calibration status', 'Calibration source', 'Pixel spacing X (mm/px)',
+  'Pixel spacing Y (mm/px)', 'Reference length (mm)', 'Reference length (px)', 'Reference label'];
+function calibrationCells(study) {
+  const c = normalizeCalibration(study?.calibration);
+  if (!c) return CALIBRATION_COLUMNS.map(() => '');
+  const reference = c.spacing ? c.candidates[c.selected_index] : null;
+  return [c.status, c.spacing?.source ?? '', c.spacing?.column_mm ?? '', c.spacing?.row_mm ?? '',
+    reference?.value_mm ?? '', reference?.length_px ?? '', reference?.raw_text ?? ''];
+}
 
 const MEASUREMENT_COLUMNS = [
   'LL L1-S1', 'PI', 'PT', 'SS', 'PI-LL Mismatch', 'L1PA',
@@ -68,6 +79,7 @@ export function toCsv(studies) {
   // no hidden columns. Computed over `rows`, after the demo filter, so an excluded demo study
   // cannot add a column.
   const fields = clinicalFieldNames(rows);
+  const withCalibration = rows.some(study => normalizeCalibration(study.calibration));
 
   const citation = [
     '# Spine Contour export',
@@ -76,7 +88,8 @@ export function toCsv(studies) {
   ];
   // Subject, Timepoint and Film date sit after View (pre-op/post-op spec §11.1): the identity a
   // paired analysis groups on, then the acquisition date. Absent values are empty, never 0 or —.
-  const header = ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date', ...MEASUREMENT_COLUMNS, ...fields];
+  const header = ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date', ...MEASUREMENT_COLUMNS, ...fields,
+    ...(withCalibration ? CALIBRATION_COLUMNS : [])];
 
   const lines = [...citation, header.map(escapeField).join(',')];
   for (const study of rows) {
@@ -88,6 +101,7 @@ export function toCsv(studies) {
       study.filmDate ?? '',
       ...MEASUREMENT_COLUMNS.map((column) => measurementValue(study, column)),
       ...fields.map((field) => (study.clinical && study.clinical[field] != null ? study.clinical[field] : '')),
+      ...(withCalibration ? calibrationCells(study) : []),
     ];
     lines.push(cells.map(escapeField).join(','));
   }
@@ -106,6 +120,7 @@ export function toPairedCsv(pairing) {
   const labels = [PRE_OP, ...visits];
   const written = subjects.flatMap((row) => [...row.films.values()]);
   const fields = clinicalFieldNames(written);
+  const withCalibration = written.some(study => normalizeCalibration(study.calibration));
 
   const citation = [
     '# Spine Contour export',
@@ -122,6 +137,7 @@ export function toPairedCsv(pairing) {
       ...visits.flatMap((label) => [`${column} ${label}`, `Delta ${column} ${label}`]),
     ]),
     ...fields.flatMap((field) => labels.map((label) => `${field} ${label}`)),
+    ...(withCalibration ? labels.flatMap(label => CALIBRATION_COLUMNS.map(column => `${column} ${label}`)) : []),
   ];
 
   const lines = [...citation, header.map(escapeField).join(',')];
@@ -148,6 +164,7 @@ export function toPairedCsv(pairing) {
         const study = film(label);
         return study && study.clinical && study.clinical[field] != null ? study.clinical[field] : '';
       })),
+      ...(withCalibration ? labels.flatMap(label => calibrationCells(film(label))) : []),
     ];
     lines.push(cells.map(escapeField).join(','));
   }

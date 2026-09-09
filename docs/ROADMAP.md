@@ -302,19 +302,7 @@ Not code quality; these stand between the branch and a production release.
   the smoke suites and every manual check lean on are gone until the file is edited by hand (the scratch profile the
   smoke harness uses is fresh per launch and is not affected). A packaged build has no demos and is unaffected.
   Upstream's design (2026-09-07); worth a "Show demo studies" toggle in Settings for development builds.
-- **The calibration detour has no automated coverage, and leaving it by the sidebar strands its request.** Every
-  nonempty workspace folder scan sets `calibrationRequest` and `screen: 'calibration'`; only Skip / Continue clear
-  the request. Leaving through the sidebar leaves it set, so the next visit through the sidebar's "Image
-  calibration" row shows the onboarding block with the pickers hidden. `smoke-workspace.mjs` drives `scanFolder`
-  directly and never meets the screen. Upstream's design (2026-09-07); needs a smoke section and a human
-  click-through with and without the Tesseract runtime. **Walked by the user on the installed preview build
-  (2026-09-09): every image had to be calibrated by hand.** His design learns one corrected ruler's appearance and
-  then detects each film's own printed ruler automatically (`folder-calibration.js` `calibrateAndContinue`), so the
-  per-image work appears only when a film has no printed ruler to find (`/calibrate` answers `not_found`) — which is
-  every film in a dataset of plain radiographs, and those are what the user loads. Millimetres are not needed for
-  any angle the app measures (lengths are out of scope), so for this user the detour is a forty-stop delay on the
-  primary loading path with Skip as the only useful button. To raise with the backend developer: make the detour
-  opt-in (a Workspace-card checkbox, off by default) or offer Skip before scanning when no image reports a ruler.
+- **Calibration follow-up (2026-09-09):** automatic per-image folder scanning, batch integration, persisted study scales and CSV exports are now implemented. Reference teaching is optional; missing rulers leave scales unavailable and Continue permits uncalibrated films. The new desktop calibration smoke covers the folder handoff, corrections, reopening, Stop and disk reload. A source-only check does not replace the next preview installer check. Leaving onboarding through a sidebar item still retains its request for the next visit; Skip / Continue clear it. See [batch-calibration.md](batch-calibration.md).
 - **Bulk-delete polish** (upstream's feature, 2026-09-07; found at the reconcile review): the per-row trash buttons
   are not disabled during a bulk delete and the guards return silently; the bulk row sits outside the Find tab's
   focus snapshot, so focus drops to `<body>` after Cancel; `blocked` reads `persistenceDisabledReason()`, which is not

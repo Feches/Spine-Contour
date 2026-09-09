@@ -1,5 +1,6 @@
 import { el, clear } from '../dom.js';
 import { getState, setState } from '../store.js';
+import { calibrationSummary } from '../data/calibration.js';
 import { sagittalRows, lordosisRows, discRows, alignmentRows, isConsistent } from '../data/measurements.js';
 
 const INCONSISTENCY_WARNING = 'Parameters inconsistent \u2014 check S1 and femoral landmarks.';
@@ -94,7 +95,7 @@ export function mountMeasurements(container) {
     // rebuilds every row per frame, resetting scroll position and dropping focus.
     // Compared by reference: `measurements` is replaced wholesale by /predict, never
     // mutated. Same caveat as components/viewer.js -- plan 04 must replace, not mutate.
-    const key = [study.id, study.measurements, state.selectedLevel, state.showAllLordosis];
+    const key = [study.id, study.measurements, study.calibration, state.selectedLevel, state.showAllLordosis];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
 
@@ -158,7 +159,16 @@ export function mountMeasurements(container) {
       el('div', { class: 'meas-rows' }, ...alignmentRows(study).map(rowStatic)),
       el('div', { class: 'meas-note' }, NOT_COMPUTED_NOTE));
 
-    root.append(section1, section2, section3);
+    const calibrationSection = section('04 — IMAGE SCALE',
+      el('div', { class: 'meas-note', 'data-calibration-status': study.calibration?.status || 'unchecked' },
+        calibrationSummary(study.calibration)));
+    if (study.source === 'real' && study.filePath) {
+      calibrationSection.append(el('button', { type: 'button', class: 'meas-disclosure',
+        'data-row-key': '__calibration',
+        onClick: () => setState({ screen: 'calibration', calibrationRequest: { studyId: study.id, filePath: study.filePath } }),
+      }, 'REVIEW IMAGE SCALE'));
+    }
+    root.append(section1, section2, section3, calibrationSection);
 
     // Focus restore. Find the rebuilt node carrying the same data-row-key and
     // refocus it, so there is no rendered frame in which focus visibly rests on

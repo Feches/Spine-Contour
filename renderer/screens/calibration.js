@@ -1,7 +1,8 @@
 import { showToast } from '../components/toast.js';
 import { el } from '../dom.js';
 import { getState, setState } from '../store.js';
-import { selectFile } from '../api.js';
+import { selectFile, readFile } from '../api.js';
+import { rememberCalibration, calibrationForStudy } from '../calibration.js';
 import { createCalibrationViewer } from '../components/calibration-viewer.js';
 import { createFolderCalibration } from '../components/folder-calibration.js';
 
@@ -9,18 +10,20 @@ import { createFolderCalibration } from '../components/folder-calibration.js';
 let root = null;
 let folderController = null;
 let lastRequest = null;
+let openImageController = null;
 export function render(state) {
   if (!root) {
     root = el('main', { class: 'workspace-page calibration-page' });
     root.innerHTML = `<div class="workspace-page-inner">
   <div class="eyebrow">MEASUREMENT REFERENCE</div>
   <h1 class="workspace-heading">Image calibration</h1>
-  <p class="workspace-copy">Correct one ruler to learn its appearance, then find references across your folder. Each film keeps its own scale.</p>
+  <p class="workspace-copy">Automatically read printed rulers and image scales across your folder. Results are saved with each study and used during batch processing.</p>
+  <button id="calibration-return" class="btn" type="button" hidden>Return to study</button>
   <section id="calibration-onboarding" class="calibration" hidden>
     <strong>Calibrate your image folder</strong>
-    <p>Check the reference below and correct it if needed. Then apply its appearance to the folder before continuing with workspace setup.</p>
+    <p>Each image is checked automatically. Review uncertain references below, or continue with uncalibrated images.</p>
     <div class="calibration-controls">
-      <button id="calibration-continue" class="btn-primary" type="button" disabled>Calibrate folder and continue</button>
+      <button id="calibration-continue" class="btn-primary" type="button" disabled>Continue to workspace</button>
       <button id="calibration-skip" type="button">Skip for now</button>
     </div>
   </section>
@@ -40,7 +43,7 @@ export function render(state) {
             <button id="folder-stop" type="button" disabled>Stop</button>
             <button id="folder-download" type="button" disabled>Save calibration results</button>
           </div>
-          <p>Correct and apply one reference below, then share its color settings. Each image is calibrated from its own ruler.</p>
+          <p>Each image uses its own ruler or DICOM pixel spacing. Teaching reference appearance is optional; missing or uncertain references remain uncalibrated.</p>
         </div>
         <details class="calibration" id="calibration-panel" open hidden>
           <summary>Image scale</summary>
@@ -63,12 +66,26 @@ export function render(state) {
         </details>
 </div>`;
     const viewer = createCalibrationViewer(root);
-    function openImage(file, cached = null, profile = null) {
+    let activeFile = null;
+    async function openImage(file, cached = null, profile = null) {
+      activeFile = file;
       root.querySelector('#calibration-file-name').textContent = file.name;
-      return viewer.load(file, cached, profile);
+      const study = getState().studies.find(s => s.filePath === file.path);
+      const response = await viewer.load(file, cached ?? calibrationForStudy(study ?? { filePath: file.path }), profile);
+      if (response && activeFile === file) rememberCalibration(file.path, response);
+      return response;
     }
+    openImageController = openImage;
+    root.addEventListener('calibrationchange', event => {
+      if (activeFile && event.detail.calibration) rememberCalibration(activeFile.path, event.detail.calibration);
+    });
     const folder = createFolderCalibration(root, viewer, openImage);
     folderController = folder;
+    root.querySelector('#calibration-return').addEventListener('click', () => {
+      const id = getState().calibrationRequest?.studyId;
+      folder.stopScanning();
+      setState({ calibrationRequest: null, screen: id ? 'analysis' : 'studies', ...(id ? { openId: id } : {}) });
+    });
     root.addEventListener('foldercalibrationstate', event => {
       root.querySelector('#calibration-continue').disabled = !event.detail.canContinue;
     });
@@ -107,7 +124,8 @@ export function render(state) {
     });
   }
   const request = state.calibrationRequest;
-  root.querySelector('#calibration-onboarding').hidden = !request;
+  root.querySelector('#calibration-onboarding').hidden = !request?.folder;
+  root.querySelector('#calibration-return').hidden = !request?.studyId;
   root.querySelector('.calibration-pickers').hidden = Boolean(request);
   root.querySelector('#use-workspace-folder').disabled = !state.wsFolder;
   if (request && request !== lastRequest) {
@@ -115,7 +133,15 @@ export function render(state) {
     root.querySelector('#calibration-continue').disabled = true;
     queueMicrotask(async () => {
       if (getState().calibrationRequest !== request || getState().screen !== 'calibration') return;
-      try { await folderController.openFolder(request.folder, request.files); }
+      try {
+        if (request.studyId) {
+          folderController.reset();
+          const data = await readFile(request.filePath);
+          if (getState().calibrationRequest !== request) return;
+          if (!data) throw new Error('This image is no longer available.');
+          await openImageController({ name: request.filePath.split(/[\\/]/).pop(), path: request.filePath, data });
+        } else await folderController.openFolder(request.folder, request.files);
+      }
       catch (error) { root.querySelector('#calibration-file-name').textContent = error.message; }
     });
   }

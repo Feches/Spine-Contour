@@ -12,6 +12,8 @@ import { WAIT_FOR_BATCH } from '../data/batch.js';
 import { studyName, defaultName } from '../data/labels.js';
 import { mountMeasurements } from '../components/measurements.js';
 import { mountClinicalData } from '../components/clinical-data.js';
+import { calibrationForStudy } from '../calibration.js';
+import { preferReviewedCalibration } from '../data/calibration.js';
 
 const BACK_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12 H5"></path><path d="M11 6 L5 12 L11 18"></path></svg>';
 
@@ -245,6 +247,7 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       bodyPart: 'lumbar',
       view: 'lateral',
       models: getState().models,
+      calibration: calibrationForStudy(current),
     });
     if (revision !== runRevision) return { ok: false, reason: 'superseded' };
 
@@ -266,6 +269,7 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     }
 
     const thumbnail = thumbnailDataUri(images.image);
+    response.calibration = preferReviewedCalibration(response.calibration, calibrationForStudy(stillHere));
 
     // The sidecar first, then the record: a record that says "segmented" must point at a film
     // that exists. A failed sidecar write is reported and the run still completes — the study
@@ -322,7 +326,8 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       editing: state.openId === studyId ? false : state.editing,
       selection: state.openId === studyId ? null : state.selection,
       studies: state.studies.map((s) => (s.id === studyId
-        ? { ...s, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null, thumbnail }
+        ? { ...s, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
+          calibration: preferReviewedCalibration(response.calibration, calibrationForStudy(s)), thumbnail }
         : s)),
     }));
     return warning ? { ok: true, warning } : { ok: true };

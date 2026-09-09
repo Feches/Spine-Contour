@@ -122,6 +122,7 @@ ipcMain.handle('predict', async (_event, request) => {
   form.append('modality', request.modality);
   form.append('body_part', request.bodyPart);
   form.append('view', request.view);
+  if (request.calibration) form.append('calibration', JSON.stringify(request.calibration));
   // Which model reads which structure. Only strings go through; the backend fills
   // its own defaults for anything omitted and rejects anything it does not offer.
   const models = request.models && typeof request.models === 'object' ? request.models : {};

@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 import io
 import json
+import hashlib
+import logging
 
 import numpy as np
 import pydicom
@@ -74,6 +76,7 @@ async def predict(
     vertebra_model: str | None = Form(None),
     femoral_model: str | None = Form(None),
     s1_model: str | None = Form(None),
+    calibration: str | None = Form(None),
 ) -> dict[str, object]:
     """Return masks, fitted geometry, and spinopelvic measurements.
 
@@ -117,7 +120,27 @@ async def predict(
     # the model choice and the crop ride along so a stored result says what
     # produced it.
     qc = {**analysis.get("qc", {}), "models": prediction["models"], "framing": prediction["framing"]}
-    return {**encoded, **analysis, "qc": qc, "labels": VERTEBRA_LABELS}
+    # Every run, including the serial batch, reads the ORIGINAL image's ruler. The
+    # inference crop can exclude it. Calibration failure must not lose segmentation.
+    try:
+        try:
+            cached = json.loads(calibration) if calibration else None
+        except (ValueError, TypeError):
+            cached = None
+        image_calibration = await run_in_threadpool(
+            calibration_from_payload, payload, include_preview=False, cached=cached,
+        )
+        image_calibration.pop('image_png', None)
+    except Exception:
+        logging.getLogger(__name__).exception('Optional image calibration failed')
+        image_calibration = {
+            'version': 1, 'source_sha256': hashlib.sha256(payload).hexdigest(),
+            'width': int(pixel_array.shape[1]), 'height': int(pixel_array.shape[0]),
+            'coordinate_space': 'original_image', 'status': 'unavailable',
+            'spacing': None, 'candidates': [], 'selected_index': None,
+            'message': 'Automatic calibration unavailable. Review the reference in Image calibration.',
+        }
+    return {**encoded, **analysis, "qc": qc, "labels": VERTEBRA_LABELS, "calibration": image_calibration}
 
 
 @app.post("/measure", summary="Recalculate measurements from corrected landmarks")

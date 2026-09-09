@@ -1,5 +1,7 @@
 # Spine Contour
 
+**2026-09-09 calibration integration:** `codex/batch-opencv-calibration` is based on the latest Feches studies tip (`cbe5adb`). Single and batch predictions now return source-bound image calibration; loaded studies persist it and CSV exports include it. Folder scanning is automatic without reference teaching. See `docs/batch-calibration.md` and the 2026-09-09 architecture amendment.
+
 Electron desktop app that measures spinopelvic parameters from lateral lumbar
 radiographs. A Python/FastAPI backend runs three PyTorch models locally; the Electron
 main process spawns it on a random `127.0.0.1` port and polls `/health`.
@@ -178,8 +180,7 @@ failed fit.
 independently. The residual is used as a landmark-quality signal, not assumed to be
 zero.
 
-Disc heights and spondylolisthesis slip are **not computed** and are out of scope. They
-are lengths, and millimetres need pixel spacing that PNG/JPG inputs do not carry.
+Disc heights and spondylolisthesis slip are **not computed**. Image calibration now supplies spacing from printed rulers or DICOM metadata, but anatomical length definitions remain unimplemented.
 
 The backend bundle collects `timm` (the HRNet trunk) alongside the other model
 packages; keep `--collect-all timm` in both workflows.
