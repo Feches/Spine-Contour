@@ -564,7 +564,7 @@
 }
 
 /* Two row shapes, and the difference is deliberate. A sagittal or lordosis row selects a
-   vertebra, so it is a <button>. A disc-height or alignment row has no value and nothing
+   vertebra, so it is a <button>. An alignment row has nothing
    to select, so it is a <div> with no handler and no pointer cursor -- an earlier draft
    gave those rows `cursor:pointer` and an empty onClick, which reads as broken. */
 .meas-row,
@@ -630,6 +630,21 @@
 }
 .meas-note { color: var(--muted); }
 .meas-warning { color: var(--accent); }
+
+.meas-disc-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-variant-numeric: tabular-nums;
+}
+.meas-disc-table th,
+.meas-disc-table td { padding: 7px 6px; text-align: right; }
+.meas-disc-table th {
+  font: 500 10px/1.4 'Chivo Mono', monospace;
+  color: var(--muted);
+}
+.meas-disc-table th:first-child { text-align: left; padding-left: 12px; }
+.meas-disc-table tbody tr + tr { border-top: 1px solid var(--border); }
 
 /* ===== 04 — CLINICAL DATA DRAWER ======================================
    Mounted by screens/analysis.js as the third child of .analysis-screen (a column flex),

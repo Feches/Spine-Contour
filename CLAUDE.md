@@ -1,5 +1,9 @@
 # Spine Contour
 
+**2026-09-09 combined release:** `codex/combined-next-release` combines calibration/disc-height PR #2 and accuracy PR #3, retaining both histories. It targets Cody's installer branch `ui-redesign-cw` for the v0.2.0 preview. Merging builds Windows and macOS installers; manual feature-branch builds produce review artifacts only. See `docs/releases/0.2.0.md` and `docs/release-preview.md`.
+
+**2026-09-09 calibration integration:** `codex/batch-opencv-calibration` is based on the latest Feches studies tip (`cbe5adb`). Single and batch predictions now return source-bound image calibration; loaded studies persist it and CSV exports include it. Folder scanning is automatic without reference teaching. See `docs/batch-calibration.md` and the 2026-09-09 architecture amendment.
+
 Electron desktop app that measures spinopelvic parameters from lateral lumbar
 radiographs. A Python/FastAPI backend runs three PyTorch models locally; the Electron
 main process spawns it on a random `127.0.0.1` port and polls `/health`.
@@ -69,9 +73,10 @@ as `2bf3d21`, with `5cf52c7` and `245cae2` reconciling the two sides (both demo 
 batch and single run are mutually exclusive; delete-all prunes the shared selection). Unit 433/433; every smoke
 suite green (`smoke-studies.mjs` 103/103 on a fresh launch). The studies branch is fast-forwarded to this tip and
 **the same tip is pushed as `fork/ui-redesign-cw`, the branch the backend developer takes** (his merge is a
-fast-forward); that push builds the first preview installer to carry plan 06 and everything after it. **Owed by the
-human:** install that build, open it on an empty library, run one batch, and walk the calibration screen once (Skip
-with Tesseract absent). HANDOFF's "Handing this to the backend author" is rewritten for him.
+fast-forward); that push built the first preview installer to carry plan 06 and everything after it, and **the user
+installed and checked it (2026-09-09): no demos in the packaged build, a batch ran, the calibration screen was
+walked (each image individually — his design, ROADMAP §5), console clean.** HANDOFF's "Handing this to the backend
+author" is rewritten for him.
 `docs/superpowers/NEXT-SESSION.md` is the prompt.
 
 ## Read these first
@@ -161,7 +166,7 @@ are theirs — the venv needs the two packages for the backend to start):
 `measurements` is `{SS, PI, PT, L1PA, LL: {'L1-S1'…'L5-S1'}}` after the plan-02 rename.
 `PI–LL mismatch` is derived (`PI − LL['L1-S1']`), not returned.
 
-`qc` is opaque to the renderer except `qc.femoral.confidence`, and it carries two
+`qc` review warnings read `qc.femoral.confidence` and S1/search scores in `qc.framing`, and it carries two
 records the backend adds: `qc.models` (which model read each structure) and
 `qc.framing` (the crop the models ran on, and whether the whole film won). A stored
 result therefore says what produced it. See `backend/framing.py` for why a film is
@@ -177,8 +182,7 @@ failed fit.
 independently. The residual is used as a landmark-quality signal, not assumed to be
 zero.
 
-Disc heights and spondylolisthesis slip are **not computed** and are out of scope. They
-are lengths, and millimetres need pixel spacing that PNG/JPG inputs do not carry.
+Anterior, middle and posterior disc heights (L1–L2 through L5–S1) are derived from facing endplate keypoints and per-image calibration in `renderer/data/disc-heights.js`, displayed in Measurements, and exported in ordinary/paired CSV. See `docs/disc-heights.md` for definitions and blank-value rules. Spondylolisthesis slip remains unimplemented.
 
 The backend bundle collects `timm` (the HRNet trunk) alongside the other model
 packages; keep `--collect-all timm` in both workflows.

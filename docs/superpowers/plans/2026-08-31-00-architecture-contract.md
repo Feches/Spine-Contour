@@ -148,7 +148,7 @@ renderer/                         (new)
   viewer/interactions.js          pure interaction logic: zoom steps, hit tests, Tab order, nudge, debounce (no DOM)
   viewer/measure-queue.js         (plan 04) createMeasureQueue({measure, getState, setState, showToast, debounceMs})
                                   → {commitGeometry, replaceMeasured}: per-study revisions, one owner-tracked
-                                  debounce, flush on study switch, failure restores the last measured geometry
+                                  debounce, flush on study switch; session-only drafts, atomic geometry/measurement commit
   viewer/geometry.js              circle fit, coordinate transforms
 
   data/demo-studies.js            the nine fabricated studies
@@ -213,6 +213,7 @@ The single record type. Demo and real studies share it exactly.
  * @property {Measurements|null} measurements  null when never segmented
  * @property {Geometry|null}     geometry
  * @property {Qc|null}           qc
+ * @property {Object|null}       calibration  compact original-image scale record (2026-09-09 amendment below)
  * @property {Object<string,string>} clinical   field name → value
  */
 ```
@@ -274,7 +275,8 @@ is an absent row (`—`), never `0`.
              confidence /* 0..1 */, qc_pass, foreground_pixels } }
 ```
 
-Only `femoral.confidence` is read anywhere in the renderer. The other fields are
+The renderer reads `femoral.confidence` and the optional `framing` record
+(`s1_confidence`, `searched`, `search_confidence`) for review warnings. Other fields are
 optional: demo studies carry `{ femoral: { confidence } }` alone rather than invented values, and
 `validate` treats `qc` as opaque (any object, else `null`).
 
@@ -308,6 +310,7 @@ a draw function must blank a layer, never freeze the application.
   settingsOpen: false,
 
   studies: [],              // Study[] — demo + real, merged
+  measurementDrafts: {},    // study id → unmeasured Geometry; session-only, never saved
   query: '',
   studiesTab: 'find',       // 'find'|'parameters' (2026-09-06, pre-op/post-op spec §10.1)
   paramFilters: { workspace: null, folder: null, segmentedOnly: true,       // data/parameters.js DEFAULT_FILTERS;
@@ -517,7 +520,7 @@ Consequences that bind every plan:
 
 export function sagittalRows(measurements, opts)   // → Row[]
 export function lordosisRows(measurements)         // → Row[]  L2-S1..L5-S1
-export function discRows()                         // → Row[]  always absent
+export function discRows(study)                    // → DiscRow[]; 2026-09-09 disc-height amendment below
 export function alignmentRows(study)               // → Row[]  always absent
 export function piResidual(measurements)           // → number|null  |PI-(PT+SS)|
 export function isConsistent(measurements)         // → boolean (residual <= RESIDUAL_LIMIT)
@@ -550,6 +553,9 @@ renders `—`.
 ```js
 export const RESIDUAL_LIMIT = 1.0        // degrees
 export const CONFIDENCE_LIMIT = 0.6
+export const S1_CONFIDENCE_LIMIT = 0.6   // review threshold, not accuracy probability
+
+export function reviewReasons(study)    // → string[]; shared by status and Analysis warnings
 
 export function deriveStatus(study)      // → 'seg'|'rev'|'proc'
 export function statusLabel(status)      // → 'Segmented'|'Needs review'|'Processing'
@@ -558,7 +564,9 @@ export function statusLabel(status)      // → 'Segmented'|'Needs review'|'Proc
 Rules, in order:
 1. `measurements == null` → `'proc'`
 2. `piResidual > RESIDUAL_LIMIT` **or** `qc.femoral.confidence < CONFIDENCE_LIMIT` → `'rev'`
-3. otherwise `'seg'`
+3. A `qc.framing` record with missing/invalid S1 score or `s1_confidence < 0.6` → `'rev'`;
+   if `searched`, a missing/invalid `search_confidence` or score below `0.6` also requires review.
+4. otherwise `'seg'`
 
 Boundaries are inclusive-pass: residual exactly `1.0` and confidence exactly `0.6`
 both yield `'seg'`. Missing `qc` does not by itself force `'rev'`. `RESIDUAL_LIMIT` here is
@@ -901,7 +909,7 @@ defaults for anything omitted and rejects anything it does not offer with a 422 
 `detail` names the offered ids. `renderer/data/models.js` mirrors the backend's list for
 display; the backend is the authority.
 
-**`qc`** stays opaque and now carries two backend records beside `femoral`:
+**`qc`** is persisted as an opaque object and carries two backend records beside `femoral`:
 `qc.models` (`{vertebrae, femoral, s1}` — the ids that produced the result) and
 `qc.framing` (`{window: [left, top, right, bottom], searched, reframed, …}` — the film
 pixels the models ran on). `validate` keeps treating `qc` as any object. The Analysis
@@ -926,8 +934,46 @@ New optional backend endpoints: `POST /calibrate` (file, optional color profile,
 
 Folder upload handoff: `state.calibrationRequest` is a session-only `{folder, files}` request, passed together with `wsFolder`, `wsFiles`, and `screen: 'calibration'` after a nonempty workspace scan. `SCREEN_KEYS` includes it. The calibration screen consumes each request once, after mounting via a microtask, and returns to Workspace on Continue or Skip without changing study or CSV state. Folder processing reports uncalibrated images for later review instead of fabricating their scale.
 
+
+### Accuracy safeguards (2026-09-09)
+
+`data/inference-view.js` maps the existing lateral position vocabulary and legacy lateral
+labels to the backend's `lateral` model. Unsupported or unspecified labels are excluded
+from `planBatch`, reported in its note, and rejected again by the driver and `segmentStudy`
+(including after file reading). Metadata is not an automatic view classifier.
+
+`commitGeometry` now previews in `state.measurementDrafts[studyId]`. The Study keeps the
+last complete geometry/measurements pair until the latest `/measure` succeeds, when both
+fields and draft removal commit in one notification. Failure discards the preview; reset,
+delete and prediction replacement cancel that study's draft and stale responses. The viewer
+reads drafts for hit testing, repeated nudges and drawing. Analysis hides numeric values and
+shows “Updating measurements…” while a draft exists. Persistence never receives drafts;
+closing before recalculation completes retains the last successful pair. Table exports use
+that complete pair, and the Analysis export button is disabled during its pending edit.
+
+
 ## 2026-09-07 amendment: delete all studies
 
 The user requested a complete library clear. Studies now offers a count-based confirmation covering the entire unfiltered library. `renderer/data/delete-studies.js` deletes real prediction sidecars by id before removing their records and reports per-item failures. It never deletes source films. `state.deletingStudies` blocks new prediction dispatch while clearing. The existing study saver writes the resulting real-study list; caches and open/compare references are cleared for successfully removed ids. Demo visibility is stored separately in `userData/library-preferences.json` through `demoStudiesHidden`/`hideDemoStudies` IPC so cleared demos do not reappear at startup. The default `merge(real)` behavior is preserved; bootstrap passes `{hideDemos: true}` only after that explicit preference. The persistence-disabled guard also applies to hiding demos.
 
 Verified: 280 Node tests; a running Electron scratch-profile test covering confirmation, cancellation, deletion through a filtered view, sidecar removal, source-file retention, and an empty library after relaunch. No live user studies were deleted during verification.
+
+
+## 2026-09-09 amendment: batch calibration integration
+
+Supersedes the session-only persistence restriction in the 2026-09-07 calibration amendment. `Study.calibration` is an optional null-default compact record, independent of geometry and angular measurements; `STORE_VERSION` remains 1. It contains `version: 1`, SHA-256 `source_sha256`, original `width`/`height`, `coordinate_space: 'original_image'`, `status`, `spacing`, `candidates`, `selected_index` and a display message. Preview bytes never enter this field. `renderer/data/calibration.js` validates it, formats its summary and resolves concurrent manual corrections; `renderer/calibration.js` keeps path-keyed folder results until study creation and writes reviewed results to matching studies. A replaced source never recalibrates old geometry from a different file.
+
+`POST /predict` accepts optional JSON form field `calibration`, validates its source digest and dimensions against the upload, and returns compact `calibration` alongside the existing response. When no matching result exists it runs the existing OpenCV/OCR extractor on the original upload. OCR failures return an unavailable calibration without losing a successful segmentation. Original image coordinates are never interpreted as model-crop coordinates. The serial batch driver and model selection stay unchanged.
+
+Folder scans automatically process all images without requiring an appearance profile. Stop keeps completed results; Continue permits uncalibrated films. A reference correction or clear updates its study immediately. A correction made while prediction is in flight wins only when the response has the same source hash and dimensions. `calibrationRequest` additionally supports `{studyId, filePath}` for review from the Measurements panel, with a return to that study. CSV and paired CSV append calibration columns when at least one exported film has a valid calibration record; there are no calibration deltas and unknown scales remain blank.
+
+
+## 2026-09-09 amendment: calibrated disc heights
+
+User-authorized addition: `renderer/data/disc-heights.js` owns `discRows(study)`, re-exported by `data/measurements.js`. It returns five `DiscRow` objects in L1–L2 through L5–S1 order: `{key, label, unit: 'mm', anterior, middle, posterior}`; the three values are finite millimetres or `null`. This supersedes the always-absent, single-value disc-row interface above. `DISC_LEVEL_PAIRS` and `DISC_POSITIONS` share the order with the panel and exports.
+
+Use the upper vertebra's `inferior` and lower vertebra's `superior` endplates (`s1_superior` for L5–S1), each ordered [anterior, posterior] in original-image coordinates. Anterior/posterior heights are corresponding endpoint-to-endpoint Euclidean distances. Middle height is the distance between the endplate midpoints, not the mean of the other two distances. Convert the x and y components using normalized calibration `column_mm` and `row_mm` respectively before taking their norm. Both facing endplates must have distinct, finite endpoints inside the calibrated image; absent/invalid geometry or scale produces three nulls for that disc. A measured zero remains zero.
+
+Heights are derived on read from the saved study geometry and calibration, never persisted as a second cache. The panel rebuild gate includes both references and a pending correction flag. It hides heights during a `measurementDrafts[study.id]` correction when combined with the accuracy-safeguards branch. No new `/measure` fields, store version, runtime dependency, construction target or CSP permission is introduced.
+
+Both CSV formats always include 15 disc-height columns after the ten angular columns and before clinical fields. Names are `Disc height L1-L2 anterior (mm)` etc. Paired CSV retains measurement-major layout and visit suffixes with `Delta` columns; `delta1` applies to each independently calibrated visit's written one-decimal value. Missing values and their deltas are empty, never zero. Calibration metadata remains appended per film as before. See `docs/disc-heights.md` for the full definitions and verification.

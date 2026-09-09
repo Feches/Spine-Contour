@@ -8,6 +8,7 @@
  */
 import { selectedVisible, isSegmented } from './parameters.js';
 import { studyName } from './labels.js';
+import { inferenceView, unsupportedViewReason } from './inference-view.js';
 
 // The toast's naming rule, as data/pairing.js applies it: up to five names, then an ellipsis.
 const NAME_CAP = 5;
@@ -27,8 +28,11 @@ export function planBatch({ visible, selected, running }) {
   const real = (visible ?? []).filter((study) => study.source === 'real');
   const chosen = selectedVisible(real, selected);
   const pool = chosen.length > 0 ? chosen : real;
-  const ids = pool.filter((study) => !isSegmented(study)).map((study) => study.id);
-  const already = pool.length - ids.length;
+  const unsegmented = pool.filter((study) => !isSegmented(study));
+  const supported = unsegmented.filter((study) => inferenceView(study.view));
+  const unsupported = unsegmented.length - supported.length;
+  const ids = supported.map((study) => study.id);
+  const already = pool.length - unsegmented.length;
   const label = chosen.length > 0 ? `Segment ${ids.length} selected` : `Segment ${ids.length} unsegmented`;
   let note = null;
   if (running) {
@@ -38,6 +42,10 @@ export function planBatch({ visible, selected, running }) {
     else if (already > 0) note = `${already} already segmented`;
   } else if (ids.length === 0) {
     note = real.length === 0 ? 'Nothing to segment' : 'All visible studies are segmented';
+  }
+  if (unsupported && !running) {
+    note = `${unsupported} unsupported ${unsupported === 1 ? 'view' : 'views'} excluded — choose a lateral view`;
+    if (already) note += ` · ${already} already segmented`;
   }
   return { ids, label, note, enabled: ids.length > 0 && !running };
 }
@@ -130,6 +138,8 @@ export function createBatchDriver({ segment, getState, setState, showToast, pers
       let outcome;
       if (!study || study.addedAt !== identity.get(id) || study.measurements != null) {
         outcome = { skipped: true };
+      } else if (!inferenceView(study.view)) {
+        outcome = { ok: false, id, name: studyName(study), reason: unsupportedViewReason(study.view) };
       } else {
         let result;
         try {

@@ -1,6 +1,7 @@
 /* Separate original-image canvas keeps off-crop rulers editable throughout segmentation. */
 import { calibrationMath as math } from '../data/calibration.js';
 import { calibrate } from '../api.js';
+import { normalizeCalibration } from '../data/calibration.js';
 
 export function createCalibrationViewer(root) {
   const panel = root.querySelector('#calibration-panel');
@@ -28,8 +29,26 @@ export function createCalibrationViewer(root) {
     root.dispatchEvent(new CustomEvent('calibrationchange', { detail: snapshot() }));
   }
   function snapshot() {
+    let result = null;
+    if (data) {
+      const { image_png, ...compact } = data;
+      result = { ...compact, spacing };
+      if (spacing?.source === 'manual_reference') {
+        result = { ...result, status: 'corrected', selected_index: 0,
+          message: 'Using your corrected reference.', candidates: [{
+            value_mm: Number(value.value), endpoints: reference.map(p => [...p]),
+            length_px: math.distance(reference), raw_text: `${value.value} mm (corrected)`, status: 'accepted',
+          }] };
+      } else if (!spacing) {
+        // Editing or clearing a previously accepted scale invalidates it immediately.
+        result = { ...result, selected_index: null,
+          status: data.spacing ? 'cleared' : data.status,
+          message: data.spacing ? 'Reference changed. Apply its length to calibrate this image.' : data.message };
+      }
+      result = normalizeCalibration(result);
+    }
     return { coordinate_space: 'original_image', spacing: spacing && { ...spacing },
-      endpoints: reference.map(p => [...p]), value_mm: Number(value.value) || null };
+      endpoints: reference.map(p => [...p]), value_mm: Number(value.value) || null, calibration: result };
   }
   function update() {
     const length = math.distance(reference);
@@ -157,8 +176,13 @@ export function createCalibrationViewer(root) {
     canvas.hidden = true; panel.hidden = false; value.disabled = false;
     message.textContent = 'Finding the image scale…'; update(); publish();
     try {
-      const previewResponse = await calibrate({ ...file, profile, previewOnly: Boolean(cached) });
-      const response = cached ? { ...previewResponse, ...cached, image_png: previewResponse.image_png } : previewResponse;
+      let previewResponse = await calibrate({ ...file, profile, previewOnly: Boolean(cached) });
+      if (current !== revision) return;
+      const reusable = normalizeCalibration(cached);
+      const matches = reusable && reusable.status !== 'unavailable' && reusable.source_sha256 === previewResponse.source_sha256
+        && reusable.width === previewResponse.width && reusable.height === previewResponse.height;
+      if (cached && !matches) previewResponse = await calibrate({ ...file, profile });
+      const response = matches ? { ...previewResponse, ...reusable, image_png: previewResponse.image_png } : previewResponse;
       if (current !== revision) return;
       const bytes = Uint8Array.from(atob(response.image_png), char => char.charCodeAt(0));
       const decoded = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
@@ -184,5 +208,5 @@ export function createCalibrationViewer(root) {
       update();
     }
   }
-  return { load, snapshot };
+  return { load, snapshot, cancelLoad: () => { revision += 1; } };
 }

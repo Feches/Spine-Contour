@@ -9,9 +9,12 @@ import { loadStudyImages, disposeStudyImages, thumbnailDataUri } from '../viewer
 import { mountViewer, recordPrediction } from '../components/viewer.js';
 import { describeModels } from '../data/models.js';
 import { WAIT_FOR_BATCH } from '../data/batch.js';
+import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
 import { studyName, defaultName } from '../data/labels.js';
 import { mountMeasurements } from '../components/measurements.js';
 import { mountClinicalData } from '../components/clinical-data.js';
+import { calibrationForStudy } from '../calibration.js';
+import { preferReviewedCalibration } from '../data/calibration.js';
 
 const BACK_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12 H5"></path><path d="M11 6 L5 12 L11 18"></path></svg>';
 
@@ -172,6 +175,11 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
   // check WITHOUT clearing `running` -- and every card would read RUNNING forever.
   const study = getState().studies.find((s) => s.id === studyId);
   if (!study) return { ok: false, reason: 'The study is no longer in the library.' };
+  if (!inferenceView(study.view)) {
+    const reason = unsupportedViewReason(study.view);
+    if (!batch) showToast(reason);
+    return { ok: false, reason };
+  }
   // The record's identity, carried alongside its id for the checks after every await below.
   // Ids are max+1, so a deleted id is reused by the next film added; addedAt is not.
   const addedAt = study.addedAt;
@@ -235,6 +243,13 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
   // The id, not a boolean: with a Studies list the user can open study B while A's /predict
   // is in flight, and the viewer and the list have to be able to ask WHICH study is running.
   // Every existing truthiness check still reads "a run is in flight" (one run at a time).
+  // Metadata can change while file reading or relocation awaits.
+  const view = inferenceView(current.view);
+  if (!view) {
+    const reason = unsupportedViewReason(current.view);
+    if (!batch) showToast(reason);
+    return { ok: false, reason };
+  }
   setState({ running: studyId });
   let warning = null;
   try {
@@ -243,8 +258,9 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       data,
       modality: 'xray',
       bodyPart: 'lumbar',
-      view: 'lateral',
+      view,
       models: getState().models,
+      calibration: calibrationForStudy(current),
     });
     if (revision !== runRevision) return { ok: false, reason: 'superseded' };
 
@@ -266,6 +282,7 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     }
 
     const thumbnail = thumbnailDataUri(images.image);
+    response.calibration = preferReviewedCalibration(response.calibration, calibrationForStudy(stillHere));
 
     // The sidecar first, then the record: a record that says "segmented" must point at a film
     // that exists. A failed sidecar write is reported and the run still completes — the study
@@ -322,7 +339,8 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       editing: state.openId === studyId ? false : state.editing,
       selection: state.openId === studyId ? null : state.selection,
       studies: state.studies.map((s) => (s.id === studyId
-        ? { ...s, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null, thumbnail }
+        ? { ...s, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
+          calibration: preferReviewedCalibration(response.calibration, calibrationForStudy(s)), thumbnail }
         : s)),
     }));
     return warning ? { ok: true, warning } : { ok: true };
@@ -584,9 +602,11 @@ export function render(state) {
     // toCsv already drops demo rows, so exporting a demo study would write a header and no
     // data. Disabling the button says why instead of handing back an empty file.
     const isDemo = open.source === 'demo';
-    exportButton.disabled = isDemo;
+    const pendingMeasurement = Boolean(live.measurementDrafts?.[open.id]);
+    exportButton.disabled = isDemo || pendingMeasurement;
     // No tooltip on the enabled button: it would only repeat the label it sits on.
-    exportButton.title = isDemo ? 'Demo studies are not exported' : '';
+    exportButton.title = isDemo ? 'Demo studies are not exported'
+      : pendingMeasurement ? 'Wait for measurements to finish updating' : '';
 
     tabMeas.classList.toggle('is-active', live.tab === 'meas');
     tabSim.classList.toggle('is-active', live.tab === 'sim');

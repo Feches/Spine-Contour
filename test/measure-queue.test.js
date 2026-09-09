@@ -26,7 +26,7 @@ function harness() {
     debounceMs: 10,
   });
   const study = (id) => state.studies.find((s) => s.id === id);
-  return { queue, calls, toasts, study };
+  return { queue, calls, toasts, study, draft: (id) => state.measurementDrafts?.[id] };
 }
 
 const tick = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -81,8 +81,8 @@ test('a failed current call restores the last measured geometry and toasts once;
   await tick(30);
   h.calls[0].reject(new Error('backend gone'));
   await tick(0);
-  assert.deepEqual(h.study('A').geometry, known, 'geometry restored to what the numbers describe');
-  assert.notEqual(h.study('A').geometry, known, 'restored as a new reference');
+  assert.equal(h.study('A').geometry, null, 'failed edits never overwrite the saved geometry');
+  assert.equal(h.draft('A'), undefined, 'the failed preview is discarded');
   assert.equal(h.toasts.length, 1);
   assert.match(h.toasts[0], /not applied/);
   h.queue.commitGeometry('A', geometryWith(2));
@@ -103,6 +103,18 @@ test('replacing study A leaves study B pending call alone', async () => {
   assert.deepEqual(h.calls[0].request.vertebrae, geometryWith(5).vertebrae);
 });
 
+test('deleting a study cancels its draft and prevents an old response landing on a reused id', async () => {
+  const h = harness();
+  h.queue.commitGeometry('A', geometryWith(5));
+  await tick(30);
+  h.queue.replaceMeasured('A', null);
+  assert.equal(h.draft('A'), undefined);
+  h.calls[0].resolve({ measurements: { PI: 99 }, geometry: geometryWith(5) });
+  await tick(0);
+  assert.equal(h.study('A').measurements, null);
+  assert.equal(h.study('A').geometry, null);
+});
+
 test('a response already in flight is superseded by a newer commit, on success and on failure', async () => {
   const h = harness();
   h.queue.replaceMeasured('A', geometryWith(0));
@@ -112,14 +124,15 @@ test('a response already in flight is superseded by a newer commit, on success a
   h.queue.commitGeometry('A', geometryWith(2));
   h.calls[0].resolve({ measurements: { PI: 1 }, geometry: geometryWith(1) });
   await tick(0);
-  assert.deepEqual(h.study('A').geometry, geometryWith(2), 'the older success did not overwrite the newer edit');
+  assert.deepEqual(h.draft('A'), geometryWith(2), 'the older success did not overwrite the newer preview');
+  assert.equal(h.study('A').geometry, null);
   assert.equal(h.study('A').measurements, null);
   await tick(30);
   assert.equal(h.calls.length, 2, 'the newer edit was measured');
   h.queue.commitGeometry('A', geometryWith(3));
   h.calls[1].reject(new Error('late failure'));
   await tick(0);
-  assert.deepEqual(h.study('A').geometry, geometryWith(3), 'the older failure did not restore over the newer edit');
+  assert.deepEqual(h.draft('A'), geometryWith(3), 'the older failure did not restore over the newer preview');
   assert.equal(h.toasts.length, 0, 'a superseded failure is silent');
 });
 
@@ -129,7 +142,8 @@ test('a failure with no known measured geometry toasts without claiming a restor
   await tick(30);
   h.calls[0].reject(new Error('backend gone'));
   await tick(0);
-  assert.deepEqual(h.study('A').geometry, geometryWith(1), 'nothing to restore, geometry left as committed');
+  assert.equal(h.study('A').geometry, null, 'unmeasured geometry is never committed');
+  assert.equal(h.draft('A'), undefined);
   assert.equal(h.toasts.length, 1);
   assert.doesNotMatch(h.toasts[0], /not applied/);
   assert.match(h.toasts[0], /backend gone/);

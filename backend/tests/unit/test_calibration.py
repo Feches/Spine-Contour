@@ -94,3 +94,57 @@ def test_odd_and_even_ruler_lengths_at_different_orientations(length, angle):
         cv2.line(image, integer(point-6*normal), integer(point+6*normal), (255, 255, 255), 1, cv2.LINE_AA)
     candidates = find_rulers(image)
     assert any(abs(candidate['length_px']-length)<2 for candidate in candidates)
+
+
+def test_cache_reuses_exact_image_and_preserves_manual_correction(monkeypatch):
+    import copy
+    result = calibration.calibration_from_payload(sample(), preview_only=True)
+    result.update(status='corrected', selected_index=0, spacing={'row_mm': .5, 'column_mm': .5, 'source': 'manual_reference'},
+                  candidates=[{'value_mm': 40., 'length_px': 80., 'endpoints': [[110, 60], [110, 140]],
+                               'raw_text': '40 mm (corrected)', 'status': 'accepted'}])
+    monkeypatch.setattr(calibration, 'extract', lambda *_: pytest.fail('Matching cache must bypass OCR'))
+    reused = calibration.calibration_from_payload(sample(), include_preview=False, cached=result)
+    assert reused['status'] == 'corrected'
+    assert reused['spacing']['row_mm'] == .5
+    assert reused['image_png'] == ''
+    # A persisted spacing is derived again from the reviewed endpoints and length.
+    tampered = copy.deepcopy(result)
+    tampered['spacing']['row_mm'] = 500
+    assert calibration.calibration_from_payload(sample(), cached=tampered)['spacing']['row_mm'] == .5
+
+
+def test_changed_image_or_malformed_cache_repeats_detection(monkeypatch):
+    cached = calibration.calibration_from_payload(sample(), preview_only=True)
+    calls = []
+    monkeypatch.setattr(calibration, 'extract', lambda *_: calls.append(True) or {'measurements': []})
+    changed = calibration.calibration_from_payload(sample(x=240), cached=cached)
+    assert changed['source_sha256'] != cached['source_sha256']
+    assert len(calls) == 1
+    for invalid in [[], {'version': 1}, {**cached, 'width': 1}, {**cached, 'candidates': [None]}]:
+        assert calibration.calibration_from_payload(sample(), cached=invalid)['status'] == 'not_found'
+    assert len(calls) == 5
+
+
+def test_real_dicom_pixel_spacing_and_no_detector_spacing_substitution(monkeypatch):
+    import pydicom
+    from pydicom.dataset import FileDataset, FileMetaDataset
+    meta = FileMetaDataset()
+    meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
+    meta.MediaStorageSOPClassUID = pydicom.uid.SecondaryCaptureImageStorage
+    meta.MediaStorageSOPInstanceUID = pydicom.uid.generate_uid()
+    ds = FileDataset(None, {}, file_meta=meta, preamble=b'\0' * 128)
+    ds.SOPClassUID = meta.MediaStorageSOPClassUID
+    ds.SOPInstanceUID = meta.MediaStorageSOPInstanceUID
+    ds.Rows, ds.Columns = 16, 24
+    ds.SamplesPerPixel, ds.BitsAllocated, ds.BitsStored, ds.HighBit, ds.PixelRepresentation = 1, 16, 16, 15, 0
+    ds.PhotometricInterpretation = 'MONOCHROME2'
+    ds.PixelData = np.zeros((16, 24), np.uint16).tobytes()
+    ds.PixelSpacing = [.4, .2]
+    ds.ImagerPixelSpacing = [.9, .9]
+    stream = io.BytesIO(); ds.save_as(stream, enforce_file_format=True)
+    monkeypatch.setattr(calibration, 'extract', lambda *_: {'measurements': []})
+    result = calibration.calibration_from_payload(stream.getvalue())
+    assert result['spacing'] == {'row_mm': .4, 'column_mm': .2, 'source': 'dicom_pixel_spacing'}
+    del ds.PixelSpacing
+    stream = io.BytesIO(); ds.save_as(stream, enforce_file_format=True)
+    assert calibration.calibration_from_payload(stream.getvalue())['spacing'] is None

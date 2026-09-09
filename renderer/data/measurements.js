@@ -66,18 +66,7 @@ export function lordosisRows(measurements) {
   });
 }
 
-const DISC_LEVEL_PAIRS = [['L1', 'L2'], ['L2', 'L3'], ['L3', 'L4'], ['L4', 'L5'], ['L5', 'S1']];
-
-export function discRows() {
-  return DISC_LEVEL_PAIRS.map(([a, b]) => ({
-    key: `${a}-${b}`,
-    label: `${a}–${b}`,
-    value: null,
-    unit: 'mm',
-    absent: true,
-    highlight: false,
-  }));
-}
+export { discRows } from './disc-heights.js';
 
 export function alignmentRows(study) {
   void study; // reserved: a future per-study calibration input, unused while slip is unimplemented (spec §10.3)

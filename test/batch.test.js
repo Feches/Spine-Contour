@@ -79,6 +79,17 @@ test('planBatch never mutates its inputs', () => {
   assert.deepEqual(selected, ['SP-1']);
 });
 
+test('batch excludes unsupported views without falling back from an unsupported selection to other rows', () => {
+  const visible = [film('AP', { view: 'AP' }), film('LAT'), film('OBL', { view: 'oblique' })];
+  const plan = planBatch({ visible, selected: [], running: null });
+  assert.deepEqual(plan.ids, ['LAT']);
+  assert.match(plan.note, /2 unsupported views excluded/);
+  const selected = planBatch({ visible, selected: ['AP'], running: null });
+  assert.deepEqual(selected.ids, []);
+  assert.equal(selected.enabled, false);
+  assert.match(selected.note, /1 unsupported view excluded/);
+});
+
 // ---------------------------------------------------------------------------
 // the batch object (spec 8.1)
 // ---------------------------------------------------------------------------
@@ -200,6 +211,20 @@ function harness({ studies, persistence = null, running = null }) {
   };
 }
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+test('driver rejects direct unsupported ids and rechecks a queued film whose view changed', async () => {
+  const h = harness({ studies: [film('AP', { view: 'AP' }), film('A'), film('B')] });
+  const started = h.driver.startBatch(['AP', 'A', 'B']);
+  await tick();
+  assert.deepEqual(h.calls.map((call) => call.id), ['A']);
+  h.patch({ studies: h.state.studies.map((s) => s.id === 'B' ? { ...s, view: 'oblique' } : s) });
+  h.calls[0].resolve({ ok: true });
+  await started;
+  assert.deepEqual(h.calls.map((call) => call.id), ['A']);
+  assert.match(h.toasts[0], /2 could not be segmented/);
+  assert.match(h.toasts[0], /Unsupported view "AP"/);
+  assert.match(h.toasts[0], /Unsupported view "oblique"/);
+});
 
 test('startBatch sets state.batch before its first await, runs the ids one at a time in order, folds each outcome, then clears the batch and toasts once', async () => {
   const h = harness({ studies: [film('SP-1'), film('SP-2'), film('SP-3')] });

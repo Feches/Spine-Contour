@@ -2,6 +2,49 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { STORE_VERSION, nextId, merge, validate, createStudySaver } from '../renderer/data/persistence.js';
 import { DEMO_STUDIES } from '../renderer/data/demo-studies.js';
+import { createMeasureQueue } from '../renderer/viewer/measure-queue.js';
+
+test('saving during debounce or an in-flight correction retains the last matched pair, then commits both together', async () => {
+  const original = { ...identity('SP-1000'), geometry: fullGeometry(),
+    measurements: { PI: 50, PT: 20, SS: 30, LL: { 'L1-S1': 40 } } };
+  let state = { studies: [original], measurementDrafts: {} };
+  let saved;
+  const saver = createStudySaver({ save: async (studies) => { saved = JSON.parse(JSON.stringify(studies)); },
+    onError: (error) => { throw error; } });
+  const calculation = deferred();
+  const started = deferred();
+  const queue = createMeasureQueue({
+    measure: () => { started.resolve(); return calculation.promise; },
+    getState: () => state,
+    setState: (patch) => { state = { ...state, ...patch(state) }; saver.notify(state); },
+    showToast: () => {}, debounceMs: 10,
+  });
+  saver.notify(state);
+  await saver.flush();
+  queue.replaceMeasured(original.id, original.geometry);
+  const corrected = structuredClone(original.geometry);
+  corrected.s1_superior[0][1] += 30;
+  queue.commitGeometry(original.id, corrected);
+  await saver.flush();
+  assert.deepEqual(validate({ version: STORE_VERSION, studies: saved })[0].geometry, original.geometry);
+  await started.promise;
+  // A concurrent metadata edit forces a disk write while /measure is unresolved.
+  state = { ...state, studies: state.studies.map((s) => ({ ...s, name: 'Renamed while editing' })) };
+  saver.notify(state);
+  await saver.flush();
+  let reloaded = validate({ version: STORE_VERSION, studies: saved })[0];
+  assert.deepEqual(reloaded.geometry, original.geometry);
+  assert.deepEqual(reloaded.measurements, original.measurements);
+  assert.equal(reloaded.name, 'Renamed while editing');
+  const measurements = { ...original.measurements, SS: 45, PI: 65 };
+  calculation.resolve({ geometry: corrected, measurements });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await saver.flush();
+  reloaded = validate({ version: STORE_VERSION, studies: saved })[0];
+  assert.deepEqual(reloaded.geometry, corrected);
+  assert.deepEqual(reloaded.measurements, measurements);
+  assert.deepEqual(state.measurementDrafts, {});
+});
 
 function identity(id) {
   return { id, source: 'real', fileName: 'film.dcm', addedAt: '2026-08-31T12:00:00.000Z', view: 'Standing lateral' };

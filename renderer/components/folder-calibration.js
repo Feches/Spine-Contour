@@ -1,5 +1,7 @@
 import { chooseFolder, scanFolder, readFile, calibrate, learnCalibrationProfile } from '../api.js';
-import { calibrationMath } from '../data/calibration.js';
+import { rememberCalibration, calibrationForStudy } from '../calibration.js';
+import { preferReviewedCalibration } from '../data/calibration.js';
+import { getState } from '../store.js';
 
 export function createFolderCalibration(root, calibration, selectRadiograph) {
   const panel = root.querySelector('#folder-panel');
@@ -18,35 +20,39 @@ export function createFolderCalibration(root, calibration, selectRadiograph) {
   let generation = 0;
   let busy = false;
   let loading = false;
-  async function readFolderImage(filePath) {
-    const bytes = await readFile(filePath);
-    if (!bytes) throw new Error('This image is no longer available.');
-    return { name: filePath.split(/[\\/]/).pop(), data: bytes, path: filePath };
+  const compact = ({ image_png, ...rest }) => rest;
+  const needsReview = result => !result?.spacing;
+  const reviewCount = () => files.filter(file => needsReview(cache.get(file.id))).length;
+  function save(id, response) {
+    cache.set(id, compact(response));
+    rememberCalibration(id, response);
   }
-  const compact = response => { const { image_png, ...rest } = response; return rest; };
-
+  async function readFolderImage(filePath) {
+    const data = await readFile(filePath);
+    if (!data) throw new Error('This image is no longer available.');
+    return { name: filePath.split(/[\\/]/).pop(), data, path: filePath };
+  }
   function update() {
-    learn.disabled = busy || loading || !currentFile || !calibration.snapshot().spacing
-      || calibration.snapshot().endpoints.length !== 2;
-    run.disabled = busy || loading || !profile;
+    const reference = calibration.snapshot();
+    learn.disabled = busy || loading || !currentFile || !reference.spacing || reference.endpoints.length !== 2;
+    run.disabled = busy || loading || !files.length;
     stop.disabled = !busy;
     download.disabled = cache.size === 0;
-    select.disabled = busy;
-    const reference = calibration.snapshot();
+    select.disabled = busy || loading;
+    root.querySelector('#calibration-panel').inert = busy || loading;
     root.dispatchEvent(new CustomEvent('foldercalibrationstate', { detail: {
-      canContinue: !busy && !loading && Boolean(currentFile && reference.spacing)
-        && (reference.endpoints.length === 2 || reference.spacing?.source === 'dicom_pixel_spacing'),
-      busy,
+      canContinue: !busy && !loading && files.length > 0, busy,
     } }));
-    for (let i = 0; i < files.length; i += 1) {
-      const result = cache.get(files[i].id);
-      const label = result?.error ? 'error' : result?.status || 'pending';
-      if (select.options[i]) select.options[i].textContent = `${files[i].name} — ${label}`;
-    }
+    files.forEach((file, i) => {
+      const result = cache.get(file.id);
+      if (select.options[i]) select.options[i].textContent = `${file.name} — ${result?.error ? 'error' : result?.status || 'pending'}`;
+    });
   }
   function reset() {
+    calibration.cancelLoad();
     generation += 1; files = []; cache.clear(); profile = null; currentFile = null;
     currentIndex = -1; busy = false; loading = false; panel.hidden = true;
+    update();
   }
   async function show(index, token = generation) {
     if (!files[index]) return;
@@ -59,42 +65,44 @@ export function createFolderCalibration(root, calibration, selectRadiograph) {
       const cached = cache.get(descriptor.id);
       const response = await selectRadiograph(file, cached?.error ? null : cached, profile);
       if (token !== generation) return;
-      if (response) cache.set(descriptor.id, compact(response));
+      if (response) save(descriptor.id, response);
     } catch (error) {
       if (token === generation) message.textContent = error.message;
     } finally {
       if (token === generation) { loading = false; update(); }
     }
   }
-  async function scan(findFirst) {
+  async function scan(force = false) {
     const token = ++generation;
     busy = true; update();
-    let firstFound = -1;
     try {
       for (let i = 0; i < files.length; i += 1) {
-        if (token !== generation) return;
+        if (token !== generation) return false;
         const descriptor = files[i];
-        if (!findFirst && i === currentIndex && cache.get(descriptor.id)?.status === 'corrected') continue;
-        message.textContent = `${findFirst ? 'Finding a reference' : 'Applying reference appearance'}: ${i + 1} of ${files.length} — ${descriptor.name}`;
+        const prior = cache.get(descriptor.id);
+        // Keep ALL manual corrections, not only the film currently displayed.
+        if (prior?.status === 'corrected' || prior?.status === 'cleared') continue;
+        if (!force && prior && !prior.error && prior.status !== 'unavailable') continue;
+        message.textContent = `Detecting image scales: ${i + 1} of ${files.length} — ${descriptor.name}`;
         try {
           const file = await readFolderImage(descriptor.id);
-          if (token !== generation) return;
+          if (token !== generation) return false;
           const response = await calibrate({ ...file, profile, includePreview: false });
-          if (token !== generation) return;
-          cache.set(descriptor.id, compact(response));
-          if (findFirst && (response.candidates.length || response.spacing)) { firstFound = i; break; }
+          if (token !== generation) return false;
+          const study = getState().studies.find(s => s.filePath === descriptor.id) ?? { filePath: descriptor.id };
+          save(descriptor.id, preferReviewedCalibration(response, calibrationForStudy(study)) ?? response);
         } catch (error) {
-          if (token !== generation) return;
+          if (token !== generation) return false;
           cache.set(descriptor.id, { error: error.message });
         }
         update();
       }
-      if (token !== generation) return;
-      message.textContent = findFirst
-        ? (firstFound >= 0 ? 'Reference found. Correct its green endpoints and length, apply it, then use its appearance for the folder.'
-          : 'No automatic reference found. Draw a reference on an image below to teach its appearance.')
-        : `Folder processed. Each image has its own scale. Choose an image to review its result; ambiguous and missing references need correction.`;
-      if (findFirst && files.length) await show(Math.max(0, firstFound), token);
+      if (token !== generation) return false;
+      const pending = reviewCount();
+      message.textContent = `${files.length - pending} of ${files.length} images calibrated automatically or corrected. `
+        + (pending ? `${pending} need reference review; segmentation can still continue.` : 'Each image has its own saved scale.');
+      const index = currentIndex >= 0 ? currentIndex : Math.max(0, files.findIndex(file => needsReview(cache.get(file.id))));
+      await show(index, token);
       return token === generation;
     } finally {
       if (token === generation) { busy = false; update(); }
@@ -102,12 +110,15 @@ export function createFolderCalibration(root, calibration, selectRadiograph) {
   }
   async function openFolder(folderPath, knownFiles = null) {
     if (!folderPath) return;
+    reset();
+    const token = generation;
     const scanned = knownFiles ? { files: knownFiles } : await scanFolder(folderPath);
-    reset(); files = scanned.files.map(filePath => ({ id: filePath, name: filePath.split(/[\\/]/).pop() }));
+    if (token !== generation) return;
+    files = scanned.files.map(id => ({ id, name: id.split(/[\\/]/).pop() }));
     folderName = folderPath.split(/[\\/]/).pop(); panel.hidden = false;
     select.replaceChildren(...files.map((file, index) => new Option(file.name, String(index))));
     if (!files.length) { message.textContent = 'No supported images found in this folder.'; update(); return; }
-    await scan(true);
+    await scan();
   }
   root.querySelector('#choose-folder').addEventListener('click', async () => {
     try { await openFolder(await chooseFolder()); }
@@ -115,6 +126,7 @@ export function createFolderCalibration(root, calibration, selectRadiograph) {
   });
   select.addEventListener('change', () => { generation += 1; show(Number(select.value)); });
   function stopScanning() {
+    calibration.cancelLoad();
     generation += 1; busy = false; loading = false;
     message.textContent = 'Stopped. Completed results are kept; choose an image to review.'; update();
   }
@@ -127,15 +139,8 @@ export function createFolderCalibration(root, calibration, selectRadiograph) {
       const learned = await learnCalibrationProfile({ ...currentFile, endpoints: reference.endpoints });
       if (token !== generation) return;
       profile = learned;
-      const descriptor = files[currentIndex];
-      const old = cache.get(descriptor.id);
-      const length = calibrationMath.distance(reference.endpoints);
-      cache.set(descriptor.id, { ...old, status: 'corrected', selected_index: 0, spacing: reference.spacing,
-        message: 'Using your corrected reference.',
-        candidates: [{ value_mm: reference.value_mm, endpoints: reference.endpoints, length_px: length,
-          raw_text: `${reference.value_mm} mm (corrected)`, status: 'accepted' }] });
-      message.textContent = 'Reference appearance learned. Ready to process the folder.';
-      return true;
+      if (reference.calibration) save(files[currentIndex].id, reference.calibration);
+      message.textContent = 'Reference appearance learned. Process folder to retry automatic detection.';
     } catch (error) {
       if (token === generation) message.textContent = `Could not learn reference appearance: ${error.message}`;
     } finally {
@@ -143,7 +148,7 @@ export function createFolderCalibration(root, calibration, selectRadiograph) {
     }
   }
   learn.addEventListener('click', learnReference);
-  run.addEventListener('click', () => scan(false));
+  run.addEventListener('click', () => scan(true));
   download.addEventListener('click', () => {
     const output = { folder: folderName, detection_profile: profile,
       images: files.map(file => ({ name: file.name, ...(cache.get(file.id) || { status: 'pending' }) })) };
@@ -152,25 +157,12 @@ export function createFolderCalibration(root, calibration, selectRadiograph) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   root.addEventListener('calibrationchange', event => {
-    const reference = event.detail;
-    if (!loading && currentIndex >= 0 && reference.spacing?.source === 'manual_reference' && reference.endpoints.length === 2) {
-      const id = files[currentIndex]?.id;
-      const old = cache.get(id);
-      if (old) cache.set(id, { ...old, status: 'corrected', spacing: reference.spacing, selected_index: 0,
-        message: 'Using your corrected reference.', candidates: [{ value_mm: reference.value_mm,
-          endpoints: reference.endpoints, length_px: calibrationMath.distance(reference.endpoints),
-          raw_text: `${reference.value_mm} mm (corrected)`, status: 'accepted' }] });
-    }
+    if (!loading && !busy && currentIndex >= 0 && event.detail.calibration) save(files[currentIndex].id, event.detail.calibration);
     update();
   });
   async function calibrateAndContinue() {
-    if (busy || loading || !currentFile) return false;
-    if (calibration.snapshot().spacing?.source === 'dicom_pixel_spacing') return scan(false);
-    if (!(await learnReference())) return false;
-    return scan(false);
-  }
-  function reviewCount() {
-    return files.filter(file => !['detected', 'corrected', 'dicom'].includes(cache.get(file.id)?.status)).length;
+    if (busy || loading || !files.length) return false;
+    return scan();
   }
   return { reset, openFolder, stopScanning, calibrateAndContinue, reviewCount };
 }

@@ -2,10 +2,9 @@ import { el } from '../dom.js';
 import { setState } from '../store.js';
 import { openExternal } from '../api.js';
 import { showToast } from '../components/toast.js';
+import { VERSION_LABEL } from '../data/version.js';
 
 const CONTACT_EMAIL = 'spine-contour@gmail.com';
-
-const VERSION_LABEL = 'v0.1.0';
 
 const HERO_SVG = `<svg width="118" height="226" viewBox="0 0 100 192" fill="none">
   <g transform="translate(24,3) rotate(-10 32 24)"><path d="M16,4 C26,7 38,7 48,4 C54,2.5 58,5 57.5,10 C55.5,18 55.5,30 57.5,38 C58,43 54,45.5 48,44 C38,41 26,41 16,44 C10,45.5 6,43 6.5,38 C8.5,30 8.5,18 6.5,10 C6,5 10,2.5 16,4 Z" transform="scale(0.82)" stroke="var(--ink)" stroke-width="2.6"></path></g>

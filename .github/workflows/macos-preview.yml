@@ -7,12 +7,18 @@ on:
   push:
     branches: [ui-redesign-cw]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the preview (ui-redesign-cw only); otherwise build review artifacts
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
 
 concurrency:
-  group: preview-macos
+  group: preview-macos-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -165,22 +171,17 @@ jobs:
           fi
           echo "OK: preview artifact present, production artifact absent"
 
+      - name: Verify packaged desktop source and version
+        run: node tools/packaging/check_desktop_bundle.cjs dist
+
       - uses: actions/upload-artifact@v7
         with:
           name: Spine-Contour-Preview-macOS
           path: dist/Spine-Contour-Preview-macOS-*.dmg
           compression-level: 0
 
-      - name: Publish preview disk image
-        shell: bash
+      - name: Publish preview release
+        if: github.ref == 'refs/heads/ui-redesign-cw' && (github.event_name == 'push' || inputs.publish)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          asset=$(ls dist/Spine-Contour-Preview-macOS-*.dmg | head -1)
-          notes="PREVIEW BUILD — not the production release. Unsigned Apple Silicon disk image; right-click the app and choose Open the first time. Built from commit $GITHUB_SHA on branch $GITHUB_REF_NAME."
-          if gh release view preview-macos >/dev/null 2>&1; then
-            gh release upload preview-macos "$asset" --clobber
-            gh release edit preview-macos --title "Preview build (macOS)" --notes "$notes" --prerelease
-          else
-            gh release create preview-macos "$asset" --target "$GITHUB_SHA" --title "Preview build (macOS)" --notes "$notes" --prerelease
-          fi
+        run: python tools/packaging/publish_preview.py macos

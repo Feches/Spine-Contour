@@ -43,20 +43,20 @@ test('scanFolder recurses into subfolders and returns full paths', async () => {
   assert.equal(result.skipped, 0);
 });
 
-test('scanFolder matches all eight supported extensions case-insensitively', async () => {
+test('scanFolder matches all nine supported extensions case-insensitively', async () => {
   const dir = await tempDir();
-  const names = ['a.dcm', 'b.PNG', 'c.Jpg', 'd.JPEG', 'e.tif', 'f.TIFF', 'g.bmp', 'h.DICOM'];
+  const names = ['a.dcm', 'b.PNG', 'c.Jpg', 'd.JPEG', 'e.tif', 'f.TIFF', 'g.bmp', 'h.DICOM', 'i.WEBP'];
   for (const name of names) {
     await writeFile(path.join(dir, name), 'x');
   }
 
   const result = await scanFolder(dir);
 
-  assert.equal(SUPPORTED_EXTENSIONS.size, 8);
+  assert.equal(SUPPORTED_EXTENSIONS.size, 9);
   assert.deepEqual(result.files, names.map((name) => path.join(dir, name)));
   assert.equal(result.skipped, 0);
   // The set is the contract with main.js's select-file filter and studies.js's FILM_EXTENSIONS.
-  assert.deepEqual([...SUPPORTED_EXTENSIONS].sort(), ['.bmp', '.dcm', '.dicom', '.jpeg', '.jpg', '.png', '.tif', '.tiff']);
+  assert.deepEqual([...SUPPORTED_EXTENSIONS].sort(), ['.bmp', '.dcm', '.dicom', '.jpeg', '.jpg', '.png', '.tif', '.tiff', '.webp']);
 });
 
 test('scanFolder never follows a junction back into a cycle and counts it as one skipped entry', async (t) => {

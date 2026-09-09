@@ -53,9 +53,10 @@ the rulings, each with its cost, are in the reconcile ledger (git-ignored) and s
   `smoke-studies.mjs` 103/103; `smoke-persist.mjs` 36/36 then 44/44; both allowlists identical; CSP untouched. The
   Python suite was not run on the merged backend here (the backend developer's); `scipy` and `pytesseract` were added to
   the venv. Two reviews (the merge, then the fix) on Opus and Sonnet; findings in `docs/ROADMAP.md` §5.
-- **Human checks still owed** (from source, then from the preview installer the push builds): choose a workspace folder
-  and walk his calibration screen once with the Tesseract runtime absent (Skip) and once present; open an installed
-  build on an empty library; run one batch in the installed build.
+- **Human checks done 2026-09-08/09 on the installed preview build** (`9e360fd`): no demo studies in the packaged
+  build; a batch ran from the Find tab; his calibration screen was walked (the user reports each image has to be
+  calibrated individually — his design, recorded in ROADMAP §5 for him); console clean. The empty-library first
+  launch was not seen because the upgrade kept `%APPDATA%\Spine-Contour Preview` from the earlier preview install.
 
 ### Batch segmentation — DONE (branch `claude/batch-segmentation`)
 
@@ -674,15 +675,11 @@ is built in `render()`, not `update()` — safe today only because every writer 
 the quarantined bytes are partially recoverable; plan 06 may want the toast (or the README) to
 say so.
 
-**A landmark correction is persisted before its `/measure` settles.** The corrected geometry is
-committed to the store — and so written to `studies.json` by the saver — while the 150 ms
-`/measure` debounce is still pending. An abrupt quit inside that window makes `geometry_new` +
-`measurements_old` durable together, and after a restart the panel shows stale numbers beside
-corrected landmarks with no marker that they disagree. The window is ~150 ms plus one round trip
-and the drift is one nudge, so it is small; it is recorded rather than fixed because there is no
-cheap fix that does not restructure the commit path (the commit would have to hold the new
-geometry back until `/measure` returns, or the record would need a "measurements are stale" flag
-the panel reads — both are plan-06-sized). Found in plan 05's final whole-branch review.
+**Resolved (2026-09-09): landmark correction persistence.** Unmeasured edits now stay in
+`state.measurementDrafts`, outside persisted Study records. The latest successful `/measure`
+commits its geometry and measurements together; failures discard the preview. Closing during
+a pending correction retains the last complete pair. See the architecture contract's
+“Accuracy safeguards” amendment and `docs/accuracy-safeguards.md`.
 
 ### Resume plan 07 here — what plan 06 changed under you
 
@@ -1481,8 +1478,13 @@ production release:
   closing whole-branch review and deliberately not changed there.
 - **The first preview installer from this lineage is the one the 2026-09-08 push of `fork/ui-redesign-cw` builds.**
   It carries plan 06 and everything after it, plus the backend developer's Tesseract `--add-data` and
-  `check_bundled_ocr.py`, none of which has ever been packaged. Install it, open it on an empty library, run one
-  batch, and walk the calibration screen once; record the outcome here.
+  `check_bundled_ocr.py`, none of which had ever been packaged. **Built and installed 2026-09-08/09** (run
+  34292966476, `Spine-Contour-Preview-Windows.exe` 882 MB, up from 681 MB for the Tesseract bundle and scipy). The
+  user's checks on it: no demo studies in the packaged build (54 real studies persisted from the earlier preview
+  install, as designed); a batch from the Find tab ran; the calibration screen was walked — the user reports it
+  asks for each image to be calibrated individually (the backend developer's design; raised with him, see ROADMAP
+  §5); console clean. The true empty-library first launch was not seen because the upgrade kept the preview's
+  data folder; the demo gate itself is proven.
 - **Test the branch through the preview installer before pushing to the fork's `main`.**
   (decision 16 above). **Open, and never yet done for plan 06's code.** The user decided on
   2026-09-04 that they do not need the installer to work, so plan 06's Task 9 pushed the branch

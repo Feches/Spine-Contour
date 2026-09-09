@@ -9,6 +9,7 @@
 
 import { el, mount } from '../dom.js';
 import { getState, setState } from '../store.js';
+import { attachCalibrations } from '../calibration.js';
 import { chooseFolder, scanFolder, chooseCsv, readCsv } from '../api.js';
 import {
   parse, autoMap, KNOWN_FIELDS, findJoinHeader, joinClinical, clinicalFieldNames,
@@ -283,7 +284,7 @@ export function render(state) {
     if (!live.wsFolder) return;
     const result = loadWorkspaceStudies(live);
     setState({
-      studies: result.studies,
+      studies: attachCalibrations(result.studies),
       fields: workspaceLoadedFields(live.fields, result.studies),
       screen: 'studies',
     });

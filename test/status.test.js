@@ -2,6 +2,31 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { RESIDUAL_LIMIT, CONFIDENCE_LIMIT, deriveStatus, statusLabel } from '../renderer/data/status.js';
 import { isConsistent } from '../renderer/data/measurements.js';
+import { reviewReasons, S1_CONFIDENCE_LIMIT } from '../renderer/data/status.js';
+
+test('weak S1 and weak spine location require review despite a good femoral fit and consistent angles', () => {
+  const study = { measurements: { PI: 60, PT: 20, SS: 40 }, qc: {
+    femoral: { confidence: 0.95 },
+    framing: { s1_confidence: 0.01, search_confidence: 0.01, searched: true },
+  } };
+  assert.equal(deriveStatus(study), 'rev');
+  assert.equal(reviewReasons(study).length, 2);
+  assert.match(reviewReasons(study)[0], /S1/);
+  study.qc.framing.s1_confidence = S1_CONFIDENCE_LIMIT;
+  assert.equal(deriveStatus(study), 'rev', 'the crop search still needs review');
+  study.qc.framing.search_confidence = S1_CONFIDENCE_LIMIT;
+  assert.equal(deriveStatus(study), 'seg', 'the review threshold is inclusive');
+});
+
+test('invalid or missing S1 score in a framing record cannot pass; legacy absent framing remains readable', () => {
+  const study = { measurements: { PI: 60, PT: 20, SS: 40 }, qc: { framing: {} } };
+  for (const score of [undefined, null, NaN, Infinity, -0.1, 1.1, '0.95']) {
+    study.qc.framing.s1_confidence = score;
+    assert.equal(deriveStatus(study), 'rev', String(score));
+  }
+  delete study.qc.framing;
+  assert.equal(deriveStatus(study), 'seg');
+});
 
 test('RESIDUAL_LIMIT is 1.0 degrees and CONFIDENCE_LIMIT is 0.6', () => {
   assert.equal(RESIDUAL_LIMIT, 1.0);

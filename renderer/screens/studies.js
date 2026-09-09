@@ -12,6 +12,7 @@ import { getState, setState, subscribe } from '../store.js';
 import { selectFile, pathForFile, deletePrediction, hideDemoStudies, persistenceDisabledReason } from '../api.js';
 import { showToast } from '../components/toast.js';
 import { deriveStatus, statusLabel } from '../data/status.js';
+import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
 import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle } from '../data/labels.js';
 import { nextId } from '../data/persistence.js';
 import { DEFAULT_VIEW } from '../data/timepoints.js';
@@ -107,7 +108,7 @@ async function handleChoose() {
 }
 
 // The same extensions the native picker offers (main.js's select-file filter).
-const FILM_EXTENSIONS = /\.(dcm|dicom|png|jpe?g|tiff?|bmp)$/i;
+const FILM_EXTENSIONS = /\.(dcm|dicom|png|jpe?g|tiff?|bmp|webp)$/i;
 
 async function handleDrop(files) {
   if (files.length > 1) {
@@ -195,6 +196,8 @@ function actionCell(study, confirming) {
 // deriveStatus, which stays a pure function of the record and knows nothing about the store.
 function buildRow(study, runningId, selected) {
   const status = runningId === study.id ? 'proc' : deriveStatus(study);
+  const unsupported = study.source === 'real' && study.measurements == null
+    && runningId !== study.id && !inferenceView(study.view);
   const patientChildren = [study.pt || '—'];
   if (study.source === 'demo') patientChildren.push(el('span', { class: 'pill-demo' }, 'DEMO'));
   // While this row is confirming a delete, the prompt takes every cell from WORKSPACE rightwards
@@ -237,7 +240,10 @@ function buildRow(study, runningId, selected) {
     confirming ? null : el('div', { class: 'studies-cell-workspace' }, workspaceLabel(study)),
     confirming ? null : el('div', { class: 'studies-cell-folder', ...(pathTitle(study) ? { title: pathTitle(study) } : {}) }, folderLabel(study)),
     confirming ? null : el('div', { class: 'studies-cell-date' }, formatDate(study.addedAt)),
-    confirming ? null : el('div', {}, statusBadge(status)),
+    confirming ? null : el('div', {}, unsupported
+      ? el('span', { class: 'badge badge-rev', title: unsupportedViewReason(study.view) },
+        el('span', { class: 'dot' }), 'Unsupported view')
+      : statusBadge(status)),
     actionCell(study, confirming));
   return row;
 }

@@ -20,7 +20,10 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
 const sameSel = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 const cdp = await connect();
-const geometry = () => cdp.evaluate(`import('./renderer/store.js').then((m) => { const st = m.getState(); return st.studies.find((x) => x.id === st.openId).geometry; })`);
+// Gesture assertions inspect the live preview. The Study's geometry changes only
+// after recalculation; inspect it separately to verify the atomic commit.
+const geometry = () => cdp.evaluate(`import('./renderer/store.js').then((m) => { const st = m.getState(); return st.measurementDrafts?.[st.openId] ?? st.studies.find((x) => x.id === st.openId).geometry; })`);
+const savedGeometry = () => cdp.evaluate(`import('./renderer/store.js').then((m) => { const st = m.getState(); return st.studies.find((x) => x.id === st.openId).geometry; })`);
 const measurements = () => cdp.evaluate(`import('./renderer/store.js').then((m) => { const st = m.getState(); return st.studies.find((x) => x.id === st.openId).measurements; })`);
 const editBarButton = (label) => cdp.evaluate(`(() => { const b = [...document.querySelectorAll('.viewer-editbar button')].find((x) => x.textContent.trim() === ${JSON.stringify(label)}); if (!b) return null; const r = b.getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, disabled: b.disabled, pressed: b.getAttribute('aria-pressed') }; })()`);
 async function waitForMeasure(before) {
@@ -79,10 +82,12 @@ try {
   await cdp.key('ArrowUp', { shift: true });
   let g1 = await geometry();
   check('five ArrowRight then Shift+ArrowUp moves L3 SA by (+5, -10) image px', near(g1.vertebrae.L3.superior[0][0] - g0.vertebrae.L3.superior[0][0], 5, 1e-6) && near(g1.vertebrae.L3.superior[0][1] - g0.vertebrae.L3.superior[0][1], -10, 1e-6), [g0.vertebrae.L3.superior[0], g1.vertebrae.L3.superior[0]]);
+  check('unmeasured nudge preview leaves the saved geometry unchanged', JSON.stringify(await savedGeometry()) === JSON.stringify(g0));
   let m1 = await waitForMeasure(m0);
   await cdp.settle(400);
   check('a burst of six nudges is exactly one /measure', measureCount() - logBefore === 1 && m1 !== null, measureCount() - logBefore);
   check('LL updates after the nudge burst', m1 && m1.LL['L3-S1'] !== m0.LL['L3-S1'], m1 && [m0.LL['L3-S1'], m1.LL['L3-S1']]);
+  check('successful nudge calculation commits the preview geometry', JSON.stringify(await savedGeometry()) === JSON.stringify(g1));
 
   // 3. Arrow keys still nudge when a measurement row has focus.
   const row = await cdp.rect('.meas-row');

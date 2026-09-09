@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import io
+import hashlib
 import logging
 import os
 from pathlib import Path
@@ -60,7 +61,49 @@ def _decode(payload):
     return rgb, spacing
 
 
-def calibration_from_payload(payload: bytes, profile=None, include_preview=True, preview_only=False):
+def _cached_result(cached, response):
+    """Reuse only a compact result for these exact file bytes and image dimensions."""
+    if not isinstance(cached, dict) or any(cached.get(key) != response[key] for key in
+            ('source_sha256', 'width', 'height', 'coordinate_space', 'version')):
+        return None
+    status = cached.get('status')
+    if status not in ('detected', 'corrected', 'not_found', 'ambiguous', 'conflicting', 'cleared'):
+        return None
+    try:
+        candidates = cached['candidates']
+        if not isinstance(candidates, list) or len(candidates) > 128:
+            return None
+        for candidate in candidates:
+            points = np.asarray(candidate['endpoints'], dtype=float)
+            value = float(candidate['value_mm'])
+            if (points.shape != (2, 2) or not np.isfinite(points).all()
+                    or np.any(points < 0) or np.any(points[:, 0] >= response['width'])
+                    or np.any(points[:, 1] >= response['height'])
+                    or not np.isfinite(value) or value <= 0):
+                return None
+            length = float(np.linalg.norm(points[1] - points[0]))
+            if length < 2 or not np.isclose(length, candidate['length_px'], rtol=1e-5):
+                return None
+        spacing = None
+        index = cached.get('selected_index')
+        if status in ('detected', 'corrected'):
+            if type(index) is not int or not 0 <= index < len(candidates):
+                return None
+            candidate = candidates[index]
+            if candidate.get('status') != 'accepted':
+                return None
+            scale = candidate['value_mm'] / candidate['length_px']
+            spacing = {'row_mm': scale, 'column_mm': scale,
+                       'source': 'manual_reference' if status == 'corrected' else 'printed_ruler'}
+        elif index is not None or cached.get('spacing') is not None:
+            return None
+        return {**response, 'status': status, 'spacing': spacing, 'candidates': candidates,
+                'selected_index': index, 'message': str(cached.get('message', ''))}
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def calibration_from_payload(payload: bytes, profile=None, include_preview=True, preview_only=False, cached=None):
     rgb, spacing = _decode(payload)
     height, width = rgb.shape[:2]
     # Keep a full-coordinate preview so references outside a segmentation crop remain editable.
@@ -68,13 +111,19 @@ def calibration_from_payload(payload: bytes, profile=None, include_preview=True,
     if include_preview:
         Image.fromarray(rgb).save(output, format='PNG')
     response = {
+        'version': 1, 'source_sha256': hashlib.sha256(payload).hexdigest(),
         'image_png': base64.b64encode(output.getvalue()).decode('ascii'),
         'width': width, 'height': height, 'coordinate_space': 'original_image',
         'spacing': spacing, 'candidates': [], 'selected_index': None,
         'status': 'dicom' if spacing else 'not_found',
         'message': 'Using DICOM pixel spacing.' if spacing else 'No reference found. Draw a reference and enter its length.',
     }
-    if spacing or preview_only:
+    if preview_only:
+        return response
+    reused = _cached_result(cached, response)
+    if reused is not None:
+        return reused
+    if spacing:
         return response
     configure_ocr()
     try:
@@ -100,6 +149,9 @@ def calibration_from_payload(payload: bytes, profile=None, include_preview=True,
                 'endpoints': endpoints.tolist(), 'length_px': length, 'mm_per_pixel': value_mm/length,
                 'text_box': [x*sx, y*sy, w*sx, h*sy], 'status': label['status'],
                 'ocr_confidence': label['ocr_confidence'],
+                'ocr_support': label.get('ocr_support'), 'ocr_alternatives': label.get('ocr_alternatives', []),
+                'pairing_score': label.get('pairing_score'), 'pairing_margin': label.get('pairing_margin'),
+                'geometry_confidence': ruler.get('geometry_confidence'),
             })
         accepted = [(i, c) for i, c in enumerate(response['candidates']) if c['status'] == 'accepted']
         if accepted:

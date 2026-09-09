@@ -18,10 +18,9 @@
 const fsPromises = require('node:fs/promises');
 const path = require('node:path');
 
-// Mirrors main.js's select-file filter (line 52) and renderer/screens/studies.js FILM_EXTENSIONS
-// (line 83) so the picker, the dropzone and the folder scan accept the same files. One-item
-// superset of spec 9.3: `.dicom` is included because the other two paths already accept it.
-const SUPPORTED_EXTENSIONS = new Set(['.dcm', '.dicom', '.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp']);
+// Mirrors main.js's select-file filter and renderer/screens/studies.js FILM_EXTENSIONS
+// so the picker, dropzone and folder scan accept the same files, including WebP examples.
+const SUPPORTED_EXTENSIONS = new Set(['.dcm', '.dicom', '.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp', '.webp']);
 
 // Plain code-unit comparison, never localeCompare: deterministic on every machine and locale.
 function byName(a, b) {
