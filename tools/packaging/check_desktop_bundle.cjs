@@ -23,7 +23,8 @@ assert.equal(packaged.productName, 'Spine-Contour Preview');
 const shipped = ['index.html', 'main.js', 'preload.js', 'store-io.js', 'scan-folder.js',
   ...files('renderer'), ...files('styles')];
 for (const file of shipped) {
-  assert.ok(asar.extractFile(archive, file.replaceAll(path.sep, '/')).equals(fs.readFileSync(file)),
+  // asar traverses directories using path.sep, including on Windows.
+  assert.ok(asar.extractFile(archive, path.normalize(file)).equals(fs.readFileSync(file)),
     `Missing or stale packaged source: ${file}`);
 }
 const executable = process.platform === 'win32' ? 'spine-contour-backend.exe' : 'spine-contour-backend';
