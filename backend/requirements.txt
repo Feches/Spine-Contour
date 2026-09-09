@@ -7,6 +7,9 @@ pydicom
 pytest
 python-multipart
 segmentation-models-pytorch
+timm
 torch
 torchvision
 uvicorn[standard]
+scipy
+pytesseract

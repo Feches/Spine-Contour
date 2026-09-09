@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import base64
 import io
+import json
+import hashlib
+import logging
 
 import numpy as np
 import pydicom
@@ -13,11 +16,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 
 try:
-    from .models import VERTEBRA_LABELS, spinopelvic_prediction
-    from .utils import spinopelvic_measurements, spinopelvic_measurements_from_geometry
+    from .calibration import calibration_from_payload, learn_profile, validate_profile
+    from .models import MODEL_CHOICES, VERTEBRA_LABELS, spinopelvic_prediction
+    from .utils import (
+        spinopelvic_measurements_from_geometry,
+        spinopelvic_measurements_from_landmarks,
+    )
 except ImportError:  # Support `uvicorn server:app` from backend/.
-    from models import VERTEBRA_LABELS, spinopelvic_prediction
-    from utils import spinopelvic_measurements, spinopelvic_measurements_from_geometry
+    from calibration import calibration_from_payload, learn_profile, validate_profile
+    from models import MODEL_CHOICES, VERTEBRA_LABELS, spinopelvic_prediction
+    from utils import (
+        spinopelvic_measurements_from_geometry,
+        spinopelvic_measurements_from_landmarks,
+    )
 
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
@@ -47,6 +58,10 @@ def _dicom_pixel_array(payload: bytes) -> np.ndarray:
 def _decode_grayscale(payload: bytes) -> np.ndarray:
     try:
         with Image.open(io.BytesIO(payload)) as image:
+            # Preserve native grayscale precision until the model's percentile
+            # rescale. PIL's conversion to L clips 16-bit values above 255.
+            if image.mode in ("I", "F") or image.mode.startswith("I;16"):
+                return np.array(image)
             return np.asarray(image.convert("L"))
     except (UnidentifiedImageError, OSError):
         try:
@@ -62,8 +77,16 @@ async def predict(
     body_part: str = Form(...),
     view: str | None = Form(None),
     laterality: str | None = Form(None),
+    vertebra_model: str | None = Form(None),
+    femoral_model: str | None = Form(None),
+    s1_model: str | None = Form(None),
+    calibration: str | None = Form(None),
 ) -> dict[str, object]:
-    """Return masks, fitted geometry, and spinopelvic measurements."""
+    """Return masks, fitted geometry, and spinopelvic measurements.
+
+    The three `*_model` fields choose which model reads each structure; see
+    `GET /models` for what is offered. Omitted fields take the default.
+    """
 
     payload = await file.read(MAX_UPLOAD_BYTES + 1)
     if not payload:
@@ -80,12 +103,14 @@ async def predict(
             body_part,
             view,
             laterality,
+            {"vertebrae": vertebra_model, "femoral": femoral_model, "s1": s1_model},
         )
         analysis = await run_in_threadpool(
-            spinopelvic_measurements,
-            prediction["mask"],
+            spinopelvic_measurements_from_landmarks,
+            prediction["landmarks"]["vertebrae"],
             prediction["landmarks"]["S1"]["superior"],
             prediction["femoral_mask"],
+            prediction["mask"],
         )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -95,7 +120,31 @@ async def predict(
         output = io.BytesIO()
         Image.fromarray(prediction[name]).save(output, format="PNG", optimize=True)
         encoded[f"{name}_png"] = base64.b64encode(output.getvalue()).decode("ascii")
-    return {**encoded, **analysis, "labels": VERTEBRA_LABELS}
+    # `qc` stays opaque to the renderer, which reads only `qc.femoral.confidence`;
+    # the model choice and the crop ride along so a stored result says what
+    # produced it.
+    qc = {**analysis.get("qc", {}), "models": prediction["models"], "framing": prediction["framing"]}
+    # Every run, including the serial batch, reads the ORIGINAL image's ruler. The
+    # inference crop can exclude it. Calibration failure must not lose segmentation.
+    try:
+        try:
+            cached = json.loads(calibration) if calibration else None
+        except (ValueError, TypeError):
+            cached = None
+        image_calibration = await run_in_threadpool(
+            calibration_from_payload, payload, include_preview=False, cached=cached,
+        )
+        image_calibration.pop('image_png', None)
+    except Exception:
+        logging.getLogger(__name__).exception('Optional image calibration failed')
+        image_calibration = {
+            'version': 1, 'source_sha256': hashlib.sha256(payload).hexdigest(),
+            'width': int(pixel_array.shape[1]), 'height': int(pixel_array.shape[0]),
+            'coordinate_space': 'original_image', 'status': 'unavailable',
+            'spacing': None, 'candidates': [], 'selected_index': None,
+            'message': 'Automatic calibration unavailable. Review the reference in Image calibration.',
+        }
+    return {**encoded, **analysis, "qc": qc, "labels": VERTEBRA_LABELS, "calibration": image_calibration}
 
 
 @app.post("/measure", summary="Recalculate measurements from corrected landmarks")
@@ -113,6 +162,37 @@ async def measure(geometry: dict[str, object]) -> dict[str, object]:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
 
+@app.get("/models", summary="Which model can read which structure")
+def models() -> dict[str, list[str]]:
+    return {structure: list(names) for structure, names in MODEL_CHOICES.items()}
+
+
 @app.get("/health", include_in_schema=False)
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/calibrate", summary="Read image scale from an original radiograph")
+async def calibrate(file: UploadFile = File(...), profile: str | None = Form(None),
+                    include_preview: bool = Form(True), preview_only: bool = Form(False)) -> dict[str, object]:
+    payload = await file.read(MAX_UPLOAD_BYTES + 1)
+    if not payload:
+        raise HTTPException(status_code=400, detail="The selected file is empty")
+    if len(payload) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="The selected file exceeds 50 MB")
+    try:
+        settings = validate_profile(json.loads(profile)) if profile else None
+        return await run_in_threadpool(calibration_from_payload, payload, settings, include_preview, preview_only)
+    except Exception as error:
+        raise HTTPException(status_code=422, detail="Could not read the image for calibration") from error
+
+
+@app.post("/calibration-profile", summary="Learn annotation color from a corrected reference")
+async def calibration_profile(file: UploadFile = File(...), endpoints: str = Form(...)):
+    payload = await file.read(MAX_UPLOAD_BYTES + 1)
+    if not payload or len(payload) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="Select an image smaller than 50 MB")
+    try:
+        return await run_in_threadpool(learn_profile, payload, json.loads(endpoints))
+    except (ValueError, TypeError, KeyError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error

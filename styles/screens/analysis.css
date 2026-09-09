@@ -1,0 +1,839 @@
+/* Study Analysis screen.
+   01 — screen shell and header  (Task 9 appends here)
+   02 — viewer stage             (this task)
+   03 — measurements panel       (Task 8 appends here)
+   04 — clinical data drawer     (plan 06 Task 5 appends here) */
+
+/* ===== 01 — SCREEN SHELL AND HEADER ==================================== */
+.analysis-screen {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.analysis-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.analysis-meta {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The study's name, and the one editable thing on this header. It reads as the title until you
+   put the cursor in it, so it carries no border or fill at rest -- the hover well and the focus
+   ring are what say it is a field. `size` is set from the value in screens/analysis.js, so the
+   box tracks the name's length instead of reserving a fixed slab of the header. */
+.analysis-name {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--ink);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 3px 7px;
+  margin-right: -8px;
+  min-width: 0;
+}
+.analysis-name:hover:not(:disabled) {
+  background: var(--well);
+  border-color: var(--border);
+}
+.analysis-name:focus {
+  outline: none;
+  background: var(--bg);
+  border-color: var(--accent);
+}
+.analysis-name:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+/* PLACEMENT ONLY. .pill-demo's border, background, colour and type are components.css's --
+   the header's pill and the studies list's pill must never drift apart. All this rule does
+   is pull the pill in from the header's 14px gap so it reads as part of the id beside it. */
+.analysis-header .pill-demo { margin-left: -6px; }
+
+.analysis-spacer { flex: 1; }
+
+.confidence-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sage) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sage) 45%, var(--border));
+}
+.confidence-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sage);
+}
+.confidence-label {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--body);
+}
+.confidence-value {
+  font: 600 13px 'Source Sans 3', sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.analysis-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.analysis-viewer-host {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  position: relative;
+}
+
+.analysis-panel {
+  width: 400px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.analysis-tabs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px 10px;
+  flex-shrink: 0;
+}
+.analysis-tabgroup {
+  flex: 1;
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 11px;
+  background: var(--well);
+}
+.analysis-tab {
+  flex: 1;
+  padding: 6px 4px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  text-align: center;
+  font: 650 13px 'Source Sans 3', sans-serif;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.analysis-tab.is-active {
+  background: var(--card);
+  color: var(--ink);
+}
+.analysis-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.analysis-actions {
+  display: flex;
+  padding: 0 14px 10px;
+  flex-shrink: 0;
+}
+.analysis-export {
+  width: 100%;
+  justify-content: center;
+}
+
+.analysis-panel-host {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.analysis-similar {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  color: var(--muted);
+  font: 400 13px 'Source Sans 3', sans-serif;
+}
+
+/* Both panel bodies are always in the DOM; the tab toggles which one is shown. */
+.analysis-panel-host.is-hidden,
+.analysis-similar.is-hidden { display: none; }
+
+/* ===== 02 — VIEWER STAGE ================================================
+   The stage is deliberately OFF-THEME in both light and dark mode: a radiograph is read
+   on a black field, not a warm cream one. The architecture contract grants this
+   exception and names four literals for viewer/canvas.js -- those cover the pixels drawn
+   INTO the canvas. The tokens below cover the DOM chrome floating OVER it (toolbar,
+   study chip, footer watermark, run card), declared once here instead of repeated as
+   twelve literals in components/viewer.js. They are deliberately NOT redefined under
+   body[data-dark]: the stage is identical in both themes, which is the whole point. */
+.viewer-stage {
+  --stage-bg: #0B0A09;
+  --stage-card: #181614;
+  --stage-well: #282522;
+  --stage-line: #38342F;
+  --stage-ink: #FAF7F2;
+  --stage-body: #C9C2B8;
+  --stage-muted: #9A9188;
+  --stage-accent: #D45A32;
+  --stage-accent-soft: rgba(212, 90, 50, .16);
+  --stage-chrome: rgba(20, 18, 16, .85);
+  --stage-scrim: rgba(11, 10, 9, .72);
+  --stage-watermark: rgba(250, 247, 242, .3);
+
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--stage-bg);
+}
+.viewer-stage.is-pan-mode { cursor: grab; }
+.viewer-stage.is-pan-mode:active { cursor: grabbing; }
+
+.viewer-host {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+  display: grid;
+  place-items: center;
+}
+
+/* Both canvases sit in the SAME grid cell, so they stack in perfect register while each
+   keeps the radiograph's own proportions.
+
+   A <canvas> has intrinsic dimensions from its width/height ATTRIBUTES, which
+   sizeCanvases() sets to the image's pixel size. With max-width/max-height and no
+   specified width/height, the browser scales it down to fit while preserving that
+   intrinsic ratio -- exactly how an <img> behaves, and what the design reference
+   expressed as preserveAspectRatio="xMidYMid meet". Before this, the canvases were
+   width:100%/height:100% against a host pinned to inset:0, so a portrait radiograph was
+   stretched to the stage's landscape box.
+
+   min-width/min-height:0 are LOAD-BEARING -- do not delete them as redundant. A grid item's
+   automatic minimum size is its content size, so the implicit track sized itself to the
+   canvas rather than constraining it, which left `max-height: 100%` resolving against a
+   track the canvas itself had grown. The percentage had no definite basis and was ignored,
+   so `max-width` alone did the work: a tall film was scaled to the stage's WIDTH and its
+   overflowing height was cut off by .viewer-stage's overflow:hidden, and a film narrower
+   than the stage was not scaled at all (max-width only ever shrinks) and was clipped at its
+   natural size. Releasing the minimum lets max-height bite, which is what makes the whole
+   film visible on open -- both axes contained, "fit" and zoom 1 meaning the same thing.
+
+   Do NOT reach for object-fit instead. It letterboxes the bitmap INSIDE an element box
+   that still covers the whole stage, and viewer/geometry.js's clientToImage() maps clicks
+   through getBoundingClientRect() -- so every click would be offset by the dead space,
+   and the offset would grow with the letterbox. Keeping the element box equal to the
+   drawn image is what keeps hit testing exact. */
+.viewer-canvas {
+  grid-area: 1 / 1;
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.viewer-canvas-dynamic { touch-action: none; }
+
+.viewer-chip {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: var(--stage-chrome);
+  border: 1px solid var(--stage-line);
+  backdrop-filter: blur(8px);
+}
+.viewer-chip-id {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  color: var(--stage-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.viewer-toolbar {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--stage-chrome);
+  border: 1px solid var(--stage-line);
+  backdrop-filter: blur(8px);
+}
+
+.viewer-tool {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--stage-muted);
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.viewer-tool:hover {
+  background: var(--stage-well);
+  color: var(--stage-ink);
+}
+.viewer-tool.is-active {
+  background: var(--stage-accent-soft);
+  color: var(--stage-accent);
+}
+.viewer-tool:focus-visible {
+  outline: 2px solid var(--stage-accent);
+  outline-offset: 2px;
+}
+
+.viewer-zoom {
+  width: 36px;
+  text-align: center;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--stage-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.viewer-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--stage-line);
+}
+
+.viewer-fill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px 0 5px;
+}
+.viewer-fill-label {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--stage-muted);
+}
+.viewer-fill-slider {
+  width: 72px;
+  height: 12px;
+  cursor: pointer;
+  accent-color: var(--stage-accent);
+}
+
+.viewer-footer {
+  position: absolute;
+  left: 16px;
+  bottom: 14px;
+  max-width: calc(100% - 32px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--stage-watermark);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Needs-run / running overlay. One indeterminate state, never a stage sequence -- BD-4. */
+.run-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--stage-scrim);
+  backdrop-filter: blur(2px);
+}
+.run-card.is-hidden { display: none; }
+
+.run-card-inner {
+  width: 340px;
+  padding: 26px;
+  border-radius: 16px;
+  background: var(--stage-card);
+  border: 1px solid var(--stage-line);
+  text-align: center;
+}
+.run-eyebrow {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  color: var(--stage-muted);
+}
+.run-title {
+  margin-top: 10px;
+  font: 650 18px 'Source Sans 3', sans-serif;
+  color: var(--stage-ink);
+}
+.run-body {
+  margin-top: 8px;
+  font: 400 13.5px/1.5 'Source Sans 3', sans-serif;
+  color: var(--stage-body);
+}
+.run-spinner {
+  margin: 16px auto 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--stage-line);
+  border-top-color: var(--stage-accent);
+  animation: spin .8s linear infinite;   /* @keyframes spin -- styles/base.css:77-80 */
+}
+.run-spinner.is-hidden { display: none; }
+
+.run-button {
+  margin-top: 18px;
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 10px;
+  background: var(--stage-accent);
+  color: #FFFFFF;                        /* = --on-accent; the stage has no theme to read it from */
+  font: 650 14px 'Source Sans 3', sans-serif;
+  cursor: pointer;
+  transition: filter .15s ease, opacity .15s ease;
+}
+.run-button:hover:not(:disabled) { filter: brightness(1.08); }
+.run-button:disabled { opacity: .6; cursor: wait; }
+/* The LOADING card has no action to offer, so applyCard hides the button outright rather
+   than showing a dead control. Plan 05 Task 8 is the first state that needs this. */
+.run-button.is-hidden { display: none; }
+.run-button:focus-visible {
+  outline: 2px solid var(--stage-accent);
+  outline-offset: 2px;
+}
+
+/* --- Plan 04: landmark editing ------------------------------------------ */
+.viewer-tool:disabled { opacity: .35; cursor: not-allowed; }
+.viewer-tool:disabled:hover { background: transparent; color: var(--stage-muted); }
+
+.viewer-tool-text {
+  width: auto;
+  padding: 0 10px;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+}
+
+/* Second glass bar, directly under the toolbar (14px top + 44px bar + 6px gap). */
+.viewer-editbar {
+  position: absolute;
+  top: 64px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--stage-chrome);
+  border: 1px solid var(--stage-line);
+  backdrop-filter: blur(8px);
+}
+.viewer-editbar.is-hidden { display: none; }
+.viewer-editbar-label {
+  padding: 0 8px;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--stage-accent);
+}
+
+/* Cursors. While editing with the pan toggle on, a primary-button drag pans, not edits; the
+   pan-mode rules resolve to the same `grab` the hover rule uses, so whichever wins on
+   specificity the cursor is right. Kept last for readability, not for cascade order. */
+.viewer-stage.is-editing .viewer-canvas-dynamic { cursor: crosshair; }
+.viewer-stage.is-editing.is-over-handle .viewer-canvas-dynamic { cursor: grab; }
+.viewer-stage.is-editing.is-dragging-handle .viewer-canvas-dynamic { cursor: grabbing; }
+.viewer-stage.is-pan-mode .viewer-canvas-dynamic { cursor: grab; }
+.viewer-stage.is-pan-mode:active .viewer-canvas-dynamic { cursor: grabbing; }
+
+/* A left+right chord pans in every mode, including over the label chip, so its cursor has to
+   beat the mode rules above AND .viewer-label's own `cursor: move`. These MUST stay last: the
+   first two tie .is-editing .viewer-canvas-dynamic at (0,3,0) and win only on source order. */
+.viewer-stage.is-panning { cursor: grabbing; }
+.viewer-stage.is-panning .viewer-canvas-dynamic { cursor: grabbing; }
+.viewer-stage.is-panning .viewer-label { cursor: grabbing; }
+
+/* The selected construction's label: a chip inside the pan/zoom host, so it scales and moves with
+   the film and can sit in the black space around it. Tokens, not literals: this is DOM over the
+   stage. While editing it is faded and pointer-transparent so it can never block a handle. */
+.viewer-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: .3em .55em;
+  border-radius: .4em;
+  background: var(--stage-scrim);
+  color: var(--stage-accent);
+  font-family: 'Chivo Mono', monospace;
+  font-weight: 600;
+  letter-spacing: .04em;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: move;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.viewer-label.is-hidden { display: none; }
+.viewer-label.is-dragging { cursor: move; }
+.viewer-stage.is-pan-mode .viewer-label { pointer-events: none; }
+.viewer-stage.is-editing .viewer-label { pointer-events: none; opacity: .55; }
+
+/* ===== 03 — MEASUREMENTS PANEL ========================================= */
+.meas-panel {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.meas-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.meas-section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.meas-section-title {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.meas-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.meas-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Two row shapes, and the difference is deliberate. A sagittal or lordosis row selects a
+   vertebra, so it is a <button>. An alignment row has nothing
+   to select, so it is a <div> with no handler and no pointer cursor -- an earlier draft
+   gave those rows `cursor:pointer` and an empty onClick, which reads as broken. */
+.meas-row,
+.meas-row-static {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+}
+.meas-row { cursor: pointer; }
+.meas-row:hover { background: var(--well); }
+.meas-row.is-selected { background: var(--well); }
+.meas-row.is-selected .meas-label { color: var(--accent); }
+.meas-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.meas-label {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  color: var(--muted);
+}
+.meas-spacer { flex: 1; }
+.meas-value {
+  width: 64px;
+  text-align: right;
+  font: 600 16px/1 'Source Sans 3', sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.meas-disclosure {
+  align-self: flex-start;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  color: var(--accent);
+  cursor: pointer;
+}
+.meas-disclosure:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.meas-note,
+.meas-warning {
+  margin-top: 4px;
+  padding: 0 12px;
+  font: 400 12px/1.5 'Source Sans 3', sans-serif;
+}
+.meas-note { color: var(--muted); }
+.meas-warning { color: var(--accent); }
+
+.meas-disc-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-variant-numeric: tabular-nums;
+}
+.meas-disc-table th,
+.meas-disc-table td { padding: 7px 6px; text-align: right; }
+.meas-disc-table th {
+  font: 500 10px/1.4 'Chivo Mono', monospace;
+  color: var(--muted);
+}
+.meas-disc-table th:first-child { text-align: left; padding-left: 12px; }
+.meas-disc-table tbody tr + tr { border-top: 1px solid var(--border); }
+
+/* ===== 04 — CLINICAL DATA DRAWER ======================================
+   Mounted by screens/analysis.js as the third child of .analysis-screen (a column flex),
+   under .analysis-body. flex-shrink:0 keeps it from stealing height from the stage.
+   max-height:40vh + overflow-y:auto is an ADDITION to the design for the 900px default
+   window: with all nine fields open the drawer would otherwise clip the 400px
+   measurements panel. Tokens only; this is DOM over the theme, not over the stage. */
+.clinical-data {
+  flex-shrink: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+}
+
+.clinical-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+}
+.clinical-toggle svg { display: block; transition: transform .2s ease; }
+.clinical-toggle-closed svg { transform: rotate(180deg); }
+.clinical-title {
+  font: 650 15px 'Source Sans 3', sans-serif;
+  color: var(--ink);
+}
+.clinical-count { white-space: nowrap; }
+.clinical-spacer { flex: 1; }
+/* .btn.btn-small sizing, brought down to the design's 12.5px header button. */
+.clinical-import {
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 9px;
+  background: transparent;
+  font-size: 12.5px;
+}
+.clinical-import:hover:not(:disabled) { background: var(--well); }
+
+.clinical-body {
+  padding: 2px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.clinical-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.clinical-chip-row .eyebrow { margin-right: 4px; }
+.clinical-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  font: 600 12px 'Source Sans 3', sans-serif;
+  color: var(--body);
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.clinical-chip:hover { background: var(--well); color: var(--ink); }
+.clinical-chip-plus { color: var(--accent); font-weight: 700; }
+.clinical-custom {
+  width: 130px;
+  padding: 4px 11px 5px;
+  border: 1.5px dashed var(--border);
+  border-radius: 999px;
+  background: transparent;
+  font: 600 12px 'Source Sans 3', sans-serif;
+  color: var(--ink);
+}
+.clinical-custom::placeholder { color: var(--muted); }
+.clinical-custom:focus {
+  outline: none;
+  border-style: solid;
+  border-color: var(--accent);
+}
+
+.clinical-grid {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-x: auto;
+}
+/* --clinical-cols is set on .clinical-grid by the component (style.setProperty) and
+   inherited by every row: 110px for the id, then minmax(150px, 1fr) per field. */
+.clinical-grid-row {
+  display: grid;
+  grid-template-columns: var(--clinical-cols);
+}
+.clinical-grid-row + .clinical-grid-row { border-top: 1px solid var(--border); }
+.clinical-grid-head { background: var(--well); }
+.clinical-grid-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 12px;
+  border-left: 1px solid var(--border);
+}
+.clinical-grid-cell:first-child { border-left: none; }
+.clinical-grid-head .clinical-grid-cell {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  color: var(--muted);
+}
+.clinical-grid-head .clinical-grid-cell span {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.clinical-grid-id {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.clinical-remove {
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: 600 13px/1 'Source Sans 3', sans-serif;
+  cursor: pointer;
+}
+.clinical-remove:hover { color: var(--accent); }
+
+.clinical-cell {
+  border: none;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  padding: 9px 12px;
+  font: 400 13px 'Source Sans 3', sans-serif;
+  color: var(--ink);
+  width: 100%;
+  min-width: 0;
+}
+.clinical-cell::placeholder { color: var(--muted); }
+.clinical-cell:disabled { color: var(--muted); cursor: not-allowed; }
+
+.clinical-empty {
+  padding: 14px;
+  border: 1.5px dashed var(--border);
+  border-radius: 12px;
+  text-align: center;
+  font: 400 13px 'Source Sans 3', sans-serif;
+  color: var(--muted);
+}
+
+/* Focus rings. .icon-btn and .btn already have theirs in components.css. */
+.clinical-chip:focus-visible,
+.clinical-remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.clinical-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* The Study group (pre-op/post-op spec §9): four fixed columns ahead of the clinical fields, under
+   a group row. The group row spans with grid-column; the head and data rows keep one cell per
+   column, so --clinical-cols stays one template for the whole grid. */
+.clinical-grid-group { background: var(--well); }
+.clinical-grid-group .clinical-grid-cell {
+  padding: 6px 12px 4px;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+.clinical-grid-group-study { grid-column: 2 / span 4; }
+.clinical-grid-group-clinical { grid-column: 6 / -1; }
+.clinical-grid-head-study { background: color-mix(in srgb, var(--sage) 6%, var(--well)); }
+.clinical-cell-study { background: color-mix(in srgb, var(--sage) 4%, transparent); }
+.clinical-cell-date {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.clinical-cell-date::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: pointer; }

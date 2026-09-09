@@ -1,0 +1,592 @@
+.studies-page {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.studies-page-inner {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 30px 36px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.studies-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.studies-heading {
+  font: 650 26px/1.2 'Source Sans 3', sans-serif;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.studies-summary {
+  margin-top: 4px;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+
+.studies-header-spacer {
+  flex: 1;
+}
+
+.studies-search {
+  width: 260px;
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  font: 400 14px 'Source Sans 3', sans-serif;
+}
+
+.studies-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.studies-table {
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.studies-table-head,
+.studies-row {
+  display: grid;
+  /* STUDY · PATIENT · VIEW · WORKSPACE · FOLDER · DATE · STATUS · actions.
+     STUDY was a fixed 112px when it held an SP-nnnn id; it now holds a filename, so it flexes
+     and gets the widest share. The 110px LORDOSIS track that used to sit before the actions is
+     gone -- the list is for finding a study, not for reading its numbers. */
+  grid-template-columns: 1.35fr 1.15fr 1.05fr 1.05fr 1fr 0.85fr 1.05fr 44px;
+  gap: 16px;
+  align-items: center;
+  padding: 13px 22px;
+}
+
+.studies-table-head {
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--border);
+  background: var(--well);
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+
+.studies-row {
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.studies-row:hover {
+  background: var(--well);
+}
+
+.studies-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* The study's name -- a filename, not an SP-nnnn token any more, so the monospace tracking that
+   suited a fixed-width id is dropped. Filenames get long; ellipsis rather than reflow the row. */
+.studies-cell-id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font: 600 14px 'Source Sans 3', sans-serif;
+  color: var(--ink);
+}
+
+/* The tick box before the name (batch spec 7.2) keeps its size; the name truncates. The box is
+   the grid's control (components/checkbox.js) and keeps the grid's class names. */
+.studies-cell-id > .param-check {
+  flex: none;
+  margin-right: 0; /* .param-pick carries a 10px right margin for the grid; the gap here does that job */
+}
+
+.studies-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studies-head-study {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.studies-head-study > .param-check {
+  flex: none;
+  margin-right: 0;
+}
+
+/* Provenance. WORKSPACE is the root the film was loaded from and is an em dash for anything
+   added by hand; FOLDER is the folder the film actually sits in, so a film the recursive scan
+   found below the root shows the subfolder. Together they separate two same-named films under
+   different workspaces. Both truncate; the full path is on the FOLDER cell's title. */
+.studies-cell-workspace,
+.studies-cell-folder {
+  font: 400 14px 'Source Sans 3', sans-serif;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The label and the DEMO pill sit on one line. Two provenance columns made this track narrower
+   than it was, and without nowrap a label like 'P-8841' broke across two lines and grew the row.
+   The pill keeps its size; the label truncates first. */
+.studies-cell-patient {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 400 14px 'Source Sans 3', sans-serif;
+  color: var(--body);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.studies-cell-patient > .pill-demo {
+  flex: none;
+}
+
+.studies-cell-view {
+  font: 400 14px 'Source Sans 3', sans-serif;
+  color: var(--body);
+  white-space: nowrap;
+}
+
+.studies-cell-date {
+  font: 400 13.5px 'Source Sans 3', sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.studies-empty {
+  padding: 34px;
+  text-align: center;
+  font: 400 14px 'Source Sans 3', sans-serif;
+  color: var(--muted);
+}
+
+/* Delete (plan 06 Task 7). The action cell is the trailing 44px column; while a row is
+   confirming, the prompt takes the WORKSPACE, FOLDER, DATE and STATUS columns as well -- those
+   four cells are the ones screens/studies.js nulls, and `4 / -1` below is the 4th track, which
+   is where WORKSPACE starts. The two MUST stay in step: grid auto-placement walks items in
+   document order, so a cell left visible before a definite column-start that has already been
+   passed pushes the prompt onto a second implicit row. */
+.studies-cell-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.studies-delete:hover,
+.studies-delete:focus-visible {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.studies-cell-actions-confirming {
+  grid-column: 4 / -1;
+  align-items: center;
+  gap: 8px;
+  cursor: default;
+}
+
+.studies-delete-prompt {
+  font: 400 13.5px 'Source Sans 3', sans-serif;
+  color: var(--body);
+  white-space: nowrap;
+}
+
+.studies-delete-confirm {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.studies-delete-confirm:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* Tab strip: FIND (the list, search and dropzone) and PARAMETERS (the grid). Same shape as the
+   Analysis panel's tab group. The list is for finding a study; the grid is for reading its
+   numbers -- the split that paid for deleting LORDOSIS from the list. */
+.studies-tabs {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 11px;
+  background: var(--well);
+  width: fit-content;
+}
+
+.studies-tab {
+  padding: 6px 18px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font: 650 13px 'Source Sans 3', sans-serif;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+
+.studies-tab.is-active {
+  background: var(--card);
+  color: var(--ink);
+}
+
+.studies-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Both panels stay in the DOM; the tab toggles which one is shown, so the list's delete prompt
+   survives a tab switch and the grid is not rebuilt for it. Scroll position is NOT preserved by
+   this display toggle -- Chromium resets a scroll offset across display: none, and the grid is
+   rebuilt anyway -- so screens/parameters.js restores it across its own rebuilds. */
+.studies-tabpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.studies-tabpanel.is-hidden {
+  display: none;
+}
+
+/* Parameters tab */
+.param-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.param-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.param-count {
+  margin-left: auto;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+
+.param-empty {
+  border-radius: 14px;
+}
+
+.param-table-wrap {
+  border-radius: 14px;
+  overflow-x: auto;
+}
+
+.param-select {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  font: 400 13.5px 'Source Sans 3', sans-serif;
+  cursor: pointer;
+}
+
+.param-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.param-check {
+  align-items: center;
+  font: 400 13.5px 'Source Sans 3', sans-serif;
+  color: var(--body);
+}
+
+.param-check .checkbox-box {
+  width: 16px;
+  height: 16px;
+  margin-top: 0;
+}
+
+.param-check-note {
+  color: var(--muted);
+}
+
+/* The grid is a real table: table semantics for assistive technology (the Find list's
+   single-control row is the thing roadmap item 5 records), a sticky first column, and
+   horizontal scroll inside .param-table-wrap -- the page never scrolls sideways. */
+.param-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 100%;
+}
+
+.param-th {
+  padding: 12px 14px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+  background: var(--well);
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+
+.param-col-num,
+.param-cell-num {
+  text-align: right;
+}
+
+.param-sort {
+  all: unset;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  white-space: nowrap;
+}
+
+.param-sort.is-active {
+  color: var(--ink);
+}
+
+.param-sort:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.param-row td,
+.param-row th {
+  padding: 11px 14px;
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+  font: 400 14px 'Source Sans 3', sans-serif;
+  color: var(--body);
+  text-align: left;
+}
+
+.param-row:hover td,
+.param-row:hover th {
+  background: var(--well);
+}
+
+.param-cell-study,
+.param-th.param-col-study {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--card);
+}
+
+.param-th.param-col-study {
+  background: var(--well);
+  z-index: 2;
+}
+
+.param-row:hover .param-cell-study {
+  background: var(--well);
+}
+
+.param-open {
+  all: unset;
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  font: 600 14px 'Source Sans 3', sans-serif;
+  color: var(--ink);
+}
+
+.param-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.param-cell-study .pill-demo {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.param-cell-num {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.param-cell-num.is-inconsistent {
+  color: var(--accent);
+}
+
+.param-cell-text {
+  color: var(--muted);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.param-export {
+  flex: none;
+}
+
+/* The bare tick box, with no visible label: the row select inside each sticky STUDY cell, and the
+   select-all in the STUDY header before the sort button. Inline-flex, rather than making
+   .param-cell-study itself a flex row: that selector is already defined above and this file is
+   only appended to, so a second rule for it would be a duplicate, and the cell stays a real
+   table cell -- CSS table fixup wraps a <th> whose display is not table-cell in an anonymous
+   cell, and the sticky first column is the cell. (Measured 2026-09-07: Chromium 152 keeps such a
+   cell sticky anyway, so this is robustness, not a bug fix.) Either way the box and the row's
+   name sit on one line, vertically centred, with the same gap. */
+.param-pick {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 10px;
+  flex: none;
+}
+
+/* Select-all with only some of the visible rows ticked. The shared .checkbox-box paints a tick
+   for :checked and nothing otherwise, so without this an indeterminate box is indistinguishable
+   from an empty one and the header reads as "nothing selected" while rows are selected. A dash,
+   the platform convention, on the filled ground the tick uses. */
+.param-pick input[type="checkbox"]:indeterminate ~ .checkbox-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.param-pick input[type="checkbox"]:indeterminate ~ .checkbox-box::after {
+  content: '';
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--on-accent);
+}
+
+/* Chromium shows no tooltip on a disabled control, so the export's reason is visible beside it,
+   and the two wrap as one item so the reason never lands on a line of its own. */
+.param-export-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
+.param-export-note {
+  flex: none;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+
+/* The subject filter box, the paired-only group and the rule between subject blocks (pre-op/post-op
+   spec §10.3). */
+.param-subject {
+  width: 150px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  font: 400 13.5px 'Source Sans 3', sans-serif;
+}
+
+.param-subject::placeholder {
+  color: var(--muted);
+}
+
+.param-subject:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.param-paired {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.param-paired-with {
+  font: 400 13px 'Source Sans 3', sans-serif;
+  color: var(--muted);
+}
+
+.param-select:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.param-cell-date {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+/* Sorting by subject draws a rule above the first row of each subject, so a pair reads as a block. */
+.param-row-break td,
+.param-row-break th {
+  border-top: 2px solid color-mix(in srgb, var(--ink) 30%, var(--border));
+}
+
+/* The Find tab's filter bar (batch spec 7.1): the grid's Workspace and Folder selects over the
+   same shared keys, then the segment button with its note (the grid's export-group and note
+   classes), or -- while a batch runs -- the progress group. Wraps like .param-bar. */
+.studies-filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.studies-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
+/* Indeterminate on purpose: /predict has no progress channel (spec decision 6). The viewer's
+   run-card ring at bar size; @keyframes spin is in styles/base.css. */
+.studies-progress-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin .8s linear infinite;
+}
+
+.studies-progress-text {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+
+.studies-bulk-actions { margin: 12px 0 18px; }
+.studies-bulk-prompt { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--accent); border-radius: 12px; background: var(--card); color: var(--body); font-size: 14px; }
+.studies-bulk-prompt span { flex: 1 1 260px; }

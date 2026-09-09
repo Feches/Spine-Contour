@@ -1,0 +1,17 @@
+/* Calibration uses the redesign tokens in both themes; image overlays remain high contrast. */
+.calibration-page .calibration { margin-top: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 20px; }
+.calibration-page summary { cursor: pointer; font-weight: 650; color: var(--ink); }
+.calibration-page p { margin: 12px 0; font-size: 14px; color: var(--body); line-height: 1.5; }
+.calibration-page .calibration-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin: 14px 0; }
+.calibration-page label { display: grid; gap: 7px; color: var(--body); font-size: 12px; }
+.calibration-page input { width: 125px; }
+.calibration-page select { max-width: 300px; }
+.calibration-page input, .calibration-page select, .calibration-page button { min-height: 38px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--well); color: var(--ink); font: inherit; font-size: 13px; }
+.calibration-page button { cursor: pointer; font-weight: 600; }
+.calibration-page button:disabled { opacity: .45; cursor: not-allowed; }
+.calibration-page button.active, .calibration-page .btn-primary { background: var(--accent); color: var(--on-accent); }
+.calibration-page .calibration-readouts { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 14px; color: var(--body); font-size: 13px; }
+.calibration-page output { color: var(--accent); font-variant-numeric: tabular-nums; }
+.calibration-page #calibration-canvas { display: block; width: auto; max-width: 100%; max-height: 480px; height: auto; margin: auto; background: #000; touch-action: none; cursor: crosshair; }
+.calibration-page [hidden] { display: none !important; }
+.calibration-page #calibration-file-name { color: var(--muted); font-size: 13px; }

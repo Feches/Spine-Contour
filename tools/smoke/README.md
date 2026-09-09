@@ -1,0 +1,321 @@
+# CDP smoke harness
+
+Trusted-input smoke checks driven over Chrome DevTools Protocol against the real,
+running Electron app. The unit suite (`node --test test/*.test.js`) covers pure logic
+only; canvas/pointer behaviour — drags, hover, keyboard nudges, pixel colours — is not
+reachable from it. Every defect found in plans 03–04 of the UI redesign was caught by
+these scripts or by a human, none by the unit suite. This directory is outside both
+electron-builder file allowlists (`package.json` `build.files` and
+`electron-builder.preview.yml` `files`), so nothing here ships.
+
+## Launch and quit
+
+```
+node tools/smoke/launch.mjs            # SPINE_CONTOUR_PYTHON must point at the venv python
+node tools/smoke/cdp.mjs --quit        # clean shutdown through Browser.close
+```
+
+`launch.mjs` starts the app from source, detached, on a scratch `SPINE_CONTOUR_USER_DATA`
+directory (default `<tmp>/spine-contour-smoke`, wiped on each launch unless
+`SMOKE_KEEP_PROFILE=1`) so smoke runs never touch a developer's real `studies.json`.
+**`main.js` only honours `SPINE_CONTOUR_USER_DATA` from Task 5 onward** — until then the
+app writes to its normal user-data directory regardless, which is expected, not a bug in
+this harness.
+
+**A process staying alive is not evidence of a successful launch.** A fatal startup
+error shows a modal dialog and the Electron process keeps running. Always assert against
+the live DOM over CDP (port 9222 by default, `CDP_PORT` to override) rather than trusting
+the exit code or PID.
+
+**And a port being open is not evidence that it is *your* app.** Electron cannot bind a
+`--remote-debugging-port` another process already holds; it starts anyway with no CDP
+endpoint, and the suites then drive the *older* instance still on the port — different
+code, different profile — reporting results that look real. `launch.mjs` therefore probes
+`/json/version` before spawning and refuses (exit 3) if anything answers, telling you to
+run `node tools/smoke/cdp.mjs --quit` first (then kill stray `electron` processes if the
+port stays open). To drive an already-running instance on purpose, set `SMOKE_ATTACH=1`:
+it skips the spawn, touches no profile, and its ready line says `"attached": true`.
+
+## Running the plan-04 suites
+
+In order, against the launched app. Each suite expects a freshly segmented study.
+`smoke-gate1.mjs` and `smoke-gate2.mjs` drag landmarks and re-measure as part of their
+own checks, which is fine for those two, but it leaves the study's geometry different
+from what was predicted — and `smoke-gate3.mjs` resets landmarks back to the *exact*
+prediction recorded in `out/last-run.json`. Running the six suites straight through on
+one study makes `smoke-gate3.mjs` fail (measured 22/23 that way); it needs its own
+fresh `inject-study.js` + `run-and-wait.js` pair run immediately before it, not the one
+from the top of the run, to get 23/23:
+
+```
+node tools/smoke/cdp.mjs --file tools/smoke/inject-study.js
+node tools/smoke/cdp.mjs --file tools/smoke/run-and-wait.js > tools/smoke/out/last-run.json
+node tools/smoke/smoke-parity.mjs
+node tools/smoke/smoke-gate1.mjs
+node tools/smoke/smoke-gate2.mjs
+node tools/smoke/cdp.mjs --file tools/smoke/inject-study.js
+node tools/smoke/cdp.mjs --file tools/smoke/run-and-wait.js > tools/smoke/out/last-run.json
+node tools/smoke/smoke-gate3.mjs
+node tools/smoke/smoke-chip.mjs
+node tools/smoke/cdp.mjs --file tools/smoke/inject-study.js
+node tools/smoke/cdp.mjs --file tools/smoke/run-and-wait.js > tools/smoke/out/last-run.json
+node tools/smoke/smoke-chord.mjs
+```
+
+`inject-study.js` embeds its own tiny 157x280 sample film (the `design_src/13462cd9`
+reference JPG, base64-encoded in the script) and injects it as study `SP-9000`, inserted
+at the front of `state.studies` to match `addStudy`'s front-insertion (screens/studies.js),
+then segmentation completes in roughly 7 seconds. `SP-9000` is a reserved id, not `SP-1000`:
+from Task 6 on, a store saver persists whatever the harness injects, and a film added
+through the app's native file picker on a fresh profile also lands on `SP-1000`. Using a
+different id keeps a smoke run from silently overwriting a real, segmented `SP-1000`
+study with an unsegmented one, and keeps repeated smoke runs from colliding with each
+other in one profile.
+
+`launch.mjs` creates `tools/smoke/out/` and writes the app's console output there as
+`out/app.log`; `smoke-gate2.mjs` and `smoke-gate3.mjs` read it to count `/measure`
+calls. `smoke-gate3.mjs` also reads `out/last-run.json` — the segmentation result it
+resets landmarks back to — which is why every `run-and-wait.js` step above redirects
+its JSON output there, overwriting it with the most recently segmented study. If you
+run a suite without `launch.mjs` first (or after clearing `out/`), create the directory
+yourself first; nothing else in the chain creates it.
+
+Every suite exits non-zero on any failed check and asserts there were no console errors
+during the run; a green process exit is sufficient to trust the result, no need to
+eyeball output.
+
+**Known baseline** (fresh scratch profile, this branch tip): parity 15/15, gate1
+25/25, gate2 32/32, gate3 23/23 (with the fresh precondition above), chip 20/20,
+chord 28/28. Use these to spot a real regression later.
+
+`smoke-chord.mjs` covers the left+right chord pan and the cursor-anchored zoom. Its mouse
+moves MUST carry the held buttons ({ button: 'left', buttons: 3 }): Chromium silently drops
+pointer capture on a mouseMoved with button: 'none', which reads as "capture is lost during a
+chord" and is a false negative. It drives the raw `mouse` primitive throughout, because
+`cdp.click` and `cdp.drag` hardcode a single button.
+
+**`smoke-label.superseded.mjs` is not in the run order and must not be added back.**
+Plan-04 Task 20 built a canvas-drawn label plate; Task 21 replaced it with a DOM chip
+(`.viewer-label`) and added `smoke-chip.mjs`, which is green and covers the shipped
+behaviour. The old suite still tests the drawn plate, so it fails seven of its sixteen
+checks against correct code (9/16, unchanged since plan 04). It is renamed rather than
+deleted because it is the record of that debt — but a permanently red line beside green
+ones is the same class of problem as a false green: it teaches the reader to skim
+failures. Keep it out of the run order and out of any baseline. Do not fix or rewrite
+it here; if the drawn plate is ever revived, that is the plan that owns this file.
+
+## Running the plan-05 suites
+
+**`smoke-studies.mjs` needs a profile that does not already contain `SP-9000`.** Its
+step-5 check asserts the summary grows to `n+1` studies after `inject-study.js` runs,
+but `inject-study.js` de-duplicates by id (it filters `SP-9000` out before prepending
+it), so on a profile where an earlier suite already created that study the count does
+not grow and the check fails — measured `"14 STUDIES · 1 UNSEGMENTED"` that way (the summary
+read IN QUEUE until 2026-09-08). On a fresh profile every one of its checks runs
+unconditionally (103 of them after the batch sections were added on 2026-09-08; 60 before
+them, 28 before Task 9's). Same class of precondition as `smoke-gate3.mjs`'s above.
+
+**`smoke-studies.mjs` segments `SP-9000` twice** (sections 7 and 8, ~9 s each), so it needs
+the Python backend up and takes about 20 s longer than a DOM-only suite. `state.running` is
+the running study's *id*, and the only way to prove the list badges the right study — and
+that a demo study opened mid-run still shows the demo card — is to watch a real run. Two
+consequences:
+
+- **Never run it between `smoke-persist.mjs --phase run` and `--phase restart`.** Section 5
+  re-injects `SP-9000` unsegmented, destroying the corrected geometry `--phase restart`
+  compares against. (Pre-existing, but newly tempting now that the suite drives runs.)
+- **It ends on Studies with `SP-9000` segmented and nothing open on Analysis.** Every suite
+  documented as "assumes a segmented study open on Analysis" needs its own
+  `inject-study.js` + `run-and-wait.js` pair *after* this one, not before it.
+
+**Sections 10–14 (2026-09-08) segment three more injected copies of the sample film** in two
+batches and fail a third on purpose (`SP-9001` has no bytes and no file). They leave
+`SP-9002`, `SP-9003` and `SP-9005` segmented and `SP-9001`, `SP-9004` unsegmented, so the
+summary ends `n+6 STUDIES · 2 UNSEGMENTED`.
+
+**Two of its checks race the backend and can legitimately read 54/56** (found 2026-09-04, on a
+machine warm from repeated runs; four consecutive runs on hand-cleared profiles gave 56, 54, 56,
+54). Section 9 clicks `Re-run segmentation`, waits only for `state.running !== null`, then
+navigates back to Studies and samples the row, expecting the badge to still read `Processing`:
+
+```
+FAIL  a SEGMENTED study reads Processing while it is the running study  -> {"proc":false,"text":"Segmented","queued":0,"procRows":0}
+FAIL  the summary counts the re-running study in the queue              -> {"proc":false,"text":"Segmented","queued":0,"procRows":0}
+```
+
+Both details say the same thing: the run had already finished, so `running` was `null` again and
+the badge correctly read `Segmented`. **That is the product behaving correctly and the suite
+sampling a transient state it does not hold**, so do not "fix" the badge. The suite is what needs
+the fix: sample the badge while the run is provably still in flight (assert before navigating, or
+poll the row under the condition `s.running === RUNNING_ID` and fail only if that condition was
+never observed). Until then, treat 54/56 with exactly these two names as green, and anything else
+as a real regression.
+
+`smoke-persist.mjs` runs in three phases across two real restarts, and phases 2 and 3
+read `out/persist-state.json` written by phase 1:
+
+```
+node tools/smoke/launch.mjs
+node tools/smoke/smoke-persist.mjs --phase run
+node tools/smoke/cdp.mjs --quit
+SMOKE_KEEP_PROFILE=1 node tools/smoke/launch.mjs
+node tools/smoke/smoke-persist.mjs --phase restart
+```
+
+There is a third phase, `--phase measurefail`, but it is **not part of the standard run**
+and there is currently no way to execute it. See below before trying.
+
+`SMOKE_KEEP_PROFILE=1` on the relaunch is what makes it a restart rather than a fresh
+start — without it `launch.mjs` deletes the scratch profile and phase 2 has nothing to
+restore. Phase 2 briefly moves `predictions/SP-9000.json` aside to exercise the
+`FILM UNAVAILABLE` card and restores it in a `finally`; if a phase-2 run is killed
+mid-section, check for a leftover `predictions/SP-9000.json.bak` before re-running.
+
+### `--phase measurefail` is parked — do not try to run it
+
+**There is currently no way to make `/measure` fail without wedging the app, so this phase
+cannot be exercised. Do not kill the backend to try.** An earlier version of this file told
+you to; that recipe leaves Electron alive but completely undriveable, and it was measured,
+not theorised — the suite dies with `TypeError: fetch failed / HeadersTimeoutError` because
+CDP stops answering.
+
+The phase exists because `recordPrediction`'s third argument is observable only when a
+`/measure` **fails** on a corrected, restored study: the argument reaches nothing but the
+measure queue's `measured` map (via `replaceMeasured`), and that map is read in exactly one
+place — `recalculate`'s failure branch. A *successful* `/measure` overwrites the map, and
+the restore only re-seeds it on a fresh mount, so the failing call has to be the first one
+after a restore, in its own app session.
+
+Every lever into that state is blocked:
+
+- **Stub the bridge in-page** — no. `contextBridge.exposeInMainWorld` under
+  `contextIsolation` makes `window.spineContour` non-configurable: property assignment
+  silently no-ops and redefinition throws `Cannot redefine property`. `renderer/api.js`'s
+  module exports are live bindings that cannot be reassigned from outside either, and
+  `createMeasureQueue`'s `measure` is a closure parameter.
+- **Kill the backend after launch** — no, and this is the harmful one. `main.js:253-256`
+  raises `dialog.showErrorBox('Spine-Contour backend stopped', …)` on the backend's `exit`
+  event whenever the window is up and the app is not already quitting. `showErrorBox` is
+  modal and blocking, so it wedges the main process and the CDP endpoint stops responding.
+  The app is alive and undriveable — this README's own "a process staying alive is not
+  evidence of a successful launch" warning, arriving from the other direction.
+- **Launch with a bogus `SPINE_CONTOUR_PYTHON` so the backend never starts** — no.
+  `startBackend()` throws out of `waitForBackend()` (`main.js:224`) *before* `createWindow()`
+  runs, and `app.whenReady()`'s catch shows its own modal at `main.js:272-275` and quits. No
+  page target ever appears, so `launch.mjs` just times out.
+
+**The correction-vs-prediction restore semantics are therefore covered by code review and by
+the manual gate, not by this suite.** The reviewer traced `recordPrediction` →
+`replaceMeasured` → the `measured` map → `recalculate`'s failure branch and confirmed the
+third argument reaches nothing else; the product code is correct.
+
+The phase itself is kept as written and needs no changes the day a lever exists. It
+self-gates: it calls `/measure` straight through the bridge first, and if that call
+*succeeds* the precondition check FAILS and every dependent assertion is reported as `SKIP`,
+never `PASS` — so it can never certify coverage it did not get.
+
+## Running the plan-06 suite
+
+`smoke-workspace.mjs` drives the Workspace screen, the clinical data drawer and the two-step
+delete end to end on a launched app: the folder scan and CSV read through `renderer/api.js`
+(display-ready rejections included), the screen seeded from a fixture, the mapping override,
+`Load workspace` twice, `Import from CSV`, a chip, typing into a cell, collapse/expand, the
+persisted store through the bridge, and deleting a study with its sidecar. It never segments.
+
+```
+node tools/smoke/launch.mjs
+node tools/smoke/smoke-workspace.mjs
+node tools/smoke/cdp.mjs --quit
+```
+
+It writes its own fixture under `tools/smoke/out/workspace-fixture/` (git-ignored) on every
+run — two 1×1 PNGs `a.png` and `b.PNG`, a nested `batch/c.jpg`, a `notes.txt` that is skipped —
+and, beside that folder (not inside it, so the scan skips exactly one file), an Excel-style
+`tools/smoke/out/workspace-fixture.csv` (BOM + CRLF) with two matching rows, one unmatched row
+and one duplicate `study_id`.
+
+Preconditions:
+
+- **A fresh scratch profile.** `state.fields` after the Load is asserted to be exactly the three
+  keys the fixture CSV wrote, and the drawer's count label `3 FIELDS · 1 STUDY`, which holds only
+  while no persisted record carries clinical values at bootstrap. `smoke-studies.mjs`
+  may run before it on the same profile (the plan's order: studies, then workspace) — every
+  count is relative to the starting `n` and the fixture ids come from `nextId` at run time, so
+  `SP-9000` being present is fine.
+- **The backend up**, because `launch.mjs` does not report ready until the window exists, even
+  though this suite runs nothing through it.
+- **Never between `smoke-persist.mjs --phase run` and `--phase restart`.** It writes the store
+  through the saver (three records added, one deleted); `--phase restart` compares against a
+  store it did not expect to change.
+- It ends on Studies with two fixture studies (`a.png`, `batch/c.jpg`) unsegmented and nothing
+  mounted on Analysis.
+
+**What it cannot drive — Gate 2 human steps.** The native folder and CSV pickers
+(`chooseFolder`, `chooseCsv`) are dialogs, the same class as the dropzone click in
+`smoke-studies.mjs`; the suite seeds `wsFolder/wsFiles/wsCsv…` from the fixture through the
+store instead. Two consequences: the pickers themselves (including cancelling one, which must
+change nothing) are human steps, and so is card 01's ` · N skipped (unsupported files, links, or
+folders that could not be read)` clause — `screens/workspace.js` records the skipped count in
+module scope only when its own folder handler ran the scan, so a state-seeded scan renders
+`3 radiographs found` without the clause, and that is what the suite asserts.
+
+**Known baseline** (fresh scratch profile, this branch tip): unit 426/426
+(`node --test test/*.test.js`); `smoke-studies.mjs` 103/103 — its stale diagnosis check was fixed 2026-09-08 (it
+searches "meyerding", a word only SP-0042 carries); sections 10–14 run three real batches (two films, one
+unreadable film, two films with a Stop), about three more real runs, so the suite takes roughly a minute longer;
+it must run on a FRESH launch, never after `smoke-workspace.mjs` on the same instance, whose loaded films are
+still unsegmented (summary reads n+1 studies, 1 unsegmented then reads 3 UNSEGMENTED, 2026-09-08);
+`smoke-workspace.mjs` 100/100;
+`smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36; `smoke-persist.mjs` 36/36 then 44/44 — the same figures as
+`docs/superpowers/HANDOFF.md`'s baseline paragraph. Every check in the suite runs
+unconditionally; there is no skip path.
+
+## Running the Parameters suite
+
+`smoke-parameters.mjs` drives the Studies screen's Parameters tab (pre-op/post-op spec task 1):
+the tab strip, the grid over the demo library, the segmented-only and workspace filters, a
+measurement sort, the export button's disabled state, ticking rows to export a chosen
+subset, the paired export's button states and its file and toast text through the page's own
+`pairStudies` and `toPairedCsv` (2026-09-08; the save dialog is the human's), and the tab and
+sort surviving a trip to Analysis. DOM-only, no segmentation, no backend
+call; a few seconds. It injects `SP-9100` (unsegmented) and `SP-9101`–`SP-9103` (segmented, subjects S001 Pre-op/Post-op and S002 Pre-op, workspace root
+`C:\smoke-fixture\Fusion2025`) into the store and removes all four in `finally`. Run it first on a
+fresh launch, before the suites that add real films (`smoke-studies.mjs`, `smoke-workspace.mjs`,
+`smoke-persist.mjs`): its `Added by hand` check assumes only the demo studies lack a workspace
+root.
+
+```
+node tools/smoke/smoke-parameters.mjs
+```
+
+Every selector is a `data-param-key` or `data-study-id`. Baseline: 58/58 (2026-09-07: the study columns, the timepoint, view, subject and paired-only filters, and the subject sort; 2026-09-08: the paired export).
+
+## Running the seeding suite
+
+`smoke-seeding.mjs` drives task 2 of the pre-op/post-op spec: the Workspace card's folder table over
+a fixture with `pre-op/`, `post-op/` and `flexion/` subfolders and a CSV carrying `subject_id`,
+`timepoint`, `film_date` and `view`; a row changed before Load; Load and its message; the four
+study fields read back from the store and from disk; the Parameters grid under the timepoint,
+paired-only and subject filters; the export's header and first row through the page's own
+`toCsv`; and the drawer's Study group, including a typed timepoint, a date, a cleared view and
+Import from CSV. DOM-only, nothing segments; about ten seconds.
+
+```
+node tools/smoke/launch.mjs
+node tools/smoke/smoke-seeding.mjs
+node tools/smoke/cdp.mjs --quit
+```
+
+It writes its fixture under `tools/smoke/out/seeding-fixture/` (git-ignored) and the CSV beside it
+on every run, adds five records through Load and removes them in `finally`. It may run before or
+after the other suites on one instance, but never between `smoke-persist.mjs --phase run` and
+`--phase restart`. Not driveable: the native pickers, the datalist and date-picker popups, and
+the save dialog. A silent run has thrown — re-run it bare. Baseline: 36/36.
+
+## Library
+
+`cdp-lib.mjs` exports `connect()`, whose returned object provides trusted-input helpers
+(`click`, `drag`, `move`, `wheel`, `key`, `typeText`), state access (`state`, `setState`),
+DOM helpers (`rect`, `toClient`, `evaluate`), and `screenshot(path)`. Suite authors write
+screenshots under `tools/smoke/out/` (git-ignored). `cdp.mjs` is a small CLI wrapper over
+the same library for one-off calls.

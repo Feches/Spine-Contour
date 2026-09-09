@@ -1,20 +1,29 @@
-name: Windows installer
+name: Versioned desktop release
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the versioned release (main only); otherwise build review artifacts
+        type: boolean
+        required: false
+        default: false
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: latest-windows
+  group: release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
+  windows:
     runs-on: windows-latest
+    if: github.repository == 'Feches/Spine-Contour' || github.repository == 'mjayasur/Spine-Contour'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -39,8 +48,39 @@ jobs:
           python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           python -m pip install -r backend/requirements.txt pyinstaller==6.22.2
 
+      - name: Install OCR runtime
+        shell: pwsh
+        run: |
+          choco install tesseract --yes --no-progress
+          $ocr = "C:/Program Files/Tesseract-OCR"
+          if (-not (Test-Path "$ocr/tesseract.exe")) { throw "Tesseract runtime not found." }
+          $ocr | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Test backend
         run: python -m pytest backend/tests -q
+
+      - name: Test renderer
+        # Directory form is broken on Node 24 (treats it as a CJS entry point).
+        # Glob form is the one verified to work. See the architecture contract.
+        # node --test exits 0 and reports "tests 0" if the glob matches no
+        # files, so an exit-code check alone is not enough - parse the pass
+        # count out of the runner's own output and fail loudly if it is zero.
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test test/*.test.js 2>&1 | tee test-output.log
+          test_exit=${PIPESTATUS[0]}
+          pass_count=$(grep -oE 'pass [0-9]+$' test-output.log | tail -1 | grep -oE '[0-9]+$')
+          echo "renderer test pass count: ${pass_count:-<none found>}"
+          if [ "$test_exit" -ne 0 ]; then
+            echo "FAIL: node --test exited non-zero ($test_exit)" >&2
+            exit 1
+          fi
+          if [ -z "$pass_count" ] || [ "$pass_count" -eq 0 ]; then
+            echo "FAIL: 0 renderer tests ran (glob matched nothing, or every test was skipped) - a green gate that ran nothing is worse than no gate" >&2
+            exit 1
+          fi
+          echo "OK: $pass_count renderer test(s) passed"
 
       - name: Bundle backend
         run: >-
@@ -57,6 +97,7 @@ jobs:
           --collect-all torchvision
           --collect-all uvicorn
           --add-data "backend/weights;backend/weights"
+          --add-data "C:/Program Files/Tesseract-OCR;ocr"
           backend/standalone.py
 
       - name: Verify bundled backend
@@ -74,6 +115,8 @@ jobs:
               }
             }
             if (-not $ready) { throw "The bundled backend did not become ready." }
+            python tools/packaging/check_bundled_ocr.py
+            if ($LASTEXITCODE -ne 0) { throw "Bundled OCR verification failed." }
           } finally {
             Stop-Process -Id $backend.Id -Force -ErrorAction SilentlyContinue
           }
@@ -81,10 +124,66 @@ jobs:
       - name: Install desktop dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Reclaim disk before packaging
+        shell: pwsh
+        run: |
+          $before = (Get-PSDrive C).Free / 1GB
+          Write-Host ("free before cleanup: {0:N1} GB" -f $before)
+          # build/pyinstaller is PyInstaller's intermediate work directory. Once
+          # backend-dist exists and has been health-checked, it is dead weight.
+          # Only the subdirectory is removed: electron-builder's default
+          # directories.buildResources is build/, and neither config overrides it.
+          Remove-Item -Recurse -Force build/pyinstaller -ErrorAction SilentlyContinue
+          python -m pip cache purge
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "pip cache purge returned $LASTEXITCODE (ignored)"
+            $global:LASTEXITCODE = 0
+          }
+          $after = (Get-PSDrive C).Free / 1GB
+          Write-Host ("free after cleanup : {0:N1} GB" -f $after)
+          # Fail loudly rather than letting the packaging step exhaust the disk
+          # and kill the runner, which destroys the logs and leaves no diagnosis.
+          if ($after -lt 6) {
+            throw ("Only {0:N1} GB free before packaging. The installer build needs roughly 5 GB of headroom." -f $after)
+          }
+
+      - name: Assert packaging allowlists agree
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const prod = JSON.parse(fs.readFileSync('package.json', 'utf8')).build.files;
+          const yml = fs.readFileSync('electron-builder.preview.yml', 'utf8');
+          // windows-latest checks the repo out with CRLF line endings (no .gitattributes
+          // rule forces LF for .yml), so a bare \n here made this match fail on every run
+          // and it never actually guarded anything.
+          const block = yml.match(/^files:\r?\n((?:[ \t]+- .*\r?\n)+)/m);
+          if (!block) {
+            console.error('FAIL: no files: block found in electron-builder.preview.yml');
+            process.exit(1);
+          }
+          const prev = block[1].trimEnd().split('\n')
+            .map(s => s.replace(/^\s*-\s*/, '').trim().replace(/^['"]|['"]$/g, ''));
+          console.log('package.json build.files       :', JSON.stringify(prod));
+          console.log('electron-builder.preview files :', JSON.stringify(prev));
+          const a = JSON.stringify([...prod].sort());
+          const b = JSON.stringify([...prev].sort());
+          if (a !== b) {
+            console.error('FAIL: the two packaging allowlists have diverged.');
+            console.error('A missing entry does not fail the build - it ships an installer that opens a blank window.');
+            console.error('Add the entry to BOTH package.json build.files and electron-builder.preview.yml files:.');
+            process.exit(1);
+          }
+          console.log('OK: allowlists match');
+          NODE
+
       - name: Build Windows installer
         run: npm run package:windows
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Verify packaged desktop source and version
+        run: node tools/packaging/check_desktop_bundle.cjs dist release
 
       - uses: actions/upload-artifact@v7
         with:
@@ -92,16 +191,168 @@ jobs:
           path: dist/Spine-Contour-Windows.exe
           compression-level: 0
 
-      - name: Publish current Windows installer
-        shell: pwsh
+  macos:
+    runs-on: macos-14
+    if: github.repository == 'Feches/Spine-Contour' || github.repository == 'mjayasur/Spine-Contour'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Download model weights
+        run: git lfs pull
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Install backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt pyinstaller==6.22.2
+
+      - name: Bundle OCR runtime
+        run: |
+          brew install tesseract
+          python tools/packaging/bundle_ocr_macos.py build/ocr
+
+      - name: Test backend
+        run: python -m pytest backend/tests -q
+
+      - name: Test renderer
+        # Directory form is broken on Node 24 (treats it as a CJS entry point).
+        # Glob form is the one verified to work. See the architecture contract.
+        # node --test exits 0 and reports "tests 0" if the glob matches no
+        # files, so an exit-code check alone is not enough - parse the pass
+        # count out of the runner's own output and fail loudly if it is zero.
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test test/*.test.js 2>&1 | tee test-output.log
+          test_exit=${PIPESTATUS[0]}
+          pass_count=$(grep -oE 'pass [0-9]+$' test-output.log | tail -1 | grep -oE '[0-9]+$')
+          echo "renderer test pass count: ${pass_count:-<none found>}"
+          if [ "$test_exit" -ne 0 ]; then
+            echo "FAIL: node --test exited non-zero ($test_exit)" >&2
+            exit 1
+          fi
+          if [ -z "$pass_count" ] || [ "$pass_count" -eq 0 ]; then
+            echo "FAIL: 0 renderer tests ran (glob matched nothing, or every test was skipped) - a green gate that ran nothing is worse than no gate" >&2
+            exit 1
+          fi
+          echo "OK: $pass_count renderer test(s) passed"
+
+      - name: Bundle backend
+        run: >-
+          python -m PyInstaller
+          --noconfirm
+          --clean
+          --onedir
+          --name spine-contour-backend
+          --distpath backend-dist
+          --workpath build/pyinstaller
+          --paths .
+          --collect-all segmentation_models_pytorch
+          --collect-all timm
+          --collect-all torchvision
+          --collect-all uvicorn
+          --add-data "backend/weights:backend/weights"
+          --add-data "build/ocr:ocr"
+          backend/standalone.py
+
+      - name: Verify bundled backend
+        shell: bash
+        run: |
+          ./backend-dist/spine-contour-backend/spine-contour-backend --host 127.0.0.1 --port 8765 &
+          backend=$!
+          ready=0
+          for attempt in $(seq 1 120); do
+            if curl -sf http://127.0.0.1:8765/health | grep -q '"ok"'; then ready=1; break; fi
+            sleep 1
+          done
+          if [ "$ready" -eq 1 ]; then
+            python tools/packaging/check_bundled_ocr.py || { kill "$backend"; exit 1; }
+          fi
+          kill "$backend" 2>/dev/null || true
+          if [ "$ready" -ne 1 ]; then echo "The bundled backend did not become ready." >&2; exit 1; fi
+          echo "OK: bundled backend answered /health"
+
+      - name: Install desktop dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Reclaim disk before packaging
+        run: rm -rf build/pyinstaller && python -m pip cache purge || true
+
+      - name: Assert packaging allowlists agree
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const prod = JSON.parse(fs.readFileSync('package.json', 'utf8')).build.files;
+          const yml = fs.readFileSync('electron-builder.preview.yml', 'utf8');
+          // windows-latest checks the repo out with CRLF line endings (no .gitattributes
+          // rule forces LF for .yml), so a bare \n here made this match fail on every run
+          // and it never actually guarded anything.
+          const block = yml.match(/^files:\r?\n((?:[ \t]+- .*\r?\n)+)/m);
+          if (!block) {
+            console.error('FAIL: no files: block found in electron-builder.preview.yml');
+            process.exit(1);
+          }
+          const prev = block[1].trimEnd().split('\n')
+            .map(s => s.replace(/^\s*-\s*/, '').trim().replace(/^['"]|['"]$/g, ''));
+          console.log('package.json build.files       :', JSON.stringify(prod));
+          console.log('electron-builder.preview files :', JSON.stringify(prev));
+          const a = JSON.stringify([...prod].sort());
+          const b = JSON.stringify([...prev].sort());
+          if (a !== b) {
+            console.error('FAIL: the two packaging allowlists have diverged.');
+            console.error('A missing entry does not fail the build - it ships an installer that opens a blank window.');
+            console.error('Add the entry to BOTH package.json build.files and electron-builder.preview.yml files:.');
+            process.exit(1);
+          }
+          console.log('OK: allowlists match');
+          NODE
+
+      - name: Build macOS disk image
+        run: npm run package:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Verify packaged desktop source and version
+        run: node tools/packaging/check_desktop_bundle.cjs dist release
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Spine-Contour-macOS
+          path: dist/Spine-Contour-macOS-*.dmg
+          compression-level: 0
+
+  publish:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v8
+        with:
+          name: Spine-Contour-Windows
+          path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          name: Spine-Contour-macOS
+          path: dist
+      - name: Publish the versioned release and update the Windows download alias
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          $asset = "dist/Spine-Contour-Windows.exe"
-          $notes = "Current Windows build from commit $env:GITHUB_SHA."
-          if (gh release view latest-windows 2>$null) {
-            gh release upload latest-windows $asset --clobber
-            gh release edit latest-windows --title "Current Windows build" --notes $notes --latest
-          } else {
-            gh release create latest-windows $asset --target $env:GITHUB_SHA --title "Current Windows build" --notes $notes --latest
-          }
+        run: python tools/packaging/publish_release.py

@@ -1,0 +1,85 @@
+import { getState, setState, subscribe } from './store.js';
+import { renderRoute } from './router.js';
+import {
+  loadStudies, saveStudies, disablePersistence, storeLoadNotice, persistenceDisabledReason,
+  demoStudiesAllowed, demoStudiesHidden,
+} from './api.js';
+import { merge, createStudySaver } from './data/persistence.js';
+import { clinicalFieldNames } from './data/csv.js';
+import { showToast } from './components/toast.js';
+
+const root = document.querySelector('#app');
+
+function applyTheme(state) {
+  document.body.toggleAttribute('data-dark', state.theme === 'dark');
+}
+
+function render(state) {
+  applyTheme(state);
+  renderRoute(root, state);
+}
+
+// Load before the first paint. A store that cannot be read (a newer version, a record with a
+// broken identity) is left exactly as it is on disk: the app runs on whatever the library would
+// otherwise be -- the demo studies in development, nothing at all in a packaged build -- and
+// persistence is disabled for the session -- the saver reports once, and every later
+// saveStudies/savePrediction rejects -- so nothing on disk is overwritten with less than it held.
+let loadError = null;
+let real = [];
+try {
+  real = await loadStudies();
+} catch (error) {
+  loadError = error;
+  disablePersistence(error.message);
+}
+// Two independent gates, and the demos appear only if BOTH allow them. main.js decides the
+// first: the demos are a development fixture, so an installed app opens empty and every study
+// in it is one the user put there. demoStudiesAllowed() is false until a load actually returned
+// the flag, so the catch above falls through to the real (empty) library. The second is the
+// user's own: "Delete all studies" records the choice in userData, and a development build that
+// read that preference keeps the library empty across restarts. A failed read is not a choice,
+// so it leaves the demos to the first gate.
+let hideDemos = false;
+try { hideDemos = await demoStudiesHidden(); }
+catch (error) { console.warn('Could not read demo visibility:', error.message); }
+const studies = demoStudiesAllowed() && !hideDemos ? merge(real) : real;
+// `fields` (which clinical columns the drawer shows) is session state and is never written to
+// disk -- the version-1 store holds Study records only. The VALUES are on each record's
+// `clinical`, so seed the columns once from every name that has a stored value: after a
+// restart the drawer opens showing what was typed, without a click. Removing a field later in
+// the session stays session-only; the next launch seeds it again if a value is still stored.
+// Demo records carry clinical: {} and add nothing. Only the module-scope subscribers of
+// screens/analysis.js and screens/studies.js are live at this point (router.js imports both);
+// each returns immediately because screen is still 'landing'. The saver and the renderer
+// subscribe below.
+setState({ studies, fields: clinicalFieldNames(studies) });
+
+// A quarantine is not a load error: loadStudies() resolved, with a genuinely fresh library. But
+// the user's real library is now sitting on disk under two .corrupt-<ts> names and they will not
+// find it without being told, so the notice is toasted below like any other outcome.
+const notice = storeLoadNotice();
+
+// In the one case where the main process could not move the quarantined sidecars aside,
+// loadStudies() has already disabled persistence itself. Tell the saver, so it reports once on
+// the first change instead of letting every write reject and toast a doubly-wrapped message; the
+// full explanation is in `notice`, which goes out below.
+const persistenceOff = persistenceDisabledReason() ? 'the saved studies could not be read' : null;
+
+const saver = createStudySaver({
+  save: saveStudies,
+  initial: studies,
+  disabledReason: loadError ? loadError.message : persistenceOff,
+  // notify() runs inside a store notification, where setState is forbidden; the toast is
+  // deferred one microtask so it never re-enters the store.
+  onError: (error) => queueMicrotask(() => showToast(error.message)),
+});
+subscribe(saver.notify);
+subscribe(render);
+render(getState());
+if (loadError) showToast(`Saved studies could not be loaded: ${loadError.message}`);
+else if (notice) showToast(notice);
+
+// A film dropped anywhere but the Studies dropzone would navigate the window to that file.
+// The dropzone handles its own drop first (target phase); these catch everything else.
+document.addEventListener('dragover', (event) => event.preventDefault());
+document.addEventListener('drop', (event) => event.preventDefault());

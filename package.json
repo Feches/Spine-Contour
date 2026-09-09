@@ -1,6 +1,6 @@
 {
   "name": "spine-contour",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Automated measurements from radiographs.",
   "author": "Michael Jayasuriya",
@@ -8,7 +8,11 @@
   "scripts": {
     "dev": "electron .",
     "start": "npm run dev",
-    "package:windows": "electron-builder --win nsis --x64 --publish never"
+    "test": "node --test test/*.test.js",
+    "package:windows": "electron-builder --win nsis --x64 --publish never",
+    "package:windows:preview": "electron-builder --config electron-builder.preview.yml --win nsis --x64 --publish never",
+    "package:mac": "electron-builder --mac dmg --arm64 --publish never",
+    "package:mac:preview": "electron-builder --config electron-builder.preview.yml --mac dmg --arm64 --publish never"
   },
   "devDependencies": {
     "electron": "44.0.0",
@@ -22,14 +26,19 @@
       "index.html",
       "main.js",
       "preload.js",
-      "renderer.js",
+      "store-io.js",
+      "scan-folder.js",
+      "renderer/**/*",
+      "styles/**/*",
       "package.json"
     ],
     "extraResources": [
       {
         "from": "backend-dist/spine-contour-backend",
         "to": "backend-runtime",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
@@ -42,6 +51,26 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/branding/spinecontour-mark-dark.png",
+      "category": "public.app-category.medical",
+      "artifactName": "Spine-Contour-macOS-${arch}.${ext}",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "artifactName": "Spine-Contour-macOS-${arch}.${ext}",
+      "sign": false
     }
   }
 }

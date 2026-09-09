@@ -1,0 +1,217 @@
+import { landmarkReviewReasons } from '../data/status.js';
+import { el, clear } from '../dom.js';
+import { getState, setState } from '../store.js';
+import { calibrationSummary } from '../data/calibration.js';
+import { DISC_POSITIONS } from '../data/disc-heights.js';
+import { sagittalRows, lordosisRows, discRows, alignmentRows, isConsistent } from '../data/measurements.js';
+
+const INCONSISTENCY_WARNING = 'Parameters inconsistent \u2014 check S1 and femoral landmarks.';
+const NOT_COMPUTED_NOTE = 'Not computed in this build.';
+
+function formatRowValue(row) {
+  return row.absent ? '\u2014' : `${row.value.toFixed(1)}${row.unit}`;
+}
+
+function section(title, ...children) {
+  return el('div', { class: 'meas-section' },
+    el('div', { class: 'meas-section-head' },
+      el('div', { class: 'meas-section-title' }, title),
+      el('div', { class: 'meas-rule' })),
+    ...children);
+}
+
+// A row that selects a vertebra. A real <button> so it is keyboard-reachable: these are
+// the only way to drive the viewer's construction lines without a mouse until plan 04.
+function rowButton(row, onClick) {
+  return el('button', {
+    type: 'button',
+    class: `meas-row${row.highlight ? ' is-selected' : ''}`,
+    'aria-pressed': row.highlight ? 'true' : 'false',
+    'data-row-key': row.key,
+    onClick,
+  },
+    el('div', { class: 'meas-label' }, row.label),
+    el('div', { class: 'meas-spacer' }),
+    el('div', { class: 'meas-value' }, formatRowValue(row)));
+}
+
+// A row with no selectable construction.
+function rowStatic(row) {
+  return el('div', { class: 'meas-row-static' },
+    el('div', { class: 'meas-label' }, row.label),
+    el('div', { class: 'meas-spacer' }),
+    el('div', { class: 'meas-value' }, formatRowValue(row)));
+}
+
+function discTable(study) {
+  return el('table', { class: 'meas-disc-table', 'aria-label': 'Disc heights in millimetres' },
+    el('thead', {}, el('tr', {},
+      ...['Level', 'Anterior', 'Middle', 'Posterior'].map(label => el('th', { scope: 'col' }, label)))),
+    el('tbody', {}, ...discRows(study).map(row => el('tr', { 'data-disc-level': row.key },
+      el('th', { scope: 'row' }, row.label),
+      ...DISC_POSITIONS.map(position => el('td', { class: 'meas-value', 'data-disc-position': position },
+        row[position] === null ? '\u2014' : row[position].toFixed(1)))))));
+}
+
+// Which vertebra a row's click selects.
+//
+// This is the WRITE half of the row/level mapping; data/measurements.js's SAGITTAL_DEFS
+// is the READ half, and the two are deliberately asymmetric for exactly one row. PILL
+// highlights when EITHER L1 or S1 is selected (`levels: ['L1','S1']`, because the PI-LL
+// mismatch is a relationship between them), but a click has to choose one, and S1 is the
+// one that draws a construction the user can see: the S1-midpoint-to-hip line shared by
+// PI, PT and SS. Do not "reconcile" these into one table -- they answer different
+// questions.
+//
+// L1PA is the opposite case: READ and WRITE agree exactly, both 'L1PA', and that
+// agreement is itself the fix for a real bug. L1PA used to map here to 'L1', which
+// selected the same construction a click on the LL row selects -- lumbar lordosis --
+// so the row labelled L1 PELVIC ANGLE drew and labelled the lordosis line instead of
+// its own construction. L1PA now names a construction target of its own (see the
+// architecture contract's selectedLevel section); this map just has to point at it.
+//
+// PI, PT and SS are a third case, and read the same way as L1PA: each now maps to
+// itself rather than to the shared 'S1' overview, because each is a different angle
+// against a different reference axis. Before this fix all three mapped here to 'S1',
+// which is exactly what drew one shared line and one combined, edge-clipped label for
+// three distinct measurements. Their SAGITTAL_DEFS `levels` still include 'S1' (so
+// clicking the sacrum's S1 row, or the sacrum on the image itself, highlights all
+// three as the overview), but a click on the PI/PT/SS row itself now selects its own
+// precise single-parameter construction.
+const ROW_LEVELS = { LL: 'L1', PI: 'PI', PT: 'PT', SS: 'SS', PILL: 'S1', L1PA: 'L1PA' };
+
+// Clicking the row that already owns the selection clears it. Without this a construction's
+// label plate has no way off the stage, and in edit mode it sits on the handles.
+function toggleLevel(target) {
+  setState((s) => ({ selectedLevel: s.selectedLevel === target ? null : target }));
+}
+
+function sameKey(a, b) {
+  return a !== null && b !== null && a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+export function mountMeasurements(container) {
+  clear(container);
+  const root = el('div', { class: 'meas-panel' });
+  container.append(root);
+
+  let lastKey = null;
+  let lastReviewKey = null;
+
+  function updateMeasurements(study) {
+    const state = getState();
+    // Quality metadata and a pending correction can change without new numbers.
+    const reviewKey = [study.qc, Boolean(state.measurementDrafts?.[study.id])];
+    if (!sameKey(reviewKey, lastReviewKey)) lastKey = null;
+    lastReviewKey = reviewKey;
+
+    // Rebuild gate. screens/analysis.js calls this on every store notification, which
+    // includes every pointermove pan frame; without the gate, a pan tears down and
+    // rebuilds every row per frame, resetting scroll position and dropping focus.
+    // Compared by reference: `measurements` is replaced wholesale by /predict, never
+    // mutated. Same caveat as components/viewer.js -- plan 04 must replace, not mutate.
+    const discPending = Boolean(state.measurementDrafts?.[study.id]);
+    const key = [study.id, study.measurements, study.geometry, study.calibration, discPending, state.selectedLevel, state.showAllLordosis];
+    if (sameKey(key, lastKey)) return;
+    lastKey = key;
+
+    // Focus snapshot. clear(root) below destroys every row node, including
+    // whichever one currently holds focus -- and per the HTML focus spec, removing
+    // the focused element synchronously reverts document.activeElement to <body>
+    // with nothing to undo it. That is the exact failure mode router.js's swap()
+    // exists to prevent for screen/sidebar remounts (see router.js:102-131), so we
+    // apply the same fix here: snapshot before the rebuild, restore after.
+    // router.js matches by tag name + ordinal position, and its own comment admits
+    // that heuristic breaks when a conditional sibling shifts the ordinal -- which
+    // is exactly what happens here when the lordosis disclosure inserts or removes
+    // four rows above a focused one. Matching on each button's stable
+    // `data-row-key` attribute instead is an exact identity match and has no such
+    // blind spot. Only capture a key when focus is actually inside `root`: a
+    // rebuild must never steal focus from somewhere else on the page.
+    const activeElement = document.activeElement;
+    const focusKey = root.contains(activeElement) ? activeElement.getAttribute('data-row-key') : null;
+
+    clear(root);
+    const pending = Boolean(state.measurementDrafts?.[study.id]);
+    const measurements = pending ? null : study.measurements;
+    const rows = sagittalRows(measurements, { selectedLevel: state.selectedLevel });
+
+    const section1 = section('01 \u2014 SAGITTAL PARAMETERS',
+      el('div', { class: 'meas-rows' },
+        ...rows.map((row) => rowButton(row, () => toggleLevel(ROW_LEVELS[row.key])))));
+
+    section1.append(el('button', {
+      type: 'button',
+      class: 'meas-disclosure',
+      'aria-expanded': state.showAllLordosis ? 'true' : 'false',
+      'data-row-key': '__disclosure',
+      onClick: () => setState((s) => ({ showAllLordosis: !s.showAllLordosis })),
+    }, state.showAllLordosis ? 'HIDE LORDOSIS LEVELS' : 'SHOW ALL LORDOSIS LEVELS'));
+
+    if (state.showAllLordosis) {
+      section1.append(el('div', { class: 'meas-rows' },
+        // lordosisRows always returns highlight: false -- the component, not the data
+        // layer, owns highlighting here, because state.selectedLevel lives on the store
+        // and lordosisRows' signature is fixed by the architecture contract. Map it in
+        // before rendering rather than reaching into the data layer for it.
+        ...lordosisRows(measurements)
+          .map((row) => ({ ...row, highlight: state.selectedLevel === row.key.split('-')[0] }))
+          .map((row) => rowButton(
+            row,
+            // Row key 'L2-S1' uses an ASCII hyphen; the label uses an en dash. The split
+            // below relies on the key form, so do not unify them.
+            () => toggleLevel(row.key.split('-')[0]),
+          ))));
+    }
+
+    if (!isConsistent(measurements)) {
+      section1.append(el('div', { class: 'meas-warning' }, INCONSISTENCY_WARNING));
+    }
+
+    if (pending) section1.append(el('div', { class: 'meas-note', role: 'status' }, 'Updating measurements…'));
+    else for (const reason of study.measurements ? landmarkReviewReasons(study.qc) : []) {
+      section1.append(el('div', { class: 'meas-warning' }, reason));
+    }
+
+    const section2 = section('02 \u2014 DISC HEIGHTS \u00B7 MM',
+      discTable(discPending ? null : study),
+      el('div', { class: 'meas-note' }, discPending ? 'Updating disc heights…'
+        : 'Facing endplates: anterior to anterior, midpoint to midpoint, posterior to posterior. Requires image scale and both endplates.'));
+
+    const section3 = section('03 \u2014 ALIGNMENT',
+      el('div', { class: 'meas-rows' }, ...alignmentRows(study).map(rowStatic)),
+      el('div', { class: 'meas-note' }, NOT_COMPUTED_NOTE));
+
+    const calibrationSection = section('04 — IMAGE SCALE',
+      el('div', { class: 'meas-note', 'data-calibration-status': study.calibration?.status || 'unchecked' },
+        calibrationSummary(study.calibration)));
+    if (study.source === 'real' && study.filePath) {
+      calibrationSection.append(el('button', { type: 'button', class: 'meas-disclosure',
+        'data-row-key': '__calibration',
+        onClick: () => setState({ screen: 'calibration', calibrationRequest: { studyId: study.id, filePath: study.filePath } }),
+      }, 'REVIEW IMAGE SCALE'));
+    }
+    root.append(section1, section2, section3, calibrationSection);
+
+    // Focus restore. Find the rebuilt node carrying the same data-row-key and
+    // refocus it, so there is no rendered frame in which focus visibly rests on
+    // <body>. If the previously-focused row itself disappeared -- collapsing the
+    // lordosis disclosure removes a focused lordosis row -- fall back to the
+    // disclosure button, which always exists, rather than leaving focus on <body>.
+    if (focusKey !== null) {
+      let restoreTarget = null;
+      for (const candidate of root.querySelectorAll('[data-row-key]')) {
+        if (candidate.getAttribute('data-row-key') === focusKey) {
+          restoreTarget = candidate;
+          break;
+        }
+      }
+      if (!restoreTarget) {
+        restoreTarget = root.querySelector('[data-row-key="__disclosure"]');
+      }
+      if (restoreTarget && typeof restoreTarget.focus === 'function') restoreTarget.focus();
+    }
+  }
+
+  return { updateMeasurements };
+}

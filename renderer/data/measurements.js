@@ -1,0 +1,101 @@
+// The one residual threshold. data/status.js re-exports it, so deriveStatus() and
+// isConsistent() can never disagree about the same study.
+export const RESIDUAL_LIMIT = 1.0;
+
+const SAGITTAL_DEFS = [
+  { key: 'LL', label: 'LUMBAR LORDOSIS · L1–S1', levels: ['L1'] },
+  // PI, PT and SS are three different angles against three different reference axes, so
+  // each selects itself rather than the shared 'S1' overview. Mapping all three to 'S1'
+  // drew one line for all of them and ran their combined label off the edge of the stage.
+  { key: 'PI', label: 'PELVIC INCIDENCE', levels: ['PI', 'S1'] },
+  { key: 'PT', label: 'PELVIC TILT', levels: ['PT', 'S1'] },
+  { key: 'SS', label: 'SACRAL SLOPE', levels: ['SS', 'S1'] },
+  { key: 'PILL', label: 'PI–LL MISMATCH', levels: ['L1', 'S1'] },
+  // L1PA's levels is ['L1PA'], not ['L1']. L1 pelvic angle has a construction of its
+  // own -- the angle at the hip between the L1 centroid and the S1 midpoint -- which is
+  // geometrically unrelated to lumbar lordosis. Mapping it to 'L1' made clicking a row
+  // labelled L1 PELVIC ANGLE draw the lordosis line and label it `LL L1-S1`. See the
+  // architecture contract's selectedLevel section.
+  { key: 'L1PA', label: 'L1 PELVIC ANGLE', levels: ['L1PA'] },
+];
+
+// A row is absent when its value is missing or not a finite number. This is what lets a
+// record without a key (a demo study has no L1PA and no L2-S1..L5-S1) render "—" instead
+// of throwing undefined.toFixed inside the panel. Never turns an absent value into 0.
+function present(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function sagittalValue(key, measurements) {
+  if (key === 'LL') return measurements.LL?.['L1-S1'];
+  if (key === 'PILL') return measurements.PI - measurements.LL?.['L1-S1'];
+  return measurements[key];
+}
+
+export function sagittalRows(measurements, opts = {}) {
+  const selectedLevel = opts.selectedLevel ?? null;
+  const absentAll = measurements == null;
+  return SAGITTAL_DEFS.map((def) => {
+    const value = absentAll ? null : sagittalValue(def.key, measurements);
+    return {
+      key: def.key,
+      label: def.label,
+      value: present(value) ? value : null,
+      unit: '°',
+      absent: !present(value),
+      highlight: selectedLevel != null && def.levels.includes(selectedLevel),
+    };
+  });
+}
+
+const LORDOSIS_LEVELS = ['L2', 'L3', 'L4', 'L5'];
+
+export function lordosisRows(measurements) {
+  const absentAll = measurements == null;
+  return LORDOSIS_LEVELS.map((level) => {
+    const key = `${level}-S1`;
+    const value = absentAll ? null : measurements.LL?.[key];
+    return {
+      key,
+      label: `LUMBAR LORDOSIS · ${level}–S1`,
+      value: present(value) ? value : null,
+      unit: '°',
+      absent: !present(value),
+      highlight: false,
+    };
+  });
+}
+
+export { discRows } from './disc-heights.js';
+
+export function alignmentRows(study) {
+  void study; // reserved: a future per-study calibration input, unused while slip is unimplemented (spec §10.3)
+  return [{
+    key: 'SPONDY_L4_L5',
+    label: 'SPONDY · L4–L5 · MM',
+    value: null,
+    unit: 'mm',
+    absent: true,
+    highlight: false,
+  }];
+}
+
+export function piResidual(measurements) {
+  if (measurements == null) return null;
+  return Math.abs(measurements.PI - (measurements.PT + measurements.SS));
+}
+
+export function isConsistent(measurements) {
+  const residual = piResidual(measurements);
+  if (residual == null) return true;
+  return residual <= RESIDUAL_LIMIT;
+}
+
+export function deltaRow(row, otherRow, threshold) {
+  if (!row || !otherRow || row.absent || otherRow.absent || row.value == null || otherRow.value == null) {
+    return { text: '—', overThreshold: false };
+  }
+  const delta = otherRow.value - row.value;
+  const sign = delta >= 0 ? '+' : '−';
+  return { text: `${sign}${Math.abs(delta).toFixed(1)}`, overThreshold: Math.abs(delta) >= threshold };
+}

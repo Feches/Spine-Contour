@@ -1,0 +1,184 @@
+/* height, not min-height, with the right column scrolling inside itself: the panel grew past a
+   900px window when the open-source paragraph and the authors' affiliations landed, and a document
+   that scrolls takes .landing-version (absolutely positioned at the bottom of the LEFT column) off
+   screen with it and pushes Enter below the fold. */
+.landing {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--card);
+  color: var(--body);
+}
+
+.landing-left {
+  width: 40%;
+  max-width: 520px;
+  flex-shrink: 0;
+  background: var(--card);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 40px;
+  position: relative;
+}
+
+.landing-hero {
+  animation: riseIn .6s ease both;
+}
+
+.landing-wordmark {
+  margin-top: 34px;
+  font: 700 30px 'Source Sans 3', sans-serif;
+  color: var(--ink);
+  letter-spacing: -0.015em;
+}
+
+.landing-tagline {
+  margin-top: 10px;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+  text-align: center;
+}
+
+.landing-version {
+  position: absolute;
+  bottom: 26px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.landing-right {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 48px;
+}
+
+.landing-panel {
+  width: 100%;
+  max-width: 540px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.landing-panel .pill {
+  align-self: flex-start;
+}
+
+.landing-heading {
+  font: 650 34px/1.15 'Source Sans 3', sans-serif;
+  color: var(--ink);
+  letter-spacing: -0.018em;
+}
+
+.landing-body {
+  margin-top: 12px;
+  font: 400 16px/1.6 'Source Sans 3', sans-serif;
+  color: var(--body);
+}
+
+.citation-card {
+  padding: 18px 20px;
+}
+
+.citation-eyebrow {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+
+.citation-names {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.citation-author-name {
+  font: 600 15.5px 'Source Sans 3', sans-serif;
+  color: var(--ink);
+}
+.citation-author-affil {
+  margin-top: 2px;
+  font: 400 13px/1.45 'Source Sans 3', sans-serif;
+  color: var(--muted);
+}
+
+.citation-note {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font: 400 13.5px/1.55 'Source Sans 3', sans-serif;
+  color: var(--muted);
+}
+
+/* The address is the one actionable thing in a muted paragraph, so it takes the ink colour and a
+   heavier weight. It is a <button> reset to sit inline in the sentence: clicking it opens the
+   user’s mail client through main.js, and it is still selectable so the address can be copied. */
+.citation-contact {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--ink) 30%, transparent);
+  text-underline-offset: 2px;
+  user-select: text;
+}
+.citation-contact:hover {
+  color: var(--accent);
+  text-decoration-color: var(--accent);
+}
+.citation-contact:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.landing-ack-text {
+  font: 400 14.5px/1.5 'Source Sans 3', sans-serif;
+  color: var(--body);
+}
+
+.landing-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+@media (max-width: 860px) {
+  .landing {
+    flex-direction: column;
+  }
+  .landing-left {
+    width: 100%;
+    max-width: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 36px 24px;
+  }
+  .landing-right {
+    padding: 36px 24px;
+  }
+}

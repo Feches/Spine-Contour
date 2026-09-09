@@ -1,0 +1,278 @@
+/* Workspace screen (spec 9.3). Tokens only -- every colour is a var() or a color-mix of one. */
+
+.workspace-page {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.workspace-page-inner {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 34px 36px 60px;
+}
+
+.workspace-heading {
+  font: 650 26px/1.2 'Source Sans 3', sans-serif;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.workspace-copy {
+  margin-top: 5px;
+  font: 400 15px/1.55 'Source Sans 3', sans-serif;
+  color: var(--body);
+  max-width: 600px;
+}
+
+.workspace-cards {
+  margin-top: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Cards 01 and 02: icon well, text block, button in one row. */
+.workspace-card {
+  padding: 20px 22px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+/* Card 03 stacks its eyebrow, chip row and note. */
+.workspace-card-stack {
+  display: block;
+}
+
+.workspace-card-set {
+  border-color: color-mix(in srgb, var(--sage) 45%, var(--border));
+}
+
+.workspace-card-icon {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 13px;
+  background: var(--well);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.workspace-card-set .workspace-card-icon {
+  color: var(--sage);
+}
+
+.workspace-card-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.workspace-card-value {
+  margin-top: 6px;
+  font: 600 15.5px 'Source Sans 3', sans-serif;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspace-card-set .workspace-card-value {
+  color: var(--ink);
+}
+
+.workspace-card-meta {
+  margin-top: 3px;
+  font: 400 13px 'Source Sans 3', sans-serif;
+  color: var(--muted);
+}
+
+/* Column-mapping chips */
+.workspace-chip-row {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.workspace-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  font: 600 12.5px 'Source Sans 3', sans-serif;
+  color: var(--ink);
+}
+
+.workspace-chip-mapped {
+  border-color: color-mix(in srgb, var(--sage) 40%, var(--border));
+  background: color-mix(in srgb, var(--sage) 8%, transparent);
+}
+
+.workspace-chip-unmapped {
+  color: var(--muted);
+}
+
+.workspace-chip-src {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.workspace-chip-arrow {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* The select inherits the chip's font and colour, so an unmapped chip's select reads muted. */
+.workspace-chip-select {
+  font: inherit;
+  color: inherit;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.workspace-chip-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.workspace-card-note {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font: 400 13px/1.5 'Source Sans 3', sans-serif;
+  color: var(--muted);
+}
+
+.workspace-card-code {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+
+/* Load row */
+.workspace-load-row {
+  margin-top: 22px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.workspace-load-hint {
+  font: 400 13.5px 'Source Sans 3', sans-serif;
+  color: var(--muted);
+}
+
+/* Card 01 grows a folder table below its row (pre-op/post-op spec §8.5): what Load will assign
+   to the films directly in each folder, editable before Load. */
+.workspace-card-folder {
+  display: block;
+}
+
+.workspace-card-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.workspace-folders-wrap {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* Past roughly ten folders the rows scroll inside the card; the card never outgrows the window. */
+.workspace-folders-scroll {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.workspace-folders {
+  width: 100%;
+  border-collapse: collapse;
+  font: 400 13px 'Source Sans 3', sans-serif;
+  color: var(--ink);
+}
+
+.workspace-folders th {
+  text-align: left;
+  padding: 2px 12px 8px 0;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.workspace-folders td {
+  padding: 5px 12px 5px 0;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.workspace-folders-name {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+}
+
+.workspace-folders-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.workspace-folder-select {
+  font: 400 13px 'Source Sans 3', sans-serif;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.workspace-folder-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.workspace-folder-all {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.workspace-folders-note {
+  margin-top: 12px;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* A chip the load consumes itself: the join key and the structural columns. */
+.workspace-chip-fixed {
+  border-color: color-mix(in srgb, var(--sage) 40%, var(--border));
+  background: color-mix(in srgb, var(--sage) 8%, transparent);
+}
+
+.workspace-chip-dest {
+  font-weight: 600;
+}
