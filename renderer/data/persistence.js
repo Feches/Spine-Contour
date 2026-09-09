@@ -60,9 +60,10 @@ function points(list, n) {
 }
 
 function isValidMeasurements(m) {
-  if (!m || typeof m !== 'object') return false;
-  if (!finite(m.PI) || !finite(m.PT) || !finite(m.SS)) return false;
-  if (!m.LL || typeof m.LL !== 'object' || !finite(m.LL['L1-S1'])) return false;
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return false;
+  const nullable = value => value === null || finite(value);
+  if (![m.PI, m.PT, m.SS].every(nullable)) return false;
+  if (!m.LL || typeof m.LL !== 'object' || Array.isArray(m.LL) || !nullable(m.LL['L1-S1'])) return false;
   if (m.L1PA != null && !finite(m.L1PA)) return false;
   for (const level of ['L2-S1', 'L3-S1', 'L4-S1', 'L5-S1']) {
     if (m.LL[level] != null && !finite(m.LL[level])) return false;
@@ -72,24 +73,34 @@ function isValidMeasurements(m) {
 
 function isValidGeometry(g) {
   if (!g || typeof g !== 'object') return false;
-  if (!g.vertebrae || typeof g.vertebrae !== 'object') return false;
-  for (const level of ['L1', 'L2', 'L3', 'L4', 'L5']) {
-    const v = g.vertebrae[level];
+  if (!g.vertebrae || typeof g.vertebrae !== 'object' || Array.isArray(g.vertebrae)) return false;
+  for (const [level, v] of Object.entries(g.vertebrae)) {
+    if (!['L1', 'L2', 'L3', 'L4', 'L5'].includes(level)) return false;
     if (!v || typeof v !== 'object') return false;
     if (!points(v.superior, 2)) return false;
     if (!points(v.inferior, 2)) return false;
     if (!points(v.quadrilateral, 4)) return false;
+    if (v.anterior_confirmed != null && typeof v.anterior_confirmed !== 'boolean') return false;
   }
-  if (!points(g.s1_superior, 2)) return false;
-  if (!point(g.l1_center)) return false;
-  if (!point(g.hip_midpoint)) return false;
-  if (!Array.isArray(g.femoral_circles) || g.femoral_circles.length !== 2) return false;
+  if (g.s1_superior !== null && !points(g.s1_superior, 2)) return false;
+  if (g.vertebrae.L1 ? !point(g.l1_center) : g.l1_center !== null) return false;
+  if (!Array.isArray(g.femoral_circles) || ![0, 2].includes(g.femoral_circles.length)) return false;
+  if (g.femoral_circles.length ? !point(g.hip_midpoint) : g.hip_midpoint !== null) return false;
   for (const circle of g.femoral_circles) {
     if (!Array.isArray(circle) || circle.length !== 3) return false;
     const [cx, cy, r] = circle;
     if (!finite(cx) || !finite(cy) || !finite(r) || !(r > 0)) return false;
   }
-  return true;
+  return Object.keys(g.vertebrae).length > 0 || g.s1_superior !== null || g.femoral_circles.length > 0;
+}
+
+function measurementsHaveLandmarks(m, g) {
+  if (!m || !g) return false;
+  if (m.SS !== null && !g.s1_superior) return false;
+  if ((m.PI !== null || m.PT !== null) && (!g.s1_superior || !g.hip_midpoint)) return false;
+  if (m.L1PA != null && (!g.l1_center || !g.s1_superior || !g.hip_midpoint)) return false;
+  return ['L1', 'L2', 'L3', 'L4', 'L5'].every(level => m.LL[`${level}-S1`] == null
+    || Boolean(g.vertebrae[level] && g.s1_superior));
 }
 
 /**
@@ -129,7 +140,7 @@ function validateStudy(entry, index) {
 
   const measurements = isValidMeasurements(entry.measurements) ? entry.measurements : null;
   const geometry = isValidGeometry(entry.geometry) ? entry.geometry : null;
-  const complete = measurements !== null && geometry !== null;
+  const complete = measurementsHaveLandmarks(measurements, geometry);
   if (!complete && (entry.measurements != null || entry.geometry != null)) {
     console.warn(`persistence: ${entry.id} has a malformed measurements/geometry payload; it will need to be re-run.`);
   }

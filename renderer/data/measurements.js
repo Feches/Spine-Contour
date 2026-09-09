@@ -28,7 +28,8 @@ function present(value) {
 
 function sagittalValue(key, measurements) {
   if (key === 'LL') return measurements.LL?.['L1-S1'];
-  if (key === 'PILL') return measurements.PI - measurements.LL?.['L1-S1'];
+  if (key === 'PILL') return present(measurements.PI) && present(measurements.LL?.['L1-S1'])
+    ? measurements.PI - measurements.LL['L1-S1'] : null;
   return measurements[key];
 }
 
@@ -81,7 +82,7 @@ export function alignmentRows(study) {
 }
 
 export function piResidual(measurements) {
-  if (measurements == null) return null;
+  if (measurements == null || ![measurements.PI, measurements.PT, measurements.SS].every(present)) return null;
   return Math.abs(measurements.PI - (measurements.PT + measurements.SS));
 }
 

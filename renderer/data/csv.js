@@ -51,7 +51,7 @@ function measurementValue(study, column) {
     case 'PT': return round1(m.PT);
     case 'SS': return round1(m.SS);
     case 'PI-LL Mismatch': {
-      if (!ll || m.PI == null) return '';
+      if (!ll || m.PI == null || ll['L1-S1'] == null) return '';
       const value = m.PI - ll['L1-S1'];
       return round1(value);
     }

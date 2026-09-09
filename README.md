@@ -1,11 +1,11 @@
-# Spine Contour v1.0.0
+# Spine Contour v1.0.1
 
 Automated measurements from lateral lumbar radiographs, running locally.
 
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.0.0 release notes](docs/releases/1.0.0.md) and
+[changelog](CHANGELOG.md), [v1.0.1 release notes](docs/releases/1.0.1.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
@@ -109,8 +109,9 @@ and the choice applies to the next run:
 
 - **U-Net** segments each body and reads its corners off the mask.
 - **HRNet** regresses each corner directly. It can place a corner where a mask
-  has no pixels, so it never leaves a level out — and, for the same reason, it has no
-  missing level to report when it is wrong.
+  has no pixels. Because it predicts every level even on a cropped film, a U-Net
+  mask now checks which levels have body evidence before their HRNet corners are
+  retained. Invalid or off-film quadrilaterals are omitted.
 
 Each study's Analysis header names the model that produced the numbers on screen, and the
 saved result records it, so a library measured with both can still be told apart.
@@ -120,6 +121,26 @@ it the way the models were trained to see it: a box slides over the lower film a
 best-framed one wins, with the whole film competing as one more box. A lumbar radiograph
 wins as a whole; a full-spine radiograph is cropped. The frame is recorded with the
 result.
+
+## Partial segmentation
+
+A film does not need to contain every structure. If only L1 is detected, its mask
+and landmarks remain available for review and correction. Missing levels are not
+renumbered. If S1 cannot anchor a crop, inference falls back to the image extent,
+trimming broad near-black screenshot margins when present.
+
+Partial results are saved as **Needs review**, with the missing structures listed.
+Batch processing keeps them and continues to the next film. Each measurement uses
+only its required landmarks: sacral slope needs S1; each level-to-S1 lordosis needs
+that level and S1; PI/PT need S1 and the hip axis; L1PA also needs L1. A rejected
+femoral fit leaves independent spine measurements available. Missing inputs display
+`—` and export as empty cells, including paired changes.
+
+Disc heights require both facing endplates and a valid image scale. If S1 is absent,
+U-Net cannot establish anterior/posterior orientation: the midpoint height can still
+be measured for a detected adjacent pair, while anterior/posterior heights stay blank.
+The detector can still misidentify levels or miss visible anatomy; review the result.
+An image with no usable landmarks still reports an error. See [partial segmentation](docs/partial-segmentation.md).
 
 ## Test data
 
@@ -144,7 +165,7 @@ In **Image calibration**, green points mark the reference. Drag either endpoint,
 
 **Use reference appearance for folder** is optional: it learns the corrected shaft's foreground color to supplement automatic detection. **Process folder** retries detection while preserving manual corrections. Each image uses its own reference length and pixel spacing. **Save calibration results** exports the detection profile and per-image references as JSON. Saved profile import is not implemented.
 
-DICOM `PixelSpacing` preserves row and column spacing; detector-plane spacing is not silently substituted. Screenshot scale is derived from the printed annotation, not independently corrected for projection magnification. Capped straight rulers are supported; arrows, graduated scales and angle markers are not yet supported. Manual reference placement remains available when automatic OCR fails. The preview installers bundle Tesseract; development on macOS needs `brew install tesseract`.
+DICOM `PixelSpacing` preserves row and column spacing; detector-plane spacing is not silently substituted. Screenshot scale is derived from the printed annotation, not independently corrected for projection magnification. Capped straight rulers are supported; arrows, graduated scales and angle markers are not yet supported. Manual reference placement remains available when automatic OCR fails. Production and preview installers bundle Tesseract; development on macOS needs `brew install tesseract`.
 
 
 ## Clear the study library

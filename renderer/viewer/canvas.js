@@ -194,11 +194,12 @@ function beyondAnterior(sa, sp) {
 export function constructionLabel(geometry, selectedLevel, measurements) {
   if (!geometry || !selectedLevel || !measurements) return null;
   const s1 = geometry.s1_superior;
+  if (!s1) return null;
   const s1Mid = midpoint(s1[0], s1[1]);
   const hip = geometry.hip_midpoint;
   if (selectedLevel === 'S1') {
     const { PI, PT, SS } = measurements;
-    if (PI == null || PT == null || SS == null) return null;
+    if (!hip || PI == null || PT == null || SS == null) return null;
     return { text: `PI ${PI.toFixed(1)}°  PT ${PT.toFixed(1)}°  SS ${SS.toFixed(1)}°`, anchor: midpoint(s1Mid, hip), side: 1 };
   }
   if (selectedLevel === 'SS') {
@@ -239,6 +240,8 @@ function strokeReference(ctx, from, to) {
 
 function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measurements) {
   if (!selectedLevel || !measurements) return;
+  // The same dependencies gate the caption and its construction.
+  if (!constructionLabel(geometry, selectedLevel, measurements)) return;
   ctx.save();
   try {
     ctx.strokeStyle = STAGE_SELECTED_COLOR;
@@ -257,7 +260,7 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
       const hip = geometry.hip_midpoint;
       // Reference rays are drawn the same length as the S1-to-hip span so the angle reads at a
       // sensible scale on any image size.
-      const span = Math.hypot(hip[0] - s1Mid[0], hip[1] - s1Mid[1]) || canvas.width / 6;
+      const span = (hip ? Math.hypot(hip[0] - s1Mid[0], hip[1] - s1Mid[1]) : 0) || canvas.width / 6;
 
       if (selectedLevel === 'SS') {
         // Sacral slope: the S1 superior endplate against the HORIZONTAL.
@@ -384,11 +387,18 @@ function drawHandles(ctx, canvas, geometry, { selection, hover, pixelRatio }) {
   for (const level of [...LEVELS, 'S1']) {
     for (const corner of level === 'S1' ? ['SA', 'SP'] : CORNERS) {
       const handle = { kind: 'landmark', level, corner };
-      drawHandle(ctx, canvas, landmarkAt(geometry, level, corner), CORNER_COLORS[corner], handleOpts(handle, `${level} ${corner}`));
+      const point = landmarkAt(geometry, level, corner);
+      if (!point) continue;
+      const label = geometry.vertebrae?.[level]?.anterior_confirmed === false
+        ? `${level} ${corner.startsWith('S') ? 'upper' : 'lower'} ${corner.endsWith('A') ? '1' : '2'}`
+        : `${level} ${corner}`;
+      drawHandle(ctx, canvas, point, CORNER_COLORS[corner], handleOpts(handle, label));
     }
   }
   for (const side of FEMORAL_SIDES) {
-    const [cx, cy, r] = femoralCircle(geometry, side);
+    const circle = femoralCircle(geometry, side);
+    if (!circle) continue;
+    const [cx, cy, r] = circle;
     const name = side === 'left' ? 'Left head' : 'Right head';
     drawHandle(ctx, canvas, [cx, cy], FEMORAL_HANDLE_COLOR, handleOpts({ kind: 'femoral', side, part: 'center' }, name));
     drawHandle(ctx, canvas, [cx + r, cy], FEMORAL_HANDLE_COLOR, handleOpts({ kind: 'femoral', side, part: 'rim' }, `${name} \u00B7 resize`));
@@ -419,6 +429,7 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
   ctx.lineJoin = 'round';
   for (const level of LEVELS) {
     const body = geometry.vertebrae[level];
+    if (!body) continue;
     const selected = level === selectedLevel;
     ctx.strokeStyle = selected ? STAGE_SELECTED_COLOR : STAGE_LINE_COLOR;
     ctx.lineWidth = selected ? lineWidth * 1.6 : lineWidth;
@@ -431,11 +442,13 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
   const selectedS1 = selectedLevel === 'S1';
   ctx.strokeStyle = selectedS1 ? STAGE_SELECTED_COLOR : STAGE_LINE_COLOR;
   ctx.lineWidth = selectedS1 ? lineWidth * 1.6 : lineWidth;
-  ctx.beginPath();
-  ctx.moveTo(...geometry.s1_superior[0]);
-  ctx.lineTo(...geometry.s1_superior[1]);
-  ctx.stroke();
-  drawSelectedStageLabel(ctx, 'S1', geometry.s1_superior[0], selectedS1, canvas.width);
+  if (geometry.s1_superior) {
+    ctx.beginPath();
+    ctx.moveTo(...geometry.s1_superior[0]);
+    ctx.lineTo(...geometry.s1_superior[1]);
+    ctx.stroke();
+    drawSelectedStageLabel(ctx, 'S1', geometry.s1_superior[0], selectedS1, canvas.width);
+  }
 
   geometry.femoral_circles.forEach(([x, y, r], index) => {
     const selectedCircle = Boolean(opts.editing) && opts.selection?.kind === 'femoral'

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.1
+
+- Keep detected vertebrae, S1 and usable femoral geometry when other anatomy is
+  missing. Compute each measurement independently; preserve partial results through
+  batch processing, landmark editing, saved-study reload and both CSV formats.
+- Fall back to the whole film without an S1 crop anchor. Require body-mask evidence
+  for HRNet levels, and withhold anterior/posterior disc heights when U-Net has no
+  anatomical orientation reference.
+- Fix null-to-zero mismatch calculations and missing-landmark viewer controls.
+- Point the app's Documentation button to Cody's repository.
+
+[Release notes](docs/releases/1.0.1.md)
+
 ## 1.0.0
 
 Promotes the redesigned application from Cody's `ui-redesign-cw` branch to `main`:

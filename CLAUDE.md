@@ -1,5 +1,7 @@
 # Spine Contour
 
+**2026-09-09 partial-segmentation fix:** `codex/partial-segmentation` starts from the merged v1.0.0 main (`f177247`) and prepares v1.0.1. Missing anatomy is now a supported result, not a whole-image failure. See `docs/partial-segmentation.md` and the updated architecture contract. Preserve nulls and absent levels through editing, saving and export; do not reinstate all-five/S1/hip requirements or infer A/P from image side when S1 is absent.
+
 **2026-09-09 main promotion:** `codex/release-v1.0.0-main` starts at Cody's merged PR #4 (`594e63f`) and targets `Feches/Spine-Contour:main`. It retains all 305 incoming commits and prepares v1.0.0 numbered Windows/macOS releases. Current release instructions are in `docs/release-main.md`; `CHANGELOG.md` and `docs/releases/1.0.0-commits.md` summarize the incoming history. The older branch/status notes below are historical.
 
 **2026-09-09 combined release:** `codex/combined-next-release` combines calibration/disc-height PR #2 and accuracy PR #3, retaining both histories. It targets Cody's installer branch `ui-redesign-cw` for the v0.2.0 preview. Merging builds Windows and macOS installers; manual feature-branch builds produce review artifacts only. See `docs/releases/0.2.0.md` and `docs/release-preview.md`.
