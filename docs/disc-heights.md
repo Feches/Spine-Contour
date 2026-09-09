@@ -72,6 +72,10 @@ its delta is empty. Calibration metadata remains appended per film.
   ordinary/paired CSV, pending corrections, clearing calibration, compact layout
   and the renderer console. The screenshot uses a labelled synthetic image.
 
+- Full backend regression suite: 96 tests passed.
+- Clean merge with accuracy PR #3 at `8db3d63`: 457 renderer tests and the same
+  13 disc-height Electron checks passed on the combined tree.
+
 These checks verify geometry arithmetic, data flow and UI behavior. They do not
 establish anatomical landmark accuracy or compensate for unknown radiographic
 magnification. A newly packaged installer has not been tested with this addition.
