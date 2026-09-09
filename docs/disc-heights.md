@@ -70,7 +70,7 @@ its delta is empty. Calibration metadata remains appended per film.
   source Electron against a scratch profile. Exercises the real `/measure`
   endpoint and a landmark drag, reset, manual calibration correction, disk reload,
   ordinary/paired CSV, pending corrections, clearing calibration, compact layout
-  and the renderer console. The screenshot uses a labelled synthetic image.
+  and the renderer console.
 
 - Full backend regression suite: 96 tests passed.
 - Clean merge with accuracy PR #3 at `8db3d63`: 457 renderer tests and the same
