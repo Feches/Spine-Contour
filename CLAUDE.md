@@ -69,9 +69,10 @@ as `2bf3d21`, with `5cf52c7` and `245cae2` reconciling the two sides (both demo 
 batch and single run are mutually exclusive; delete-all prunes the shared selection). Unit 433/433; every smoke
 suite green (`smoke-studies.mjs` 103/103 on a fresh launch). The studies branch is fast-forwarded to this tip and
 **the same tip is pushed as `fork/ui-redesign-cw`, the branch the backend developer takes** (his merge is a
-fast-forward); that push builds the first preview installer to carry plan 06 and everything after it. **Owed by the
-human:** install that build, open it on an empty library, run one batch, and walk the calibration screen once (Skip
-with Tesseract absent). HANDOFF's "Handing this to the backend author" is rewritten for him.
+fast-forward); that push built the first preview installer to carry plan 06 and everything after it, and **the user
+installed and checked it (2026-09-09): no demos in the packaged build, a batch ran, the calibration screen was
+walked (each image individually — his design, ROADMAP §5), console clean.** HANDOFF's "Handing this to the backend
+author" is rewritten for him.
 `docs/superpowers/NEXT-SESSION.md` is the prompt.
 
 ## Read these first

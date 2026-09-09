@@ -307,7 +307,14 @@ Not code quality; these stand between the branch and a production release.
   the request. Leaving through the sidebar leaves it set, so the next visit through the sidebar's "Image
   calibration" row shows the onboarding block with the pickers hidden. `smoke-workspace.mjs` drives `scanFolder`
   directly and never meets the screen. Upstream's design (2026-09-07); needs a smoke section and a human
-  click-through with and without the Tesseract runtime.
+  click-through with and without the Tesseract runtime. **Walked by the user on the installed preview build
+  (2026-09-09): every image had to be calibrated by hand.** His design learns one corrected ruler's appearance and
+  then detects each film's own printed ruler automatically (`folder-calibration.js` `calibrateAndContinue`), so the
+  per-image work appears only when a film has no printed ruler to find (`/calibrate` answers `not_found`) — which is
+  every film in a dataset of plain radiographs, and those are what the user loads. Millimetres are not needed for
+  any angle the app measures (lengths are out of scope), so for this user the detour is a forty-stop delay on the
+  primary loading path with Skip as the only useful button. To raise with the backend developer: make the detour
+  opt-in (a Workspace-card checkbox, off by default) or offer Skip before scanning when no image reports a ruler.
 - **Bulk-delete polish** (upstream's feature, 2026-09-07; found at the reconcile review): the per-row trash buttons
   are not disabled during a bulk delete and the guards return silently; the bulk row sits outside the Find tab's
   focus snapshot, so focus drops to `<body>` after Cancel; `blocked` reads `persistenceDisabledReason()`, which is not
