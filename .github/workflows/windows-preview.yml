@@ -6,13 +6,19 @@ on:
   push:
     branches: [ui-redesign-cw]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the preview (ui-redesign-cw only); otherwise build review artifacts
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
 
 # Separate group. Sharing latest-windows would cancel in-flight production builds.
 concurrency:
-  group: preview-windows
+  group: preview-windows-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -192,22 +198,17 @@ jobs:
           }
           Write-Host "OK: preview artifact present, production artifact absent"
 
+      - name: Verify packaged desktop source and version
+        run: node tools/packaging/check_desktop_bundle.cjs dist
+
       - uses: actions/upload-artifact@v7
         with:
           name: Spine-Contour-Preview-Windows
           path: dist/Spine-Contour-Preview-Windows.exe
           compression-level: 0
 
-      - name: Publish preview installer
-        shell: pwsh
+      - name: Publish preview release
+        if: github.ref == 'refs/heads/ui-redesign-cw' && (github.event_name == 'push' || inputs.publish)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          $asset = "dist/Spine-Contour-Preview-Windows.exe"
-          $notes = "PREVIEW BUILD — not the production release. Built from commit $env:GITHUB_SHA on branch $env:GITHUB_REF_NAME."
-          if (gh release view preview-windows 2>$null) {
-            gh release upload preview-windows $asset --clobber
-            gh release edit preview-windows --title "Preview build" --notes $notes --prerelease
-          } else {
-            gh release create preview-windows $asset --target $env:GITHUB_SHA --title "Preview build" --notes $notes --prerelease
-          }
+        run: python tools/packaging/publish_preview.py windows

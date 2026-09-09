@@ -47,5 +47,6 @@ results are written to `tools/smoke/out/accuracy/`. This fixture tests applicati
 behavior, not model accuracy on radiographs. The existing landmark editing smoke
 suites also exercise real backend recalculation, dragging, keyboard nudges and reset.
 
-Unequal pixel-spacing angle correction and physical disc-height/slip calculations
-remain separate work. This PR does not depend on the automatic calibration PR.
+These safeguards are bundled with automatic calibration and calibrated disc-height
+exports in the v0.2.0 preview. Unequal pixel-spacing angle correction and slip
+calculations remain separate work. See [release notes](releases/0.2.0.md).

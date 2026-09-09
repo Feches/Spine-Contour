@@ -6,7 +6,7 @@ import { DEFAULT_MODELS, VERTEBRA_MODELS, modelLabel } from '../data/models.js';
 import { studyName } from '../data/labels.js';
 import { sidebarText } from '../data/batch.js';
 
-const VERSION_LABEL = 'v0.1.0';
+const VERSION_LABEL = 'v0.2.0';
 const DOCS_URL = 'https://github.com/mjayasur/Spine-Contour#readme';
 
 const MARK_SVG = '<svg width="26" height="22" viewBox="0 0 26 22"><path d="M 8 4 H 18 C 20.5 4 22 5.5 22 8 Q 20.6 11 22 14 C 22 16.5 20.5 18 18 18 H 8 C 5.5 18 4 16.5 4 14 Q 5.4 11 4 8 C 4 5.5 5.5 4 8 4 Z" fill="var(--accent)"></path><path d="M 7 1 H 19 C 22.5 1 25 3 25 6.5 Q 23.4 11 25 15.5 C 25 19 22.5 21 19 21 H 7 C 3.5 21 1 19 1 15.5 Q 2.6 11 1 6.5 C 1 3 3.5 1 7 1 Z" fill="none" stroke="var(--accent)" stroke-width="1.4"></path></svg>';
