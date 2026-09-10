@@ -669,6 +669,60 @@ try {
   await cdp.settle(150);
   s = await cdp.state();
   check('Escape discards the typed text and returns focus to the cell', s.studies.find((x) => x.id === 'SP-9000')?.subjectId === 'S-42' && (await activeKey()) === 'subject-SP-9000', { subject: s.studies.find((x) => x.id === 'SP-9000')?.subjectId, active: await activeKey() });
+
+  // 16b (spec 7.3): a rebuild while the editor is open must re-create it with the text typed so
+  // far, the focus and the caret. The rebuild is forced through a store key the Find tab reads but
+  // this row does not -- another row's tick -- so nothing about SP-9000 changes underneath it.
+  await clickAt('[data-find-key="subject-SP-9000"]');
+  await cdp.settle(150);
+  // The stored 'S-42' opens selected, so insertText REPLACES it: the draft is 'AB', caret at 2.
+  await cdp.typeText('AB');
+  await cdp.setState('{ paramSelected: ["SP-9001"] }');
+  await cdp.settle(200);
+  const rebuilt16 = await cdp.evaluate(`(() => {
+    const i = document.querySelector('[data-find-key="subject-input-SP-9000"]');
+    if (!i) return { exists: false, value: null, focused: false, start: null, end: null };
+    return { exists: true, value: i.value, focused: document.activeElement === i, start: i.selectionStart, end: i.selectionEnd };
+  })()`);
+  check('a rebuild while the editor is open keeps the editor, the draft and the caret (spec 7.3)',
+    rebuilt16.exists && rebuilt16.value === 'AB' && rebuilt16.focused && rebuilt16.start === 2 && rebuilt16.end === 2, rebuilt16);
+  await cdp.key('Escape');
+  await cdp.settle(150);
+  s = await cdp.state();
+  check('the rebuild, and the Escape after it, leave the stored subject alone', s.studies.find((x) => x.id === 'SP-9000')?.subjectId === 'S-42', s.studies.find((x) => x.id === 'SP-9000')?.subjectId ?? null);
+  await cdp.setState('{ paramSelected: [] }');
+  await cdp.settle(150);
+  // If the deferred blur commit above fired, the record is holding the draft instead of the
+  // stored subject. Put it back, so the checks below test what they have always tested; when the
+  // editor survives a rebuild as spec 7.3 requires, this write changes nothing.
+  await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (x.id === 'SP-9000' ? { ...x, subjectId: 'S-42' } : x)) })))`);
+  await cdp.settle(150);
+
+  // 16c (spec 8.2): a study carrying reviewedAt badges Reviewed on the list and leaves the
+  // summary's TO REVIEW clause -- if it was in it, which depends on what the real run produced,
+  // so the expectation is computed from the badge the row had before. There is no control for the
+  // mark on this screen; it is written through the store, the way the Analysis button writes it.
+  const toReviewCount = async () => {
+    const line = ((await text(cdp, '.studies-summary')) || '').trim();
+    const m = /^(\d+) STUDIES \u00B7 (\d+) UNSEGMENTED \u00B7 (\d+) TO REVIEW$/.exec(line);
+    return m ? Number(m[3]) : null;
+  };
+  const badgeOf9000 = () => cdp.evaluate(`(() => { const b = document.querySelector('.studies-row[data-study-id="SP-9000"] .badge'); return b ? { cls: b.className, text: b.textContent.trim() } : null; })()`);
+  const review0 = await toReviewCount();
+  const badge0 = await badgeOf9000();
+  const mark = (value) => cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (x.id === 'SP-9000' ? { ...x, reviewedAt: ${value} } : x)) })))`);
+  await mark(`'2026-09-10T12:00:00.000Z'`);
+  await cdp.settle(200);
+  const badge1 = await badgeOf9000();
+  check('a row carrying reviewedAt badges Reviewed on the list', Boolean(badge1) && badge1.cls === 'badge badge-ok' && badge1.text === 'Reviewed', { badge0, badge1 });
+  const expected1 = badge0 && badge0.cls.includes('badge-rev') ? review0 - 1 : review0;
+  const review1 = await toReviewCount();
+  check("the summary's TO REVIEW count follows the mark", typeof review0 === 'number' && review1 === expected1, { review0, expected1, review1, badge0 });
+  await mark('null');
+  await cdp.settle(200);
+  const badge2 = await badgeOf9000();
+  check('clearing the mark restores the derived badge', Boolean(badge0) && Boolean(badge2) && badge2.cls === badge0.cls && badge2.text === badge0.text, { badge0, badge2 });
+
   await cdp.setState('{ query: "S-42" }');
   await cdp.settle(150);
   check('the search box finds the study by its new subject', (await rowCount(cdp)) === 1, await rowCount(cdp));

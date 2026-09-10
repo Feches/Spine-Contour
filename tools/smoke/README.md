@@ -264,8 +264,18 @@ folders that could not be read)` clause — `screens/workspace.js` records the s
 module scope only when its own folder handler ran the scan, so a state-seeded scan renders
 `3 radiographs found` without the clause, and that is what the suite asserts.
 
-**Known baseline** (fresh scratch profile, this branch tip): unit 504/504
-(`node --test test/*.test.js`); `smoke-studies.mjs` 131/131 — its stale diagnosis check was fixed 2026-09-08 (it
+**Known baseline** (fresh scratch profile, this branch tip): unit 505/505
+(`node --test test/*.test.js`); `smoke-studies.mjs` 134/136 — section 16 gained two groups on 2026-09-10. The
+first is spec 7.3, a rebuild mid-edit (forced through another row's tick, so nothing about the edited row
+changes): the rebuild itself re-creates the editor with the draft, the focus and the caret, and then the
+DESTROYED input's deferred `blur` commit fires one microtask later, writes the half-typed draft to the record
+and closes the editor update() had just re-focused, leaving focus on `<body>`. Its two checks ("a rebuild while
+the editor is open keeps the editor, the draft and the caret (spec 7.3)" and "the rebuild, and the Escape after
+it, leave the stored subject alone") are THE TWO FAILS: one open product finding, not a suite fault, left
+red on purpose. The suite writes the stored subject back afterwards so the checks below it keep testing what
+they always tested. The second group is spec 8.2, a Reviewed row on the list: `badge badge-ok`/`Reviewed`, the
+summary's TO REVIEW count following the mark, and the derived badge restored when it is cleared — all three
+pass. Its stale diagnosis check was fixed 2026-09-08 (it
 searches "meyerding", a word only SP-0042 carries); its `readProgress()` helper was fixed 2026-09-10 to strip the
 nested `.study-processing-detail` span before reading `.studies-progress-text` (upstream commit `63b3484` nested
 the live backend stage/detail inside that element), which is why the three progress checks ("the bar shows 0 of 2
