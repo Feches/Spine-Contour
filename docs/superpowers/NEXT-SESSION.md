@@ -10,7 +10,7 @@ radiographs.
 Working directory (absolute): `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
 This is a git worktree, not the primary checkout; its directory name predates this work and means nothing. Run
 everything from here; do not `cd` to `C:\Users\codyj\spine contour`.
-Branch: `claude/studies-table-ui-updates-953945`, at the plan's docs commit above `e6178fe` (the spec), on `fork/main`
+Branch: `claude/studies-table-ui-updates-953945`, at the wrap's docs commit above `f6e421b` (the plan) and `e6178fe` (the spec), on `fork/main`
 @ `6106463`. **`fork/main` is the trunk now**: the backend developer took `fork/ui-redesign-cw` (the 2026-09-08 handover
 tip) and released v1.0.0–1.0.3 on top of it through fork PRs #4–#8 (partial segmentation as a supported result, low-memory
 mode with live `/predict-stream` progress, ONNX Runtime inference with a `cropLocalizer` setting). `fork/ui-redesign-cw` is

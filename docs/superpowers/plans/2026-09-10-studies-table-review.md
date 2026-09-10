@@ -2570,4 +2570,10 @@ Placeholder scan: no TBD/TODO; every code step carries its code; the smoke and R
 
 ## Ledger
 
+Session ended 2026-09-10 (the planning session): resume at **Task 1**; nothing started, no fix round, no open finding,
+unit 479/479 on `6106463`. Rulings made in chat today are all recorded with their costs: the user's six in the spec's
+§11.1–6, the planner's four assumptions in §11.7–10, and the planner's twenty in "Rulings made while planning" above.
+Ruling: the branch was re-pointed at `fork/main` with `git checkout -B` (it had no commits of its own) — the screenshots
+came from the v1.0.x build, whose source is `fork/main`, not upstream `main` — cost if wrong: none, nothing was lost.
+
 Filled during execution: one entry per task — the commit, the counts, the reviewer's findings and how each was settled; the gate's outcome and the checks not run; every ruling made on the way.

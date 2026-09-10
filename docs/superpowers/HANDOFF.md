@@ -23,6 +23,20 @@ sections under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
 ## Where things stand
 
+### Studies table — PLANNED, not started (branch `claude/studies-table-ui-updates-953945`, off `fork/main` @ `6106463`)
+
+2026-09-10. Brainstormed and planned in one session; execution is the next session's. Spec
+`specs/2026-09-10-studies-table-review-design.md` (`e6178fe`; §11 holds the user's rulings and the planner's four
+assumptions); plan `plans/2026-09-10-studies-table-review.md` (`f6e421b`; Tasks 1–9; its "Rulings made while planning"
+carries every planner ruling with its cost; its `## Ledger` is empty until execution). What it builds: Delete over the
+ticked visible rows replacing `Delete all studies`; every Find header sorts (`findSort`, `data/find.js`); PATIENT becomes
+SUBJECT and edits in place; a stored `reviewedAt` gives the fourth status Reviewed, set on the Analysis panel and cleared
+on every numbers-changing write; demo hiding becomes a development-only Settings toggle (`set-demo-studies-hidden`, refused
+when packaged). **`fork/main` is the trunk now** — the backend developer took `fork/ui-redesign-cw` and released
+v1.0.0–1.0.3 on top of it (fork PRs #4–#8); the reconcile section below and R-M3 are superseded where the plan says so.
+Unit 479/479 on the base; the smoke baselines in `tools/smoke/README.md` were not re-run on it. Subagent models per the
+user (2026-09-10): the lowest that is reliable — Sonnet everywhere but the Find tab task (Opus), never Fable.
+
 ### Upstream reconcile and handover — DONE (branch `claude/upstream-reconcile-2026-09-08`, pushed as `fork/ui-redesign-cw`)
 
 On 2026-09-08, after the batch was merged back into `claude/studies-ui-updates-bb040d` (fast-forward to `b7789b3`), the
