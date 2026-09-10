@@ -8,7 +8,7 @@
   headers as the Parameters grid.
 - Rename PATIENT to SUBJECT and edit it in place on the list: click the cell, type, Enter
   commits and moves to the next row.
-- Add a fourth status, Reviewed, set with a `Mark reviewed` button on the Analysis screen
+- Add a fourth status, Reviewed, set with a Mark reviewed button on the Analysis screen
   and cleared automatically by a re-run, a landmark correction, a reset or a calibration
   change; the quality warnings stay visible either way.
 - Add a Show/Hide demo-studies switch to Settings for development builds only; installers
