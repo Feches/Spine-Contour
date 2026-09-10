@@ -265,15 +265,15 @@ module scope only when its own folder handler ran the scan, so a state-seeded sc
 `3 radiographs found` without the clause, and that is what the suite asserts.
 
 **Known baseline** (fresh scratch profile, this branch tip): unit 505/505
-(`node --test test/*.test.js`); `smoke-studies.mjs` 134/136 — section 16 gained two groups on 2026-09-10. The
+(`node --test test/*.test.js`); `smoke-studies.mjs` 136/136 — section 16 gained two groups on 2026-09-10. The
 first is spec 7.3, a rebuild mid-edit (forced through another row's tick, so nothing about the edited row
-changes): the rebuild itself re-creates the editor with the draft, the focus and the caret, and then the
-DESTROYED input's deferred `blur` commit fires one microtask later, writes the half-typed draft to the record
-and closes the editor update() had just re-focused, leaving focus on `<body>`. Its two checks ("a rebuild while
-the editor is open keeps the editor, the draft and the caret (spec 7.3)" and "the rebuild, and the Escape after
-it, leave the stored subject alone") are THE TWO FAILS: one open product finding, not a suite fault, left
-red on purpose. The suite writes the stored subject back afterwards so the checks below it keep testing what
-they always tested. The second group is spec 8.2, a Reviewed row on the list: `badge badge-ok`/`Reviewed`, the
+changes): the rebuild re-creates the editor with the draft, the focus and the caret, and the DESTROYED input's
+deferred `blur` commit no longer fires one microtask later to write the half-typed draft to the record and close
+the editor update() had just re-focused — the removal-blur guard (`!input.isConnected` in the editor's `onBlur`)
+fixed that defect on 2026-09-10, and its two checks ("a rebuild while the editor is open keeps the editor, the
+draft and the caret (spec 7.3)" and "the rebuild, and the Escape after it, leave the stored subject alone") pass.
+The suite still writes the stored subject back afterwards — a no-op while the editor survives a rebuild, so a
+regression of that fix cannot reach the checks below it. The second group is spec 8.2, a Reviewed row on the list: `badge badge-ok`/`Reviewed`, the
 summary's TO REVIEW count following the mark, and the derived badge restored when it is cleared — all three
 pass. Its stale diagnosis check was fixed 2026-09-08 (it
 searches "meyerding", a word only SP-0042 carries); its `readProgress()` helper was fixed 2026-09-10 to strip the

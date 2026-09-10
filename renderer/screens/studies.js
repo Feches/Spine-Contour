@@ -231,9 +231,18 @@ function subjectCell(study) {
       // to restore, and the commit's rebuild then detaches the very node focus was headed for.
       // Focusing its rebuilt twin also makes Chromium abandon that pending move, which is what
       // keeps Tab out of the editor on the keyboard path instead of dropping it to <body>.
+      // A rebuild's REMOVAL blur is not a user blur: mount() detaches the focused input and
+      // Chromium blurs it, but update() has already re-created the editor with the draft, the
+      // focus and the caret. The node is still IN the tree as it blurs, so it is tested in the
+      // microtask instead: only a removal leaves it disconnected there -- Tab, a click elsewhere
+      // and the window losing focus all leave it connected -- so skipping the commit on that one
+      // path is what keeps a batch finishing mid-word from committing half a subject (spec 7.3).
       onBlur: (event) => {
         const key = event.relatedTarget instanceof Element ? event.relatedTarget.getAttribute('data-find-key') : null;
-        queueMicrotask(() => commitSubject(study.id, 'blur', key));
+        queueMicrotask(() => {
+          if (!input.isConnected && editingSubject && editingSubject.id === study.id) return;
+          commitSubject(study.id, 'blur', key);
+        });
       },
     });
     return el('div', { class: 'studies-cell-subject studies-subject-editing', onClick: (event) => event.stopPropagation() }, input);
