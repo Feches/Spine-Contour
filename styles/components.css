@@ -105,6 +105,17 @@
   color: var(--muted);
 }
 
+/* Reviewed (studies-table spec 2026-09-10, section 8.2): the completed state. A stronger sage ground than
+   Segmented's with ink text and a sage dot, so it reads in both themes; a filled sage ground with
+   white text is under 4.5:1 at this size. */
+.badge-ok {
+  background: color-mix(in srgb, var(--sage) 26%, transparent);
+  color: var(--ink);
+}
+.badge-ok .dot {
+  background: var(--sage);
+}
+
 /* DEMO pill (studies table) */
 .pill-demo {
   padding: 1px 8px 2px;

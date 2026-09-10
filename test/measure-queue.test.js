@@ -14,8 +14,8 @@ function geometryWith(tag) {
 
 // A fake store with the same getState/setState contract as renderer/store.js, and a measure()
 // whose promises the test resolves or rejects by hand, in whatever order it wants.
-function harness() {
-  let state = { studies: [{ id: 'A', measurements: null, geometry: null }, { id: 'B', measurements: null, geometry: null }] };
+function harness(studies = [{ id: 'A', measurements: null, geometry: null }, { id: 'B', measurements: null, geometry: null }]) {
+  let state = { studies };
   const calls = [];
   const toasts = [];
   const queue = createMeasureQueue({
@@ -147,4 +147,19 @@ test('a failure with no known measured geometry toasts without claiming a restor
   assert.equal(h.toasts.length, 1);
   assert.doesNotMatch(h.toasts[0], /not applied/);
   assert.match(h.toasts[0], /backend gone/);
+});
+
+// (2026-09-10, studies-table spec 8.4, site 2) a correction that lands replaces the numbers the
+// review was made over, so the mark goes with them. The draft alone -- the preview before /measure
+// answers -- touches nothing on the record.
+test('a correction that lands clears the review mark; the draft alone does not', async () => {
+  const h = harness([{ id: 'A', measurements: { PI: 1 }, geometry: geometryWith(0), reviewedAt: '2026-09-10T12:00:00.000Z' }]);
+  h.queue.commitGeometry('A', geometryWith(1));
+  await tick(30);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.study('A').reviewedAt, '2026-09-10T12:00:00.000Z');
+  h.calls[0].resolve({ measurements: { PI: 2 }, geometry: geometryWith(1) });
+  await tick(0);
+  assert.equal(h.study('A').reviewedAt, null);
+  assert.deepEqual(h.study('A').measurements, { PI: 2 });
 });

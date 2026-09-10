@@ -229,7 +229,9 @@ Not code quality; these stand between the branch and a production release.
   restore falls back between Segment and Stop, and either can be disabled at that moment (Stop after it
   is pressed; Segment after a batch over ticked rows ends): `.focus()` on a disabled control is a no-op
   and focus drops to `<body>`; test `!target.disabled` and fall back to the bar. (Found at the final
-  whole-branch review, 2026-09-08.)
+  whole-branch review, 2026-09-08.) (2026-09-10) The header cells are plain divs with a sort button each (no `aria-sort`, which needs a
+  `columnheader` role), and each real row's SUBJECT cell is a `role="button"` under the row's own — three more
+  things for the accessibility pass.
 - **The Studies screen's `Find | Parameters` tab strip is an incomplete ARIA tabs pattern.** It
   carries `role="tablist"`, `role="tab"` and `aria-selected`, but no `aria-controls`, no roving
   `tabindex` and no Arrow-key handling, so a screen reader announces tabs that do not behave like
@@ -240,7 +242,8 @@ Not code quality; these stand between the branch and a production release.
 - **The Analysis screen's Export CSV button explains its disabled state in a `title` only**, and
   Chromium shows no tooltip on a disabled control, so the reason ("Demo studies are not exported") is
   invisible. The Parameters tab renders its reason as a visible note beside the button
-  (2026-09-07); do the same here.
+  (2026-09-07); do the same here. (2026-09-10) The Find tab's disabled Delete button has the same defect — spec 5.2's title
+  (`Tick studies to delete` / `WAIT_FOR_*`) is never shown either; same fix, same day it is done here.
 - **Hidden picks on the Parameters grid are invisible until the filter changes, and there is no
   "clear selection" control.** Both follow from the rule that the export writes the selected rows
   that are visible (HANDOFF decision 38): a tick hidden by a filter is still a tick. Clicking an
@@ -294,20 +297,53 @@ Not code quality; these stand between the branch and a production release.
 - **`tools/smoke/smoke-persist.mjs` comments (around lines 561, 590 and 683) still name `runSegmentation`**, which
   became `segmentStudy` on 2026-09-08. A word sweep the next time that suite is edited.
 - **The segment button is not disabled during a bulk delete.** `startBatch` refuses while `state.deletingStudies` is
-  set (the reconcile's ruling R-M5), but the Find tab's button still reads `Segment N …` for the seconds a "Delete
-  all studies" takes, and a click in that window does nothing and says nothing. Feed `deletingStudies` to `planBatch`
-  as a `note`, the way `running` is. Reconcile of 2026-09-08.
-- **Hiding the demo studies is one-way.** "Delete all studies" in a development build writes
+  set (the reconcile's ruling R-M5), but the Find tab's button still reads `Segment N …` for the seconds a Delete of
+  selected rows takes, and a click in that window does nothing and says nothing. Feed `deletingStudies` to `planBatch`
+  as a `note`, the way `running` is. Reconcile of 2026-09-08. Still open.
+- ~~**Hiding the demo studies is one-way.** "Delete all studies" in a development build writes
   `hideDemoStudies: true` to `library-preferences.json` in userData and nothing writes it back, so the nine fixtures
   the smoke suites and every manual check lean on are gone until the file is edited by hand (the scratch profile the
   smoke harness uses is fresh per launch and is not affected). A packaged build has no demos and is unaffected.
-  Upstream's design (2026-09-07); worth a "Show demo studies" toggle in Settings for development builds.
+  Upstream's design (2026-09-07); worth a "Show demo studies" toggle in Settings for development builds.~~ **DONE
+  (2026-09-10):** a DEMO STUDIES Show/Hide row in Settings, development builds only (studies-table spec §9).
 - **Calibration follow-up (2026-09-09):** automatic per-image folder scanning, batch integration, persisted study scales and CSV exports are now implemented. Reference teaching is optional; missing rulers leave scales unavailable and Continue permits uncalibrated films. The new desktop calibration smoke covers the folder handoff, corrections, reopening, Stop and disk reload. A source-only check does not replace the next preview installer check. Leaving onboarding through a sidebar item still retains its request for the next visit; Skip / Continue clear it. See [batch-calibration.md](batch-calibration.md).
 - **Bulk-delete polish** (upstream's feature, 2026-09-07; found at the reconcile review): the per-row trash buttons
   are not disabled during a bulk delete and the guards return silently; the bulk row sits outside the Find tab's
   focus snapshot, so focus drops to `<body>` after Cancel; `blocked` reads `persistenceDisabledReason()`, which is not
   a store key, so persistence disabled mid-session does not repaint the row until another key changes; the
-  partial-failure toast names only the first failure.
+  partial-failure toast names only the first failure. (2026-09-10) Delete all is gone; of these, the focus drop after Cancel is fixed by the new prompt (focus
+  returns to Delete); the per-row trash buttons during a bulk delete, the `blocked` repaint and the first-failure-only
+  toast still apply to Delete selected.
+- **The studies-table Delete prompt withdraws on a change to the ticked-visible id LIST, not exactly spec 5.3's
+  wording.** A search or filter change that happens to leave the same set of ids ticked and visible leaves the prompt
+  standing; the safety property (never act on ids the user has not just confirmed) still holds. A documented
+  deviation, `renderer/screens/studies.js`'s `confirmingSelected` reconciliation. Found at Task 4's review, 2026-09-10.
+- **Escape cancels the Find bar's Delete prompt only while focus is inside it.** Pressing Escape elsewhere on the
+  page does nothing. `renderer/screens/studies.js`. Deferred at Task 4's review, 2026-09-10.
+- **`merge()`'s `hideDemos` option in `renderer/data/persistence.js` is dead code.** No caller passes it now that
+  `deleteStudyBatch` is real-only and demo visibility moved to `renderer/demo-visibility.js` /
+  `renderer/data/demo-visibility.js`. Remove it the next time the file is touched. Found at Task 5's review, 2026-09-10.
+- **The sidebar's `demo-settings` class has no CSS rule.** `renderer/components/sidebar.js` adds it to the Settings
+  block holding the DEMO STUDIES toggle; no stylesheet selects it — an unused hook, plan-specified. Found at Task 5's
+  review, 2026-09-10.
+- **The studies-table spec's §13 Settings Hide/Show smoke check was never written as an automated suite.**
+  Coverage is Task 5's by-hand CDP run (checks a–f) and Task 8's human gate check 5, not a `tools/smoke/` section.
+  Ruled at the pre-flight scan, 2026-09-10 (see the plan's `## Ledger`).
+- **`canonical()` in `renderer/calibration.js` collapses `NaN` to `null` through `JSON.stringify`.** Unreachable
+  today because `normalizeCalibration` guards its inputs before `canonical()` runs; if it were ever reached, the
+  failure direction is a stale Reviewed status (a changed calibration reads as unchanged, so the review mark is not
+  cleared). Found at Task 3's review, 2026-09-10 (studies-table plan); confirmed still deferred at the final review.
+- **The first click elsewhere while a SUBJECT editor is open commits the value but does not land where the user
+  clicked.** The rebuild replaces the control between `mousedown` and `mouseup`, so moving editor-to-editor by mouse
+  takes two clicks, and clicking a row's tick box mid-edit commits the subject but does not tick the row.
+  `renderer/screens/studies.js`. Inherent to the rebuild-on-commit design; found at Task 4's review, 2026-09-10.
+- **The open SUBJECT editor's input box is inset 8px on its right** (`width: 100%` with `margin: -8px` on both
+  sides — off-centre, not clipped). One line (`width: calc(100% + 16px)`) if it is ever minded.
+  `renderer/screens/studies.js` / its stylesheet. Found at Task 4's fix round 1, 2026-09-10.
+- **The rebuild-mid-edit smoke check's caret assertion cannot fail on its own.** `el()`'s value setter parks the
+  cursor at the end of the string, so the check would need to type, press ArrowLeft, then assert caret 1/1 to
+  actually pin the restore rather than the setter's own default. `tools/smoke/smoke-studies.mjs` section 16. Found
+  at the final fix wave's re-review, 2026-09-10.
 
 ---
 
@@ -319,3 +355,17 @@ import, in `renderer/components/clinical-data.js`, `renderer/components/measurem
 belongs in `renderer/dom.js` as one export — the contract already lists `dom.js` as "el() helper, tiny
 render utilities" — but consolidating touches five files and the contract's `dom.js` block, so it waits
 for its own small change rather than riding on a feature task.
+
+---
+
+## 7. Header filters for the Find list and the Parameters grid
+
+**Deferred 2026-09-10 (user ruling at the studies-table brainstorm).** The Find list's headers now sort but do not filter; the
+Workspace and Folder selects stay, shared with the grid. When header filtering is built it is built for BOTH tabs at once, so
+they keep reading the same way. The shape settled at the brainstorm: a click on a header opens a small popover with the two sort
+buttons and, for the categorical columns only, a checklist of the values present in the library — VIEW, WORKSPACE, FOLDER
+(scoped to the chosen workspaces) and STATUS. STUDY, SUBJECT and DATE get sort only: the search box already filters text, and a
+checklist over two hundred unique filenames is worse than the search box. A filtered column shows a mark; the summary line
+reads `Showing 5 of 9 · Clear filters`; the empty state offers the same link. The Find list's filters would then be a
+session-only store key of its own (`findFilters`, multi-value per column), and the grid's bar would be rebuilt over the same
+popover. Decide first whether the two tabs share one filter state or each keeps its own.

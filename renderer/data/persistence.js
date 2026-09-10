@@ -152,6 +152,14 @@ function validateStudy(entry, index) {
   if (filmDateText !== null && filmDate === null) {
     console.warn(`persistence: ${entry.id} has a film date that is not YYYY-MM-DD ("${filmDateText}"); it is dropped.`);
   }
+  // (2026-09-10, studies-table spec 8.1) the review mark, on the same optional-null terms as the
+  // three fields above. A value that is not a date is dropped with a warning rather than failing
+  // the record: a bad mark is not fatal, and a dropped one only asks for the review again.
+  const reviewedText = optionalText(entry.reviewedAt);
+  const reviewedAt = reviewedText !== null && !Number.isNaN(Date.parse(reviewedText)) ? reviewedText : null;
+  if (reviewedText !== null && reviewedAt === null) {
+    console.warn(`persistence: ${entry.id} has a review mark that is not a date ("${reviewedText}"); it is dropped.`);
+  }
   return {
     id: entry.id, source: 'real',
     filePath: typeof entry.filePath === 'string' ? entry.filePath : null,
@@ -165,6 +173,7 @@ function validateStudy(entry, index) {
     subjectId: optionalText(entry.subjectId),
     timepoint: optionalText(entry.timepoint),
     filmDate,
+    reviewedAt,
     thumbnail: typeof entry.thumbnail === 'string' && entry.thumbnail.startsWith('data:image/') ? entry.thumbnail : null,
     measurements: complete ? measurements : null,
     geometry: complete ? geometry : null,

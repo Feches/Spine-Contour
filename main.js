@@ -251,10 +251,15 @@ ipcMain.handle('demo-studies-hidden', async () => {
   return preferences?.hideDemoStudies === true;
 });
 
-ipcMain.handle('hide-demo-studies', async () => {
+// (2026-09-10, studies-table spec 9) the Settings toggle's write. The demos are a development
+// fixture: a packaged build never shows them, never renders the toggle, and refuses this write
+// outright -- so the preference cannot be set in an installed build even by a stray call.
+ipcMain.handle('set-demo-studies-hidden', async (_event, hidden) => {
+  if (app.isPackaged) return false;
   const file = path.join(app.getPath('userData'), 'library-preferences.json');
   const preferences = await readJsonOrNull(file);
-  await writeJsonAtomic(file, { ...preferences, hideDemoStudies: true });
+  await writeJsonAtomic(file, { ...preferences, hideDemoStudies: hidden === true });
+  return true;
 });
 
 ipcMain.handle('load-studies', async () => {

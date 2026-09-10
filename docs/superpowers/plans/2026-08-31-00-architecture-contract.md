@@ -104,6 +104,8 @@ renderer/                         (new)
   api.js                          wraps window.spineContour
   batch.js                        (2026-09-08, batch spec §8.2) startBatch(ids), stopBatch() — the one wiring of data/batch.js's
                                   createBatchDriver to the store, the toast, persistenceDisabledReason and segmentStudy; module scope
+  demo-studies.js                 (2026-09-10, studies-table spec §9) demoToggleAvailable(), setDemoStudiesShown(shown) — the one wiring of
+                                  data/demo-visibility.js to the store, the toast and api.setDemoStudiesHidden; module scope
   dom.js                          el() helper, tiny render utilities
 
   screens/landing.js
@@ -117,11 +119,15 @@ renderer/                         (new)
                                   (workspace and folder selects over the shared keys), row ticks and select-all over the
                                   shared paramSelected, the segment button and the batch's progress group; the summary
                                   reads UNSEGMENTED
+                                  ; (2026-09-10, studies-table spec) sortable headers over findSort, the SUBJECT column
+                                  with its in-place editor, Delete over the ticked visible rows with an inline prompt,
+                                  the summary's TO REVIEW clause; the library-level Delete all is gone
   screens/analysis.js             exports setFilePayload, releaseStudy(studyId) (plan 06); segmentStudy(studyId, {batch})
                                   → {ok, warning?} | {ok: false, reason} (2026-09-08, batch spec §8.3) — the run core,
                                   never throws; state.running set and cleared inside; restoreFilm's run guard is per study
                                   (a per-study run counter, not the global runRevision) so a batch's turns do not drop an
-                                  unrelated restore (2026-09-08, batch spec §8.3)
+                                  unrelated restore (2026-09-08, batch spec §8.3); (2026-09-10) Mark reviewed with its note, and the
+                                  list's status badge in the header
   screens/parameters.js           (2026-09-06) the Parameters tab: exports mountParameters(host, {onOpen}) → {update(live, queried)};
                                   reads paramFilters/paramSort/paramLevels/paramSelected, writes them; never imports screens/; the paired export button and its note (2026-09-08, spec §10.4)
 
@@ -143,6 +149,7 @@ renderer/                         (new)
                                   then 40 ms per character, capped at 8 s, for every toast
   components/checkbox.js          (2026-09-08) checkbox({key, keyAttr, label, checked, note, ariaLabel, indeterminate, onChange, onClick})
                                   — the tick box both Studies tabs build; keyAttr is data-param-key (grid) or data-find-key (list)
+  components/status-badge.js      (2026-09-10) statusBadge(status), unsupportedViewBadge(view) — the one badge both screens show
 
   viewer/canvas.js                layered rendering
   viewer/interactions.js          pure interaction logic: zoom steps, hit tests, Tab order, nudge, debounce (no DOM)
@@ -172,6 +179,9 @@ renderer/                         (new)
   data/batch.js                   (2026-09-08) pure: planBatch({visible, selected, running}) → {ids, label, note, enabled};
                                   newBatch, advance, withStopping, isQueued, progressText, sidebarText, batchMessage;
                                   createBatchDriver({segment, getState, setState, showToast, persistenceDisabledReason})
+  data/find.js                    (2026-09-10, studies-table spec §6) DEFAULT_FIND_SORT, FIND_SORT_KEYS, statusRank, toggleFindSort,
+                                  sortFindRows(studies, sort, runningId) — the Find list's sort; pure
+  data/demo-visibility.js         (2026-09-10, §9) demoStudiesShown(state), demoVisibilityPatch(state, shown) — pure
 
 test/                             (new) mirrors renderer/ — node --test
   geometry.test.js  similarity.test.js  status.test.js
@@ -207,6 +217,9 @@ The single record type. Demo and real studies share it exactly.
  *                                     subject; compared case-insensitively after trimming; never an MRN, never burned in
  * @property {string|null} timepoint   'Pre-op' | 'Intra-op' | 'Post-op' | 'N wk' | 'N mo' | 'N yr' | any user label (§7.2)
  * @property {string|null} filmDate    'YYYY-MM-DD', the acquisition date; never addedAt
+ * @property {string|null} reviewedAt  (2026-09-10, studies-table spec §8.1) ISO timestamp of the human review, set on the
+ *                                     Analysis screen; null until marked; cleared by every write that replaces
+ *                                     measurements, geometry or calibration (§8.4)
  * @property {string}  addedAt     ISO 8601
  * @property {string}  view        'Standing lateral' by default; seeded per folder by a workspace load and editable in the drawer (2026-09-07); '' when cleared
  * @property {string|null} thumbnail  data URI, max 128px long edge; null if none
@@ -218,11 +231,11 @@ The single record type. Demo and real studies share it exactly.
  */
 ```
 
-`status` is **derived, never stored** — see `data/status.js`.
+`status` is **derived from the record, the review mark included** — see `data/status.js` (2026-09-10).
 
-`name`, `workspaceFolder`, `subjectId`, `timepoint` and `filmDate` are all **optional and default to `null`**, so they carry no
+`name`, `workspaceFolder`, `subjectId`, `timepoint`, `filmDate` and `reviewedAt` are all **optional and default to `null`**, so they carry no
 `STORE_VERSION` bump: a record written before they existed loads unchanged and simply reads as
-its `SP-nnnn` id with no workspace. All five must appear in `validateStudy`'s returned object or the
+its `SP-nnnn` id with no workspace. All six must appear in `validateStudy`'s returned object or the
 saver writes them and the next load silently drops them. `id` remains the record's identity —
 it names the sidecar, keys the delete, and is the CSV's `Study ID` — so a rename is cosmetic by
 construction and can never orphan a file. The folder shown beside the workspace is **derived
@@ -329,6 +342,7 @@ a draw function must blank a layer, never freeze the application.
   paramLevels: false,       // show LL L2–S1..L5–S1 columns
   paramSelected: [],        // string[] study ids ticked on the Parameters grid (2026-09-07); replaced wholesale; session-only; screens/studies.js clears a deleted study's id from it; (2026-09-08) also ticked on the Find tab's rows — one selection for both tabs
                             // All four are read by screens/studies.js's own subscription, never by SCREEN_KEYS.
+  findSort: { key: 'date', dir: 'desc' },   // (2026-09-10, studies-table spec §6.1) the Find list's sort: key 'study'|'subject'|'view'|'workspace'|'folder'|'date'|'status'; replaced wholesale; session-only; read by screens/studies.js's own subscription
   openId: null,
   compareId: null,
 
@@ -567,12 +581,17 @@ export const S1_CONFIDENCE_LIMIT = 0.6   // review threshold, not accuracy proba
 
 export function reviewReasons(study)    // → string[]; shared by status and Analysis warnings
 
-export function deriveStatus(study)      // → 'seg'|'rev'|'proc'
-export function statusLabel(status)      // → 'Segmented'|'Needs review'|'Processing'
+export function deriveStatus(study)      // → 'seg'|'rev'|'proc'|'ok'
+export function statusLabel(status)      // → 'Segmented'|'Needs review'|'Processing'|'Reviewed'
+export function isReviewed(study)                // → boolean  (2026-09-10) a non-blank reviewedAt
+export function displayStatus(study, runningId)  // → the status a row or header SHOWS: 'proc' while runningId === study.id, else deriveStatus
+export function reviewedLabel(reviewedAt)        // → 'Reviewed · Sep 10, 2026' | 'Reviewed'
+export function reviewBlockedReason({ study, running, pending })   // → string|null: REVIEW_DEMO | REVIEW_RUNNING | REVIEW_NOTHING | REVIEW_PENDING
 ```
 
 Rules, in order:
 1. `measurements == null` → `'proc'`
+1b. `reviewedAt` a non-blank string → `'ok'` (2026-09-10, studies-table spec §8.2). The reasons stay: `reviewReasons` is unchanged and the Measurements panel keeps showing them.
 2. `piResidual > RESIDUAL_LIMIT` **or** `qc.femoral.confidence < CONFIDENCE_LIMIT` → `'rev'`
 3. A `qc.framing` record with missing/invalid S1 score or `s1_confidence < 0.6` → `'rev'`;
    if `searched`, a missing/invalid `search_confidence` or score below `0.6` also requires review.
@@ -583,7 +602,8 @@ both yield `'seg'`. Missing `qc` does not by itself force `'rev'`. `RESIDUAL_LIM
 `data/measurements.js`'s constant re-exported, and the residual comes from its `piResidual`,
 so the list's status and the panel's consistency warning cannot disagree. Spec 13.1's second
 `proc` condition — "currently running" — is a property of `state.running`, not of the record:
-the Studies screen applies it (`state.running === study.id`), `deriveStatus` does not. A batch's
+`displayStatus` (2026-09-10) is the one place that rule is written (`state.running === study.id` overrides
+`deriveStatus`'s `'ok'`/`'rev'`/`'seg'` while a run is in flight); `deriveStatus` itself does not. A batch's
 queued films are 'proc' by rule 1 and are badged Processing like any unsegmented film; the Studies
 summary counts them as UNSEGMENTED and the batch's own progress is the filter bar's and the
 sidebar's (2026-09-08, batch spec decisions 7–8).
@@ -968,6 +988,8 @@ The user requested a complete library clear. Studies now offers a count-based co
 
 Verified: 280 Node tests; a running Electron scratch-profile test covering confirmation, cancellation, deletion through a filtered view, sidecar removal, source-file retention, and an empty library after relaunch. No live user studies were deleted during verification.
 
+**Superseded 2026-09-10 (studies-table spec §5, §9):** the library-level control is gone. Delete on the Find bar acts on the ticked visible rows through `deleteStudyBatch(studies, { deletePrediction })` — the `hideDemos` option and the demo branch are removed; `state.deletingStudies` and the mutual exclusion with run and batch are unchanged. Demo visibility is a development-only Settings toggle: `renderer/demo-studies.js` → `api.setDemoStudiesHidden(hidden)` → IPC `set-demo-studies-hidden`, which the main process refuses (returns false, writes nothing) when `app.isPackaged`; `hide-demo-studies` no longer exists. The read, `demo-studies-hidden`, and the bootstrap rule are unchanged.
+
 
 ## 2026-09-09 amendment: batch calibration integration
 
@@ -1078,3 +1100,21 @@ high-bit-depth images and decoded DICOM floats are skipped. Uncertain cases rema
 unchanged. See `docs/toolbar-removal.md` for exact checks and provenance fields.
 Actual `toolbar` progress events report checking/removal; QC stores the preference,
 original size, retained window and removed rows. No store version or CSP change.
+
+## 2026-09-10 amendment: delete selected, sortable Find headers, editable subject, reviewed status, demo toggle
+
+Spec `docs/superpowers/specs/2026-09-10-studies-table-review-design.md`; plan `plans/2026-09-10-studies-table-review.md`.
+The record gains `reviewedAt` (§8.1, above). Status gains `'ok'`/Reviewed (§8.2); the mark is cleared ON THE WRITE at four sites:
+`segmentStudy`'s run commit, `measure-queue.js`'s correction commit, the viewer's RESET TO PREDICTION, and `renderer/calibration.js`'s
+`withCalibration(study, calibration)` (an unchanged scale returns the same record). The Find tab's module-scope UI state is
+`confirmingId`, `confirmingSelected` and `editingSubject`, all in its `update()` key; its `data-find-key`s gain `delete`, `delete-prompt`,
+`delete-confirm`, `delete-cancel`, `sort-<key>`, `subject-<id>`, `subject-input-<id>`. `SIDEBAR_KEYS` gains `deletingStudies`.
+The header cells stay plain divs (no `aria-sort`; the ROADMAP accessibility item owns the table semantics).
+
+**2026-09-10 fix (spec 7.3):** a rebuild mid-edit (a Find/Parameters notification arriving while a SUBJECT editor is open) re-creates
+the editor with its draft, focus and caret restored, but Chromium still fires the destroyed `<input>`'s `blur` one microtask later.
+The editor's deferred `onBlur` commit (`queueMicrotask` → `commitSubject(id, 'blur')`) skips the write when the input node is no
+longer connected to the document (`!input.isConnected`) while `editingSubject` still names that row — a removal-blur, as opposed to a
+user-driven blur, where the node is still connected at that moment. Without the guard the half-typed draft was written and the editor
+closed out from under the user. See HANDOFF's "Known traps" and `smoke-studies.mjs`'s "a rebuild while the editor is open keeps the
+editor, the draft and the caret" check, the tripwire for this guard.

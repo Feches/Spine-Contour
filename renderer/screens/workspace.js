@@ -75,6 +75,9 @@ export function loadWorkspaceStudies(state) {
   let updated = 0;
   let clinicalUpdated = 0;
   const seeding = { fromFolders: 0, fromCsv: 0, noSubject: 0, noTimepoint: 0, badDates: 0 };
+  // One load, one addedAt -- newStudy() stamps its own per call, and a tight loop over many
+  // files can tie or reorder under the Find tab's newest-first default sort (sortFindRows).
+  const addedAt = new Date().toISOString();
 
   for (const filePath of state.wsFiles) {
     const existing = knownByPath.get(filePath.toLowerCase()) ?? null;
@@ -124,6 +127,9 @@ export function loadWorkspaceStudies(state) {
       // its own containing folder in filePath; the table shows both, and the pair is what tells
       // two same-named films under different workspaces apart.
       ...newStudy({ id, fileName: filePath.split(/[\\/]/).pop(), filePath, workspaceFolder: root }),
+      // Overrides newStudy()'s own stamp so every record from this load ties under the
+      // newest-first sort and stays in scan order (stable sort keeps input order on a tie).
+      addedAt,
       // The seeded subject, timepoint, film date and view (§8.3). view is never null here: the
       // folder row always holds one, and it was on screen before Load.
       ...seeded.fields,

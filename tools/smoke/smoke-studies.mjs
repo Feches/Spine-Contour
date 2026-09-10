@@ -58,9 +58,12 @@ try {
   check('heading reads Studies', heading === 'Studies', heading);
 
   const summaryText = (await text(cdp, '.studies-summary') || '').trim();
-  const summaryMatch = /^(\d+) STUDIES · (\d+) UNSEGMENTED$/.exec(summaryText);
-  check('summary matches "{n} STUDIES · {m} UNSEGMENTED" with n >= 9', Boolean(summaryMatch) && Number(summaryMatch[1]) >= 9, summaryText);
+  // (2026-09-10, studies-table spec 10) a third clause. The regex keeps the file's separator glyph
+  // and writes the new one as an escape (HANDOFF's glyph trap); both match the same character.
+  const summaryMatch = /^(\d+) STUDIES · (\d+) UNSEGMENTED \u00B7 (\d+) TO REVIEW$/.exec(summaryText);
+  check('summary matches "{n} STUDIES · {m} UNSEGMENTED \u00B7 {k} TO REVIEW" with n >= 9', Boolean(summaryMatch) && Number(summaryMatch[1]) >= 9, summaryText);
   const n = summaryMatch ? Number(summaryMatch[1]) : null;
+  const toReview0 = summaryMatch ? Number(summaryMatch[3]) : null;
 
   const initialRows = await rowCount(cdp);
   check('.studies-row count equals n', initialRows === n, { initialRows, n });
@@ -82,7 +85,8 @@ try {
     const text = (id, cls) => row(id).querySelector(cls)?.textContent ?? null;
     return {
       lordosisGone: document.querySelectorAll('.studies-lordosis, .studies-lordosis-high, .studies-col-lordosis').length,
-      headers: [...document.querySelectorAll('.studies-table-head > div')].map((d) => d.textContent),
+      // (2026-09-10) every header holds a sort button; strip its mark, as the grid's check does.
+      headers: [...document.querySelectorAll('.studies-table-head > div')].map((d) => { const b = d.querySelector('.param-sort'); return (b ? b.textContent.replace(/[\u25B4\u25BE]/g, '') : d.textContent).trim(); }),
       sp0042Date: text('SP-0042', '.studies-cell-date'),
       // Demo records carry no filePath and no workspace, so both provenance cells are em dashes.
       sp0042Workspace: text('SP-0042', '.studies-cell-workspace'),
@@ -92,8 +96,8 @@ try {
     };
   })()`);
   check('the LORDOSIS column is gone from the list', cellDetail.lordosisGone === 0, cellDetail.lordosisGone);
-  check('the header row reads STUDY, PATIENT, VIEW, WORKSPACE, FOLDER, DATE, STATUS',
-    JSON.stringify(cellDetail.headers) === JSON.stringify(['STUDY', 'PATIENT', 'VIEW', 'WORKSPACE', 'FOLDER', 'DATE', 'STATUS', '']),
+  check('the header row reads STUDY, SUBJECT, VIEW, WORKSPACE, FOLDER, DATE, STATUS',
+    JSON.stringify(cellDetail.headers) === JSON.stringify(['STUDY', 'SUBJECT', 'VIEW', 'WORKSPACE', 'FOLDER', 'DATE', 'STATUS', '']),
     cellDetail.headers);
   check('SP-0042 date cell reads Aug 21, 2026', cellDetail.sp0042Date === 'Aug 21, 2026', cellDetail.sp0042Date);
   check('a demo study has an em dash for both workspace and folder',
@@ -212,14 +216,14 @@ try {
       id: row.dataset.studyId,
       badgeProc: Boolean(row.querySelector('.badge-proc')),
       badgeText: row.querySelector('.badge-proc')?.textContent,
-      patient: row.querySelector('.studies-cell-patient')?.textContent.trim(),
+      subject: row.querySelector('.studies-cell-subject')?.textContent.trim(),
       name: row.querySelector('.studies-cell-id')?.textContent,
       workspace: row.querySelector('.studies-cell-workspace')?.textContent,
       folder: row.querySelector('.studies-cell-folder')?.textContent,
       demoPill: Boolean(row.querySelector('.pill-demo')),
     };
   })()`);
-  check('the new study is the first row, Processing, no DEMO pill', newRow && newRow.id === 'SP-9000' && newRow.badgeProc && newRow.badgeText === 'Processing' && newRow.patient === '—' && newRow.demoPill === false, newRow);
+  check('the new study is the first row, Processing, no DEMO pill', newRow && newRow.id === 'SP-9000' && newRow.badgeProc && newRow.badgeText === 'Processing' && newRow.subject === '—' && newRow.demoPill === false, newRow);
   check('the injected study is named after its file, not its id',
     newRow && newRow.name === '13462cd9-a59f-4aab-9256-cbd723fb978c', newRow && newRow.name);
   // Added by hand: no workspace, but the folder is still derived from the film's own path.
@@ -227,7 +231,7 @@ try {
     newRow && newRow.workspace === '—' && newRow.folder === 'design_src',
     newRow && { workspace: newRow.workspace, folder: newRow.folder });
   const summaryAfterAdd = (await text(cdp, '.studies-summary') || '').trim();
-  check('summary reads n+1 studies, 1 unsegmented', summaryAfterAdd === `${n + 1} STUDIES · 1 UNSEGMENTED`, summaryAfterAdd);
+  check('summary reads n+1 studies, 1 unsegmented, the same to-review count', summaryAfterAdd === `${n + 1} STUDIES · 1 UNSEGMENTED \u00B7 ${toReview0} TO REVIEW`, summaryAfterAdd);
 
   // 6. The unsegmented record round-trips through the persisted store.
   const persisted = await cdp.evaluate(`(async () => {
@@ -410,8 +414,11 @@ try {
     const b = document.querySelector('[data-find-key="segment"]');
     return { label: b ? b.textContent : null, disabled: b ? b.disabled : null, note: document.querySelector('[data-find-key="segment-note"]')?.textContent ?? null };
   })()`);
+  // (2026-09-10) '.studies-progress-text' nests a '.study-processing-detail' span inside itself
+  // for the live backend stage/detail (upstream 63b3484, the low-memory live-progress feature);
+  // textContent would include it, so clone the node and strip the nested span before reading.
   const readProgress = () => cdp.evaluate(`(() => ({
-    text: document.querySelector('[data-find-key="progress"] .studies-progress-text')?.textContent ?? null,
+    text: (() => { const e = document.querySelector('[data-find-key="progress"] .studies-progress-text'); if (!e) return null; const c = e.cloneNode(true); c.querySelectorAll('.study-processing-detail').forEach((n) => n.remove()); return c.textContent.trim(); })(),
     stopDisabled: document.querySelector('[data-find-key="stop"]')?.disabled ?? null,
     segmentButton: Boolean(document.querySelector('[data-find-key="segment"]')),
     sidebar: document.querySelector('.nav-row[aria-label="Studies"] .nav-sublabel')?.textContent ?? null,
@@ -421,7 +428,7 @@ try {
   // A missing element returns null rather than throwing (see the comment above clickAt).
   const pick = (key, value) => cdp.evaluate(`(() => { const el = document.querySelector('[data-find-key="${key}"]'); if (!el) return null; el.value = ${JSON.stringify(value)}; el.dispatchEvent(new Event('change', { bubbles: true })); return el.value; })()`);
   const summaryParts = async () => {
-    const m = /^(\d+) STUDIES · (\d+) UNSEGMENTED$/.exec(((await text(cdp, '.studies-summary')) || '').trim());
+    const m = /^(\d+) STUDIES · (\d+) UNSEGMENTED \u00B7 (\d+) TO REVIEW$/.exec(((await text(cdp, '.studies-summary')) || '').trim());
     return m ? { studies: Number(m[1]), unsegmented: Number(m[2]) } : null;
   };
   // A missing element is a FAIL in the results, never a throw: the suite prints its results only at
@@ -593,6 +600,188 @@ try {
 
   // 14. No new console errors or exceptions across the batch sections.
   check('no console errors or exceptions during the batch sections', cdp.errors.length === errorsAfter9, cdp.errors.slice(errorsAfter9));
+  // ---------------------------------------------------------------------------------------------
+  // 15-17 (2026-09-10, studies-table spec): sortable headers, the SUBJECT editor, Delete selected.
+  // ---------------------------------------------------------------------------------------------
+  const errorsAfter14 = cdp.errors.length;
+  await cdp.setState(`{ screen: "studies", query: "", paramFilters: ${FILTERS_RESET}, paramSelected: [], findSort: { key: "date", dir: "desc" } }`);
+  await cdp.settle(200);
+  const badgeOrder = () => cdp.evaluate(`[...document.querySelectorAll('.studies-row')].map((r) => (r.querySelector('.badge') || {}).className || '')`);
+  const rank = (c) => (c.includes('badge-proc') ? 0 : c.includes('badge-rev') ? 1 : c.includes('badge-seg') ? 2 : c.includes('badge-ok') ? 3 : 9);
+  const activeKey = () => cdp.evaluate(`document.activeElement ? document.activeElement.getAttribute('data-find-key') : null`);
+
+  // 15. Sort (spec 6). SP-9000 is segmented, SP-9001 unsegmented (section 10), the demos segmented.
+  const dateMark = await cdp.evaluate(`document.querySelector('[data-find-key="sort-date"]')?.textContent ?? null`);
+  check('DATE carries the descending mark by default', typeof dateMark === 'string' && dateMark.includes('\u25BE'), dateMark);
+  await clickAt('[data-find-key="sort-status"]');
+  await cdp.settle(150);
+  s = await cdp.state();
+  check('clicking STATUS sorts ascending by status', s.findSort.key === 'status' && s.findSort.dir === 'asc', s.findSort);
+  const badgesAsc = await badgeOrder();
+  check('ascending status never puts a higher rank before a lower one', badgesAsc.length > 0 && badgesAsc.map(rank).every((r, i, a) => i === 0 || a[i - 1] <= r), badgesAsc);
+  const statusMark = await cdp.evaluate(`document.querySelector('[data-find-key="sort-status"]')?.textContent ?? null`);
+  check('the STATUS header carries the ascending mark and kept focus across the rebuild', typeof statusMark === 'string' && statusMark.includes('\u25B4') && (await activeKey()) === 'sort-status', { statusMark, active: await activeKey() });
+  await clickAt('[data-find-key="sort-status"]');
+  await cdp.settle(150);
+  const badgesDesc = await badgeOrder();
+  check('clicking STATUS again reverses it', (await cdp.state()).findSort.dir === 'desc' && badgesDesc.map(rank).every((r, i, a) => i === 0 || a[i - 1] >= r), badgesDesc);
+  await clickAt('[data-find-key="sort-study"]');
+  await cdp.settle(150);
+  const namesAsc = await cdp.evaluate(`[...document.querySelectorAll('.studies-row .studies-name')].map((e) => e.textContent.toLowerCase())`);
+  check('clicking STUDY sorts the names ascending, case-insensitively', (await cdp.state()).findSort.key === 'study' && namesAsc.length > 1 && namesAsc.every((v, i, a) => i === 0 || a[i - 1] <= v), namesAsc);
+  await cdp.setState('{ findSort: { key: "date", dir: "desc" } }');
+  await cdp.settle(150);
+
+  // 16. The SUBJECT editor on a real row (spec 7.2). SP-9000 has no subject yet.
+  const cell16 = await cdp.rect('[data-find-key="subject-SP-9000"]');
+  const cellText16 = ((await text(cdp, '[data-find-key="subject-SP-9000"]')) || '').trim();
+  check('a real row has a click-to-edit SUBJECT cell reading an em dash', Boolean(cell16) && cellText16 === '\u2014', { cell16, cellText16 });
+  const demoCell16 = await cdp.evaluate(`Boolean(document.querySelector('[data-find-key="subject-SP-0042"]'))`);
+  check('a demo row has no editor', demoCell16 === false, demoCell16);
+  if (cell16) await cdp.click(cell16.cx, cell16.cy);
+  await cdp.settle(150);
+  s = await cdp.state();
+  const editor16 = await cdp.evaluate(`(() => { const i = document.querySelector('[data-find-key="subject-input-SP-9000"]'); return i ? { focused: document.activeElement === i, value: i.value } : null; })()`);
+  check('clicking the cell opens an editor with focus and does not open the study', s.screen === 'studies' && Boolean(editor16) && editor16.focused === true && editor16.value === '', { screen: s.screen, editor16 });
+  await cdp.typeText('S-42');
+  await cdp.key('Enter');
+  await cdp.settle(200);
+  s = await cdp.state();
+  check('Enter stores the trimmed subject on the record', s.studies.find((x) => x.id === 'SP-9000')?.subjectId === 'S-42', s.studies.find((x) => x.id === 'SP-9000')?.subjectId ?? null);
+  const after16 = await cdp.evaluate(`(() => {
+    const rows = [...document.querySelectorAll('.studies-row')];
+    const i = rows.findIndex((r) => r.dataset.studyId === 'SP-9000');
+    const below = rows.slice(i + 1).find((r) => r.querySelector('.studies-subject-editable, .studies-subject-input'));
+    const active = document.activeElement;
+    return { cell: document.querySelector('[data-find-key="subject-SP-9000"]')?.textContent.trim() ?? null, below: below ? below.dataset.studyId : null, active: active ? active.getAttribute('data-find-key') : null };
+  })()`);
+  check('the cell shows the new subject', after16.cell === 'S-42', after16);
+  check("Enter opened the next real row's editor, or stayed on the cell when none is below", after16.below ? after16.active === `subject-input-${after16.below}` : after16.active === 'subject-SP-9000', after16);
+  await cdp.key('Escape');
+  await cdp.settle(150);
+  const cell16b = await cdp.rect('[data-find-key="subject-SP-9000"]');
+  if (cell16b) await cdp.click(cell16b.cx, cell16b.cy);
+  await cdp.settle(150);
+  const reopened16 = await cdp.evaluate(`(() => { const i = document.querySelector('[data-find-key="subject-input-SP-9000"]'); return i ? { value: i.value, selected: i.selectionStart === 0 && i.selectionEnd === i.value.length } : null; })()`);
+  check('reopening pre-fills the stored subject with the text selected', Boolean(reopened16) && reopened16.value === 'S-42' && reopened16.selected === true, reopened16);
+  await cdp.typeText('zzz');
+  await cdp.key('Escape');
+  await cdp.settle(150);
+  s = await cdp.state();
+  check('Escape discards the typed text and returns focus to the cell', s.studies.find((x) => x.id === 'SP-9000')?.subjectId === 'S-42' && (await activeKey()) === 'subject-SP-9000', { subject: s.studies.find((x) => x.id === 'SP-9000')?.subjectId, active: await activeKey() });
+
+  // 16b (spec 7.3): a rebuild while the editor is open must re-create it with the text typed so
+  // far, the focus and the caret. The rebuild is forced through a store key the Find tab reads but
+  // this row does not -- another row's tick -- so nothing about SP-9000 changes underneath it.
+  await clickAt('[data-find-key="subject-SP-9000"]');
+  await cdp.settle(150);
+  // The stored 'S-42' opens selected, so insertText REPLACES it: the draft is 'AB', caret at 2.
+  await cdp.typeText('AB');
+  await cdp.setState('{ paramSelected: ["SP-9001"] }');
+  await cdp.settle(200);
+  const rebuilt16 = await cdp.evaluate(`(() => {
+    const i = document.querySelector('[data-find-key="subject-input-SP-9000"]');
+    if (!i) return { exists: false, value: null, focused: false, start: null, end: null };
+    return { exists: true, value: i.value, focused: document.activeElement === i, start: i.selectionStart, end: i.selectionEnd };
+  })()`);
+  check('a rebuild while the editor is open keeps the editor, the draft and the caret (spec 7.3)',
+    rebuilt16.exists && rebuilt16.value === 'AB' && rebuilt16.focused && rebuilt16.start === 2 && rebuilt16.end === 2, rebuilt16);
+  await cdp.key('Escape');
+  await cdp.settle(150);
+  s = await cdp.state();
+  check('the rebuild, and the Escape after it, leave the stored subject alone', s.studies.find((x) => x.id === 'SP-9000')?.subjectId === 'S-42', s.studies.find((x) => x.id === 'SP-9000')?.subjectId ?? null);
+  await cdp.setState('{ paramSelected: [] }');
+  await cdp.settle(150);
+  // If the deferred blur commit above fired, the record is holding the draft instead of the
+  // stored subject. Put it back, so the checks below test what they have always tested; when the
+  // editor survives a rebuild as spec 7.3 requires, this write changes nothing.
+  await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (x.id === 'SP-9000' ? { ...x, subjectId: 'S-42' } : x)) })))`);
+  await cdp.settle(150);
+
+  // 16c (spec 8.2): a study carrying reviewedAt badges Reviewed on the list and leaves the
+  // summary's TO REVIEW clause -- if it was in it, which depends on what the real run produced,
+  // so the expectation is computed from the badge the row had before. There is no control for the
+  // mark on this screen; it is written through the store, the way the Analysis button writes it.
+  const toReviewCount = async () => {
+    const line = ((await text(cdp, '.studies-summary')) || '').trim();
+    const m = /^(\d+) STUDIES \u00B7 (\d+) UNSEGMENTED \u00B7 (\d+) TO REVIEW$/.exec(line);
+    return m ? Number(m[3]) : null;
+  };
+  const badgeOf9000 = () => cdp.evaluate(`(() => { const b = document.querySelector('.studies-row[data-study-id="SP-9000"] .badge'); return b ? { cls: b.className, text: b.textContent.trim() } : null; })()`);
+  const review0 = await toReviewCount();
+  const badge0 = await badgeOf9000();
+  const mark = (value) => cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (x.id === 'SP-9000' ? { ...x, reviewedAt: ${value} } : x)) })))`);
+  await mark(`'2026-09-10T12:00:00.000Z'`);
+  await cdp.settle(200);
+  const badge1 = await badgeOf9000();
+  check('a row carrying reviewedAt badges Reviewed on the list', Boolean(badge1) && badge1.cls === 'badge badge-ok' && badge1.text === 'Reviewed', { badge0, badge1 });
+  const expected1 = badge0 && badge0.cls.includes('badge-rev') ? review0 - 1 : review0;
+  const review1 = await toReviewCount();
+  check("the summary's TO REVIEW count follows the mark", typeof review0 === 'number' && review1 === expected1, { review0, expected1, review1, badge0 });
+  await mark('null');
+  await cdp.settle(200);
+  const badge2 = await badgeOf9000();
+  check('clearing the mark restores the derived badge', Boolean(badge0) && Boolean(badge2) && badge2.cls === badge0.cls && badge2.text === badge0.text, { badge0, badge2 });
+
+  await cdp.setState('{ query: "S-42" }');
+  await cdp.settle(150);
+  check('the search box finds the study by its new subject', (await rowCount(cdp)) === 1, await rowCount(cdp));
+  await clearSearch(cdp);
+  await cdp.settle(150);
+
+  // 17. Delete selected (spec 5). Two throwaway films, no bytes, no file: nothing to segment, and
+  // no sidecar to delete, so deletePrediction's ENOENT-is-fine path is what runs.
+  await injectFilm({ id: 'SP-9002', fileName: 'gone-a.png', filePath: 'C:\\smoke\\Fusion2025\\post-op\\gone-a.png', workspaceFolder: 'C:\\smoke\\Fusion2025', base64: null });
+  await injectFilm({ id: 'SP-9003', fileName: 'gone-b.png', filePath: 'C:\\smoke\\Fusion2025\\post-op\\gone-b.png', workspaceFolder: 'C:\\smoke\\Fusion2025', base64: null });
+  await cdp.setState('{ paramSelected: [], query: "gone" }');
+  await cdp.settle(200);
+  const countBefore17 = (await cdp.state()).studies.length;
+  const readDelete = () => cdp.evaluate(`(() => { const b = document.querySelector('[data-find-key="delete"]'); return b ? { label: b.textContent, disabled: b.disabled, title: b.title } : null; })()`);
+  const promptUp = () => cdp.evaluate(`Boolean(document.querySelector('[data-find-key="delete-prompt"]'))`);
+  const d0 = await readDelete();
+  check('with nothing ticked the bar reads Delete, disabled, and says to tick studies', Boolean(d0) && d0.label === 'Delete' && d0.disabled === true && d0.title === 'Tick studies to delete', d0);
+  const deleteAllGone = await cdp.evaluate(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Delete all studies')`);
+  check('no library-level Delete all studies control remains', deleteAllGone === false, deleteAllGone);
+  await clickAt('input[data-find-key="select-all"]');
+  await cdp.settle(150);
+  s = await cdp.state();
+  check('select-all over the searched rows ticks the two throwaway films', s.paramSelected.length === 2 && s.paramSelected.includes('SP-9002') && s.paramSelected.includes('SP-9003'), s.paramSelected);
+  const d1 = await readDelete();
+  check('the bar reads Delete 2 selected, enabled', Boolean(d1) && d1.label === 'Delete 2 selected' && d1.disabled === false, d1);
+  await cdp.setState('{ query: "gone-a" }');
+  await cdp.settle(150);
+  const d2 = await readDelete();
+  check('a tick hidden by the search is not counted: Delete 1 selected', Boolean(d2) && d2.label === 'Delete 1 selected', d2);
+  await cdp.setState('{ query: "gone" }');
+  await cdp.settle(150);
+  await clickAt('[data-find-key="delete"]');
+  await cdp.settle(150);
+  const prompt17 = await cdp.evaluate(`(() => { const p = document.querySelector('[data-find-key="delete-prompt"]'); return p ? { text: p.querySelector('span')?.textContent, focus: document.activeElement?.getAttribute('data-find-key') } : null; })()`);
+  check('Delete replaces the bar with a prompt naming two studies, focus on Cancel', Boolean(prompt17) && prompt17.text === 'Delete 2 studies, including their saved results? Original image files will be kept.' && prompt17.focus === 'delete-cancel', prompt17);
+  await cdp.key('Escape');
+  await cdp.settle(150);
+  check('Escape withdraws the prompt and hands focus back to Delete', (await promptUp()) === false && (await activeKey()) === 'delete', { prompt: await promptUp(), active: await activeKey() });
+  await clickAt('[data-find-key="delete"]');
+  await cdp.settle(150);
+  await clickAt('input[data-find-key="row-SP-9003"]');
+  await cdp.settle(150);
+  const d3 = await readDelete();
+  check('changing a tick withdraws the prompt', (await promptUp()) === false && Boolean(d3) && d3.label === 'Delete 1 selected', d3);
+  await clickAt('input[data-find-key="row-SP-9003"]');
+  await cdp.settle(150);
+  await clickAt('[data-find-key="delete"]');
+  await cdp.settle(150);
+  await clickAt('[data-find-key="delete-confirm"]');
+  const gone17 = await waitForState(`s.studies.length === ${countBefore17 - 2} && !s.deletingStudies`, 5000);
+  s = await cdp.state();
+  check('Delete permanently removes the two records and nothing else', gone17 && !s.studies.some((x) => x.id === 'SP-9002' || x.id === 'SP-9003') && s.studies.some((x) => x.id === 'SP-9000'), { gone17, count: s.studies.length });
+  check('their ticks are pruned and the search is untouched', s.paramSelected.length === 0 && s.query === 'gone', { selected: s.paramSelected, query: s.query });
+  check('the toast reports the count', String(s.toast || '').startsWith('Deleted 2 studies.'), s.toast);
+  await clearSearch(cdp);
+  await cdp.settle(150);
+  const summary17 = ((await text(cdp, '.studies-summary')) || '').trim();
+  check('the summary carries the TO REVIEW clause after the delete', /^\d+ STUDIES \u00B7 \d+ UNSEGMENTED \u00B7 \d+ TO REVIEW$/.test(summary17), summary17);
+  check('no console errors or exceptions during sections 15-17', cdp.errors.length === errorsAfter14, cdp.errors.slice(errorsAfter14));
 } finally {
   cdp.close();
 }
