@@ -349,7 +349,9 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       selection: state.openId === studyId ? null : state.selection,
       studies: state.studies.map((s) => (s.id === studyId
         ? { ...s, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
-          calibration: preferReviewedCalibration(response.calibration, calibrationForStudy(s)), thumbnail }
+          calibration: preferReviewedCalibration(response.calibration, calibrationForStudy(s)), thumbnail,
+          // A re-run replaces every number a review was made over (studies-table spec 2026-09-10, section 8.4, site 1).
+          reviewedAt: null }
         : s)),
     }));
     return warning ? { ok: true, warning } : { ok: true };

@@ -53,7 +53,9 @@ export function createMeasureQueue({ measure, getState, setState, showToast, deb
       const current = getState().studies.find((item) => item.id === studyId);
       if (!current || current.addedAt !== study.addedAt) { discardDraft(studyId); return; }
       measured.set(studyId, result.geometry);
-      writeStudy(studyId, { measurements: result.measurements, geometry: result.geometry,
+      // The numbers a review was made over are being replaced, so the mark goes with them
+      // (studies-table spec 2026-09-10, section 8.4). On the write, not derived: one line, one test.
+      writeStudy(studyId, { measurements: result.measurements, geometry: result.geometry, reviewedAt: null,
         ...(result.qc?.coverage ? { qc: { ...current.qc, coverage: result.qc.coverage } } : {}) });
     } catch (error) {
       if (revision !== revisions.get(studyId)) return;
