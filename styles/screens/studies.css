@@ -132,6 +132,12 @@
   margin-right: 0;
 }
 
+/* The header row's sort buttons (studies-table spec 2026-09-10, section 6.3) are the grid's .param-sort:
+   `all: unset` plus the head's inherited mono face. .studies-th is a plain cell holding one. */
+.studies-th {
+  min-width: 0;
+}
+
 /* Provenance. WORKSPACE is the root the film was loaded from and is an em dash for anything
    added by hand; FOLDER is the folder the film actually sits in, so a film the recursive scan
    found below the root shows the subfolder. Together they separate two same-named films under
@@ -147,8 +153,9 @@
 
 /* The label and the DEMO pill sit on one line. Two provenance columns made this track narrower
    than it was, and without nowrap a label like 'P-8841' broke across two lines and grew the row.
-   The pill keeps its size; the label truncates first. */
-.studies-cell-patient {
+   The pill keeps its size; the label truncates first.
+   (2026-09-10) SUBJECT replaced PATIENT; a real row's cell is the click-to-edit target below. */
+.studies-cell-subject {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -158,8 +165,52 @@
   overflow: hidden;
 }
 
-.studies-cell-patient > .pill-demo {
+.studies-cell-subject > .pill-demo {
   flex: none;
+}
+
+/* The SUBJECT editor (studies-table spec 2026-09-10, section 7.2). At rest the cell is plain text so the
+   list does not read as a form; on hover and keyboard focus it shows a field outline (the same
+   move the Analysis header's name field makes), and a subject the study has none of reads muted.
+   The negative margins keep the outlined box the row's height without growing the row. */
+.studies-subject-editable {
+  cursor: text;
+  margin: -4px -8px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.studies-subject-editable:hover,
+.studies-subject-editable:focus-visible {
+  border-color: var(--border);
+  background: var(--card);
+  outline: none;
+}
+
+.studies-subject-editable:focus-visible {
+  border-color: var(--accent);
+}
+
+.studies-subject-empty {
+  color: var(--muted);
+}
+
+.studies-subject-input {
+  width: 100%;
+  min-width: 0;
+  margin: -4px -8px;
+  padding: 4px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  font: 400 14px 'Source Sans 3', sans-serif;
+}
+
+.studies-subject-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 .studies-cell-view {
@@ -219,6 +270,14 @@
 
 .studies-delete-confirm:hover {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* The bar's Delete (studies-table spec 2026-09-10, section 5.2): a secondary button that reads as the
+   destructive half only once it can act. */
+.studies-delete-selected:not(:disabled):hover,
+.studies-delete-selected:not(:disabled):focus-visible {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 
 /* Tab strip: FIND (the list, search and dropzone) and PARAMETERS (the grid). Same shape as the
@@ -587,6 +646,25 @@
   color: var(--muted);
 }
 
-.studies-bulk-actions { margin: 12px 0 18px; }
-.studies-bulk-prompt { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--accent); border-radius: 12px; background: var(--card); color: var(--body); font-size: 14px; }
-.studies-bulk-prompt span { flex: 1 1 260px; }
+/* The Delete prompt (studies-table spec 2026-09-10, section 5.3) takes the bar's place while it is up:
+   the same accent-bordered card the library-level prompt was, now the bar's only child. */
+.studies-bulk-prompt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--body);
+  font-size: 14px;
+}
+
+.studies-filters > .studies-bulk-prompt {
+  flex: 1 1 100%;
+}
+
+.studies-bulk-prompt span {
+  flex: 1 1 260px;
+}
