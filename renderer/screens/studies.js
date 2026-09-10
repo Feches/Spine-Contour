@@ -73,6 +73,8 @@ export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
     name: defaultName(fileName), workspaceFolder,
     // Pre-op/post-op spec §7.1: set by a workspace load, the CSV or the drawer; null until then.
     subjectId: null, timepoint: null, filmDate: null,
+    // (2026-09-10, studies-table spec 8.1) the review mark; set on the Analysis screen, cleared by every write that changes the numbers.
+    reviewedAt: null,
     addedAt: new Date().toISOString(), view: DEFAULT_VIEW, thumbnail: null,
     measurements: null, geometry: null, qc: null, clinical: {},
   };

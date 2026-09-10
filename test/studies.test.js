@@ -85,6 +85,8 @@ test('newStudy carries the three study fields as null', () => {
   assert.equal(study.timepoint, null);
   assert.equal(study.filmDate, null);
   assert.ok('subjectId' in study && 'timepoint' in study && 'filmDate' in study);
+  assert.equal(study.reviewedAt, null);
+  assert.ok('reviewedAt' in study);
 });
 
 // The Parameters grid shows all three, and the search box applies to the grid: a visible column

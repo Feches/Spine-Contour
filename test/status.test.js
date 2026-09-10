@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { RESIDUAL_LIMIT, CONFIDENCE_LIMIT, deriveStatus, statusLabel } from '../renderer/data/status.js';
 import { isConsistent } from '../renderer/data/measurements.js';
 import { reviewReasons, S1_CONFIDENCE_LIMIT } from '../renderer/data/status.js';
+import {
+  isReviewed, displayStatus, reviewedLabel, reviewBlockedReason,
+  REVIEW_DEMO, REVIEW_NOTHING, REVIEW_RUNNING, REVIEW_PENDING,
+} from '../renderer/data/status.js';
 
 test('weak S1 and weak spine location require review despite a good femoral fit and consistent angles', () => {
   const study = { measurements: { PI: 60, PT: 20, SS: 40 }, qc: {
@@ -109,4 +113,55 @@ test('deriveStatus and isConsistent agree at the residual boundary (one RESIDUAL
   assert.equal(isConsistent(at), true);
   assert.equal(deriveStatus({ measurements: over, qc }), 'rev');
   assert.equal(isConsistent(over), false);
+});
+
+// (2026-09-10, studies-table spec 8) the review mark and the fourth status.
+const CLEAN = { measurements: { PI: 60, PT: 20, SS: 40 }, qc: { femoral: { confidence: 0.95 } } };
+const SUSPECT = { measurements: { PI: 60, PT: 20, SS: 40 }, qc: { femoral: { confidence: 0.2 } } };
+const MARK = '2026-09-10T12:00:00.000Z';
+
+test('a review mark makes a study Reviewed whether or not its qc would ask for review, and the warnings stay', () => {
+  assert.equal(deriveStatus({ ...CLEAN, reviewedAt: MARK }), 'ok');
+  assert.equal(deriveStatus({ ...SUSPECT, reviewedAt: MARK }), 'ok');
+  assert.equal(reviewReasons({ ...SUSPECT, reviewedAt: MARK }).length, 1);
+});
+
+test('a review mark over no measurements is still Processing; a blank or non-string mark is no mark', () => {
+  assert.equal(deriveStatus({ measurements: null, reviewedAt: MARK }), 'proc');
+  assert.equal(deriveStatus({ ...SUSPECT, reviewedAt: '' }), 'rev');
+  assert.equal(deriveStatus({ ...SUSPECT, reviewedAt: null }), 'rev');
+  assert.equal(deriveStatus({ ...CLEAN, reviewedAt: 12 }), 'seg');
+  assert.equal(isReviewed({ reviewedAt: '  ' }), false);
+  assert.equal(isReviewed({ reviewedAt: MARK }), true);
+  assert.equal(isReviewed(null), false);
+});
+
+test('displayStatus reads Processing for the running study and deriveStatus otherwise', () => {
+  const study = { id: 'SP-1000', ...CLEAN, reviewedAt: MARK };
+  assert.equal(displayStatus(study, 'SP-1000'), 'proc');
+  assert.equal(displayStatus(study, 'SP-1001'), 'ok');
+  assert.equal(displayStatus(study, null), 'ok');
+  assert.equal(displayStatus(study), 'ok');
+  assert.equal(displayStatus(null, null), 'proc');
+});
+
+test('statusLabel names the fourth status', () => {
+  assert.equal(statusLabel('ok'), 'Reviewed');
+});
+
+test('reviewedLabel carries the date and never invents one', () => {
+  // Noon UTC so the local date is the 10th in every zone the app is tested in.
+  assert.equal(reviewedLabel(MARK), 'Reviewed \u00B7 Sep 10, 2026');
+  assert.equal(reviewedLabel('not a date'), 'Reviewed');
+  assert.equal(reviewedLabel(null), 'Reviewed');
+  assert.equal(reviewedLabel(undefined), 'Reviewed');
+});
+
+test('reviewBlockedReason: demo, then running, then nothing to review, then pending, then enabled', () => {
+  assert.equal(reviewBlockedReason({ study: { id: 'SP-0042', source: 'demo', ...CLEAN } }), REVIEW_DEMO);
+  assert.equal(reviewBlockedReason({ study: { id: 'SP-1000', source: 'real', ...CLEAN }, running: 'SP-1000' }), REVIEW_RUNNING);
+  assert.equal(reviewBlockedReason({ study: { id: 'SP-1000', source: 'real', measurements: null }, running: null }), REVIEW_NOTHING);
+  assert.equal(reviewBlockedReason({ study: { id: 'SP-1000', source: 'real', ...CLEAN }, pending: true }), REVIEW_PENDING);
+  assert.equal(reviewBlockedReason({ study: { id: 'SP-1000', source: 'real', ...CLEAN }, running: 'SP-1001' }), null);
+  assert.equal(reviewBlockedReason({ study: null }), REVIEW_NOTHING);
 });

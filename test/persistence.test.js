@@ -330,3 +330,20 @@ test('validate nulls a blank or non-string study field silently, and a malformed
   assert.equal(warn.mock.callCount(), 1);
   assert.match(warn.mock.calls[0].arguments[0], /SP-1001/);
 });
+
+test('validate round-trips the review mark, defaults it to null, and drops a non-date with one warning (studies-table spec 8.1)', (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const [bare] = validate({ version: STORE_VERSION, studies: [identity('SP-1000')] });
+  assert.equal(bare.reviewedAt, null);
+  // Listed on the returned object, or the saver writes it and the next load drops it.
+  assert.ok('reviewedAt' in bare);
+  const [marked] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1001'), reviewedAt: '2026-09-10T12:00:00.000Z' }] });
+  assert.equal(marked.reviewedAt, '2026-09-10T12:00:00.000Z');
+  const [blank] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1003'), reviewedAt: '   ' }] });
+  assert.equal(blank.reviewedAt, null);
+  assert.equal(warn.mock.callCount(), 0);
+  const [bad] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1002'), reviewedAt: 'yesterday' }] });
+  assert.equal(bad.reviewedAt, null);
+  assert.equal(warn.mock.callCount(), 1);
+  assert.match(warn.mock.calls[0].arguments[0], /SP-1002/);
+});
