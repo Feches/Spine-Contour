@@ -10,11 +10,13 @@ radiographs.
 Working directory (absolute): `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628`
 This is a git worktree, not the primary checkout; its directory name predates this work and means nothing. Run
 everything from here; do not `cd` to `C:\Users\codyj\spine contour`.
-Branch: `claude/upstream-reconcile-2026-09-08`, at the wrap's docs commit above `245cae2` (the reconcile fix), which
+Branch: `claude/upstream-reconcile-2026-09-08`, at `cbe5adb` (the installed build's check outcomes) above `9e360fd`
+(the handover docs) above `245cae2` (the reconcile fix), which
 sits above `5cf52c7` (the merge follow-up) and `2bf3d21` (the merge of `origin/ui-redesign-cw` @ `5078b1c`, the backend
-developer's trunk), on `b7789b3` (the batch-segmentation wrap; the studies branch's tip before the merge). Three
-branches point at this tip: `claude/upstream-reconcile-2026-09-08`, `claude/studies-ui-updates-bb040d` (fast-forwarded)
-and `fork/ui-redesign-cw` (the handover branch; its push built the first preview installer from this lineage). State:
+developer's trunk), on `b7789b3` (the batch-segmentation wrap; the studies branch's tip before the merge). Two
+branches point at this tip: `claude/upstream-reconcile-2026-09-08` and `claude/studies-ui-updates-bb040d`
+(fast-forwarded); `fork/ui-redesign-cw` (the handover branch) is at `9e360fd`, the same code with two docs commits
+fewer, held there because a push rebuilds the 880 MB installer. State:
 unit 433/433; `smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36; `smoke-workspace.mjs` 100/100;
 `smoke-studies.mjs` 103/103; `smoke-persist.mjs` 36/36 then 44/44; the merge and its fix each reviewed. No plan task,
 fix round or failing test is open. **The backend developer has been told (or is about to be told) to take
@@ -29,13 +31,13 @@ Read in this order before doing anything:
 3. `docs/ROADMAP.md` — §4 release prerequisites and §5 (five new bullets from the reconcile reviews)
 4. `docs/superpowers/plans/2026-09-08-batch-segmentation.md` `## Ledger` only if the batch's rulings are needed
 
-Resume point. **Nothing is mid-flight.** What is owed is human verification and then the release track:
+Resume point. **Nothing is mid-flight.** The human checks are done and the release track is what remains:
 
-* The preview installer built by the `fork/ui-redesign-cw` push (the `preview-windows` prerelease on
-  `github.com/Feches/Spine-Contour`): install it beside the real app; it must open on an EMPTY library (decision 19 has
-  never been seen in a packaged build); run one batch from the Find tab; choose a workspace folder and walk the backend
-  developer's calibration screen once with the Tesseract runtime absent (Skip for now) — no suite covers that detour.
-  Record the outcomes in HANDOFF "Release prerequisites".
+* DONE 2026-09-09: the preview installer built by the push (run 34292966476) was installed and checked by the user —
+  no demos in the packaged build, a batch ran from the Find tab, the calibration screen was walked (every film by hand:
+  his design meets films without a printed ruler; ROADMAP §5 has the point to raise with him), console clean; recorded
+  in HANDOFF "Release prerequisites". A handover message for the backend developer was drafted in chat (take
+  `fork/ui-redesign-cw`; read HANDOFF's "Handing this to the backend author"; run pytest on his side).
 * If the backend developer pushes more to `origin/ui-redesign-cw` before he takes the fork's branch, reconcile again
   the same way: `git fetch origin`, `git merge-tree --write-tree HEAD origin/ui-redesign-cw` as a dry run, merge with
   rulings recorded, re-run the suites, fast-forward the studies branch, push `fork/ui-redesign-cw`.
