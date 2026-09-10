@@ -70,3 +70,30 @@ test('a correction made during prediction wins only for the identical image', as
   const cleared = { ...reviewed, status: 'cleared', spacing: null, selected_index: null };
   assert.equal(preferReviewedCalibration(fresh, cleared).spacing, null);
 });
+
+test('Windows folder and picker path spellings update the same saved image', () => {
+  const original = { ...study('SP-9200', 'C:\\Films\\Patient\\LAT.PNG'), calibration: result() };
+  setState({ studies: [original, study('SP-9201', 'C:\\Other\\LAT.PNG')] });
+  rememberCalibration('c:/films/patient/lat.png', result(.25, 'corrected'));
+  assert.equal(getState().studies[0].calibration.spacing.row_mm, .25);
+  assert.equal(calibrationForStudy(original).spacing.row_mm, .25);
+  assert.equal(getState().studies[1].calibration, undefined);
+});
+
+test('newer durable reference beats an older reviewed session cache', async () => {
+  const { preferReviewedCalibration } = await import('../renderer/data/calibration.js');
+  const newer = { ...result(.25, 'corrected'), review_revision: 2 };
+  const older = { ...result(.5, 'corrected'), review_revision: 1 };
+  assert.equal(preferReviewedCalibration(newer, older).spacing.row_mm, .25);
+  assert.equal(preferReviewedCalibration(older, newer).spacing.row_mm, .25);
+  const cleared = { ...newer, status: 'cleared', spacing: null, selected_index: null };
+  assert.equal(preferReviewedCalibration(cleared, older).status, 'cleared');
+  assert.equal(preferReviewedCalibration(older, cleared).status, 'cleared');
+});
+
+test('case-sensitive POSIX paths do not transfer references to a different image', () => {
+  setState({ studies: [study('SP-9202', '/films/LAT.png'), study('SP-9203', '/films/lat.png')] });
+  rememberCalibration('/films/lat.png', result(.25, 'corrected'));
+  assert.equal(getState().studies[0].calibration, undefined);
+  assert.equal(getState().studies[1].calibration.spacing.row_mm, .25);
+});

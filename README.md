@@ -1,11 +1,11 @@
-# Spine Contour v1.0.4
+# Spine Contour v1.0.5
 
 Automated measurements from lateral lumbar radiographs, running locally.
 
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.0.4 release notes](docs/releases/1.0.4.md) and
+[changelog](CHANGELOG.md), [v1.0.5 release notes](docs/releases/1.0.5.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
@@ -13,6 +13,12 @@ Run segmentation on an individual study or a selected batch, review the landmark
 and image scale, then export measurements. The macOS app is unsigned and supports
 Apple Silicon; Intel Mac builds are not provided. Preview installers and their
 libraries remain separate from the numbered release.
+
+If automatic image calibration fails, open **Image calibration**, draw the two
+reference endpoints, enter the known length in millimetres and click **Apply
+reference**. Wait for **Reference saved for this image**. That scale is retained
+across restarts and used for anterior, middle and posterior disc heights after
+segmentation, including when the reference was saved before loading the workspace.
 
 ## Slower computers
 

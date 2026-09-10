@@ -1,5 +1,11 @@
 # Spine Contour
 
+**2026-09-10 manual reference persistence:** v1.0.5 fixes calibration before study
+creation and Windows path matching. Applied references/explicit clears are saved
+by original-file digest and reused in calibration and prediction. See
+`docs/manual-calibration-persistence.md`; retain per-image provenance and the
+existing disc-height definitions. Unapplied edits are drafts, not saved references.
+
 **2026-09-10 toolbar removal:** v1.0.4 starts from Cody's merged PR #8 (`6106463`).
 The user explicitly requests pushing the tested release directly to the fork's
 `main`. Settings adds `toolbarRemoval` (default false); see `docs/toolbar-removal.md`.

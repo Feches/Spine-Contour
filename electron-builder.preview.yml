@@ -15,6 +15,7 @@ files:
   - index.html
   - main.js
   - backend-client.cjs
+  - calibration-io.js
   - preload.js
   - store-io.js
   - scan-folder.js
