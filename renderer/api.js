@@ -203,4 +203,6 @@ export async function calibrate(request) { return invoke('calibrate', { performa
 export async function learnCalibrationProfile(request) { return invoke('learnCalibrationProfile', request); }
 
 export async function demoStudiesHidden() { return invoke('demoStudiesHidden'); }
-export async function hideDemoStudies() { assertWritable(); return invoke('hideDemoStudies'); }
+// (2026-09-10, studies-table spec 9) true when the preference was written; false when the main
+// process refused (a packaged build). The persistence-disabled guard applies, as it did to hiding.
+export async function setDemoStudiesHidden(hidden) { assertWritable(); return invoke('setDemoStudiesHidden', hidden); }

@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('spineContour', {
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   saveCsv: (request) => ipcRenderer.invoke('save-csv', request),
   demoStudiesHidden: () => ipcRenderer.invoke('demo-studies-hidden'),
-  hideDemoStudies: () => ipcRenderer.invoke('hide-demo-studies'),
+  setDemoStudiesHidden: (hidden) => ipcRenderer.invoke('set-demo-studies-hidden', hidden),
   loadStudies: () => ipcRenderer.invoke('load-studies'),
   saveStudies: (studies) => ipcRenderer.invoke('save-studies', studies),
   loadPrediction: (id) => ipcRenderer.invoke('load-prediction', id),
