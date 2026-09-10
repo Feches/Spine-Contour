@@ -8,25 +8,25 @@ from enum import IntEnum
 from functools import lru_cache
 from pathlib import Path
 import gc
+import json
+import os
+import sys
+import tempfile
 
 import cv2
 import numpy as np
-import segmentation_models_pytorch as smp
-import torch
-import torch.nn as nn
-from torchvision.models.detection import keypointrcnn_resnet50_fpn
-from torchvision.models.detection.keypoint_rcnn import KeypointRCNNPredictor
+import onnxruntime as ort
+
+ort.disable_telemetry_events()
 
 try:
     from .. import runtime
 except ImportError:
     import runtime
 
-try:
-    from .hrnet import LANDMARKS as HRNET_LANDMARKS, build_hrnet_model, decode_heatmaps
-except ImportError:  # Support running modules directly from backend/.
-    from hrnet import LANDMARKS as HRNET_LANDMARKS, build_hrnet_model, decode_heatmaps
-
+# The training checkpoint's fixed landmark slot order; no Torch import at runtime.
+HRNET_LANDMARKS = tuple((level, corner) for level in ("L1", "L2", "L3", "L4", "L5")
+                        for corner in ("SA", "SP", "IA", "IP")) + (("S1", "SA"), ("S1", "SP"))
 
 class VertebraLabel(IntEnum):
     BACKGROUND = 0
@@ -114,35 +114,6 @@ class LetterboxTransform:
     left: int
 
 
-def build_unet(checkpoint: dict[str, object], classes: int) -> nn.Module:
-    """Build the exact ResNet-34 U-Net used for both segmentation checkpoints."""
-
-    return smp.Unet(
-        encoder_name=str(checkpoint.get("encoder", "resnet34")),
-        encoder_weights=None,
-        in_channels=1,
-        classes=classes,
-    )
-
-
-def build_s1_model(size: int = MODEL_IMAGE_SIZE) -> nn.Module:
-    """Build the two-keypoint R-CNN used for the S1 superior endplate."""
-
-    model = keypointrcnn_resnet50_fpn(
-        weights=None,
-        weights_backbone=None,
-        num_keypoints=17,
-        min_size=size,
-        max_size=size,
-        image_mean=[0.449] * 3,
-        image_std=[0.226] * 3,
-        box_detections_per_img=5,
-    )
-    channels = model.roi_heads.keypoint_predictor.kps_score_lowres.in_channels
-    model.roi_heads.keypoint_predictor = KeypointRCNNPredictor(channels, num_keypoints=2)
-    return model
-
-
 def _validate_supported_input(
     modality: str, body_part: str, view: str | None, laterality: str | None
 ) -> None:
@@ -189,94 +160,123 @@ def _letterbox(image: np.ndarray) -> tuple[np.ndarray, LetterboxTransform]:
     )
 
 
-def _segmentation_device() -> str:
-    if torch.cuda.is_available():
-        return "cuda"
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
-
-
-def _detection_device() -> str:
-    return "cuda" if torch.cuda.is_available() else "cpu"
-
-
-@lru_cache(maxsize=8)
-def _load_model(kind: str, device: str) -> nn.Module:
-    runtime.report("loading", f"Loading {MODEL_NAMES.get(kind, kind)}")
-    if kind == "vertebra":
-        path, classes = VERTEBRA_WEIGHTS_PATH, 6
-    elif kind == "femoral":
-        path, classes = FEMORAL_WEIGHTS_PATH, 1
-    elif kind == "s1":
-        path, classes = S1_WEIGHTS_PATH, None
-    elif kind == "hrnet":
-        path, classes = HRNET_WEIGHTS_PATH, None
-    else:
-        raise ValueError(f"unknown model kind: {kind}")
-    if not path.is_file():
-        raise FileNotFoundError(f"Missing model weights: {path}")
-    checkpoint = torch.load(path, map_location="cpu", weights_only=True)
-    if kind == "hrnet":
-        model = build_hrnet_model(checkpoint)
-        model.heatmap_stride = int(checkpoint["stride"])
-        return model.to(torch.device(device)).eval()
-    model = (
-        build_s1_model(int(checkpoint.get("size", MODEL_IMAGE_SIZE)))
-        if kind == "s1"
-        else build_unet(checkpoint, int(classes))
-    )
-    model.load_state_dict(checkpoint["model"], strict=True)
-    return model.to(torch.device(device)).eval()
-
-
+ONNX_DIRECTORY = Path(__file__).resolve().parent.parent / "onnx"
 MODEL_NAMES = {"s1": "S1 detector", "vertebra": "vertebra model",
                "femoral": "femoral-head model", "hrnet": "HRNet landmark model"}
 _resident_key = None
+_cache_policy = None
+
+
+def session_options(policy):
+    threads, low_memory = policy
+    settings = ort.SessionOptions()
+    settings.intra_op_num_threads = threads
+    settings.inter_op_num_threads = 1
+    settings.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+    settings.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    # Inactive sessions must not spin while another model or OCR is working.
+    settings.add_session_config_entry("session.intra_op.allow_spinning", "0")
+    settings.enable_cpu_mem_arena = not low_memory
+    settings.enable_mem_pattern = not low_memory
+    return settings
+
+
+@lru_cache(maxsize=4)
+def _load_model(kind, policy):
+    if kind not in MODEL_NAMES:
+        raise ValueError(f"unknown model kind: {kind}")
+    path = ONNX_DIRECTORY / f"{kind}.onnx"
+    if not path.is_file():
+        raise FileNotFoundError(f"Missing ONNX model: {path}. Run python tools/export_onnx.py before starting the development app.")
+    runtime.report("loading", f"Loading {MODEL_NAMES[kind]}")
+    providers = ["CPUExecutionProvider"]
+    # Apple's CPU implementation is faster than generic ARM kernels for this
+    # detector. Static partitions leave dynamic/empty detections to ORT's CPU
+    # provider, which supports them. Low memory keeps the explicit thread cap.
+    if (kind == "s1" and not policy[1] and sys.platform == "darwin"
+            and os.environ.get("SPINE_CONTOUR_ORT_CPU_ONLY") != "1"
+            and "CoreMLExecutionProvider" in ort.get_available_providers()):
+        metadata = json.loads(path.with_suffix('.json').read_text())
+        cache = Path(os.environ.get("SPINE_CONTOUR_MODEL_CACHE", str(Path(tempfile.gettempdir()) / 'spine-contour-onnx-cache')))
+        # Never reuse a compiled graph after weights/export/runtime changes.
+        cache = cache / ort.__version__ / metadata['onnx_sha256'] / 'cpu-static-nn'
+        providers.insert(0, ("CoreMLExecutionProvider", {
+            "ModelFormat": "NeuralNetwork", "MLComputeUnits": "CPUOnly",
+            "RequireStaticInputShapes": "1", "EnableOnSubgraphs": "0",
+            "ModelCacheDirectory": str(cache),
+        }))
+    return InferenceModel(path, policy, providers)
+
+
+class InferenceModel:
+    """Retain CPU fallback if an Apple compiler/partition cannot handle a film."""
+    def __init__(self, path, policy, providers):
+        self.path, self.policy = path, policy
+        try:
+            self.session = ort.InferenceSession(str(path), sess_options=session_options(policy), providers=providers)
+        except Exception:
+            if len(providers) == 1:
+                raise
+            self._cpu_fallback()
+
+    def _cpu_fallback(self):
+        runtime.report("loading", "Apple acceleration unavailable; using ONNX CPU inference")
+        self.session = ort.InferenceSession(str(self.path), sess_options=session_options(self.policy),
+                                           providers=["CPUExecutionProvider"])
+
+    def get_providers(self):
+        return self.session.get_providers()
+
+    def run(self, output_names, inputs):
+        try:
+            return self.session.run(output_names, inputs)
+        except ort.capi.onnxruntime_pybind11_state.Fail:
+            if "CoreMLExecutionProvider" not in self.get_providers():
+                raise
+            runtime.checkpoint()
+            self._cpu_fallback()
+            return self.session.run(output_names, inputs)
 
 
 def release_models():
-    """Drop cache ownership after a low-memory run, including failed/cancelled runs."""
-    global _resident_key
+    """Drop session ownership and buffers, including failed/cancelled low-memory runs."""
+    global _resident_key, _cache_policy
     _load_model.cache_clear()
-    _resident_key = None
+    _resident_key = _cache_policy = None
     gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    if hasattr(torch, "mps") and torch.backends.mps.is_available():
-        torch.mps.empty_cache()
 
 
-def _infer(kind, device, operation, message):
-    # The operation returns CPU arrays/scalars, never tensors that retain model
-    # activations. A single cached model survives repeated S1 search windows;
-    # changing stages evicts it BEFORE loading the next model.
-    global _resident_key
+def _infer(kind, operation, message):
+    global _resident_key, _cache_policy
     runtime.checkpoint()
     previous_progress = runtime.current_progress()
-    key = (kind, device)
-    if runtime.options().low_memory and key != _resident_key:
+    options = runtime.options()
+    policy = (options.inference_threads, options.low_memory)
+    key = (kind, policy)
+    # Session thread counts are immutable. Never reuse a different mode's session
+    # or retain duplicate copies after changing CPU settings.
+    if policy != _cache_policy or (options.low_memory and key != _resident_key):
         release_models()
-    model = _load_model(kind, device)
-    _resident_key = key
+    model = _load_model(kind, policy)
+    _resident_key, _cache_policy = key, policy
     if message is not None:
         runtime.report(kind, message)
     elif previous_progress is not None:
         runtime.report(**{key: previous_progress[key] for key in ('stage', 'message', 'completed', 'total')})
-    with torch.inference_mode():
-        result = operation(model)
+    result = operation(model)
+    runtime.record_providers(kind, model.get_providers())
     runtime.checkpoint()
     return result
 
 
-def _segmentation_input(image: np.ndarray, device: str) -> torch.Tensor:
-    value = torch.from_numpy(image[None, None]).float().div_(255.0)
-    return ((value - 0.449) / 0.226).to(device)
+def _segmentation_input(image):
+    value = image[None, None].astype(np.float32) / np.float32(255.)
+    return (value - np.float32(.449)) / np.float32(.226)
 
 
-def _detection_input(image: np.ndarray, device: str) -> torch.Tensor:
-    value = torch.from_numpy(image).float().div_(255.0)
-    return value.unsqueeze(0).repeat(3, 1, 1).to(device)
+def _detection_input(image):
+    value = image.astype(np.float32) / np.float32(255.)
+    return np.repeat(value[None, None], 3, axis=1)
 
 
 def _label_lumbar_components(binary_mask: np.ndarray) -> np.ndarray:
@@ -337,11 +337,11 @@ def _restore_points(points: np.ndarray, transform: LetterboxTransform) -> np.nda
     return restored
 
 
-def _s1_from_output(output: dict[str, torch.Tensor]) -> tuple[float, np.ndarray | None]:
+def _s1_from_output(output: dict[str, np.ndarray]) -> tuple[float, np.ndarray | None]:
     if not len(output["keypoints"]):
         return 0.0, None
     best = int(output["scores"].argmax())
-    points = output["keypoints"][best, :, :2].detach().cpu().numpy().astype(np.float64)
+    points = output["keypoints"][best, :, :2].astype(np.float64)
     confidence = float(output["scores"][best])
     if (not np.isfinite(confidence) or points.shape != (2, 2) or not np.isfinite(points).all()
             or np.linalg.norm(points[1] - points[0]) <= 0):
@@ -349,44 +349,41 @@ def _s1_from_output(output: dict[str, torch.Tensor]) -> tuple[float, np.ndarray 
     return confidence, points
 
 
-def _score_s1(letterboxed: list[np.ndarray]) -> list[tuple[float, np.ndarray | None]]:
-    """Best S1 detection on each model-frame image, for the crop search."""
-
-    device = _detection_device()
-    return _infer("s1", device,
-                  lambda model: [_s1_from_output(output) for output in
-                                 model([_detection_input(image, device) for image in letterboxed])],
-                  None)
+def _detect(session, image):
+    scores, keypoints = session.run(None, {"image": _detection_input(image)})
+    return _s1_from_output({"scores": scores, "keypoints": keypoints})
 
 
-def _read_frame(letterboxed: np.ndarray, choice: dict[str, str]) -> dict[str, object]:
-    """Run every model this choice needs on one model-frame image."""
+def _score_s1(letterboxed):
+    """Fixed single-frame graph: bounded memory and cancellation between crops."""
+    def score(session):
+        results = []
+        for image in letterboxed:
+            runtime.checkpoint()
+            results.append(_detect(session, image))
+        return results
+    return _infer("s1", score, None)
 
-    segmentation_device = _segmentation_device()
-    detection_device = _detection_device()
-    segmentation_input = _segmentation_input(letterboxed, segmentation_device)
-    s1_confidence, s1_points = _infer("s1", detection_device,
-        lambda model: _s1_from_output(model([_detection_input(letterboxed, detection_device)])[0]),
-        "Detecting the S1 endplate")
-    femoral = _infer("femoral", segmentation_device,
-        lambda model: (torch.sigmoid(model(segmentation_input)[0, 0]).cpu().numpy()
-                       >= MODEL_THRESHOLD).astype(np.uint8), "Segmenting femoral heads")
-    # HRNet's presence check is retained in BOTH resource modes.
-    vertebra_labels = _infer("vertebra", segmentation_device,
-        lambda model: model(segmentation_input)[0].argmax(0).cpu().numpy(),
+
+def _read_frame(letterboxed, choice):
+    value = _segmentation_input(letterboxed)
+    s1_confidence, s1_points = _infer("s1", lambda session: _detect(session, letterboxed),
+                                    "Detecting the S1 endplate")
+    # Compare logits at the sigmoid .5 decision boundary without another array.
+    femoral = _infer("femoral",
+        lambda session: (session.run(None, {"image": value})[0][0, 0] >= 0).astype(np.uint8),
+        "Segmenting femoral heads")
+    # Retain U-Net presence evidence even when HRNet supplies the corners.
+    vertebra_labels = _infer("vertebra",
+        lambda session: session.run(None, {"image": value})[0][0].argmax(0).astype(np.uint8),
         "Segmenting visible vertebrae")
     hrnet_points = None
     if choice["vertebrae"] == "hrnet":
-        hrnet_points = _infer("hrnet", segmentation_device,
-            lambda model: decode_heatmaps(model(segmentation_input).float(), model.heatmap_stride)[0].cpu().numpy(),
+        hrnet_points = _infer("hrnet",
+            lambda session: session.run(None, {"image": value})[0][0].astype(np.float64),
             "Locating vertebral corners with HRNet")
-    return {
-        "vertebra_labels": None if vertebra_labels is None else vertebra_labels.astype(np.uint8),
-        "hrnet_points": None if hrnet_points is None else hrnet_points.astype(np.float64),
-        "femoral": femoral,
-        "s1": s1_points,
-        "s1_confidence": s1_confidence,
-    }
+    return {"vertebra_labels": vertebra_labels, "hrnet_points": hrnet_points,
+            "femoral": femoral, "s1": s1_points, "s1_confidence": s1_confidence}
 
 
 def _clip_to_film(points: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
@@ -428,7 +425,14 @@ def spinopelvic_prediction(
     runtime.report("preparing", "Preparing the original radiograph")
     image = _robust_rescale(raw)
 
-    located = framing.locate(raw, _score_s1)
+    localizer = runtime.options().crop_localizer
+    if localizer:
+        located = framing.locate(raw, _score_s1)
+    else:
+        runtime.report("framing", "Crop localizer off; processing the supplied lumbar image")
+        located = {"window": framing.fallback_window(raw), "searched": False,
+                   "whole_film_won": True, "whole_film_cost": None,
+                   "confidence": None, "cost": None, "candidates": 0}
     fallback = located is None
     if fallback:
         runtime.report("framing", "S1 not found in the search; checking the visible film")
@@ -509,10 +513,11 @@ def spinopelvic_prediction(
         },
         "models": choice,
         "framing": {
+            "crop_localizer": localizer,
             "window": [int(v) for v in window],
             "reframed": reframed,
             "fallback_whole_film": fallback,
-            "trimmed_black_margins": fallback and window != (0, 0, raw.shape[1], raw.shape[0]),
+            "trimmed_black_margins": (fallback or not localizer) and window != (0, 0, raw.shape[1], raw.shape[0]),
             "searched": located["searched"],
             "whole_film_won": bool(located.get("whole_film_won")),
             "whole_film_agrees": bool(located.get("whole_film_agrees")),

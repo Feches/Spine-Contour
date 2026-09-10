@@ -36,7 +36,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: backend/requirements*.txt
 
       - uses: actions/setup-node@v7
         with:
@@ -45,8 +45,8 @@ jobs:
       - name: Install backend
         run: |
           python -m pip install --upgrade pip
-          python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install -r backend/requirements.txt pyinstaller==6.22.2
+          python -m pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r backend/requirements-export.txt pyinstaller==6.22.2
 
       - name: Install OCR runtime
         shell: pwsh
@@ -55,6 +55,9 @@ jobs:
           $ocr = "C:/Program Files/Tesseract-OCR"
           if (-not (Test-Path "$ocr/tesseract.exe")) { throw "Tesseract runtime not found." }
           $ocr | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Export and validate ONNX models
+        run: python tools/export_onnx.py
 
       - name: Test backend
         run: python -m pytest backend/tests -q
@@ -92,11 +95,14 @@ jobs:
           --distpath backend-dist
           --workpath build/pyinstaller
           --paths .
-          --collect-all segmentation_models_pytorch
-          --collect-all timm
-          --collect-all torchvision
+          --collect-all onnxruntime
+          --exclude-module torch
+          --exclude-module torchvision
+          --exclude-module timm
+          --exclude-module segmentation_models_pytorch
+          --exclude-module onnx
           --collect-all uvicorn
-          --add-data "backend/weights;backend/weights"
+          --add-data "backend/onnx;backend/onnx"
           --add-data "C:/Program Files/Tesseract-OCR;ocr"
           backend/standalone.py
 
@@ -115,6 +121,8 @@ jobs:
               }
             }
             if (-not $ready) { throw "The bundled backend did not become ready." }
+            python tools/packaging/check_bundled_inference.py
+            if ($LASTEXITCODE -ne 0) { throw "Bundled ONNX inference verification failed." }
             python tools/packaging/check_bundled_ocr.py
             if ($LASTEXITCODE -ne 0) { throw "Bundled OCR verification failed." }
           } finally {
@@ -206,7 +214,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: backend/requirements*.txt
 
       - uses: actions/setup-node@v7
         with:
@@ -215,12 +223,15 @@ jobs:
       - name: Install backend
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r backend/requirements.txt pyinstaller==6.22.2
+          python -m pip install -r backend/requirements-export.txt pyinstaller==6.22.2
 
       - name: Bundle OCR runtime
         run: |
           brew install tesseract
           python tools/packaging/bundle_ocr_macos.py build/ocr
+
+      - name: Export and validate ONNX models
+        run: python tools/export_onnx.py
 
       - name: Test backend
         run: python -m pytest backend/tests -q
@@ -258,11 +269,14 @@ jobs:
           --distpath backend-dist
           --workpath build/pyinstaller
           --paths .
-          --collect-all segmentation_models_pytorch
-          --collect-all timm
-          --collect-all torchvision
+          --collect-all onnxruntime
+          --exclude-module torch
+          --exclude-module torchvision
+          --exclude-module timm
+          --exclude-module segmentation_models_pytorch
+          --exclude-module onnx
           --collect-all uvicorn
-          --add-data "backend/weights:backend/weights"
+          --add-data "backend/onnx:backend/onnx"
           --add-data "build/ocr:ocr"
           backend/standalone.py
 
@@ -277,6 +291,7 @@ jobs:
             sleep 1
           done
           if [ "$ready" -eq 1 ]; then
+            python tools/packaging/check_bundled_inference.py || { kill "$backend"; exit 1; }
             python tools/packaging/check_bundled_ocr.py || { kill "$backend"; exit 1; }
           fi
           kill "$backend" 2>/dev/null || true

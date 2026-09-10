@@ -1,14 +1,12 @@
 import pytest
 import torch
+from backend.models.training import build_unet, build_s1_model, build_hrnet_model
 
 from backend.models import (
     FEMORAL_WEIGHTS_PATH,
     HRNET_WEIGHTS_PATH,
-    build_hrnet_model,
     S1_WEIGHTS_PATH,
     VERTEBRA_WEIGHTS_PATH,
-    build_s1_model,
-    build_unet,
 )
 
 

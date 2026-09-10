@@ -1024,3 +1024,31 @@ channel now reports real work. No timed stage labels or guessed whole-job percen
 - Sidebar progress and the Studies progress detail update in place, outside table/sidebar
   remount gates. Viewer stages follow only the active study. Progress never redraws
   segmentation canvases or persists per-heartbeat study writes.
+
+
+## 2026-09-09 amendment: ONNX inference and optional crop localizer
+
+User-authorized change after PR #7: `performance` adds boolean `cropLocalizer`, default
+true on a new installation and when migrating older preferences. Explicit false must
+survive save/load and IPC serialization. Settings explains that On is needed for
+full-spine images; Off is intended for already-framed lumbar-only images. The switch
+is disabled while a prediction/batch is active and applies to every image in that batch.
+
+Prediction multipart adds `crop_localizer` (boolean, default true). Off bypasses
+`framing.locate` and S1-based reframing, then runs the selected models
+once on the visible film extent. The existing cheap `fallback_window` cleanup removes
+only broad near-black screenshot borders; coordinates still restore to the original film. The S1 measurement detector and femoral/vertebral models
+remain active. Calibration always sees the original image. `qc.framing.crop_localizer`
+and `qc.processing.crop_localizer` record the choice; `searched` is false and candidates
+zero when disabled. Existing result shapes/null rules and store version remain unchanged.
+
+Inference uses exported float32 ONNX graphs for both U-Nets, S1 Keypoint R-CNN and HRNet.
+HRNet's subpixel decoder is exported with its graph; its U-Net presence check remains.
+Graphs use a fixed 768-square, single-image input; every candidate is still checked when
+localization is enabled. Low-memory mode retains one session at a time. Session cache
+keys include resource settings; switching settings evicts incompatible sessions. Progress
+reports actual operations only and Off never emits a fabricated search stage.
+
+Training builders/export libraries are separate from runtime imports. CI converts the
+trusted LFS checkpoints, checks output parity, bundles only ONNX assets/runtime and runs
+all four models in the frozen executable before building/publishing the installers.

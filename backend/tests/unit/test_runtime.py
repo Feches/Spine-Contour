@@ -7,7 +7,6 @@ import weakref
 
 import numpy as np
 import pytest
-import torch
 
 from backend import framing, runtime, ruler_extraction
 from backend.models import models
@@ -19,14 +18,12 @@ def test_invalid_resource_settings_are_rejected(mode, threads):
     with pytest.raises(ValueError): runtime.parse_options(mode, threads)
 
 
-def test_low_memory_threads_restore_on_failure_and_request_options_do_not_leak():
-    original = torch.get_num_threads()
+def test_request_options_do_not_leak_on_failure():
     with pytest.raises(RuntimeError):
         with runtime.session(runtime.parse_options('low-memory', 1)):
-            assert torch.get_num_threads() == 1
+            assert runtime.options().inference_threads == 1
             assert runtime.options().ocr_timeout == 60
             raise RuntimeError('model failed')
-    assert torch.get_num_threads() == original
     assert runtime.options().mode == 'standard'
     assert runtime.options().ocr_timeout == 8
     with runtime.session(): pass  # failure did not leave the worker locked
@@ -46,7 +43,7 @@ def test_all_search_crops_are_identical_in_both_modes_and_progress_counts_real_w
     with runtime.session(runtime.parse_options('low-memory', 1), events.append):
         low = framing.locate(image, score)
     assert low == standard
-    assert max(standard_sizes) == 8 and set(sizes) == {1}
+    assert set(standard_sizes) == set(sizes) == {1}
     assert len(seen) == len(originals) == len(framing.search_windows(*image.shape)) + 1
     assert all(np.array_equal(left, right) for left, right in zip(seen, originals))
     counts = [e['completed'] for e in events if e['stage'] == 'search']
@@ -69,7 +66,7 @@ def test_cancel_stops_before_the_next_search_crop():
 def test_one_model_resident_in_low_memory_and_s1_is_reused_across_search_windows(monkeypatch):
     references, loaded = [], []
     class Model:
-        pass
+        def get_providers(self): return ['CPUExecutionProvider']
     @lru_cache(maxsize=8)
     def load(kind, device):
         # No earlier model remains alive at the point the next one is loaded.
@@ -80,14 +77,13 @@ def test_one_model_resident_in_low_memory_and_s1_is_reused_across_search_windows
     monkeypatch.setattr(models, '_resident_key', None)
     with runtime.session(runtime.parse_options('low-memory', 1)):
         for kind in ['s1', 's1', 's1', 'femoral', 'vertebra', 'hrnet']:
-            assert models._infer(kind, 'cpu', lambda _: np.zeros(1), 'Testing').shape == (1,)
+            assert models._infer(kind, lambda _: np.zeros(1), 'Testing').shape == (1,)
         models.release_models()
     assert loaded == ['s1', 'femoral', 'vertebra', 'hrnet']
     assert all(ref() is None for ref in references)
 
 
 def test_waiting_request_can_cancel_without_changing_active_threads():
-    original = torch.get_num_threads()
     stop, waiting = threading.Event(), threading.Event()
     def second():
         def report(_): waiting.set()
@@ -99,8 +95,7 @@ def test_waiting_request_can_cancel_without_changing_active_threads():
             assert waiting.wait(2)
             stop.set()
             with pytest.raises(runtime.Cancelled): future.result(timeout=2)
-            assert torch.get_num_threads() == 1
-    assert torch.get_num_threads() == original
+            assert runtime.options().inference_threads == 1
 
 
 @pytest.mark.parametrize('mode,timeout', [('standard', 8), ('low-memory', 60)])

@@ -1,15 +1,10 @@
 fastapi
-httpx
 numpy
 opencv-python-headless
 Pillow
 pydicom
-pytest
 python-multipart
-segmentation-models-pytorch
-timm
-torch
-torchvision
+onnxruntime==1.24.4
 uvicorn[standard]
 scipy
 pytesseract

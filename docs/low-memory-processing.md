@@ -7,18 +7,17 @@ change in the middle of a prediction or batch.
 
 | Behavior | Standard | Low memory |
 |---|---|---|
-| Search regions per detector call | Up to 8 | 1 |
+| Search regions per detector call | 1 | 1 |
 | Model cache | Reuse all selected models | Reuse current model; unload before the next model |
-| CPU threads | Existing PyTorch setting | 2 by default; choose 1, 2 or 4, capped to available CPUs |
+| CPU threads | Up to 4 | 2 by default; choose 1–4, capped to available CPUs |
 | OCR limit per pass | 8 seconds | 60 seconds |
 | Model resolution | 768 × 768 | 768 × 768 |
-| Search regions, thresholds, HRNet presence check | Full pipeline | Same full pipeline |
+| Search regions, thresholds, HRNet presence check | Full search when localizer On | Same selected pipeline |
 | Inference total deadline | None while heartbeat connection is healthy | Same |
 
 The operating system/runtime can retain allocated memory after a model is freed.
 This mode reduces concurrent model/crop allocations; it does not guarantee a fixed
-RAM ceiling. One model and its activations must still fit in memory. Accelerators
-remain selected automatically as before; CPU thread controls do not throttle a GPU.
+RAM ceiling. One model and its activations must still fit in memory. See [ONNX inference](onnx-inference.md) for the current runtime and measured performance.
 
 ## What progress means
 
@@ -48,7 +47,7 @@ process, with no new renderer network permission or npm runtime dependency.
 
 - Tests compare every prepared search region and the selected crop between modes.
 - Cache ownership tests verify only one model remains alive before the next loads,
-  while S1 is reused across search windows. Thread settings are restored after errors.
+  while S1 is reused across search windows. Incompatible session settings are never reused.
 - API tests compare standard JSON predictions against both streaming modes on partial
   anatomy, for U-Net and HRNet, including absent femoral heads and null measurements.
 - Transport tests cover fragmented UTF-8, heartbeats exceeding an idle deadline in
@@ -63,7 +62,9 @@ Resource benchmarks and desktop verification results for this change are recorde
 in the pull request. Three local examples exercise software equivalence, not an
 anatomical accuracy validation set or a minimum supported hardware specification.
 
-### Measured CPU comparison for v1.0.2
+### Historical PyTorch CPU comparison for v1.0.2
+
+These figures describe v1.0.2 before the ONNX migration, not current runtime performance.
 
 Three local examples were run in fresh macOS processes with GPU use disabled,
 U-Net selected, four threads in Standard and two in Low memory. Peak RSS includes

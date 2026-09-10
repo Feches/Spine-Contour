@@ -18,11 +18,13 @@ def upload():
 
 
 @pytest.mark.parametrize('model', ['unet', 'hrnet'])
-def test_stream_matches_legacy_prediction_for_partial_anatomy_in_both_modes(monkeypatch, model):
+@pytest.mark.parametrize('localizer', [True, False])
+def test_stream_matches_legacy_prediction_for_partial_anatomy_in_both_modes(monkeypatch, model, localizer):
     monkeypatch.setattr(framing, 'locate', lambda *args: None)
     monkeypatch.setattr(models, '_read_frame', lambda *args: frame(['L1']))
     monkeypatch.setattr(server, 'calibration_from_payload', lambda *args, **kwargs: {'status': 'unavailable'})
-    data = {'modality': 'xray', 'body_part': 'lumbar', 'view': 'lateral', 'vertebra_model': model}
+    data = {'modality': 'xray', 'body_part': 'lumbar', 'view': 'lateral', 'vertebra_model': model,
+            'crop_localizer': str(localizer).lower()}
     client = TestClient(server.app)
     standard = client.post('/predict', data=data, files=upload()).json()
     for mode in ['standard', 'low-memory']:
@@ -35,6 +37,9 @@ def test_stream_matches_legacy_prediction_for_partial_anatomy_in_both_modes(monk
         for key in ['measurements', 'geometry', 'image_png', 'mask_png', 'femoral_mask_png', 'calibration']:
             assert result[key] == standard[key]
         assert result['qc']['processing']['mode'] == mode
+        assert result['qc']['processing']['crop_localizer'] == localizer
+        assert result['qc']['processing']['runtime'] == 'onnxruntime'
+        assert result['qc']['framing']['searched'] == localizer
         assert result['qc']['coverage']['partial']
         assert result['geometry']['femoral_circles'] == []
         assert result['measurements']['PI'] is None
@@ -46,6 +51,12 @@ def test_stream_matches_legacy_prediction_for_partial_anatomy_in_both_modes(monk
 def test_bad_settings_fail_before_a_stream_is_started(mode, threads):
     response = TestClient(server.app).post('/predict-stream', data={'modality': 'xray', 'body_part': 'lumbar',
         'processing_mode': mode, 'cpu_threads': threads}, files=upload())
+    assert response.status_code == 422
+
+
+def test_invalid_localizer_is_rejected_before_prediction_starts():
+    response = TestClient(server.app).post('/predict-stream', data={'modality': 'xray',
+        'body_part': 'lumbar', 'crop_localizer': 'sometimes'}, files=upload())
     assert response.status_code == 422
 
 

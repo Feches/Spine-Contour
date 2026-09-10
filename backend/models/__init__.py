@@ -14,13 +14,10 @@ from .models import (
     VERTEBRA_WEIGHTS_PATH,
     VertebraLabel,
     _label_lumbar_components,
-    build_s1_model,
-    build_unet,
     resolve_models,
     spinopelvic_prediction,
     vertebral_body_segmentation,
 )
-from .hrnet import build_hrnet_model, decode_heatmaps
 
 __all__ = [
     "DEFAULT_MODELS",
@@ -35,10 +32,6 @@ __all__ = [
     "VERTEBRA_LABELS",
     "VERTEBRA_WEIGHTS_PATH",
     "VertebraLabel",
-    "build_hrnet_model",
-    "build_s1_model",
-    "build_unet",
-    "decode_heatmaps",
     "resolve_models",
     "spinopelvic_prediction",
     "vertebral_body_segmentation",

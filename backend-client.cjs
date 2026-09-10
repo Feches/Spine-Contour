@@ -3,10 +3,12 @@ const http = require('node:http');
 function normalizePerformance(value) {
   const mode = value?.mode ?? 'standard';
   const cpuThreads = value?.cpuThreads ?? 2;
-  if (!['standard', 'low-memory'].includes(mode) || !Number.isInteger(cpuThreads) || cpuThreads < 1 || cpuThreads > 4) {
+  const cropLocalizer = value?.cropLocalizer === undefined ? true : value.cropLocalizer;
+  if (!['standard', 'low-memory'].includes(mode) || !Number.isInteger(cpuThreads) || cpuThreads < 1 || cpuThreads > 4
+    || typeof cropLocalizer !== 'boolean') {
     throw new Error('Invalid processing settings.');
   }
-  return { mode, cpuThreads };
+  return { mode, cpuThreads, cropLocalizer };
 }
 
 // Node's default fetch header deadline is unsuitable for long local inference.
