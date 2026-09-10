@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.4
+
+- Add a saved Toolbar removal setting, independent of Crop localizer, for fast
+  detection and removal of bottom PACS screenshot strips before segmentation.
+- Preserve source files, original-image calibration, native high-bit-depth images
+  and partial-anatomy handling. Keep uncertain cases unchanged and record the
+  selected setting, detected boundary and removed rows with each result.
+- Cover light/dark panels, varied strip sizes, noisy edges, uncertain content,
+  preference migration and both prediction routes with regression tests.
+
+[Release notes](docs/releases/1.0.4.md)
+
 ## 1.0.3
 
 - Add a saved crop-localizer switch: On for full-spine images; Off skips crop

@@ -1,11 +1,11 @@
-# Spine Contour v1.0.3
+# Spine Contour v1.0.4
 
 Automated measurements from lateral lumbar radiographs, running locally.
 
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.0.3 release notes](docs/releases/1.0.3.md) and
+[changelog](CHANGELOG.md), [v1.0.4 release notes](docs/releases/1.0.4.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
@@ -15,6 +15,13 @@ Apple Silicon; Intel Mac builds are not provided. Preview installers and their
 libraries remain separate from the numbered release.
 
 ## Slower computers
+
+**Settings → Processing → Toolbar removal** can remove detected bottom PACS
+toolbars from screenshots before segmentation. It uses fast image checks, works
+with Crop localizer On or Off, and applies to the next single-image or batch run.
+It defaults to Off. Uncertain images and native high-bit-depth/DICOM images are
+kept unchanged. The source file and original-image calibration are preserved.
+See [toolbar removal](docs/toolbar-removal.md) for supported strips and validation.
 
 Open **Settings → Processing → Low memory**. This processes one search region at a
 time, keeps only the current model loaded, and allows longer calibration OCR waits.

@@ -85,6 +85,7 @@ async def prediction_request(
     s1_model: str | None = Form(None), calibration: str | None = Form(None),
     processing_mode: str = Form("standard"), cpu_threads: int = Form(2),
     crop_localizer: bool = Form(True),
+    toolbar_removal: bool = Form(False),
 ):
     payload = await file.read(MAX_UPLOAD_BYTES + 1)
     if not payload:
@@ -92,7 +93,7 @@ async def prediction_request(
     if len(payload) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="The uploaded file exceeds 50 MB")
     try:
-        settings = runtime.parse_options(processing_mode, cpu_threads, crop_localizer)
+        settings = runtime.parse_options(processing_mode, cpu_threads, crop_localizer, toolbar_removal)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return {"settings": settings, "payload": payload, "modality": modality, "body_part": body_part,
@@ -165,6 +166,7 @@ def _analyze(payload, modality, body_part, view, laterality,
                          "runtime": "onnxruntime", "runtime_version": ort.__version__,
                          "providers": runtime.providers(),
                          "crop_localizer": runtime.options().crop_localizer,
+                         "toolbar_removal": runtime.options().toolbar_removal,
                          "search_batch": runtime.options().search_batch}}
     # Every run, including the serial batch, reads the ORIGINAL image's ruler. The
     # inference crop can exclude it. Calibration failure must not lose segmentation.

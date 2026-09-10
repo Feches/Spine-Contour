@@ -1052,3 +1052,19 @@ reports actual operations only and Off never emits a fabricated search stage.
 Training builders/export libraries are separate from runtime imports. CI converts the
 trusted LFS checkpoints, checks output parity, bundles only ONNX assets/runtime and runs
 all four models in the frozen executable before building/publishing the installers.
+
+## 2026-09-10 amendment: optional toolbar removal (v1.0.4)
+
+`performance.toolbarRemoval` is a saved boolean, default false for new and legacy
+preferences, serialized as `toolbar_removal` on both prediction routes. The sidebar
+offers Toolbar removal On/Off independently of Crop localizer and resource mode.
+It is disabled during prediction/batch and applies only to subsequent runs.
+
+`backend/toolbar.py` removes only supported bottom screenshot panels before model
+framing. Output image and masks use the reduced height. Since top/left are unchanged,
+landmarks remain in original source x/y coordinates. Calibration, source hashing,
+manual correction and original-image previews still use the entire upload. Native
+high-bit-depth images and decoded DICOM floats are skipped. Uncertain cases remain
+unchanged. See `docs/toolbar-removal.md` for exact checks and provenance fields.
+Actual `toolbar` progress events report checking/removal; QC stores the preference,
+original size, retained window and removed rows. No store version or CSP change.
