@@ -2805,3 +2805,42 @@ for the literal string `smoke-persist.mjs\` 36/36 then 44/44\``): the only two m
 verification records for the 2026-09-08 reconcile and batch-segmentation branches (each a true record of what was
 verified on THAT branch at THAT time); rewriting either would misstate history, so both were left untouched and the
 counts were written only into the new studies-table paragraphs this task adds.
+
+### 2026-09-10 — merged-tree verification, the load-order fix, and the 1.0.6 release path
+
+Merge `ceacc7e` ("Merge fork/main (v1.0.5) into the studies-table branch", above) verified by a Sonnet smoke run over
+the merged tree: unit 513/513, `smoke-studies.mjs` 136/136, `smoke-persist.mjs` 40/40 then 47/47,
+`smoke-parameters.mjs` 58/58. Two suites read below baseline and were traced to source rather than "fixed" blind:
+
+- `smoke-workspace.mjs` 99/100 — `the first three rows are the new studies, badged Processing` read
+  `SP-1001, SP-1002, SP-1000` instead of scan order. `renderer/screens/studies.js` now sorts the visible table
+  through `sortFindRows(...)` with `DEFAULT_FIND_SORT = { key: 'date', dir: 'desc' }` (this branch's own
+  sortable-Find-headers feature); `renderer/screens/workspace.js`'s `loadWorkspaceStudies` built each new record
+  through `newStudy()`, which stamps its own `addedAt: new Date().toISOString()` per call, so three records
+  created in one tight synchronous loop could tie or land out of scan order under millisecond timing, and the
+  date-desc sort surfaced that as a non-deterministic row order. Fixed in `2f123a1`: one `addedAt` computed before
+  the load's loop, applied to every record of that load (override after the `newStudy()` spread), so the stable
+  sort keeps scan order on the tie. `renderer/data/batch.js`'s `identity` map (createBatchDriver, ~line 121-142)
+  keys a record's identity to its `addedAt` precisely so a reused id (after a delete) is never mistaken for the
+  original record — records of one load keep distinct ids, so a shared `addedAt` across siblings does not weaken
+  that check; it still distinguishes a genuinely reused id from the record that held it. Re-run on a fresh launch
+  after the fix: 100/100.
+- `smoke-seeding.mjs` 34/36 — both FAILs were the same stale suite constant: `EXPORT_HEADER`
+  (`tools/smoke/smoke-seeding.mjs:64`) predated the fifteen disc-height columns upstream's CSV export
+  (`renderer/data/csv.js`, `DISC_LEVEL_PAIRS` x `DISC_POSITIONS`) inserts between `LL L5-S1` and `Age`; the
+  following row check's empty-cell count was built against the same stale column count. Not a product defect on
+  either side. Fixed in `3be0c17`: `EXPORT_HEADER` rewritten to the real header string, dated with a one-line
+  comment; the row check's empty-cell count now derives from `EXPORT_HEADER.split(',').length` instead of a
+  second hardcoded string. Re-run on a fresh launch after the fix: 36/36.
+
+Not run: `smoke-manual-calibration.mjs` and `smoke-calibration.mjs` (both need real radiograph images not checked
+into the repo); the viewer/gate/parity/chip/chord suites (untouched by either side of the merge — the studies-table
+branch never touches viewer/interaction code, and `fork/main` v1.0.5's own changes were calibration persistence and
+PACS toolbar removal, not the viewer).
+
+Release path: 1.0.6 by the user's decision (recorded above, "Merge — `fork/main` v1.0.5"); the backend developer's
+`codex/editable-femoral-confidence` branch also claims 1.0.6 independently, so it renumbers to 1.0.7 once the two are
+reconciled. Release commits `7ccd2dc` (chore: release 1.0.6) and `3b7f6cf` (chore: README to 1.0.6; changelog bullet
+style) precede the two fix commits above on this branch. Packaged-build checks (no DEMO STUDIES row in a
+built installer; no stray `library-preferences.json`) are NOT RUN here — source-level smoke only — and remain for
+the next 1.0.6 installer.

@@ -290,8 +290,11 @@ UNSEGMENTED, 2026-09-08);
 its `summaryParts()` regex (line 119) still expected the old two-clause summary against the studies-table spec's
 third "· N TO REVIEW" clause (added by Task 4, already in this tip); the Task 7 addendum extended that regex
 the same way `smoke-studies.mjs`'s own `summaryParts()` was fixed in this task, and a fresh run now reads 100/100
-(see `tools/smoke/out/task7b-workspace.txt`);
-`smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36 (unchanged, not re-run); `smoke-persist.mjs` 40/40 then
+(see `tools/smoke/out/task7b-workspace.txt`); re-run 2026-09-10 on the merged `fork/main` v1.0.5 tree after the
+shared-`addedAt` fix to `loadWorkspaceStudies` (a workspace load's records now stamp one timestamp instead of one
+per record, so the Find tab's newest-first default sort keeps scan order), 100/100 again;
+`smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36 (re-run 2026-09-10 on the merged tree; the suite's own
+`EXPORT_HEADER` constant gained the fifteen disc-height columns upstream's CSV export already carried); `smoke-persist.mjs` 40/40 then
 47/47 — phase 1 marks SP-9000 reviewed and sets its subject after the last nudge; phase 2 asserts both survived
 and that the re-run cleared the mark. Every check in the suite runs
 unconditionally; there is no skip path.
