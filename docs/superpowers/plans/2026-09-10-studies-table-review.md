@@ -2577,3 +2577,231 @@ Ruling: the branch was re-pointed at `fork/main` with `git checkout -B` (it had 
 came from the v1.0.x build, whose source is `fork/main`, not upstream `main` — cost if wrong: none, nothing was lost.
 
 Filled during execution: one entry per task — the commit, the counts, the reviewer's findings and how each was settled; the gate's outcome and the checks not run; every ruling made on the way.
+
+### Pre-flight scan (2026-09-10)
+
+Every anchor the plan quotes, checked against the working tree at `ae6af2f`; every pair of tasks sharing a file or
+interface, traced by hand — all consistent. Three rulings: the spec §13 Settings Hide/Show smoke check is NOT added to
+Task 7 (allocated to Task 5 Step 7 by hand and Task 8 check 5 instead — cost if wrong: one unautomated regression
+path, noted for ROADMAP); Task 5's RED expectation ("test 2 passes") is a description slip, not a plan defect — the
+implementer reports the RED output it actually sees; the orchestrator installs `onnx==1.21.0` and `onnxruntime==1.24.4`
+into the venv and runs `tools/export_onnx.py` in the background during Tasks 1–3, without downgrading torch/torchvision/
+timm unless export fails on the newer versions — it did not (PIP_OK, EXPORT_OK on torch 2.13.0).
+
+### Task 1 — `reviewedAt` on the record and the fourth status, Reviewed
+
+Implementer Sonnet, reviewer Sonnet. Commits `ae6af2f..1b9093a`. Unit 486/486; byte-check clean. Reviewer's one
+finding (the runtime look of `.badge-ok` in both themes) resolved by the controller as Task 8's human gate, not a gap.
+`1b9093a` is BASE for Task 2. Environment note: `onnx`/`onnxruntime` installed and `tools/export_onnx.py` run in the
+background during this task (see the pre-flight scan); the backend was ready for a source launch by the end of it.
+
+### Task 2 — pure sort for the Find list, `subjectLabel`, the `findSort` store key
+
+Implementer Sonnet, DONE at `3102a07`; unit 496/496 (the Write tool turned one `—` into a glyph in `find.js`, repaired
+with a Python script; byte-check clean after). Reviewer Sonnet: Approved; its one ⚠️ (that Task 4 will call the sort
+correctly) was out of scope — Task 4 was unbuilt — and resolved by the controller. Three deferred minors: `store.js`'s
+initial `findSort` literal duplicates `find.js`'s `DEFAULT_FIND_SORT` rather than importing it (plan-specified verbatim;
+drift risk); `subjectLabel` returns an untrimmed `subjectId` for display while `find.js`'s `text()` trims for sorting;
+`text()`'s non-string branch has no dedicated test (handled correctly; coverage implicit). Commits `1b9093a..3102a07`,
+review clean. `3102a07` is BASE for Task 3.
+
+### Task 3 — every numbers-changing write clears the review mark
+
+Implementer Sonnet, DONE at `122a440`; unit 499/499; calibration suites green; byte-check clean. Reviewer Sonnet:
+Approved; a cross-cutting grep found no fifth write of measurements/geometry/calibration beyond the four sites
+(`segmentStudy`'s run commit, `measure-queue.js`'s correction commit, the viewer's RESET TO PREDICTION,
+`renderer/calibration.js`'s `withCalibration`). One deferred minor: `canonical()` round-trips through `JSON.stringify`,
+so `NaN` collapses to `null` and nested `undefined` is dropped — unreachable for calibration records today (carried to
+ROADMAP by Task 9). Commits `3102a07..122a440`, review clean. `122a440` is BASE for Task 4.
+
+### Task 4 — Find tab: Delete over the ticked rows, sortable headers, the SUBJECT editor, TO REVIEW
+
+Implementer Opus, DONE_WITH_CONCERNS at `830046d`; unit 499/499; `smoke-studies.mjs` 91/103 on a fresh scratch launch
+(expected — the plan's regex fix was Task 7's, not this task's); byte-check exactly the four predicted lines. Two
+concerns raised and ruled on: (1) nine smoke failures rather than the plan's predicted five — no scope change, Task 7
+absorbs the regex/derived-n fixes; (2) three PRE-EXISTING failures at `122a440` (`readProgress()` compares against an
+exact string that upstream `63b3484` nested a live-stage span inside) — ruled as the product's deliberate feature; Task
+7 fixes the suite's `readProgress()`, never the checks themselves.
+
+Reviewer Opus: Needs fixes. Important 1: Tab out of a SUBJECT editor dropped focus to `<body>` (the trash button carried
+no `data-find-key`). Important 2 (plan-mandated CSS): the editing wrapper's `overflow:hidden` clipped the outline/
+border/focus ring on three sides. Minor 1 (spec-mandated, promoted to Important by ruling): switching to the Parameters
+tab did not withdraw the Delete prompt (spec 5.3). Minors 2–6 deferred: the disabled Delete button's `title` never
+shown by Chromium (ROADMAP's existing disabled-title item); the first click elsewhere while an editor is open is
+swallowed (rebuild lands between mousedown/mouseup); `commitSubject`'s local `nextId` shadows the persistence.js import
+(renamed to `below` in the fix wave); `api.hideDemoStudies` unreachable until Task 5; every keystroke rebuilds the
+table (caret restored; an IME composition would drop).
+
+Fix round 1/5, Opus, FIX_BASE `830046d` → `6c4abef`: the trash button gained `data-find-key="row-delete-<id>"` plus an
+`onBlur` capture of `event.relatedTarget`'s key (new surface beyond the ruling, re-reviewed as such); the editing cell
+gained class `studies-subject-editing` with `overflow: visible`; tab-switch now withdraws the prompt. CDP checks 1–4
+passed; byte-check empty. Re-reviewer Opus: no new breakage, the `relatedTarget` path traced clean (null, search box,
+outside nodes, idempotence after Enter, last row). Carried to Task 7/9: the editing wrapper's class list is
+`studies-cell-subject studies-subject-editing`; Enter walking down more than one real row was not exercised (one real
+study in the profile) — smoke section 16 covers it. One residual (deferred): a Tab-commit that changes the subject
+while a search matched only the old value removes the row, dropping focus to `<body>` in that one corner.
+
+Commits `122a440..6c4abef`, review clean after fix round 1. `6c4abef` is BASE for Task 5.
+
+### Task 5 — demo studies toggle in Settings (development builds only); `deleteStudyBatch` real-only
+
+Implementer Sonnet, DONE at `1d3e09c`; unit 504/504; a grep confirmed only the `hideDemoStudies` KEY remains in
+`main.js`'s two handlers; CDP checks a–f 24/24 on a scratch profile; a relaunch on the kept profile held the
+preference (one transient, self-resolved `ECONNREFUSED`, not attributed to the diff). The packaged-build half is not
+checkable from source. Reviewer Sonnet: Approved; five named risks (IPC rename grep, `merge`/`withIds`, invoke/bridge
+naming, the boot rule, ASCII diff) all clean. Two deferred minors: the sidebar's `demo-settings` class has no CSS rule
+(plan-specified, unused hook — carried to ROADMAP by Task 9); `setDemoStudiesShown` ignores a resolved `false` from
+`setDemoStudiesHidden` (unreachable — the same gate guards the call). Commits `6c4abef..1d3e09c`, review clean. `1d3e09c`
+is BASE for Task 6.
+
+### Task 6 — Mark reviewed on the Analysis screen, the list's status badge in its header
+
+Implementer Sonnet, DONE at `c227d7d`; unit 504/504; CDP checks 1–6 (35 assertions) pass on a scratch profile with a
+demo re-labelled real; byte-check clean. Reviewer Sonnet: Approved, no findings; risks traced (open non-null at the
+insertion point; `render()` resets `lastBadgeKey` on every study switch; `mount()` clears first; `.param-export-note`
+linked via `studies.css`). Commits `1d3e09c..c227d7d`, review clean. `c227d7d` is BASE for Task 7.
+
+### Task 7 — smoke coverage: sortable headers, the SUBJECT editor, Delete selected, the persisted mark and subject
+
+Two rulings ahead of implementation: the plan's new summary-regex line, as literally specified, carries a middle-dot
+glyph Global Constraints forbid on a new line — written as the `\u00b7` escape instead, both separators the same
+character (cost if wrong: none, both forms match); `readProgress()` in `smoke-studies.mjs` is fixed to read the
+progress text without the nested `.study-processing-detail` upstream `63b3484` introduced (the three affected checks
+stay; the README notes it — cost if wrong: three checks that describe the bar less exactly).
+
+Implementer Sonnet, DONE_WITH_CONCERNS at an intermediate commit (Gate: pending); unit 504/504; `smoke-studies`
+131/131; `smoke-persist` 40/40 then 47/47; `smoke-parameters` 58/58; `smoke-workspace` 96/100. Concern: `smoke-
+workspace.mjs`, not in the plan's Task 7 file list, carried the same stale two-clause summary regex — four checks
+failed on the new three-clause summary; not a product defect. Ruling: amended into the same gated commit (the regex
+fix, a fresh-launch re-run to 100/100, and the README baseline) rather than opened as a second commit, so the gated
+task stayed one commit — cost if wrong: one amend. An addendum implementer (Sonnet) made that amendment; four files in
+the commit.
+
+Reviewer Sonnet: Needs fixes. Important 1 (plan-mandated): a smoke check NAME gained a second literal middle dot (the
+brief's text verbatim) — a diagnostic string, no behaviour; ruled superseded by Global Constraints and written as the
+`\u00b7` escape. Important 2: the README's baseline paragraph lacked the `readProgress()`/nested-detail clause the
+earlier ruling required — added. Its ⚠️ (commit body not visible in the diff file) resolved by the controller via
+`git log -1 --format=%B`. Fix round 1/5, Sonnet, amended into the same commit: both addressed; `node --check` clean;
+unit 504/504; Gate: pending kept. Re-reviewer Sonnet: no new breakage.
+
+Task 7 complete: commits `c227d7d..ae6f345` (one gated commit — this is the FINAL hash; the commit carried the hash
+`11ef3ab` at the time of this review and until Task 8's gate passed, when its message was amended in place to record
+`Gate: passed 2026-09-10 (user)`, non-interactively, without changing its tree; see "Task 8 — the gate" below), Gate:
+pending at the time, review clean after fix round 1.
+
+### Final whole-branch code review (before the human gate)
+
+Ruling ahead of the review: the final whole-branch CODE review (Opus, the most capable model the user allows) runs
+BEFORE Task 8's human gate, over the full range, so the user gates the code the branch will ship and no fix wave
+lands after the gate; any fix-wave commits above the reviewed tip are folded before the gate is posted — cost if
+wrong: one extra review dispatch. Task 9's own docs get their own task review; the final review's residuals are
+re-checked over the docs commit at the end.
+
+Reviewer Opus, over `ae6af2f..ae6f345` (named `11ef3ab` at review time, see the note above): Ready to merge WITH
+FIXES. Critical: none (the clinical rule traced watertight; five record-write hits, all clear the mark; both demo
+gates real; byte discipline clean over the range). Important 1: spec 7.3's rebuild-mid-edit safety rests on Chromium
+not firing `blur` on removal and had no automated check. Minors 2–13 triaged below. Every ledger-deferred item from
+Tasks 1–7 may stay deferred, except the `nextId` rename (fixed now) and Task 3's `canonical()` NaN note (sent to
+ROADMAP).
+
+Ruling: ONE fix wave (Opus; the Find tab is Task 4's file) in two commits above the reviewed tip: (a) test: smoke
+section 16 gains the rebuild-mid-edit assertion (Important 1) and a Reviewed row on the list (Minor 11); (b) chore:
+rename `nextId` → `below` in `commitSubject` (Minor 4), module-scope `editing` → `editingSubject` (Minor 5), demo
+records carry `reviewedAt: null` (Minor 8), stale PATIENT wording in the CSS comment and the search placeholder
+(Minor 9), a null guard on `deleteSelectedStudies` (Minor 12), FRESH_VIEW parity pinned by one test (Minor 6).
+Deferred to Task 9's records: the 5.3 id-list withdrawal wording (Minor 2), Escape only inside the prompt (Minor 3),
+`aria-sort`/role nesting (Minor 13), `merge()`'s dead `hideDemos` option (Minor 7), the `demo-settings` class (Minor
+10), the Settings smoke check and the `canonical()` NaN note — all now in ROADMAP §5/§6. Cost if wrong: one review
+round.
+
+Ruling: the gate's commit message is amended non-interactively once the gate passes (`git checkout --detach`, `commit
+--amend -F msg`, a plain `git rebase --onto`, no `-i`) — cost if wrong: a rebase to redo.
+
+The first dispatch of this fix wave was interrupted by the user before it started; not re-dispatched verbatim — the
+controller reported state and stopped for direction. Re-dispatched to a fresh Opus implementer, told to keep the
+partial edits already on disk (the B1/B2/B5/B6 renames and guards).
+
+### Final fix wave and the spec 7.3 fix
+
+Implementer Opus, DONE_WITH_CONCERNS — commits `86d97ed` (chore: B1–B6 cleanup; the search placeholder reads "...
+folder, diagnosis…" because `matchesQuery` searches `dx` and clinical values, not "patient") and `c1e61a3` (test: A1
++ A2). Unit 505/505; `smoke-studies` 134/136 on a fresh launch; byte-check clean (two allowed glyph pairs).
+
+A1 FAILED and exposed a REAL product defect (spec 7.3): after a rebuild mid-edit, `update()` re-creates the editor
+with its draft, focus and caret restored, but the destroyed input's deferred blur commit
+(`onBlur → queueMicrotask → commitSubject(id,'blur')`) still fires one microtask later, writes the half-typed draft,
+and closes the editor. Proven over CDP (sync-after-rebuild editor:true; after microtasks editor:false, subject
+overwritten, focus on `<body>`). The final reviewer's Important 1 was right: Chromium DOES fire `blur` (or the
+deferred commit still runs) on removal of the focused input.
+
+Ruling: the defect is load-bearing (the headline feature loses typing when a batch finishes mid-word) and is fixed
+NOW as a Task 4 fix commit, reviewed, before the gate — the skill's no-second-fix-wave rule is a cost rule, and this
+is one guard with a smoke check already written and red. Fix shape: the deferred blur commit skips the write when
+`!input.isConnected && editingSubject?.id === study.id` (a removal-blur, as opposed to a user-driven blur where the
+node is still connected) — cost if wrong: one commit to revert.
+
+Implementer Opus, DONE at `295c9fd`: capture-phase probe confirmed the premise (blur: connected true; pre-commit
+microtask: connected false). CDP after: editor kept, draft value intact, caret restored, subject unchanged on the
+record. Unit 505/505; `smoke-studies` 136/136 (`tools/smoke/out/fix73-studies.txt`). README baseline 136/136. One
+deferred residual (HANDOFF trap): a rebuild that also filters the edited row out keeps the draft instead of
+committing (unreachable today — a search keystroke has already blurred the editor); the guard rests on Chromium's
+observed blur-before-detach ordering, and the smoke check is the tripwire.
+
+Scoped re-review, Opus, over `ae6f345..295c9fd` (three commits, named `11ef3ab..9a36eb9` at review time): all findings
+ADDRESSED (Important 1 both halves; Minors 4, 5, 6, 8, 9, 11, 12), no new Critical/Important breakage; covering runs
+confirmed against `tools/smoke/out/fix73-studies.txt` (136/136, 0 FAIL). One further deferred minor: the A1 smoke
+check's caret assertion cannot fail alone (`el()`'s value setter parks the cursor at the end, so the check would need
+to type, ArrowLeft, then assert 1/1 to pin the restore itself — sent to ROADMAP by Task 9).
+
+### Task 8 — the human gate
+
+Posted 2026-09-10 on tip `9a36eb9` (Task 7's gated commit still carried `Gate: pending`, with three fix-wave commits
+above it). Unit 505/505; `smoke-studies` 136/136; `smoke-persist` 40/40 then 47/47; `smoke-parameters` 58/58;
+`smoke-workspace` 100/100. GATE PASSED 2026-09-10 (user): "OK IT PASSED all 7." Packaged-build checks (no DEMO
+STUDIES row; no `library-preferences.json`) NOT RUN — wait for the next installer. The user also reported `fork/main`
+had moved twice since the branch started (now v1.0.5) and asked for a merge plus an installer update to v1.0.6.
+
+Amend: Task 7 became `ae6f345` (message now `Gate: passed 2026-09-10 (user)`); the fix-wave commits replayed as
+`86d97ed` (chore), `c1e61a3` (test), `295c9fd` (fix); the tree is identical to the pre-amend `9a36eb9`. The old hashes
+`11ef3ab`/`96b2060`/`ea94f5d`/`9a36eb9` are superseded by `ae6f345`/`86d97ed`/`c1e61a3`/`295c9fd` respectively — every
+reference to the old hashes above in this ledger names the commit that now carries the new one.
+
+### Merge — `fork/main` v1.0.5
+
+`fork/main` had advanced to `71d483f` = v1.0.5 (v1.0.4 PACS toolbar removal `815f4cf`; v1.0.5 manual calibration
+persistence `467ddb8`). `git merge-tree --write-tree fork/main 9a36eb9` (pre-amend tip; tree identical to `295c9fd`)
+exited 0: no textual conflicts. Overlapping files (`calibration.js`, `store.js`, `sidebar.js`, `main.js`, `preload.js`,
+`api.js`, `CLAUDE.md`, the contract) changed on different lines. `windows.yml` already carried the repository guard
+and published only on a `main` push — HANDOFF's stale "windows.yml still has no guard" line, superseded by Task 9.
+
+Ruling: `fork/main` is MERGED into the branch (a merge commit, the 2026-09-08 reconcile's precedent; keeps the
+reviewed SHAs), then post-merge verification (unit; a grep for any new record write of calibration in upstream's
+v1.0.5 renderer code; smoke suites), then Task 9's records on the merged text, then a release commit for 1.0.6
+(`package.json`, `version.js`, `CHANGELOG.md`, `docs/releases/1.0.6.md`), then a push to `fork` and a PR to `fork/main`
+whose merge the user clicks — cost if wrong: a merge to redo.
+
+Merge commit `ceacc7e` "Merge fork/main (v1.0.5) into the studies-table branch". Merged tree: unit 513/513; upstream's
+v1.0.5 renderer code adds NO record write of calibration (`calibration-viewer.js:52` is an event payload consumed by
+`rememberCalibration`); every calibration write still goes through `withCalibration`; the run commit still clears the
+review mark. `package.json`/`version.js` still read 1.0.5 (the bump to 1.0.6 is the release commit, not yet made).
+Dispatched in parallel after the merge: a Sonnet smoke VERIFIER over the merged tree (reads and runs only, no edits,
+no git) and Task 9's records implementer (Sonnet, docs only, no app launch, no smoke suite — this task).
+
+### Task 9 — records
+
+This pass: the contract's file structure, Study record, store state, `data/status.js` signature and rules, the
+2026-09-07 delete-all amendment's supersession, and a new 2026-09-10 dated section (plus its spec-7.3 fix note); the
+redesign spec's §9.4 and §13.1; the batch spec's §7.1; the pre-op/post-op spec's §9; HANDOFF's "Where things stand"
+(the studies-table entry moved from PLANNED to DONE, the old paragraph marked superseded rather than deleted), the
+reconcile summary's "Delete all studies" bullet, decisions 67–74, item 6's stale `windows.yml` line, a Release
+prerequisites bullet, and a Known traps bullet for the removal-blur guard; ROADMAP's new §7 (deferred header filters)
+and eleven §5 edits/additions; CLAUDE.md's top studies-table paragraph (rewritten from PLANNED to DONE with the merged
+counts) and the `## Git` paragraph (names the v1.0.5 merge); and this Ledger. Counts used throughout: on the branch
+before the v1.0.5 merge, unit 505/505, `smoke-studies.mjs` 136/136, `smoke-persist.mjs` 40/40 then 47/47,
+`smoke-parameters.mjs` 58/58, `smoke-workspace.mjs` 100/100, `smoke-seeding.mjs` 36/36 (not re-run); the merged tree
+reads unit 513/513, with its own smoke counts going into `docs/releases/1.0.6.md` in the next (release) commit. One
+item from the brief could not be applied as literally worded — "the baseline paragraph the README mirrors" (searched
+for the literal string `smoke-persist.mjs\` 36/36 then 44/44\``): the only two matches in HANDOFF.md are historical
+verification records for the 2026-09-08 reconcile and batch-segmentation branches (each a true record of what was
+verified on THAT branch at THAT time); rewriting either would misstate history, so both were left untouched and the
+counts were written only into the new studies-table paragraphs this task adds.

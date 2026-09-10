@@ -23,6 +23,28 @@ sections under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
 ## Where things stand
 
+### Studies table — DONE (branch `claude/studies-table-ui-updates-953945`, off `fork/main` @ `6106463`, merged with `fork/main` @ `71d483f`, v1.0.5)
+
+2026-09-10. Spec `specs/2026-09-10-studies-table-review-design.md`; plan `plans/2026-09-10-studies-table-review.md` (Tasks 1–9,
+its `## Ledger` at the end holds every ruling and count). Delete over the ticked visible rows replaces `Delete all studies`
+(`830046d`, `1d3e09c`); every Find header sorts (`findSort`, `data/find.js`, `3102a07`); PATIENT is SUBJECT and edits in
+place (`830046d`, fixed for focus/clipping/tab-withdrawal in `6c4abef`); a stored `reviewedAt` gives the fourth status,
+Reviewed, set from the Analysis panel (`1b9093a`, `122a440`, `c227d7d`) and cleared on every numbers-changing write; demo
+hiding is a development-only Settings toggle (`1d3e09c`, `set-demo-studies-hidden`, refused when packaged). Smoke coverage
+and cleanup landed in `ae6f345` (Task 7's gated commit), `86d97ed` (chore), `c1e61a3` (test) and `295c9fd`
+(fix: a rebuild mid-edit no longer commits and closes the SUBJECT editor, spec 7.3).
+
+On the branch before the v1.0.5 merge: unit 505/505; `smoke-studies.mjs` 136/136; `smoke-persist.mjs` 40/40 then 47/47;
+`smoke-parameters.mjs` 58/58; `smoke-workspace.mjs` 100/100; `smoke-seeding.mjs` 36/36 (not re-run). The human gate passed
+2026-09-10 (user): "OK IT PASSED all 7." The packaged-build checks (no DEMO STUDIES row, no `library-preferences.json`)
+were NOT run — wait for the next preview installer. `fork/main` is the trunk now: the backend developer took
+`fork/ui-redesign-cw` and released v1.0.0–1.0.3 on top of it. The branch then merged `fork/main` @ `71d483f` (v1.0.5:
+optional PACS toolbar removal + persisted manual image calibration) as `ceacc7e`; the merged tree reads unit 513/513,
+and its smoke-suite counts are recorded in `docs/releases/1.0.6.md`. **Next:** the 1.0.6 release commit, then a PR to
+`fork/main` whose merge publishes the v1.0.6 installers; the packaged-build checks run on that installer.
+
+**Superseded (folded into the DONE section above, 2026-09-10) — the original planning-session status, kept for the record:**
+
 ### Studies table — PLANNED, not started (branch `claude/studies-table-ui-updates-953945`, off `fork/main` @ `6106463`)
 
 2026-09-10. Brainstormed and planned in one session; execution is the next session's. Spec
@@ -55,7 +77,7 @@ the rulings, each with its cost, are in the reconcile ledger (git-ignored) and s
 - "Delete all studies" is kept as his feature, mounted library-level between the Studies header and the Find | Parameters
   tab strip; it also refuses while a batch is up (`WAIT_FOR_BATCH`), says "including demos" only when a demo is present,
   and prunes the deleted ids from the shared `paramSelected` (as the single delete does; `nextId` reuses a freed id at
-  once). The search input mirrors `live.query`, which the bulk delete clears.
+  once). The search input mirrors `live.query`, which the bulk delete clears. **Superseded 2026-09-10** by Delete over the ticked visible rows on the Find bar and a development-only Settings toggle for the demos (studies-table spec §5, §9).
 - His run-path guard is an outcome in `segmentStudy` (`{ ok: false, reason }`, toast only when interactive); the batch
   driver refuses `startBatch` while `deletingStudies` (one test); `deleteAllStudies` sets `deletingStudies` before its
   first await, so run, batch and bulk delete are mutually exclusive.
@@ -956,7 +978,7 @@ packaging-allowlist check, while the preview workflows do both; the two allowlis
 root file from one ships an installer that opens a blank window with CI green. No installer has been built from this
 lineage yet: the push of `fork/ui-redesign-cw` on 2026-09-08 is the first preview build to carry plan 06 and everything
 after it, including your Tesseract `--add-data` and `check_bundled_ocr.py`. Known open defects are in `docs/ROADMAP.md`
-§5; one pre-existing prototype-key clinical leak is still open.
+§5; one pre-existing prototype-key clinical leak is still open. **Superseded 2026-09-10:** `windows.yml` now carries the repository guard, runs renderer and backend tests, the allowlist parity check and packaged source/version checks on both platforms, and publishes only on a push to `main` (the backend developer's v1.0.0 promotion).
 
 ### Backend merge 2026-09-04 — crop search and model choice
 
@@ -1468,6 +1490,26 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
     act on a demo study. *Why:* a demo id ticked on the Parameters grid is simply not counted by the Find tab. *Cost
     if wrong:* a tick made on one tab is invisible on the other for a dev-only fixture.
 
+67. **The Find tab's filters stay as the shared Workspace and Folder selects** (2026-09-10, user). Header filtering is deferred
+    to a later update for both tabs together (ROADMAP §7). *Why:* the two tabs must read the same way.
+68. **Delete acts on the ticked VISIBLE real rows, never falls through to "all visible", never touches a demo.** *Why:*
+    deleting something the user cannot see is worse than segmenting it; demo rows have no tick.
+69. **PATIENT is SUBJECT, editable in place on the Find list by a SINGLE click; Enter commits and opens the next real row's
+    editor; Escape discards.** *Why:* the user corrects a whole column without opening nine studies; double-click was
+    rejected because the row opens the study on the first click.
+70. **The review mark is a stored `reviewedAt`; status `'ok'`/Reviewed outranks every qc reason; the QC warnings stay
+    visible; the mark is cleared ON THE WRITE by every commit that replaces measurements, geometry or calibration** (run,
+    correction, reset, calibration). *Why:* a Reviewed badge over changed numbers is a fabricated status; a stale mark is
+    the worse failure.
+71. **Demo hiding is a Settings toggle for development builds only, with two gates** (the block is built only when the main
+    process allowed demos; the IPC refuses when packaged). *Why:* the user: "I do NOT want this in the installer."
+72. **No bulk Mark reviewed from the list.** *Why:* a one-click review over rows nobody opened is the wrong shape for a
+    clinical tool.
+73. **No `Reviewed` column in the CSV exports** (2026-09-10, planner's assumption, the user did not rule). One column when
+    wanted.
+74. **The final whole-branch code review runs BEFORE the human gate** (2026-09-10, controller ruling). *Why:* so the user
+    gates the code the branch ships and no fix wave lands after the gate.
+
 ## Release prerequisites — v1.0.0 main promotion
 
 Current instructions: [main release](../release-main.md). The earlier statements that
@@ -1486,6 +1528,9 @@ plan 06 had never been packaged, or that installed previews contain demos, are s
   all 305 incoming commits in `docs/releases/`. Production build results belong in
   the promotion PR. The macOS app remains unsigned; clinical validation and plan 07
   remain outside this release.
+- **2026-09-10:** the studies-table branch merged `fork/main` v1.0.5 cleanly (`ceacc7e`); the release path is a
+  version bump to 1.0.6 in `package.json`, `renderer/data/version.js`, `CHANGELOG.md` and `docs/releases/1.0.6.md`,
+  then a PR to `fork/main`; merging publishes.
 
 ## Known traps
 
@@ -1630,6 +1675,14 @@ plan 06 had never been packaged, or that installed previews contain demos, are s
   **1 second**. If a build is slow or dies, look at packaging, not LFS.
 - **LFS quota.** Pushing this branch uploaded 432 MB of model weights to the fork, about
   43% of GitHub's free 1 GB. Avoid branches that touch `backend/weights/`.
+- **Chromium fires a focused input's `blur` when a rebuild removes it**, so a deferred commit queued from that blur
+  runs one microtask after the rebuild has re-created and re-focused the editor and would write the half-typed draft
+  and close it; the Find tab's SUBJECT editor skips the commit when the input node is no longer connected
+  (`!input.isConnected`) while the editor is still logically open on that row (`editingSubject.id === study.id`) — a
+  removal-blur; a user blur leaves the node connected at that moment. Found by the final review's smoke check
+  (spec 7.3), 2026-09-10; `smoke-studies.mjs`'s check `a rebuild while the editor is open keeps the editor, the draft
+  and the caret` is the tripwire. Residual: a rebuild that filters the edited row out keeps an invisible draft until
+  another edit flushes it (unreachable today).
 
 ## Recovering the design source
 

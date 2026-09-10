@@ -198,6 +198,7 @@ runs (§7.4).
   `segment-note`, `stop`, `progress`), the Parameters tab's `data-param-key` convention: the bar is
   rebuilt with the table, focus is handed back to the control with the same key, and the smoke suite
   selects on the key, never on a label.
+- (2026-09-10, studies-table spec §5) `Delete` sits between the Folder select and the spacer, over the same ticked-visible rule as the segment button; while its prompt is up it takes the bar's place. `data-find-key`s `delete`, `delete-prompt`, `delete-confirm`, `delete-cancel`.
 
 ### 7.2 Ticks
 

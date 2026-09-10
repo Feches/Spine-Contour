@@ -35,16 +35,21 @@ release.** Plan 06's automated verification is green and its Gate 1 passed on 20
 developer who wrote the Python backend — and **the preview installer has never been tested with
 plan 06's code in it**.
 
-**Branch `claude/studies-table-ui-updates-953945` (2026-09-10) — PLANNED, execution not started.** It sits on
-`fork/main` @ `6106463`, which is **the trunk now**: the backend developer took `fork/ui-redesign-cw` (the 2026-09-08
-handover tip) and released v1.0.0–1.0.3 on top of it through fork PRs #4–#8; `fork/ui-redesign-cw` is an ancestor of
-`fork/main`, the older `claude/studies-ui-updates-bb040d` tip (`4f76063`) is superseded, and upstream `origin/main`
-still has the OLD single-page UI and is never a base. The branch holds the approved spec
-`docs/superpowers/specs/2026-09-10-studies-table-review-design.md` (`e6178fe`) and the plan
-`docs/superpowers/plans/2026-09-10-studies-table-review.md` (`f6e421b`; Tasks 1–9: Delete over the ticked visible rows,
-sortable Find headers, SUBJECT editable in place, a stored `reviewedAt` and the fourth status Reviewed, a
-development-only demo toggle). Unit 479/479 on this base; no code task has started. `docs/superpowers/NEXT-SESSION.md`
-is the execution prompt. The branch paragraphs below are historical.
+**Branch `claude/studies-table-ui-updates-953945` (2026-09-10) — DONE, merged with `fork/main` v1.0.5.** It sits on
+`fork/main` @ `6106463` and has been merged with `fork/main` @ `71d483f` (v1.0.5) — **`fork/main` is the trunk
+now**: the backend developer took `fork/ui-redesign-cw` (the 2026-09-08 handover tip) and released v1.0.0–1.0.3 on top
+of it through fork PRs #4–#8; `fork/ui-redesign-cw` is an ancestor of `fork/main`, the older
+`claude/studies-ui-updates-bb040d` tip (`4f76063`) is superseded, and upstream `origin/main` still has the OLD
+single-page UI and is never a base. It holds the studies-table work: spec
+`docs/superpowers/specs/2026-09-10-studies-table-review-design.md` (`e6178fe`) and plan
+`docs/superpowers/plans/2026-09-10-studies-table-review.md` (`f6e421b`; Tasks 1–9, its `## Ledger` at the end): Delete
+over the ticked visible rows; sortable Find headers; SUBJECT editable in place; a stored `reviewedAt` and the fourth
+status, Reviewed; a development-only demo toggle. On the branch before the v1.0.5 merge: unit 505/505;
+`smoke-studies.mjs` 136/136; `smoke-persist.mjs` 40/40 then 47/47; `smoke-parameters.mjs` 58/58; `smoke-workspace.mjs`
+100/100; the human gate passed 2026-09-10 (user). The merged tree reads unit 513/513; its smoke-suite counts are
+recorded in `docs/releases/1.0.6.md`. Pushed to `fork`. **Next:** the 1.0.6 release commit, then a PR to `fork/main`
+whose merge publishes the v1.0.6 installers; the packaged-build checks (no DEMO STUDIES row, no
+`library-preferences.json`) run on that installer. The paragraphs below are historical.
 
 **Current branch (2026-09-06): `claude/studies-ui-updates-bb040d`**, 7 commits of user-requested
 studies/UI work on top of `origin/ui-redesign-cw` @ `0022d91`, pushed to `fork`. Unit 293/293 and
@@ -222,7 +227,8 @@ packages; keep `--collect-all timm` in both workflows.
 ## Git
 
 This worktree (`.claude/worktrees/studies-ui-updates-bb040d`, whose directory name predates this work) is on branch
-`claude/studies-table-ui-updates-953945` (2026-09-10), off `fork/main` @ `6106463`. Two remotes:
+`claude/studies-table-ui-updates-953945` (2026-09-10), off `fork/main` @ `6106463`, merged with `71d483f`
+(v1.0.5). Two remotes:
 
 - `fork` → `github.com/Feches/Spine-Contour` — **push here**
 - `origin` → `github.com/mjayasur/Spine-Contour` — upstream, read-only in practice
