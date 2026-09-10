@@ -221,6 +221,7 @@ def health() -> dict[str, str]:
 
 
 async def calibration_request(file: UploadFile = File(...), profile: str | None = Form(None),
+                              calibration: str | None = Form(None),
                               include_preview: bool = Form(True), preview_only: bool = Form(False),
                               processing_mode: str = Form("standard"), cpu_threads: int = Form(2)):
     payload = await file.read(MAX_UPLOAD_BYTES + 1)
@@ -230,11 +231,12 @@ async def calibration_request(file: UploadFile = File(...), profile: str | None 
         raise HTTPException(status_code=413, detail="The selected file exceeds 50 MB")
     try:
         profile = validate_profile(json.loads(profile)) if profile else None
+        cached = json.loads(calibration) if calibration else None
         policy = runtime.parse_options(processing_mode, cpu_threads)
     except Exception as error:
         raise HTTPException(status_code=422, detail="Invalid calibration settings") from error
     return {"payload": payload, "profile": profile, "include_preview": include_preview,
-            "preview_only": preview_only, "policy": policy}
+            "preview_only": preview_only, "policy": policy, "cached": cached}
 
 
 def run_calibration(request, reporter=None, cancelled=None):
@@ -244,7 +246,7 @@ def run_calibration(request, reporter=None, cancelled=None):
         try:
             runtime.report("calibration", "Checking image calibration")
             result = calibration_from_payload(request['payload'], request['profile'],
-                                              request['include_preview'], request['preview_only'])
+                                              request['include_preview'], request['preview_only'], cached=request['cached'])
             runtime.checkpoint()
             return result
         except runtime.Cancelled:

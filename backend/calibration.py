@@ -97,8 +97,12 @@ def _cached_result(cached, response):
                        'source': 'manual_reference' if status == 'corrected' else 'printed_ruler'}
         elif index is not None or cached.get('spacing') is not None:
             return None
-        return {**response, 'status': status, 'spacing': spacing, 'candidates': candidates,
-                'selected_index': index, 'message': str(cached.get('message', ''))}
+        result = {**response, 'status': status, 'spacing': spacing, 'candidates': candidates,
+                  'selected_index': index, 'message': str(cached.get('message', ''))}
+        revision = cached.get('review_revision')
+        if type(revision) is int and 0 < revision <= 9007199254740991:
+            result['review_revision'] = revision
+        return result
     except (KeyError, TypeError, ValueError):
         return None
 
@@ -118,11 +122,11 @@ def calibration_from_payload(payload: bytes, profile=None, include_preview=True,
         'status': 'dicom' if spacing else 'not_found',
         'message': 'Using DICOM pixel spacing.' if spacing else 'No reference found. Draw a reference and enter its length.',
     }
-    if preview_only:
-        return response
     reused = _cached_result(cached, response)
     if reused is not None:
         return reused
+    if preview_only:
+        return response
     if spacing:
         return response
     configure_ocr()

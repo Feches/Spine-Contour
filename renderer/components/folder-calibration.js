@@ -1,6 +1,6 @@
 import { chooseFolder, scanFolder, readFile, calibrate, learnCalibrationProfile } from '../api.js';
 import { rememberCalibration, calibrationForStudy } from '../calibration.js';
-import { preferReviewedCalibration } from '../data/calibration.js';
+import { preferReviewedCalibration, calibrationPathKey } from '../data/calibration.js';
 import { getState } from '../store.js';
 
 export function createFolderCalibration(root, calibration, selectRadiograph) {
@@ -89,7 +89,7 @@ export function createFolderCalibration(root, calibration, selectRadiograph) {
           if (token !== generation) return false;
           const response = await calibrate({ ...file, profile, includePreview: false });
           if (token !== generation) return false;
-          const study = getState().studies.find(s => s.filePath === descriptor.id) ?? { filePath: descriptor.id };
+          const study = getState().studies.find(s => calibrationPathKey(s.filePath) === calibrationPathKey(descriptor.id)) ?? { filePath: descriptor.id };
           save(descriptor.id, preferReviewedCalibration(response, calibrationForStudy(study)) ?? response);
         } catch (error) {
           if (token !== generation) return false;

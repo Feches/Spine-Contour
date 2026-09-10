@@ -70,7 +70,8 @@ def test_low_memory_models_are_released_on_failure(monkeypatch):
 
 @pytest.mark.parametrize('mode', ['standard', 'low-memory'])
 def test_standalone_calibration_stream_keeps_policy_and_the_legacy_result(monkeypatch, mode):
-    def calibrate(*args):
+    def calibrate(*args, cached=None):
+        assert cached is None
         runtime.report('ocr', 'Reading scale labels', 1, 5)
         return {'status': 'unavailable', 'timeout': runtime.options().ocr_timeout}
     monkeypatch.setattr(server, 'calibration_from_payload', calibrate)

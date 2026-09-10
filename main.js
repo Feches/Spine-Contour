@@ -8,6 +8,7 @@ const { randomUUID } = require('node:crypto');
 const { readStudyStore, writeStudyStore, readJsonOrNull, writeJsonAtomic } = require('./store-io.js');
 const { scanFolder } = require('./scan-folder.js');
 const { postForm, normalizePerformance } = require('./backend-client.cjs');
+const { createCalibrationStore } = require('./calibration-io.js');
 
 // buildChannel is injected by electron-builder.preview.yml via extraMetadata.
 // It is absent in development and in production builds, so both fall through
@@ -38,6 +39,8 @@ if (!app.isPackaged && process.env.SPINE_CONTOUR_USER_DATA) {
 }
 
 const REAL_STUDY_ID = /^SP-\d{4,}$/;
+const calibrationStore = createCalibrationStore(path.join(app.getPath('userData'), 'calibrations'));
+ipcMain.handle('save-calibration', (_event, reference) => calibrationStore.save(reference));
 
 function storePath() {
   return path.join(app.getPath('userData'), 'studies.json');
@@ -107,9 +110,11 @@ ipcMain.handle('calibrate', async (_event, request) => {
   const bytes = request.data instanceof Uint8Array
     ? request.data : Uint8Array.from(request.data?.data || request.data || []);
   if (!bytes.byteLength || bytes.byteLength > MAX_UPLOAD_BYTES) throw new Error('Select an image smaller than 50 MB.');
+  const savedReference = await calibrationStore.forImage(bytes);
   const form = new FormData();
   form.append('file', new Blob([bytes]), request.name);
   if (request.profile) form.append('profile', JSON.stringify(request.profile));
+  if (savedReference) form.append('calibration', JSON.stringify(savedReference));
   form.append('include_preview', request.includePreview === false ? 'false' : 'true');
   form.append('preview_only', request.previewOnly ? 'true' : 'false');
   appendPerformance(form, request.performance);
@@ -144,7 +149,8 @@ ipcMain.handle('predict', async (event, request) => {
   form.append('modality', request.modality);
   form.append('body_part', request.bodyPart);
   form.append('view', request.view);
-  if (request.calibration) form.append('calibration', JSON.stringify(request.calibration));
+  const calibration = await calibrationStore.forImage(bytes) ?? request.calibration;
+  if (calibration) form.append('calibration', JSON.stringify(calibration));
   // Which model reads which structure. Only strings go through; the backend fills
   // its own defaults for anything omitted and rejects anything it does not offer.
   const models = request.models && typeof request.models === 'object' ? request.models : {};

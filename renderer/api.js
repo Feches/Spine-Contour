@@ -44,6 +44,11 @@ export async function selectFile() {
   return invoke('selectFile');
 }
 
+export async function saveCalibration(reference) {
+  assertWritable();
+  return invoke('saveCalibration', reference);
+}
+
 export async function predict(request) {
   return invoke('predict', { performance: getState().performance, ...request });
 }

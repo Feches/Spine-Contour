@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.5
+
+- Save manually applied image references independently of study creation. Reuse
+  each image's reference after restart and during single/batch segmentation so
+  disc heights and CSV exports use the corrected scale.
+- Identify references by original image contents, handle Windows path case and
+  separator differences, and keep newer saved corrections ahead of stale caches.
+- Confirm successful reference saves and report write failures. Persist explicit
+  scale clearing so a later scan cannot silently restore an unwanted ruler.
+
+[Release notes](docs/releases/1.0.5.md)
+
 ## 1.0.4
 
 - Add a saved Toolbar removal setting, independent of Crop localizer, for fast
