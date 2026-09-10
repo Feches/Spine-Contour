@@ -442,6 +442,22 @@ try {
     }
     check('DONE leaves edit mode', (await cdp.state()).editing === false, null);
 
+    // 11b. (2026-09-10, studies-table spec 8, spec 7) Mark the study reviewed from the Analysis panel
+    // and give it a subject through the store, so phase 2 can prove both survive the restart. After
+    // the last nudge on purpose: a correction clears the mark (spec 8.4), and phase 2's section E proves
+    // the re-run clears it too.
+    const reviewBefore = await cdp.evaluate(`(() => { const b = document.querySelector('.analysis-review'); return b ? { text: b.textContent.trim(), disabled: b.disabled, pressed: b.getAttribute('aria-pressed') } : null; })()`);
+    check('the panel offers Mark reviewed, enabled, on a segmented study', Boolean(reviewBefore) && reviewBefore.text === 'Mark reviewed' && reviewBefore.disabled === false && reviewBefore.pressed === 'false', reviewBefore);
+    const reviewRect = await cdp.rect('.analysis-review');
+    if (reviewRect) await cdp.click(reviewRect.cx, reviewRect.cy);
+    const marked = await waitFor(async () => { const x = await storedStudy(); return x && typeof x.reviewedAt === 'string' ? x : null; }, 3000);
+    check('clicking it stamps reviewedAt on the record', Boolean(marked) && !Number.isNaN(Date.parse(marked.reviewedAt)), marked ? marked.reviewedAt : null);
+    const reviewAfter = await cdp.evaluate(`(() => { const b = document.querySelector('.analysis-review'); const badge = document.querySelector('.analysis-status .badge'); return { text: b ? b.textContent.trim() : null, pressed: b ? b.getAttribute('aria-pressed') : null, badge: badge ? badge.className : null, badgeText: badge ? badge.textContent.trim() : null }; })()`);
+    check('the button reads Reviewed with the date and the header badge reads Reviewed', String(reviewAfter.text).startsWith('Reviewed') && reviewAfter.pressed === 'true' && reviewAfter.badge === 'badge badge-ok' && reviewAfter.badgeText === 'Reviewed', reviewAfter);
+    await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((st) => ({ studies: st.studies.map((x) => (x.id === ${JSON.stringify(STUDY_ID)} ? { ...x, subjectId: 'PERSIST-01' } : x)) })))`);
+    await cdp.settle(150);
+    check('the subject is on the record', (await storedStudy())?.subjectId === 'PERSIST-01', null);
+
     // 12. Hand phase 2 the CORRECTED study, once studies.json has actually caught up with it.
     const final = await openStudy();
     check('the study is still open at the end of the phase', Boolean(final), null);
@@ -450,6 +466,7 @@ try {
       fs.mkdirSync(OUT_DIR, { recursive: true });
       fs.writeFileSync(STATE_FILE, JSON.stringify({
         id: STUDY_ID, measurements: final.measurements, geometry: final.geometry, thumbnail: final.thumbnail,
+        subjectId: final.subjectId, reviewedAt: final.reviewedAt,
       }, null, 2));
     }
     check('wrote out/persist-state.json for the restart phase', fs.existsSync(STATE_FILE), STATE_FILE);
@@ -468,6 +485,8 @@ try {
     check('the measurements are deep-equal to what phase 1 measured', Boolean(restored) && same(restored.measurements, before.measurements), null);
     check('the thumbnail is the same data URI', Boolean(restored) && restored.thumbnail === before.thumbnail, restored ? { length: restored.thumbnail ? restored.thumbnail.length : null } : null);
     check('the geometry survived the restart', Boolean(restored) && same(restored.geometry, before.geometry), null);
+    check('the subject survived the restart (studies-table spec 7)', Boolean(restored) && restored.subjectId === 'PERSIST-01' && restored.subjectId === before.subjectId, restored ? restored.subjectId : null);
+    check('the review mark survived the restart (studies-table spec 8.1)', Boolean(restored) && typeof before.reviewedAt === 'string' && restored.reviewedAt === before.reviewedAt, restored ? restored.reviewedAt : null);
 
     // The correction, not the prediction. Read before section B moves the sidecar aside. Phase 1
     // deliberately ends on a nudge rather than the reset, so these two geometries differ; that
@@ -659,6 +678,7 @@ try {
 
         const afterRerun = await openStudy();
         check('the study still carries measurements and geometry after the re-run', Boolean(afterRerun && afterRerun.measurements && afterRerun.geometry), null);
+        check('the re-run cleared the review mark (studies-table spec 8.4, site 1)', Boolean(afterRerun) && afterRerun.reviewedAt === null, afterRerun ? afterRerun.reviewedAt : null);
 
         const recreated = fs.existsSync(SIDECAR);
         check('the re-run recreated the prediction sidecar on disk', recreated, SIDECAR);
