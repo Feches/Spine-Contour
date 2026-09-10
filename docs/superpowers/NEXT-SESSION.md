@@ -1,125 +1,116 @@
 # Next session — prompt
 
-Written at the wrap of the 2026-09-08 handover session (batch merged back; the backend developer's trunk merged in;
-the tip pushed as `fork/ui-redesign-cw`). Paste everything below the line as the first message of the next session.
+Written at the wrap of the 2026-09-10 planning session (the studies-table spec approved by the user, the plan written and
+committed). Paste everything below the line as the first message of the next session.
 
 ---
 
 Work on Spine Contour, an Electron + Python/FastAPI app that measures spinopelvic parameters from lateral lumbar
 radiographs.
-Working directory (absolute): `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628`
+Working directory (absolute): `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
 This is a git worktree, not the primary checkout; its directory name predates this work and means nothing. Run
 everything from here; do not `cd` to `C:\Users\codyj\spine contour`.
-Branch: `claude/upstream-reconcile-2026-09-08`, at the wrap's docs commit above `245cae2` (the reconcile fix), which
-sits above `5cf52c7` (the merge follow-up) and `2bf3d21` (the merge of `origin/ui-redesign-cw` @ `5078b1c`, the backend
-developer's trunk), on `b7789b3` (the batch-segmentation wrap; the studies branch's tip before the merge). Three
-branches point at this tip: `claude/upstream-reconcile-2026-09-08`, `claude/studies-ui-updates-bb040d` (fast-forwarded)
-and `fork/ui-redesign-cw` (the handover branch; its push built the first preview installer from this lineage). State:
-unit 433/433; `smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36; `smoke-workspace.mjs` 100/100;
-`smoke-studies.mjs` 103/103; `smoke-persist.mjs` 36/36 then 44/44; the merge and its fix each reviewed. No plan task,
-fix round or failing test is open. **The backend developer has been told (or is about to be told) to take
-`fork/ui-redesign-cw`.**
+Branch: `claude/studies-table-ui-updates-953945`, at the plan's docs commit above `e6178fe` (the spec), on `fork/main`
+@ `6106463`. **`fork/main` is the trunk now**: the backend developer took `fork/ui-redesign-cw` (the 2026-09-08 handover
+tip) and released v1.0.0–1.0.3 on top of it through fork PRs #4–#8 (partial segmentation as a supported result, low-memory
+mode with live `/predict-stream` progress, ONNX Runtime inference with a `cropLocalizer` setting). `fork/ui-redesign-cw` is
+an ancestor of `fork/main`; the older `claude/studies-ui-updates-bb040d` tip (`4f76063`) is superseded; upstream
+`origin/main` still has the OLD single-page UI and is never a base. State: unit 479/479 on `6106463`; the smoke baselines
+in `tools/smoke/README.md` are the fork tip's and were not re-run on this base. **Nothing is mid-flight: the plan's Task 1
+has not started.**
 
 Read in this order before doing anything:
 
-1. `CLAUDE.md` — non-negotiables, commands, the branch/remote rules; the two status paragraphs on the batch and the
-   reconcile
-2. `docs/superpowers/HANDOFF.md` — "Where things stand" (the reconcile section is first, then the batch), "Handing this
-   to the backend author" (rewritten 2026-09-08), "Decisions already made" 1–66, "Release prerequisites", "Known traps"
-3. `docs/ROADMAP.md` — §4 release prerequisites and §5 (five new bullets from the reconcile reviews)
-4. `docs/superpowers/plans/2026-09-08-batch-segmentation.md` `## Ledger` only if the batch's rulings are needed
+1. `CLAUDE.md` — non-negotiables, commands, the branch/remote rules, the ONNX amendment at the top (the backend needs
+   `backend/requirements-export.txt` installed in the venv and `python tools/export_onnx.py` run once before a source
+   launch; if `/health` never comes up, that is the first thing to check)
+2. `docs/superpowers/specs/2026-09-10-studies-table-review-design.md` — the approved spec; §11 is the user's rulings
+3. `docs/superpowers/plans/2026-09-10-studies-table-review.md` — the plan: Global Constraints, File structure, Rulings
+   made while planning, then Task 1
+4. `docs/superpowers/HANDOFF.md` — "Where things stand" (the reconcile section is first), "Decisions already made" 1–66,
+   "Known traps"
+5. `docs/ROADMAP.md` §5 — the bullets Task 9 closes or amends
 
-Resume point. **Nothing is mid-flight.** What is owed is human verification and then the release track:
+Resume point. **Execute the plan with superpowers:subagent-driven-development, Task 1 first.** Nine tasks: the status
+model (1), the Find list's sort (2), the four writes that clear the review mark (3), the Find tab (4), delete-studies and
+the development-only demo toggle (5), the Analysis screen (6), the smoke suites (7), the human gate (8), the records (9).
 
-* The preview installer built by the `fork/ui-redesign-cw` push (the `preview-windows` prerelease on
-  `github.com/Feches/Spine-Contour`): install it beside the real app; it must open on an EMPTY library (decision 19 has
-  never been seen in a packaged build); run one batch from the Find tab; choose a workspace folder and walk the backend
-  developer's calibration screen once with the Tesseract runtime absent (Skip for now) — no suite covers that detour.
-  Record the outcomes in HANDOFF "Release prerequisites".
-* If the backend developer pushes more to `origin/ui-redesign-cw` before he takes the fork's branch, reconcile again
-  the same way: `git fetch origin`, `git merge-tree --write-tree HEAD origin/ui-redesign-cw` as a dry run, merge with
-  rulings recorded, re-run the suites, fast-forward the studies branch, push `fork/ui-redesign-cw`.
-* Then the release prerequisites in HANDOFF: the `windows.yml` repository guard and its missing renderer-test and
-  allowlist steps, before anything touches `main`. Ask the user which piece first; do not brainstorm a feature unprompted.
+Subagent models — the user's instruction of 2026-09-10, the lowest model that completes the task reliably: **Sonnet** for
+Tasks 1, 2, 3, 5, 6, 7 and 9 and for their spec and code reviews (the code is complete in the plan); **Opus** for Task 4
+(the Find tab rewrite, with its focus and rebuild subtleties) and its reviews; the orchestrator runs Task 8 itself; **never
+Fable**. Set the model explicitly on every dispatch. Every dispatch that runs a smoke suite says "foreground, capture to a
+file"; a Sonnet implementer that backgrounds a suite and "waits for the Monitor" ends its turn.
 
-Ledger. The batch plan's `## Ledger` travels with the repo. The reconcile's ledger and briefs are git-ignored scratch in
-`.superpowers/sdd/2026-09-08-upstream-reconcile/` (and the batch's in `.superpowers/sdd/2026-09-08-batch-segmentation/`);
-their rulings are summarised in HANDOFF's reconcile section and in this prompt. Delete both directories when the branch
-is finished.
+Gate flow. Task 7 commits with a `Gate: pending` line; Task 8 lists its seven checks in the chat message (not a widget)
+and ends the turn, after telling the user to close any app instance left open from earlier; on the user's pass, amend
+Task 7's commit to `Gate: passed <date> (user)`; fixes are new commits reviewed as tasks; the ledger stays uncommitted
+until Task 9. The packaged-build checks (no DEMO STUDIES row, no `library-preferences.json`) wait for the next preview
+installer and are recorded as not run. Push to `fork` only after the last amend.
 
-Decisions already made — do not relitigate. HANDOFF "Decisions already made" 1–66; the batch plan's rulings P1, R2–R8;
-and the reconcile's rulings (each with its cost in the scratch ledger and summarised in HANDOFF):
+Decisions already made — do not relitigate. The spec's §11 (1–10); the plan's "Rulings made while planning"; HANDOFF
+"Decisions already made" 1–66; the batch plan's rulings; the reconcile's R-M1–R-M9, of which **R-M3 ("Delete all studies"
+kept library-level) and the demo-hiding half of R-M1 are superseded by this plan** (Delete over the ticked visible rows;
+a development-only Settings toggle with two gates). In one line each:
 
-* R-M1: both demo gates coexist — `demoStudiesAllowed() && !hideDemos ? merge(real) : real`
-* R-M2: the empty state is ours (`EMPTY_COPY`)
-* R-M3: "Delete all studies" is kept as his feature, mounted library-level above the tab strip; it refuses while a batch
-  is up; "including demos" only when a demo is present
-* R-M4: his run-path deletion guard is an outcome in `segmentStudy`
-* R-M5: the batch driver refuses while `deletingStudies`; the button is not disabled (ROADMAP §5)
-* R-M6: one `setState` in the folder-choose handler carries our keys and his calibration request
-* R-M7/R-M8: records from both sides; allowlists identical; CSP untouched
-* R-M9: delete-all prunes `paramSelected`; the search input mirrors `live.query`; README says demos are cleared in a
-  development build
-* earlier and still binding: HANDOFF 13 (`running` is one id), 6 (no timed stage labels), 19 (no demos in any packaged
-  build), 38–39 (the grid's ticks), 45–50 (the paired export), 51–66 (the batch)
-
-Manual gates the human owns. The installer checks above. Before any push to `main` (a production release) the branch
-must be tested through the preview installer (decision 16) and `windows.yml` must carry a repository guard.
+* filters stay as the shared Workspace/Folder selects; header filters are deferred to ROADMAP §7 for both tabs together
+* every Find column sorts with the grid's control (`findSort`, `data/find.js`); newest first by default
+* Delete acts on the ticked VISIBLE real rows, never falls through, never touches a demo; the prompt takes the bar's place
+* PATIENT is SUBJECT; single click opens the in-place editor; Enter commits and moves down; Escape discards
+* `reviewedAt` on the record; status `'ok'`/Reviewed outranks every qc reason; the warnings stay; the mark is cleared ON
+  THE WRITE at four sites (run, correction, reset, calibration)
+* the demo toggle is development-only: the block is built only when `demoStudiesAllowed()`, and `set-demo-studies-hidden`
+  refuses when packaged; the user: "I do NOT want this in the installer"
+* no bulk mark-reviewed; no CSV column; the summary gains `TO REVIEW`
 
 Remote rules.
 
-* Push to `fork` (`github.com/Feches/Spine-Contour`) only. Never `origin` (upstream, no write access).
-* Never merge to `main`. `main` does not contain the redesign at all.
-* `fork/ui-redesign-cw` is now the handover branch and a push to it builds the preview installer (the only branch that
-  does, besides `main` for production). Push it only when the tip is verified; never force-push it.
-* Do not push to `main`.
+* Push to `fork` (`github.com/Feches/Spine-Contour`) only, and only this feature branch (publishes nothing: the workflows
+  trigger on exact branch names). Never `origin` (upstream, no write access).
+* Never merge to `main`; never rename onto `ui-redesign-cw`; never force-push either.
 
 Verification commands.
 
-    node --test test/*.test.js          # 433/433 at the wrap; the directory form FAILS on Node 24
-    "C:/Users/codyj/spine contour/.venv/Scripts/python.exe" -m pytest backend -q    # the backend developer's; not run here on the merged backend
+    node --test test/*.test.js          # 479/479 at the wrap; the directory form FAILS on Node 24
+    "C:/Users/codyj/spine contour/.venv/Scripts/python.exe" -m pytest backend -q    # the backend developer's; not run here
 
 Run the app from source (all three lines; the shell starts in `C:\Users\codyj`):
 
-    Set-Location "C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628"
+    Set-Location "C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d"
     $env:SPINE_CONTOUR_PYTHON = "C:\Users\codyj\spine contour\.venv\Scripts\python.exe"
     npm.cmd run dev
 
 Smoke harness on a scratch profile (`tools/smoke/README.md` has the run order and baselines). From the Bash tool, set
 `SPINE_CONTOUR_PYTHON` in the same command as `launch.mjs`; run every suite in the foreground and capture it to a
 file under `tools/smoke/out/`; a suite that prints nothing has thrown; `smoke-studies.mjs` needs a FRESH launch and
-takes about ten minutes:
+takes about ten minutes; `smoke-persist.mjs` runs in two phases across a real restart on the SAME profile:
 
     SPINE_CONTOUR_PYTHON="C:/Users/codyj/spine contour/.venv/Scripts/python.exe" node tools/smoke/launch.mjs > tools/smoke/out/launch.txt 2>&1
-    node tools/smoke/smoke-parameters.mjs > tools/smoke/out/parameters.txt 2>&1   # 58/58; FIRST, before suites that add real films
-    node tools/smoke/smoke-seeding.mjs > tools/smoke/out/seeding.txt 2>&1         # 36/36
-    node tools/smoke/smoke-workspace.mjs > tools/smoke/out/workspace.txt 2>&1     # 100/100
-    node tools/smoke/cdp.mjs --quit
-    SPINE_CONTOUR_PYTHON="C:/Users/codyj/spine contour/.venv/Scripts/python.exe" node tools/smoke/launch.mjs > tools/smoke/out/launch2.txt 2>&1
-    node tools/smoke/smoke-studies.mjs > tools/smoke/out/studies.txt 2>&1         # 103/103; FRESH launch only
+    node tools/smoke/smoke-studies.mjs > tools/smoke/out/studies.txt 2>&1         # FRESH launch only
     node tools/smoke/cdp.mjs --quit
 
 Live traps (the full list is HANDOFF "Known traps"):
 
-* The Bash tool delivers a doubled backslash in command text as a single one, even inside single quotes and quoted
-  heredocs; single escapes such as `\x00` survive. Write scripts to a file and run the file with
-  `"C:/Users/codyj/spine contour/.venv/Scripts/python.exe"` (the Bash tool's bare `python` is the Microsoft Store stub).
-* The Edit and Write tools rewrite backslash-u escapes in JS source as glyphs. Never change the form of a non-ASCII
-  character on a line you touch; write NEW ones as escapes; byte-check added lines before every commit
-  (`git diff -U0 -- <files> | grep -nP '^[+-].*[^\x00-\x7F]'`) and repair with a Python script written to a file.
-* The backend now imports `scipy` and `pytesseract` at startup; a venv without them makes the backend exit and the smoke
-  harness cannot launch. The Tesseract runtime itself is needed only by `/calibrate`.
-* A second Spine Contour instance on this laptop doubles the backend's memory and CPU (`/predict` 130–140 s instead of
-  ~9 s) and the harness's Electron process has vanished mid-suite under it. Never kill another instance unasked; ask the
-  user to close it before a long suite. A suite that exceeds the Bash tool's 600 s timeout keeps running: do not touch
-  that instance; wait, then read the output file.
-* A Sonnet implementer that backgrounds a suite and "waits for the Monitor" ends its turn; say "foreground, capture to a
-  file" in every dispatch that runs a suite.
+* The Write and Edit tools rewrite backslash-u escapes in source as glyphs — and turned the plan's own `join('\u0000')`
+  into a real NUL byte once (repaired to `join(' ')`). Never change the form of a non-ASCII character on a line you
+  touch; write NEW ones as escapes; byte-check added lines before every commit
+  (`git diff -U0 -- <files> | grep -nP '^[+-].*[^\x00-\x7F]'`) and repair with a Python script written to a file. The
+  Studies summary line deliberately keeps its existing `·` glyph and adds the new separator as `\u00B7` on the same line.
+* The Bash tool delivers a doubled backslash in command text as a single one; write scripts to a file and run them with
+  `"C:/Users/codyj/spine contour/.venv/Scripts/python.exe"` (the Bash tool's bare `python` is the Microsoft Store stub);
+  set `PYTHONIOENCODING=utf-8` when a script prints non-ASCII.
+* `update()` in the Studies screen runs inside a store notification: no `setState` there; its key array must list every
+  store key and module-scope value the Find tab reads — after Task 4 that is `studies, query, running, confirmingId,
+  confirmingSelected, editing, deletingStudies, paramFilters, paramSelected, batch, findSort`. `SIDEBAR_KEYS` gains
+  `deletingStudies` in Task 5.
+* Task 4 calls `deleteStudyBatch(targets, { deletePrediction })` against the OLD implementation, which never invokes
+  `hideDemos` for real-only targets; Task 4 also removes `screens/studies.js`'s `hideDemoStudies` import, so Task 5 can
+  drop the export. Keep the task order.
 * `el()` assigns to a property when the key exists: real booleans, never `'false'`; `list` and `style` are read-only
-  accessors, never `el()` props. `update()` in the Studies screen runs inside a store notification: no `setState` there;
-  its key array lists `studies, query, running, confirmingId, confirmingAll, deletingStudies, paramFilters,
-  paramSelected, batch`.
-* `git commit --amend` and `git reset --soft` pass the classifier, `--hard` does not; never bare `git stash` (the stack
-  is shared across worktrees). Write a long commit message to a file and `git commit -F` it. This worktree's
-  `node_modules` carries the Electron binary; `npm install` would NOT fetch it. Selectors key on `data-find-key`,
-  `data-param-key` and `data-study-id`, never a visible label. Never re-run a suite on an instance where one was killed.
+  accessors, never `el()` props.
+* A second Spine Contour instance on this laptop doubles the backend's memory and CPU and the harness's Electron process
+  has vanished mid-suite under it. Never kill another instance unasked; ask the user to close it before a long suite. A
+  suite that exceeds the Bash tool's 600 s timeout keeps running: wait, then read the output file.
+* `git commit --amend` and `git reset --soft` pass the classifier, `--hard` does not (`git checkout -B` is the reset for
+  a branch with no unique commits); never bare `git stash` (the stack is shared across worktrees). Write a long commit
+  message to a file and `git commit -F` it. Selectors key on `data-find-key`, `data-param-key` and `data-study-id`,
+  never a visible label. Never re-run a suite on an instance where one was killed.
