@@ -61,7 +61,7 @@
 .studies-table-head,
 .studies-row {
   display: grid;
-  /* STUDY · PATIENT · VIEW · WORKSPACE · FOLDER · DATE · STATUS · actions.
+  /* STUDY · SUBJECT · VIEW · WORKSPACE · FOLDER · DATE · STATUS · actions.
      STUDY was a fixed 112px when it held an SP-nnnn id; it now holds a filename, so it flexes
      and gets the widest share. The 110px LORDOSIS track that used to sit before the actions is
      gone -- the list is for finding a study, not for reading its numbers. */

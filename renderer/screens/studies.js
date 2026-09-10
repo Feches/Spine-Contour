@@ -86,8 +86,10 @@ export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
 }
 
 // Every path that changes openId resets the per-study view state, so a study never inherits
-// the previous one's zoom, pan, selection or edit mode (handoff item 6).
-const FRESH_VIEW = { selectedLevel: null, zoom: 1, panX: 0, panY: 0, panMode: false, editing: false, selection: null };
+// the previous one's zoom, pan, selection or edit mode (handoff item 6). Exported only so
+// test/demo-visibility.test.js can pin it equal to data/demo-visibility.js's copy: data/ never
+// imports from screens/, so the seven keys are written out twice and must not drift.
+export const FRESH_VIEW = { selectedLevel: null, zoom: 1, panX: 0, panY: 0, panMode: false, editing: false, selection: null };
 
 function openStudy(study) {
   setState({ screen: 'analysis', openId: study.id, ...FRESH_VIEW });
@@ -211,12 +213,12 @@ function subjectCell(study) {
     return el('div', { class: 'studies-cell-subject' }, label, el('span', { class: 'pill-demo' }, 'DEMO'));
   }
   const name = studyName(study);
-  if (editing && editing.id === study.id) {
+  if (editingSubject && editingSubject.id === study.id) {
     const input = el('input', {
-      type: 'text', class: 'studies-subject-input', value: editing.draft, spellcheck: false,
+      type: 'text', class: 'studies-subject-input', value: editingSubject.draft, spellcheck: false,
       'data-find-key': `subject-input-${study.id}`, 'aria-label': `Subject for ${name}`,
       onClick: (event) => event.stopPropagation(),
-      onInput: (event) => { if (editing && editing.id === study.id) editing = { id: study.id, draft: event.target.value }; },
+      onInput: (event) => { if (editingSubject && editingSubject.id === study.id) editingSubject = { id: study.id, draft: event.target.value }; },
       onKeydown: (event) => {
         if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); commitSubject(study.id, 'next'); }
         else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancelSubjectEdit(); }
@@ -388,12 +390,14 @@ let confirmingId = null;
 let confirmingSelected = null;
 // The SUBJECT cell being edited in place (spec 7.2): { id, draft }, or null. `draft` is the text typed
 // so far, kept current by the input's own handler, so a rebuild mid-word re-creates the editor
-// with it. Replaced, never mutated: it is compared by reference in update()'s key.
-let editing = null;
+// with it. Replaced, never mutated: it is compared by reference in update()'s key. Named
+// `editingSubject`, not `editing`: the store has its own `editing` key (the viewer's edit mode),
+// which this file spreads through FRESH_VIEW, and one name for the two would read as the other.
+let editingSubject = null;
 
 subscribe((state) => {
   // Navigation withdraws an open prompt and an open editor along with the mount.
-  if (state.screen !== 'studies') { mounted = null; confirmingId = null; confirmingSelected = null; editing = null; return; }
+  if (state.screen !== 'studies') { mounted = null; confirmingId = null; confirmingSelected = null; editingSubject = null; return; }
   if (mounted) mounted.update(state);
 });
 
@@ -513,6 +517,11 @@ function cancelDeleteSelected() {
 // once, so a tick left behind would land on the next film added) and closes a deleted open or
 // compared study. The persistence subscriber in renderer/main.js writes the new list.
 async function deleteSelectedStudies(ids) {
+  // The ids are the prompt's, captured at the click; update() can withdraw confirmingSelected
+  // between that click and this call, so the confirm handler can arrive holding null and
+  // `new Set(null)` would throw. Withdraw the prompt and hand focus back to Delete, exactly as an
+  // empty target set below does.
+  if (!Array.isArray(ids) || ids.length === 0) { confirmingSelected = null; refreshTable('[data-find-key="delete"]'); return; }
   const live = getState();
   if (live.running || live.batch || live.deletingStudies || persistenceDisabledReason()) return;
   const wanted = new Set(ids);
@@ -556,16 +565,16 @@ function beginSubjectEdit(id) {
   // An editor still open on another row is committed first. Chromium fires that input's blur --
   // and so its deferred commit -- before the click that lands here, so this is belt and braces;
   // but an editor a rebuild destroyed while focused got no blur, and this is what keeps its text.
-  if (editing && editing.id !== id) commitSubject(editing.id, 'blur');
+  if (editingSubject && editingSubject.id !== id) commitSubject(editingSubject.id, 'blur');
   confirmingId = null;
-  editing = { id, draft: subjectDraft(study) };
+  editingSubject = { id, draft: subjectDraft(study) };
   refreshTable(`[data-find-key="subject-input-${id}"]`);
 }
 
 function cancelSubjectEdit() {
-  if (!editing) return;
-  const { id } = editing;
-  editing = null;
+  if (!editingSubject) return;
+  const { id } = editingSubject;
+  editingSubject = null;
   refreshTable(`[data-find-key="subject-${id}"]`);
 }
 
@@ -585,7 +594,7 @@ function realRowBelow(id) {
 // finds the editor already moved on and does nothing, so the one write cannot happen twice.
 // Trimmed; empty stores null (pp spec 7.1, the drawer's rule); a value that did not change writes
 // nothing. The record is replaced, never mutated; the saver writes it. After a write, update()
-// has already repainted inside the setState (editing is in its key) but could not restore focus,
+// has already repainted inside the setState (editingSubject is in its key) but could not restore focus,
 // because the node that had it is gone -- refreshTable's own pass lands it where spec 7.2 says.
 // `focusKey` is the blur's relatedTarget key, present only on the 'blur' path and only when the
 // browser was moving focus to a keyed control inside this screen: the rebuilt twin of that node
@@ -593,17 +602,19 @@ function realRowBelow(id) {
 // leaves the panel (the search box, the sidebar: their nodes survive the rebuild), and on a blur
 // with nowhere to go.
 function commitSubject(id, mode, focusKey = null) {
-  if (!editing || editing.id !== id) return;
-  const draft = editing.draft.trim();
+  if (!editingSubject || editingSubject.id !== id) return;
+  const draft = editingSubject.draft.trim();
   const next = draft === '' ? null : draft;
-  const nextId = mode === 'next' ? realRowBelow(id) : null;
+  // `below`, not `nextId`: this module imports nextId from data/persistence.js (the id allocator),
+  // and a local of that name would shadow it inside this function.
+  const below = mode === 'next' ? realRowBelow(id) : null;
   const live = getState();
   const study = live.studies.find((s) => s.id === id);
-  editing = nextId ? { id: nextId, draft: subjectDraft(live.studies.find((s) => s.id === nextId)) } : null;
+  editingSubject = below ? { id: below, draft: subjectDraft(live.studies.find((s) => s.id === below)) } : null;
   if (study && study.source === 'real' && (study.subjectId ?? null) !== next) {
     setState((s) => ({ studies: s.studies.map((x) => (x.id === id ? { ...x, subjectId: next } : x)) }));
   }
-  refreshTable(nextId ? `[data-find-key="subject-input-${nextId}"]`
+  refreshTable(below ? `[data-find-key="subject-input-${below}"]`
     : mode === 'next' ? `[data-find-key="subject-${id}"]`
       : focusKey ? `[data-find-key="${focusKey}"]`
         : null);
@@ -612,11 +623,11 @@ function commitSubject(id, mode, focusKey = null) {
 export function render(state) {
   confirmingId = null;
   confirmingSelected = null;
-  editing = null;
+  editingSubject = null;
   const summary = el('div', { class: 'studies-summary' });
   const search = el('input', {
     type: 'search', class: 'studies-search', value: state.query || '',
-    placeholder: 'Search name, subject, workspace, folder, patient…', 'aria-label': 'Search studies',
+    placeholder: 'Search name, subject, workspace, folder, diagnosis…', 'aria-label': 'Search studies',
     // A keystroke here can filter the confirming row out of the table; clearing the prompt
     // first stops it reappearing, primed on Delete, when the search is cleared again.
     // The setState notification repaints through the same gate (confirmingId is in the key),
@@ -788,16 +799,16 @@ export function render(state) {
     // prompt armed behind it (spec 5.3); an editor on a study deleted meanwhile closes. Plain
     // assignments, not setState: this runs inside a store notification.
     if (confirmingSelected && (live.studiesTab === 'parameters' || confirmingSelected.join(' ') !== targets.join(' '))) confirmingSelected = null;
-    if (editing && !studies.some((study) => study.id === editing.id)) editing = null;
+    if (editingSubject && !studies.some((study) => study.id === editingSubject.id)) editingSubject = null;
 
     // live.running is in the key so the table repaints when a run starts or ends: the row badge is
-    // derived from it. confirmingId, confirmingSelected and editing are module scope, not store
+    // derived from it. confirmingId, confirmingSelected and editingSubject are module scope, not store
     // state; listing them here is what lets a refreshTable() after a change to them get past the
     // gate, while a notification that changed nothing the table shows (a pan frame, a toast) still
     // returns early. paramFilters, paramSelected, batch and findSort are what the bar, the ticks and
     // the header read; deletingStudies is what Delete reads: every store key this screen reads must
     // be here, or it silently stops repainting for it.
-    const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, editing,
+    const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, editingSubject,
       live.deletingStudies, live.paramFilters, live.paramSelected, live.batch, live.findSort];
     if (sameKey(key, lastKey)) return;
     lastKey = key;

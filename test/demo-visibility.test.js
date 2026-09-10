@@ -1,9 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { demoStudiesShown, demoVisibilityPatch } from '../renderer/data/demo-visibility.js';
+import { demoStudiesShown, demoVisibilityPatch, FRESH_VIEW } from '../renderer/data/demo-visibility.js';
+import { FRESH_VIEW as SCREEN_FRESH_VIEW } from '../renderer/screens/studies.js';
 import { DEMO_STUDIES } from '../renderer/data/demo-studies.js';
 
 const real = [{ id: 'SP-1000', source: 'real' }, { id: 'SP-1001', source: 'real' }];
+
+// The seven per-study view keys are written out twice -- here and in screens/studies.js -- because
+// data/ never imports from screens/. Nothing else keeps the two copies equal, and a key that drifts
+// would leave one path resetting the viewer and the other not.
+test('the two FRESH_VIEW copies are identical', () => {
+  assert.deepEqual(FRESH_VIEW, SCREEN_FRESH_VIEW);
+});
 
 test('demoStudiesShown reads whether any demo record is in the library', () => {
   assert.equal(demoStudiesShown({ studies: real }), false);
