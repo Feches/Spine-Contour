@@ -19,6 +19,18 @@ test('resource defaults agree across the desktop and renderer; invalid settings 
   }
 });
 
+test('crop localizer defaults on for legacy preferences and persists explicit off', () => {
+  const legacy = { mode: 'low-memory', cpuThreads: 1 };
+  assert.deepEqual(normalizePerformance(legacy), { ...legacy, cropLocalizer: true });
+  const off = { ...legacy, cropLocalizer: false };
+  assert.deepEqual(normalizePerformance(JSON.parse(JSON.stringify(off))), off);
+  assert.equal(validPerformance(off), true);
+  for (const cropLocalizer of [null, 'false', 0, 1]) {
+    assert.throws(() => normalizePerformance({ ...legacy, cropLocalizer }));
+    assert.equal(validPerformance({ ...legacy, cropLocalizer }), false);
+  }
+});
+
 test('progress belongs to one request; stale, malformed and cancelled updates do not overwrite it', () => {
   assert.equal(progressUpdate(current, { requestId: 'old', type: 'progress', message: 'Wrong film' }), current);
   assert.equal(progressUpdate(current, { requestId: 'current', type: 'progress', message: null }), current);

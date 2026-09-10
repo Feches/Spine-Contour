@@ -12,3 +12,4 @@ tools/smoke/out/
 spine-contour-backend.spec
 
 artifacts/
+backend/onnx/

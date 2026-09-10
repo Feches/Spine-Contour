@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.3
+
+- Add a saved crop-localizer switch: On for full-spine images; Off skips crop
+  search and reframing for already-framed lumbar-only images.
+- Run all four existing models through ONNX Runtime, retaining float32 weights,
+  768-pixel model resolution, partial-anatomy checks and calibration.
+- Export and validate model graphs during installer builds, and verify all four
+  graphs using the packaged executable. Keep PyTorch and training checkpoints out
+  of the runtime bundle.
+
+[Release notes](docs/releases/1.0.3.md)
+
 ## 1.0.2
 
 - Add a saved low-memory processing mode: one search crop at a time, one model

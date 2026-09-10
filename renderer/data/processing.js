@@ -1,8 +1,9 @@
-export const DEFAULT_PERFORMANCE = Object.freeze({ mode: 'standard', cpuThreads: 2 });
+export const DEFAULT_PERFORMANCE = Object.freeze({ mode: 'standard', cpuThreads: 2, cropLocalizer: true });
 
 export function validPerformance(value) {
   return value && ['standard', 'low-memory'].includes(value.mode)
-    && Number.isInteger(value.cpuThreads) && value.cpuThreads >= 1 && value.cpuThreads <= 4;
+    && Number.isInteger(value.cpuThreads) && value.cpuThreads >= 1 && value.cpuThreads <= 4
+    && typeof value.cropLocalizer === 'boolean';
 }
 
 export function progressUpdate(current, event) {

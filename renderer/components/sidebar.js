@@ -47,7 +47,7 @@ function performanceBlock(state) {
   const threads = el('select', { 'aria-label': 'Low-memory CPU threads',
     disabled: busy || settings.mode !== 'low-memory',
     onChange: (event) => changePerformance({ cpuThreads: Number(event.target.value) }) },
-    ...[1, 2, 4].map((n) => el('option', { value: String(n) }, `${n} CPU thread${n === 1 ? '' : 's'}`)));
+    ...[1, 2, 3, 4].map((n) => el('option', { value: String(n) }, `${n} CPU thread${n === 1 ? '' : 's'}`)));
   threads.value = String(settings.cpuThreads);
   return el('div', { class: 'sidebar-models processing-settings' },
     el('div', { class: 'eyebrow' }, 'PROCESSING'),
@@ -59,8 +59,17 @@ function performanceBlock(state) {
       }, label))),
     threads,
     el('p', { class: 'processing-note' }, settings.mode === 'low-memory'
-      ? 'Uses less memory and allows longer processing. Keeps the full image search and model resolution.'
-      : 'Keeps models loaded for faster repeated processing.'));
+      ? 'Uses less memory and allows longer processing. Keeps the same model resolution.'
+      : 'Keeps models loaded for faster repeated processing.'),
+    el('div', { class: 'sidebar-models-label' }, 'CROP LOCALIZER'),
+    el('div', { class: 'model-choice', role: 'group', 'aria-label': 'Crop localizer' },
+      ...[[true, 'On'], [false, 'Off']].map(([cropLocalizer, label]) => el('button', {
+        type: 'button', class: 'model-choice-btn', disabled: busy,
+        'aria-pressed': settings.cropLocalizer === cropLocalizer ? 'true' : 'false',
+        onClick: () => changePerformance({ cropLocalizer }),
+      }, label))),
+    el('p', { class: 'processing-note' },
+      'Needed for full-spine images to find the lumbar region. Turn off for lumbar-only images to skip the crop search and process faster.'));
 }
 
 function processingBlock(state) {

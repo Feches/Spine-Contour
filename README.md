@@ -1,11 +1,11 @@
-# Spine Contour v1.0.2
+# Spine Contour v1.0.3
 
 Automated measurements from lateral lumbar radiographs, running locally.
 
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.0.2 release notes](docs/releases/1.0.2.md) and
+[changelog](CHANGELOG.md), [v1.0.3 release notes](docs/releases/1.0.3.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
@@ -18,9 +18,9 @@ libraries remain separate from the numbered release.
 
 Open **Settings → Processing → Low memory**. This processes one search region at a
 time, keeps only the current model loaded, and allows longer calibration OCR waits.
-Choose 1, 2 (default), or 4 CPU threads to leave more capacity for other work. The
-choice is saved for the next launch. Model resolution and the full anatomical search
-are retained; this mode can take longer and still needs enough memory for one model.
+Choose 1–4 CPU threads (2 by default) to leave more capacity for other work. The
+choice is saved for the next launch. Model resolution and the selected crop-localizer
+behavior are retained; this mode can take longer and still needs enough memory for one model.
 
 Processing shows the actual stage, completed search regions or OCR passes, and elapsed
 time. **Cancel processing** cancels the current image and stops a running batch;
@@ -132,11 +132,19 @@ and the choice applies to the next run:
 Each study's Analysis header names the model that produced the numbers on screen, and the
 saved result records it, so a library measured with both can still be told apart.
 
-Before any model runs, the backend finds the lumbosacral region on the film and frames
-it the way the models were trained to see it: a box slides over the lower film and the
-best-framed one wins, with the whole film competing as one more box. A lumbar radiograph
-wins as a whole; a full-spine radiograph is cropped. The frame is recorded with the
-result.
+All four trained models run locally through **ONNX Runtime**, using the original
+float32 weights and 768 × 768 model frame. No retraining or quantization is applied.
+
+**Settings → Processing → Crop localizer** is On by default. It is needed for
+**full-spine images** to locate and frame the lumbar region. For **lumbar-only images**
+already framed around the anatomy, turn it Off to skip the repeated crop search and
+process the supplied image once. S1, vertebrae and femoral heads are still detected;
+the switch does not disable any final measurement model. Off keeps the visible image extent, with quick cleanup of broad empty screenshot
+borders. It does not search for or reframe the lumbar anatomy.
+The choice is saved and applies to the next individual run or batch. Changing this
+setting changes the model input and may change detected anatomy; review the result.
+The runtime, localizer setting and selected frame are recorded with each result.
+See [inference implementation and validation](docs/onnx-inference.md).
 
 ## Partial segmentation
 

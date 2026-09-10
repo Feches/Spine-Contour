@@ -80,6 +80,7 @@ function appendPerformance(form, value) {
   const settings = normalizePerformance(value);
   form.append('processing_mode', settings.mode);
   form.append('cpu_threads', String(settings.cpuThreads));
+  form.append('crop_localizer', String(settings.cropLocalizer));
   return settings;
 }
 
@@ -465,7 +466,8 @@ async function startBackend() {
   const launch = backendLaunch(port);
   backendProcess = spawn(launch.command, launch.args, {
     cwd: launch.cwd,
-    env: { ...process.env, PYTHONUNBUFFERED: '1' },
+    env: { ...process.env, PYTHONUNBUFFERED: '1',
+      SPINE_CONTOUR_MODEL_CACHE: path.join(app.getPath('userData'), 'onnx-cache') },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   backendProcess.once('error', (error) => {
