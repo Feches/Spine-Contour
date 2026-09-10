@@ -1,4 +1,4 @@
-import { el } from '../dom.js';
+import { el, mount } from '../dom.js';
 import { getState, setState, subscribe } from '../store.js';
 import {
   predict, saveCsv, savePrediction, loadPrediction, persistenceDisabledReason, readFile, selectFile,
@@ -11,6 +11,8 @@ import { describeModels } from '../data/models.js';
 import { WAIT_FOR_BATCH } from '../data/batch.js';
 import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
 import { studyName, defaultName } from '../data/labels.js';
+import { displayStatus, isReviewed, reviewedLabel, reviewBlockedReason } from '../data/status.js';
+import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
 import { mountMeasurements } from '../components/measurements.js';
 import { mountClinicalData } from '../components/clinical-data.js';
 import { calibrationForStudy } from '../calibration.js';
@@ -505,6 +507,11 @@ export function render(state) {
     el('div', { class: 'confidence-label' }, 'FEMORAL FIT CONFIDENCE'),
     confidenceValue);
 
+  // The list's status badge (studies-table spec 2026-09-10, section 8.3), so the screen says what the row
+  // says: Processing while this study's run is in flight, Reviewed once marked. Rebuilt by update()
+  // only when it would change.
+  const statusHost = el('div', { class: 'analysis-status' });
+
   // The same DEMO pill the Studies list puts beside the patient. A demo study's numbers are
   // fabricated for exploring the interface; the header is where the user is looking when they
   // read them, so the pill belongs beside the id, not only back on the list.
@@ -514,6 +521,7 @@ export function render(state) {
     headerMeta,
     study.source === 'demo' ? el('span', { class: 'pill-demo' }, 'DEMO') : null,
     el('div', { class: 'analysis-spacer' }),
+    statusHost,
     confidenceBadge);
 
   const tabMeas = el('button', {
@@ -527,6 +535,15 @@ export function render(state) {
     type: 'button', class: 'btn btn-small analysis-export', onClick: () => exportCsv(),
   }, 'Export CSV');
 
+  // Mark reviewed (studies-table spec 2026-09-10, section 8.3): one button that toggles the record's review
+  // mark, with the reason it is disabled shown beside it -- Chromium shows no tooltip on a
+  // disabled control, and the Parameters bar already renders its reason as a visible note.
+  const reviewButton = el('button', {
+    type: 'button', class: 'btn btn-small analysis-review', 'aria-pressed': 'false',
+    onClick: () => toggleReviewed(),
+  }, 'Mark reviewed');
+  const reviewNote = el('span', { class: 'param-export-note analysis-review-note', hidden: true });
+
   const measurementsHost = el('div', { class: 'analysis-panel-host' });
   const similarHost = el('div', { class: 'analysis-similar is-hidden' },
     'Find similar arrives in a later build.');
@@ -534,7 +551,7 @@ export function render(state) {
   const panel = el('aside', { class: 'analysis-panel' },
     el('div', { class: 'analysis-tabs' },
       el('div', { class: 'analysis-tabgroup' }, tabMeas, tabSim)),
-    el('div', { class: 'analysis-actions' }, exportButton),
+    el('div', { class: 'analysis-actions' }, exportButton, reviewButton, reviewNote),
     measurementsHost,
     similarHost);
 
@@ -570,6 +587,27 @@ export function render(state) {
   // live() reads `mounted`. A demo study has no film to restore and no sidecar to read.
   const needsRestore = !(imageCache && imageCache.studyId === study.id)
     && study.source === 'real' && Boolean(study.measurements && study.geometry);
+
+  // The mark is a timestamp on the record (spec 8.1); unmarking writes null. Refused for the reasons
+  // reviewBlockedReason lists, which update() also shows beside the button, so a keyboard
+  // activation of a disabled-looking button cannot slip through. One new-array write; the saver
+  // subscribed in renderer/main.js persists it. Every write that changes the numbers clears it
+  // again (spec 8.4) -- none of that is here.
+  function toggleReviewed() {
+    const live = getState();
+    const open = currentStudy(live);
+    if (!open) return;
+    const pending = Boolean(live.measurementDrafts?.[open.id]);
+    if (reviewBlockedReason({ study: open, running: live.running, pending })) return;
+    const reviewedAt = isReviewed(open) ? null : new Date().toISOString();
+    setState((state) => ({
+      studies: state.studies.map((study) => (study.id === open.id ? { ...study, reviewedAt } : study)),
+    }));
+  }
+
+  // What the header badge last showed; update() runs on every notification, pan frames included,
+  // and rebuilds the badge only when this changes.
+  let lastBadgeKey = null;
 
   async function exportCsv() {
     const live = getState();
@@ -622,6 +660,26 @@ export function render(state) {
     // No tooltip on the enabled button: it would only repeat the label it sits on.
     exportButton.title = isDemo ? 'Demo studies are not exported'
       : pendingMeasurement ? 'Wait for measurements to finish updating' : '';
+
+    // Mark reviewed (spec 8.3): enabled only when there is something to review and nothing is about
+    // to change it. The text carries the date once marked; the note carries the reason otherwise.
+    const reason = reviewBlockedReason({ study: open, running: live.running, pending: pendingMeasurement });
+    const reviewed = isReviewed(open);
+    reviewButton.disabled = reason !== null;
+    reviewButton.textContent = reviewed ? reviewedLabel(open.reviewedAt) : 'Mark reviewed';
+    reviewButton.setAttribute('aria-pressed', reviewed ? 'true' : 'false');
+    reviewButton.title = reviewed && reason === null ? 'Unmark reviewed' : '';
+    reviewNote.textContent = reason ?? '';
+    reviewNote.hidden = reason === null;
+
+    // The list's badge, on the list's rule (screens/studies.js buildRow): Unsupported view for an
+    // unsegmented film no model reads, else displayStatus with state.running.
+    const unsupported = open.source === 'real' && open.measurements == null && live.running !== open.id && !inferenceView(open.view);
+    const badgeKey = unsupported ? `unsupported:${open.view}` : displayStatus(open, live.running);
+    if (badgeKey !== lastBadgeKey) {
+      lastBadgeKey = badgeKey;
+      mount(statusHost, unsupported ? unsupportedViewBadge(open.view) : statusBadge(badgeKey));
+    }
 
     tabMeas.classList.toggle('is-active', live.tab === 'meas');
     tabSim.classList.toggle('is-active', live.tab === 'sim');
