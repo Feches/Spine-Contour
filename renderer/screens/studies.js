@@ -178,6 +178,10 @@ function actionCell(study, confirming) {
     return el('div', { class: 'studies-cell-actions' },
       el('button', {
         type: 'button', class: 'icon-btn studies-delete',
+        // Keyed so update()'s focus snapshot can give it back after a rebuild: Tab out of a
+        // SUBJECT editor lands here, and the commit's rebuild would otherwise drop focus to
+        // <body>. refreshTable() still finds it by its class selector.
+        'data-find-key': `row-delete-${study.id}`,
         'aria-label': `Delete ${studyName(study)}`, title: 'Delete study', innerHTML: TRASH_SVG,
         onClick: (event) => { event.stopPropagation(); askToDelete(study.id); },
       }));
@@ -219,9 +223,18 @@ function subjectCell(study) {
       },
       // Deferred: Chromium can fire this while the node is being replaced, and setState notifies
       // synchronously -- the name field and the drawer defer their commits for the same reason.
-      onBlur: () => queueMicrotask(() => commitSubject(study.id, 'blur')),
+      // relatedTarget is where the browser is sending focus (Tab: this row's trash button). It is
+      // read HERE, not from update()'s snapshot, because a blur listener runs mid-transition:
+      // document.activeElement is <body> until the browser finishes, so the snapshot sees nothing
+      // to restore, and the commit's rebuild then detaches the very node focus was headed for.
+      // Focusing its rebuilt twin also makes Chromium abandon that pending move, which is what
+      // keeps Tab out of the editor on the keyboard path instead of dropping it to <body>.
+      onBlur: (event) => {
+        const key = event.relatedTarget instanceof Element ? event.relatedTarget.getAttribute('data-find-key') : null;
+        queueMicrotask(() => commitSubject(study.id, 'blur', key));
+      },
     });
-    return el('div', { class: 'studies-cell-subject', onClick: (event) => event.stopPropagation() }, input);
+    return el('div', { class: 'studies-cell-subject studies-subject-editing', onClick: (event) => event.stopPropagation() }, input);
   }
   const empty = label === DASH;
   return el('div', {
@@ -574,7 +587,12 @@ function realRowBelow(id) {
 // nothing. The record is replaced, never mutated; the saver writes it. After a write, update()
 // has already repainted inside the setState (editing is in its key) but could not restore focus,
 // because the node that had it is gone -- refreshTable's own pass lands it where spec 7.2 says.
-function commitSubject(id, mode) {
+// `focusKey` is the blur's relatedTarget key, present only on the 'blur' path and only when the
+// browser was moving focus to a keyed control inside this screen: the rebuilt twin of that node
+// takes the focus the rebuild would otherwise have thrown away. Null on Enter, on a click that
+// leaves the panel (the search box, the sidebar: their nodes survive the rebuild), and on a blur
+// with nowhere to go.
+function commitSubject(id, mode, focusKey = null) {
   if (!editing || editing.id !== id) return;
   const draft = editing.draft.trim();
   const next = draft === '' ? null : draft;
@@ -585,7 +603,10 @@ function commitSubject(id, mode) {
   if (study && study.source === 'real' && (study.subjectId ?? null) !== next) {
     setState((s) => ({ studies: s.studies.map((x) => (x.id === id ? { ...x, subjectId: next } : x)) }));
   }
-  refreshTable(nextId ? `[data-find-key="subject-input-${nextId}"]` : (mode === 'next' ? `[data-find-key="subject-${id}"]` : null));
+  refreshTable(nextId ? `[data-find-key="subject-input-${nextId}"]`
+    : mode === 'next' ? `[data-find-key="subject-${id}"]`
+      : focusKey ? `[data-find-key="${focusKey}"]`
+        : null);
 }
 
 export function render(state) {
@@ -762,10 +783,11 @@ export function render(state) {
     const targets = selectedVisible(visible.filter((study) => study.source === 'real'), selected).map((study) => study.id);
     // Module-scope UI state the store cannot see, reconciled BEFORE the key so it never sits on a
     // study that left the table: the Delete prompt is withdrawn the moment the ticked visible set
-    // no longer matches what it named (a tick, a keystroke, a filter, the tab -- spec 5.3); an editor
-    // on a study deleted meanwhile closes. Plain assignments, not setState: this runs inside a
-    // store notification.
-    if (confirmingSelected && confirmingSelected.join(' ') !== targets.join(' ')) confirmingSelected = null;
+    // no longer matches what it named -- a tick, a keystroke, a filter -- and the moment the user
+    // leaves for the Parameters tab, which only hides the Find panel and would otherwise leave the
+    // prompt armed behind it (spec 5.3); an editor on a study deleted meanwhile closes. Plain
+    // assignments, not setState: this runs inside a store notification.
+    if (confirmingSelected && (live.studiesTab === 'parameters' || confirmingSelected.join(' ') !== targets.join(' '))) confirmingSelected = null;
     if (editing && !studies.some((study) => study.id === editing.id)) editing = null;
 
     // live.running is in the key so the table repaints when a run starts or ends: the row badge is

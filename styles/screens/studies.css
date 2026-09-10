@@ -213,6 +213,13 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
+/* While editing, the input is a CHILD with the same negative margins the at-rest cell carries on
+   its own box, so it must overhang into the row's padding and the grid gap instead of being
+   clipped -- and its focus ring with it. */
+.studies-cell-subject.studies-subject-editing {
+  overflow: visible;
+}
+
 .studies-cell-view {
   font: 400 14px 'Source Sans 3', sans-serif;
   color: var(--body);
