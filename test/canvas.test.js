@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVEL_RGB, FEMORAL_OVERLAY_COLOR, BASE_OVERLAY_ALPHA, buildLabelColorMap, buildOverlayPixels, drawDynamicLayer, constructionLabel, thumbnailSize } from '../renderer/viewer/canvas.js';
+import { LEVEL_RGB, BASE_OVERLAY_ALPHA, buildLabelColorMap, buildOverlayPixels, drawDynamicLayer, constructionLabel, thumbnailSize } from '../renderer/viewer/canvas.js';
 
 test('buildLabelColorMap maps L1..L5 backend label ids to the fixed RGB ramp', () => {
   const labels = { BACKGROUND: 0, L1: 20, L2: 21, L3: 22, L4: 23, L5: 24, S1: 25 };
@@ -22,11 +22,11 @@ test('buildOverlayPixels colours a labelled mask pixel and leaves background tra
   assert.deepEqual([...overlay.slice(4, 8)], [0, 0, 0, 0]);
 });
 
-test('buildOverlayPixels falls back to the femoral colour when the femoral mask is set and the label mask is not', () => {
+test('buildOverlayPixels never renders raw femoral masks, including saved legacy masks', () => {
   const maskPixels = new Uint8ClampedArray([0, 0, 0, 255]);
   const femoralPixels = new Uint8ClampedArray([1, 0, 0, 255]);
   const overlay = buildOverlayPixels(maskPixels, femoralPixels, {}, BASE_OVERLAY_ALPHA);
-  assert.deepEqual([...overlay], [...FEMORAL_OVERLAY_COLOR, BASE_OVERLAY_ALPHA]);
+  assert.deepEqual([...overlay], [0, 0, 0, 0]);
 });
 
 function fakeGeometry() {
@@ -91,7 +91,7 @@ test('a selected handle gets a ring and a label, a hovered handle gets a label',
   });
   assert.equal(arcCount(calls), 2 + 22 + 4 + 1, 'one extra arc for the selection ring');
   const labels = calls.filter(([name]) => name === 'fillText').map(([, args]) => args[0]);
-  assert.deepEqual(labels, ['L2 SA', 'Right head \u00B7 resize']);
+  assert.deepEqual(labels, ['L2 SA', 'Head 2 \u00B7 resize']);
 });
 
 test('retrace draws one numbered dot per trace point after the handles', () => {
@@ -143,4 +143,17 @@ test('thumbnailSize scales the long edge down to the limit and never up', () => 
   assert.deepEqual(thumbnailSize(2000, 1000, 128), [128, 64]);
   assert.deepEqual(thumbnailSize(100, 50), [100, 50]);
   assert.deepEqual(thumbnailSize(0, 0), [1, 1]);
+});
+
+test('hip midpoint marker and centre connection require two circles', () => {
+  const geometry = fakeGeometry();
+  const full = recordingContext();
+  drawDynamicLayer(full.ctx, { width: 200, height: 150 }, geometry, { editing: false });
+  assert.ok(full.calls.some(([name, [dash]]) => name === 'setLineDash' && dash.length === 2));
+  assert.equal(full.calls.filter(([name]) => name === 'fill').length, 1, 'one midpoint diamond');
+  geometry.femoral_circles.pop(); geometry.hip_midpoint = null;
+  const partial = recordingContext();
+  drawDynamicLayer(partial.ctx, { width: 200, height: 150 }, geometry, { editing: false });
+  assert.equal(arcCount(partial.calls), 1);
+  assert.equal(partial.calls.filter(([name]) => name === 'fill').length, 0, 'no bilateral midpoint for one head');
 });

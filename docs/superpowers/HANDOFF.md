@@ -1,3 +1,12 @@
+## 2026-09-10 — editable femoral circles and overall confidence
+
+The v1.0.6 branch starts from Cody's main after PR #9 (`71d483f`). It hides raw
+femoral masks in both viewers, permits 0/1/2 circles through correction/save/load,
+and adds the overall QC assessment with original-score provenance. Reset restores
+QC as well as geometry/measurements. See `docs/releases/1.0.6.md` and the newest
+architecture amendment for controls, null rules and verification. No model or
+calibration algorithm changed; no screenshots were added.
+
 # Handoff — Spine Contour UI Redesign
 
 **Last updated:** 2026-09-08

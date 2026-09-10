@@ -98,21 +98,33 @@ export function nearestLandmark(geometry, clientX, clientY, canvas, radius = 14)
   return nearest;
 }
 
-// Femoral circle index 0 is left, 1 is right, per the architecture contract's Geometry shape.
+// Legacy side keys identify array slots, not anatomical laterality. UI calls them Head 1/2.
 export const FEMORAL_SIDES = ['left', 'right'];
 
 export function femoralCircle(geometry, side) {
   return geometry?.femoral_circles?.[side === 'left' ? 0 : 1] ?? null;
 }
 
-// Writes one circle and keeps hip_midpoint in sync, the way setLandmarkAt keeps
-// quadrilateral in sync. hip_midpoint is the mean of the two centres, which is exactly how
-// the backend derives it (backend/utils.py:304), so the pelvic constructions drawn between
-// /measure round-trips agree with what the round-trip will return. The radius is floored at
-// 1: the backend rejects a non-positive one (backend/utils.py:296).
-export function setFemoralCircle(geometry, side, circle) {
-  geometry.femoral_circles[side === 'left' ? 0 : 1] = [circle[0], circle[1], Math.max(1, circle[2])];
+// All helpers modify a caller-owned clone. One head cannot define the bilateral hip axis.
+function updateHipMidpoint(geometry) {
   const [a, b] = geometry.femoral_circles;
-  geometry.hip_midpoint = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  geometry.hip_midpoint = a && b ? [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] : null;
   return geometry;
+}
+
+export function setFemoralCircle(geometry, side, circle) {
+  const index = side === 'left' ? 0 : 1;
+  // Append only the next head: never create an array with an empty slot.
+  if (index > geometry.femoral_circles.length) return geometry;
+  geometry.femoral_circles[index] = [circle[0], circle[1], Math.max(1, circle[2])];
+  delete geometry.manually_cleared;
+  return updateHipMidpoint(geometry);
+}
+
+export function removeFemoralCircle(geometry, side) {
+  geometry.femoral_circles.splice(side === 'left' ? 0 : 1, 1);
+  if (!Object.keys(geometry.vertebrae).length && !geometry.s1_superior && !geometry.femoral_circles.length) {
+    geometry.manually_cleared = true;
+  }
+  return updateHipMidpoint(geometry);
 }

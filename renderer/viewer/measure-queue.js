@@ -54,7 +54,10 @@ export function createMeasureQueue({ measure, getState, setState, showToast, deb
       if (!current || current.addedAt !== study.addedAt) { discardDraft(studyId); return; }
       measured.set(studyId, result.geometry);
       writeStudy(studyId, { measurements: result.measurements, geometry: result.geometry,
-        ...(result.qc?.coverage ? { qc: { ...current.qc, coverage: result.qc.coverage } } : {}) });
+        qc: { ...current.qc, ...(result.qc?.coverage ? { coverage: result.qc.coverage } : {}),
+          manual_edits: { ...current.qc?.manual_edits, landmarks: true,
+            femoral: Boolean(current.qc?.manual_edits?.femoral)
+              || JSON.stringify(current.geometry?.femoral_circles) !== JSON.stringify(result.geometry.femoral_circles) } } });
     } catch (error) {
       if (revision !== revisions.get(studyId)) return;
       const known = measured.get(studyId);

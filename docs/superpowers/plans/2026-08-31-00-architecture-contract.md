@@ -1078,3 +1078,26 @@ high-bit-depth images and decoded DICOM floats are skipped. Uncertain cases rema
 unchanged. See `docs/toolbar-removal.md` for exact checks and provenance fields.
 Actual `toolbar` progress events report checking/removal; QC stores the preference,
 original size, retained window and removed rows. No store version or CSP change.
+
+## 2026-09-10 amendment: editable femoral circles and image confidence (v1.0.6)
+
+User-authorized: raw femoral masks are no longer decoded or rendered; only the
+vertebral label mask is overlaid. Geometry draws circles, centres and the bilateral
+midpoint in both viewers. Legacy `side` selection keys identify array slots only;
+visible names are Head 1/2. Circles are a compact array of zero, one or two triples.
+`hip_midpoint` is null unless two circles exist. Deleting compacts the array and clears
+selection. `/measure` accepts a single circle without inventing pelvic angles, and
+permits an explicitly emptied correction with `geometry.manually_cleared: true`.
+An empty automatic prediction still fails. Save/load preserves these partial edits.
+
+All editing stays in `components/viewer.js`; geometry helpers mutate only clones.
+Successful edits set `qc.manual_edits.landmarks` and, when circles changed, `femoral`.
+Original model QC remains provenance; refreshed coverage describes current geometry.
+Reset restores the prediction's QC along with its geometry and measurements.
+
+`data/confidence.js` derives a categorical overall review assessment and individual
+score details. This supersedes the single femoral-fit badge. It must never present
+femoral fit as overall accuracy or invent an aggregate probability. Missing checks,
+partial anatomy, calibration, orientation, consistency and manual-edit provenance
+remain visible. Pending corrections display Updating. No schema-version bump,
+CSP change or new runtime dependency.

@@ -24,7 +24,7 @@ export function buildLabelColorMap(labels) {
   return map;
 }
 
-export function buildOverlayPixels(maskPixels, femoralPixels, colorByLabel, alpha) {
+export function buildOverlayPixels(maskPixels, _femoralPixels, colorByLabel, alpha) {
   const overlay = new Uint8ClampedArray(maskPixels.length);
   for (let offset = 0; offset < maskPixels.length; offset += 4) {
     const labelId = maskPixels[offset];
@@ -33,11 +33,6 @@ export function buildOverlayPixels(maskPixels, femoralPixels, colorByLabel, alph
       overlay[offset] = color[0];
       overlay[offset + 1] = color[1];
       overlay[offset + 2] = color[2];
-      overlay[offset + 3] = alpha;
-    } else if (femoralPixels[offset]) {
-      overlay[offset] = FEMORAL_OVERLAY_COLOR[0];
-      overlay[offset + 1] = FEMORAL_OVERLAY_COLOR[1];
-      overlay[offset + 2] = FEMORAL_OVERLAY_COLOR[2];
       overlay[offset + 3] = alpha;
     }
   }
@@ -51,10 +46,9 @@ export async function bitmapFromBase64(base64) {
 }
 
 export async function loadStudyImages(predictResponse) {
-  const [image, mask, femoral] = await Promise.all([
+  const [image, mask] = await Promise.all([
     bitmapFromBase64(predictResponse.image_png),
     bitmapFromBase64(predictResponse.mask_png),
-    bitmapFromBase64(predictResponse.femoral_mask_png),
   ]);
   const scratch = document.createElement('canvas');
   scratch.width = image.width;
@@ -62,21 +56,17 @@ export async function loadStudyImages(predictResponse) {
   const context = scratch.getContext('2d');
   context.drawImage(mask, 0, 0);
   const maskPixels = context.getImageData(0, 0, image.width, image.height).data;
-  context.clearRect(0, 0, image.width, image.height);
-  context.drawImage(femoral, 0, 0);
-  const femoralPixels = context.getImageData(0, 0, image.width, image.height).data;
   const colorByLabel = buildLabelColorMap(predictResponse.labels);
-  const overlayPixels = buildOverlayPixels(maskPixels, femoralPixels, colorByLabel, BASE_OVERLAY_ALPHA);
+  const overlayPixels = buildOverlayPixels(maskPixels, null, colorByLabel, BASE_OVERLAY_ALPHA);
   context.clearRect(0, 0, image.width, image.height);
   context.putImageData(new ImageData(overlayPixels, image.width, image.height), 0, 0);
-  return { image, mask, femoral, overlayCanvas: scratch, width: image.width, height: image.height };
+  return { image, mask, overlayCanvas: scratch, width: image.width, height: image.height };
 }
 
 export function disposeStudyImages(images) {
   if (!images) return;
   images.image.close();
   images.mask.close();
-  images.femoral.close();
 }
 
 // Spec 13: a thumbnail is at most 128 px on its long edge, JPEG, inline as a data URI. Pure size
@@ -399,7 +389,7 @@ function drawHandles(ctx, canvas, geometry, { selection, hover, pixelRatio }) {
     const circle = femoralCircle(geometry, side);
     if (!circle) continue;
     const [cx, cy, r] = circle;
-    const name = side === 'left' ? 'Left head' : 'Right head';
+    const name = side === 'left' ? 'Head 1' : 'Head 2';
     drawHandle(ctx, canvas, [cx, cy], FEMORAL_HANDLE_COLOR, handleOpts({ kind: 'femoral', side, part: 'center' }, name));
     drawHandle(ctx, canvas, [cx + r, cy], FEMORAL_HANDLE_COLOR, handleOpts({ kind: 'femoral', side, part: 'rim' }, `${name} \u00B7 resize`));
   }
@@ -450,22 +440,45 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
     drawSelectedStageLabel(ctx, 'S1', geometry.s1_superior[0], selectedS1, canvas.width);
   }
 
+  const pixelRatio = opts.pixelRatio ?? 1;
   geometry.femoral_circles.forEach(([x, y, r], index) => {
     const selectedCircle = Boolean(opts.editing) && opts.selection?.kind === 'femoral'
       && opts.selection.side === FEMORAL_SIDES[index];
-    ctx.strokeStyle = selectedCircle ? STAGE_SELECTED_COLOR : STAGE_LINE_COLOR;
+    ctx.strokeStyle = selectedCircle ? STAGE_SELECTED_COLOR : FEMORAL_HANDLE_COLOR;
     ctx.lineWidth = selectedCircle ? lineWidth * 1.6 : lineWidth;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, 2 * Math.PI);
     ctx.stroke();
+    if (!opts.editing) {
+      const arm = 4 * pixelRatio;
+      ctx.beginPath();
+      ctx.moveTo(x - arm, y); ctx.lineTo(x + arm, y);
+      ctx.moveTo(x, y - arm); ctx.lineTo(x, y + arm);
+      ctx.stroke();
+    }
   });
+  if (geometry.femoral_circles.length === 2 && geometry.hip_midpoint) {
+    const [a, b] = geometry.femoral_circles;
+    const [x, y] = geometry.hip_midpoint;
+    ctx.save();
+    ctx.strokeStyle = FEMORAL_HANDLE_COLOR;
+    ctx.lineWidth = 1.5 * pixelRatio;
+    ctx.setLineDash([4 * pixelRatio, 3 * pixelRatio]);
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    ctx.setLineDash([]);
+    // A diamond distinguishes the bilateral midpoint from each circle's centre handle.
+    const arm = 5 * pixelRatio;
+    ctx.beginPath(); ctx.moveTo(x, y - arm); ctx.lineTo(x + arm, y);
+    ctx.lineTo(x, y + arm); ctx.lineTo(x - arm, y); ctx.closePath();
+    ctx.fillStyle = STAGE_BG_COLOR; ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
 
   drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, opts.measurements);
 
   // Handles exist only in edit mode -- outside it the stage is exactly plan 03's
   // user-verified rendering -- and are drawn LAST so they sit above the construction lines.
   if (!opts.editing) return;
-  const pixelRatio = opts.pixelRatio ?? 1;
   drawHandles(ctx, canvas, geometry, { selection: opts.selection ?? null, hover: opts.hover ?? null, pixelRatio });
   if (opts.retracing) drawTracePoints(ctx, opts.tracePoints ?? [], pixelRatio);
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.6
+
+- Show femoral heads as editable circles with centre marks and a bilateral midpoint; hide the raw femoral segmentation in analysis and comparison views.
+- Move, resize, retrace, add or delete circles. Save partial corrections and leave dependent pelvic angles blank until both heads are available.
+- Add an expandable overall image-confidence assessment with separate model quality checks, anatomy coverage, calibration and edit provenance.
+
+[Release notes](docs/releases/1.0.6.md)
+
 ## 1.0.5
 
 - Save manually applied image references independently of study creation. Reuse

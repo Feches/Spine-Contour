@@ -205,6 +205,7 @@ async def measure(geometry: dict[str, object]) -> dict[str, object]:
             geometry.get("vertebrae"),
             geometry.get("s1_superior"),
             geometry.get("femoral_circles"),
+            allow_empty=True,
         )
     except (AttributeError, TypeError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error

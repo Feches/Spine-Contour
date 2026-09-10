@@ -1,5 +1,7 @@
 # Spine Contour
 
+**2026-09-10 circle editing / confidence:** v1.0.6 supports 0/1/2 editable femoral circles and hides raw femoral masks. See `docs/releases/1.0.6.md` and the latest architecture amendment. Overall confidence is a categorical QC assessment, never a repurposed femoral percentage. Manual edits preserve original score provenance; reset restores QC too.
+
 **2026-09-10 manual reference persistence:** v1.0.5 fixes calibration before study
 creation and Windows path matching. Applied references/explicit clears are saved
 by original-file digest and reused in calibration and prediction. See

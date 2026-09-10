@@ -1,3 +1,4 @@
+import { imageConfidence, scorePercent } from '../data/confidence.js';
 import { el } from '../dom.js';
 import { getState, setState, subscribe } from '../store.js';
 import {
@@ -19,9 +20,7 @@ import { preferReviewedCalibration } from '../data/calibration.js';
 const BACK_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12 H5"></path><path d="M11 6 L5 12 L11 18"></path></svg>';
 
 export function formatConfidence(qc) {
-  const confidence = qc?.femoral?.confidence;
-  if (typeof confidence !== 'number' || Number.isNaN(confidence)) return '—';
-  return `${Math.round(confidence * 100)}%`;
+  return scorePercent(qc?.femoral?.confidence);
 }
 
 // ---------------------------------------------------------------------------
@@ -477,7 +476,7 @@ export function render(state) {
     onBlur: () => queueMicrotask(commitName),
   });
   const headerMeta = el('div', { class: 'analysis-meta' });
-  const confidenceValue = el('div', { class: 'confidence-value' });
+  const confidenceValue = el('span', { class: 'confidence-value' });
 
   // Blank means "go back to the film's own name", not "no name": an empty header would leave the
   // user with nothing to recognise the study by, and the filename is always recoverable.
@@ -493,15 +492,14 @@ export function render(state) {
     }));
   }
 
-  // Labelled FEMORAL FIT CONFIDENCE, not the mockup's SEGMENTATION CONFIDENCE, because
-  // the number behind it is qc.femoral.confidence -- a femoral circle-fit score, not a
-  // whole-segmentation score. The architecture contract's "never label a value with a
-  // name it isn't" rule names this badge specifically. Do not rename it to match the
-  // mockup. It stays visible with an em dash before a run, per the absent-value rule.
-  const confidenceBadge = el('div', { class: 'confidence-badge' },
-    el('div', { class: 'confidence-dot' }),
-    el('div', { class: 'confidence-label' }, 'FEMORAL FIT CONFIDENCE'),
-    confidenceValue);
+  // Overall is a transparent QC assessment. Model scores keep their individual names.
+  const confidenceBreakdown = el('div', { class: 'confidence-breakdown' });
+  const confidenceBadge = el('details', { class: 'confidence-details' },
+    el('summary', { class: 'confidence-badge', title: 'Show the image quality checks' },
+      el('span', { class: 'confidence-dot' }),
+      el('span', { class: 'confidence-label' }, 'OVERALL CONFIDENCE'), confidenceValue),
+    confidenceBreakdown);
+  let lastConfidence = null;
 
   // The same DEMO pill the Studies list puts beside the patient. A demo study's numbers are
   // fabricated for exploring the interface; the header is where the user is looking when they
@@ -610,7 +608,14 @@ export function render(state) {
     // SP-nnnn id stays reachable on the title rather than disappearing entirely.
     headerMeta.textContent = `${(open.view || '—').toUpperCase()} · ${open.pt ?? '—'}`
       + (produced ? ` · ${produced.toUpperCase()}` : '');
-    confidenceValue.textContent = formatConfidence(open.qc);
+    const assessment = imageConfidence(open, Boolean(live.measurementDrafts?.[open.id]));
+    const confidenceKey = JSON.stringify(assessment);
+    if (lastConfidence !== confidenceKey) {
+      lastConfidence = confidenceKey;
+      confidenceValue.textContent = assessment.label;
+      confidenceBadge.dataset.tone = assessment.tone;
+      confidenceBreakdown.replaceChildren(...assessment.details.map(detail => el('p', {}, detail)));
+    }
 
     // toCsv already drops demo rows, so exporting a demo study would write a header and no
     // data. Disabling the button says why instead of handing back an empty file.

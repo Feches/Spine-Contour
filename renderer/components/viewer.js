@@ -5,7 +5,7 @@ import { showToast } from './toast.js';
 import {
   createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel,
 } from '../viewer/canvas.js';
-import { clientToImage, imageToClient, nearestLandmark, setLandmarkAt, femoralCircle, setFemoralCircle, fitCircle } from '../viewer/geometry.js';
+import { clientToImage, imageToClient, nearestLandmark, setLandmarkAt, femoralCircle, setFemoralCircle, removeFemoralCircle, fitCircle } from '../viewer/geometry.js';
 import { zoomIn, zoomOut, zoomAbout, isChordHeld, vertebraAt, sameHandle, hitTestFemoral, nextSelection, nudge, arrowKeyDelta } from '../viewer/interactions.js';
 import { createMeasureQueue } from '../viewer/measure-queue.js';
 import { isQueued, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
@@ -61,14 +61,14 @@ const { commitGeometry } = measureQueue;
 // returns to THIS study's own prediction, however many studies were opened in between.
 const predictions = new Map();
 
-export function recordPrediction(studyId, { measurements, geometry }, measuredGeometry = geometry) {
+export function recordPrediction(studyId, { measurements, geometry, qc }, measuredGeometry = geometry) {
   // A sidecar read back from disk is the one caller that can hand this an object missing
   // either half. structuredClone(undefined) stores undefined, and `predictions.has(id)` then
   // enables RESET TO PREDICTION over a snapshot that has nothing to reset to. No snapshot is
   // recorded, and nothing else is touched: the study keeps whatever it already had, and the
   // button stays disabled, which is what "there is no prediction to return to" looks like.
   if (measurements == null || geometry == null) return;
-  const snapshot = { measurements: structuredClone(measurements), geometry: structuredClone(geometry) };
+  const snapshot = { measurements: structuredClone(measurements), geometry: structuredClone(geometry), qc: structuredClone(qc ?? null) };
   predictions.set(studyId, snapshot);
   // A correction still pending or in flight belongs to the geometry this prediction just
   // replaced; only THIS study's is dropped. `measuredGeometry` is the geometry the study's
@@ -192,16 +192,22 @@ export function mountViewer(container) {
     rerunButton);
 
   // Shown only while editing: RETRACE, FIT and RESET TO PREDICTION alongside DONE.
+  const addCircleButton = textButton('ADD CIRCLE', () => addCircle(), { title: 'Place at least 3 points around the head, then Fit' });
+  const deleteCircleButton = textButton('DELETE CIRCLE', () => deleteCircle(), { disabled: true, title: 'Delete selected head (Delete / Backspace)' });
+  const editHelp = el('div', { class: 'viewer-edit-help' });
   const retraceButton = textButton('RETRACE', () => toggleRetrace(), { 'aria-pressed': 'false', disabled: true });
   const fitButton = textButton('FIT', () => applyFit(), { disabled: true });
   const resetButton = textButton('RESET TO PREDICTION', () => resetToPrediction(), { disabled: true });
   const doneButton = textButton('DONE', () => exitEditMode());
   const editBar = el('div', { class: 'viewer-editbar is-hidden' },
     el('div', { class: 'viewer-editbar-label' }, 'EDITING LANDMARKS'),
+    addCircleButton,
+    deleteCircleButton,
     retraceButton,
     fitButton,
     resetButton,
-    doneButton);
+    doneButton,
+    editHelp);
 
   const footer = el('div', { class: 'viewer-footer' });
 
@@ -646,6 +652,27 @@ export function mountViewer(container) {
     redrawDynamic(liveGeometry());
   }
 
+  function addCircle() {
+    const study = currentStudy();
+    const count = study?.geometry?.femoral_circles.length;
+    if (count == null || count >= 2 || getState().running === study.id) return;
+    cancelRetrace();
+    retracing = true;
+    clearHover();
+    setState({ panMode: false, selection: { kind: 'femoral', side: count === 0 ? 'left' : 'right', part: 'center' } });
+  }
+
+  function deleteCircle() {
+    const state = getState(), study = currentStudy();
+    if (!study?.geometry || state.running === study.id || state.selection?.kind !== 'femoral'
+      || !femoralCircle(study.geometry, state.selection.side)) return;
+    const geometry = structuredClone(study.geometry);
+    removeFemoralCircle(geometry, state.selection.side);
+    cancelRetrace(); clearHover();
+    setState({ selection: null });
+    commitGeometry(study.id, geometry);
+  }
+
   function applyFit() {
     const state = getState();
     const study = currentStudy();
@@ -672,7 +699,7 @@ export function mountViewer(container) {
     setState((current) => ({
       selection: null,
       studies: current.studies.map((item) => (item.id === study.id
-        ? { ...item, measurements: structuredClone(predicted.measurements), geometry: structuredClone(predicted.geometry) }
+        ? { ...item, measurements: structuredClone(predicted.measurements), geometry: structuredClone(predicted.geometry), qc: structuredClone(predicted.qc) }
         : item)),
     }));
   }
@@ -684,7 +711,13 @@ export function mountViewer(container) {
     // A null study is never busy -- toggleRetrace passes currentStudy(), which may be null.
     const busy = Boolean(study) && state.running === study.id;
     const femoralSelected = Boolean(state.selection && state.selection.kind === 'femoral');
-    retraceButton.disabled = busy || !femoralSelected;
+    const geometry = state.measurementDrafts?.[study?.id] ?? study?.geometry;
+    const hasSelectedCircle = femoralSelected && femoralCircle(geometry, state.selection.side);
+    addCircleButton.disabled = busy || !geometry || geometry.femoral_circles.length >= 2 || retracing;
+    deleteCircleButton.disabled = busy || !hasSelectedCircle;
+    retraceButton.disabled = busy || !hasSelectedCircle;
+    editHelp.textContent = retracing ? 'Click at least 3 points around the head, then Fit. Escape cancels.'
+      : 'Drag a centre to move; drag its rim to resize. The diamond marks the hip midpoint.';
     retraceButton.setAttribute('aria-pressed', String(retracing));
     retraceButton.classList.toggle('is-active', retracing);
     fitButton.disabled = busy || !retracing || tracePoints.length < 3;
@@ -787,7 +820,7 @@ export function mountViewer(container) {
     // swallow this study's keys. A null study is never busy.
     const study = currentStudy();
     const busy = Boolean(study) && state.running === study.id;
-    if (event.target instanceof Element && event.target.matches('input, select, textarea')) return;
+    if (event.target instanceof Element && event.target.closest('input, select, textarea, [contenteditable="true"]')) return;
     if (!state.editing) {
       // Outside edit mode Escape clears the construction -- the keyboard's way to get a
       // label plate off the stage. Inside edit mode Escape exits editing (below).
@@ -799,6 +832,9 @@ export function mountViewer(container) {
       event.preventDefault();
       exitEditMode();
       return;
+    }
+    if ((event.key === 'Delete' || event.key === 'Backspace') && state.selection?.kind === 'femoral') {
+      event.preventDefault(); deleteCircle(); return;
     }
     if (event.key === 'Tab') {
       // Inside the edit bar, Tab stays ordinary focus movement so RETRACE / FIT / RESET /

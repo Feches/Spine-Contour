@@ -148,3 +148,30 @@ test('a failure with no known measured geometry toasts without claiming a restor
   assert.doesNotMatch(h.toasts[0], /not applied/);
   assert.match(h.toasts[0], /backend gone/);
 });
+
+test('circle corrections mark score provenance and replace coverage only after a successful measure', async () => {
+  const h = harness();
+  const original = geometryWith(0);
+  const initialQc = { femoral: { confidence: .91 }, coverage: { partial: false } };
+  h.queue.commitGeometry('A', original);
+  await tick(30);
+  h.calls[0].resolve({ geometry: original, measurements: { PI: 30 }, qc: initialQc });
+  await tick(0);
+  // Seed a saved prediction's QC, retaining a reference to prove it is not mutated.
+  h.study('A').qc = initialQc;
+  const partial = structuredClone(original);
+  partial.femoral_circles.pop(); partial.hip_midpoint = null;
+  h.queue.commitGeometry('A', partial);
+  assert.equal(h.study('A').qc, initialQc);
+  await tick(30);
+  h.calls[1].resolve({ geometry: partial, measurements: { PI: null }, qc: { coverage: { partial: true } } });
+  await tick(0);
+  assert.deepEqual(h.study('A').qc.manual_edits, { landmarks: true, femoral: true });
+  assert.equal(h.study('A').qc.femoral.confidence, .91);
+  assert.equal(h.study('A').qc.coverage.partial, true);
+  assert.equal(initialQc.coverage.partial, false);
+  const saved = h.study('A');
+  h.queue.commitGeometry('A', original);
+  await tick(30); h.calls[2].reject(new Error('offline')); await tick(0);
+  assert.equal(h.study('A'), saved, 'failed restoration cannot clear the deleted-circle warning');
+});

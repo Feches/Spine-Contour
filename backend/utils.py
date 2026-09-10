@@ -310,6 +310,7 @@ def spinopelvic_measurements_from_geometry(
     s1_superior: list[list[float]] | np.ndarray,
     femoral_circles: list[list[float]] | np.ndarray,
     l1_center: list[float] | np.ndarray | None = None,
+    *, allow_empty: bool = False,
 ) -> dict[str, object]:
     """Compute each measurement only when its own anatomical inputs exist.
 
@@ -324,9 +325,9 @@ def spinopelvic_measurements_from_geometry(
     if s1 is not None and (s1.shape != (2, 2) or not np.isfinite(s1).all()
                            or np.linalg.norm(s1[1] - s1[0]) <= 0):
         raise ValueError("S1 superior landmarks must contain two finite image points")
-    if circles.shape != (0,) and (circles.shape != (2, 3) or not np.isfinite(circles).all()
+    if circles.shape != (0,) and (circles.shape not in ((1, 3), (2, 3)) or not np.isfinite(circles).all()
                                   or (circles[:, 2] <= 0).any()):
-        raise ValueError("femoral geometry must contain two finite positive-radius circles")
+        raise ValueError("femoral geometry must contain zero, one or two finite positive-radius circles")
     endplates = {}
     for level, body in vertebrae.items():
         if not isinstance(body, dict):
@@ -338,9 +339,10 @@ def spinopelvic_measurements_from_geometry(
             if name != "quadrilateral" and np.linalg.norm(points[1] - points[0]) <= 0:
                 raise ValueError(f"{level} {name} endpoints must be distinct")
         endplates[level] = np.asarray(body["superior"], dtype=np.float64)
-    if not vertebrae and s1 is None and not len(circles):
+    empty = not vertebrae and s1 is None and not len(circles)
+    if empty and not allow_empty:
         raise ValueError("No usable lumbar, S1 or femoral landmarks were detected")
-    hip_midpoint = circles[:, :2].mean(axis=0) if len(circles) else None
+    hip_midpoint = circles[:, :2].mean(axis=0) if len(circles) == 2 else None
     s1_midpoint = s1.mean(axis=0) if s1 is not None else None
     l1_center_array = None
     if "L1" in vertebrae and l1_center is None:
@@ -377,7 +379,7 @@ def spinopelvic_measurements_from_geometry(
     available = [level for level in LUMBAR_LEVELS if level in vertebrae]
     if s1 is not None:
         available.append("S1")
-    if len(circles):
+    if len(circles) == 2:
         available.append("femoral heads")
     missing = [name for name in (*LUMBAR_LEVELS, "S1", "femoral heads") if name not in available]
     return {
@@ -391,6 +393,7 @@ def spinopelvic_measurements_from_geometry(
             "l1_center": None if l1_center_array is None else l1_center_array.tolist(),
             "hip_midpoint": None if hip_midpoint is None else hip_midpoint.tolist(),
             "femoral_circles": [circle.tolist() for circle in circles],
+            **({"manually_cleared": True} if empty else {}),
         },
     }
 
