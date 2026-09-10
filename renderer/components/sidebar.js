@@ -70,7 +70,16 @@ function performanceBlock(state) {
         onClick: () => changePerformance({ cropLocalizer }),
       }, label))),
     el('p', { class: 'processing-note' },
-      'Needed for full-spine images to find the lumbar region. Turn off for lumbar-only images to skip the crop search and process faster.'));
+      'Needed for full-spine images to find the lumbar region. Turn off for lumbar-only images to skip the crop search and process faster.'),
+    el('div', { class: 'sidebar-models-label' }, 'TOOLBAR REMOVAL'),
+    el('div', { class: 'model-choice', role: 'group', 'aria-label': 'Toolbar removal' },
+      ...[[true, 'On'], [false, 'Off']].map(([toolbarRemoval, label]) => el('button', {
+        type: 'button', class: 'model-choice-btn', disabled: busy,
+        'aria-pressed': settings.toolbarRemoval === toolbarRemoval ? 'true' : 'false',
+        onClick: () => changePerformance({ toolbarRemoval }),
+      }, label))),
+    el('p', { class: 'processing-note' },
+      'Quickly removes detected bottom PACS toolbars before segmentation. Keeps uncertain images unchanged and preserves the original for calibration.'));
 }
 
 // (2026-09-10, studies-table spec 9) DEMO STUDIES: Show / Hide, development builds only. Built

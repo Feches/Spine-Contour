@@ -3,6 +3,7 @@ import { el } from '../dom.js';
 import { getState, setState } from '../store.js';
 import { selectFile, readFile } from '../api.js';
 import { rememberCalibration, calibrationForStudy } from '../calibration.js';
+import { calibrationPathKey } from '../data/calibration.js';
 import { createCalibrationViewer } from '../components/calibration-viewer.js';
 import { createFolderCalibration } from '../components/folder-calibration.js';
 
@@ -17,7 +18,7 @@ export function render(state) {
     root.innerHTML = `<div class="workspace-page-inner">
   <div class="eyebrow">MEASUREMENT REFERENCE</div>
   <h1 class="workspace-heading">Image calibration</h1>
-  <p class="workspace-copy">Automatically read printed rulers and image scales across your folder. Results are saved with each study and used during batch processing.</p>
+  <p class="workspace-copy">Calibrate each image for disc-height measurements. Automatic detection reads printed rulers; if it fails, draw a reference, enter its length in mm, and apply it. Applied references are saved for that image, including before loading a study.</p>
   <button id="calibration-return" class="btn" type="button" hidden>Return to study</button>
   <section id="calibration-onboarding" class="calibration" hidden>
     <strong>Calibrate your image folder</strong>
@@ -70,7 +71,7 @@ export function render(state) {
     async function openImage(file, cached = null, profile = null) {
       activeFile = file;
       root.querySelector('#calibration-file-name').textContent = file.name;
-      const study = getState().studies.find(s => s.filePath === file.path);
+      const study = getState().studies.find(s => calibrationPathKey(s.filePath) === calibrationPathKey(file.path));
       const response = await viewer.load(file, cached ?? calibrationForStudy(study ?? { filePath: file.path }), profile);
       if (response && activeFile === file) rememberCalibration(file.path, response);
       return response;
@@ -130,6 +131,9 @@ export function render(state) {
   root.querySelector('#use-workspace-folder').disabled = !state.wsFolder;
   if (request && request !== lastRequest) {
     lastRequest = request;
+    // The root is reused: do not expose the previous image's editable reference
+    // while the newly requested file is still being read.
+    root.querySelector('#calibration-panel').hidden = true;
     root.querySelector('#calibration-continue').disabled = true;
     queueMicrotask(async () => {
       if (getState().calibrationRequest !== request || getState().screen !== 'calibration') return;

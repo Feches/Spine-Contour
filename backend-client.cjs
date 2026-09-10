@@ -4,11 +4,12 @@ function normalizePerformance(value) {
   const mode = value?.mode ?? 'standard';
   const cpuThreads = value?.cpuThreads ?? 2;
   const cropLocalizer = value?.cropLocalizer === undefined ? true : value.cropLocalizer;
+  const toolbarRemoval = value?.toolbarRemoval === undefined ? false : value.toolbarRemoval;
   if (!['standard', 'low-memory'].includes(mode) || !Number.isInteger(cpuThreads) || cpuThreads < 1 || cpuThreads > 4
-    || typeof cropLocalizer !== 'boolean') {
+    || typeof cropLocalizer !== 'boolean' || typeof toolbarRemoval !== 'boolean') {
     throw new Error('Invalid processing settings.');
   }
-  return { mode, cpuThreads, cropLocalizer };
+  return { mode, cpuThreads, cropLocalizer, toolbarRemoval };
 }
 
 // Node's default fetch header deadline is unsuitable for long local inference.

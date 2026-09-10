@@ -1,5 +1,18 @@
 # Spine Contour
 
+**2026-09-10 manual reference persistence:** v1.0.5 fixes calibration before study
+creation and Windows path matching. Applied references/explicit clears are saved
+by original-file digest and reused in calibration and prediction. See
+`docs/manual-calibration-persistence.md`; retain per-image provenance and the
+existing disc-height definitions. Unapplied edits are drafts, not saved references.
+
+**2026-09-10 toolbar removal:** v1.0.4 starts from Cody's merged PR #8 (`6106463`).
+The user explicitly requests pushing the tested release directly to the fork's
+`main`. Settings adds `toolbarRemoval` (default false); see `docs/toolbar-removal.md`.
+Fast bottom-strip cleanup precedes inference and reduces the output image/mask
+height, preserving the source x/y origin. Calibration always reads the untouched
+upload. Do not generalize this to top/left crops without coordinate restoration.
+
 **2026-09-09 ONNX/localizer amendment:** `codex/onnx-localizer` starts from Cody's merged PR #7 (`c7aab15`) and prepares v1.0.3. All desktop inference uses ONNX Runtime; PyTorch builders now live in `backend/models/training.py` for export/test only. Install `backend/requirements-export.txt` and run `python tools/export_onnx.py` before development tests or launching from source. Settings adds `cropLocalizer` (default true). OFF bypasses model-based crop search/reframing while retaining cheap empty-border cleanup; ON retains the full search. The user explicitly requested this exception to the earlier always-search rule. See `docs/onnx-inference.md` and the latest architecture amendment. Package ONNX graphs/runtime, not Torch/timm/torchvision or `.pt` weights; this supersedes the older bundling advice below.
 
 **2026-09-09 low-memory mode:** `codex/low-memory-progress` starts from Cody's merged PR #6 (`ceff2ef`) and prepares v1.0.2. See `docs/low-memory-processing.md`. `/predict-stream` now provides actual stage/count events and heartbeats; no timer-generated stages or guessed overall percentages. Keep the full crop search and HRNet presence checks in both modes.

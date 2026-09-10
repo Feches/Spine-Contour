@@ -971,6 +971,16 @@ Verified: 280 Node tests; a running Electron scratch-profile test covering confi
 
 ## 2026-09-09 amendment: batch calibration integration
 
+**2026-09-10 persistence extension:** Applied manual references and explicit clears
+also persist independently of studies through `saveCalibration` IPC and
+`calibration-io.js`, keyed by original-file SHA-256. Main supplies the matching
+record to calibration/prediction; `/calibrate` and `/calibrate-stream` accept the
+same optional `calibration` form field as prediction, including preview requests.
+The optional positive `review_revision` prevents older reviewed caches from
+replacing newer saved references. Windows drive/UNC session paths normalize case
+and separators; POSIX paths remain case-sensitive. The existing source/geometry
+guard and store version are unchanged. See `docs/manual-calibration-persistence.md`.
+
 Supersedes the session-only persistence restriction in the 2026-09-07 calibration amendment. `Study.calibration` is an optional null-default compact record, independent of geometry and angular measurements; `STORE_VERSION` remains 1. It contains `version: 1`, SHA-256 `source_sha256`, original `width`/`height`, `coordinate_space: 'original_image'`, `status`, `spacing`, `candidates`, `selected_index` and a display message. Preview bytes never enter this field. `renderer/data/calibration.js` validates it, formats its summary and resolves concurrent manual corrections; `renderer/calibration.js` keeps path-keyed folder results until study creation and writes reviewed results to matching studies. A replaced source never recalibrates old geometry from a different file.
 
 `POST /predict` accepts optional JSON form field `calibration`, validates its source digest and dimensions against the upload, and returns compact `calibration` alongside the existing response. When no matching result exists it runs the existing OpenCV/OCR extractor on the original upload. OCR failures return an unavailable calibration without losing a successful segmentation. Original image coordinates are never interpreted as model-crop coordinates. The serial batch driver and model selection stay unchanged.
@@ -1052,3 +1062,19 @@ reports actual operations only and Off never emits a fabricated search stage.
 Training builders/export libraries are separate from runtime imports. CI converts the
 trusted LFS checkpoints, checks output parity, bundles only ONNX assets/runtime and runs
 all four models in the frozen executable before building/publishing the installers.
+
+## 2026-09-10 amendment: optional toolbar removal (v1.0.4)
+
+`performance.toolbarRemoval` is a saved boolean, default false for new and legacy
+preferences, serialized as `toolbar_removal` on both prediction routes. The sidebar
+offers Toolbar removal On/Off independently of Crop localizer and resource mode.
+It is disabled during prediction/batch and applies only to subsequent runs.
+
+`backend/toolbar.py` removes only supported bottom screenshot panels before model
+framing. Output image and masks use the reduced height. Since top/left are unchanged,
+landmarks remain in original source x/y coordinates. Calibration, source hashing,
+manual correction and original-image previews still use the entire upload. Native
+high-bit-depth images and decoded DICOM floats are skipped. Uncertain cases remain
+unchanged. See `docs/toolbar-removal.md` for exact checks and provenance fields.
+Actual `toolbar` progress events report checking/removal; QC stores the preference,
+original size, retained window and removed rows. No store version or CSP change.

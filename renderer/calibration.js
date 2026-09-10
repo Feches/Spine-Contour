@@ -1,5 +1,5 @@
 import { getState, setState } from './store.js';
-import { normalizeCalibration } from './data/calibration.js';
+import { normalizeCalibration, calibrationPathKey } from './data/calibration.js';
 
 // Folder scans precede study creation. Keep compact results by full path until Load;
 // after that the ordinary study saver persists them. Backend hashes verify reused bytes.
@@ -27,17 +27,18 @@ export function withCalibration(study, calibration) {
 }
 
 export function calibrationForStudy(study) {
-  return byPath.get(study.filePath) ?? normalizeCalibration(study.calibration);
+  return byPath.get(calibrationPathKey(study.filePath)) ?? normalizeCalibration(study.calibration);
 }
 
 export function rememberCalibration(filePath, response) {
   const calibration = normalizeCalibration(response);
   if (!filePath || !calibration) return;
-  byPath.set(filePath, calibration);
+  const key = calibrationPathKey(filePath);
+  byPath.set(key, calibration);
   const state = getState();
   let changed = false;
   const studies = state.studies.map(study => {
-    if (study.source !== 'real' || study.filePath !== filePath) return study;
+    if (study.source !== 'real' || calibrationPathKey(study.filePath) !== key) return study;
     // A changed file at the same path is not the film underlying old geometry.
     if (study.geometry && study.calibration?.source_sha256 !== calibration.source_sha256) return study;
     const next = withCalibration(study, calibration);
@@ -49,7 +50,7 @@ export function rememberCalibration(filePath, response) {
 
 export function attachCalibrations(studies) {
   return studies.map(study => {
-    const calibration = byPath.get(study.filePath);
+    const calibration = byPath.get(calibrationPathKey(study.filePath));
     if (!calibration || (study.geometry && study.calibration?.source_sha256 !== calibration.source_sha256)) return study;
     return withCalibration(study, calibration);
   });

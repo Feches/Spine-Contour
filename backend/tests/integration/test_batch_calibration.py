@@ -81,3 +81,61 @@ def test_no_reference_leaves_lengths_unavailable(client, monkeypatch):
     assert result['measurements']['SS'] == 30
     assert result['calibration']['status'] == 'not_found'
     assert result['calibration']['spacing'] is None
+
+
+@pytest.mark.parametrize('route', ['/predict', '/predict-stream'])
+@pytest.mark.parametrize('initial', ['not_found', 'unavailable'])
+def test_manual_fallback_survives_calibration_reopen_and_segmentation(client, monkeypatch, route, initial):
+    payload = image_bytes()
+    def failed_detection(*_):
+        if initial == 'unavailable':
+            raise RuntimeError('OCR unavailable')
+        return {'measurements': []}
+    monkeypatch.setattr(calibration, 'extract', failed_detection)
+    preview = client.post('/calibrate', files={'file': ('image.png', payload, 'image/png')}).json()
+    assert preview['status'] == initial
+    preview.pop('image_png')
+    # The compact record produced by drawing/applying a ruler after detection failed.
+    preview.update(status='corrected', selected_index=0, review_revision=3,
+                   spacing={'row_mm': .5, 'column_mm': .5, 'source': 'manual_reference'},
+                   candidates=[{'value_mm': 40, 'length_px': 80, 'endpoints': [[320, 40], [320, 120]],
+                                'raw_text': '40 mm (corrected)', 'status': 'accepted'}])
+    saved = json.loads(json.dumps(preview))
+    monkeypatch.setattr(calibration, 'extract', lambda *_: pytest.fail('Manual reference must avoid OCR'))
+    for calibration_route in ['/calibrate', '/calibrate-stream']:
+        response = client.post(calibration_route, files={'file': ('renamed.png', payload, 'image/png')},
+                               data={'calibration': json.dumps(saved), 'preview_only': 'true'})
+        assert response.status_code == 200
+        reopened = (json.loads(response.text.splitlines()[-1])['result']
+                    if calibration_route.endswith('stream') else response.json())
+        assert reopened['spacing'] == saved['spacing']
+        assert reopened['review_revision'] == 3
+        assert reopened['candidates'] == saved['candidates']
+    response = client.post(route, files={'file': ('renamed.png', payload, 'image/png')},
+                           data={'modality': 'xray', 'body_part': 'lumbar', 'calibration': json.dumps(saved)})
+    assert response.status_code == 200
+    result = (json.loads(response.text.splitlines()[-1])['result']
+              if route.endswith('stream') else response.json())
+    assert result['measurements']['SS'] == 30
+    assert result['calibration']['spacing'] == saved['spacing']
+    assert result['calibration']['review_revision'] == 3
+    assert result['calibration']['candidates'] == saved['candidates']
+    assert 'image_png' not in result['calibration']
+
+
+@pytest.mark.parametrize('route', ['/calibrate', '/calibrate-stream', '/predict', '/predict-stream'])
+def test_manual_reference_from_another_image_is_never_reused(client, monkeypatch, route):
+    payload = image_bytes()
+    saved = calibration.calibration_from_payload(payload, preview_only=True)
+    saved.update(source_sha256='a' * 64, status='corrected', selected_index=0,
+                 candidates=[{'value_mm': 40, 'length_px': 80, 'endpoints': [[320, 40], [320, 120]],
+                              'status': 'accepted'}])
+    monkeypatch.setattr(calibration, 'extract', lambda *_: {'measurements': []})
+    response = client.post(route, files={'file': ('same-name.png', payload, 'image/png')},
+                           data={'modality': 'xray', 'body_part': 'lumbar', 'calibration': json.dumps(saved)})
+    assert response.status_code == 200
+    result = (json.loads(response.text.splitlines()[-1])['result']
+              if route.endswith('stream') else response.json())
+    scale = result['calibration'] if route.startswith('/predict') else result
+    assert scale['status'] == 'not_found'
+    assert scale['spacing'] is None

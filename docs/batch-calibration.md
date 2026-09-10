@@ -1,5 +1,10 @@
 # Batch calibration integration
 
+v1.0.5 additionally persists applied manual references before study creation and
+across restarts; see [manual reference persistence](manual-calibration-persistence.md).
+This supersedes the pre-workspace session-only limitation below for applied
+references and explicit clears.
+
 Base: `Feches/Spine-Contour`, `claude/studies-ui-updates-bb040d` at `cbe5adb` (2026-09-09). This includes his batch segmentation, study fields, Parameters tab and paired export, plus upstream calibration at `5078b1c`.
 
 The existing OpenCV capped-ruler detector and local Tesseract label reader are reused. Previously the folder calibration screen held results in a private session cache; the batch run, study persistence and CSV exports never received them. Every successful `/predict` now returns a compact calibration from the original image, and folder results attach when studies are loaded. Automatic scanning does not require reference teaching. Optional color feedback still supplements detection.

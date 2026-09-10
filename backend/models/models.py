@@ -411,18 +411,26 @@ def spinopelvic_prediction(
     """
 
     try:
-        from .. import framing, landmarks
+        from .. import framing, landmarks, toolbar
     except ImportError:  # Support running modules directly from backend/.
-        import framing, landmarks
+        import framing, landmarks, toolbar
 
     _validate_supported_input(modality, body_part, view, laterality)
     choice = resolve_models(models)
     raw = np.asarray(pixel_array)
     if raw.ndim != 2 or not np.issubdtype(raw.dtype, np.number) or raw.size == 0:
         raise ValueError("pixel_array must be a non-empty two-dimensional numeric grayscale array")
+    toolbar_info = {"enabled": False, "status": "disabled", "removed_bottom_px": 0,
+                    "source_size": [int(raw.shape[1]), int(raw.shape[0])],
+                    "window": [0, 0, int(raw.shape[1]), int(raw.shape[0])]}
+    if runtime.options().toolbar_removal:
+        runtime.report("toolbar", "Checking for a bottom PACS toolbar")
+        raw, toolbar_info = toolbar.remove_bottom_toolbar(raw)
+        runtime.report("toolbar", f"Removed a {toolbar_info['removed_bottom_px']}-pixel bottom toolbar"
+                       if toolbar_info['status'] == 'removed' else "No supported bottom toolbar detected; keeping the image")
     if raw.dtype != np.uint8:
         raw = raw.astype(np.float32)
-    runtime.report("preparing", "Preparing the original radiograph")
+    runtime.report("preparing", "Preparing the radiograph for inference")
     image = _robust_rescale(raw)
 
     localizer = runtime.options().crop_localizer
@@ -514,6 +522,7 @@ def spinopelvic_prediction(
         "models": choice,
         "framing": {
             "crop_localizer": localizer,
+            "toolbar_removal": toolbar_info,
             "window": [int(v) for v in window],
             "reframed": reframed,
             "fallback_whole_film": fallback,

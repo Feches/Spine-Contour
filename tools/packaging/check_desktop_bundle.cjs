@@ -32,7 +32,7 @@ const appExecutable = process.platform === 'win32'
   ? path.join(path.dirname(archive), '..', `${productName}.exe`)
   : path.join(path.dirname(archive), '..', 'MacOS', productName);
 assert.ok(fs.existsSync(appExecutable), 'Desktop executable or product branding differs from source');
-const shipped = ['index.html', 'main.js', 'backend-client.cjs', 'preload.js', 'store-io.js', 'scan-folder.js',
+const shipped = ['index.html', 'main.js', 'backend-client.cjs', 'calibration-io.js', 'preload.js', 'store-io.js', 'scan-folder.js',
   ...files('renderer'), ...files('styles')];
 for (const file of shipped) {
   // asar traverses directories using path.sep, including on Windows.

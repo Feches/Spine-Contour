@@ -1,7 +1,7 @@
 /* Separate original-image canvas keeps off-crop rulers editable throughout segmentation. */
 import { calibrationMath as math } from '../data/calibration.js';
-import { calibrate } from '../api.js';
-import { normalizeCalibration } from '../data/calibration.js';
+import { calibrate, saveCalibration } from '../api.js';
+import { normalizeCalibration, preferReviewedCalibration } from '../data/calibration.js';
 
 export function createCalibrationViewer(root) {
   const panel = root.querySelector('#calibration-panel');
@@ -24,6 +24,7 @@ export function createCalibrationViewer(root) {
   let distancePoints = [];
   let mode = 'reference';
   let dragging = null;
+  let saving = false;
 
   function publish() {
     root.dispatchEvent(new CustomEvent('calibrationchange', { detail: snapshot() }));
@@ -60,9 +61,11 @@ export function createCalibrationViewer(root) {
       : 'Not calibrated';
     const distance = math.distance(distancePoints, spacing);
     distanceOutput.textContent = spacing && distance != null ? `${distance.toFixed(2)} mm` : '—';
-    apply.disabled = !math.reference(reference, Number(value.value));
-    manual.disabled = !bitmap;
-    clear.disabled = !bitmap;
+    apply.disabled = saving || !math.reference(reference, Number(value.value));
+    manual.disabled = saving || !bitmap;
+    clear.disabled = saving || !bitmap;
+    value.disabled = saving;
+    referenceSelect.disabled = saving;
     measure.disabled = !spacing;
     if (!spacing && mode === 'distance') mode = 'reference';
     measure.classList.toggle('active', mode === 'distance');
@@ -108,12 +111,36 @@ export function createCalibrationViewer(root) {
     message.textContent = 'Apply the reference length to update the image scale.';
     update(); publish();
   });
-  apply.addEventListener('click', () => {
+  async function saveReference() {
+    const current = revision;
+    const calibration = snapshot().calibration;
+    if (!calibration) {
+      message.textContent = 'The reference could not be applied. Check both endpoints and its length.';
+      return;
+    }
+    saving = true;
+    message.textContent = 'Saving reference for this image…';
+    update(); publish();
+    try {
+      const saved = await saveCalibration(calibration);
+      if (current !== revision) return;
+      data = { ...data, ...saved };
+      message.textContent = saved.status === 'cleared'
+        ? 'Cleared scale saved for this image. Disc heights will remain uncalibrated.'
+        : 'Reference saved for this image. Segmentation and disc-height measurements will use this scale.';
+      publish();
+    } catch (error) {
+      if (current === revision) message.textContent = `Reference applies this session but could not be saved: ${error.message}`;
+    } finally {
+      if (current === revision) { saving = false; update(); }
+    }
+  }
+  apply.addEventListener('click', async () => {
+    if (saving) return;
     const next = math.reference(reference, Number(value.value));
     if (!next) return;
     spacing = next;
-    message.textContent = 'Reference applied. Select Measure distance, then click two points.';
-    update(); publish();
+    await saveReference();
   });
   manual.addEventListener('click', () => {
     referenceSelect.value = '-1'; reference = []; spacing = null; distancePoints = [];
@@ -121,11 +148,13 @@ export function createCalibrationViewer(root) {
     message.textContent = 'Click the two ends of a known reference, enter its length in mm, then apply.';
     update(); publish();
   });
-  clear.addEventListener('click', () => {
+  clear.addEventListener('click', async () => {
+    if (saving || !data) return;
     reference = []; spacing = null; distancePoints = []; value.value = ''; mode = 'reference';
     referenceSelect.value = '-1';
-    message.textContent = 'Scale cleared. Draw a reference or choose a detected reference.';
-    update(); publish();
+    data = { ...data, status: 'cleared', spacing: null, selected_index: null,
+      message: 'Scale cleared. Draw a reference or choose a detected reference.' };
+    await saveReference();
   });
   measure.addEventListener('click', () => {
     mode = 'distance'; distancePoints = [];
@@ -138,7 +167,7 @@ export function createCalibrationViewer(root) {
       Math.max(0, Math.min(canvas.height - 1, (event.clientY - box.top) * canvas.height / box.height))];
   };
   canvas.addEventListener('pointerdown', event => {
-    if (!bitmap || event.button !== 0) return;
+    if (!bitmap || saving || event.button !== 0) return;
     event.preventDefault();
     const point = pointFromEvent(event);
     const points = mode === 'distance' ? distancePoints : reference;
@@ -171,7 +200,7 @@ export function createCalibrationViewer(root) {
   async function load(file, cached = null, profile = null) {
     const current = ++revision;
     if (bitmap) bitmap.close();
-    bitmap = null; data = null; spacing = null; reference = []; distancePoints = []; dragging = null;
+    bitmap = null; data = null; spacing = null; reference = []; distancePoints = []; dragging = null; saving = false;
     mode = 'reference'; value.value = ''; referenceSelect.replaceChildren();
     canvas.hidden = true; panel.hidden = false; value.disabled = false;
     message.textContent = 'Finding the image scale…'; update(); publish();
@@ -182,7 +211,9 @@ export function createCalibrationViewer(root) {
       const matches = reusable && reusable.status !== 'unavailable' && reusable.source_sha256 === previewResponse.source_sha256
         && reusable.width === previewResponse.width && reusable.height === previewResponse.height;
       if (cached && !matches) previewResponse = await calibrate({ ...file, profile });
-      const response = matches ? { ...previewResponse, ...reusable, image_png: previewResponse.image_png } : previewResponse;
+      const response = matches
+        ? { ...previewResponse, ...preferReviewedCalibration(reusable, previewResponse), image_png: previewResponse.image_png }
+        : previewResponse;
       if (current !== revision) return;
       const bytes = Uint8Array.from(atob(response.image_png), char => char.charCodeAt(0));
       const decoded = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
