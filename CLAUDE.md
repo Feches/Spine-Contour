@@ -46,10 +46,22 @@ single-page UI and is never a base. It holds the studies-table work: spec
 over the ticked visible rows; sortable Find headers; SUBJECT editable in place; a stored `reviewedAt` and the fourth
 status, Reviewed; a development-only demo toggle. On the branch before the v1.0.5 merge: unit 505/505;
 `smoke-studies.mjs` 136/136; `smoke-persist.mjs` 40/40 then 47/47; `smoke-parameters.mjs` 58/58; `smoke-workspace.mjs`
-100/100; the human gate passed 2026-09-10 (user). The merged tree reads unit 513/513; its smoke-suite counts are
-recorded in `docs/releases/1.0.6.md`. Pushed to `fork`. **Next:** the 1.0.6 release commit, then a PR to `fork/main`
+100/100; `smoke-seeding.mjs` 36/36 (not re-run). The human gate passed 2026-09-10 (user). The merged tree reads unit
+513/513; its smoke-suite counts are recorded in the plan's `## Ledger` and in the release PR's description once the
+suites have run on the merged tree. Pushed to `fork`. **Next:** the 1.0.6 release commit, then a PR to `fork/main`
 whose merge publishes the v1.0.6 installers; the packaged-build checks (no DEMO STUDIES row, no
 `library-preferences.json`) run on that installer. The paragraphs below are historical.
+
+**Superseded 2026-09-10 (kept for the record):** **Branch `claude/studies-table-ui-updates-953945` (2026-09-10) — PLANNED, execution not started.** It sits on
+`fork/main` @ `6106463`, which is **the trunk now**: the backend developer took `fork/ui-redesign-cw` (the 2026-09-08
+handover tip) and released v1.0.0–1.0.3 on top of it through fork PRs #4–#8; `fork/ui-redesign-cw` is an ancestor of
+`fork/main`, the older `claude/studies-ui-updates-bb040d` tip (`4f76063`) is superseded, and upstream `origin/main`
+still has the OLD single-page UI and is never a base. The branch holds the approved spec
+`docs/superpowers/specs/2026-09-10-studies-table-review-design.md` (`e6178fe`) and the plan
+`docs/superpowers/plans/2026-09-10-studies-table-review.md` (`f6e421b`; Tasks 1–9: Delete over the ticked visible rows,
+sortable Find headers, SUBJECT editable in place, a stored `reviewedAt` and the fourth status Reviewed, a
+development-only demo toggle). Unit 479/479 on this base; no code task has started. `docs/superpowers/NEXT-SESSION.md`
+is the execution prompt. The branch paragraphs below are historical.
 
 **Current branch (2026-09-06): `claude/studies-ui-updates-bb040d`**, 7 commits of user-requested
 studies/UI work on top of `origin/ui-redesign-cw` @ `0022d91`, pushed to `fork`. Unit 293/293 and

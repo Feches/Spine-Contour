@@ -39,9 +39,10 @@ On the branch before the v1.0.5 merge: unit 505/505; `smoke-studies.mjs` 136/136
 2026-09-10 (user): "OK IT PASSED all 7." The packaged-build checks (no DEMO STUDIES row, no `library-preferences.json`)
 were NOT run — wait for the next preview installer. `fork/main` is the trunk now: the backend developer took
 `fork/ui-redesign-cw` and released v1.0.0–1.0.3 on top of it. The branch then merged `fork/main` @ `71d483f` (v1.0.5:
-optional PACS toolbar removal + persisted manual image calibration) as `ceacc7e`; the merged tree reads unit 513/513,
-and its smoke-suite counts are recorded in `docs/releases/1.0.6.md`. **Next:** the 1.0.6 release commit, then a PR to
-`fork/main` whose merge publishes the v1.0.6 installers; the packaged-build checks run on that installer.
+optional PACS toolbar removal + persisted manual image calibration) as `ceacc7e`; the merged tree reads unit 513/513;
+its smoke-suite counts are recorded in the plan's `## Ledger` and in the release PR's description once the suites
+have run on the merged tree. **Next:** the 1.0.6 release commit, then a PR to `fork/main` whose merge publishes the
+v1.0.6 installers; the packaged-build checks run on that installer.
 
 **Superseded (folded into the DONE section above, 2026-09-10) — the original planning-session status, kept for the record:**
 
