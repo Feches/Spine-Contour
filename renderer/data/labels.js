@@ -58,3 +58,13 @@ export function folderLabel(study) {
 export function pathTitle(study) {
   return study && typeof study.filePath === 'string' && study.filePath !== '' ? study.filePath : null;
 }
+
+// The SUBJECT cell (studies-table spec 2026-09-10, section 7.1): the record's subject id, else the demo
+// record's patient label -- `pt` exists only on the nine compiled-in records -- else an em dash. A
+// real study with no subject shows the dash, and the Find tab's editor opens empty for it.
+export function subjectLabel(study) {
+  if (!study) return DASH;
+  if (typeof study.subjectId === 'string' && study.subjectId.trim() !== '') return study.subjectId;
+  if (typeof study.pt === 'string' && study.pt.trim() !== '') return study.pt;
+  return DASH;
+}
