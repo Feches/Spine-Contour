@@ -1,3 +1,4 @@
+from backend import calibration
 from backend.calibration import resolve_tesseract
 
 
@@ -51,3 +52,33 @@ def test_nothing_found_returns_none():
         platform='nt',
     )
     assert path is None
+
+
+def test_posix_install_locations_checked_in_order():
+    path = resolve_tesseract(
+        env={},
+        which=lambda name: None,
+        exists=lambda p: p == '/usr/local/bin/tesseract',
+        platform='posix',
+    )
+    assert path == '/usr/local/bin/tesseract'
+
+    path = resolve_tesseract(
+        env={},
+        which=lambda name: None,
+        exists=lambda p: p in ('/opt/homebrew/bin/tesseract', '/usr/local/bin/tesseract'),
+        platform='posix',
+    )
+    assert path == '/opt/homebrew/bin/tesseract'
+
+
+def test_configure_ocr_resolves_only_once_per_process(monkeypatch):
+    calls = []
+    monkeypatch.setattr(calibration, 'resolve_tesseract', lambda *a, **kw: calls.append(1) or None)
+    calibration._reset_ocr_cache()
+    try:
+        calibration.configure_ocr()
+        calibration.configure_ocr()
+        assert len(calls) == 1
+    finally:
+        calibration._reset_ocr_cache()

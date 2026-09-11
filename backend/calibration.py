@@ -61,23 +61,53 @@ def resolve_tesseract(env=None, which=shutil.which, exists=os.path.isfile, platf
     return None
 
 
-def configure_ocr():
+# Memoised OCR resolution: the bundled-copy check, the resolve_tesseract() lookup and the
+# one log line only need to happen once per process, not once per image in a batch.
+_OCR_RESOLVED = None
+_OCR_RESOLVED_ONCE = False
+
+
+def _resolve_ocr_once():
+    """Determine the Tesseract command and TESSDATA_PREFIX (bundled copy, else system lookup).
+
+    Runs the filesystem checks, the resolve_tesseract() PATH/install-folder scan, and logs
+    the single OCR: info/warning line. Called at most once per process; configure_ocr()
+    caches the result.
+    """
     root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
     bundled = root / 'ocr' / ('tesseract.exe' if os.name == 'nt' else 'tesseract')
     if bundled.is_file():
-        pytesseract.pytesseract.tesseract_cmd = str(bundled)
-        os.environ['TESSDATA_PREFIX'] = str(bundled.parent / 'tessdata')
-        return
+        return str(bundled), str(bundled.parent / 'tessdata')
     # No bundled copy (source launch): fall back to a system install. Unlike
     # the bundled case, we do not set TESSDATA_PREFIX -- a system Tesseract
     # finds its own tessdata.
     resolved = resolve_tesseract()
     if resolved:
         log.info('OCR: using %s', resolved)
-        pytesseract.pytesseract.tesseract_cmd = resolved
     else:
         log.warning('OCR: no Tesseract binary found on PATH or in the standard install folders; '
                      'automatic ruler detection will be unavailable.')
+    return resolved, None
+
+
+def configure_ocr():
+    global _OCR_RESOLVED, _OCR_RESOLVED_ONCE
+    if not _OCR_RESOLVED_ONCE:
+        _OCR_RESOLVED = _resolve_ocr_once()
+        _OCR_RESOLVED_ONCE = True
+    tesseract_cmd, tessdata_prefix = _OCR_RESOLVED
+    # Cheap, so reapply on every call even though the lookup itself only ran once.
+    if tesseract_cmd:
+        pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+    if tessdata_prefix:
+        os.environ['TESSDATA_PREFIX'] = tessdata_prefix
+
+
+def _reset_ocr_cache():
+    """Test-only: clear the memoised OCR resolution so the next configure_ocr() re-resolves."""
+    global _OCR_RESOLVED, _OCR_RESOLVED_ONCE
+    _OCR_RESOLVED = None
+    _OCR_RESOLVED_ONCE = False
 
 
 def _decode(payload):
