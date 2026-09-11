@@ -7,6 +7,7 @@ import hashlib
 import logging
 import os
 from pathlib import Path
+import shutil
 import sys
 
 import cv2
@@ -25,12 +26,58 @@ MAX_PIXELS = 25_000_000
 UNIT_MM = {'mm': 1., 'cm': 10., 'um': .001, 'μm': .001, 'in': 25.4}
 
 
+def resolve_tesseract(env=None, which=shutil.which, exists=os.path.isfile, platform=os.name):
+    """Find a system Tesseract binary when no bundled copy exists.
+
+    Checked in order: an explicit TESSERACT_CMD override, the PATH, then the
+    standard per-OS install folders. Returns the chosen path, or None if
+    nothing was found. Pure aside from the injectable env/which/exists, so it
+    can be unit-tested without touching the real machine.
+    """
+    if env is None:
+        env = os.environ
+    override = env.get('TESSERACT_CMD')
+    if override and exists(override):
+        return override
+    found = which('tesseract')
+    if found:
+        return found
+    if platform == 'nt':
+        candidates = []
+        program_files = env.get('ProgramFiles')
+        if program_files:
+            candidates.append(os.path.join(program_files, 'Tesseract-OCR', 'tesseract.exe'))
+        program_files_x86 = env.get('ProgramFiles(x86)')
+        if program_files_x86:
+            candidates.append(os.path.join(program_files_x86, 'Tesseract-OCR', 'tesseract.exe'))
+        local_app_data = env.get('LOCALAPPDATA')
+        if local_app_data:
+            candidates.append(os.path.join(local_app_data, 'Programs', 'Tesseract-OCR', 'tesseract.exe'))
+    else:
+        candidates = ['/opt/homebrew/bin/tesseract', '/usr/local/bin/tesseract', '/usr/bin/tesseract']
+    for candidate in candidates:
+        if exists(candidate):
+            return candidate
+    return None
+
+
 def configure_ocr():
     root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent.parent))
     bundled = root / 'ocr' / ('tesseract.exe' if os.name == 'nt' else 'tesseract')
     if bundled.is_file():
         pytesseract.pytesseract.tesseract_cmd = str(bundled)
         os.environ['TESSDATA_PREFIX'] = str(bundled.parent / 'tessdata')
+        return
+    # No bundled copy (source launch): fall back to a system install. Unlike
+    # the bundled case, we do not set TESSDATA_PREFIX -- a system Tesseract
+    # finds its own tessdata.
+    resolved = resolve_tesseract()
+    if resolved:
+        log.info('OCR: using %s', resolved)
+        pytesseract.pytesseract.tesseract_cmd = resolved
+    else:
+        log.warning('OCR: no Tesseract binary found on PATH or in the standard install folders; '
+                     'automatic ruler detection will be unavailable.')
 
 
 def _decode(payload):

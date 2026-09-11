@@ -209,6 +209,12 @@ Local only, on a random port. Four endpoints the measurement UI uses, plus the b
 endpoints (`POST /calibrate`, `POST /calibration-profile`, 2026-09-07; `scipy`, `pytesseract` and the Tesseract runtime
 are theirs — the venv needs the two packages for the backend to start):
 
+Automatic ruler calibration needs a Tesseract binary: the installers bundle one, but a source
+launch resolves it via `TESSERACT_CMD`, then the PATH, then the standard install folders
+(`C:\Program Files\Tesseract-OCR` on Windows) — see `backend.calibration.resolve_tesseract()`;
+when none is found the backend logs `OCR: no Tesseract binary found ...` and every image reads
+"Automatic ruler detection is unavailable."
+
 - `POST /predict` — multipart file upload. Returns `image_png`, `mask_png`,
   `femoral_mask_png`, `measurements`, `geometry`, `qc`, `labels` (all base64 where
   relevant). Slow: locates the lumbosacral region, then runs the chosen models.

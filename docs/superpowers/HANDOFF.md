@@ -1553,6 +1553,14 @@ plan 06 had never been packaged, or that installed previews contain demos, are s
 
 ## Known traps
 
+- **A source launch with Tesseract installed but not on PATH silently reports every image as
+  `unavailable`.** `configure_ocr()` only points `pytesseract` at the bundled copy shipped in
+  installers; without one it used to fall through to `tesseract` on PATH with no further lookup,
+  so a machine with Tesseract at e.g. `C:\Program Files\Tesseract-OCR` but no PATH entry got
+  `TesseractNotFoundError` on every ruler extraction, silently caught and turned into "Automatic
+  ruler detection is unavailable." (2026-09-10, this laptop, Tesseract 5.3.3.) `resolve_tesseract()`
+  now also checks `TESSERACT_CMD` and the standard per-OS install folders; the console names the
+  outcome (`OCR: using <path>` or `OCR: no Tesseract binary found ...`) so a source launch says why.
 - **The Bash tool halves a doubled backslash in command text** (2026-09-08, batch execution): `\\\\` arrives as
   `\\`, so a `grep -P '\\u[0-9A-Fa-f]{4}'` written the natural way reaches PCRE as `\u` and errors, and a Python
   heredoc with `"\\u"` in a string hits a SyntaxError. Single escapes such as `\x00` are untouched. Double every
