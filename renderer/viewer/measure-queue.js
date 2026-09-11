@@ -55,8 +55,12 @@ export function createMeasureQueue({ measure, getState, setState, showToast, deb
       measured.set(studyId, result.geometry);
       // The numbers a review was made over are being replaced, so the mark goes with them
       // (studies-table spec 2026-09-10, section 8.4). On the write, not derived: one line, one test.
+      // The same write records manual-edit provenance in qc -- landmarks always, femoral when the circles moved.
       writeStudy(studyId, { measurements: result.measurements, geometry: result.geometry, reviewedAt: null,
-        ...(result.qc?.coverage ? { qc: { ...current.qc, coverage: result.qc.coverage } } : {}) });
+        qc: { ...current.qc, ...(result.qc?.coverage ? { coverage: result.qc.coverage } : {}),
+          manual_edits: { ...current.qc?.manual_edits, landmarks: true,
+            femoral: Boolean(current.qc?.manual_edits?.femoral)
+              || JSON.stringify(current.geometry?.femoral_circles) !== JSON.stringify(result.geometry.femoral_circles) } } });
     } catch (error) {
       if (revision !== revisions.get(studyId)) return;
       const known = measured.get(studyId);

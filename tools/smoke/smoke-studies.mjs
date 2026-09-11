@@ -176,6 +176,8 @@ try {
       exportDisabled: exportButton ? exportButton.disabled : null,
       exportTitle: exportButton ? exportButton.title : null,
       confidence: document.querySelector('.confidence-value')?.textContent,
+      confidenceLabel: document.querySelector('.confidence-label')?.textContent,
+      confidenceTone: document.querySelector('.confidence-details')?.dataset.tone,
       l1paLabel: cell('L1PA', '.meas-label'), l1paValue: cell('L1PA', '.meas-value'),
       llLabel: cell('LL', '.meas-label'), llValue: cell('LL', '.meas-value'),
     };
@@ -185,7 +187,12 @@ try {
   check('edit and re-run are disabled for a demo study', demo.editDisabled === true && demo.rerunDisabled === true, demo);
   check('the Analysis header carries a DEMO pill', demo.headerPill === 'DEMO', demo.headerPill);
   check('Export CSV is disabled for a demo study and says why', demo.exportDisabled === true && demo.exportTitle === 'Demo studies are not exported', demo);
-  check('FEMORAL FIT CONFIDENCE reads 96%', demo.confidence === '96%', demo.confidence);
+  // v1.0.7 replaced the header's raw femoral-fit percentage with the OVERALL CONFIDENCE badge, an
+  // assessment of the whole image. A demo record has no geometry and is never assessed, so the badge
+  // reads an em dash with the unknown tone -- it must not borrow the study's stored femoral score
+  // (0.96) and present it as an overall confidence the app never computed.
+  check('OVERALL CONFIDENCE reads an em dash for a demo study, not its stored 96% fit score',
+    demo.confidenceLabel === 'OVERALL CONFIDENCE' && demo.confidence === '\u2014' && demo.confidenceTone === 'unknown', demo);
   check('L1 PELVIC ANGLE reads an em dash, never a fabricated value', demo.l1paLabel === 'L1 PELVIC ANGLE' && demo.l1paValue === '—', demo);
   check('LUMBAR LORDOSIS · L1–S1 reads 48.2°', demo.llLabel === 'LUMBAR LORDOSIS · L1–S1' && demo.llValue === '48.2°', demo);
 

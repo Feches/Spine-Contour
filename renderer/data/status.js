@@ -21,11 +21,11 @@ export function landmarkReviewReasons(qc) {
     reasons.push(`Partial segmentation — missing ${missing}. Only available landmarks are measured.`);
   }
   if (qc?.coverage?.unoriented?.length) reasons.push('Anterior/posterior orientation unavailable — only middle disc heights can be measured.');
-  if (qc?.femoral?.qc_pass === false) {
+  if (!qc?.manual_edits?.femoral && qc?.femoral?.qc_pass === false) {
     reasons.push(`Femoral measurements unavailable — ${qc.femoral.reason || 'no usable femoral fit'}.`);
   }
   const confidence = qc?.femoral?.confidence;
-  if (typeof confidence === 'number' && confidence < CONFIDENCE_LIMIT) {
+  if (!qc?.manual_edits?.femoral && typeof confidence === 'number' && confidence < CONFIDENCE_LIMIT) {
     reasons.push('Low femoral fit confidence — check the femoral landmarks.');
   }
   const framing = qc?.framing;
@@ -38,6 +38,7 @@ export function landmarkReviewReasons(qc) {
       reasons.push('Spine location needs review — check the crop and vertebral levels.');
     }
   }
+  if (qc?.manual_edits?.landmarks) reasons.push('Manually edited landmarks — verify the corrected positions. Original model scores do not assess these edits.');
   return reasons;
 }
 

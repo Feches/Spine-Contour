@@ -177,3 +177,29 @@ test('a corrected partial result commits atomically and survives the actual stud
   assert.deepEqual(reload(persisted[0]).qc.coverage, original.qc.coverage);
   assert.deepEqual(state.measurementDrafts, {});
 });
+
+test('one edited head survives save/load and CSV without pelvic angles or lost disc heights', () => {
+  const original = study(anatomy);
+  const edited = structuredClone(original);
+  edited.geometry.femoral_circles.splice(0, 1);
+  edited.geometry.hip_midpoint = null;
+  Object.assign(edited.measurements, { PI: null, PT: null, L1PA: null });
+  edited.qc.manual_edits = { landmarks: true, femoral: true };
+  const saved = reload(edited);
+  assert.deepEqual(saved.geometry, edited.geometry);
+  assert.deepEqual(discRows(saved), discRows(original));
+  const row = csvRow(toCsv([saved]));
+  for (const [key, value] of Object.entries(row)) {
+    if (/^(PI|PT|L1PA|PI-LL) /.test(key)) assert.equal(value, '');
+  }
+  assert.equal(saved.qc.manual_edits.femoral, true);
+  assert.equal(deriveStatus(saved), 'rev');
+});
+
+test('explicitly clearing the last remaining head persists a measured empty correction', () => {
+  const cleared = study([]);
+  cleared.geometry.manually_cleared = true;
+  const saved = reload(cleared);
+  assert.deepEqual(saved.geometry, cleared.geometry);
+  assert.ok(sagittalRows(saved.measurements).every(row => row.absent));
+});

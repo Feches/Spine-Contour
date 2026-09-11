@@ -84,14 +84,14 @@ function isValidGeometry(g) {
   }
   if (g.s1_superior !== null && !points(g.s1_superior, 2)) return false;
   if (g.vertebrae.L1 ? !point(g.l1_center) : g.l1_center !== null) return false;
-  if (!Array.isArray(g.femoral_circles) || ![0, 2].includes(g.femoral_circles.length)) return false;
-  if (g.femoral_circles.length ? !point(g.hip_midpoint) : g.hip_midpoint !== null) return false;
+  if (!Array.isArray(g.femoral_circles) || ![0, 1, 2].includes(g.femoral_circles.length)) return false;
+  if (g.femoral_circles.length === 2 ? !point(g.hip_midpoint) : g.hip_midpoint !== null) return false;
   for (const circle of g.femoral_circles) {
     if (!Array.isArray(circle) || circle.length !== 3) return false;
     const [cx, cy, r] = circle;
     if (!finite(cx) || !finite(cy) || !finite(r) || !(r > 0)) return false;
   }
-  return Object.keys(g.vertebrae).length > 0 || g.s1_superior !== null || g.femoral_circles.length > 0;
+  return Object.keys(g.vertebrae).length > 0 || g.s1_superior !== null || g.femoral_circles.length > 0 || g.manually_cleared === true;
 }
 
 function measurementsHaveLandmarks(m, g) {

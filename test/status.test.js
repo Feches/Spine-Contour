@@ -165,3 +165,26 @@ test('reviewBlockedReason: demo, then running, then nothing to review, then pend
   assert.equal(reviewBlockedReason({ study: { id: 'SP-1000', source: 'real', ...CLEAN }, running: 'SP-1001' }), null);
   assert.equal(reviewBlockedReason({ study: null }), REVIEW_NOTHING);
 });
+
+// The two v1.0.6/v1.0.7 rules meet here. His manual-edit reason (renderer/data/status.js,
+// landmarkReviewReasons) says the original model scores do not assess a human's corrections;
+// main's review mark outranks every reason and reads Reviewed. Neither cancels the other: the
+// mark changes the STATUS, it never deletes a reason, so the Measurements panel keeps warning
+// about the edit after the study has been signed off.
+test('a manually edited study reads Needs review until it is marked, and the manual-edit reason survives the mark', () => {
+  const edited = {
+    measurements: { PI: 60, PT: 20, SS: 40 },
+    qc: { femoral: { confidence: 0.95 }, manual_edits: { landmarks: true, femoral: false } },
+  };
+  const before = reviewReasons(edited);
+  assert.equal(deriveStatus(edited), 'rev');
+  assert.ok(before.some((reason) => reason.startsWith('Manually edited landmarks')),
+    'the manual-edit reason is what makes an otherwise clean edited study need review');
+
+  const marked = { ...edited, reviewedAt: '2026-09-10T12:00:00.000Z' };
+  const after = reviewReasons(marked);
+  assert.equal(deriveStatus(marked), 'ok');
+  assert.equal(after.length, before.length);
+  assert.ok(after.some((reason) => reason.startsWith('Manually edited landmarks')),
+    'the mark outranks the reason for the badge, it does not remove the reason');
+});

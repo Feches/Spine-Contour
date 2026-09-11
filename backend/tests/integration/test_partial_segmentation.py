@@ -67,3 +67,28 @@ def test_malformed_partial_correction_is_rejected():
     response = TestClient(server.app).post('/measure', json={'vertebrae': {'L1': {'superior': [[0, 0]]}},
                                                           's1_superior': None, 'femoral_circles': []})
     assert response.status_code == 422
+
+
+def test_circle_delete_move_add_and_clear_via_measure_api():
+    from backend.tests.unit.test_partial_measurements import anatomy, NAMES
+    vertebrae, s1, circles = anatomy(NAMES)
+    client = TestClient(server.app)
+    def measure(circles, vertebrae=vertebrae, s1=s1):
+        response = client.post('/measure', json={'vertebrae': vertebrae, 's1_superior': s1, 'femoral_circles': circles})
+        assert response.status_code == 200, response.text
+        return response.json()
+    original = measure(circles)
+    for remaining in [circles[1:], [], [[50, 160, 14]]]:
+        partial = measure(remaining)
+        assert partial['geometry']['femoral_circles'] == remaining
+        assert partial['geometry']['hip_midpoint'] is None
+        assert partial['measurements']['PI'] is None
+        assert partial['measurements']['LL'] == original['measurements']['LL']
+    restored = measure([[50, 160, 14], [75, 160, 15]])
+    assert restored['geometry']['hip_midpoint'] == [62.5, 160]
+    assert restored['measurements']['PI'] is not None
+    # Only heads were detected, and the user removes the last one: keep their explicit edit.
+    empty = measure([], {}, None)
+    assert empty['geometry']['manually_cleared'] is True
+    assert empty['geometry']['hip_midpoint'] is None
+    assert all(empty['measurements'][name] is None for name in ('PI', 'PT', 'SS', 'L1PA'))

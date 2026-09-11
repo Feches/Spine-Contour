@@ -21,6 +21,24 @@ sections under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
 ---
 
+## 2026-09-10 — editable femoral circles and overall confidence
+
+Branch `claude/femoral-confidence-1.0.7` (2026-09-10). It starts from
+`fork/codex/editable-femoral-confidence` (`ee735e1`), cut from v1.0.5 (`71d483f`), and is
+merged with `main` @ `b083d7d` (v1.0.6), then renumbered to 1.0.7. **Fork PR #10's branch
+is superseded by it** — the PR that publishes 1.0.7 is this branch's.
+
+It hides raw femoral masks in both viewers, permits 0/1/2 circles through
+correction/save/load, and adds the overall QC assessment with original-score provenance.
+Reset restores QC as well as geometry/measurements, keeping the study's own qc when the
+snapshot carries none. The confidence badge's tones (`Review recommended`, `Limited
+information`, `Checks passed`) deliberately share no label with the status badge beside it,
+which reads `Segmented`/`Needs review`/`Processing`/`Reviewed` from different inputs; the
+badge also counts a run in flight as pending, so it never assesses the previous run's
+numbers. See `docs/releases/1.0.7.md` for the verification counts on the merged tree and
+the newest architecture amendment for controls and null rules. No model or calibration
+algorithm changed; no screenshots were added.
+
 ## Where things stand
 
 ### Studies table — DONE (branch `claude/studies-table-ui-updates-953945`, off `fork/main` @ `6106463`, merged with `fork/main` @ `71d483f`, v1.0.5)
@@ -42,7 +60,7 @@ were NOT run — wait for the next preview installer. `fork/main` is the trunk n
 optional PACS toolbar removal + persisted manual image calibration) as `ceacc7e`; the merged tree reads unit 513/513;
 its smoke-suite counts are recorded in the plan's `## Ledger` and in the release PR's description once the suites
 have run on the merged tree. **Next:** the 1.0.6 release commit, then a PR to `fork/main` whose merge publishes the
-v1.0.6 installers; the packaged-build checks run on that installer.
+v1.0.6 installers; the packaged-build checks run on that installer. **Done 2026-09-10:** v1.0.6 published from b083d7d (PR #11).
 
 **Superseded (folded into the DONE section above, 2026-09-10) — the original planning-session status, kept for the record:**
 
@@ -1535,6 +1553,14 @@ plan 06 had never been packaged, or that installed previews contain demos, are s
 
 ## Known traps
 
+- **A source launch with Tesseract installed but not on PATH silently reports every image as
+  `unavailable`.** `configure_ocr()` only points `pytesseract` at the bundled copy shipped in
+  installers; without one it used to fall through to `tesseract` on PATH with no further lookup,
+  so a machine with Tesseract at e.g. `C:\Program Files\Tesseract-OCR` but no PATH entry got
+  `TesseractNotFoundError` on every ruler extraction, silently caught and turned into "Automatic
+  ruler detection is unavailable." (2026-09-10, this laptop, Tesseract 5.3.3.) `resolve_tesseract()`
+  now also checks `TESSERACT_CMD` and the standard per-OS install folders; the console names the
+  outcome (`OCR: using <path>` or `OCR: no Tesseract binary found ...`) so a source launch says why.
 - **The Bash tool halves a doubled backslash in command text** (2026-09-08, batch execution): `\\\\` arrives as
   `\\`, so a `grep -P '\\u[0-9A-Fa-f]{4}'` written the natural way reaches PCRE as `\u` and errors, and a Python
   heredoc with `"\\u"` in a string hits a SyntaxError. Single escapes such as `\x00` are untouched. Double every

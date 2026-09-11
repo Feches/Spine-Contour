@@ -1118,3 +1118,29 @@ longer connected to the document (`!input.isConnected`) while `editingSubject` s
 user-driven blur, where the node is still connected at that moment. Without the guard the half-typed draft was written and the editor
 closed out from under the user. See HANDOFF's "Known traps" and `smoke-studies.mjs`'s "a rebuild while the editor is open keeps the
 editor, the draft and the caret" check, the tripwire for this guard.
+
+## 2026-09-10 amendment: editable femoral circles and image confidence (v1.0.7)
+
+User-authorized: raw femoral masks are no longer decoded or rendered; only the
+vertebral label mask is overlaid. Geometry draws circles, centres and the bilateral
+midpoint in both viewers. Legacy `side` selection keys identify array slots only;
+visible names are Head 1/2. Circles are a compact array of zero, one or two triples.
+`hip_midpoint` is null unless two circles exist. Deleting compacts the array and clears
+selection. `/measure` accepts a single circle without inventing pelvic angles, and
+permits an explicitly emptied correction with `geometry.manually_cleared: true`.
+An empty automatic prediction still fails. Save/load preserves these partial edits.
+
+All editing stays in `components/viewer.js`; geometry helpers mutate only clones.
+Successful edits set `qc.manual_edits.landmarks` and, when circles changed, `femoral`.
+Original model QC remains provenance; refreshed coverage describes current geometry.
+Reset restores the prediction's QC along with its geometry and measurements. When
+the snapshot carries no QC, reset keeps the study's own QC instead, never erasing
+its review reasons (2026-09-10).
+
+`data/confidence.js` derives a categorical overall review assessment and individual
+score details. This supersedes the single femoral-fit badge. It must never present
+femoral fit as overall accuracy or invent an aggregate probability. Missing checks,
+partial anatomy, calibration, orientation, consistency and manual-edit provenance
+remain visible. Pending corrections display Updating; a run in flight on the open
+study displays it too (2026-09-10). No schema-version bump,
+CSP change or new runtime dependency.

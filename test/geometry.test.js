@@ -127,3 +127,20 @@ test('setFemoralCircle floors the radius at 1', () => {
   setFemoralCircle(geometry, 'left', [10, 140, 0]);
   assert.equal(geometry.femoral_circles[0][2], 1);
 });
+
+test('delete, move and restore heads never invent a midpoint for one circle', async () => {
+  const { removeFemoralCircle } = await import('../renderer/viewer/geometry.js');
+  const geometry = fakeGeometry();
+  removeFemoralCircle(geometry, 'left');
+  assert.deepEqual(geometry.femoral_circles, [[20, 140, 5]]);
+  assert.equal(geometry.hip_midpoint, null);
+  setFemoralCircle(geometry, 'left', [25, 140, 8]);
+  assert.equal(geometry.hip_midpoint, null);
+  removeFemoralCircle(geometry, 'left');
+  assert.deepEqual(geometry.femoral_circles, []);
+  setFemoralCircle(geometry, 'right', [35, 140, 8]);
+  assert.deepEqual(geometry.femoral_circles, [], 'no sparse array');
+  setFemoralCircle(geometry, 'left', [25, 140, 8]);
+  setFemoralCircle(geometry, 'right', [35, 150, 8]);
+  assert.deepEqual(geometry.hip_midpoint, [30, 145]);
+});

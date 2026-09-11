@@ -1,3 +1,4 @@
+import { imageConfidence, scorePercent } from '../data/confidence.js';
 import { el, mount } from '../dom.js';
 import { getState, setState, subscribe } from '../store.js';
 import {
@@ -21,9 +22,7 @@ import { preferReviewedCalibration } from '../data/calibration.js';
 const BACK_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12 H5"></path><path d="M11 6 L5 12 L11 18"></path></svg>';
 
 export function formatConfidence(qc) {
-  const confidence = qc?.femoral?.confidence;
-  if (typeof confidence !== 'number' || Number.isNaN(confidence)) return '—';
-  return `${Math.round(confidence * 100)}%`;
+  return scorePercent(qc?.femoral?.confidence);
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +94,12 @@ let restoreRevision = 0;
 
 function currentStudy(state) {
   return state.studies.find((s) => s.id === state.openId) ?? null;
+}
+
+// Element-wise identity over a fixed-length key, the same shape screens/studies.js and
+// components/viewer.js use. A null previous key never matches, so the first update() paints.
+function sameConfidenceKey(a, b) {
+  return a !== null && b !== null && a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
 function teardown() {
@@ -481,7 +486,7 @@ export function render(state) {
     onBlur: () => queueMicrotask(commitName),
   });
   const headerMeta = el('div', { class: 'analysis-meta' });
-  const confidenceValue = el('div', { class: 'confidence-value' });
+  const confidenceValue = el('span', { class: 'confidence-value' });
 
   // Blank means "go back to the film's own name", not "no name": an empty header would leave the
   // user with nothing to recognise the study by, and the filename is always recoverable.
@@ -497,15 +502,15 @@ export function render(state) {
     }));
   }
 
-  // Labelled FEMORAL FIT CONFIDENCE, not the mockup's SEGMENTATION CONFIDENCE, because
-  // the number behind it is qc.femoral.confidence -- a femoral circle-fit score, not a
-  // whole-segmentation score. The architecture contract's "never label a value with a
-  // name it isn't" rule names this badge specifically. Do not rename it to match the
-  // mockup. It stays visible with an em dash before a run, per the absent-value rule.
-  const confidenceBadge = el('div', { class: 'confidence-badge' },
-    el('div', { class: 'confidence-dot' }),
-    el('div', { class: 'confidence-label' }, 'FEMORAL FIT CONFIDENCE'),
-    confidenceValue);
+  // Overall is a transparent QC assessment. Model scores keep their individual names.
+  const confidenceBreakdown = el('div', { class: 'confidence-breakdown' });
+  const confidenceBadge = el('details', { class: 'confidence-details' },
+    el('summary', { class: 'confidence-badge', title: 'Show the image quality checks' },
+      el('span', { class: 'confidence-dot' }),
+      el('span', { class: 'confidence-label' }, 'OVERALL CONFIDENCE'), confidenceValue),
+    confidenceBreakdown);
+  // The reference-identity key the badge was last built from; see update()'s confidenceKey.
+  let lastConfidence = null;
 
   // The list's status badge (studies-table spec 2026-09-10, section 8.3), so the screen says what the row
   // says: Processing while this study's run is in flight, Reviewed once marked. Rebuilt by update()
@@ -650,7 +655,22 @@ export function render(state) {
     // SP-nnnn id stays reachable on the title rather than disappearing entirely.
     headerMeta.textContent = `${(open.view || '—').toUpperCase()} · ${open.pt ?? '—'}`
       + (produced ? ` · ${produced.toUpperCase()}` : '');
-    confidenceValue.textContent = formatConfidence(open.qc);
+    // A run in flight counts as pending too: the numbers on the record are the PREVIOUS run's,
+    // so an assessment of them would be a stale claim about a study that is being re-measured.
+    const pendingForConfidence = Boolean(live.measurementDrafts?.[open.id]) || live.running === open.id;
+    // Cheap gate, on reference identity: update() runs on every notification, pan frames
+    // included, and imageConfidence walks the geometry and builds seven detail strings. The
+    // store replaces records rather than mutating them, so a changed reference IS a changed
+    // input; this replaces the JSON.stringify of the whole assessment that used to run per
+    // notification. No setState here -- update() runs inside a store notification.
+    const confidenceKey = [open.qc, open.geometry, open.measurements, open.calibration, pendingForConfidence];
+    if (!sameConfidenceKey(confidenceKey, lastConfidence)) {
+      lastConfidence = confidenceKey;
+      const assessment = imageConfidence(open, pendingForConfidence);
+      confidenceValue.textContent = assessment.label;
+      confidenceBadge.dataset.tone = assessment.tone;
+      confidenceBreakdown.replaceChildren(...assessment.details.map(detail => el('p', {}, detail)));
+    }
 
     // toCsv already drops demo rows, so exporting a demo study would write a header and no
     // data. Disabling the button says why instead of handing back an empty file.

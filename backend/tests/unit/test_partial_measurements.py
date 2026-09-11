@@ -74,14 +74,14 @@ def test_an_image_with_no_usable_landmarks_is_still_rejected():
         spinopelvic_measurements_from_geometry({}, None, [])
 
 
-@pytest.mark.parametrize('change', ['nan', 'collapsed', 'short', 'bad_s1', 'one_hip', 'negative_radius'])
+@pytest.mark.parametrize('change', ['nan', 'collapsed', 'short', 'bad_s1', 'three_hips', 'negative_radius'])
 def test_malformed_corrections_are_not_treated_as_missing_anatomy(change):
     vertebrae, s1, circles = anatomy(NAMES)
     if change == 'nan': vertebrae['L2']['superior'][0][0] = float('nan')
     if change == 'collapsed': vertebrae['L2']['superior'][1] = vertebrae['L2']['superior'][0]
     if change == 'short': vertebrae['L2']['inferior'] = [[1, 2]]
     if change == 'bad_s1': s1 = [[1, 2], [1, 2]]
-    if change == 'one_hip': circles = circles[:1]
+    if change == 'three_hips': circles = circles + circles[:1]
     if change == 'negative_radius': circles[0][2] = -1
     with pytest.raises(ValueError):
         spinopelvic_measurements_from_geometry(vertebrae, s1, circles)
@@ -95,3 +95,18 @@ def test_degenerate_angle_vectors_stay_null_but_real_zero_angles_are_kept():
     assert result['measurements']['PI'] is None
     assert result['measurements']['PT'] is None
     assert result['measurements']['L1PA'] is None
+
+
+@pytest.mark.parametrize('remaining', [0, 1])
+def test_removing_heads_preserves_independent_angles_and_never_uses_one_as_hip_axis(remaining):
+    vertebrae, s1, circles = anatomy(NAMES)
+    original = spinopelvic_measurements_from_geometry(vertebrae, s1, circles)
+    result = spinopelvic_measurements_from_geometry(vertebrae, s1, circles[:remaining])
+    assert result['geometry']['femoral_circles'] == circles[:remaining]
+    assert result['geometry']['hip_midpoint'] is None
+    for key in ('PI', 'PT', 'L1PA'):
+        assert result['measurements'][key] is None
+    for key in ('SS', 'LL'):
+        assert result['measurements'][key] == original['measurements'][key]
+    assert result['qc']['coverage']['missing'] == ['femoral heads']
+    assert 'femoral heads' not in result['qc']['coverage']['available']
