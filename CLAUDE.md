@@ -1,5 +1,12 @@
 # Spine Contour
 
+**2026-09-11 filename grammar / note:** branch `claude/spine-contour-filename-parse-b6c1bb` off `fork/main` @
+`6704586` (v1.0.7). Filename stems are read as underscore-separated fields — subject, then a timepoint, view or
+`M-D-YYYY`/`YYYY-MM-DD` date in any order, then plain fields as a new `note` — by `inferFromStem`; `seedFields` seeds
+`filmDate` and `note`; `studyFromFile` seeds picked/dropped films; the drawer has a fifth NOTE column and `toCsv` a
+`Note` column. See the pre-op/post-op spec §8.1 (amended). A load never rewrites a stored subject, even one the old
+parser stored as the whole stem (user decision: delete and re-add such films). Unreleased; the 1.0.8 bump is a release step.
+
 **2026-09-10 circle editing / confidence:** v1.0.7 supports 0/1/2 editable femoral circles and hides raw femoral masks. See `docs/releases/1.0.7.md` and the latest architecture amendment. Overall confidence is a categorical QC assessment, never a repurposed femoral percentage. Manual edits preserve original score provenance; reset restores QC too.
 
 **2026-09-10 manual reference persistence:** v1.0.5 fixes calibration before study

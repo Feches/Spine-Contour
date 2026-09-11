@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Read the subject, timepoint, film date and a note from a film's name on load: underscores
+  separate the fields (`sub225_post-op_3-22-2024_femoral heads`), in any order after the subject;
+  the date is `M-D-YYYY` or `YYYY-MM-DD`. A film added with the picker or dropped on the list is
+  read the same way.
+- Add a Note to each study: a fifth column in the drawer's Study group, a `Note` column in the
+  CSV export after Film date, and searchable from the Find box. It is what tells two same-day
+  films of one subject apart.
+- A film named with a date after its timepoint used to load with the whole name as its subject and
+  no timepoint, so it never paired. Such films loaded before this release keep that subject: delete
+  them and load the folder again.
+
 ## 1.0.7
 
 - Show femoral heads as editable circles with centre marks and a bilateral midpoint; hide the raw femoral segmentation in analysis and comparison views.

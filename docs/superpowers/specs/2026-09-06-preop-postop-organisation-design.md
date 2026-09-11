@@ -180,6 +180,9 @@ them by accident; any can be reversed before implementation starts.
  * @property {string|null} timepoint   'Pre-op' | 'Intra-op' | 'Post-op' | '6 wk' | '1 yr' | … or any
  *                                     user label (§7.2)
  * @property {string|null} filmDate   'YYYY-MM-DD'; the film's acquisition date, never addedAt
+ * @property {string|null} note       (2026-09-11) free text; the filename's plain fields after the
+ *                                     recognised ones (§8.1 rule 3) or typed in the drawer; what
+ *                                     tells two same-day films of one subject apart
  */
 ```
 
@@ -242,10 +245,17 @@ segments strictly below the workspace root, plus the filename stem, and classifi
 1. Any segment that normalises to a timepoint (§7.2) supplies `timepoint`; any that normalises to a
    view (§7.3) supplies `view`. The **last** such segment wins if two of the same kind match.
 2. The **first** segment below the root that is neither a timepoint nor a view supplies `subjectId`.
-3. If no folder segment supplied a subject, the stem does. Its trailing `-`/`_`/space separated
-   tokens are examined right to left for as long as they normalise to a timepoint or a view, each
-   supplying its field; whatever remains is the subject. A stem made only of such tokens supplies no
-   subject.
+3. The stem is read as **underscore-separated fields** (amended 2026-09-11, user decision;
+   spaces and hyphens inside a field are content, so `post-op`, `post op`, `6 wk` and `3-22-2024`
+   are each one field). A field that normalises to a timepoint (§7.2) or a view (§7.3), or that
+   reads as a date — `M-D-YYYY` or `YYYY-MM-DD`, four-digit year, calendar-checked — supplies that
+   value, in any order, the last of a kind winning. The text before the first such field is the
+   subject, verbatim (`IMG_0001` stays whole), used when no folder segment supplied one; when
+   nothing precedes it, the first plain field after it is the subject (`preop_S001`). Every other
+   plain field after the first recognised one joins the `note`, space-separated. A stem with no
+   recognised field is all subject; one made only of recognised fields has no subject. Hyphens
+   never separate fields, so `S001-6-wk` is a subject named `S001-6-wk`. The date form is the
+   filename's own: the CSV's `film_date` rule (§8.2) is unchanged and still rejects `3-22-2024`.
 
 | Layout | subjectId | timepoint | view |
 |---|---|---|---|
@@ -260,6 +270,24 @@ segments strictly below the workspace root, plus the filename stem, and classifi
 | `root/CohortA/1yr/S001.png` | `CohortA` | `1 yr` | default |
 | `root/S001.png` | `S001` | `null` | default |
 | `root/IMG_0001.png` | `IMG_0001` | `null` | default |
+
+With the 2026-09-11 grammar, film date and note read from the stem too (subject, timepoint, film
+date, view, note):
+
+| Layout | subjectId | timepoint | filmDate | view | note |
+|---|---|---|---|---|---|
+| `root/sub225_post-op_3-22-2024.jpg` | `sub225` | `Post-op` | `2024-03-22` | default | `null` |
+| `root/sub225_pre-op_10-23-2023_femoral heads.jpg` | `sub225` | `Pre-op` | `2023-10-23` | default | `femoral heads` |
+| `root/sub225_6 wk_2024-04-30.jpg` | `sub225` | `6 wk` | `2024-04-30` | default | `null` |
+| `root/sub225_3-22-2024.jpg` | `sub225` | `null` | `2024-03-22` | default | `null` |
+| `root/sub225_post-op_2-30-2024.jpg` | `sub225` | `Post-op` | `null` | default | `2-30-2024` |
+| `root/P-9/sub225_post-op_3-22-2024.jpg` | `P-9` | `Post-op` | `2024-03-22` | default | `null` |
+| `root/S001-6-wk.png` | `S001-6-wk` | `null` | `null` | default | `null` |
+
+A field that only looks like a date (an impossible day, a two-digit year) is not one and lands in
+the note, where it can be seen and fixed. A film added with the picker or dropped on the list is
+read the same way, through `studyFromFile` in `screens/studies.js`, with no root and no folder
+table.
 
 "default" is the folder's row in the folder table (§8.5), which starts at `Standing lateral` and is
 whatever the user set it to before Load. The `CohortA` row is the heuristic's known weakness: a
@@ -285,7 +313,8 @@ duplicates and ambiguous stems are reported exactly as today.
 ### 8.3 Precedence
 
 Per field, per film, most specific first: an existing non-null stored value is kept; else the CSV
-value if the row supplied one; else a token in the film's own stem (§8.1 rule 3); else, for
+value if the row supplied one; else a field in the film's own stem (§8.1 rule 3 — since 2026-09-11
+the film date and the note too; the note has no CSV step); else, for
 `timepoint` and `view`, the folder table row for the folder the film sits in (§8.5) — which starts
 at the folder's own inferred token and is whatever the user set it to; else null. `view` never
 reaches null on a workspace load because its row always holds a value. `subjectId` has no folder-row
@@ -297,7 +326,8 @@ drawer overwrites anything.
 
 `workspaceLoadedMessage` gains up to three clauses, each present only when its count is non-zero:
 
-- `· subject, timepoint or view read from folder or file names for N films`
+- `· subject, timepoint, film date, view or note read from folder or file names for N films`
+  (the film date and note were added to the clause on 2026-09-11)
 - `· subject, timepoint, film date or view set from the CSV for N films`
 - `· N films have no subject` (or `no timepoint`; both when both)
 - `· N film dates could not be read` — the rejected text is stored nowhere; the film's empty Film date cell in
@@ -338,7 +368,8 @@ folder heuristic's weaknesses; a misread cohort folder shows up here as a row, n
 
 The clinical data drawer (spec §9.5) gets four fixed columns ahead of the clinical field columns,
 under a **Study** group heading: Subject (text), Timepoint (text with the §7.2 chips), Film date
-(date input), View (text with the §7.3 chips). The grid keeps its shape — one row per visible study —
+(date input), View (text with the §7.3 chips) — and, since 2026-09-11, a fifth, Note (free text,
+trimmed, empty stores null). The grid keeps its shape — one row per visible study —
 so the new cells sit beside that study's clinical values. These four columns cannot be removed and
 do not appear in the `ADD FIELD` chips, because they are not clinical fields. The same deferred
 commit pattern the clinical grid uses (HANDOFF, "two deferred commits") applies, so a rebuild does not
@@ -430,8 +461,8 @@ disabled for the same two reasons as the long one. The Analysis screen's per-stu
 
 ### 11.1 Long format
 
-`toCsv` gains three columns after `View`: `Subject`, `Timepoint`, `Film date`. Absent values are
-empty, never `0` or `—`. The comment block stays (roadmap item 1 decides whether import skips it).
+`toCsv` gains three columns after `View`: `Subject`, `Timepoint`, `Film date` — and a fourth,
+`Note`, since 2026-09-11. Absent values are empty, never `0` or `—`. The paired export is unchanged. The comment block stays (roadmap item 1 decides whether import skips it).
 
 **Clinical columns are the union of every clinical key present on the exported studies**, in
 `KNOWN_FIELDS` order then custom, using the existing union helper — not the session's visible field
@@ -441,9 +472,9 @@ The per-study export on the Analysis screen changes with it, since both call `to
 contract amendment rather than leaving a parameter that is silently ignored.
 
 ```
-Study ID,View,Subject,Timepoint,Film date,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,...,Age,Sex,ODI
-SP-1000,Standing lateral,S001,Pre-op,2025-03-02,38.2,52.1,21.4,30.7,13.9,...,61,F,44
-SP-1001,Standing lateral,S001,Post-op,2025-09-14,49.1,52.3,14.0,38.3,3.2,...,61,F,18
+Study ID,View,Subject,Timepoint,Film date,Note,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,...,Age,Sex,ODI
+SP-1000,Standing lateral,S001,Pre-op,2025-03-02,,38.2,52.1,21.4,30.7,13.9,...,61,F,44
+SP-1001,Standing lateral,S001,Post-op,2025-09-14,femoral heads,49.1,52.3,14.0,38.3,3.2,...,61,F,18
 ```
 
 ### 11.2 Paired (wide) format
@@ -684,3 +715,10 @@ comparison pane; PDF export.
   `data/csv.js` exports its delta helper; `exportFileName(workspace, kind)` in `data/parameters.js`;
   `toastDuration(text)` in `components/toast.js`; the paired button and its note in
   `screens/parameters.js`.
+- **Filename grammar and note (2026-09-11, user decision):** §8.1 rule 3 is the underscore grammar
+  above; `Study` gains `note` (§7.1, listed in `validateStudy`); `inferFromStem` returns five
+  fields and `seedFields` seeds `filmDate` and `note` from the stem; `studyFromFile` in
+  `screens/studies.js` seeds a picked or dropped film; the drawer's fifth Study column; `toCsv`'s
+  `Note` column; `matchesQuery` searches the note; the §8.4 clause names the five fields. Records
+  whose subject the old parser stored as the whole stem are not rewritten by a load (fill-blanks
+  holds): the user deletes and re-adds those films.
