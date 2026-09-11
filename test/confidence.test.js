@@ -32,14 +32,14 @@ test('each weak quality signal independently requires review despite a strong fe
     s => { s.geometry.vertebrae.L1.anterior_confirmed = false; },
   ]) {
     const s = complete(); change(s);
-    assert.equal(imageConfidence(s).label, 'Needs review');
+    assert.equal(imageConfidence(s).label, 'Review recommended');
   }
 });
 test('edited circles retain original scores as provenance, not confidence in the correction', () => {
   const s = complete(); s.qc.manual_edits = { landmarks: true, femoral: true };
   s.qc.femoral = { confidence: null, qc_pass: false, reason: 'failed original fit' };
   const result = imageConfidence(s);
-  assert.equal(result.label, 'Needs review');
+  assert.equal(result.label, 'Review recommended');
   assert.match(result.details.join(' '), /before circle edits/);
   assert.doesNotMatch(result.details.join(' '), /Femoral measurements unavailable/);
 });

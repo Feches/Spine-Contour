@@ -176,7 +176,7 @@
   flex: 1 1 100%;
 }
 
-/* The list's status badge in the header, before FEMORAL FIT CONFIDENCE. */
+/* The list's status badge in the header, before the OVERALL CONFIDENCE badge. */
 .analysis-status {
   display: flex;
   align-items: center;

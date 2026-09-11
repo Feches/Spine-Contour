@@ -700,7 +700,8 @@ export function mountViewer(container) {
       selection: null,
       studies: current.studies.map((item) => (item.id === study.id
         // The prediction's own numbers replace the corrected ones (studies-table spec 8.4, site 3).
-        ? { ...item, measurements: structuredClone(predicted.measurements), geometry: structuredClone(predicted.geometry), qc: structuredClone(predicted.qc), reviewedAt: null }
+        // A snapshot recorded without qc keeps the study's own rather than erasing every review reason.
+        ? { ...item, measurements: structuredClone(predicted.measurements), geometry: structuredClone(predicted.geometry), qc: predicted.qc ? structuredClone(predicted.qc) : item.qc, reviewedAt: null }
         : item)),
     }));
   }

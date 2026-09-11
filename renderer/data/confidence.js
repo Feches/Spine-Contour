@@ -38,6 +38,10 @@ export function imageConfidence(study, pending = false) {
     explanation,
   ];
   const needsReview = reasons.length > (incomplete ? 1 : 0);
-  return { label: needsReview ? 'Needs review' : incomplete ? 'Limited information' : 'Checks passed',
+  // No tone may equal a statusLabel string ('Segmented'/'Needs review'/'Processing'/'Reviewed'):
+  // this badge sits beside the status badge in the Analysis header and the two derive from
+  // different inputs, so shared words read as the screen contradicting itself. Wording only --
+  // the tones and the conditions that pick them are unchanged.
+  return { label: needsReview ? 'Review recommended' : incomplete ? 'Limited information' : 'Checks passed',
     tone: needsReview ? 'review' : incomplete ? 'unknown' : 'pass', details };
 }

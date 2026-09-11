@@ -96,6 +96,12 @@ function currentStudy(state) {
   return state.studies.find((s) => s.id === state.openId) ?? null;
 }
 
+// Element-wise identity over a fixed-length key, the same shape screens/studies.js and
+// components/viewer.js use. A null previous key never matches, so the first update() paints.
+function sameConfidenceKey(a, b) {
+  return a !== null && b !== null && a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
 function teardown() {
   if (!mounted) return;
   mounted.viewer.detach();
@@ -503,6 +509,7 @@ export function render(state) {
       el('span', { class: 'confidence-dot' }),
       el('span', { class: 'confidence-label' }, 'OVERALL CONFIDENCE'), confidenceValue),
     confidenceBreakdown);
+  // The reference-identity key the badge was last built from; see update()'s confidenceKey.
   let lastConfidence = null;
 
   // The list's status badge (studies-table spec 2026-09-10, section 8.3), so the screen says what the row
@@ -648,10 +655,18 @@ export function render(state) {
     // SP-nnnn id stays reachable on the title rather than disappearing entirely.
     headerMeta.textContent = `${(open.view || '—').toUpperCase()} · ${open.pt ?? '—'}`
       + (produced ? ` · ${produced.toUpperCase()}` : '');
-    const assessment = imageConfidence(open, Boolean(live.measurementDrafts?.[open.id]));
-    const confidenceKey = JSON.stringify(assessment);
-    if (lastConfidence !== confidenceKey) {
+    // A run in flight counts as pending too: the numbers on the record are the PREVIOUS run's,
+    // so an assessment of them would be a stale claim about a study that is being re-measured.
+    const pendingForConfidence = Boolean(live.measurementDrafts?.[open.id]) || live.running === open.id;
+    // Cheap gate, on reference identity: update() runs on every notification, pan frames
+    // included, and imageConfidence walks the geometry and builds seven detail strings. The
+    // store replaces records rather than mutating them, so a changed reference IS a changed
+    // input; this replaces the JSON.stringify of the whole assessment that used to run per
+    // notification. No setState here -- update() runs inside a store notification.
+    const confidenceKey = [open.qc, open.geometry, open.measurements, open.calibration, pendingForConfidence];
+    if (!sameConfidenceKey(confidenceKey, lastConfidence)) {
       lastConfidence = confidenceKey;
+      const assessment = imageConfidence(open, pendingForConfidence);
       confidenceValue.textContent = assessment.label;
       confidenceBadge.dataset.tone = assessment.tone;
       confidenceBreakdown.replaceChildren(...assessment.details.map(detail => el('p', {}, detail)));

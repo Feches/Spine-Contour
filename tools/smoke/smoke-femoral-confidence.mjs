@@ -39,7 +39,7 @@ try {
     check('restart keeps unsupported pelvic angles and midpoint null', saved.geometry.hip_midpoint === null && saved.measurements.PI === null && saved.measurements.PT === null);
     await cdp.setState("{ ack:true,screen:'analysis',openId:'SP-8801',editing:true,tab:'meas' }");
     await until("document.querySelector('.viewer-canvas-dynamic')?.width>0 && document.querySelector('.run-card')?.classList.contains('is-hidden')");
-    check('reopened image reports review, not the original fit percentage', await cdp.evaluate("document.querySelector('.confidence-value').textContent==='Needs review'"));
+    check('reopened image reports review, not the original fit percentage', await cdp.evaluate("document.querySelector('.confidence-value').textContent==='Review recommended'"));
     await button('RESET TO PREDICTION');
     const reset = await current();
     check('reset after restart restores both heads and original QC', reset.geometry.femoral_circles.length === 2 && !reset.qc.manual_edits && reset.qc.coverage.partial === false);
@@ -86,7 +86,7 @@ try {
     let partial = await current();
     check('delete preserves one circle and clears dependent angles', partial.geometry.femoral_circles.length===1 && partial.geometry.hip_midpoint===null && ['PI','PT','L1PA'].every(k=>partial.measurements[k]===null));
     check('circle deletion preserves all calibrated disc heights', JSON.stringify(await heights())===JSON.stringify(beforeHeights));
-    check('edited geometry does not reuse the original score as current confidence', await cdp.evaluate("document.querySelector('.confidence-value').textContent==='Needs review' && document.querySelector('.confidence-breakdown').textContent.includes('before circle edits')"));
+    check('edited geometry does not reuse the original score as current confidence', await cdp.evaluate("document.querySelector('.confidence-value').textContent==='Review recommended' && document.querySelector('.confidence-breakdown').textContent.includes('before circle edits')"));
     await selectHead(0); await cdp.key('ArrowRight'); await settled();
     check('one remaining circle can move without creating a midpoint', (await current()).geometry.hip_midpoint===null && (await current()).geometry.femoral_circles[0][0]>partial.geometry.femoral_circles[0][0]);
     await button('ADD CIRCLE');
