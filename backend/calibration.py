@@ -5,6 +5,7 @@ import base64
 import io
 import hashlib
 import logging
+import ntpath
 import os
 from pathlib import Path
 import shutil
@@ -46,13 +47,13 @@ def resolve_tesseract(env=None, which=shutil.which, exists=os.path.isfile, platf
         candidates = []
         program_files = env.get('ProgramFiles')
         if program_files:
-            candidates.append(os.path.join(program_files, 'Tesseract-OCR', 'tesseract.exe'))
+            candidates.append(ntpath.join(program_files, 'Tesseract-OCR', 'tesseract.exe'))
         program_files_x86 = env.get('ProgramFiles(x86)')
         if program_files_x86:
-            candidates.append(os.path.join(program_files_x86, 'Tesseract-OCR', 'tesseract.exe'))
+            candidates.append(ntpath.join(program_files_x86, 'Tesseract-OCR', 'tesseract.exe'))
         local_app_data = env.get('LOCALAPPDATA')
         if local_app_data:
-            candidates.append(os.path.join(local_app_data, 'Programs', 'Tesseract-OCR', 'tesseract.exe'))
+            candidates.append(ntpath.join(local_app_data, 'Programs', 'Tesseract-OCR', 'tesseract.exe'))
     else:
         candidates = ['/opt/homebrew/bin/tesseract', '/usr/local/bin/tesseract', '/usr/bin/tesseract']
     for candidate in candidates:

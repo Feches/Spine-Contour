@@ -32,6 +32,7 @@ def test_path_lookup_preferred_over_install_locations():
     assert path == r'C:\PATH\tesseract.exe'
 
 
+# Failed on macOS CI before ntpath was used: os.path.join followed the host's rules, not 'nt'.
 def test_windows_program_files_used_when_nothing_on_path():
     program_files = r'C:\Program Files'
     expected = program_files + r'\Tesseract-OCR\tesseract.exe'
@@ -42,6 +43,31 @@ def test_windows_program_files_used_when_nothing_on_path():
         platform='nt',
     )
     assert path == expected
+
+
+def test_windows_candidates_join_with_backslashes_on_any_host():
+    probed = []
+
+    def exists(p):
+        probed.append(p)
+        return False
+
+    path = resolve_tesseract(
+        env={
+            'ProgramFiles': r'C:\Program Files',
+            'ProgramFiles(x86)': r'C:\Program Files (x86)',
+            'LOCALAPPDATA': r'C:\Users\x\AppData\Local',
+        },
+        which=lambda name: None,
+        exists=exists,
+        platform='nt',
+    )
+    assert probed == [
+        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+        r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+        r'C:\Users\x\AppData\Local\Programs\Tesseract-OCR\tesseract.exe',
+    ]
+    assert path is None
 
 
 def test_nothing_found_returns_none():
