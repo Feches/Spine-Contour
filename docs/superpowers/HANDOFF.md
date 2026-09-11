@@ -23,10 +23,15 @@ sections under "Where things stand" and `docs/superpowers/NEXT-SESSION.md`.
 
 ## 2026-09-10 — editable femoral circles and overall confidence
 
-Branch `claude/femoral-confidence-1.0.7` (2026-09-10). It starts from
+**DONE — v1.0.7 published 2026-09-11** (fork PR #12 merged as `6704586`; Windows x64 and macOS arm64
+installers plus `SHA256SUMS`; PR #10 reads "merged" because its one commit is contained). Branch
+`claude/femoral-confidence-1.0.7` (2026-09-10). It starts from
 `fork/codex/editable-femoral-confidence` (`ee735e1`), cut from v1.0.5 (`71d483f`), and is
 merged with `main` @ `b083d7d` (v1.0.6), then renumbered to 1.0.7. **Fork PR #10's branch
-is superseded by it** — the PR that publishes 1.0.7 is this branch's.
+was superseded by it** — PR #12 published 1.0.7. Commits above the merge: `3a6adb2` (interplay test),
+`521f4b1` (release 1.0.7), `296987f`/`8f409ec`/`8eeff71`/`ec285df` (the merged-tree review's fixes and
+docs), `8443b81`/`e0a7a12` (the backend finds a system Tesseract when none is bundled, once per process),
+`83e658d` (`ntpath` in `resolve_tesseract`'s Windows branch, which fixed the macOS CI failure).
 
 It hides raw femoral masks in both viewers, permits 0/1/2 circles through
 correction/save/load, and adds the overall QC assessment with original-score provenance.
@@ -38,6 +43,43 @@ badge also counts a run in flight as pending, so it never assesses the previous 
 numbers. See `docs/releases/1.0.7.md` for the verification counts on the merged tree and
 the newest architecture amendment for controls and null rules. No model or calibration
 algorithm changed; no screenshots were added.
+
+**Rulings made during the 1.0.7 integration (2026-09-10/11), each with its cost if wrong.** The
+integration had no plan file; its scratch ledger died with the session, so the record is here.
+
+1. **Reconciled on a new branch from his tip; his branch and PR #10 never touched; a superseding PR** — the
+   user's "safest path". Cost: one branch to discard.
+2. **Seven single-hunk conflicts resolved keep-both** (`measure-queue.js` writeStudy carries `reviewedAt: null`
+   and his `qc.manual_edits`; `viewer.js` reset writes his `qc` and our `reviewedAt: null`; `analysis.js` both
+   imports; both appended tests; his changelog entry above ours as 1.0.7; his release note renamed
+   `1.0.7.md`; both contract amendments). Cost: a re-resolve.
+3. **His confidence tone `Needs review` became `Review recommended`** so no confidence label equals a status
+   label beside it; predicates, tones and timing are his and unchanged. Cost: three strings.
+4. **`imageConfidence` treats a running study as pending; reset keeps the study's qc when a snapshot has
+   none; the assessment is recomputed only when a reference key over qc/geometry/measurements/calibration/
+   pending changes.** Cost: a few lines each.
+5. **The pending detail reads "Measurements are being updated."**, not "after your edit". Cost: a string.
+6. **Routed to the backend developer, not changed** (listed in PR #12's description): the release note's
+   Escape wording; a missing calibration always forcing the review tone; `allow_empty=True` on every
+   `/measure`; `geometry.manually_cleared` without a `STORE_VERSION` bump; dead `formatConfidence` and its
+   three tests; the undefined `--amber` token; the edit bar's stage-wide band; re-running
+   `smoke-femoral-confidence.mjs` with his 1906×801 fixture (it could not run here). Cost: none — his call.
+7. **The v1.0.6 studies smoke check that read a percentage badge was rewritten to the new badge's real
+   behaviour, never deleted.** Cost: one check.
+8. **The backend resolves a system Tesseract when none is bundled** (`TESSERACT_CMD` → PATH → the standard
+   install folders), once per process, bundled copy first — after the user's mid-gate "auto calibration isn't
+   working anymore" was root-caused to a dev launch with Tesseract on no PATH. Cost: one function.
+9. **`ntpath.join` for the Windows candidates** so a function taking `platform` is host-independent — the
+   macOS CI failure. Cost: one import.
+10. **The controller read the three-string follow-up diffs itself** instead of dispatching a fourth reviewer.
+    Cost: an unreviewed string change.
+
+Verification on the merged tree at `83e658d`: unit 524/524; `smoke-studies.mjs` 136/136; `smoke-persist.mjs`
+40/40 then 47/47; `smoke-parameters.mjs` 58/58; `smoke-workspace.mjs` 100/100; `smoke-seeding.mjs` 36/36;
+backend unit 345 and integration 58 with Tesseract on PATH; his `smoke-femoral-confidence.mjs` not run here. The
+user tested the merged development build (his circle editing, the header badge pair, auto calibration after the
+OCR fix) before merging. **Still owed on an installed build (1.0.6 or 1.0.7):** Settings has no DEMO STUDIES row;
+the profile never gains `library-preferences.json`; automatic calibration works with the bundled OCR.
 
 ## Where things stand
 
@@ -1553,6 +1595,12 @@ plan 06 had never been packaged, or that installed previews contain demos, are s
 
 ## Known traps
 
+- **A pure function that takes a `platform` argument must not use the host's `os.path`** (2026-09-11):
+  `resolve_tesseract(..., platform='nt')` built its Windows candidates with `os.path.join`, which on the macOS
+  runner joined with forward slashes, so the exact-match unit test passed on Windows (locally and in CI) and
+  failed only in the macOS job — with logs that need a login to read (the API returns 403, the raw-log URL 404,
+  and the page marks the step truncated). Reproduce the runner's condition locally instead (here: Tesseract on
+  PATH, then the backend suite), then read the new code for host dependence; `ntpath`/`posixpath` fix it.
 - **A source launch with Tesseract installed but not on PATH silently reports every image as
   `unavailable`.** `configure_ocr()` only points `pytesseract` at the bundled copy shipped in
   installers; without one it used to fall through to `tesseract` on PATH with no further lookup,

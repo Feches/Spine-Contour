@@ -2844,3 +2844,9 @@ reconciled. Release commits `7ccd2dc` (chore: release 1.0.6) and `3b7f6cf` (chor
 style) precede the two fix commits above on this branch. Packaged-build checks (no DEMO STUDIES row in a
 built installer; no stray `library-preferences.json`) are NOT RUN here — source-level smoke only — and remain for
 the next 1.0.6 installer.
+
+Session ended 2026-09-11: this plan is closed — v1.0.6 published 2026-09-10 (PR #11, `b083d7d`); the follow-on
+integration of the backend developer's femoral-confidence work shipped as v1.0.7 on 2026-09-11 (PR #12, `6704586`),
+recorded in HANDOFF's "2026-09-10 — editable femoral circles and overall confidence" section. Resume at: no task —
+the packaged-build checks on the installed 1.0.7 (no DEMO STUDIES row; no `library-preferences.json`; automatic
+calibration with the bundled OCR), then the ROADMAP §5/§7 items. Unit 524/524 on `6704586`.

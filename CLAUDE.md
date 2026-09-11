@@ -37,11 +37,15 @@ release.** Plan 06's automated verification is green and its Gate 1 passed on 20
 developer who wrote the Python backend — and **the preview installer has never been tested with
 plan 06's code in it**.
 
-**Branch `claude/femoral-confidence-1.0.7` (2026-09-10)** — the backend developer's editable femoral
-circles and overall image confidence (`ee735e1`, off v1.0.5) merged with `fork/main` @ `b083d7d` (v1.0.6) and
-renumbered to 1.0.7; the Analysis header carries both his confidence badge and the status badge with disjoint
-vocabularies; verification counts in `docs/releases/1.0.7.md`; next: a PR to `fork/main` superseding PR #10, whose
-merge publishes 1.0.7.
+**v1.0.7 published 2026-09-11 from `fork/main` @ `6704586` (PR #12).** Branch `claude/femoral-confidence-1.0.7`
+(2026-09-10) — the backend developer's editable femoral circles and overall image confidence (`ee735e1`, off v1.0.5)
+merged with `fork/main` @ `b083d7d` (v1.0.6) and renumbered to 1.0.7; the Analysis header carries both his confidence
+badge and the status badge with disjoint vocabularies; the backend finds a system Tesseract when none is bundled (a
+source launch's automatic calibration was silently unavailable before); verification counts in
+`docs/releases/1.0.7.md`; the integration's rulings are in HANDOFF's "2026-09-10 — editable femoral circles" section.
+**Next:** the packaged-build checks on an installed build (no DEMO STUDIES row; no `library-preferences.json`;
+automatic calibration with the bundled OCR), the items routed to the backend developer in PR #12's description, and
+the ROADMAP §5/§7 items. New feature work starts with a brainstorm and a plan.
 
 **Branch `claude/studies-table-ui-updates-953945` (2026-09-10) — DONE, merged with `fork/main` v1.0.5.** It sits on
 `fork/main` @ `6106463` and has been merged with `fork/main` @ `71d483f` (v1.0.5) — **`fork/main` is the trunk
@@ -254,8 +258,9 @@ packages; keep `--collect-all timm` in both workflows.
 ## Git
 
 This worktree (`.claude/worktrees/studies-ui-updates-bb040d`, whose directory name predates this work) is on branch
-`claude/femoral-confidence-1.0.7` (2026-09-10), off `fork/codex/editable-femoral-confidence` @ `ee735e1`, merged
-with `fork/main` @ `b083d7d` (v1.0.6). Two remotes:
+`claude/wrap-2026-09-11` (the 2026-09-11 wrap's docs commit), off `fork/main` @ `6704586` (v1.0.7, the trunk). The
+feature branches `claude/studies-table-ui-updates-953945` (v1.0.6) and `claude/femoral-confidence-1.0.7` (v1.0.7) are
+merged and closed. Two remotes:
 
 - `fork` → `github.com/Feches/Spine-Contour` — **push here**
 - `origin` → `github.com/mjayasur/Spine-Contour` — upstream, read-only in practice
