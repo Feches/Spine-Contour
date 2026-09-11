@@ -22,6 +22,10 @@ let state = {
   // The study ids ticked on the Parameters grid (addendum, 2026-09-07); replaced wholesale;
   // session-only, never persisted.
   paramSelected: [],
+  // (2026-09-10, studies-table spec 6.1) the Find list's sort: key 'study'|'subject'|'view'|'workspace'|
+  // 'folder'|'date'|'status', dir 'asc'|'desc'. Replaced wholesale on change; session-only, never persisted;
+  // read by the Studies screen's own subscription, never by SCREEN_KEYS. The grid's paramSort is separate.
+  findSort: { key: 'date', dir: 'desc' },
   openId: null,
   compareId: null,
 

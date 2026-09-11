@@ -699,7 +699,8 @@ export function mountViewer(container) {
     setState((current) => ({
       selection: null,
       studies: current.studies.map((item) => (item.id === study.id
-        ? { ...item, measurements: structuredClone(predicted.measurements), geometry: structuredClone(predicted.geometry), qc: structuredClone(predicted.qc) }
+        // The prediction's own numbers replace the corrected ones (studies-table spec 8.4, site 3).
+        ? { ...item, measurements: structuredClone(predicted.measurements), geometry: structuredClone(predicted.geometry), qc: structuredClone(predicted.qc), reviewedAt: null }
         : item)),
     }));
   }

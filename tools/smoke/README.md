@@ -264,15 +264,39 @@ folders that could not be read)` clause — `screens/workspace.js` records the s
 module scope only when its own folder handler ran the scan, so a state-seeded scan renders
 `3 radiographs found` without the clause, and that is what the suite asserts.
 
-**Known baseline** (fresh scratch profile, this branch tip): unit 426/426
-(`node --test test/*.test.js`); `smoke-studies.mjs` 103/103 — its stale diagnosis check was fixed 2026-09-08 (it
-searches "meyerding", a word only SP-0042 carries); sections 10–14 run three real batches (two films, one
+**Known baseline** (fresh scratch profile, this branch tip): unit 505/505
+(`node --test test/*.test.js`); `smoke-studies.mjs` 136/136 — section 16 gained two groups on 2026-09-10. The
+first is spec 7.3, a rebuild mid-edit (forced through another row's tick, so nothing about the edited row
+changes): the rebuild re-creates the editor with the draft, the focus and the caret, and the DESTROYED input's
+deferred `blur` commit no longer fires one microtask later to write the half-typed draft to the record and close
+the editor update() had just re-focused — the removal-blur guard (`!input.isConnected` in the editor's `onBlur`)
+fixed that defect on 2026-09-10, and its two checks ("a rebuild while the editor is open keeps the editor, the
+draft and the caret (spec 7.3)" and "the rebuild, and the Escape after it, leave the stored subject alone") pass.
+The suite still writes the stored subject back afterwards — a no-op while the editor survives a rebuild, so a
+regression of that fix cannot reach the checks below it. The second group is spec 8.2, a Reviewed row on the list: `badge badge-ok`/`Reviewed`, the
+summary's TO REVIEW count following the mark, and the derived badge restored when it is cleared — all three
+pass. Its stale diagnosis check was fixed 2026-09-08 (it
+searches "meyerding", a word only SP-0042 carries); its `readProgress()` helper was fixed 2026-09-10 to strip the
+nested `.study-processing-detail` span before reading `.studies-progress-text` (upstream commit `63b3484` nested
+the live backend stage/detail inside that element), which is why the three progress checks ("the bar shows 0 of 2
+done...", "after the first film the bar reads 1 of 2 done...", "Stop marks the batch stopping...") pass again — a
+suite fix, not a product change; sections 10–14 run three real batches (two films, one
 unreadable film, two films with a Stop), about three more real runs, so the suite takes roughly a minute longer;
-it must run on a FRESH launch, never after `smoke-workspace.mjs` on the same instance, whose loaded films are
-still unsegmented (summary reads n+1 studies, 1 unsegmented then reads 3 UNSEGMENTED, 2026-09-08);
-`smoke-workspace.mjs` 100/100;
-`smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36; `smoke-persist.mjs` 36/36 then 44/44 — the same figures as
-`docs/superpowers/HANDOFF.md`'s baseline paragraph. Every check in the suite runs
+sections 15–17, 2026-09-10, cover the sortable headers, the SUBJECT editor and Delete selected; it injects and
+deletes SP-9002 and SP-9003; it must run on a FRESH launch, never after `smoke-workspace.mjs` on the same
+instance, whose loaded films are still unsegmented (summary reads n+1 studies, 1 unsegmented then reads 3
+UNSEGMENTED, 2026-09-08);
+`smoke-workspace.mjs` 100/100 — measured 96/100 on 2026-09-10 (four FAILs, all null summary-parse reads) because
+its `summaryParts()` regex (line 119) still expected the old two-clause summary against the studies-table spec's
+third "· N TO REVIEW" clause (added by Task 4, already in this tip); the Task 7 addendum extended that regex
+the same way `smoke-studies.mjs`'s own `summaryParts()` was fixed in this task, and a fresh run now reads 100/100
+(see `tools/smoke/out/task7b-workspace.txt`); re-run 2026-09-10 on the merged `fork/main` v1.0.5 tree after the
+shared-`addedAt` fix to `loadWorkspaceStudies` (a workspace load's records now stamp one timestamp instead of one
+per record, so the Find tab's newest-first default sort keeps scan order), 100/100 again;
+`smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36 (re-run 2026-09-10 on the merged tree; the suite's own
+`EXPORT_HEADER` constant gained the fifteen disc-height columns upstream's CSV export already carried); `smoke-persist.mjs` 40/40 then
+47/47 — phase 1 marks SP-9000 reviewed and sets its subject after the last nudge; phase 2 asserts both survived
+and that the re-run cleared the mark. Every check in the suite runs
 unconditionally; there is no skip path.
 
 ## Running the Parameters suite

@@ -348,7 +348,7 @@ strand typed text. Edits go through `setState` with a new `studies` reference, n
 cells (user decision); a typed timepoint that names a known label is stored as that label, so it
 pairs; a typed view that names a known position is stored as its label (2026-09-07); a cleared View
 cell stores `''` (the store requires a string) and renders as a dash; Import from CSV also writes
-the four fields from the row's structural columns (user decision).
+the four fields from the row's structural columns (user decision). (2026-09-10, studies-table spec §7) The subject is also editable in place on the Find list's SUBJECT cell: single click, Enter commits and moves down a row, Escape discards; the same trim-and-null rule as the drawer.
 
 ## 10. Parameters tab
 

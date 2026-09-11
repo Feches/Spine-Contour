@@ -116,7 +116,10 @@ const cdp = await connect();
 const text = (selector) => cdp.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); return e ? e.textContent : null; })()`);
 const rowCount = () => cdp.evaluate("document.querySelectorAll('.studies-row').length");
 const summaryParts = async () => {
-  const m = /^(\d+) STUDIES · (\d+) UNSEGMENTED$/.exec(((await text('.studies-summary')) || '').trim());
+  // (2026-09-10, studies-table spec 10) a third clause. The regex keeps the file's separator
+  // glyph and writes the new one as an escape (HANDOFF's glyph trap); both match the same
+  // character. Mirrors smoke-studies.mjs's own summaryParts() fix for the same staleness.
+  const m = /^(\d+) STUDIES · (\d+) UNSEGMENTED \u00B7 (\d+) TO REVIEW$/.exec(((await text('.studies-summary')) || '').trim());
   return m ? { studies: Number(m[1]), queued: Number(m[2]) } : null;
 };
 // Client-space centre of the element a page-side finder returns, scrolled into view first (the

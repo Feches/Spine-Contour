@@ -1,10 +1,26 @@
 # Changelog
 
-## 1.0.6
+## 1.0.7
 
 - Show femoral heads as editable circles with centre marks and a bilateral midpoint; hide the raw femoral segmentation in analysis and comparison views.
 - Move, resize, retrace, add or delete circles. Save partial corrections and leave dependent pelvic angles blank until both heads are available.
 - Add an expandable overall image-confidence assessment with separate model quality checks, anatomy coverage, calibration and edit provenance.
+
+[Release notes](docs/releases/1.0.7.md)
+
+## 1.0.6
+
+- Delete the ticked studies from the Find tab's filter bar, replacing the library-wide
+  "Delete all studies"; a search or a filter hiding a tick keeps that study safe.
+- Sort the Find list by any column, newest first by default, with the same click-to-sort
+  headers as the Parameters grid.
+- Rename PATIENT to SUBJECT and edit it in place on the list: click the cell, type, Enter
+  commits and moves to the next row.
+- Add a fourth status, Reviewed, set with a Mark reviewed button on the Analysis screen
+  and cleared automatically by a re-run, a landmark correction, a reset or a calibration
+  change; the quality warnings stay visible either way.
+- Add a Show/Hide demo-studies switch to Settings for development builds only; installers
+  never show demo studies.
 
 [Release notes](docs/releases/1.0.6.md)
 

@@ -153,14 +153,33 @@
   outline-offset: -2px;
 }
 
+/* Export CSV and Mark reviewed share the row (studies-table spec 2026-09-10, section 8.3); the note under
+   them says why Mark reviewed is disabled, since Chromium shows no tooltip on a disabled control. */
 .analysis-actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   padding: 0 14px 10px;
   flex-shrink: 0;
 }
-.analysis-export {
-  width: 100%;
+.analysis-export,
+.analysis-review {
+  flex: 1 1 auto;
   justify-content: center;
+}
+.analysis-review[aria-pressed="true"]:not(:disabled) {
+  color: var(--sage);
+  border-color: color-mix(in srgb, var(--sage) 45%, var(--border));
+}
+.analysis-review-note {
+  flex: 1 1 100%;
+}
+
+/* The list's status badge in the header, before FEMORAL FIT CONFIDENCE. */
+.analysis-status {
+  display: flex;
+  align-items: center;
 }
 
 .analysis-panel-host {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle, lastSegment } from '../renderer/data/labels.js';
+import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle, lastSegment, subjectLabel } from '../renderer/data/labels.js';
 
 const DASH = '\u2014';
 
@@ -79,4 +79,13 @@ test('lastSegment reads the final path segment under either separator and ignore
   assert.equal(lastSegment('/data/films/Fusion2025'), 'Fusion2025');
   assert.equal(lastSegment('Fusion2025'), 'Fusion2025');
   assert.equal(lastSegment(''), '');
+});
+
+test('subjectLabel shows the subject id, else the demo patient label, else an em dash', () => {
+  assert.equal(subjectLabel({ subjectId: 'S001' }), 'S001');
+  assert.equal(subjectLabel({ subjectId: 'S001', pt: 'P-1' }), 'S001');
+  assert.equal(subjectLabel({ subjectId: null, pt: 'P-8841' }), 'P-8841');
+  assert.equal(subjectLabel({ subjectId: '  ', pt: '' }), DASH);
+  assert.equal(subjectLabel({}), DASH);
+  assert.equal(subjectLabel(null), DASH);
 });

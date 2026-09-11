@@ -68,6 +68,7 @@ export const SIDEBAR_KEYS = [
   'screen',
   'openId',
   'batch',
+  'deletingStudies', // (2026-09-10) the demo toggle's busy state
   'studies',
   'wsFolder',
   'wsFiles',

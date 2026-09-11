@@ -199,11 +199,11 @@ Three step cards:
 
 ### 9.4 Studies
 
-Scrolling, max 1160 px. Heading **"Studies"** with a `{n} STUDIES · {m} UNSEGMENTED` summary. Search filters across the study's name, its workspace, its containing folder, the id, patient, diagnosis, view, and every clinical value. The full file path is **not** searchable — only the two folder names the cells actually show. A filter bar (2026-09-08, batch spec §7) carries `Workspace` and `Folder` selects, shared with the Parameters tab, and the segment button — `Segment N unsegmented`, or `Segment N selected` over the ticked rows — which a running batch replaces with its count and a Stop. Each real row's STUDY cell carries a tick box; the header a select-all.
+Scrolling, max 1160 px. Heading **"Studies"** with a `{n} STUDIES · {m} UNSEGMENTED · {k} TO REVIEW` (the third clause 2026-09-10) summary. Search filters across the study's name, its workspace, its containing folder, the id, patient, diagnosis, view, and every clinical value. The full file path is **not** searchable — only the two folder names the cells actually show. A filter bar (2026-09-08, batch spec §7) carries `Workspace` and `Folder` selects, shared with the Parameters tab, and the segment button — `Segment N unsegmented`, or `Segment N selected` over the ticked rows — which a running batch replaces with its count and a Stop. Each real row's STUDY cell carries a tick box; the header a select-all. (2026-09-10, studies-table spec §5) The bar also carries `Delete` / `Delete N selected` over the ticked visible rows, with an inline confirm that takes the bar's place; the library-level `Delete all studies` is gone.
 
 Dashed dropzone: **"Drop a DICOM series or lateral radiograph"**, subtext **"De-identified files only. Segmentation runs locally on the workstation."**, and a `Use sample film` button. Drop and click both accept files.
 
-Table columns: `STUDY`, `PATIENT`, `VIEW`, `WORKSPACE`, `FOLDER`, `DATE`, `STATUS`. Status pills: **Segmented** (sage), **Needs review** (accent), **Processing** (muted).
+Table columns: `STUDY`, `SUBJECT`, `VIEW`, `WORKSPACE`, `FOLDER`, `DATE`, `STATUS` (2026-09-10: SUBJECT replaced PATIENT and edits in place on a real row; every header sorts with the grid's control, newest first by default). Status pills: **Segmented** (sage), **Needs review** (accent), **Processing** (muted), **Reviewed** (sage, stronger, with ink text; 2026-09-10).
 
 `STUDY` is the study's **name** — defaulted from its film's filename and renamable from the Analysis header — not the `SP-nnnn` id. The id stays the record's identity and is on the cell's title.
 
@@ -369,13 +369,14 @@ Full-resolution images are **not** copied into the store — only the source pat
 
 **IDs** — real studies get `SP-` plus a zero-padded four-digit counter persisted in the store, starting at `SP-1000` so they never collide with the demo range (`SP-0030`–`SP-0042`).
 
-**Status** is derived, not stored as an independent fact:
+**Status** is derived from the record (2026-09-10: the review mark `reviewedAt` is stored and read; it is cleared by every write that changes the numbers):
 
 | Status | Condition |
 |---|---|
 | `proc` — Processing | No segmentation yet, or currently running |
 | `rev` — Needs review | Segmented, but `\|PI − (PT + SS)\| > 1.0°` or `qc.femoral.confidence < 0.6` |
 | `seg` — Segmented | Segmented and both checks pass |
+| `ok` — Reviewed | Segmented and `reviewedAt` set (2026-09-10, studies-table spec §8) |
 
 This makes the Studies list's status column carry real information: `Needs review` means the geometry is genuinely suspect and worth opening the landmark editor for.
 

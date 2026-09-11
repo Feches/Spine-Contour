@@ -8,6 +8,7 @@ import { sidebarText } from '../data/batch.js';
 import { VERSION_LABEL } from '../data/version.js';
 import { changePerformance, cancelProcessing } from '../processing.js';
 import { progressTitle, progressDetail } from '../data/processing.js';
+import { demoToggleAvailable, demoStudiesShown, setDemoStudiesShown } from '../demo-studies.js';
 
 const DOCS_URL = 'https://github.com/Feches/Spine-Contour#readme';
 
@@ -79,6 +80,27 @@ function performanceBlock(state) {
       }, label))),
     el('p', { class: 'processing-note' },
       'Quickly removes detected bottom PACS toolbars before segmentation. Keeps uncertain images unchanged and preserves the original for calibration.'));
+}
+
+// (2026-09-10, studies-table spec 9) DEMO STUDIES: Show / Hide, development builds only. Built
+// only when the main process allowed demos at all, which it does for `!app.isPackaged`: an
+// installed build never renders this block, and its main-process write refuses too. `busy` is the
+// processing block's rule plus a bulk delete; `deletingStudies` is in SIDEBAR_KEYS for it.
+function demoBlock(state) {
+  if (!demoToggleAvailable()) return null;
+  const busy = Boolean(state.running || state.batch || state.deletingStudies);
+  const shown = demoStudiesShown(state);
+  return el('div', { class: 'sidebar-models demo-settings' },
+    el('div', { class: 'sidebar-models-label' }, 'DEMO STUDIES'),
+    el('div', { class: 'model-choice', role: 'group', 'aria-label': 'Demo studies' },
+      ...[[true, 'Show'], [false, 'Hide']].map(([value, label]) => el('button', {
+        type: 'button', class: 'model-choice-btn', disabled: busy,
+        'data-demo-toggle': value ? 'show' : 'hide',
+        'aria-pressed': shown === value ? 'true' : 'false',
+        onClick: () => { setDemoStudiesShown(value); },
+      }, label))),
+    el('p', { class: 'processing-note' },
+      'The nine compiled-in studies, for trying the interface. Development builds only; an installed build never has them.'));
 }
 
 function processingBlock(state) {
@@ -209,6 +231,7 @@ export function render(state) {
     themeRow,
     state.settingsOpen && !collapsed ? modelsBlock(state) : null,
     state.settingsOpen && !collapsed ? performanceBlock(state) : null,
+    state.settingsOpen && !collapsed ? demoBlock(state) : null,
     !collapsed ? processingBlock(state) : null,
     navRow({
       icon: ICONS.docs,
