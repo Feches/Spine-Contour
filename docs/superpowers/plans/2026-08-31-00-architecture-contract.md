@@ -1133,11 +1133,14 @@ An empty automatic prediction still fails. Save/load preserves these partial edi
 All editing stays in `components/viewer.js`; geometry helpers mutate only clones.
 Successful edits set `qc.manual_edits.landmarks` and, when circles changed, `femoral`.
 Original model QC remains provenance; refreshed coverage describes current geometry.
-Reset restores the prediction's QC along with its geometry and measurements.
+Reset restores the prediction's QC along with its geometry and measurements. When
+the snapshot carries no QC, reset keeps the study's own QC instead, never erasing
+its review reasons (2026-09-10).
 
 `data/confidence.js` derives a categorical overall review assessment and individual
 score details. This supersedes the single femoral-fit badge. It must never present
 femoral fit as overall accuracy or invent an aggregate probability. Missing checks,
 partial anatomy, calibration, orientation, consistency and manual-edit provenance
-remain visible. Pending corrections display Updating. No schema-version bump,
+remain visible. Pending corrections display Updating; a run in flight on the open
+study displays it too (2026-09-10). No schema-version bump,
 CSP change or new runtime dependency.

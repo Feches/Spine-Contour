@@ -8,7 +8,7 @@ export function scorePercent(value) {
 /** Overall review assessment, not a calibrated probability of measurement accuracy. */
 export function imageConfidence(study, pending = false) {
   const explanation = 'Based on available quality checks, not a probability of correct measurements. Vertebral segmentation has no calibrated confidence score.';
-  if (pending) return { label: 'Updating…', tone: 'unknown', details: ['Updating measurements after your edit.', explanation] };
+  if (pending) return { label: 'Updating…', tone: 'unknown', details: ['Measurements are being updated.', explanation] };
   if (!study?.geometry || !study.measurements || study.source === 'demo') {
     return { label: '—', tone: 'unknown', details: ['No image assessment available.', explanation] };
   }

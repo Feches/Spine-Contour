@@ -32,7 +32,7 @@ It hides raw femoral masks in both viewers, permits 0/1/2 circles through
 correction/save/load, and adds the overall QC assessment with original-score provenance.
 Reset restores QC as well as geometry/measurements, keeping the study's own qc when the
 snapshot carries none. The confidence badge's tones (`Review recommended`, `Limited
-information`, `Checks passed`) deliberately share no word with the status badge beside it,
+information`, `Checks passed`) deliberately share no label with the status badge beside it,
 which reads `Segmented`/`Needs review`/`Processing`/`Reviewed` from different inputs; the
 badge also counts a run in flight as pending, so it never assesses the previous run's
 numbers. See `docs/releases/1.0.7.md` for the verification counts on the merged tree and
