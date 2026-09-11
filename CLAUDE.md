@@ -37,6 +37,12 @@ release.** Plan 06's automated verification is green and its Gate 1 passed on 20
 developer who wrote the Python backend — and **the preview installer has never been tested with
 plan 06's code in it**.
 
+**Branch `claude/femoral-confidence-1.0.7` (2026-09-10)** — the backend developer's editable femoral
+circles and overall image confidence (`ee735e1`, off v1.0.5) merged with `fork/main` @ `b083d7d` (v1.0.6) and
+renumbered to 1.0.7; the Analysis header carries both his confidence badge and the status badge with disjoint
+vocabularies; verification counts in `docs/releases/1.0.7.md`; next: a PR to `fork/main` superseding PR #10, whose
+merge publishes 1.0.7.
+
 **Branch `claude/studies-table-ui-updates-953945` (2026-09-10) — DONE, merged with `fork/main` v1.0.5.** It sits on
 `fork/main` @ `6106463` and has been merged with `fork/main` @ `71d483f` (v1.0.5) — **`fork/main` is the trunk
 now**: the backend developer took `fork/ui-redesign-cw` (the 2026-09-08 handover tip) and released v1.0.0–1.0.3 on top
@@ -52,7 +58,7 @@ status, Reviewed; a development-only demo toggle. On the branch before the v1.0.
 513/513; its smoke-suite counts are recorded in the plan's `## Ledger` and in the release PR's description once the
 suites have run on the merged tree. Pushed to `fork`. **Next:** the 1.0.6 release commit, then a PR to `fork/main`
 whose merge publishes the v1.0.6 installers; the packaged-build checks (no DEMO STUDIES row, no
-`library-preferences.json`) run on that installer. The paragraphs below are historical.
+`library-preferences.json`) run on that installer. **Done 2026-09-10:** v1.0.6 published (PR #11, `b083d7d`). The paragraphs below are historical.
 
 **Superseded 2026-09-10 (kept for the record):** **Branch `claude/studies-table-ui-updates-953945` (2026-09-10) — PLANNED, execution not started.** It sits on
 `fork/main` @ `6106463`, which is **the trunk now**: the backend developer took `fork/ui-redesign-cw` (the 2026-09-08
@@ -241,8 +247,8 @@ packages; keep `--collect-all timm` in both workflows.
 ## Git
 
 This worktree (`.claude/worktrees/studies-ui-updates-bb040d`, whose directory name predates this work) is on branch
-`claude/studies-table-ui-updates-953945` (2026-09-10), off `fork/main` @ `6106463`, merged with `71d483f`
-(v1.0.5). Two remotes:
+`claude/femoral-confidence-1.0.7` (2026-09-10), off `fork/codex/editable-femoral-confidence` @ `ee735e1`, merged
+with `fork/main` @ `b083d7d` (v1.0.6). Two remotes:
 
 - `fork` → `github.com/Feches/Spine-Contour` — **push here**
 - `origin` → `github.com/mjayasur/Spine-Contour` — upstream, read-only in practice
