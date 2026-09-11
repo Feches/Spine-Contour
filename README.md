@@ -1,11 +1,11 @@
-# Spine Contour v1.0.6
+# Spine Contour v1.0.7
 
 Automated measurements from lateral lumbar radiographs, running locally.
 
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.0.6 release notes](docs/releases/1.0.6.md) and
+[changelog](CHANGELOG.md), [v1.0.7 release notes](docs/releases/1.0.7.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.

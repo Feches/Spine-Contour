@@ -1119,7 +1119,7 @@ user-driven blur, where the node is still connected at that moment. Without the 
 closed out from under the user. See HANDOFF's "Known traps" and `smoke-studies.mjs`'s "a rebuild while the editor is open keeps the
 editor, the draft and the caret" check, the tripwire for this guard.
 
-## 2026-09-10 amendment: editable femoral circles and image confidence (v1.0.6)
+## 2026-09-10 amendment: editable femoral circles and image confidence (v1.0.7)
 
 User-authorized: raw femoral masks are no longer decoded or rendered; only the
 vertebral label mask is overlaid. Geometry draws circles, centres and the bilateral
