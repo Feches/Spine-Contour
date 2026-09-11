@@ -28,15 +28,17 @@ const EMPTY_COPY = 'No clinical fields yet — add the fields you want above, or
 const DEMO_TITLE = 'Demo studies are not saved';
 const NO_CSV_TITLE = 'Load a CSV in the Workspace first';
 
-// The Study group's four fixed columns (pre-op/post-op spec §9), ahead of the clinical fields:
-// top-level record fields, not clinical keys, so they cannot be hidden and never appear under
-// ADD FIELD. Timepoint and View suggest from a datalist (user decision 2026-09-07: native
-// suggestions, not chip buttons); Film date is a date input, whose value is already YYYY-MM-DD.
+// The Study group's five fixed columns (pre-op/post-op spec §9; Note added 2026-09-11), ahead of
+// the clinical fields: top-level record fields, not clinical keys, so they cannot be hidden and
+// never appear under ADD FIELD. Timepoint and View suggest from a datalist (user decision
+// 2026-09-07: native suggestions, not chip buttons); Film date is a date input, whose value is
+// already YYYY-MM-DD; Note is free text, read from the filename's trailing fields or typed here.
 const STUDY_COLUMNS = Object.freeze([
   { field: 'subjectId', head: 'SUBJECT', title: 'Subject', type: 'text', list: null },
   { field: 'timepoint', head: 'TIMEPOINT', title: 'Timepoint', type: 'text', list: 'clinical-timepoints' },
   { field: 'filmDate', head: 'FILM DATE', title: 'Film date', type: 'date', list: null },
   { field: 'view', head: 'VIEW', title: 'View', type: 'text', list: 'clinical-views' },
+  { field: 'note', head: 'NOTE', title: 'Note', type: 'text', list: null },
 ]);
 
 export function fieldCountLabel(fieldCount, studyCount) {
@@ -162,7 +164,7 @@ export function mountClinicalData(host) {
     });
   }
 
-  // The four study fields (spec §9) are top-level record fields, not clinical keys, with the same
+  // The five study fields (spec §9) are top-level record fields, not clinical keys, with the same
   // one new-array write and the same pre-armed gate as setValue. Subject is stored trimmed; a view
   // that names a known position is stored as its label (`flexion` → Flexion lateral), anything
   // else as typed. A timepoint that names a known label is stored as that label (`preop` →
@@ -340,7 +342,7 @@ export function mountClinicalData(host) {
 
   function buildGrid(state, studies) {
     const fields = state.fields;
-    // The group row: a blank over the name column, STUDY over the four fixed columns, CLINICAL
+    // The group row: a blank over the name column, STUDY over the five fixed columns, CLINICAL
     // DATA over the fields (absent when there are none). Not a .clinical-grid-head row: the smoke
     // suite reads the head cells by that class and the data rows by its absence.
     const group = el('div', { class: 'clinical-grid-row clinical-grid-group' },
@@ -350,7 +352,7 @@ export function mountClinicalData(host) {
 
     const head = el('div', { class: 'clinical-grid-row clinical-grid-head' },
       el('div', { class: 'clinical-grid-cell' }, 'STUDY'),
-      // No Hide button: the four are not fields and cannot leave the grid.
+      // No Hide button: the five are not fields and cannot leave the grid.
       ...STUDY_COLUMNS.map((column) => el('div', { class: 'clinical-grid-cell clinical-grid-head-study' }, el('span', {}, column.head))),
       ...fields.map((name) => el('div', { class: 'clinical-grid-cell' },
         el('span', {}, name.toUpperCase()),
@@ -411,7 +413,7 @@ export function mountClinicalData(host) {
     // `key in node` branch would assign to the read-only CSSStyleDeclaration and throw.
     // repeat(0, …) is invalid CSS and would drop the whole declaration, hence the conditional.
     grid.style.setProperty('--clinical-cols',
-      `110px repeat(4, minmax(130px, 1fr))${fields.length > 0 ? ` repeat(${fields.length}, minmax(150px, 1fr))` : ''}`);
+      `110px repeat(${STUDY_COLUMNS.length}, minmax(130px, 1fr))${fields.length > 0 ? ` repeat(${fields.length}, minmax(150px, 1fr))` : ''}`);
     // The two datalists the Timepoint and View cells suggest from. Ids are document-wide; the
     // drawer is mounted once per Analysis screen and rebuilt whole, so one pair per rebuild.
     const lists = [

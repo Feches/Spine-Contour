@@ -314,10 +314,34 @@ test('loadWorkspaceStudies takes the CSV\'s structural columns over the layout, 
   assert.deepEqual(result.seeding, { fromFolders: 1, fromCsv: 1, noSubject: 0, noTimepoint: 0, badDates: 1 });
 });
 
+test('loadWorkspaceStudies reads the film date and note from a film\'s name, fills them on a known record, and never rewrites a stored subject', () => {
+  const stale = real('SP-1000', at('sub225_post-op_11-5-2024.jpg'), {}, { subjectId: 'sub225_post-op_11-5-2024' });
+  const fixed = real('SP-1001', at('sub226_post-op_5-31-2024.jpg'), {}, { subjectId: 'sub226', timepoint: '1 yr' });
+  const result = loadWorkspaceStudies(baseState({
+    studies: [stale, fixed],
+    wsFolder: WS,
+    wsFiles: [at('sub225_post-op_11-5-2024.jpg'), at('sub226_post-op_5-31-2024.jpg'), at('sub225_pre-op_10-23-2023_femoral heads.jpg')],
+  }));
+  const by = (relative) => result.studies.find((s) => s.filePath === at(relative));
+  const fresh = by('sub225_pre-op_10-23-2023_femoral heads.jpg');
+  assert.deepEqual({ ...pick(fresh), note: fresh.note },
+    { subjectId: 'sub225', timepoint: 'Pre-op', filmDate: '2023-10-23', view: 'Standing lateral', note: 'femoral heads' });
+  // The hand-set label stays; the blank date is filled from the name (fill-blanks, §8.3).
+  assert.deepEqual(pick(by('sub226_post-op_5-31-2024.jpg')), { subjectId: 'sub226', timepoint: '1 yr', filmDate: '2024-05-31', view: 'Standing lateral' });
+  // A subject the old parser stored as the whole stem is a stored value like any other: the load
+  // fills the blanks beside it and leaves it (user decision 2026-09-11: such films are deleted
+  // and added again rather than have a load rewrite a subject).
+  assert.deepEqual(pick(by('sub225_post-op_11-5-2024.jpg')),
+    { subjectId: 'sub225_post-op_11-5-2024', timepoint: 'Post-op', filmDate: '2024-11-05', view: 'Standing lateral' });
+  assert.equal(result.added, 1);
+  assert.equal(result.updated, 2);
+  assert.deepEqual(result.seeding, { fromFolders: 3, fromCsv: 0, noSubject: 0, noTimepoint: 0, badDates: 0 });
+});
+
 test('workspaceLoadedMessage appends the §8.4 seeding clauses, each only when its count is non-zero', () => {
   const base = { added: 2, known: 0, updated: 0, join: null, mapping: [] };
   assert.equal(workspaceLoadedMessage({ ...base, seeding: { fromFolders: 2, fromCsv: 0, noSubject: 0, noTimepoint: 0, badDates: 0 } }),
-    'Workspace loaded — 2 studies added · subject, timepoint or view read from folder or file names for 2 films');
+    'Workspace loaded — 2 studies added · subject, timepoint, film date, view or note read from folder or file names for 2 films');
   assert.equal(workspaceLoadedMessage({ ...base, seeding: { fromFolders: 0, fromCsv: 1, noSubject: 1, noTimepoint: 2, badDates: 1 } }),
     'Workspace loaded — 2 studies added · subject, timepoint, film date or view set from the CSV for 1 film'
     + ' · 1 film has no subject · 2 films have no timepoint · 1 film date could not be read');

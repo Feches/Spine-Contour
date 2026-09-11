@@ -70,7 +70,7 @@ const EXPECTED_MAPPING = [
 const KNOWN_FIELDS = ['Age', 'Sex', 'BMI', 'Diagnosis', 'ODI', 'Treatment plan', 'Surgical history', 'Follow-up', 'Notes'];
 // The drawer's head row since 2026-09-07 (pre-op/post-op spec §9): the Study group's four fixed
 // columns sit between STUDY and the clinical fields.
-const STUDY_HEADS = ['STUDY', 'SUBJECT', 'TIMEPOINT', 'FILM DATE', 'VIEW'];
+const STUDY_HEADS = ['STUDY', 'SUBJECT', 'TIMEPOINT', 'FILM DATE', 'VIEW', 'NOTE'];
 
 // The join for this fixture: a and b match, zzz is unmatched, A is a duplicate of a.
 const NOTE_PREVIEW = '2 of 4 rows match a film · 1 unmatched · 1 duplicate study_id';
@@ -78,7 +78,7 @@ const LINKED_CLAUSE = 'clinical data linked (2 matched, 1 unmatched, 1 duplicate
 // workspaceLoadedMessage: added=3, known=0, updated=0, join present, tx_plan mapped by then. Since
 // 2026-09-07 the load also seeds the study fields (spec §8.4): a.png and b.PNG take their subject
 // from the stem, batch/c.jpg from its folder, and no folder in the fixture names a timepoint.
-const SEEDING_FIRST_LOAD = ' · subject, timepoint or view read from folder or file names for 3 films · 3 films have no timepoint';
+const SEEDING_FIRST_LOAD = ' · subject, timepoint, film date, view or note read from folder or file names for 3 films · 3 films have no timepoint';
 const TOAST_FIRST_LOAD = `Workspace loaded — 3 studies added · ${LINKED_CLAUSE}${SEEDING_FIRST_LOAD}`;
 // Second load: added=0, known=3, updated=0 -- a and b already carry every CSV key from the
 // first load and Load only fills BLANKS, so this load wrote NOTHING. The message says so and
@@ -403,7 +403,7 @@ try {
   const loadedGrid = await drawerGrid();
   const loadedCells = cellsByField(loadedGrid);
   check('the head row is the Study group then AGE, SEX and TREATMENT PLAN, holding the values the load linked',
-    loadedGrid && same(loadedGrid.heads.slice(0, 5), STUDY_HEADS) && same([...loadedGrid.heads.slice(5)].sort(), ['AGE', 'SEX', 'TREATMENT PLAN'])
+    loadedGrid && same(loadedGrid.heads.slice(0, 6), STUDY_HEADS) && same([...loadedGrid.heads.slice(6)].sort(), ['AGE', 'SEX', 'TREATMENT PLAN'])
     && loadedGrid.rows.length === 1 && loadedGrid.rows[0].id === 'a'
     && loadedCells.AGE?.value === '58' && loadedCells.SEX?.value === 'F' && loadedCells['TREATMENT PLAN']?.value === 'Fusion', { heads: loadedGrid?.heads, loadedCells });
   check('the Study group cells hold the seeded subject and view, and an empty timepoint and film date',
@@ -429,11 +429,11 @@ try {
   // stays on every data-attribute the focus-restore machinery looks the row up by.
   check('the grid has one row, for the open study', grid && grid.rows.length === 1 && grid.rows[0].id === 'a', grid?.rows);
   check('the head row is the Study group then the three fields, each field with a Hide button',
-    grid && same(grid.heads.slice(0, 5), STUDY_HEADS) && same([...grid.heads.slice(5)].sort(), ['AGE', 'SEX', 'TREATMENT PLAN']) && same([...grid.removeLabels].sort(), ['Hide Age', 'Hide Sex', 'Hide Treatment plan']), { heads: grid?.heads, removeLabels: grid?.removeLabels });
+    grid && same(grid.heads.slice(0, 6), STUDY_HEADS) && same([...grid.heads.slice(6)].sort(), ['AGE', 'SEX', 'TREATMENT PLAN']) && same([...grid.removeLabels].sort(), ['Hide Age', 'Hide Sex', 'Hide Treatment plan']), { heads: grid?.heads, removeLabels: grid?.removeLabels });
   check('AGE, SEX and TREATMENT PLAN cells hold the CSV values, enabled',
     cells.AGE?.value === '58' && cells.SEX?.value === 'F' && cells['TREATMENT PLAN']?.value === 'Fusion' && [cells.AGE, cells.SEX, cells['TREATMENT PLAN']].every((c) => c && c.disabled === false), cells);
   check('the count label reads 3 FIELDS · 1 STUDY', grid?.count === '3 FIELDS · 1 STUDY', grid?.count);
-  check('--clinical-cols is set for three fields', grid?.cols === '110px repeat(4, minmax(130px, 1fr)) repeat(3, minmax(150px, 1fr))', grid?.cols);
+  check('--clinical-cols is set for three fields', grid?.cols === '110px repeat(5, minmax(130px, 1fr)) repeat(3, minmax(150px, 1fr))', grid?.cols);
   check('the imported fields leave the ADD FIELD row', same(grid?.chips, KNOWN_FIELDS.filter((f) => !['Age', 'Sex', 'Treatment plan'].includes(f))), grid?.chips);
 
   // 8. Add the Notes field from its chip.
@@ -528,8 +528,8 @@ try {
     const cells = [...(d ? d.querySelectorAll('.clinical-cell') : [])].map((i) => ({ disabled: i.disabled, title: i.title }));
     return { present: Boolean(d), importDisabled: imp ? imp.disabled : null, importTitle: imp ? imp.title : null, cells, count: d?.querySelector('.clinical-count')?.textContent ?? null };
   })()`);
-  check('a demo study mounts the drawer with every cell (four study, four clinical) disabled and titled Demo studies are not saved',
-    demoDrawer.present && demoDrawer.cells.length === 8 && demoDrawer.cells.every((c) => c.disabled === true && c.title === 'Demo studies are not saved') && demoDrawer.count === '4 FIELDS · 1 STUDY', demoDrawer);
+  check('a demo study mounts the drawer with every cell (five study, four clinical) disabled and titled Demo studies are not saved',
+    demoDrawer.present && demoDrawer.cells.length === 9 && demoDrawer.cells.every((c) => c.disabled === true && c.title === 'Demo studies are not saved') && demoDrawer.count === '4 FIELDS · 1 STUDY', demoDrawer);
   check('Import from CSV is disabled on a demo study and says why', demoDrawer.importDisabled === true && demoDrawer.importTitle === 'Demo studies are not saved', { importDisabled: demoDrawer.importDisabled, importTitle: demoDrawer.importTitle });
   const backRect2 = await cdp.rect('.icon-btn[aria-label="Back to studies"]');
   await cdp.click(backRect2.cx, backRect2.cy);

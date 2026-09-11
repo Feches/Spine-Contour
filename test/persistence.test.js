@@ -318,6 +318,19 @@ test('validate returns the three study fields and defaults them to null (pre-op/
   assert.equal(full.filmDate, '2025-03-02');
 });
 
+test('validate carries the note as optional text and defaults it to null', () => {
+  const [bare] = validate({ version: STORE_VERSION, studies: [identity('SP-1000')] });
+  assert.equal(bare.note, null);
+  // Listed on the returned object, or the saver writes it and the next load drops it.
+  assert.ok('note' in bare);
+  const [noted] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1001'), note: 'femoral heads' }] });
+  assert.equal(noted.note, 'femoral heads');
+  for (const bad of ['   ', 42, null]) {
+    const [study] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1002'), note: bad }] });
+    assert.equal(study.note, null, String(bad));
+  }
+});
+
 test('validate nulls a blank or non-string study field silently, and a malformed film date with one warning', (t) => {
   const warn = t.mock.method(console, 'warn', () => {});
   const [study] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1000'), subjectId: '  ', timepoint: 42, filmDate: 20250302 }] });

@@ -95,9 +95,10 @@ export function toCsv(studies) {
     '# Created by Cody Woodhouse, MD; Michael Jayasuriya, BS.',
     '# Investigational software. NOT FOR CLINICAL USE.',
   ];
-  // Subject, Timepoint and Film date sit after View (pre-op/post-op spec §11.1): the identity a
-  // paired analysis groups on, then the acquisition date. Absent values are empty, never 0 or —.
-  const header = ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date', ...MEASUREMENT_COLUMNS, ...fields,
+  // Subject, Timepoint, Film date and Note sit after View (pre-op/post-op spec §11.1, note added
+  // 2026-09-11): the identity a paired analysis groups on, the acquisition date, then what tells
+  // two same-day films of one subject apart. Absent values are empty, never 0 or —.
+  const header = ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date', 'Note', ...MEASUREMENT_COLUMNS, ...fields,
     ...(withCalibration ? CALIBRATION_COLUMNS : [])];
 
   const lines = [...citation, header.map(escapeField).join(',')];
@@ -108,6 +109,7 @@ export function toCsv(studies) {
       study.subjectId ?? '',
       study.timepoint ?? '',
       study.filmDate ?? '',
+      study.note ?? '',
       ...measurementValues(study),
       ...fields.map((field) => (study.clinical && study.clinical[field] != null ? study.clinical[field] : '')),
       ...(withCalibration ? calibrationCells(study) : []),

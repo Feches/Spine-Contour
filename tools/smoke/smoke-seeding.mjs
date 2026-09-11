@@ -58,11 +58,11 @@ const ROWS_AT_SCAN = [
   { folder: 'pre-op', count: 2, timepoint: 'Pre-op', view: 'Standing lateral' },
 ];
 const TOAST_LOAD = 'Workspace loaded — 5 studies added · clinical data linked (3 matched)'
-  + ' · subject, timepoint or view read from folder or file names for 5 films'
+  + ' · subject, timepoint, film date, view or note read from folder or file names for 5 films'
   + ' · subject, timepoint, film date or view set from the CSV for 2 films'
   + ' · 1 film has no timepoint · 1 film date could not be read';
 // 2026-09-10: fifteen disc-height columns (renderer/data/csv.js, DISC_LEVEL_PAIRS x DISC_POSITIONS) now sit between LL L5-S1 and Age.
-const EXPORT_HEADER = 'Study ID,View,Subject,Timepoint,Film date,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1,Disc height L1-L2 anterior (mm),Disc height L1-L2 middle (mm),Disc height L1-L2 posterior (mm),Disc height L2-L3 anterior (mm),Disc height L2-L3 middle (mm),Disc height L2-L3 posterior (mm),Disc height L3-L4 anterior (mm),Disc height L3-L4 middle (mm),Disc height L3-L4 posterior (mm),Disc height L4-L5 anterior (mm),Disc height L4-L5 middle (mm),Disc height L4-L5 posterior (mm),Disc height L5-S1 anterior (mm),Disc height L5-S1 middle (mm),Disc height L5-S1 posterior (mm),Age';
+const EXPORT_HEADER = 'Study ID,View,Subject,Timepoint,Film date,Note,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1,Disc height L1-L2 anterior (mm),Disc height L1-L2 middle (mm),Disc height L1-L2 posterior (mm),Disc height L2-L3 anterior (mm),Disc height L2-L3 middle (mm),Disc height L2-L3 posterior (mm),Disc height L3-L4 anterior (mm),Disc height L3-L4 middle (mm),Disc height L3-L4 posterior (mm),Disc height L4-L5 anterior (mm),Disc height L4-L5 middle (mm),Disc height L4-L5 posterior (mm),Disc height L5-S1 anterior (mm),Disc height L5-S1 middle (mm),Disc height L5-S1 posterior (mm),Age';
 const RESET_WS = '{ wsFolder: null, wsFiles: [], wsFolderRows: [], wsCsv: null, wsCsvHeaders: [], wsCsvRows: [], wsMapping: [] }';
 const RESET_PARAMS = '{ query: "", studiesTab: "find", paramFilters: { workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: "", pairedOnly: false, pairedWith: "__any__" }, paramSort: { key: "study", dir: "asc" }, paramLevels: false, paramSelected: [] }';
 
@@ -272,7 +272,7 @@ try {
     const rows = pm.sortParameters(pm.filterParameters(s.studies.filter(${fixtureFilter}), s.paramFilters), s.paramSort);
     return csvm.toCsv(rows).split('\\r\\n');
   })`);
-  check('the export\'s header carries Subject, Timepoint and Film date after View, then the numbers, then Age', exported[3] === EXPORT_HEADER, exported[3]);
+  check('the export\'s header carries Subject, Timepoint, Film date and Note after View, then the numbers, then Age', exported[3] === EXPORT_HEADER, exported[3]);
   // Sorted by name, the two S001 films tie and keep store order; the load front-inserted them in
   // scan order, so post-op/S001 (scanned before pre-op/) is first. The film date, the ten
   // measurement columns, the fifteen disc-height columns and Age all read empty -- derived from
@@ -299,8 +299,8 @@ try {
   })()`);
   // state.fields may hold more than Age when another suite ran first on this instance; only the
   // Study group's position and Age's presence are pinned.
-  check('the drawer shows the STUDY group over SUBJECT, TIMEPOINT, FILM DATE, VIEW, then the fields including AGE',
-    drawer.group === 'STUDY' && same(drawer.heads.slice(0, 5), ['STUDY', 'SUBJECT', 'TIMEPOINT', 'FILM DATE', 'VIEW']) && drawer.heads.slice(5).includes('AGE'), drawer.heads);
+  check('the drawer shows the STUDY group over SUBJECT, TIMEPOINT, FILM DATE, VIEW, NOTE, then the fields including AGE',
+    drawer.group === 'STUDY' && same(drawer.heads.slice(0, 6), ['STUDY', 'SUBJECT', 'TIMEPOINT', 'FILM DATE', 'VIEW', 'NOTE']) && drawer.heads.slice(6).includes('AGE'), drawer.heads);
   check('the cells hold the loaded values: S002, Pre-op, 2025-03-02 (a date input), Extension lateral',
     drawer.subject?.value === 'S002' && drawer.timepoint?.value === 'Pre-op' && drawer.filmDate?.value === '2025-03-02' && drawer.filmDate?.type === 'date' && drawer.view?.value === 'Extension lateral'
     && [drawer.subject, drawer.timepoint, drawer.filmDate, drawer.view].every((c) => c && c.disabled === false), drawer);

@@ -37,26 +37,71 @@ test('inferFromFolder: the last timepoint and view segments win, the first plain
   assert.deepEqual(inferFromFolder([]), { subjectId: null, timepoint: null, view: null });
 });
 
-test('inferFromStem peels trailing timepoint and view tokens and keeps the rest as the subject', () => {
-  assert.deepEqual(inferFromStem('S001'), { subjectId: 'S001', timepoint: null, view: null });
-  assert.deepEqual(inferFromStem('S001_preop'), { subjectId: 'S001', timepoint: 'Pre-op', view: null });
-  assert.deepEqual(inferFromStem('S001_pre-op'), { subjectId: 'S001', timepoint: 'Pre-op', view: null });
-  assert.deepEqual(inferFromStem('S001 pre op'), { subjectId: 'S001', timepoint: 'Pre-op', view: null });
-  assert.deepEqual(inferFromStem('S001_preop_flexion'), { subjectId: 'S001', timepoint: 'Pre-op', view: 'Flexion lateral' });
-  assert.deepEqual(inferFromStem('S001-6-wk'), { subjectId: 'S001', timepoint: '6 wk', view: null });
-  assert.deepEqual(inferFromStem('S001_1yr_ext'), { subjectId: 'S001', timepoint: '1 yr', view: 'Extension lateral' });
-  // A stem made only of tokens supplies no subject.
-  assert.deepEqual(inferFromStem('pre-op'), { subjectId: null, timepoint: 'Pre-op', view: null });
-  assert.deepEqual(inferFromStem('extension'), { subjectId: null, timepoint: null, view: 'Extension lateral' });
-  assert.deepEqual(inferFromStem('preop_flexion'), { subjectId: null, timepoint: 'Pre-op', view: 'Flexion lateral' });
-  // A leading token is not trailing and stays in the subject; IMG_0001 has no tokens at all.
-  assert.deepEqual(inferFromStem('preop_S001'), { subjectId: 'preop_S001', timepoint: null, view: null });
-  assert.deepEqual(inferFromStem('IMG_0001'), { subjectId: 'IMG_0001', timepoint: null, view: null });
-  assert.deepEqual(inferFromStem('lateral'), { subjectId: 'lateral', timepoint: null, view: null });
-  // The rightmost token of each kind wins, and peeling stops at the first non-token.
-  assert.deepEqual(inferFromStem('S001_pre_post'), { subjectId: 'S001', timepoint: 'Post-op', view: null });
-  assert.deepEqual(inferFromStem('S001_post_x_pre'), { subjectId: 'S001_post_x', timepoint: 'Pre-op', view: null });
-  assert.deepEqual(inferFromStem(''), { subjectId: null, timepoint: null, view: null });
+// The five-field result inferFromStem returns; every unnamed key is null.
+const stem = (overrides) => ({ subjectId: null, timepoint: null, filmDate: null, view: null, note: null, ...overrides });
+
+test('inferFromStem reads underscore-separated fields: the subject, then a timepoint, view or date', () => {
+  assert.deepEqual(inferFromStem('S001'), stem({ subjectId: 'S001' }));
+  assert.deepEqual(inferFromStem('S001_preop'), stem({ subjectId: 'S001', timepoint: 'Pre-op' }));
+  assert.deepEqual(inferFromStem('S001_pre-op'), stem({ subjectId: 'S001', timepoint: 'Pre-op' }));
+  assert.deepEqual(inferFromStem('S001_preop_flexion'), stem({ subjectId: 'S001', timepoint: 'Pre-op', view: 'Flexion lateral' }));
+  assert.deepEqual(inferFromStem('S001_1yr_ext'), stem({ subjectId: 'S001', timepoint: '1 yr', view: 'Extension lateral' }));
+  // Spaces and hyphens INSIDE a field are content, and the timepoint match ignores them.
+  assert.deepEqual(inferFromStem('S001_pre op'), stem({ subjectId: 'S001', timepoint: 'Pre-op' }));
+  assert.deepEqual(inferFromStem('S001_6 wk'), stem({ subjectId: 'S001', timepoint: '6 wk' }));
+  assert.deepEqual(inferFromStem('S001_6-wk'), stem({ subjectId: 'S001', timepoint: '6 wk' }));
+  // The fields after the subject come in any order; the last of a kind wins.
+  assert.deepEqual(inferFromStem('S001_flexion_preop'), stem({ subjectId: 'S001', timepoint: 'Pre-op', view: 'Flexion lateral' }));
+  assert.deepEqual(inferFromStem('S001_pre_post'), stem({ subjectId: 'S001', timepoint: 'Post-op' }));
+  // Empty fields (a doubled underscore, padding) are skipped; a field is trimmed.
+  assert.deepEqual(inferFromStem('S001__preop'), stem({ subjectId: 'S001', timepoint: 'Pre-op' }));
+  assert.deepEqual(inferFromStem(' S001 _ preop '), stem({ subjectId: 'S001', timepoint: 'Pre-op' }));
+  assert.deepEqual(inferFromStem(''), stem({}));
+  assert.deepEqual(inferFromStem('___'), stem({}));
+});
+
+test('inferFromStem reads a film date field written M-D-YYYY or YYYY-MM-DD', () => {
+  assert.deepEqual(inferFromStem('sub225_post-op_3-22-2024'), stem({ subjectId: 'sub225', timepoint: 'Post-op', filmDate: '2024-03-22' }));
+  assert.deepEqual(inferFromStem('sub225_post-op_03-22-2024'), stem({ subjectId: 'sub225', timepoint: 'Post-op', filmDate: '2024-03-22' }));
+  assert.deepEqual(inferFromStem('sub225_post-op_2024-03-22'), stem({ subjectId: 'sub225', timepoint: 'Post-op', filmDate: '2024-03-22' }));
+  assert.deepEqual(inferFromStem('sub225_3-22-2024'), stem({ subjectId: 'sub225', filmDate: '2024-03-22' }));
+  assert.deepEqual(inferFromStem('sub225_3-22-2024_post-op'), stem({ subjectId: 'sub225', timepoint: 'Post-op', filmDate: '2024-03-22' }));
+  assert.deepEqual(inferFromStem('sub225_1-2-2024_10-23-2023'), stem({ subjectId: 'sub225', filmDate: '2023-10-23' }));
+});
+
+test('inferFromStem keeps the text before the first recognised field as the subject, underscores and all', () => {
+  assert.deepEqual(inferFromStem('IMG_0001'), stem({ subjectId: 'IMG_0001' }));
+  assert.deepEqual(inferFromStem('test_lateral x-ray_2'), stem({ subjectId: 'test_lateral x-ray_2' }));
+  assert.deepEqual(inferFromStem('lateral'), stem({ subjectId: 'lateral' }));
+  assert.deepEqual(inferFromStem('John Doe_pre-op_10-23-2023'), stem({ subjectId: 'John Doe', timepoint: 'Pre-op', filmDate: '2023-10-23' }));
+  // Hyphens never separate fields, so a hyphenated name with no underscore is all subject.
+  assert.deepEqual(inferFromStem('S001-6-wk'), stem({ subjectId: 'S001-6-wk' }));
+  assert.deepEqual(inferFromStem('S001 pre op'), stem({ subjectId: 'S001 pre op' }));
+  assert.deepEqual(inferFromStem('Preoperative planning_S001'), stem({ subjectId: 'Preoperative planning_S001' }));
+});
+
+test('inferFromStem: a stem of recognised fields alone has no subject unless a plain field follows them', () => {
+  assert.deepEqual(inferFromStem('pre-op'), stem({ timepoint: 'Pre-op' }));
+  assert.deepEqual(inferFromStem('extension'), stem({ view: 'Extension lateral' }));
+  assert.deepEqual(inferFromStem('preop_flexion'), stem({ timepoint: 'Pre-op', view: 'Flexion lateral' }));
+  assert.deepEqual(inferFromStem('3-22-2024'), stem({ filmDate: '2024-03-22' }));
+  // A timing-first name: the first plain field after the recognised ones is the subject.
+  assert.deepEqual(inferFromStem('preop_S001'), stem({ subjectId: 'S001', timepoint: 'Pre-op' }));
+  assert.deepEqual(inferFromStem('preop_S001_femoral heads'), stem({ subjectId: 'S001', timepoint: 'Pre-op', note: 'femoral heads' }));
+});
+
+test('inferFromStem reads the plain fields after the recognised ones as the note, joined with spaces', () => {
+  assert.deepEqual(inferFromStem('sub225_pre-op_10-23-2023_femoral heads'),
+    stem({ subjectId: 'sub225', timepoint: 'Pre-op', filmDate: '2023-10-23', note: 'femoral heads' }));
+  assert.deepEqual(inferFromStem('sub225_post-op_3-22-2024_femoral heads_left'),
+    stem({ subjectId: 'sub225', timepoint: 'Post-op', filmDate: '2024-03-22', note: 'femoral heads left' }));
+  assert.deepEqual(inferFromStem('sub225_post-op_femoral heads_3-22-2024'),
+    stem({ subjectId: 'sub225', timepoint: 'Post-op', filmDate: '2024-03-22', note: 'femoral heads' }));
+  assert.deepEqual(inferFromStem('S001_post_x_pre'), stem({ subjectId: 'S001', timepoint: 'Pre-op', note: 'x' }));
+  // A field that only looks like a date is not one, and lands in the note where it can be seen.
+  assert.deepEqual(inferFromStem('sub225_post-op_2-30-2024'), stem({ subjectId: 'sub225', timepoint: 'Post-op', note: '2-30-2024' }));
+  assert.deepEqual(inferFromStem('sub225_post-op_3-22-24'), stem({ subjectId: 'sub225', timepoint: 'Post-op', note: '3-22-24' }));
+  assert.deepEqual(inferFromStem('sub225_post-op_3/22/2024'), stem({ subjectId: 'sub225', timepoint: 'Post-op', note: '3/22/2024' }));
 });
 
 // Every row of the spec's §8.1 table, through seedFields with no CSV, no stored record and no
@@ -77,8 +122,26 @@ test('seedFields reproduces the §8.1 table for a fresh film', () => {
     ['IMG_0001.png', 'IMG_0001', null, D],
   ];
   for (const [relative, subjectId, timepoint, view] of rows) {
-    assert.deepEqual(seed(relative), { subjectId, timepoint, filmDate: null, view }, relative);
+    assert.deepEqual(seed(relative), { subjectId, timepoint, filmDate: null, view, note: null }, relative);
   }
+});
+
+test('seedFields takes the film date and the note from the stem, behind a stored value or the CSV', () => {
+  const D = 'Standing lateral';
+  assert.deepEqual(seed('sub225_post-op_3-22-2024.jpg'),
+    { subjectId: 'sub225', timepoint: 'Post-op', filmDate: '2024-03-22', view: D, note: null });
+  assert.deepEqual(seed('sub225_pre-op_10-23-2023_femoral heads.jpg'),
+    { subjectId: 'sub225', timepoint: 'Pre-op', filmDate: '2023-10-23', view: D, note: 'femoral heads' });
+  // A folder subject still beats the stem's; the stem's date and note stand.
+  assert.deepEqual(seed('P-9/sub225_post-op_3-22-2024_femoral heads.jpg'),
+    { subjectId: 'P-9', timepoint: 'Post-op', filmDate: '2024-03-22', view: D, note: 'femoral heads' });
+  // The CSV's date beats the stem's; a stored note beats the stem's; a stored '' note is a blank.
+  const csv = { subjectId: null, timepoint: null, filmDate: '2025-09-14', view: null, badDate: false };
+  assert.equal(seed('sub225_post-op_3-22-2024.jpg', { csv }).filmDate, '2025-09-14');
+  assert.equal(seed('sub225_post-op_3-22-2024_femoral heads.jpg', { existing: { note: 'typed' } }).note, 'typed');
+  assert.equal(seed('sub225_post-op_3-22-2024_femoral heads.jpg', { existing: { note: '' } }).note, 'femoral heads');
+  const { sources } = seedFields({ filePath: film('sub225_post-op_3-22-2024_femoral heads.jpg'), root: ROOT });
+  assert.deepEqual(sources, { subjectId: 'stem', timepoint: 'stem', filmDate: 'stem', view: 'row', note: 'stem' });
 });
 
 test('folderRows lists each folder directly holding a film, in scan order, with its count and inferred values', () => {
@@ -101,23 +164,23 @@ test('folderRows lists each folder directly holding a film, in scan order, with 
 test('seedFields applies §8.3: stored beats CSV beats stem beats the folder row beats the default', () => {
   const row = { folder: 'pre-op', count: 2, timepoint: 'Intra-op', view: 'Extension lateral' };
   // A user-set row applies to a film whose own name says nothing.
-  assert.deepEqual(seed('pre-op/S001.png', { row }), { subjectId: 'S001', timepoint: 'Intra-op', filmDate: null, view: 'Extension lateral' });
+  assert.deepEqual(seed('pre-op/S001.png', { row }), { subjectId: 'S001', timepoint: 'Intra-op', filmDate: null, view: 'Extension lateral', note: null });
   // The film's own stem is more specific than its folder row.
-  assert.deepEqual(seed('pre-op/S001_flexion.png', { row }), { subjectId: 'S001', timepoint: 'Intra-op', filmDate: null, view: 'Flexion lateral' });
-  assert.deepEqual(seed('pre-op/S001_post.png', { row }), { subjectId: 'S001', timepoint: 'Post-op', filmDate: null, view: 'Extension lateral' });
+  assert.deepEqual(seed('pre-op/S001_flexion.png', { row }), { subjectId: 'S001', timepoint: 'Intra-op', filmDate: null, view: 'Flexion lateral', note: null });
+  assert.deepEqual(seed('pre-op/S001_post.png', { row }), { subjectId: 'S001', timepoint: 'Post-op', filmDate: null, view: 'Extension lateral', note: null });
   // A row set to no timepoint leaves the film with none, even though the folder is called pre-op.
   assert.deepEqual(seed('pre-op/S001.png', { row: { ...row, timepoint: null, view: 'Standing lateral' } }),
-    { subjectId: 'S001', timepoint: null, filmDate: null, view: 'Standing lateral' });
+    { subjectId: 'S001', timepoint: null, filmDate: null, view: 'Standing lateral', note: null });
   // The CSV beats the stem and the row; a CSV field it does not supply falls through.
   const csv = { subjectId: 'P-77', timepoint: 'Post-op', filmDate: '2025-09-14', view: 'Supine lateral', badDate: false };
-  assert.deepEqual(seed('pre-op/S001_flexion.png', { row, csv }), { subjectId: 'P-77', timepoint: 'Post-op', filmDate: '2025-09-14', view: 'Supine lateral' });
+  assert.deepEqual(seed('pre-op/S001_flexion.png', { row, csv }), { subjectId: 'P-77', timepoint: 'Post-op', filmDate: '2025-09-14', view: 'Supine lateral', note: null });
   assert.deepEqual(seed('pre-op/S001_flexion.png', { row, csv: { ...csv, view: null, timepoint: null } }),
-    { subjectId: 'P-77', timepoint: 'Intra-op', filmDate: '2025-09-14', view: 'Flexion lateral' });
+    { subjectId: 'P-77', timepoint: 'Intra-op', filmDate: '2025-09-14', view: 'Flexion lateral', note: null });
   // A stored value is kept whatever the CSV, stem or row say; a stored '' is a blank.
-  const existing = { subjectId: 'KEEP', timepoint: '6 wk', filmDate: '2020-01-01', view: 'Prone lateral' };
+  const existing = { subjectId: 'KEEP', timepoint: '6 wk', filmDate: '2020-01-01', view: 'Prone lateral', note: 'kept' };
   assert.deepEqual(seed('pre-op/S001_flexion.png', { row, csv, existing }), existing);
-  assert.deepEqual(seed('pre-op/S001.png', { row, existing: { subjectId: null, timepoint: '', filmDate: null, view: '' } }),
-    { subjectId: 'S001', timepoint: 'Intra-op', filmDate: null, view: 'Extension lateral' });
+  assert.deepEqual(seed('pre-op/S001.png', { row, existing: { subjectId: null, timepoint: '', filmDate: null, view: '', note: '' } }),
+    { subjectId: 'S001', timepoint: 'Intra-op', filmDate: null, view: 'Extension lateral', note: null });
   // Subject comes from the first plain folder segment before the stem, and never from the row.
   assert.deepEqual(seed('S001/pre-op/S001_extra.png', { row }).subjectId, 'S001');
   assert.equal(seed('CohortA/S001.png').subjectId, 'CohortA');
@@ -127,14 +190,14 @@ test('seedFields reports where each value came from', () => {
   const row = { folder: 'pre-op', count: 1, timepoint: 'Pre-op', view: 'Standing lateral' };
   const csv = { subjectId: null, timepoint: null, filmDate: '2025-03-02', view: null, badDate: false };
   const { sources } = seedFields({ filePath: film('pre-op/S001_ext.png'), root: ROOT, row, csv });
-  assert.deepEqual(sources, { subjectId: 'stem', timepoint: 'row', filmDate: 'csv', view: 'stem' });
+  assert.deepEqual(sources, { subjectId: 'stem', timepoint: 'row', filmDate: 'csv', view: 'stem', note: null });
   // With no row given, seedFields derives the row as folderRows does (view defaulting to Standing
   // lateral), so a defaulted view reports 'row' too; 'default' is reachable only for a row object
   // that carries no view (controller ruling, 2026-09-07).
   const fresh = seedFields({ filePath: film('S001.png'), root: ROOT });
-  assert.deepEqual(fresh.sources, { subjectId: 'stem', timepoint: null, filmDate: null, view: 'row' });
+  assert.deepEqual(fresh.sources, { subjectId: 'stem', timepoint: null, filmDate: null, view: 'row', note: null });
   const folderSubject = seedFields({ filePath: film('S001/post-op/lateral.dcm'), root: ROOT });
-  assert.deepEqual(folderSubject.sources, { subjectId: 'folder', timepoint: 'row', filmDate: null, view: 'row' });
-  const stored = seedFields({ filePath: film('S001.png'), root: ROOT, existing: { subjectId: 'X', timepoint: 'Pre-op', filmDate: '2025-01-01', view: 'Standing lateral' } });
-  assert.deepEqual(stored.sources, { subjectId: 'stored', timepoint: 'stored', filmDate: 'stored', view: 'stored' });
+  assert.deepEqual(folderSubject.sources, { subjectId: 'folder', timepoint: 'row', filmDate: null, view: 'row', note: null });
+  const stored = seedFields({ filePath: film('S001.png'), root: ROOT, existing: { subjectId: 'X', timepoint: 'Pre-op', filmDate: '2025-01-01', view: 'Standing lateral', note: 'n' } });
+  assert.deepEqual(stored.sources, { subjectId: 'stored', timepoint: 'stored', filmDate: 'stored', view: 'stored', note: 'stored' });
 });

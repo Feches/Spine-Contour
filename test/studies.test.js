@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatDate, matchesQuery, newStudy } from '../renderer/screens/studies.js';
+import { formatDate, matchesQuery, newStudy, studyFromFile } from '../renderer/screens/studies.js';
 
 test('formatDate renders a short month/day/year', () => {
   // Noon UTC renders as the same calendar day from UTC-12 to UTC+11, so this holds on the
@@ -87,6 +87,37 @@ test('newStudy carries the three study fields as null', () => {
   assert.ok('subjectId' in study && 'timepoint' in study && 'filmDate' in study);
   assert.equal(study.reviewedAt, null);
   assert.ok('reviewedAt' in study);
+  assert.equal(study.note, null);
+  assert.ok('note' in study);
+});
+
+// The picker and a drop go through this, so a film named to the §8.1 convention reads its fields
+// however it enters the library (user decision 2026-09-11).
+test('studyFromFile seeds a picked or dropped film from its own name, the way a workspace load does', () => {
+  const study = studyFromFile({ id: 'SP-1000', fileName: 'sub225_post-op_3-22-2024_femoral heads.jpg', filePath: 'C:/films/sub225_post-op_3-22-2024_femoral heads.jpg' });
+  assert.equal(study.id, 'SP-1000');
+  assert.equal(study.filePath, 'C:/films/sub225_post-op_3-22-2024_femoral heads.jpg');
+  assert.equal(study.workspaceFolder, null);
+  assert.equal(study.name, 'sub225_post-op_3-22-2024_femoral heads');
+  assert.equal(study.subjectId, 'sub225');
+  assert.equal(study.timepoint, 'Post-op');
+  assert.equal(study.filmDate, '2024-03-22');
+  assert.equal(study.view, 'Standing lateral');
+  assert.equal(study.note, 'femoral heads');
+  assert.equal(study.measurements, null);
+  // A drop the OS gave no path for reads the name alone.
+  const dropped = studyFromFile({ id: 'SP-1001', fileName: 'S001_preop_flexion.png', filePath: null });
+  assert.equal(dropped.filePath, null);
+  assert.deepEqual([dropped.subjectId, dropped.timepoint, dropped.filmDate, dropped.view, dropped.note], ['S001', 'Pre-op', null, 'Flexion lateral', null]);
+  // A name with nothing to read is all subject, as the §8.1 table's last rows say.
+  const plain = studyFromFile({ id: 'SP-1002', fileName: 'IMG_0001.png', filePath: null });
+  assert.deepEqual([plain.subjectId, plain.timepoint, plain.filmDate, plain.view, plain.note], ['IMG_0001', null, null, 'Standing lateral', null]);
+});
+
+test('matchesQuery finds a study by its note', () => {
+  const study = { id: 'SP-1000', view: 'Standing lateral', subjectId: 'S001', timepoint: 'Pre-op', filmDate: null, note: 'femoral heads', clinical: {} };
+  assert.equal(matchesQuery(study, 'femoral'), true);
+  assert.equal(matchesQuery(study, 'hips'), false);
 });
 
 // The Parameters grid shows all three, and the search box applies to the grid: a visible column

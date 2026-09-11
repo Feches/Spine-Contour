@@ -837,7 +837,7 @@
   outline-offset: -2px;
 }
 
-/* The Study group (pre-op/post-op spec §9): four fixed columns ahead of the clinical fields, under
+/* The Study group (pre-op/post-op spec §9): five fixed columns ahead of the clinical fields, under
    a group row. The group row spans with grid-column; the head and data rows keep one cell per
    column, so --clinical-cols stays one template for the whole grid. */
 .clinical-grid-group { background: var(--well); }
@@ -849,8 +849,8 @@
   letter-spacing: 0.16em;
   color: var(--muted);
 }
-.clinical-grid-group-study { grid-column: 2 / span 4; }
-.clinical-grid-group-clinical { grid-column: 6 / -1; }
+.clinical-grid-group-study { grid-column: 2 / span 5; }
+.clinical-grid-group-clinical { grid-column: 7 / -1; }
 .clinical-grid-head-study { background: color-mix(in srgb, var(--sage) 6%, var(--well)); }
 .clinical-cell-study { background: color-mix(in srgb, var(--sage) 4%, transparent); }
 .clinical-cell-date {
