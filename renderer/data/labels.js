@@ -1,9 +1,18 @@
 // How a study names itself, and where it came from. Pure string work, no DOM: screens/studies.js
 // renders it in the table, and components/ read it too -- which is why this lives in data/ and
-// not in screens/ (components import from data/, never from screens/).
-import { fileStem } from './csv.js';
+// not in screens/ (components import from data/, never from screens/). No imports: data/csv.js
+// imports studyName for the exports (2026-09-12), so fileStem lives here and csv.js re-exports it.
 
 const DASH = '\u2014';
+
+// Basename (either separator) without its last extension: 'a.b.dcm' \u2192 'a.b', 'noext' \u2192 'noext'.
+// A leading dot is not an extension ('.hidden' \u2192 '.hidden'). The CSV import joins a row to a
+// film by this stem, and the export's Study ID column writes it, so the two agree by construction.
+export function fileStem(name) {
+  const base = String(name).split(/[\\/]/).pop();
+  const dot = base.lastIndexOf('.');
+  return dot > 0 ? base.slice(0, dot) : base;
+}
 
 // The default display name for a new study: its film's filename without the extension.
 // The SP-nnnn id stays the record's identity -- it names the sidecar on disk, keys the delete

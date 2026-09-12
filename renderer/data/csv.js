@@ -1,5 +1,10 @@
 import { normaliseTimepoint, normaliseView, parseFilmDate, PRE_OP } from './timepoints.js';
 import { normalizeCalibration } from './calibration.js';
+import { fileStem, studyName } from './labels.js';
+
+// fileStem moved to data/labels.js on 2026-09-12 (labels.js must not import this module, which now
+// imports studyName from it); re-exported so its importers and the contract's module list hold.
+export { fileStem };
 import { discRows, DISC_LEVEL_PAIRS, DISC_POSITIONS } from './disc-heights.js';
 
 const CALIBRATION_COLUMNS = ['Calibration status', 'Calibration source', 'Pixel spacing X (mm/px)',
@@ -98,16 +103,20 @@ export function toCsv(studies) {
     '# Created by Cody Woodhouse, MD; Michael Jayasuriya, BS.',
     '# Investigational software. NOT FOR CLINICAL USE.',
   ];
+  // Study ID is the study's NAME -- its film's stem, what every screen shows and what the workspace
+  // CSV joins a row by -- not the SP-nnnn record id (2026-09-12, user report; roadmap item 2's
+  // identity decision). The record id still names the sidecar on disk, so it closes the row's own
+  // columns as Record ID, after the clinical fields and before the calibration columns.
   // Subject, Timepoint, Film date and Note sit after View (pre-op/post-op spec §11.1, note added
   // 2026-09-11): the identity a paired analysis groups on, the acquisition date, then what tells
   // two same-day films of one subject apart. Absent values are empty, never 0 or —.
   const header = ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date', 'Note', ...MEASUREMENT_COLUMNS, ...fields,
-    ...(withCalibration ? CALIBRATION_COLUMNS : [])];
+    'Record ID', ...(withCalibration ? CALIBRATION_COLUMNS : [])];
 
   const lines = [...citation, header.map(escapeField).join(',')];
   for (const study of rows) {
     const cells = [
-      study.id,
+      studyName(study),
       study.view,
       study.subjectId ?? '',
       study.timepoint ?? '',
@@ -115,6 +124,7 @@ export function toCsv(studies) {
       study.note ?? '',
       ...measurementValues(study),
       ...fields.map((field) => (study.clinical && study.clinical[field] != null ? study.clinical[field] : '')),
+      study.id,
       ...(withCalibration ? calibrationCells(study) : []),
     ];
     lines.push(cells.map(escapeField).join(','));
@@ -139,8 +149,9 @@ function clinicalOf(visit, field) {
 // `<visit> derived across films` (the column and the film behind each of its inputs); then per
 // measurement column `<M> Pre-op` followed by `<M> <visit>`, `Delta <M> <visit>` per later visit;
 // then `<F> <visit>` per clinical key present on the written films. A visit's header is its label,
-// or `<label> N` when a subject has several visits on that label. A merged visit's study cell
-// lists every film, primary first, joined with ` + `; its view and calibration are the primary's.
+// or `<label> N` when a subject has several visits on that label. A visit's study cell is its
+// film's NAME (the stem, as the long export's Study ID; 2026-09-12); a merged visit lists every
+// film's, primary first, joined with ` + `; its view and calibration are the primary's.
 // Headers use the stored label and ASCII `Delta`, following `PI-LL Mismatch` for the on-screen
 // `PI–LL`, so Excel and R read them without a byte-order mark. Demo rows never reach this
 // function: pairStudies drops them.
@@ -178,7 +189,7 @@ export function toPairedCsv(pairing) {
     const values = (name) => visit(name)?.values ?? [];
     const cells = [
       row.subject,
-      ...headers.map((name) => (visit(name) ? visit(name).films.map((study) => study.id).join(' + ') : '')),
+      ...headers.map((name) => (visit(name) ? visit(name).films.map((study) => studyName(study)).join(' + ') : '')),
       ...headers.map((name) => visit(name)?.films[0]?.view ?? ''),
       ...headers.map((name) => visit(name)?.filmDate ?? ''),
       ...(flagMerges ? headers.map((name) => (visit(name)?.disagreements ?? []).join('; ')) : []),
@@ -341,14 +352,6 @@ export function autoMap(headers) {
     claimed.add(match.field);
     return { src, dest: match.field };
   });
-}
-
-// Basename (either separator) without its last extension: 'a.b.dcm' → 'a.b', 'noext' → 'noext'.
-// A leading dot is not an extension ('.hidden' → '.hidden').
-export function fileStem(name) {
-  const base = String(name).split(/[\\/]/).pop();
-  const dot = base.lastIndexOf('.');
-  return dot > 0 ? base.slice(0, dot) : base;
 }
 
 // The join column is whichever header normalises to 'studyid' (study_id, Study ID, studyId…).

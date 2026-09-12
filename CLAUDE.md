@@ -12,8 +12,9 @@ derived from the merged PI and LL, and every merge, disagreement and cross-film 
 in the file (spec §11.2/§11.3 amended). (2026-09-12) The study name on the Find list and the Parameters grid shares
 one rule, `.study-name` at the end of `styles/screens/studies.css` (280px cap, wrap anywhere, no ellipsis; it must stay
 after `.param-open`, whose `all: unset` would erase it), and the Find list's STUDY track flexes with a floor; the
-sidebar's open-study card is an icon-only button when collapsed (`openStudyCard(state, collapsed)`). Unreleased; the
-1.0.8 bump is a release step.
+sidebar's open-study card is an icon-only button when collapsed (`openStudyCard(state, collapsed)`). Both CSV exports
+name a film by `studyName` (the stem) — `toCsv`'s `Study ID` holds it and a `Record ID` column follows the clinical
+fields; `fileStem` moved to `data/labels.js` (re-exported by `csv.js`). Unreleased; the 1.0.8 bump is a release step.
 
 **2026-09-10 circle editing / confidence:** v1.0.7 supports 0/1/2 editable femoral circles and hides raw femoral masks. See `docs/releases/1.0.7.md` and the latest architecture amendment. Overall confidence is a categorical QC assessment, never a repurposed femoral percentage. Manual edits preserve original score provenance; reset restores QC too.
 

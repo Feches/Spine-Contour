@@ -62,7 +62,7 @@ const TOAST_LOAD = 'Workspace loaded — 5 studies added · clinical data linked
   + ' · subject, timepoint, film date or view set from the CSV for 2 films'
   + ' · 1 film has no timepoint · 1 film date could not be read';
 // 2026-09-10: fifteen disc-height columns (renderer/data/csv.js, DISC_LEVEL_PAIRS x DISC_POSITIONS) now sit between LL L5-S1 and Age.
-const EXPORT_HEADER = 'Study ID,View,Subject,Timepoint,Film date,Note,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1,Disc height L1-L2 anterior (mm),Disc height L1-L2 middle (mm),Disc height L1-L2 posterior (mm),Disc height L2-L3 anterior (mm),Disc height L2-L3 middle (mm),Disc height L2-L3 posterior (mm),Disc height L3-L4 anterior (mm),Disc height L3-L4 middle (mm),Disc height L3-L4 posterior (mm),Disc height L4-L5 anterior (mm),Disc height L4-L5 middle (mm),Disc height L4-L5 posterior (mm),Disc height L5-S1 anterior (mm),Disc height L5-S1 middle (mm),Disc height L5-S1 posterior (mm),Age';
+const EXPORT_HEADER = 'Study ID,View,Subject,Timepoint,Film date,Note,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1,Disc height L1-L2 anterior (mm),Disc height L1-L2 middle (mm),Disc height L1-L2 posterior (mm),Disc height L2-L3 anterior (mm),Disc height L2-L3 middle (mm),Disc height L2-L3 posterior (mm),Disc height L3-L4 anterior (mm),Disc height L3-L4 middle (mm),Disc height L3-L4 posterior (mm),Disc height L4-L5 anterior (mm),Disc height L4-L5 middle (mm),Disc height L4-L5 posterior (mm),Disc height L5-S1 anterior (mm),Disc height L5-S1 middle (mm),Disc height L5-S1 posterior (mm),Age,Record ID';
 const RESET_WS = '{ wsFolder: null, wsFiles: [], wsFolderRows: [], wsCsv: null, wsCsvHeaders: [], wsCsvRows: [], wsMapping: [] }';
 const RESET_PARAMS = '{ query: "", studiesTab: "find", paramFilters: { workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: "", pairedOnly: false, pairedWith: "__any__" }, paramSort: { key: "study", dir: "asc" }, paramLevels: false, paramSelected: [] }';
 
@@ -272,14 +272,15 @@ try {
     const rows = pm.sortParameters(pm.filterParameters(s.studies.filter(${fixtureFilter}), s.paramFilters), s.paramSort);
     return csvm.toCsv(rows).split('\\r\\n');
   })`);
-  check('the export\'s header carries Subject, Timepoint, Film date and Note after View, then the numbers, then Age', exported[3] === EXPORT_HEADER, exported[3]);
+  check('the export\'s header carries Subject, Timepoint, Film date and Note after View, then the numbers, then Age, then Record ID', exported[3] === EXPORT_HEADER, exported[3]);
   // Sorted by name, the two S001 films tie and keep store order; the load front-inserted them in
-  // scan order, so post-op/S001 (scanned before pre-op/) is first. The film date, the ten
-  // measurement columns, the fifteen disc-height columns and Age all read empty -- derived from
+  // scan order, so post-op/S001 (scanned before pre-op/) is first. Study ID is the film's stem
+  // (2026-09-12) and the record id closes the row; the film date, the note, the ten measurement
+  // columns, the fifteen disc-height columns and Age all read empty -- derived from
   // EXPORT_HEADER's own column count (2026-09-10) so this stays in step with the header above.
   const emptyCells = ','.repeat(EXPORT_HEADER.split(',').length - 4);
-  check('the first row (post-op/S001, by name then store order) reads its view, subject and timepoint, with empty numbers',
-    exported[4] === `${idOf('post-op/S001.png')},Standing lateral,S001,Post-op${emptyCells}`, exported[4]);
+  check('the first row (post-op/S001, by name then store order) reads its name, view, subject and timepoint, empty numbers, then its record id',
+    exported[4] === `S001,Standing lateral,S001,Post-op${emptyCells}${idOf('post-op/S001.png')}`, exported[4]);
 
   // 8. The drawer on Analysis for pre-op/S002: the Study group's cells, the datalists, a typed
   // timepoint that normalises, a date set on the date input.
