@@ -427,7 +427,8 @@ into the app once its recipe is stable. The later stages, in order:
 
 ### Also deferred from stage 1
 
-- An optional pelvic sub-block in `S` (hip midpoint, femoral centres and radii, eight numbers).
+- The femoral centres and radii as further pelvic numbers beside the hip midpoint block `H`, if the
+  midpoint alone proves too little.
 - A taller whole-film input (for example 448×224) if the 224 px whole-film block proves too coarse.
 - A mask-contour block, only if the shape block leaves something on the table.
 - `Compare with…` for the same subject (pp §12) — the next entry into comparison mode, its own small
