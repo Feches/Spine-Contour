@@ -176,9 +176,14 @@ renderer/                         (new)
                                   filename for the Parameters tab -- see the file header for the exported names;
                                   selection helpers toggleId/withIds/selectedVisible/rowsToExport (2026-09-07); exportFileName(workspace, kind = 'parameters') (2026-09-08);
                                   matchesLocation(study, filters) (2026-09-08)
-  data/pairing.js                 (2026-09-08) pure: pairStudies(rows, {post}) → {visits, post, subjects: [{key, subject, films: Map}],
-                                  unpaired, ambiguous, noSubject, noTimepoint, otherVisits} for the paired export (spec §11.2);
-                                  postFromFilters(filters); pairedExportMessage(pairing, savedTo) (§11.3)
+  data/pairing.js                 (2026-09-08) pure: pairStudies(rows, {post}) → {visits, post, subjects: [{key, subject, visits: Map}],
+                                  unpaired, ambiguous, noSubject, noTimepoint, otherVisits, merged, disagreements} for the paired
+                                  export (spec §11.2, amended 2026-09-11: a VISIT is subject + label + film date; `visits` are
+                                  headers, numbered `<label> N` by date when a subject has several; a subject's Map is keyed by
+                                  header and each Visit carries header, label, filmDate, films (primary first), values per
+                                  MEASUREMENT_COLUMNS and disagreements; same-day films merge under the unnoted-primary rule;
+                                  ambiguous entries carry kind 'films'|'visits'); postFromFilters(filters);
+                                  pairedExportMessage(pairing, savedTo) (§11.3, with the merged and disagreement clauses)
   data/batch.js                   (2026-09-08) pure: planBatch({visible, selected, running}) → {ids, label, note, enabled};
                                   newBatch, advance, withStopping, isQueued, progressText, sidebarText, batchMessage;
                                   createBatchDriver({segment, getState, setState, showToast, persistenceDisabledReason})
@@ -655,7 +660,10 @@ export function toCsv(studies)           // → string   (2026-09-07) Study ID,V
                                          //   the Source column and the includeDemo option are gone. (2026-09-06) clinical
                                          //   columns are clinicalFieldNames() over the exported rows -- the `fields`
                                          //   parameter is gone; see the pre-op/post-op spec §11.1
-export function toPairedCsv(pairing)     // → string   (2026-09-08, spec §11.2) the wide file from data/pairing.js's pairStudies:
+export const MEASUREMENT_COLUMNS         // (2026-09-11) the export's measurement column names, the order data/pairing.js merges in
+export function measurementValues(study) // → Array<number|''>  (2026-09-11) one value per MEASUREMENT_COLUMNS entry, for data/pairing.js
+export function toPairedCsv(pairing)     // → string   (2026-09-08, spec §11.2; 2026-09-11 visits, `<visit> disagreements` columns when
+                                         //   any visit merged, a merged visit's films joined with ` + `) the wide file from pairStudies:
                                          //   citation block; layout-B header (every visit's `<label> study`, then every visit's
                                          //   view, then every visit's film date, then per measurement `<M> Pre-op`, `<M> <label>`,
                                          //   `Delta <M> <label>` per later visit, then `<F> <label>` per clinical key on the

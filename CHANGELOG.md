@@ -12,6 +12,12 @@
 - A film named with a date after its timepoint used to load with the whole name as its subject and
   no timepoint, so it never paired. Such films loaded before this release keep that subject: delete
   them and load the folder again.
+- The paired CSV now writes one column group per visit: a subject's Post-op films on different
+  dates become `Post-op 1`, `Post-op 2`, … in date order, each with its film date, instead of
+  making the subject ambiguous. Two films on the same day merge when one carries a note: the
+  film without a note leads and the noted film fills what it lacks. Every merge is flagged in
+  the toast and in a `disagreements` column beside the visit, naming the measurements the two
+  films disagreed on.
 
 ## 1.0.7
 

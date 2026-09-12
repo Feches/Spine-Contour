@@ -5,7 +5,10 @@
 `M-D-YYYY`/`YYYY-MM-DD` date in any order, then plain fields as a new `note` — by `inferFromStem`; `seedFields` seeds
 `filmDate` and `note`; `studyFromFile` seeds picked/dropped films; the drawer has a fifth NOTE column and `toCsv` a
 `Note` column. See the pre-op/post-op spec §8.1 (amended). A load never rewrites a stored subject, even one the old
-parser stored as the whole stem (user decision: delete and re-add such films). Unreleased; the 1.0.8 bump is a release step.
+parser stored as the whole stem (user decision: delete and re-add such films). The paired export (`data/pairing.js`,
+`toPairedCsv`) now groups films into VISITS (subject + label + film date): a label's visits are numbered by date when a
+subject has several, two same-day films merge under the unnoted-primary rule, and every merge and disagreement is
+flagged in the toast and in the file (spec §11.2/§11.3 amended). Unreleased; the 1.0.8 bump is a release step.
 
 **2026-09-10 circle editing / confidence:** v1.0.7 supports 0/1/2 editable femoral circles and hides raw femoral masks. See `docs/releases/1.0.7.md` and the latest architecture amendment. Overall confidence is a categorical QC assessment, never a repurposed femoral percentage. Manual edits preserve original score provenance; reset restores QC too.
 
