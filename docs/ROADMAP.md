@@ -404,6 +404,10 @@ into the app once its recipe is stable. The later stages, in order:
   to its post-op film, click to open. UMAP stays out until a Python dependency is justified.
 - **A subject-keyed CSV import** for outcome fields, so a one-row-per-subject spreadsheet needs no
   fill-down. Decide first how it coexists with the per-film stem join.
+- **More outcomes.** Rod fracture, screw loosening, adjacent-segment or junctional failure: each is one
+  registry line in `renderer/data/outcomes.js` (stage-1 spec §9.1) once the user captures it, plus an
+  outcome selector on the Find similar tab so the cards and footer can show any registered outcome,
+  not only the primary.
 
 ### Stage 3 — in-app retraining on the settled recipe
 
