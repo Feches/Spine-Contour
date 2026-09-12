@@ -16,7 +16,8 @@ const ANGULAR_COLUMNS = [
   'LL L1-S1', 'PI', 'PT', 'SS', 'PI-LL Mismatch', 'L1PA',
   'LL L2-S1', 'LL L3-S1', 'LL L4-S1', 'LL L5-S1',
 ];
-const MEASUREMENT_COLUMNS = [...ANGULAR_COLUMNS,
+// Exported for data/pairing.js, which merges a visit's films per column in this order.
+export const MEASUREMENT_COLUMNS = [...ANGULAR_COLUMNS,
   ...DISC_LEVEL_PAIRS.flatMap(levels => DISC_POSITIONS.map(position =>
     `Disc height ${levels.join('-')} ${position} (mm)`))];
 
@@ -64,7 +65,9 @@ function measurementValue(study, column) {
   }
 }
 
-function measurementValues(study) {
+// One value per MEASUREMENT_COLUMNS entry, rounded to one decimal, '' where absent. Exported for
+// data/pairing.js, which reads each film through it before merging a visit's films.
+export function measurementValues(study) {
   return [...ANGULAR_COLUMNS.map(column => measurementValue(study, column)),
     ...discRows(study).flatMap(row => DISC_POSITIONS.map(position => round1(row[position])))];
 }
@@ -119,19 +122,34 @@ export function toCsv(studies) {
   return `${lines.join('\r\n')}\r\n`;
 }
 
-// The paired (wide) file (pre-op/post-op spec §11.2) from what data/pairing.js's pairStudies
-// returns; this function only writes text. Layout B, measurement-major: Subject; `<label> study`,
-// `<label> view`, `<label> film date` per visit (Pre-op first); then per measurement column
-// `<M> Pre-op` followed by `<M> <label>`, `Delta <M> <label>` per later visit; then `<F> <label>`
-// per clinical key present on the written films. Headers use the stored label and ASCII `Delta`,
-// following `PI-LL Mismatch` for the on-screen `PI–LL`, so Excel and R read them without a
-// byte-order mark. Demo rows never reach this function: pairStudies drops them.
+// A visit's value for a clinical field: the primary film's, else the first of its other films
+// that carries one -- the same primary-first rule pairing.js applies to the measurements.
+function clinicalOf(visit, field) {
+  for (const study of visit?.films ?? []) {
+    const value = study.clinical ? study.clinical[field] : undefined;
+    if (value != null && value !== '') return value;
+  }
+  return '';
+}
+
+// The paired (wide) file (pre-op/post-op spec §11.2, amended 2026-09-11) from what
+// data/pairing.js's pairStudies returns; this function only writes text. Layout B,
+// measurement-major: Subject; `<visit> study`, `<visit> view`, `<visit> film date` per visit
+// (Pre-op first), then -- only when some visit merged films -- `<visit> disagreements`; then per
+// measurement column `<M> Pre-op` followed by `<M> <visit>`, `Delta <M> <visit>` per later visit;
+// then `<F> <visit>` per clinical key present on the written films. A visit's header is its label,
+// or `<label> N` when a subject has several visits on that label. A merged visit's study cell
+// lists every film, primary first, joined with ` + `; its view and calibration are the primary's.
+// Headers use the stored label and ASCII `Delta`, following `PI-LL Mismatch` for the on-screen
+// `PI–LL`, so Excel and R read them without a byte-order mark. Demo rows never reach this
+// function: pairStudies drops them.
 export function toPairedCsv(pairing) {
-  const { visits, subjects } = pairing;
-  const labels = [PRE_OP, ...visits];
-  const written = subjects.flatMap((row) => [...row.films.values()]);
+  const { visits, subjects, merged = [] } = pairing;
+  const headers = [PRE_OP, ...visits];
+  const written = subjects.flatMap((row) => [...row.visits.values()].flatMap((visit) => visit.films));
   const fields = clinicalFieldNames(written);
   const withCalibration = written.some(study => normalizeCalibration(study.calibration));
+  const flagMerges = merged.length > 0;
 
   const citation = [
     '# Spine Contour export',
@@ -140,41 +158,40 @@ export function toPairedCsv(pairing) {
   ];
   const header = [
     'Subject',
-    ...labels.map((label) => `${label} study`),
-    ...labels.map((label) => `${label} view`),
-    ...labels.map((label) => `${label} film date`),
+    ...headers.map((name) => `${name} study`),
+    ...headers.map((name) => `${name} view`),
+    ...headers.map((name) => `${name} film date`),
+    ...(flagMerges ? headers.map((name) => `${name} disagreements`) : []),
     ...MEASUREMENT_COLUMNS.flatMap((column) => [
       `${column} ${PRE_OP}`,
-      ...visits.flatMap((label) => [`${column} ${label}`, `Delta ${column} ${label}`]),
+      ...visits.flatMap((name) => [`${column} ${name}`, `Delta ${column} ${name}`]),
     ]),
-    ...fields.flatMap((field) => labels.map((label) => `${field} ${label}`)),
-    ...(withCalibration ? labels.flatMap(label => CALIBRATION_COLUMNS.map(column => `${column} ${label}`)) : []),
+    ...fields.flatMap((field) => headers.map((name) => `${field} ${name}`)),
+    ...(withCalibration ? headers.flatMap(name => CALIBRATION_COLUMNS.map(column => `${column} ${name}`)) : []),
   ];
 
   const lines = [...citation, header.map(escapeField).join(',')];
   for (const row of subjects) {
-    const film = (label) => row.films.get(label) ?? null;
-    const values = new Map(labels.map(label => [label, film(label) ? measurementValues(film(label)) : []]));
+    const visit = (name) => row.visits.get(name) ?? null;
+    const values = (name) => visit(name)?.values ?? [];
     const cells = [
       row.subject,
-      ...labels.map((label) => film(label)?.id ?? ''),
-      ...labels.map((label) => film(label)?.view ?? ''),
-      ...labels.map((label) => film(label)?.filmDate ?? ''),
+      ...headers.map((name) => (visit(name) ? visit(name).films.map((study) => study.id).join(' + ') : '')),
+      ...headers.map((name) => visit(name)?.films[0]?.view ?? ''),
+      ...headers.map((name) => visit(name)?.filmDate ?? ''),
+      ...(flagMerges ? headers.map((name) => (visit(name)?.disagreements ?? []).join('; ')) : []),
       ...MEASUREMENT_COLUMNS.flatMap((_column, index) => {
-        const before = values.get(PRE_OP)[index] ?? '';
+        const before = values(PRE_OP)[index] ?? '';
         return [
           before,
-          ...visits.flatMap((label) => {
-            const value = values.get(label)[index] ?? '';
+          ...visits.flatMap((name) => {
+            const value = values(name)[index] ?? '';
             return [value, delta1(before, value)];
           }),
         ];
       }),
-      ...fields.flatMap((field) => labels.map((label) => {
-        const study = film(label);
-        return study && study.clinical && study.clinical[field] != null ? study.clinical[field] : '';
-      })),
-      ...(withCalibration ? labels.flatMap(label => calibrationCells(film(label))) : []),
+      ...fields.flatMap((field) => headers.map((name) => clinicalOf(visit(name), field))),
+      ...(withCalibration ? headers.flatMap(name => calibrationCells(visit(name)?.films[0] ?? null)) : []),
     ];
     lines.push(cells.map(escapeField).join(','));
   }

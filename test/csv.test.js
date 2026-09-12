@@ -708,6 +708,49 @@ test('toPairedCsv never writes a demo row and quotes a label or value that needs
   assert.equal(lines.length, 6);
 });
 
+test('toPairedCsv writes a merged visit\'s films joined with +, and a disagreements column per visit when any visit merged', () => {
+  const rows = [
+    study({ id: 'SP-1000', subjectId: 'sub225', timepoint: 'Pre-op', filmDate: '2023-10-23', measurements: { SS: 43.7, LL: { 'L1-S1': 56.0 } }, clinical: { Age: '70' } }),
+    study({ id: 'SP-1001', subjectId: 'sub225', timepoint: 'Pre-op', filmDate: '2023-10-23', note: 'femoral heads', measurements: { PI: 62.3, PT: 18.1, SS: 44.2 }, clinical: { Sex: 'M' } }),
+    study({ id: 'SP-1002', subjectId: 'sub225', timepoint: 'Post-op', filmDate: '2024-03-22', measurements: PAIR_POST }),
+  ];
+  const lines = toPairedCsv(pairStudies(rows)).split('\r\n');
+  const header = lines[3].split(',');
+  assert.deepEqual(header.slice(0, 12), [
+    'Subject', 'Pre-op study', 'Post-op study', 'Pre-op view', 'Post-op view', 'Pre-op film date', 'Post-op film date',
+    'Pre-op disagreements', 'Post-op disagreements', 'LL L1-S1 Pre-op', 'LL L1-S1 Post-op', 'Delta LL L1-S1 Post-op',
+  ]);
+  const cells = lines[4].split(',');
+  assert.deepEqual(cells.slice(0, 9), ['sub225', 'SP-1000 + SP-1001', 'SP-1002', 'Standing lateral', 'Standing lateral', '2023-10-23', '2024-03-22', 'SS', '']);
+  // LL from the unnoted film, PI and PT from the noted one, SS from the unnoted one; the mismatch
+  // is derived per film and neither film carries both PI and LL, so it stays empty.
+  assert.deepEqual(cells.slice(9, 24), ['56', '49.1', '-6.9', '62.3', '52.3', '-10', '18.1', '14', '-4.1', '43.7', '38.3', '-5.4', '', '3.2', '']);
+  // Clinical values merge the same way: Age from the unnoted film, Sex from the noted one.
+  assert.ok(lines[4].endsWith(',70,,M,'), lines[4]);
+  assert.equal(lines.length, 6);
+});
+
+test('toPairedCsv numbers a label\'s column groups when a subject has several visits on it, in date order, blank where a subject has fewer', () => {
+  const rows = [
+    study({ id: 'SP-1000', subjectId: 'S001', timepoint: 'Pre-op', filmDate: '2024-01-02', measurements: PAIR_PRE }),
+    study({ id: 'SP-1001', subjectId: 'S001', timepoint: 'Post-op', filmDate: '2024-05-31', measurements: PAIR_YEAR }),
+    study({ id: 'SP-1002', subjectId: 'S001', timepoint: 'Post-op', filmDate: '2024-04-30', measurements: PAIR_POST }),
+    study({ id: 'SP-1003', subjectId: 'S002', timepoint: 'Pre-op', filmDate: '2024-02-01', measurements: PAIR_PRE }),
+    study({ id: 'SP-1004', subjectId: 'S002', timepoint: 'Post-op', filmDate: '2024-06-01', measurements: PAIR_POST }),
+  ];
+  const lines = toPairedCsv(pairStudies(rows)).split('\r\n');
+  const header = lines[3].split(',');
+  assert.deepEqual(header.slice(0, 15), [
+    'Subject', 'Pre-op study', 'Post-op 1 study', 'Post-op 2 study', 'Pre-op view', 'Post-op 1 view', 'Post-op 2 view',
+    'Pre-op film date', 'Post-op 1 film date', 'Post-op 2 film date',
+    'LL L1-S1 Pre-op', 'LL L1-S1 Post-op 1', 'Delta LL L1-S1 Post-op 1', 'LL L1-S1 Post-op 2', 'Delta LL L1-S1 Post-op 2',
+  ]);
+  assert.ok(lines[4].startsWith('S001,SP-1000,SP-1002,SP-1001,Standing lateral,Standing lateral,Standing lateral,2024-01-02,2024-04-30,2024-05-31,38.2,49.1,10.9,47.5,9.3,'), lines[4]);
+  assert.ok(lines[5].startsWith('S002,SP-1003,SP-1004,,Standing lateral,Standing lateral,,2024-02-01,2024-06-01,,38.2,49.1,10.9,,,'), lines[5]);
+  // No visit merged films, so no disagreements columns.
+  assert.ok(!lines[3].includes('disagreements'));
+});
+
 test('toPairedCsv over a pairing with nothing written is the citation block and a Pre-op-only header', () => {
   const lines = toPairedCsv(pairStudies([study({ id: 'SP-1000', subjectId: 'S001', timepoint: 'Pre-op' })])).split('\r\n');
   assert.equal(lines.length, 5);

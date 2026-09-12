@@ -28,17 +28,112 @@ test('pairStudies under All paired gives one row per subject with a Pre-op film 
   assert.deepEqual(pairing.subjects.map((s) => s.subject), ['S002', 'S001']);
   const s001 = pairing.subjects[1];
   assert.equal(s001.key, 's001');
-  assert.ok(s001.films instanceof Map);
-  assert.deepEqual([...s001.films.keys()], ['Pre-op', 'Post-op', '1 yr']);
-  assert.equal(s001.films.get('Post-op').id, 'SP-4');
+  assert.ok(s001.visits instanceof Map);
+  assert.deepEqual([...s001.visits.keys()], ['Pre-op', 'Post-op', '1 yr']);
+  // A visit: its header, its label, its date, its films (one here), the merged measurement values
+  // in MEASUREMENT_COLUMNS order (25 columns, all empty for an unsegmented film) and no disagreements.
+  const post = s001.visits.get('Post-op');
+  assert.deepEqual(post.films.map((f) => f.id), ['SP-4']);
+  assert.deepEqual({ header: post.header, label: post.label, filmDate: post.filmDate, disagreements: post.disagreements },
+    { header: 'Post-op', label: 'Post-op', filmDate: null, disagreements: [] });
+  assert.equal(post.values.length, 25);
+  assert.ok(post.values.every((value) => value === ''));
   const s002 = pairing.subjects[0];
-  assert.deepEqual([...s002.films.keys()], ['Pre-op', '1 yr']);
-  assert.equal(s002.films.has('Post-op'), false);
+  assert.deepEqual([...s002.visits.keys()], ['Pre-op', '1 yr']);
+  assert.equal(s002.visits.has('Post-op'), false);
   assert.deepEqual(pairing.unpaired, []);
   assert.deepEqual(pairing.ambiguous, []);
+  assert.deepEqual(pairing.merged, []);
+  assert.deepEqual(pairing.disagreements, []);
   assert.equal(pairing.noSubject, 0);
   assert.equal(pairing.noTimepoint, 0);
   assert.deepEqual(pairing.otherVisits, { count: 0, labels: [] });
+});
+
+const PRE = { PI: 52.1, PT: 21.4, SS: 30.7, L1PA: 9.9, LL: { 'L1-S1': 38.2 } };
+const POST = { PI: 52.3, PT: 14.0, SS: 38.3, L1PA: 8.1, LL: { 'L1-S1': 49.1 } };
+
+test('pairStudies numbers a label\'s visits by film date when a subject has more than one, and every subject fills them from its earliest', () => {
+  const rows = [
+    film('SP-1', 'sub226', 'Pre-op', { filmDate: '2024-01-02' }),
+    film('SP-2', 'sub226', 'Post-op', { filmDate: '2024-05-31' }),
+    film('SP-3', 'sub226', 'Post-op', { filmDate: '2024-04-30' }),
+    film('SP-4', 'sub226', '1 yr', { filmDate: '2025-01-10' }),
+    film('SP-5', 'sub227', 'Pre-op', { filmDate: '2024-02-01' }),
+    film('SP-6', 'sub227', 'Post-op', { filmDate: '2024-06-01' }),
+    film('SP-7', 'sub227', '1 yr', { filmDate: '2025-02-01' }),
+  ];
+  const pairing = pairStudies(rows);
+  // Post-op is numbered because sub226 has two visits on it; 1 yr stays bare.
+  assert.deepEqual(pairing.visits, ['Post-op 1', 'Post-op 2', '1 yr']);
+  const a = pairing.subjects[0].visits;
+  assert.deepEqual([...a.keys()], ['Pre-op', 'Post-op 1', 'Post-op 2', '1 yr']);
+  assert.deepEqual(a.get('Post-op 1').films.map((f) => f.id), ['SP-3']);
+  assert.deepEqual(a.get('Post-op 2').films.map((f) => f.id), ['SP-2']);
+  assert.deepEqual([a.get('Post-op 1').label, a.get('Post-op 1').filmDate, a.get('Post-op 2').filmDate], ['Post-op', '2024-04-30', '2024-05-31']);
+  assert.equal(a.get('1 yr').header, '1 yr');
+  const b = pairing.subjects[1].visits;
+  assert.deepEqual([...b.keys()], ['Pre-op', 'Post-op 1', '1 yr']);
+  assert.equal(b.has('Post-op 2'), false);
+  assert.deepEqual(pairing.ambiguous, []);
+});
+
+test('pairStudies orders an undated visit after the dated ones on its label', () => {
+  const rows = [
+    film('SP-1', 'S001', 'Pre-op', { filmDate: '2024-01-02' }),
+    film('SP-2', 'S001', 'Post-op'),
+    film('SP-3', 'S001', 'Post-op', { filmDate: '2024-04-30' }),
+  ];
+  const pairing = pairStudies(rows);
+  assert.deepEqual(pairing.visits, ['Post-op 1', 'Post-op 2']);
+  const v = pairing.subjects[0].visits;
+  assert.equal(v.get('Post-op 1').films[0].id, 'SP-3');
+  assert.equal(v.get('Post-op 2').films[0].id, 'SP-2');
+  assert.equal(v.get('Post-op 2').filmDate, null);
+});
+
+test('pairStudies merges two same-day films of one visit: the unnoted film leads, the noted film fills its gaps, and a disagreement is listed', () => {
+  const rows = [
+    film('SP-1', 'sub225', 'Pre-op', { filmDate: '2023-10-23', measurements: { SS: 43.7, LL: { 'L1-S1': 56.0 } } }),
+    film('SP-2', 'sub225', 'Pre-op', { filmDate: '2023-10-23', note: 'femoral heads', measurements: { PI: 62.3, PT: 18.1, SS: 44.2 } }),
+    film('SP-3', 'sub225', 'Post-op', { filmDate: '2024-03-22', measurements: POST }),
+  ];
+  const pairing = pairStudies(rows);
+  assert.deepEqual(pairing.subjects.map((s) => s.subject), ['sub225']);
+  const pre = pairing.subjects[0].visits.get('Pre-op');
+  assert.deepEqual(pre.films.map((f) => f.id), ['SP-1', 'SP-2']);
+  // MEASUREMENT_COLUMNS order: LL L1-S1, PI, PT, SS, PI-LL Mismatch, L1PA. LL from the unnoted film,
+  // PI and PT from the noted one, SS from the unnoted one (the noted film's 44.2 is set aside), and
+  // the mismatch stays empty: it is derived per film and neither film has both PI and LL.
+  assert.deepEqual(pre.values.slice(0, 6), [56, 62.3, 18.1, 43.7, '', '']);
+  assert.deepEqual(pre.disagreements, ['SS']);
+  assert.deepEqual(pairing.merged, [{ subject: 'sub225', header: 'Pre-op', films: 2 }]);
+  assert.deepEqual(pairing.disagreements, [{ subject: 'sub225', header: 'Pre-op', columns: ['SS'] }]);
+  assert.deepEqual(pairing.ambiguous, []);
+  // A lone noted film on a date is simply that visit's film: nothing is merged.
+  const alone = pairStudies([
+    film('SP-1', 'S001', 'Pre-op', { filmDate: '2024-01-01', note: 'femoral heads', measurements: PRE }),
+    film('SP-2', 'S001', 'Post-op', { filmDate: '2024-02-01', measurements: POST }),
+  ]);
+  assert.deepEqual(alone.merged, []);
+  assert.equal(alone.subjects[0].visits.get('Pre-op').films[0].id, 'SP-1');
+  assert.deepEqual(alone.subjects[0].visits.get('Pre-op').values.slice(0, 4), [38.2, 52.1, 21.4, 30.7]);
+});
+
+test('pairStudies reports two same-day films ambiguous when neither or both carry a note, and two Pre-op dates as two visits', () => {
+  const rows = [
+    film('SP-1', 'S001', 'Pre-op', { filmDate: '2024-01-02' }), film('SP-2', 'S001', 'Pre-op', { filmDate: '2024-01-02' }), film('SP-3', 'S001', 'Post-op', { filmDate: '2024-04-01' }),
+    film('SP-4', 'S002', 'Pre-op', { filmDate: '2024-01-02', note: 'a' }), film('SP-5', 'S002', 'Pre-op', { filmDate: '2024-01-02', note: 'b' }), film('SP-6', 'S002', 'Post-op', { filmDate: '2024-04-01' }),
+    film('SP-7', 'S003', 'Pre-op', { filmDate: '2023-11-01' }), film('SP-8', 'S003', 'Pre-op', { filmDate: '2024-01-02' }), film('SP-9', 'S003', 'Post-op', { filmDate: '2024-04-01' }),
+  ];
+  const pairing = pairStudies(rows);
+  assert.deepEqual(pairing.subjects, []);
+  assert.deepEqual(pairing.ambiguous, [
+    { subject: 'S001', label: 'Pre-op', count: 2, kind: 'films' },
+    { subject: 'S002', label: 'Pre-op', count: 2, kind: 'films' },
+    { subject: 'S003', label: 'Pre-op', count: 2, kind: 'visits' },
+  ]);
+  assert.deepEqual(pairing.visits, []);
 });
 
 test('pairStudies defaults to All paired when no options are given', () => {
@@ -51,7 +146,7 @@ test('pairStudies defaults to All paired when no options are given', () => {
   const preAsPost = pairStudies(rows, { post: 'Pre-op' });
   assert.equal(preAsPost.post, null);
   assert.deepEqual(preAsPost.visits, ['6 wk']);
-  assert.deepEqual([...preAsPost.subjects[0].films.keys()], ['Pre-op', '6 wk']);
+  assert.deepEqual([...preAsPost.subjects[0].visits.keys()], ['Pre-op', '6 wk']);
 });
 
 test('pairStudies reports a subject unpaired when it has no Pre-op film, or no film on any visit the file writes, and emits no column group for a label only unpaired subjects carry', () => {
@@ -77,8 +172,8 @@ test('pairStudies reports a subject ambiguous when a label the file writes is on
   const pairing = pairStudies(rows);
   assert.deepEqual(pairing.subjects, []);
   assert.deepEqual(pairing.ambiguous, [
-    { subject: 'S001', label: 'Pre-op', count: 2 },
-    { subject: 'S002', label: '6 wk', count: 2 },
+    { subject: 'S001', label: 'Pre-op', count: 2, kind: 'films' },
+    { subject: 'S002', label: '6 wk', count: 2, kind: 'films' },
   ]);
   assert.deepEqual(pairing.unpaired, []);
   assert.deepEqual(pairing.visits, []);
@@ -99,7 +194,7 @@ test('pairStudies with a single label writes only that visit, ignores a duplicat
   assert.equal(pairing.post, 'Post-op');
   assert.deepEqual(pairing.visits, ['Post-op']);
   assert.deepEqual(pairing.subjects.map((s) => s.subject), ['S001']);
-  assert.deepEqual([...pairing.subjects[0].films.keys()], ['Pre-op', 'Post-op']);
+  assert.deepEqual([...pairing.subjects[0].visits.keys()], ['Pre-op', 'Post-op']);
   assert.deepEqual(pairing.ambiguous, []);
   assert.deepEqual(pairing.unpaired, ['S002']);
   // S001's two 6 wk films and its 1 yr film; S002's 6 wk film is covered by the unpaired clause.
@@ -133,7 +228,7 @@ test('pairStudies groups subjects case-insensitively after trimming and shows th
   const pairing = pairStudies([film('SP-1', ' S001 ', 'Pre-op'), film('SP-2', 's001', 'Post-op')]);
   assert.deepEqual(pairing.subjects.map((s) => s.subject), ['S001']);
   assert.equal(pairing.subjects[0].key, 's001');
-  assert.equal(pairing.subjects[0].films.get('Post-op').id, 'SP-2');
+  assert.equal(pairing.subjects[0].visits.get('Post-op').films[0].id, 'SP-2');
 });
 
 test('pairStudies treats Intra-op as a later visit and orders visits Intra-op, Post-op, durations by length, then custom labels', () => {
@@ -143,7 +238,7 @@ test('pairStudies treats Intra-op as a later visit and orders visits Intra-op, P
   ];
   const pairing = pairStudies(rows);
   assert.deepEqual(pairing.visits, ['Intra-op', 'Post-op', '6 wk', '2 yr', 'Final']);
-  assert.deepEqual([...pairing.subjects[0].films.keys()], ['Pre-op', 'Intra-op', '2 yr', 'Final']);
+  assert.deepEqual([...pairing.subjects[0].visits.keys()], ['Pre-op', 'Intra-op', '2 yr', 'Final']);
 });
 
 test('pairStudies leaves its input alone and handles an empty or absent list', () => {
@@ -207,4 +302,31 @@ test('pairedExportMessage names at most five subjects per clause, then an ellips
     'Exported 0 subjects to x.csv \u00B7 7 unpaired (S1, S2, S3, S4, S5, \u2026) \u00B7 6 ambiguous (two Pre-op films: S003, S011; two 6 wk films: S009; three Pre-op films: S010; two Post-op films: S012, \u2026)');
   const five = { ...pairing, unpaired: ['S1', 'S2', 'S3', 'S4', 'S5'], ambiguous: [] };
   assert.equal(pairedExportMessage(five, 'x.csv'), 'Exported 0 subjects to x.csv \u00B7 5 unpaired (S1, S2, S3, S4, S5)');
+  // Two Pre-op dates are two visits, not two films.
+  const dates = { ...pairing, unpaired: [], ambiguous: [{ subject: 'S003', label: 'Pre-op', count: 2, kind: 'visits' }] };
+  assert.equal(pairedExportMessage(dates, 'x.csv'), 'Exported 0 subjects to x.csv \u00B7 1 ambiguous (two Pre-op visits: S003)');
+});
+
+test('pairedExportMessage flags merged visits and their disagreements right after the count, naming at most five', () => {
+  const base = { subjects: [{}, {}], unpaired: [], ambiguous: [], noSubject: 0, noTimepoint: 0, otherVisits: { count: 0, labels: [] } };
+  const two = {
+    ...base,
+    merged: [{ subject: 'sub225', header: 'Pre-op', films: 2 }, { subject: 'sub226', header: 'Post-op 1', films: 3 }],
+    disagreements: [{ subject: 'sub225', header: 'Pre-op', columns: ['SS'] }, { subject: 'sub226', header: 'Post-op 1', columns: ['PI', 'PT'] }],
+  };
+  assert.equal(pairedExportMessage(two, 'x.csv'),
+    'Exported 2 subjects to x.csv \u00B7 2 merged visits (sub225 Pre-op: 2 films, sub226 Post-op 1: 3 films)'
+    + ' \u00B7 3 disagreements, the unnoted film\'s values kept (sub225 Pre-op: SS; sub226 Post-op 1: PI, PT)');
+  const one = { ...base, unpaired: ['S9'], merged: [{ subject: 'sub225', header: 'Pre-op', films: 2 }], disagreements: [{ subject: 'sub225', header: 'Pre-op', columns: ['SS'] }] };
+  assert.equal(pairedExportMessage(one, 'x.csv'),
+    'Exported 2 subjects to x.csv \u00B7 1 merged visit (sub225 Pre-op: 2 films) \u00B7 1 disagreement, the unnoted film\'s value kept (sub225 Pre-op: SS) \u00B7 1 unpaired (S9)');
+  const many = { ...base, merged: Array.from({ length: 7 }, (_, i) => ({ subject: `S${i}`, header: 'Pre-op', films: 2 })), disagreements: [] };
+  assert.equal(pairedExportMessage(many, 'x.csv'),
+    'Exported 2 subjects to x.csv \u00B7 7 merged visits (S0 Pre-op: 2 films, S1 Pre-op: 2 films, S2 Pre-op: 2 films, S3 Pre-op: 2 films, S4 Pre-op: 2 films, \u2026)');
+  // At most three columns are named per visit; the file's disagreements cell carries them all.
+  const wide = { ...base, merged: [{ subject: 'sub225', header: 'Pre-op', films: 2 }], disagreements: [{ subject: 'sub225', header: 'Pre-op', columns: ['SS', 'LL L2-S1', 'LL L3-S1', 'LL L4-S1', 'LL L5-S1'] }] };
+  assert.equal(pairedExportMessage(wide, 'x.csv'),
+    'Exported 2 subjects to x.csv \u00B7 1 merged visit (sub225 Pre-op: 2 films) \u00B7 5 disagreements, the unnoted film\'s values kept (sub225 Pre-op: SS, LL L2-S1, LL L3-S1, +2 more)');
+  // A pairing from before merging existed carries neither list.
+  assert.equal(pairedExportMessage(base, 'x.csv'), 'Exported 2 subjects to x.csv');
 });

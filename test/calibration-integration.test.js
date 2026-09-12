@@ -5,6 +5,7 @@ import { rememberCalibration, attachCalibrations, calibrationForStudy } from '..
 import { getState, setState } from '../renderer/store.js';
 import { validate } from '../renderer/data/persistence.js';
 import { toCsv, toPairedCsv } from '../renderer/data/csv.js';
+import { pairStudies } from '../renderer/data/pairing.js';
 
 function result(scale = .5, status = 'detected') {
   return { version: 1, source_sha256: 'a'.repeat(64), width: 200, height: 200,
@@ -55,7 +56,7 @@ test('CSV exports each film scale, preserves printed asterisk and leaves unknown
   assert.equal(rows[1].split(',')[index], '0.5');
   assert.equal(rows[2].split(',')[index], '');
   assert.equal(rows[1].split(',').at(-1), '40 mm*');
-  const paired = toPairedCsv({ visits: ['Post-op'], subjects: [{ subject: 'P1', films: new Map([['Pre-op', a], ['Post-op', b]]) }] });
+  const paired = toPairedCsv(pairStudies([{ ...a, subjectId: 'P1', timepoint: 'Pre-op' }, { ...b, subjectId: 'P1', timepoint: 'Post-op' }]));
   assert.match(paired, /Pixel spacing X \(mm\/px\) Pre-op/);
   assert.match(paired, /Calibration status Post-op/);
   assert.doesNotMatch(paired, /Delta Pixel spacing/);
