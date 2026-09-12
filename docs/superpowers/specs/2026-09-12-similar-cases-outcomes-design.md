@@ -54,9 +54,10 @@ The researcher (spec §2), doing this:
 1. Load a workspace whose folders give subject and timepoint (pp §8.1). Import the outcome spreadsheet
    through the same screen's CSV import; three new known fields carry the reoperation, its date and the
    last follow-up.
-2. Segment the cohort with the batch (batch §2). Each run now also computes the appearance embedding of
-   the film and stores it. For films segmented before this build, one `Embed` button on the Find tab
-   fills the gap without re-segmenting.
+2. Segment the cohort with the batch (batch §2). Each run also computes the appearance embedding of
+   the film and stores it, unless `Appearance embeddings` is switched off in Settings. For films
+   segmented before this build or with the switch off, one `Embed` button on the Find tab fills the
+   gap without re-segmenting.
 3. Review the flagged studies and mark them reviewed as today. The shape vector follows every landmark
    correction because it is derived from the record's geometry, never stored.
 4. Open a study, click `Find similar`, choose the scope (this workspace or the whole library) and what
@@ -174,11 +175,12 @@ Each with what it costs if it is wrong.
    block is derived from the record's geometry every time and never stored. *Cost if wrong:* a single
    file would be rewritten on every run of an overnight batch; per-study files write once each and load
    once per session.
-10. **The embedding is computed inside `/predict`, after `encoding`, and can never fail the run.**
-    Missing graph or any error → `embedding: null`, logged, the study still segments. Older studies
-    catch up through an `Embed` batch mode that posts the stored framed image and the film to `/embed`.
-    *Cost if wrong:* a film whose embedding failed shows on the Find tab's `Embed` count until it
-    succeeds; nothing is lost.
+10. **The embedding is computed inside `/predict`, after `encoding`, whenever the `Appearance
+    embeddings` setting is on (the default), and can never fail the run.** Missing graph, any error, or
+    the setting off → `embedding: null`, logged where it is an error, the study still segments. Older
+    studies, and films segmented with the setting off, catch up through an `Embed` batch mode that posts
+    the stored framed image and the film to `/embed`. *Cost if wrong:* a film without an embedding
+    shows on the Find tab's `Embed` count until it has one; nothing is lost.
 11. **`Export dataset` writes a folder, not a file, over the paired export's rows, with no images.**
     Four files: `films.csv`, `subjects.csv`, `vectors.json`, `manifest.json`. *Cost if wrong:* the
     notebook reads a different layout; the manifest carries a version for that.
@@ -337,7 +339,8 @@ One sentence in the panel, the same voice as the drawer's:
 - open study partial or unoriented: `Similar cases need all five lumbar levels and S1; this study's
   coverage is partial.`
 - open study without an embedding under `all`/`appearance`: `No appearance embedding for this study
-  yet — run Embed on the Find tab, or rank by shape or alignment.`
+  yet — run Embed on the Find tab, turn on Appearance embeddings in Settings, or rank by shape or
+  alignment.`
 - open study missing one of PI, PT, SS, LL under `alignment`: `Alignment needs PI, PT, SS and LL; this
   study is missing one — rank by shape instead.`
 - no candidates: `No other eligible studies in this workspace.` / `No other eligible studies in the
@@ -445,12 +448,16 @@ is never offered by `GET /models`; `resolve_models` does not know it.
 
 ### 10.3 In `/predict`
 
-After `encoding` and before `calibration`: `runtime.report("embedding", "Computing appearance
-embeddings")`, then `embedding_record(prediction["image"], pixel_array, prediction["framing"])`. In
-low-memory mode the structure models are already released by then; the embed graph is released after
-the stage. Any exception is logged with the same discipline as calibration's and the response carries
-`embedding: null`; `/predict-stream` reports the stage like every other. The response gains the key
-`embedding`; the sidecar, being the raw response, therefore holds a copy, which nothing reads (§11).
+When the `Appearance embeddings` setting is on (§10.6), after `encoding` and before `calibration`:
+`runtime.report("embedding", "Computing appearance embeddings")`, then
+`embedding_record(prediction["image"], pixel_array, prediction["framing"])`. In low-memory mode the
+structure models are already released by then; the embed graph is released after the stage. Any
+exception is logged with the same discipline as calibration's and the response carries `embedding:
+null`; `/predict-stream` reports the stage like every other. With the setting off the stage is skipped
+entirely, the graph is never loaded, and the response carries `embedding: null` too. Either way
+`qc.processing.embeddings` records whether the run computed one, beside `crop_localizer` and
+`toolbar_removal`. The response gains the key `embedding`; the sidecar, being the raw response,
+therefore holds a copy, which nothing reads (§11).
 
 ### 10.4 `POST /embed`
 
@@ -467,6 +474,18 @@ stores.
 `embed` check runs zeros at `1×3×224×224` and asserts shape `(1, 384)` and finite values. Both workflows
 are otherwise unchanged: `tools/export_onnx.py` exports the fifth graph into `backend/onnx/`, which the
 PyInstaller `--add-data` already ships. `--collect-all timm` stays; `timm` is still export-only.
+
+### 10.6 The `Appearance embeddings` setting
+
+Settings → Processing gains a fourth switch, `Appearance embeddings`, `On` / `Off`, default `On`,
+rendered and persisted exactly like `Crop localizer` and `Toolbar removal`: `state.performance.embeddings`,
+saved through `savePerformance` and normalised on load with the others, sent with every `/predict` as the
+form field `embeddings`, parsed by `runtime.parse_options` into `Options.embeddings` (a boolean, else the
+same 422 the other switches raise). It governs only the automatic stage in `/predict`; `/embed` is an
+explicit request and ignores it, so `Embed` on the Find tab always works. Off makes each run about a
+second faster and keeps the 88 MB graph out of memory, which is the case for a low-memory machine or a
+user who never opens the tab; the films it skips show on the Find tab's `Embed` count and can be
+embedded later in one click, or never. The tab's empty state names the setting (§8.4).
 
 ## 11. Storage
 
@@ -505,8 +524,9 @@ No `STORE_VERSION` bump: `studies.json` is unchanged.
 ## 12. The `Embed` action
 
 On the Find tab's filter bar, beside `Segment`: `Embed {n}`, where `n` counts the visible (or ticked
-visible) real studies that are segmented with full coverage and have no current embedding record.
-Hidden when `n` is 0; disabled with `WAIT_FOR_RUN` / `WAIT_FOR_BATCH` while anything runs, like
+visible) real studies that are segmented with full coverage and have no current embedding record —
+segmented before this build, with the setting off (§10.6), after a failed stage, or under an older
+model. Hidden when `n` is 0; disabled with `WAIT_FOR_RUN` / `WAIT_FOR_BATCH` while anything runs, like
 `Segment`.
 
 It runs through the batch driver as a second kind: `state.batch.kind` is `'segment'` (today's) or
@@ -595,10 +615,14 @@ Pure modules get `node --test`; the DOM gets a smoke suite and a human gate; the
 - `test/persistence.test.js` / `test/api-persistence.test.js` (extend): `saveEmbedding` refused after
   `disablePersistence`; `deletePrediction` removes both files; the quarantine moves three things under
   one timestamp.
+- The performance-settings tests (extend): `embeddings` defaults to `true`, survives a save and a load,
+  and rides on every `predict` request beside `cropLocalizer`.
 - Backend: `test_embedding.py` — `preprocess` shape, dtype, letterbox geometry and normalisation on a
   synthetic image; `embed` returns 384 finite unit-norm values on the real graph when it exists (skipped
   otherwise, as the ONNX tests already are); `film_type` per §7.3; `/embed` with both inputs, one input,
-  none (422); `/predict` carries `embedding` and survives a missing graph with `null`.
+  none (422); `/predict` carries `embedding` and survives a missing graph with `null`; with `embeddings` off it skips
+  the stage, never loads the graph, and records `qc.processing.embeddings: false`; `parse_options`
+  rejects a non-boolean `embeddings`.
   `test_onnx_models.py` / `test_onnx_runtime.py` (extend): five kinds; `embed.json`'s fields.
 - `tools/smoke/smoke-similar.mjs`: injected studies (the existing `inject-study.js`) with synthetic
   geometry, `embeddings/` files and outcome fields; the tab's controls, five cards, the footer counts,
@@ -631,6 +655,8 @@ To the architecture contract, in the same commit as the plan:
 8. **Plan 07**: Tasks 1–2 superseded by this document; Tasks 3–6 kept.
 9. **Both packaging allowlists**: unchanged — no new root module; the IPC lives in `main.js` and the
    atomic write in `store-io.js`.
+10. **Settings**: `state.performance.embeddings` (default `true`), the `save-performance` normaliser,
+    the `/predict` form field `embeddings`, `Options.embeddings`, `qc.processing.embeddings`.
 
 ## 17. Sequencing
 
