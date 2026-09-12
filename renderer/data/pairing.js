@@ -29,6 +29,7 @@
 import { subjectKey, ANY_POST } from './parameters.js';
 import { PRE_OP, compareTimepoints } from './timepoints.js';
 import { MEASUREMENT_COLUMNS, measurementValues, delta1 } from './csv.js';
+import { studyName } from './labels.js';
 
 const PI_INDEX = MEASUREMENT_COLUMNS.indexOf('PI');
 const LL_INDEX = MEASUREMENT_COLUMNS.indexOf('LL L1-S1');
@@ -145,7 +146,8 @@ function mergeVisit(visit) {
     if (sources[PI_INDEX] !== sources[LL_INDEX]) {
       derived.push({
         column: MEASUREMENT_COLUMNS[MISMATCH_INDEX],
-        note: `PI from ${visit.films[sources[PI_INDEX]].id}, LL L1-S1 from ${visit.films[sources[LL_INDEX]].id}`,
+        // Films are named as everywhere else (the stem); the record id is never shown (2026-09-12).
+        note: `PI from ${studyName(visit.films[sources[PI_INDEX]])}, LL L1-S1 from ${studyName(visit.films[sources[LL_INDEX]])}`,
       });
     }
   }

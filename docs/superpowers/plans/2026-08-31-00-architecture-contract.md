@@ -165,7 +165,7 @@ renderer/                         (new)
   data/similarity.js              weighted distance
   data/status.js                  status derivation
   data/csv.js                     parse, auto-map, export; toPairedCsv and delta1 (2026-09-08); (2026-09-12) toCsv's
-                                  Study ID is studyName (the stem) and Record ID follows the clinical fields; fileStem now
+                                  Study ID is studyName (the stem) and the record id is not written; fileStem now
                                   lives in data/labels.js and is re-exported here, so labels.js imports nothing from csv.js
   data/labels.js                  how a study names itself and where it came from
   data/timepoints.js              (2026-09-07) pure: timepoint and view vocabularies, token normalisation, §7.2 sort order,

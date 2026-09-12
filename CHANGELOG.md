@@ -26,9 +26,9 @@
   the name in its tooltip, instead of a filename wrapped one letter per line; expanded, a long
   name wraps inside the card instead of running past its edge.
 - Both CSV exports now name a film by its study name, the filename without its extension, instead
-  of the SP-nnnn record id: the long export's `Study ID` column holds the name and a new
-  `Record ID` column after the clinical fields keeps the id; the paired export's study cells hold
-  the names. The name is also what a workspace CSV's `study_id` column must hold to match a film.
+  of the SP-nnnn record id, which no longer appears anywhere a person looks: not in either file and
+  not in the tooltips over a study's name. The name is also what a workspace CSV's `study_id`
+  column must hold to match a film.
 
 ## 1.0.7
 

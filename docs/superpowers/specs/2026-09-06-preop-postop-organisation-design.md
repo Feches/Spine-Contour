@@ -465,9 +465,10 @@ disabled for the same two reasons as the long one. The Analysis screen's per-stu
 `Note`, since 2026-09-11. Absent values are empty, never `0` or `—`. The paired export gained visits
 and merging the same day (§11.2). **Since 2026-09-12 `Study ID` holds the study's name** — its film's
 stem, what every screen shows and what the workspace CSV joins a row by (`findJoinHeader`) — not the
-`SP-nnnn` record id, which moves to a `Record ID` column after the clinical fields and before the
-calibration columns (user report: "the study is still being listed as SP-1000"; roadmap item 2's
-identity decision). A record with no usable filename falls back to its id, as the screens do. The comment block stays (roadmap item 1 decides whether import skips it).
+`SP-nnnn` record id, which is written nowhere in either file: it is shown nowhere in the app either,
+not even as a tooltip (user decision: "sp-1000 isn't anywhere in the UI so it's weird to see it when
+you hover over a study and export too"; roadmap item 2's identity decision). A record with no usable
+filename falls back to its id, as the screens do. The comment block stays (roadmap item 1 decides whether import skips it).
 
 **Clinical columns are the union of every clinical key present on the exported studies**, in
 `KNOWN_FIELDS` order then custom, using the existing union helper — not the session's visible field
@@ -765,7 +766,8 @@ comparison pane; PDF export.
   `header`, `label`, `filmDate`, `films`, `values`, `disagreements`), `merged` and `disagreements`,
   and `ambiguous[]` entries carry `kind`; `data/csv.js` exports `MEASUREMENT_COLUMNS` and
   `measurementValues`; `toPairedCsv` adds the conditional `<visit> disagreements` columns. 2026-09-12:
-  both exports name a film by `studyName` (the stem); `toCsv` adds `Record ID`; `fileStem` moves to
+  both exports name a film by `studyName` (the stem) and neither writes the record id; the four
+  id tooltips (Find name cell, grid name button, drawer name cell, sidebar card) go; `fileStem` moves to
   `data/labels.js` (re-exported by `data/csv.js`) so labels.js no longer imports csv.js. Same day,
   later: a merged visit's `PI-LL Mismatch` is derived from the merged PI and LL and flagged when they
   came from different films — a Visit carries `derived`, the pairing `derived`, and `toPairedCsv` the

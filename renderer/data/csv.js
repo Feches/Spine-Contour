@@ -104,14 +104,14 @@ export function toCsv(studies) {
     '# Investigational software. NOT FOR CLINICAL USE.',
   ];
   // Study ID is the study's NAME -- its film's stem, what every screen shows and what the workspace
-  // CSV joins a row by -- not the SP-nnnn record id (2026-09-12, user report; roadmap item 2's
-  // identity decision). The record id still names the sidecar on disk, so it closes the row's own
-  // columns as Record ID, after the clinical fields and before the calibration columns.
+  // CSV joins a row by. The SP-nnnn record id is written nowhere a person reads, this file included
+  // (user decision 2026-09-12; roadmap item 2's identity decision): it names the sidecar on disk and
+  // keys the rows, and that is all.
   // Subject, Timepoint, Film date and Note sit after View (pre-op/post-op spec §11.1, note added
   // 2026-09-11): the identity a paired analysis groups on, the acquisition date, then what tells
   // two same-day films of one subject apart. Absent values are empty, never 0 or —.
   const header = ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date', 'Note', ...MEASUREMENT_COLUMNS, ...fields,
-    'Record ID', ...(withCalibration ? CALIBRATION_COLUMNS : [])];
+    ...(withCalibration ? CALIBRATION_COLUMNS : [])];
 
   const lines = [...citation, header.map(escapeField).join(',')];
   for (const study of rows) {
@@ -124,7 +124,6 @@ export function toCsv(studies) {
       study.note ?? '',
       ...measurementValues(study),
       ...fields.map((field) => (study.clinical && study.clinical[field] != null ? study.clinical[field] : '')),
-      study.id,
       ...(withCalibration ? calibrationCells(study) : []),
     ];
     lines.push(cells.map(escapeField).join(','));

@@ -44,9 +44,9 @@ Three separate things then block the import, and all three have to be dealt with
    the film's **filename stem**, while the export writes the **record id** (`SP-1000`). Nothing
    matches, and every row is reported unmatched. The two identifiers were designed for different
    moments: a film on disk has no id until it is loaded, which is why the import joins on filename.~~
-   **Fixed 2026-09-12** (option (a) below, turned around): `Study ID` now holds the film's stem — the
-   name every screen shows — and the record id moved to a `Record ID` column after the clinical
-   fields. The app's own export therefore names its films the way the import joins them; only the
+   **Fixed 2026-09-12:** `Study ID` now holds the film's stem — the name every screen shows — and
+   the record id is not exported at all (the user's rule: it appears nowhere a person looks, tooltips
+   included). The app's own export therefore names its films the way the import joins them; only the
    comment block (item 1) still stands between the file and a round trip.
 3. ~~**Only currently-visible clinical columns are exported.** `toCsv(studies, fields, …)` takes the
    session's active field list, and the drawer's column control hides a field for the session. So a
@@ -63,7 +63,7 @@ counted and named in the load message, as unmatched rows already are.
 ### Decisions to make first
 
 - ~~**Which identity does the round trip use?**~~ **Decided 2026-09-12:** the stem, under `Study ID`;
-  the record id is exported too, as `Record ID`, but is never a join key. The options as they stood:
+  the record id stays internal and is not exported. The options as they stood:
   (a) Export a `study_id` column holding the filename stem alongside the human-facing `Study ID`.
   Cheapest, keeps the import rule unchanged, but puts two identity columns in a file people read.
   (b) Teach the import to join on the record id when the column holds one, falling back to the

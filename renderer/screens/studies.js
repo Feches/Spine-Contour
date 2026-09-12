@@ -297,7 +297,9 @@ function buildRow(study, runningId, selected) {
       if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openStudy(study); }
     },
   },
-    el('div', { class: 'studies-cell-id', title: study.id },
+    // No title: the SP-nnnn id keys the row (data-study-id) but is never shown to a person
+    // (user decision 2026-09-12).
+    el('div', { class: 'studies-cell-id' },
       // The tick (batch spec 7.2), on real rows only: a demo study has no film to segment, as it
       // has no delete control. The label's click stops at the label, so the row's own click does
       // not open the study; Space on the box is the box's own activation and already bypasses

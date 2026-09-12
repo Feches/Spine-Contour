@@ -279,7 +279,8 @@ export function mountParameters(host, { onOpen }) {
         onChange: () => setState((s) => ({ paramSelected: toggleId(s.paramSelected, study.id) })),
       }),
       el('button', {
-        type: 'button', class: 'param-open study-name', 'data-param-key': `open-${study.id}`, title: study.id,
+        // No title: the SP-nnnn id is never shown to a person (user decision 2026-09-12).
+        type: 'button', class: 'param-open study-name', 'data-param-key': `open-${study.id}`,
         onClick: () => onOpen(study),
       }, studyName(study)),
       study.source === 'demo' ? el('span', { class: 'pill-demo' }, 'DEMO') : null);

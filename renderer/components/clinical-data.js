@@ -372,7 +372,7 @@ export function mountClinicalData(host) {
       return el('div', { class: 'clinical-grid-row' },
         // The visible label is the study's name; every `data-` attribute below stays keyed on
         // the id, which is what the focus-restore machinery looks the row back up by.
-        el('div', { class: 'clinical-grid-cell clinical-grid-id', title: study.id }, studyName(study)),
+        el('div', { class: 'clinical-grid-cell clinical-grid-id' }, studyName(study)),
         ...STUDY_COLUMNS.map((column) => studyCell(study, column, isDemo)),
         ...fields.map((name) => el('input', {
           type: 'text',
