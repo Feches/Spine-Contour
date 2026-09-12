@@ -374,3 +374,63 @@ checklist over two hundred unique filenames is worse than the search box. A filt
 reads `Showing 5 of 9 · Clear filters`; the empty state offers the same link. The Find list's filters would then be a
 session-only store key of its own (`findFilters`, multi-value per column), and the grid's bar would be rebuilt over the same
 popover. Decide first whether the two tabs share one filter state or each keeps its own.
+
+---
+
+## 8. Similar cases and outcomes — stages 2 to 4
+
+**Deferred 2026-09-12 (user ruling at the similar-cases brainstorm).** Stage 1 is
+`docs/superpowers/specs/2026-09-12-similar-cases-outcomes-design.md`: the fused shape-and-appearance
+ranking, five cards with recorded outcomes, the three outcome fields, the embeddings store, the `Embed`
+batch kind and `Export dataset`. The goal behind it is outcome prediction from about 500 pre-op/post-op
+pairs with a reoperation endpoint, and the settled shape is the hybrid: the app owns the data, the labels,
+the vectors and the registry; the first model is found in a notebook beside the app; each analysis moves
+into the app once its recipe is stable. The later stages, in order:
+
+### Stage 2 — pairs, the map, the model registry and the risk panel
+
+- **Pair-vector ranking.** When the open study belongs to a paired subject (pp §11.2's rule), a `Rank
+  by: this film | this subject's pair` control ranks pairs by `[pre S, post S, post − pre S, pre C, post
+  C]` under the stage-1 fusion. Decide first whether the delta block gets its own weight.
+- **The Research screen**, a fourth sidebar entry: a dataset card (counts and the exclusions by name),
+  `Export dataset` moved or mirrored from the Parameters bar, and a **model registry** — `Import model…`
+  reads a `model.json` (feature names, scaling, coefficients, version, the validation figures) plus its
+  recipe file; one version is active.
+- **The risk panel** on the Analysis screen, shown only while a model is active: a risk group with its
+  drivers and the validation figures beside it, labelled investigational. Never a bare probability
+  without its validation.
+- **The cluster map**, a tab on the Research screen: principal components of the fused vector in the
+  renderer (dependency-free), points coloured by resolved outcome, arrows from a subject's pre-op film
+  to its post-op film, click to open. UMAP stays out until a Python dependency is justified.
+- **A subject-keyed CSV import** for outcome fields, so a one-row-per-subject spreadsheet needs no
+  fill-down. Decide first how it coexists with the per-film stem join.
+
+### Stage 3 — in-app retraining on the settled recipe
+
+- A `Retrain` button on the Research screen runs the recipe file through the bundled backend (numpy
+  and scipy already ship; regularised logistic regression needs nothing more; gradient boosting would
+  add scikit-learn, about 40 MB) and produces a new registry version with the same validation figures
+  the notebook reports, computed the same way: a date split, a minimum follow-up, calibration.
+- Fixed-horizon and follow-up controls, discrimination and calibration panels as hand-drawn SVG, a
+  survival curve, and model version comparison, each ported from the notebook with its outputs as the
+  golden files.
+- The rule for moving an analysis in: its recipe has been stable across two retrains.
+
+### Stage 4 — the workbench
+
+- Feature-group choice and split settings inside validated bounds; the notebook retired to new analysis
+  types only.
+
+### Also deferred from stage 1
+
+- An optional pelvic sub-block in `S` (hip midpoint, femoral centres and radii, eight numbers).
+- A taller whole-film input (for example 448×224) if the 224 px whole-film block proves too coarse.
+- A mask-contour block, only if the shape block leaves something on the table.
+- `Compare with…` for the same subject (pp §12) — the next entry into comparison mode, its own small
+  plan.
+
+### Rough size
+
+Stage 2 is two plans (the registry and risk panel; the map and pair ranking). Stage 3 is one plan per
+ported analysis. None of it should start before a notebook has trained the first model on a stage-1
+export and the human gate has judged the stage-1 neighbours.
