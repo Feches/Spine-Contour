@@ -500,9 +500,11 @@ label the file writes. Unpaired is judged first: a subject with no `Pre-op` film
 any label the file writes, is **unpaired**. Two films on one visit **merge** when exactly one of them
 carries no note: that film is the primary, and a noted film (`femoral heads`) only fills the
 measurements the primary lacks; where both carry a value the primary's is kept and the column is
-listed as a **disagreement**, flagged in the toast (§11.3) and in the file. Derived columns (`PI-LL
-Mismatch`, disc heights) are read per film, never re-derived across films, so a visit whose PI and LL
-come from different films has an empty mismatch. Two same-day films that both lack a note, or both
+listed as a **disagreement**, flagged in the toast (§11.3) and in the file. A merged visit's `PI-LL
+Mismatch` is derived from its merged PI and LL over the written one-decimal values (the delta rule), so
+the row agrees with itself whichever films they came from; when PI and LL came from different films the
+column is flagged as **derived across films** in the toast and in the file, naming the film behind each
+input (user decision 2026-09-11). Disc heights are read per film. Two same-day films that both lack a note, or both
 carry one, are **ambiguous**, as are two `Pre-op` visits on different dates; the subject gets no row
 and is named instead — the user adds a note to one film, or relabels it, and exports again. Under a
 single-label export only `Pre-op` and that label are checked, so a duplicate on another label does
@@ -523,7 +525,8 @@ visible because segmented-only is off writes empty measurement and delta cells; 
 selects for a chart or a mean (decided 2026-09-08 over a visit-major layout, from two worked tables):
 `Subject`; then `<visit> study` per visit, `Pre-op` first; then `<visit> view` per visit; then
 `<visit> film date` per visit; then — only when some visit in the file merged films — `<visit>
-disagreements` per visit, the columns whose values the films disagreed on, `; `-separated; then for
+disagreements` per visit, the columns whose values the films disagreed on, `; `-separated, and `<visit>
+derived across films` per visit (`PI-LL Mismatch: PI from SP-1005, LL L1-S1 from SP-1004`); then for
 each of the ten measurement columns of §11.1, `<M> Pre-op` followed by `<M> <visit>`, `Delta <M>
 <visit>` per later visit; then for each clinical key in the union (§11.1's rule), `<F> <visit>` per
 visit. `<visit>` is the label, or `<label> N` when numbered (2026-09-11). A merged visit's study cell
@@ -578,6 +581,8 @@ ellipsis (`…`):
 - `· D disagreements, the unnoted film's values kept (sub225 Pre-op: SS, LL L2-S1, LL L3-S1, +14 more)`
   — (2026-09-11) the values a merge set aside, counted across visits; at most three columns named per
   visit, the file's disagreements cell carrying them all;
+- `· V values derived across films (sub225 Pre-op: PI-LL Mismatch)` — (2026-09-11) a merged visit's
+  mismatch whose PI and LL came from different films; the file's cell names the films;
 - `· M unpaired (S007, S012, S020)` — subjects among the rows with no `Pre-op` film, or with no film on
   any visit the file writes (§11.2's first check);
 - `· K ambiguous (two Pre-op films: S003; two 6 wk films: S009; two Pre-op visits: S010)` — §11.2's
@@ -754,4 +759,7 @@ comparison pane; PDF export.
   subject has several; `pairStudies` returns `subjects[].visits: Map<header, Visit>` (a Visit carries
   `header`, `label`, `filmDate`, `films`, `values`, `disagreements`), `merged` and `disagreements`,
   and `ambiguous[]` entries carry `kind`; `data/csv.js` exports `MEASUREMENT_COLUMNS` and
-  `measurementValues`; `toPairedCsv` adds the conditional `<visit> disagreements` columns.
+  `measurementValues`; `toPairedCsv` adds the conditional `<visit> disagreements` columns. Same day,
+  later: a merged visit's `PI-LL Mismatch` is derived from the merged PI and LL and flagged when they
+  came from different films — a Visit carries `derived`, the pairing `derived`, and `toPairedCsv` the
+  conditional `<visit> derived across films` columns.

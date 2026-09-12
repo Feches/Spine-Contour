@@ -17,7 +17,8 @@
   making the subject ambiguous. Two films on the same day merge when one carries a note: the
   film without a note leads and the noted film fills what it lacks. Every merge is flagged in
   the toast and in a `disagreements` column beside the visit, naming the measurements the two
-  films disagreed on.
+  films disagreed on. A merged visit's PI-LL mismatch is computed from its merged PI and LL, and
+  a `derived across films` column beside the visit says which film supplied each when they differ.
 
 ## 1.0.7
 
