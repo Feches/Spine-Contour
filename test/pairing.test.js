@@ -104,12 +104,30 @@ test('pairStudies merges two same-day films of one visit: the unnoted film leads
   assert.deepEqual(pre.films.map((f) => f.id), ['SP-1', 'SP-2']);
   // MEASUREMENT_COLUMNS order: LL L1-S1, PI, PT, SS, PI-LL Mismatch, L1PA. LL from the unnoted film,
   // PI and PT from the noted one, SS from the unnoted one (the noted film's 44.2 is set aside), and
-  // the mismatch stays empty: it is derived per film and neither film has both PI and LL.
-  assert.deepEqual(pre.values.slice(0, 6), [56, 62.3, 18.1, 43.7, '', '']);
+  // the mismatch is derived from the merged PI and LL -- 62.3 - 56 -- and flagged as derived across
+  // films, since neither film carried both (user decision 2026-09-11).
+  assert.deepEqual(pre.values.slice(0, 6), [56, 62.3, 18.1, 43.7, 6.3, '']);
   assert.deepEqual(pre.disagreements, ['SS']);
+  assert.deepEqual(pre.derived, [{ column: 'PI-LL Mismatch', note: 'PI from SP-2, LL L1-S1 from SP-1' }]);
   assert.deepEqual(pairing.merged, [{ subject: 'sub225', header: 'Pre-op', films: 2 }]);
   assert.deepEqual(pairing.disagreements, [{ subject: 'sub225', header: 'Pre-op', columns: ['SS'] }]);
+  assert.deepEqual(pairing.derived, [{ subject: 'sub225', header: 'Pre-op', columns: ['PI-LL Mismatch'] }]);
   assert.deepEqual(pairing.ambiguous, []);
+  // The Post-op visit has one film: its own mismatch stands and nothing is derived across films.
+  const post = pairing.subjects[0].visits.get('Post-op');
+  assert.deepEqual(post.values.slice(0, 5), [49.1, 52.3, 14, 38.3, 3.2]);
+  assert.deepEqual(post.derived, []);
+  // A merged visit whose primary carries both PI and LL keeps the primary's own mismatch, and the
+  // mismatch is not derived across films even though the noted film adds L1PA.
+  const both = pairStudies([
+    film('SP-1', 'S001', 'Pre-op', { filmDate: '2024-01-01', measurements: { PI: 52.1, LL: { 'L1-S1': 38.2 } } }),
+    film('SP-2', 'S001', 'Pre-op', { filmDate: '2024-01-01', note: 'hips', measurements: { PI: 60.0, L1PA: 9.9, LL: { 'L1-S1': 30.0 } } }),
+    film('SP-3', 'S001', 'Post-op', { filmDate: '2024-02-01', measurements: POST }),
+  ]);
+  const merged = both.subjects[0].visits.get('Pre-op');
+  assert.deepEqual(merged.values.slice(0, 6), [38.2, 52.1, '', '', 13.9, 9.9]);
+  assert.deepEqual(merged.derived, []);
+  assert.deepEqual(merged.disagreements, ['LL L1-S1', 'PI', 'PI-LL Mismatch']);
   // A lone noted film on a date is simply that visit's film: nothing is merged.
   const alone = pairStudies([
     film('SP-1', 'S001', 'Pre-op', { filmDate: '2024-01-01', note: 'femoral heads', measurements: PRE }),
@@ -327,6 +345,17 @@ test('pairedExportMessage flags merged visits and their disagreements right afte
   const wide = { ...base, merged: [{ subject: 'sub225', header: 'Pre-op', films: 2 }], disagreements: [{ subject: 'sub225', header: 'Pre-op', columns: ['SS', 'LL L2-S1', 'LL L3-S1', 'LL L4-S1', 'LL L5-S1'] }] };
   assert.equal(pairedExportMessage(wide, 'x.csv'),
     'Exported 2 subjects to x.csv \u00B7 1 merged visit (sub225 Pre-op: 2 films) \u00B7 5 disagreements, the unnoted film\'s values kept (sub225 Pre-op: SS, LL L2-S1, LL L3-S1, +2 more)');
-  // A pairing from before merging existed carries neither list.
+  // A value derived across films gets its own clause after the disagreements.
+  const derived = {
+    ...base, merged: [{ subject: 'sub225', header: 'Pre-op', films: 2 }], disagreements: [{ subject: 'sub225', header: 'Pre-op', columns: ['SS'] }],
+    derived: [{ subject: 'sub225', header: 'Pre-op', columns: ['PI-LL Mismatch'] }],
+  };
+  assert.equal(pairedExportMessage(derived, 'x.csv'),
+    'Exported 2 subjects to x.csv · 1 merged visit (sub225 Pre-op: 2 films) · 1 disagreement, the unnoted film\'s value kept (sub225 Pre-op: SS)'
+    + ' · 1 value derived across films (sub225 Pre-op: PI-LL Mismatch)');
+  const derivedTwo = { ...derived, disagreements: [], derived: [{ subject: 'sub225', header: 'Pre-op', columns: ['PI-LL Mismatch'] }, { subject: 'sub226', header: 'Post-op 1', columns: ['PI-LL Mismatch'] }] };
+  assert.equal(pairedExportMessage(derivedTwo, 'x.csv'),
+    'Exported 2 subjects to x.csv · 1 merged visit (sub225 Pre-op: 2 films) · 2 values derived across films (sub225 Pre-op: PI-LL Mismatch; sub226 Post-op 1: PI-LL Mismatch)');
+  // A pairing from before merging existed carries none of the three lists.
   assert.equal(pairedExportMessage(base, 'x.csv'), 'Exported 2 subjects to x.csv');
 });

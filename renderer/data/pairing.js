@@ -10,7 +10,10 @@
  * exactly one of them carries no note: that film is the primary and a noted film (`femoral heads`)
  * only fills the measurements the primary lacks; where both carry a value, the primary's is kept
  * and the column is listed as a disagreement so the toast and the file can say so (user decision
- * 2026-09-11). Two same-day films that both lack a note, or both carry one, are ambiguous, as are
+ * 2026-09-11). A merged visit's PI-LL mismatch is derived from its merged PI and LL, so the row
+ * agrees with itself, and is flagged as derived across films when the two inputs came from
+ * different films (user decision 2026-09-11); every other derived column (disc heights) is read
+ * per film. Two same-day films that both lack a note, or both carry one, are ambiguous, as are
  * two Pre-op visits on different dates -- the subject gets no row and is named instead, because a
  * silent choice is the omission the spec forbids. Demo rows are never written and are dropped
  * before anything is counted.
@@ -25,7 +28,11 @@
  */
 import { subjectKey, ANY_POST } from './parameters.js';
 import { PRE_OP, compareTimepoints } from './timepoints.js';
-import { MEASUREMENT_COLUMNS, measurementValues } from './csv.js';
+import { MEASUREMENT_COLUMNS, measurementValues, delta1 } from './csv.js';
+
+const PI_INDEX = MEASUREMENT_COLUMNS.indexOf('PI');
+const LL_INDEX = MEASUREMENT_COLUMNS.indexOf('LL L1-S1');
+const MISMATCH_INDEX = MEASUREMENT_COLUMNS.indexOf('PI-LL Mismatch');
 
 const NAME_CAP = 5;
 const ELLIPSIS = '…';
@@ -63,6 +70,9 @@ export function postFromFilters(filters) {
  * @property {Object[]} films           the films merged into it, the primary (unnoted) film first
  * @property {Array<number|''>} values  one per MEASUREMENT_COLUMNS entry: the primary's, else the first film's that has one
  * @property {string[]} disagreements   measurement columns where two of its films carried different values
+ * @property {Array<{column: string, note: string}>} derived
+ *                                      columns derived from inputs of different films (`PI-LL Mismatch`), the note
+ *                                      naming which film supplied each input
  */
 
 /**
@@ -78,6 +88,7 @@ export function postFromFilters(filters) {
  * @property {{count: number, labels: string[]}} otherVisits   under a single label only: written subjects' films on other labels
  * @property {Array<{subject: string, header: string, films: number}>} merged          visits built from more than one film
  * @property {Array<{subject: string, header: string, columns: string[]}>} disagreements  merged visits whose films disagreed
+ * @property {Array<{subject: string, header: string, columns: string[]}>} derived        merged visits with a value derived across films
  */
 
 // One subject's films on one label, grouped by film date in first-appearance order, each group a
@@ -111,18 +122,34 @@ function visitsOnLabel(label, films) {
 
 // The visit's merged measurement values: per column, the first film's value in primary-first
 // order, so the primary's stands wherever it has one; any two films carrying different values
-// for a column list it. Derived columns (PI-LL mismatch, disc heights) are read per film, never
-// re-derived across films.
+// for a column list it. A merged visit's PI-LL mismatch is then re-derived from the merged PI and
+// LL over the written one-decimal values (the delta rule), so the three cells agree to the digit
+// whichever films they came from; when PI and LL came from different films the column is flagged
+// as derived across films, with the film behind each input named. Disc heights are read per film.
 function mergeVisit(visit) {
   const perFilm = visit.films.map((study) => measurementValues(study));
   const values = [];
+  const sources = [];
   const disagreements = [];
   MEASUREMENT_COLUMNS.forEach((column, index) => {
-    const present = perFilm.map((row) => row[index]).filter((value) => value !== '' && value != null);
-    values.push(present.length > 0 ? present[0] : '');
-    if (present.some((value) => value !== present[0])) disagreements.push(column);
+    const present = perFilm
+      .map((row, film) => ({ value: row[index], film }))
+      .filter((entry) => entry.value !== '' && entry.value != null);
+    values.push(present.length > 0 ? present[0].value : '');
+    sources.push(present.length > 0 ? present[0].film : null);
+    if (present.some((entry) => entry.value !== present[0].value)) disagreements.push(column);
   });
-  return { ...visit, values, disagreements };
+  const derived = [];
+  if (visit.films.length > 1 && values[PI_INDEX] !== '' && values[LL_INDEX] !== '') {
+    values[MISMATCH_INDEX] = delta1(values[LL_INDEX], values[PI_INDEX]);
+    if (sources[PI_INDEX] !== sources[LL_INDEX]) {
+      derived.push({
+        column: MEASUREMENT_COLUMNS[MISMATCH_INDEX],
+        note: `PI from ${visit.films[sources[PI_INDEX]].id}, LL L1-S1 from ${visit.films[sources[LL_INDEX]].id}`,
+      });
+    }
+  }
+  return { ...visit, values, disagreements, derived };
 }
 
 // `rows` are the rows the long export would write (visible, or ticked visible). `post` is a
@@ -222,6 +249,7 @@ export function pairStudies(rows, { post = ANY_POST } = {}) {
 
   const merged = [];
   const disagreements = [];
+  const derived = [];
   const subjects = judged.map((row) => {
     const map = new Map();
     const pre = row.visitsByLabel.get(PRE_OP)[0];
@@ -233,6 +261,7 @@ export function pairStudies(rows, { post = ANY_POST } = {}) {
     for (const visit of map.values()) {
       if (visit.films.length > 1) merged.push({ subject: row.subject, header: visit.header, films: visit.films.length });
       if (visit.disagreements.length > 0) disagreements.push({ subject: row.subject, header: visit.header, columns: visit.disagreements });
+      if (visit.derived.length > 0) derived.push({ subject: row.subject, header: visit.header, columns: visit.derived.map((entry) => entry.column) });
     }
     return { key: row.key, subject: row.subject, visits: map };
   });
@@ -240,7 +269,7 @@ export function pairStudies(rows, { post = ANY_POST } = {}) {
   return {
     visits, post: single, subjects, unpaired, ambiguous, noSubject, noTimepoint,
     otherVisits: { count: otherCount, labels: otherLabels },
-    merged, disagreements,
+    merged, disagreements, derived,
   };
 }
 
@@ -285,6 +314,7 @@ const COLUMN_CAP = 3;
 // `sub225 Pre-op: SS; sub226 Post-op 1: PI, PT` -- at most five visits, then an ellipsis, and at
 // most three columns per visit, then `+N more`: the file's disagreements cell carries them all,
 // and a toast naming seventeen disc-height columns for one visit says less than the count does.
+// The derived-across-films clause uses the same shape.
 function disagreementDetail(entries) {
   const shown = entries.slice(0, NAME_CAP).map((entry) => {
     const columns = entry.columns.slice(0, COLUMN_CAP).join(', ');
@@ -295,15 +325,17 @@ function disagreementDetail(entries) {
 }
 
 // The §11.3 toast: what was written, how it was merged, then one clause per thing left out, each
-// only when nonzero. A pairing from before merging existed carries neither list.
+// only when nonzero. A pairing from before merging existed carries none of the three merge lists.
 export function pairedExportMessage(pairing, savedTo) {
-  const { subjects, unpaired, ambiguous, noSubject, noTimepoint, otherVisits, merged = [], disagreements = [] } = pairing;
+  const { subjects, unpaired, ambiguous, noSubject, noTimepoint, otherVisits, merged = [], disagreements = [], derived = [] } = pairing;
   let text = `Exported ${plural(subjects.length, 'subject', 'subjects')} to ${savedTo}`;
   if (merged.length > 0) text += `${SEP}${plural(merged.length, 'merged visit', 'merged visits')} (${mergedDetail(merged)})`;
   const differing = disagreements.reduce((sum, entry) => sum + entry.columns.length, 0);
   if (differing > 0) {
     text += `${SEP}${plural(differing, 'disagreement', 'disagreements')}, the unnoted film's ${differing === 1 ? 'value' : 'values'} kept (${disagreementDetail(disagreements)})`;
   }
+  const crossFilm = derived.reduce((sum, entry) => sum + entry.columns.length, 0);
+  if (crossFilm > 0) text += `${SEP}${plural(crossFilm, 'value', 'values')} derived across films (${disagreementDetail(derived)})`;
   if (unpaired.length > 0) text += `${SEP}${unpaired.length} unpaired (${names(unpaired)})`;
   if (ambiguous.length > 0) text += `${SEP}${ambiguous.length} ambiguous (${ambiguousDetail(ambiguous)})`;
   if (noSubject > 0) text += `${SEP}${plural(noSubject, 'film', 'films')} with no subject`;

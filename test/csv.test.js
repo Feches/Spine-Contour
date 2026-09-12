@@ -716,15 +716,21 @@ test('toPairedCsv writes a merged visit\'s films joined with +, and a disagreeme
   ];
   const lines = toPairedCsv(pairStudies(rows)).split('\r\n');
   const header = lines[3].split(',');
-  assert.deepEqual(header.slice(0, 12), [
+  assert.deepEqual(header.slice(0, 14), [
     'Subject', 'Pre-op study', 'Post-op study', 'Pre-op view', 'Post-op view', 'Pre-op film date', 'Post-op film date',
-    'Pre-op disagreements', 'Post-op disagreements', 'LL L1-S1 Pre-op', 'LL L1-S1 Post-op', 'Delta LL L1-S1 Post-op',
+    'Pre-op disagreements', 'Post-op disagreements', 'Pre-op derived across films', 'Post-op derived across films',
+    'LL L1-S1 Pre-op', 'LL L1-S1 Post-op', 'Delta LL L1-S1 Post-op',
   ]);
   const cells = lines[4].split(',');
   assert.deepEqual(cells.slice(0, 9), ['sub225', 'SP-1000 + SP-1001', 'SP-1002', 'Standing lateral', 'Standing lateral', '2023-10-23', '2024-03-22', 'SS', '']);
+  // The derived-across-films cell names the column and the film each input came from; it holds
+  // a comma, so the writer quotes it.
+  assert.equal(cells[9], '"PI-LL Mismatch: PI from SP-1001');
+  assert.equal(cells[10], ' LL L1-S1 from SP-1000"');
+  assert.equal(cells[11], '');
   // LL from the unnoted film, PI and PT from the noted one, SS from the unnoted one; the mismatch
-  // is derived per film and neither film carries both PI and LL, so it stays empty.
-  assert.deepEqual(cells.slice(9, 24), ['56', '49.1', '-6.9', '62.3', '52.3', '-10', '18.1', '14', '-4.1', '43.7', '38.3', '-5.4', '', '3.2', '']);
+  // is derived from the merged PI and LL (62.3 - 56) and its delta from the written cells.
+  assert.deepEqual(cells.slice(12, 27), ['56', '49.1', '-6.9', '62.3', '52.3', '-10', '18.1', '14', '-4.1', '43.7', '38.3', '-5.4', '6.3', '3.2', '-3.1']);
   // Clinical values merge the same way: Age from the unnoted film, Sex from the noted one.
   assert.ok(lines[4].endsWith(',70,,M,'), lines[4]);
   assert.equal(lines.length, 6);
@@ -747,8 +753,9 @@ test('toPairedCsv numbers a label\'s column groups when a subject has several vi
   ]);
   assert.ok(lines[4].startsWith('S001,SP-1000,SP-1002,SP-1001,Standing lateral,Standing lateral,Standing lateral,2024-01-02,2024-04-30,2024-05-31,38.2,49.1,10.9,47.5,9.3,'), lines[4]);
   assert.ok(lines[5].startsWith('S002,SP-1003,SP-1004,,Standing lateral,Standing lateral,,2024-02-01,2024-06-01,,38.2,49.1,10.9,,,'), lines[5]);
-  // No visit merged films, so no disagreements columns.
+  // No visit merged films, so neither the disagreements nor the derived-across-films columns.
   assert.ok(!lines[3].includes('disagreements'));
+  assert.ok(!lines[3].includes('derived across films'));
 });
 
 test('toPairedCsv over a pairing with nothing written is the citation block and a Pre-op-only header', () => {

@@ -135,7 +135,8 @@ function clinicalOf(visit, field) {
 // The paired (wide) file (pre-op/post-op spec §11.2, amended 2026-09-11) from what
 // data/pairing.js's pairStudies returns; this function only writes text. Layout B,
 // measurement-major: Subject; `<visit> study`, `<visit> view`, `<visit> film date` per visit
-// (Pre-op first), then -- only when some visit merged films -- `<visit> disagreements`; then per
+// (Pre-op first), then -- only when some visit merged films -- `<visit> disagreements` and
+// `<visit> derived across films` (the column and the film behind each of its inputs); then per
 // measurement column `<M> Pre-op` followed by `<M> <visit>`, `Delta <M> <visit>` per later visit;
 // then `<F> <visit>` per clinical key present on the written films. A visit's header is its label,
 // or `<label> N` when a subject has several visits on that label. A merged visit's study cell
@@ -162,6 +163,7 @@ export function toPairedCsv(pairing) {
     ...headers.map((name) => `${name} view`),
     ...headers.map((name) => `${name} film date`),
     ...(flagMerges ? headers.map((name) => `${name} disagreements`) : []),
+    ...(flagMerges ? headers.map((name) => `${name} derived across films`) : []),
     ...MEASUREMENT_COLUMNS.flatMap((column) => [
       `${column} ${PRE_OP}`,
       ...visits.flatMap((name) => [`${column} ${name}`, `Delta ${column} ${name}`]),
@@ -180,6 +182,7 @@ export function toPairedCsv(pairing) {
       ...headers.map((name) => visit(name)?.films[0]?.view ?? ''),
       ...headers.map((name) => visit(name)?.filmDate ?? ''),
       ...(flagMerges ? headers.map((name) => (visit(name)?.disagreements ?? []).join('; ')) : []),
+      ...(flagMerges ? headers.map((name) => (visit(name)?.derived ?? []).map((entry) => `${entry.column}: ${entry.note}`).join('; ')) : []),
       ...MEASUREMENT_COLUMNS.flatMap((_column, index) => {
         const before = values(PRE_OP)[index] ?? '';
         return [
