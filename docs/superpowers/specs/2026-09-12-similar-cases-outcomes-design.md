@@ -484,7 +484,7 @@ resolves `null` and stays quiet.
 
 | File | One row per | Columns |
 |---|---|---|
-| `films.csv` | film in the rows | everything `toCsv` writes, then `Film type`, `Coverage` (`full`/`partial`), `Reviewed` (the `reviewedAt` date or blank), `Embedding` (`yes`/`no`), `Crop localizer` (`on`/`off` from `qc.processing`), `Vertebra model`, `Femoral model`, `S1 model` |
+| `films.csv` | film in the rows | everything `toCsv` writes, then `Film type`, `Coverage` (`full`/`partial`), `Reviewed` (the `reviewedAt` date or blank), `Embedding` (`yes`/`no`), `Crop localizer` (`on`/`off` from `qc.processing`), `Vertebra model`, `Femoral model`, `S1 model`, then the outcome resolved per subject (§9.3) as `Subject outcome`, `Subject reoperation date`, `Subject last follow-up` — so a film-level analysis, a pre-op-only model for instance, has its label on the row without joining the pair table |
 | `subjects.csv` | pair per pp §11.2, same `with` rule as the paired export | everything `toPairedCsv` writes, then `Reoperation`, `Reoperation date`, `Last follow-up`, `Outcome status` (`reoperation`/`none`/`not-recorded`/`conflicting`), `Pre-op film type`, `<label> film type` per written visit |
 | `vectors.json` | — | `{version: 1, exportedAt, shape: {dim: 44, order: [...22 point names], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation'}, embedding: {model}, films: {id: {shape, crop, whole, filmType}}}`, with `null` for a block the film lacks |
 | `manifest.json` | — | app version, `exportedAt`, the counts (films, pairs, unpaired, ambiguous, with a recorded outcome, conflicting, without an embedding), the set of model ids and processing settings seen, the embedding model record, the citation line and `NOT FOR CLINICAL USE` |
