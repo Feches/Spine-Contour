@@ -383,7 +383,8 @@ popover. Decide first whether the two tabs share one filter state or each keeps 
 `docs/superpowers/specs/2026-09-12-similar-cases-outcomes-design.md`: the fused shape-and-appearance
 ranking, five cards with recorded outcomes, the three outcome fields, the embeddings store, the `Embed`
 batch kind and `Export dataset`. The goal behind it is outcome prediction from about 500 pre-op/post-op
-pairs with a reoperation endpoint, and the settled shape is the hybrid: the app owns the data, the labels,
+pairs whose endpoint is fusion extension — a reoperation that extended the construct, capturing hardware
+failure, adjacent-segment disease and proximal junctional kyphosis — and the settled shape is the hybrid: the app owns the data, the labels,
 the vectors and the registry; the first model is found in a notebook beside the app; each analysis moves
 into the app once its recipe is stable. The later stages, in order:
 
@@ -404,8 +405,8 @@ into the app once its recipe is stable. The later stages, in order:
   to its post-op film, click to open. UMAP stays out until a Python dependency is justified.
 - **A subject-keyed CSV import** for outcome fields, so a one-row-per-subject spreadsheet needs no
   fill-down. Decide first how it coexists with the per-film stem join.
-- **More outcomes.** Rod fracture, screw loosening, adjacent-segment or junctional failure: each is one
-  registry line in `renderer/data/outcomes.js` (stage-1 spec §9.1) once the user captures it, plus an
+- **More outcomes.** Any-cause reoperation, rod fracture, screw loosening, adjacent-segment disease or
+  junctional kyphosis on their own: each is one registry line in `renderer/data/outcomes.js` (stage-1 spec §9.1) once the user captures it, plus an
   outcome selector on the Find similar tab so the cards and footer can show any registered outcome,
   not only the primary.
 

@@ -17,7 +17,7 @@ measurement columns, the two-row clinical grid — stay as written, adapted to w
 them (HANDOFF, "Resume plan 07 here").
 
 **The programme this is stage 1 of:** the user has about 500 pre-op/post-op pairs with a known
-reoperation outcome and wants, eventually, to predict mechanical failure from the films inside the app.
+reoperation history — fusion extension is the endpoint (§9.1) — and wants, eventually, to predict mechanical failure from the films inside the app.
 Stage 1 builds what is honest today — similar cases with their recorded outcomes, the vectors, the
 labels and the dataset export a notebook trains on — and nothing that shows a risk number. Stages 2–4
 (pair ranking, the cluster map, the model registry and risk panel, in-app retraining) are
@@ -38,7 +38,7 @@ Everything needed to do better is already stored. Every segmented study carries 
 pixels (four corners for L1–L5, the two S1 endplate points), the femoral circles and hip midpoint, the
 measurements derived from them, a 128 px thumbnail, and a sidecar with the framed image and the masks.
 Nothing carries an outcome: the clinical fields are nine free-text names, none of them says whether the
-patient was reoperated, and so nothing in the app can answer "what happened to the cases that look like
+patient's fusion was ever extended, and so nothing in the app can answer "what happened to the cases that look like
 this one".
 
 The research goal behind the tab is outcome prediction, and the honest path to it runs through the app:
@@ -52,7 +52,7 @@ predictor, and the way labels get typed in.
 The researcher (spec §2), doing this:
 
 1. Load a workspace whose folders give subject and timepoint (pp §8.1). Import the outcome spreadsheet
-   through the same screen's CSV import; three new known fields carry the reoperation, its date and the
+   through the same screen's CSV import; three new known fields carry the fusion extension, its date and the
    last follow-up.
 2. Segment the cohort with the batch (batch §2). Each run also computes the appearance embedding of
    the film and stores it, unless `Appearance embeddings` is switched off in Settings. For films
@@ -73,7 +73,7 @@ The researcher (spec §2), doing this:
   visible as a four-way control.
 - Show outcomes on the cards and a count in the footer, as recorded facts about this library, never as
   a prediction.
-- Capture reoperation, its date and the last follow-up as ordinary clinical fields, so the existing
+- Capture fusion extension, its date and the last follow-up as ordinary clinical fields, so the existing
   drawer, import and export paths carry them with no new storage shape.
 - Compute embeddings inside the run every user already waits for, and let a library segmented before
   this build catch up in one click.
@@ -167,7 +167,7 @@ Each with what it costs if it is wrong.
    pure module with a test.
 8. **An outcome is a registered pair of clinical fields — a `Yes`/`No` field and its date — stored per
    film like every clinical value, resolved per subject when read, and shown as counts.** `Last
-   follow-up` is one shared field. Stage 1 registers one outcome, reoperation; a second is one registry
+   follow-up` is one shared field. Stage 1 registers one outcome, fusion extension; a second is one registry
    line (§9.1) and no store change. No new record field, no store version bump. *Cost if wrong:* a
    subject entity was rejected in pp §4 for the same reason; if the per-film join proves too clumsy, a
    subject-keyed import is ROADMAP §8.
@@ -310,7 +310,7 @@ thousand candidates is under five milliseconds; no memo is needed.
 | 1 | `studyName(study)` left; `{match}%` right in Chivo Mono | — |
 | 2 | `{subject} · {timepoint} · {view}` then `{filmDate}` | `—` per part |
 | 3 | `PI {±n} · LL {±n} · PT {±n} · SS {±n}`, the candidate's angle minus the open study's, whole degrees with sign — a difference between two films, never a pre-op/post-op delta | `—` per angle |
-| 4 | the primary outcome (§9.1) resolved per subject (§9.3): `Reoperation · {date}`, `No reoperation · last follow-up {date}`, `Outcome not recorded`, `Outcome conflicting`; the noun is the registered field's name | — |
+| 4 | the primary outcome (§9.1) resolved per subject (§9.3): `Fusion extended · {date}`, `Fusion not extended · last follow-up {date}`, `Outcome not recorded`, `Outcome conflicting`; the wording is the registry entry's `cardYes` and `cardNo` | — |
 | 5 | `CLICK TO COMPARE IN VIEWER`, or `IN VIEWER · CLICK TO REMOVE` when it is `compareId` | — |
 
 When a block the mode asked for did not enter the distance, line 1 names it in the muted colour:
@@ -325,10 +325,10 @@ re-ranking on a store change never touches it.
 
 ### 8.3 The footer
 
-Over the cards shown (`n ≤ 5`), for the primary outcome (§9.1): `{k} OF {n} WITH A REOPERATION · {u}
+Over the cards shown (`n ≤ 5`), for the primary outcome (§9.1): `{k} OF {n} WITH A FUSION EXTENSION · {u}
 NOT RECORDED`, where `k` counts cards whose resolved status is `yes`, `u` counts `not-recorded` plus
-`conflicting`, and the second clause is omitted when `u` is 0. The noun is the registered field's name,
-upper-cased. It is a count of recorded facts about the cards on screen and
+`conflicting`, and the second clause is omitted when `u` is 0. The phrase is the registry entry's
+`footer`. It is a count of recorded facts about the cards on screen and
 is worded so; it never reads as a rate or a risk.
 
 ### 8.4 Empty states
@@ -369,20 +369,25 @@ The registry, `OUTCOMES` in `renderer/data/outcomes.js`:
 
 ```js
 export const OUTCOMES = [
-  { key: 'reoperation', field: 'Reoperation', dateField: 'Reoperation date', primary: true },
+  { key: 'fusionExtension', field: 'Fusion extension', dateField: 'Fusion extension date', primary: true,
+    cardYes: 'Fusion extended', cardNo: 'Fusion not extended', footer: 'WITH A FUSION EXTENSION' },
 ];
 export const FOLLOW_UP_FIELD = 'Last follow-up';
 ```
 
-Stage 1 registers one outcome, reoperation, the clean endpoint. Adding another — rod fracture, screw
-loosening, adjacent-segment or junctional failure — is one line here: its two fields join
+Stage 1 registers one outcome, **fusion extension**: `Yes` when a reoperation extended the fusion
+construct — proximally, distally, or by revising failed instrumentation across it — which captures
+hardware failure, adjacent-segment disease and proximal junctional kyphosis as one mechanical endpoint;
+`No` when the subject was followed without one; blank when unknown. A reoperation that did not extend
+the fusion, an infection washout or a decompression alone, is `No` here. Adding another outcome —
+any-cause reoperation, rod fracture, screw loosening, junctional kyphosis on its own — is one line here: its two fields join
 `KNOWN_FIELDS`, and the drawer, the import, the resolution and every export column follow from the
 registry; nothing stored changes, because a clinical value is a string whatever its name. The `primary`
 outcome is the one the cards and the footer show; with more than one registered, an outcome selector on
 the tab is stage 2 (ROADMAP §8).
 
 `KNOWN_FIELDS` therefore grows from nine to twelve in stage 1, the registry's fields and the follow-up
-appended so no existing export column moves: `'Reoperation'`, `'Reoperation date'`, `'Last follow-up'`.
+appended so no existing export column moves: `'Fusion extension'`, `'Fusion extension date'`, `'Last follow-up'`.
 
 ### 9.2 Values
 
@@ -392,15 +397,15 @@ appended so no existing export column moves: `'Reoperation'`, `'Reoperation date
 - A date field, and `Last follow-up`: recognised when they match `YYYY-MM-DD`, the film-date rule.
   Anything else is kept as typed and counts as not recorded; the drawer cell shows the same warning
   treatment the Study group gives an unreadable film date.
-- `autoMap` matches known names **longest first**, so a header `reoperation_date` maps to
-  `Reoperation date`, not `Reoperation`. This is a change to the rule for every name, and is the only
+- `autoMap` matches known names **longest first**, so a header `fusion_extension_date` maps to
+  `Fusion extension date`, not `Fusion extension`. This is a change to the rule for every name, and is the only
   change the existing nine see: none of them is a prefix of another.
 
 ### 9.3 Resolution per subject
 
 `resolveOutcomes(films)` in `renderer/data/outcomes.js`, pure, over the real films sharing a
 `subjectKey` (a film with no subject is its own set), returns one entry per registered outcome plus the
-follow-up: `{ reoperation: { status, date }, lastFollowUp }`. For each outcome:
+follow-up: `{ fusionExtension: { status, date }, lastFollowUp }`. For each outcome:
 
 | Recognised values of its field across the films | `status` |
 |---|---|
@@ -561,7 +566,7 @@ resolves `null` and stays quiet.
 
 | File | One row per | Columns |
 |---|---|---|
-| `films.csv` | film in the rows | everything `toCsv` writes, then `Film type`, `Coverage` (`full`/`partial`), `Reviewed` (the `reviewedAt` date or blank), `Embedding` (`yes`/`no`), `Crop localizer` (`on`/`off` from `qc.processing`), `Vertebra model`, `Femoral model`, `S1 model`, then, per registered outcome (§9.1), the status and date resolved per subject (§9.3) as `Subject <field>` (`yes`/`no`/`not-recorded`/`conflicting`) and `Subject <date field>` — `Subject reoperation`, `Subject reoperation date` in stage 1 — then `Subject last follow-up`, so a film-level analysis, a pre-op-only model for instance, has its label on the row without joining the pair table |
+| `films.csv` | film in the rows | everything `toCsv` writes, then `Film type`, `Coverage` (`full`/`partial`), `Reviewed` (the `reviewedAt` date or blank), `Embedding` (`yes`/`no`), `Crop localizer` (`on`/`off` from `qc.processing`), `Vertebra model`, `Femoral model`, `S1 model`, then, per registered outcome (§9.1), the status and date resolved per subject (§9.3) as `Subject <field>` (`yes`/`no`/`not-recorded`/`conflicting`) and `Subject <date field>` — `Subject fusion extension`, `Subject fusion extension date` in stage 1 — then `Subject last follow-up`, so a film-level analysis, a pre-op-only model for instance, has its label on the row without joining the pair table |
 | `subjects.csv` | pair per pp §11.2, same `with` rule as the paired export | everything `toPairedCsv` writes, then the same resolved columns as `films.csv` (per registered outcome `Subject <field>` and `Subject <date field>`, then `Subject last follow-up`), then `Pre-op film type`, `<label> film type` per written visit |
 | `vectors.json` | — | `{version: 1, exportedAt, shape: {dim: 44, order: [...22 point names], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation'}, hip: {dim: 2, normalisation: 'the shape transform'}, alignment: {order: ['PI', 'PT', 'SS', 'LL L1-S1', 'PI-LL'], weights: [1, 0.8, 0.8, 0.6, 1]}, embedding: {model}, films: {id: {shape, hip, alignment, crop, whole, filmType}}}`, with `null` for a block the film lacks |
 | `manifest.json` | — | app version, `exportedAt`, the counts (films, pairs, unpaired, ambiguous, with a recorded outcome, conflicting, without an embedding), the set of model ids and processing settings seen, the embedding model record, the citation line and `NOT FOR CLINICAL USE` |
@@ -606,7 +611,7 @@ Pure modules get `node --test`; the DOM gets a smoke suite and a human gate; the
 - `test/outcomes.test.js`: every row of §9.3's table for the registered outcome, and again for a second
   outcome registered in the test alone, so the registry is proven generic; the date rules; a film
   without a subject; the import normalisation of an outcome field; `autoMap`'s longest-first rule with
-  `reoperation_date`.
+  `fusion_extension_date`.
 - `test/dataset.test.js`: `films.csv` and `subjects.csv` builders over a fixture library (columns,
   order, blanks never `0`, demo dropped, the rows equal the paired export's), `vectors.json` and the
   manifest counts, the folder name and its suffix rule, the toast.
