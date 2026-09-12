@@ -279,7 +279,7 @@ export function mountParameters(host, { onOpen }) {
         onChange: () => setState((s) => ({ paramSelected: toggleId(s.paramSelected, study.id) })),
       }),
       el('button', {
-        type: 'button', class: 'param-open', 'data-param-key': `open-${study.id}`, title: study.id,
+        type: 'button', class: 'param-open study-name', 'data-param-key': `open-${study.id}`, title: study.id,
         onClick: () => onOpen(study),
       }, studyName(study)),
       study.source === 'demo' ? el('span', { class: 'pill-demo' }, 'DEMO') : null);

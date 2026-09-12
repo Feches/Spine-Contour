@@ -21,6 +21,8 @@ const ICONS = {
   studies: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="4" width="14" height="4" rx="2"></rect><rect x="5" y="10" width="14" height="4" rx="2"></rect><rect x="5" y="16" width="14" height="4" rx="2"></rect></svg>',
   settings: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 8 H19.5"></path><circle cx="9.5" cy="8" r="2.6" fill="var(--well)"></circle><path d="M4 16 H19.5"></path><circle cx="15" cy="16" r="2.6" fill="var(--well)"></circle></svg>',
   docs: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.5 C10 4 6.8 4 4.5 5 V18.5 C6.8 17.5 10 17.5 12 19 C14 17.5 17.2 17.5 19.5 18.5 V5 C17.2 4 14 4 12 5.5 Z"></path><path d="M12 5.5 V19"></path></svg>',
+  // The collapsed sidebar's open-study button (2026-09-12): one film, not the list's three bars.
+  study: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="17" rx="2"></rect><path d="M8.5 8.5 H15.5"></path><path d="M8.5 12 H15.5"></path><path d="M8.5 15.5 H12.5"></path></svg>',
 };
 
 function modelsBlock(state) {
@@ -147,16 +149,28 @@ function workspaceStatus(state) {
 // The card is the sidebar's way back to the open study, so it is a real control, built like
 // navRow above. It patches `screen` ONLY: openId does not change, so screens/studies.js's
 // FRESH_VIEW reset does not apply and components/viewer.js re-applies the stored zoom/pan --
-// the user returns to the view they left. No aria-label: the three children already name it,
-// and one would hide the view/patient line from a screen reader.
-function openStudyCard(state) {
+// the user returns to the view they left. No aria-label when expanded: the three children
+// already name it, and one would hide the view/patient line from a screen reader. Collapsed
+// (2026-09-12), the card is an icon-only button like the nav rows -- the 64px sidebar cannot hold
+// a filename -- with the name in its title and its accessible name, so the way back survives.
+function openStudyCard(state, collapsed) {
   if (!state.openId) return null;
   const study = state.studies.find((item) => item.id === state.openId);
   if (!study) return null;
+  const onClick = () => setState({ screen: 'analysis' });
+  if (collapsed) {
+    return el('button', {
+      type: 'button',
+      class: 'sidebar-open-study sidebar-open-study-collapsed',
+      title: `Open study: ${studyName(study)}`,
+      'aria-label': `Open study: ${studyName(study)}`,
+      onClick,
+    }, el('span', { class: 'nav-icon', 'aria-hidden': 'true', innerHTML: ICONS.study }));
+  }
   return el('button', {
     type: 'button',
     class: 'sidebar-open-study',
-    onClick: () => setState({ screen: 'analysis' }),
+    onClick,
   },
     el('div', { class: 'eyebrow' }, 'OPEN STUDY'),
     el('div', { class: 'open-study-id', title: study.id }, studyName(study)),
@@ -245,7 +259,7 @@ export function render(state) {
         }
       },
     }),
-    openStudyCard(state),
+    openStudyCard(state, collapsed),
   );
 
   const footer = collapsed

@@ -53,19 +53,28 @@
   border-color: var(--accent);
 }
 
+/* Sideways scroll when the window is too narrow for every column's floor (2026-09-12), as the
+   Parameters grid's wrapper does -- never a clipped STATUS column. `auto` still clips the rounded
+   corners the way `hidden` did, and shows no bar on an ordinary window. */
 .studies-table {
   border-radius: 14px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .studies-table-head,
 .studies-row {
   display: grid;
   /* STUDY · SUBJECT · VIEW · WORKSPACE · FOLDER · DATE · STATUS · actions.
-     STUDY was a fixed 112px when it held an SP-nnnn id; it now holds a filename, so it flexes
-     and gets the widest share. The 110px LORDOSIS track that used to sit before the actions is
-     gone -- the list is for finding a study, not for reading its numbers. */
-  grid-template-columns: 1.35fr 1.15fr 1.05fr 1.05fr 1fr 0.85fr 1.05fr 44px;
+     STUDY was a fixed 112px when it held an SP-nnnn id, then a flexing share when it became a
+     filename. Since 2026-09-12 it takes the widest share with a 200px floor, and the name inside
+     it is capped at .study-name's 280px, so on any ordinary window the name wraps at the same
+     width here as on the Parameters grid; the other tracks keep the floor their usual content
+     needs (`Standing lateral`, `OLIF studies`, `Sep 12, 2026`, `Needs review`) instead of
+     clipping, and only a window too narrow for all of them squeezes STUDY toward its floor.
+     The 110px LORDOSIS track that used to sit before the actions is gone -- the list is for
+     finding a study, not for reading its numbers. */
+  grid-template-columns: minmax(200px, 2.2fr) minmax(96px, 1fr) minmax(120px, 1fr) minmax(104px, 1fr) minmax(90px, 1fr) minmax(94px, 0.85fr) minmax(124px, 1.05fr) 44px;
   gap: 16px;
   align-items: center;
   padding: 13px 22px;
@@ -97,17 +106,16 @@
 }
 
 /* The study's name -- a filename, not an SP-nnnn token any more, so the monospace tracking that
-   suited a fixed-width id is dropped. Filenames get long; ellipsis rather than reflow the row. */
+   suited a fixed-width id is dropped. Its face, cap and wrap are .study-name's, shared with the
+   Parameters grid (end of this file); a long name wraps and the row grows, never an ellipsis. */
 .studies-cell-id {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
-  font: 600 14px 'Source Sans 3', sans-serif;
-  color: var(--ink);
 }
 
-/* The tick box before the name (batch spec 7.2) keeps its size; the name truncates. The box is
+/* The tick box before the name (batch spec 7.2) keeps its size; the name wraps. The box is
    the grid's control (components/checkbox.js) and keeps the grid's class names. */
 .studies-cell-id > .param-check {
   flex: none;
@@ -116,9 +124,6 @@
 
 .studies-name {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .studies-head-study {
@@ -464,6 +469,10 @@
   left: 0;
   z-index: 1;
   background: var(--card);
+  /* The same 200px floor for the name as the Find list's STUDY track, beside the 16px tick box
+     and its 10px margin (2026-09-12). Without it, once the name may break anywhere, the table's
+     auto layout shrinks this column to a few characters and the name stacks a word per line. */
+  min-width: 226px;
 }
 
 .param-th.param-col-study {
@@ -475,16 +484,13 @@
   background: var(--well);
 }
 
+/* The name is a button (a click opens the study). Its face, cap and wrap are .study-name's, at the
+   end of this file -- which must FOLLOW this rule: `all: unset` here would erase them otherwise. */
 .param-open {
   all: unset;
   display: inline-block;
   vertical-align: middle;
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   cursor: pointer;
-  font: 600 14px 'Source Sans 3', sans-serif;
-  color: var(--ink);
 }
 
 .param-open:focus-visible {
@@ -674,4 +680,21 @@
 
 .studies-bulk-prompt span {
   flex: 1 1 260px;
+}
+
+/* The study's name, in the Find list and the Parameters grid alike (user decision 2026-09-12: one
+   rule, so the two screens cannot drift). The same face, the same cap, and a break anywhere inside
+   the name once it passes the cap -- a filename has no spaces to break at. Never an ellipsis: a
+   name you cannot read is a study you cannot find. The Find list's STUDY track is sized to hold
+   the cap beside its tick box (306px = 280 + 16 + 10); the grid's sticky first column is capped by
+   this rule alone. Last in the file on purpose: .param-open's `all: unset` would erase it. */
+.study-name {
+  max-width: 280px;
+  min-width: 0;
+  /* The grid's cells are nowrap (an inherited property), so the wrap is stated, not assumed. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font: 600 14px 'Source Sans 3', sans-serif;
+  line-height: 1.25;
+  color: var(--ink);
 }

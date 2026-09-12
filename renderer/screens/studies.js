@@ -312,7 +312,7 @@ function buildRow(study, runningId, selected) {
           onChange: () => setState((s) => ({ paramSelected: toggleId(s.paramSelected, study.id) })),
         })
         : null,
-      el('span', { class: 'studies-name' }, studyName(study))),
+      el('span', { class: 'studies-name study-name' }, studyName(study))),
     subjectCell(study),
     el('div', { class: 'studies-cell-view' }, study.view || '—'),
     confirming ? null : el('div', { class: 'studies-cell-workspace' }, workspaceLabel(study)),

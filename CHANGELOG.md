@@ -19,6 +19,12 @@
   the toast and in a `disagreements` column beside the visit, naming the measurements the two
   films disagreed on. A merged visit's PI-LL mismatch is computed from its merged PI and LL, and
   a `derived across films` column beside the visit says which film supplied each when they differ.
+- Show a study's full name on the Find list, as the Parameters grid does. Both screens now share
+  one rule for the name: the same face, a 280 pixel cap, and a wrap past it instead of an
+  ellipsis, so a long filename reads in full on either screen.
+- Collapse the sidebar with a study open and the OPEN STUDY card becomes an icon-only button with
+  the name in its tooltip, instead of a filename wrapped one letter per line; expanded, a long
+  name wraps inside the card instead of running past its edge.
 
 ## 1.0.7
 
