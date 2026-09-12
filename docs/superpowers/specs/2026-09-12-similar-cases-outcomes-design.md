@@ -60,15 +60,16 @@ The researcher (spec §2), doing this:
 3. Review the flagged studies and mark them reviewed as today. The shape vector follows every landmark
    correction because it is derived from the record's geometry, never stored.
 4. Open a study, click `Find similar`, choose the scope (this workspace or the whole library) and what
-   to rank by (shape and appearance, shape, appearance). Read five cards: who, how close, where the
+   to rank by (everything, shape, alignment, appearance). Read five cards: who, how close, where the
    alignment differs, and what happened to them. Click one to compare side by side (spec §10.6).
 5. On the Parameters tab, `Export dataset` writes a folder with the per-film table, the per-pair table,
    every vector and a manifest. The notebook starts from that folder.
 
 ## 3. Goals
 
-- Rank stored studies by what the segmentation actually produced — the normalised landmark shape — and
-  by what a general image model sees, combined, with the weights visible as a three-way control.
+- Rank stored studies by what the segmentation actually produced — the normalised landmark shape, the
+  hip, the spinopelvic angles — and by what a general image model sees, combined, with the weights
+  visible as a four-way control.
 - Show outcomes on the cards and a count in the footer, as recorded facts about this library, never as
   a prediction.
 - Capture reoperation, its date and the last follow-up as ordinary clinical fields, so the existing
@@ -132,9 +133,9 @@ The researcher (spec §2), doing this:
 
 Each with what it costs if it is wrong.
 
-1. **The vector is three blocks: shape `S`, crop appearance `C`, whole-film appearance `W`.** No
-   mask-contour block (§4). *Cost if wrong:* the fused distance takes a fourth block without changing
-   its shape; the export's `vectors.json` gains a key.
+1. **The vector is five blocks: column shape `V`, hip `H`, alignment `A`, crop appearance `C`, whole-film
+   appearance `W`.** No mask-contour block (§4). *Cost if wrong:* the fused distance takes another block
+   without changing its shape; the export's `vectors.json` gains a key.
 2. **Shape is two blocks: `V`, the 44 normalised coordinates of the 22 landmarks, and `H`, the hip
    midpoint under the same normalisation.** The hip midpoint against the S1 endplate points is what PI,
    PT and SS measure, so `H` carries the pelvis in two numbers. It is its own block, scaled by its own
@@ -157,7 +158,7 @@ Each with what it costs if it is wrong.
    the crop localizer off every film reads as lumbar and `W` never contributes; the export records the
    setting per film so the notebook can see it.
 6. **Fusion is a weighted root-mean-square of block distances, each divided by its median over the
-   candidates.** The user picks `Shape + appearance`, `Shape` or `Appearance`. The match percentage is
+   candidates.** The user picks `All`, `Shape`, `Alignment` or `Appearance`. The match percentage is
    `round(100·exp(−d))`. *Cost if wrong:* the mapping is cosmetic and monotone; changing it changes no
    ranking.
 7. **Five cards; scope defaults to `All studies`; the same subject is excluded; partial or unoriented
@@ -190,6 +191,10 @@ Each with what it costs if it is wrong.
 14. **Subject identity for exclusion and resolution is `subjectKey` (trimmed, lower-cased), exactly
     the pairing module's.** *Cost if wrong:* a fifth copy of the rule; ROADMAP §6 already wants them
     consolidated.
+15. **The measured angles enter the ranking explicitly, as the alignment block `A`: spec §10.5's
+    `[PI, PT, SS, LL, PI−LL]` with its weights.** Ranking under `Alignment` alone is plan 07's ranking,
+    kept as one of the four modes; under `All` the angles count beside the geometry they came from.
+    *Cost if wrong:* the weights are one line, and a sixth angle (L1PA) is one more entry.
 
 ## 7. Vectors
 
@@ -216,7 +221,16 @@ Each with what it costs if it is wrong.
 `shapeDistance(a, b)` is the Euclidean distance over `V`; `pelvicDistance(a, b)` is the Euclidean
 distance over `H`, defined only when both studies have one.
 
-### 7.2 The appearance blocks `C` and `W`
+### 7.2 The alignment block `A`
+
+`alignment(study)` returns `[PI, PT, SS, LL, PI − LL]` in degrees from `study.measurements` (`LL` is
+`LL['L1-S1']`; `PI − LL` is derived exactly as the measurements table derives it), or `null` when any
+of the four measured angles is absent. `alignmentDistance(a, b)` is spec §10.5's weighted Euclidean
+distance, weights `[1, 0.8, 0.8, 0.6, 1]`. `PI − LL` repeats two of the others on purpose: the mismatch
+is the number the literature ranks by, and the repeat is a deliberate emphasis. The measured numbers
+therefore count explicitly, with named weights, beside the geometry they were computed from.
+
+### 7.3 The appearance blocks `C` and `W`
 
 The backend computes both from one graph (§10): `C` from the framed image the models ran on, `W` from
 the whole film. Each is 384 numbers, L2-normalised. `appearanceDistance(a, b)` is `1 − a·b`.
@@ -224,15 +238,16 @@ the whole film. Each is 384 numbers, L2-normalised. `appearanceDistance(a, b)` i
 `filmType` is `'whole-spine'` when the framing record says the search ran and chose a crop smaller than
 the film, else `'lumbar'`. `W` enters a distance only when both studies are `'whole-spine'`.
 
-### 7.3 The fused distance and the match score
+### 7.4 The fused distance and the match score
 
-For an open study `o`, a candidate set `K` (§7.4) and a mode:
+For an open study `o`, a candidate set `K` (§7.5) and a mode:
 
-| Mode | `wV` | `wH` | `wC` | `wW` |
-|---|---|---|---|---|
-| `both` (`Shape + appearance`) | 1 | 1 | 1 | 1 |
-| `shape` | 1 | 1 | 0 | 0 |
-| `appearance` | 0 | 0 | 1 | 1 |
+| Mode | `wV` | `wH` | `wA` | `wC` | `wW` |
+|---|---|---|---|---|---|
+| `all` | 1 | 1 | 1 | 1 | 1 |
+| `shape` | 1 | 1 | 0 | 0 | 0 |
+| `alignment` | 0 | 0 | 1 | 0 | 0 |
+| `appearance` | 0 | 0 | 0 | 1 | 1 |
 
 For each block present for the pair `(o, c)`: `d_i(c)` is that block's distance; `m_i` is the median of
 `d_i` over every candidate in `K` for which the block is present, when at least three such candidates
@@ -243,25 +258,26 @@ d(c) = sqrt( Σ_present w_i · (d_i(c) / m_i)²  /  Σ_present w_i )
 ```
 
 A block is present for the pair when both studies have it and its weight is not zero; `H` needs a hip
-midpoint on both films, and `W` needs both film types `'whole-spine'`. A candidate with no present block is dropped. Candidates sort by
+midpoint on both films, `A` needs the four measured angles on both, and `W` needs both film types
+`'whole-spine'`. A candidate with no present block is dropped. Candidates sort by
 `d` ascending, ties by id. `matchScore(d) = round(100 · exp(−d))`, an integer 0–100; the median-scaled
 `d` is around 1 for a typical candidate, so the nearest of a few hundred usually reads 60–80.
 
 `findSimilar(open, all, {scope, mode, n = 5})` returns `[{study, d, match, blocks}]`, where `blocks`
 names the blocks that entered the distance, so a card can name what did not (§8.2).
 
-### 7.4 Candidates
+### 7.5 Candidates
 
 A study `c` is a candidate for `o` when all hold:
 
 - real (`source === 'real'`), and not `o` itself;
 - segmented with full coverage: `vector(c)` is not `null`;
-- under `both` or `appearance`, an embedding record exists for `c` (§11); under `shape` it need not;
+- under `all` or `appearance`, an embedding record exists for `c` (§11); under `shape` or `alignment` it need not;
 - scope `'workspace'`: `matchesWorkspace(c, root(o))`, the Parameters grid's rule, `HAND_ADDED`
   included, so a hand-added film's workspace is the other hand-added films; scope `'all'`: every study;
 - not the same subject: `subjectKey(c)` and `subjectKey(o)` are not both non-empty and equal.
 
-The open study must itself pass the vector and, under `both`/`appearance`, the embedding test; if it
+The open study must itself pass the vector and, under `all`/`appearance`, the embedding test; if it
 does not, the tab says why (§8.4) and shows no cards.
 
 ## 8. The Find similar tab
@@ -271,10 +287,10 @@ does not, the tab says why (§8.4) and shows no cards.
 The right panel's second tab (spec §9, 400 px, 440 px in comparison mode). Top to bottom:
 
 1. A segmented control `This workspace | All studies` → `state.similarScope`, default `'all'`.
-2. A segmented control `Rank by  Shape + appearance | Shape | Appearance` → `state.similarRank`, default
-   `'both'`.
-3. The eyebrow, Chivo Mono caps like the measurement group headers: `RANKED BY SPINE SHAPE AND
-   APPEARANCE`, `RANKED BY SPINE SHAPE`, `RANKED BY APPEARANCE`.
+2. A segmented control `Rank by  All | Shape | Alignment | Appearance` → `state.similarRank`, default
+   `'all'`.
+3. The eyebrow, Chivo Mono caps like the measurement group headers: `RANKED BY SHAPE, ALIGNMENT AND
+   APPEARANCE`, `RANKED BY SPINE SHAPE`, `RANKED BY SPINOPELVIC ALIGNMENT`, `RANKED BY APPEARANCE`.
 4. Up to five cards (§8.2), the nearest first.
 5. The footer (§8.3).
 6. The tail, plan 07's wording: `{m} MORE STUDIES BELOW`, where `m` is the candidate count beyond the
@@ -296,9 +312,10 @@ thousand candidates is under five milliseconds; no memo is needed.
 | 5 | `CLICK TO COMPARE IN VIEWER`, or `IN VIEWER · CLICK TO REMOVE` when it is `compareId` | — |
 
 When a block the mode asked for did not enter the distance, line 1 names it in the muted colour:
-` · no hip` (`H` absent on either film), ` · no whole film` (`W` absent, one or both films lumbar), so a
-card never implies a comparison that did not happen. Line 3 is the "why": the angles are not in the distance, they explain
-it.
+` · no hip` (`H` absent on either film), ` · no alignment` (`A` absent, an angle missing on either film),
+` · no whole film` (`W` absent, one or both films lumbar), so a
+card never implies a comparison that did not happen. Line 3 is the "why" in numbers a clinician reads directly; under `all` and `alignment` the same
+angles also enter the distance through `A`.
 
 Clicking a card toggles `compareId` (plan 07 Task 2); everything comparison mode does from there is
 plan 07 Tasks 3–6. `compareId` is nulled on delete of either study, as HANDOFF already requires, and
@@ -319,8 +336,10 @@ One sentence in the panel, the same voice as the drawer's:
 - open study not segmented: `Segment this study to find similar cases.`
 - open study partial or unoriented: `Similar cases need all five lumbar levels and S1; this study's
   coverage is partial.`
-- open study without an embedding under `both`/`appearance`: `No appearance embedding for this study
-  yet — run Embed on the Find tab, or rank by shape.`
+- open study without an embedding under `all`/`appearance`: `No appearance embedding for this study
+  yet — run Embed on the Find tab, or rank by shape or alignment.`
+- open study missing one of PI, PT, SS, LL under `alignment`: `Alignment needs PI, PT, SS and LL; this
+  study is missing one — rank by shape instead.`
 - no candidates: `No other eligible studies in this workspace.` / `No other eligible studies in the
   library.`
 
@@ -387,7 +406,7 @@ follow-up: `{ reoperation: { status, date }, lastFollowUp }`. For each outcome:
 | all `No` | `no` |
 | both | `conflicting` |
 
-`date` is the first recognised value of its date field across the films in pp §7.2 timepoint order;
+`date` is the first recognised value of its date field across the films in pp §7.3 timepoint order;
 `lastFollowUp` is the latest recognised `Last follow-up` across them. `conflicting` and `not-recorded`
 count as unknown everywhere: the footer's `NOT RECORDED`, the export's status columns, the toast. A
 conflict is surfaced, never guessed away: the two films were typed by hand and one of them is wrong.
@@ -420,7 +439,7 @@ is never offered by `GET /models`; `resolve_models` does not know it.
   padding, replicate to three channels, scale to `[0, 1]`, subtract the ImageNet mean and divide by the
   standard deviation, `float32`, `1×3×224×224`.
 - `embed(image)`: run the graph, L2-normalise, return 384 `float32`.
-- `film_type(framing)`: `'whole-spine'` or `'lumbar'` per §7.2, `None` when `framing` is absent.
+- `film_type(framing)`: `'whole-spine'` or `'lumbar'` per §7.3, `None` when `framing` is absent.
 - `embedding_record(crop_image, whole_image, framing)` → `{model: {id, dim, size, onnx_sha256}, crop,
   whole, film_type}` with `null` for an input that was not given.
 
@@ -524,7 +543,7 @@ resolves `null` and stays quiet.
 |---|---|---|
 | `films.csv` | film in the rows | everything `toCsv` writes, then `Film type`, `Coverage` (`full`/`partial`), `Reviewed` (the `reviewedAt` date or blank), `Embedding` (`yes`/`no`), `Crop localizer` (`on`/`off` from `qc.processing`), `Vertebra model`, `Femoral model`, `S1 model`, then, per registered outcome (§9.1), the status and date resolved per subject (§9.3) as `Subject <field>` (`yes`/`no`/`not-recorded`/`conflicting`) and `Subject <date field>` — `Subject reoperation`, `Subject reoperation date` in stage 1 — then `Subject last follow-up`, so a film-level analysis, a pre-op-only model for instance, has its label on the row without joining the pair table |
 | `subjects.csv` | pair per pp §11.2, same `with` rule as the paired export | everything `toPairedCsv` writes, then the same resolved columns as `films.csv` (per registered outcome `Subject <field>` and `Subject <date field>`, then `Subject last follow-up`), then `Pre-op film type`, `<label> film type` per written visit |
-| `vectors.json` | — | `{version: 1, exportedAt, shape: {dim: 44, order: [...22 point names], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation'}, hip: {dim: 2, normalisation: 'the shape block\'s transform'}, embedding: {model}, films: {id: {shape, hip, crop, whole, filmType}}}`, with `null` for a block the film lacks |
+| `vectors.json` | — | `{version: 1, exportedAt, shape: {dim: 44, order: [...22 point names], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation'}, hip: {dim: 2, normalisation: 'the shape transform'}, alignment: {order: ['PI', 'PT', 'SS', 'LL L1-S1', 'PI-LL'], weights: [1, 0.8, 0.8, 0.6, 1]}, embedding: {model}, films: {id: {shape, hip, alignment, crop, whole, filmType}}}`, with `null` for a block the film lacks |
 | `manifest.json` | — | app version, `exportedAt`, the counts (films, pairs, unpaired, ambiguous, with a recorded outcome, conflicting, without an embedding), the set of model ids and processing settings seen, the embedding model record, the citation line and `NOT FOR CLINICAL USE` |
 
 Both CSVs open with the same `#` comment block the existing exports carry. The toast, sized by
@@ -555,12 +574,14 @@ Nothing here changes it.
 Pure modules get `node --test`; the DOM gets a smoke suite and a human gate; the backend gets pytest.
 
 - `test/similarity.test.js`: the 22-point order; mirror on a left-facing spine and not on a
-  right-facing one; centroid and unit size; the hip midpoint through the same transform, and `H` `null` without one; a
+  right-facing one; centroid and unit size; the hip midpoint through the same transform, and `H` `null` without one; the alignment vector with
+  spec §10.5's weights, `null` with an angle missing; a
   partial or unoriented study → `null`; shape distance is
   zero for a copy and symmetric; cosine distance on unit vectors; median scaling with 2, 3 and many
-  candidates and with a zero median; each mode's weights; `H` only when both have a hip, `W` only between two whole-spine films;
+  candidates and with a zero median; each mode's weights; `H` only when both have a hip, `A` only when both have the four angles, `W` only between two
+  whole-spine films;
   `matchScore` bounds; candidates: real only, not self, scope both ways including `HAND_ADDED`, same
-  subject excluded, no embedding excluded under `both`/`appearance` and kept under `shape`; sort and
+  subject excluded, no embedding excluded under `all`/`appearance` and kept under `shape`/`alignment`; sort and
   tie order; `n`.
 - `test/outcomes.test.js`: every row of §9.3's table for the registered outcome, and again for a second
   outcome registered in the test alone, so the registry is proven generic; the date rules; a film
@@ -576,7 +597,7 @@ Pure modules get `node --test`; the DOM gets a smoke suite and a human gate; the
   one timestamp.
 - Backend: `test_embedding.py` — `preprocess` shape, dtype, letterbox geometry and normalisation on a
   synthetic image; `embed` returns 384 finite unit-norm values on the real graph when it exists (skipped
-  otherwise, as the ONNX tests already are); `film_type` per §7.2; `/embed` with both inputs, one input,
+  otherwise, as the ONNX tests already are); `film_type` per §7.3; `/embed` with both inputs, one input,
   none (422); `/predict` carries `embedding` and survives a missing graph with `null`.
   `test_onnx_models.py` / `test_onnx_runtime.py` (extend): five kinds; `embed.json`'s fields.
 - `tools/smoke/smoke-similar.mjs`: injected studies (the existing `inject-study.js`) with synthetic
@@ -592,8 +613,9 @@ Pure modules get `node --test`; the DOM gets a smoke suite and a human gate; the
 
 To the architecture contract, in the same commit as the plan:
 
-1. **`renderer/data/similarity.js`** — its section is replaced: `vector`, `shapeDistance`,
-   `pelvicDistance`, `appearanceDistance`, `fuse`, `matchScore`, `candidates`, `findSimilar` per §7.
+1. **`renderer/data/similarity.js`** — its section is replaced: `vector`, `alignment`, `shapeDistance`,
+   `pelvicDistance`, `alignmentDistance`, `appearanceDistance`, `fuse`, `matchScore`, `candidates`,
+   `findSimilar` per §7.
 2. **New modules**: `renderer/data/outcomes.js` (§9.1 registry, §9.3 resolution), `renderer/data/embeddings.js` (§11),
    `renderer/data/dataset.js` (§13), `renderer/components/similar.js` (§8), `backend/embedding.py`
    (§10.2).
