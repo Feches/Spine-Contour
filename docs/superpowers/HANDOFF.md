@@ -1,9 +1,10 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-09-08
-**Branch:** `claude/studies-ui-updates-bb040d` (the studies work plus the Parameters tab, on top of `origin/ui-redesign-cw` @ `0022d91`)
-**Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
-**This copy is on:** `claude/upstream-reconcile-2026-09-08` — the UI branch (batch segmentation included) with the
+**Last updated:** 2026-09-13
+**Branch:** `claude/spine-contour-filename-parse-b6c1bb` (filename grammar, note, paired visits, names; release 1.0.8 awaiting the PR — first section under "Where things stand")
+**Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-segmentation-failures-82e370`
+**Earlier copies (historical):** `claude/studies-ui-updates-bb040d` in worktree `studies-ui-updates-bb040d`, and
+`claude/upstream-reconcile-2026-09-08` — the UI branch (batch segmentation included) with the
 backend developer's trunk `origin/ui-redesign-cw` @ `5078b1c` merged in (2026-09-08); the studies branch was
 fast-forwarded to it and the same tip is pushed as `fork/ui-redesign-cw`, the branch the backend developer takes.
 Worktree `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-preview-audit-dd3628` — see the first two
@@ -40,6 +41,65 @@ the newest architecture amendment for controls and null rules. No model or calib
 algorithm changed; no screenshots were added.
 
 ## Where things stand
+
+### Filename grammar, note, paired visits, names — DONE; release 1.0.8 awaiting the PR (branch `claude/spine-contour-filename-parse-b6c1bb`, off `fork/main` @ `6704586`, v1.0.7)
+
+2026-09-11 → 13, worktree `.claude/worktrees/spine-contour-segmentation-failures-82e370` (its directory name predates
+this work). Four bounded brainstorms settled in chat, no spec or plan files: the pre-op/post-op spec was amended in place
+(§7.1 `note`, §8.1 rule 3 and its second table, §8.3, §8.4, §9, §11.1, §11.2, §11.3, §18), with the contract's `Study`
+typedef and module list and ROADMAP item 2. Commits: `a139f49` feat filename grammar + note; `efd9848` docs; `048415d`
+feat paired export by visit; `991be31` docs; `dc41870` feat cross-film PI-LL mismatch; `2255ce6` docs; `b0cbcef` fix one
+`.study-name` rule and the collapsed open-study button; `8bee7ec` feat exports name films by study name; `87c8a0a` fix no
+record id anywhere a person looks; `85433a0` docs `docs/naming-films.md` (the website how-to's source); `51ecba2` chore
+release 1.0.8. User-facing summary: `docs/releases/1.0.8.md`.
+
+On `51ecba2`: unit 542/542; `smoke-studies.mjs` 136/136; `smoke-seeding.mjs` 36/36; `smoke-parameters.mjs` 58/58;
+`smoke-workspace.mjs` 100/100 (three fresh scratch launches, 2026-09-13). NOT run: `smoke-persist.mjs` (the restart and
+prediction path is untouched), the backend pytest (no backend change), `smoke-femoral-confidence.mjs` (needs the
+developer's fixture), and the packaged-build checks (wait for the v1.0.8 installer). Human gate: the user ran the
+source app on their own library on 2026-09-12/13 — nine films parsed, the paired export produced two subjects with the
+merged pre-op visit, names and hover as expected — and said "ok that looks better". One false alarm on the way: a
+"No paired subjects" report came from an Electron started in the OLD worktree (`studies-ui-updates-bb040d`); the fix
+was the launch path, not the code (Known traps below).
+
+**Rulings made in chat (2026-09-11 → 13)** — each with its cost if wrong:
+
+1. **Underscore is the only field separator** in a film's stem; spaces and hyphens inside a field are content. Cost: a
+   name using hyphens or spaces between fields (`S001-6-wk`, `S001 pre op`) parses as a subject only; rename the file.
+2. **The note is a top-level `note` field** (drawer NOTE column, CSV `Note`, searchable), not a clinical key and with no
+   CSV structural column. Cost: a workspace CSV cannot set it; it is read from the name or typed.
+3. **A load never rewrites a stored subject**, even one the old parser stored as the whole stem; the user chose delete
+   and re-add over a fill-blanks exception. Cost: libraries loaded before 1.0.8 need that per affected film.
+4. **Paired export by visit**: visit = subject + label + film date; `<label> N` numbering only when some written subject
+   has two or more on that label; the unnoted film is the primary and a noted film fills its gaps; disagreements are
+   flagged in the toast (three columns per visit, then `+N more`) and in a per-visit `disagreements` column; two unnoted
+   or two noted same-day films, and two Pre-op dates, are ambiguous and named. Cost: the file's header shape changes
+   with the data (a second visit renames `Post-op` to `Post-op 1`), so downstream scripts must read headers by name.
+5. **A merged visit's PI-LL mismatch is derived from the merged PI and LL** (the user asked for it after seeing it
+   blank) and flagged in the toast and a per-visit `derived across films` column naming the film behind each input.
+   Cost: a value no single film measured is in the file — flagged so a reader can discard it.
+6. **One `.study-name` rule for the Find list and the Parameters grid**: 280px cap, `white-space: normal`,
+   `overflow-wrap: anywhere`, never an ellipsis; Find's STUDY track is `minmax(200px, 2.2fr)` with floors on the other
+   tracks and the table scrolls sideways when too narrow; the grid's sticky STUDY cell has `min-width: 226px`; the
+   collapsed sidebar's open-study card is an icon-only button with the name as title. Cost: a window under about
+   1300 CSS px with the sidebar open shows a horizontal scrollbar on Find.
+7. **Both exports name a film by `studyName` (the stem)**; `Study ID` holds it (the import's join key); **the SP-nnnn
+   record id appears nowhere a person looks** — the four id tooltips are gone and a `Record ID` column added earlier the
+   same day was withdrawn. Cost: two films with the same stem under different workspaces are indistinguishable in a
+   file; raise ROADMAP item 2 option (c) before ever exporting the id.
+8. **`fileStem` lives in `data/labels.js`** and `data/csv.js` re-exports it, so labels.js imports nothing from csv.js
+   and csv.js may import `studyName`. Cost: none.
+9. **Find's DATE column stays the date added** (the studies-table design); the user was told and did not ask for the
+   film date there.
+10. **1.0.8 is a PATCH increment**, per the project's precedent for new features.
+
+**Next.** The user opens the PR at `https://github.com/Feches/Spine-Contour/compare/main...claude/spine-contour-filename-parse-b6c1bb?expand=1`
+from the body file handed over at the wrap, waits for the PR run, and merges with **Create a merge commit**; the push
+to `main` publishes v1.0.8 (~12 min). Then the packaged-build checks on the installed 1.0.8: no DEMO STUDIES row, no
+`library-preferences.json`, automatic calibration with the bundled OCR, and this release's own — the nine OLIF films'
+names on Find and Parameters, `Export paired CSV` writing two subjects with the merged pre-op visit, and the note
+surviving a restart. Open after that: ROADMAP item 1 (the comment block blocks a CSV round trip; the identity half is
+done), the website how-to (source: `docs/naming-films.md`), `smoke-persist.mjs` on this tree.
 
 ### Studies table — DONE (branch `claude/studies-table-ui-updates-953945`, off `fork/main` @ `6106463`, merged with `fork/main` @ `71d483f`, v1.0.5)
 
@@ -1552,6 +1612,19 @@ plan 06 had never been packaged, or that installed previews contain demos, are s
   then a PR to `fork/main`; merging publishes.
 
 ## Known traps
+
+- **(2026-09-13) Two worktrees, one library, one version string.** `npm.cmd run dev` from the wrong worktree runs
+  the wrong code against the same `%APPDATA%\spine-contour` library, and both footers read the same version until the
+  release bump. When a report contradicts what the branch does on `studies.json`, check the running executable first:
+  `Get-Process electron | Select Path`. An older app that saves the library drops fields it does not know (`note`).
+- **(2026-09-12) CDP screenshots need `ack: true`** in the same `setState` as `screen`, or the landing gate stays and
+  every capture is the disclaimer page (all identical byte sizes is the tell). The smoke window is 1167 CSS px wide.
+- **(2026-09-12) `all: unset` erases later shared rules of equal specificity** unless the shared rule comes AFTER it
+  in the stylesheet; `.study-name` is last in `styles/screens/studies.css` for that reason. A table's auto layout
+  shrinks a cell whose text may break anywhere down to a word per line unless the cell has a `min-width`.
+- **(2026-09-11) `smoke-workspace.mjs` runs once per instance** (its first run adds the Notes field); `backend/onnx/`
+  is gitignored, so a fresh worktree needs the models copied from a sibling; plain `python` is the Store alias — use
+  the venv's; Electron's binary may need `node node_modules/electron/install.js` after `npm ci` under npm's script policy.
 
 - **A source launch with Tesseract installed but not on PATH silently reports every image as
   `unavailable`.** `configure_ocr()` only points `pytesseract` at the bundled copy shipped in
