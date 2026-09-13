@@ -102,12 +102,17 @@ export function importRowFor(state, study) {
   return { ok: true, values, fields, badDate: structural.badDate };
 }
 
-// The studies the grid shows, one row each, in row order. Plan 07 replaces this one
-// expression with the open study plus the comparison study; every row, and the count
-// label, is derived from the array so nothing else in this module assumes a count.
+// The studies the grid shows, one row each: the open study, then the compared one when
+// comparison mode is on (similar-cases plan B Task 8, plan 07 Task 6). Every row and the count
+// label derive from this array, so nothing else in this module assumes a count. A compareId
+// that names no study, or names the open study, leaves the grid on one row.
 function visibleStudies(state) {
   const open = openStudy(state);
-  return open ? [open] : [];
+  if (!open) return [];
+  const other = state.compareId && state.compareId !== open.id
+    ? state.studies.find((s) => s.id === state.compareId) ?? null
+    : null;
+  return other ? [open, other] : [open];
 }
 
 function sameKey(a, b) {

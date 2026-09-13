@@ -19,8 +19,9 @@ import { mountClinicalData } from '../components/clinical-data.js';
 import { mountSimilar } from '../components/similar.js';
 import { calibrationForStudy } from '../calibration.js';
 import { preferReviewedCalibration } from '../data/calibration.js';
-import { storeEmbedding } from '../embeddings.js';
+import { storeEmbedding, embeddingsMap } from '../embeddings.js';
 import { embeddingRecord } from '../data/embeddings.js';
+import { findSimilar } from '../data/similarity.js';
 
 const BACK_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12 H5"></path><path d="M11 6 L5 12 L11 18"></path></svg>';
 
@@ -108,6 +109,10 @@ function sameConfidenceKey(a, b) {
 function teardown() {
   if (!mounted) return;
   mounted.viewer.detach();
+  // The comparison pane goes with it, and so do its bitmaps: unlike the primary's they are not
+  // in imageCache and nothing else holds them, so the mount that decoded them frees them.
+  mounted.compareViewer.detach();
+  mounted.releaseCompare();
   mounted = null;
   // imageCache deliberately survives -- that is the whole point of it.
 }
@@ -587,6 +592,11 @@ export function render(state) {
   // only when it would change.
   const statusHost = el('div', { class: 'analysis-status' });
 
+  // The comparison badge -- COMPARING, the separator and the compared study's id -- beside the
+  // status badge, for as long as a second study is in the viewer (similar-cases spec 8.5, plan 07
+  // Task 4). Hidden, not absent, so update() only has a boolean and a string to write.
+  const compareBadge = el('div', { class: 'eyebrow analysis-compare', hidden: true, 'data-similar-key': 'comparing' });
+
   // The same DEMO pill the Studies list puts beside the patient. A demo study's numbers are
   // fabricated for exploring the interface; the header is where the user is looking when they
   // read them, so the pill belongs beside the id, not only back on the list.
@@ -597,6 +607,7 @@ export function render(state) {
     study.source === 'demo' ? el('span', { class: 'pill-demo' }, 'DEMO') : null,
     el('div', { class: 'analysis-spacer' }),
     statusHost,
+    compareBadge,
     confidenceBadge);
 
   const tabMeas = el('button', {
@@ -629,7 +640,12 @@ export function render(state) {
     measurementsHost,
     similarHost);
 
-  const viewerHost = el('div', { class: 'analysis-viewer-host' });
+  // Two panes, side by side, the second hidden until a study is compared. Both are mounted once
+  // and kept: mounting the compare viewer on demand would mean creating and orphaning a pair of
+  // canvases and their 2D contexts every time a card is clicked.
+  const primaryHost = el('div', { class: 'analysis-pane analysis-pane-primary' });
+  const compareHost = el('div', { class: 'analysis-pane analysis-pane-compare is-hidden' });
+  const viewerHost = el('div', { class: 'analysis-viewer-host' }, primaryHost, compareHost);
   const body = el('div', { class: 'analysis-body' }, viewerHost, panel);
   // The clinical data drawer is the screen's LAST child, full width below the viewer/panel row
   // (spec 9.5). .analysis-screen is a flex column and .analysis-body is flex:1/min-height:0, so
@@ -640,7 +656,8 @@ export function render(state) {
   const clinicalHost = el('section', { class: 'clinical-data' });
   const root = el('main', { class: 'analysis-screen' }, header, body, clinicalHost);
 
-  const viewer = mountViewer(viewerHost);
+  const viewer = mountViewer(primaryHost);
+  const compareViewer = mountViewer(compareHost, { role: 'compare' });
   const measurementsPanel = mountMeasurements(measurementsHost);
   const clinical = mountClinicalData(clinicalHost);
   const similar = mountSimilar(similarHost);
@@ -683,6 +700,64 @@ export function render(state) {
   // What the header badge last showed; update() runs on every notification, pan frames included,
   // and rebuilds the badge only when this changes.
   let lastBadgeKey = null;
+
+  // ---- comparison mode (similar-cases plan B Task 8) -----------------------------------
+  // The compared study on screen, its decoded bitmaps, and the memo for the chip's match.
+  let lastCompareId = null;
+  let compareImages = null;
+  let compareRevision = 0;
+  let lastMatchKey = null;
+  let lastMatch = null;
+  const sameMatchKey = (a, b) => a !== null && b !== null && a.length === b.length && a.every((v, i) => v === b[i]);
+
+  // The compare pane's bitmaps are its own -- imageCache holds the OPEN study's, and nothing
+  // else ever references these -- so this mount both decodes and frees them.
+  function releaseCompare() {
+    if (!compareImages) return;
+    const images = compareImages;
+    compareImages = null;
+    compareViewer.setImages(null);
+    disposeStudyImages(images);
+  }
+
+  // restoreFilm's sibling for the compared study. Same sidecar gate (a refused store makes
+  // predictions/SP-nnnn.json the PREVIOUS library's film), same identity guard -- the id still
+  // compared and the record's addedAt unchanged -- and the same two card states while it runs.
+  // No imageCache write and no recordPrediction: neither belongs to a study nobody opened.
+  async function restoreCompareFilm(compareId) {
+    const revision = ++compareRevision;
+    const addedAt = getState().studies.find((s) => s.id === compareId)?.addedAt ?? null;
+    const stale = () => revision !== compareRevision || getState().compareId !== compareId
+      || (getState().studies.find((s) => s.id === compareId)?.addedAt ?? null) !== addedAt;
+    // The outgoing film goes first, before anything is awaited: the pane is already drawing the
+    // NEW study's geometry, and a frame of that over the old study's radiograph would be a
+    // fabricated picture, not a slow one.
+    releaseCompare();
+    compareViewer.setFilmStatus('loading');
+    try {
+      const sidecar = persistenceDisabledReason() ? null : await loadPrediction(compareId);
+      if (stale()) return;
+      if (!sidecar) {
+        compareViewer.setFilmStatus('missing');
+        return;
+      }
+      const images = await loadStudyImages(sidecar);
+      if (stale()) {
+        disposeStudyImages(images);
+        return;
+      }
+      compareImages = images;
+      // setImages clears the film status itself and drops both redraw keys; setFilmStatus is
+      // then the repaint, and it is the one call that puts the chip's match back -- a bare
+      // updateViewer(study) would default the match to null and blank it.
+      compareViewer.setImages(images);
+      compareViewer.setFilmStatus(null);
+    } catch (error) {
+      if (revision !== compareRevision) return;
+      compareViewer.setFilmStatus('missing');
+      showToast(`Could not load the film for ${compareId}: ${error.message}`);
+    }
+  }
 
   async function exportCsv() {
     const live = getState();
@@ -776,8 +851,45 @@ export function render(state) {
     measurementsHost.classList.toggle('is-hidden', live.tab !== 'meas');
     similarHost.classList.toggle('is-hidden', live.tab !== 'sim');
 
+    // Comparison mode. A compareId that names no study, or names the open one, is simply not a
+    // comparison: every surface below reads `other`, so none of them can throw on it.
+    const other = live.compareId && live.compareId !== open.id
+      ? live.studies.find((s) => s.id === live.compareId) ?? null
+      : null;
+    compareHost.classList.toggle('is-hidden', !other);
+    panel.classList.toggle('is-comparing', Boolean(other));
+    compareBadge.hidden = !other;
+    if (other) compareBadge.textContent = `COMPARING \u00B7 ${other.id}`;
+
+    // The chip's percentage is the CARD's own figure, so it has to be computed the card's way:
+    // the same scope, because medianScale normalises each block over the candidate pool and a
+    // fixed 'all' pool would give this pair a different distance than the card that opened it.
+    // Memoised because update() runs on EVERY store notification, pan frames included (BD-2
+    // above), while findSimilar rebuilds a 22-point vector for every study in the library.
+    let match = null;
+    if (other) {
+      const matchKey = [live.studies, live.openId, live.compareId, live.similarRank, live.similarScope, live.embeddingsVersion];
+      if (sameMatchKey(matchKey, lastMatchKey)) {
+        match = lastMatch;
+      } else {
+        match = findSimilar(open, live.studies, { scope: live.similarScope, mode: live.similarRank, embeddings: embeddingsMap(), n: Infinity })
+          .matches.find((m) => m.study.id === other.id)?.match ?? null;
+        lastMatchKey = matchKey;
+        lastMatch = match;
+      }
+      compareViewer.updateViewer(other, { match });
+    }
+    // The film follows the pair, not the notification: read once when the compared study
+    // changes, freed when the comparison ends.
+    const compareKey = other ? other.id : null;
+    if (compareKey !== lastCompareId) {
+      lastCompareId = compareKey;
+      if (compareKey) restoreCompareFilm(compareKey);
+      else releaseCompare();
+    }
+
     viewer.updateViewer(open);
-    measurementsPanel.updateMeasurements(open);
+    measurementsPanel.updateMeasurements(open, other);
     // Same contract as updateMeasurements: this runs on EVERY store notification, pan frames
     // included, and the component's own reference-keyed gate decides whether to rebuild. It
     // reads the store itself, so it takes no argument.
@@ -793,7 +905,7 @@ export function render(state) {
   // setImages guard (~l.203), live() (~l.230) and needsRestore -- drawing one study's
   // geometry over another study's film. Add openId to SCREEN_KEYS, or refresh this in
   // update(), before writing such a caller.
-  mounted = { viewer, update, studyId: study.id };
+  mounted = { viewer, compareViewer, releaseCompare, update, studyId: study.id };
   update();
   if (needsRestore) restoreFilm(study.id);
   return root;

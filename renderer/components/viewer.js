@@ -30,6 +30,10 @@ const ICONS = {
 
 const MEASURE_DEBOUNCE_MS = 150;
 
+// The compare chip's close glyph (U+00D7). Written as an escape, like every other non-ASCII
+// character in this file's JS.
+const MULTIPLICATION_SIGN = '\u00D7';
+
 // ---------------------------------------------------------------------------
 // Transient interaction state. Module scope, NOT the store, per the architecture
 // contract's viewer/interactions.js section: only committed geometry reaches the store.
@@ -48,9 +52,12 @@ let tracePoints = [];      // [x, y][] in image space
 // would undo it and a stray point would survive the pan into fitCircle.
 let tracePointPointer = null;
 
-// Where the user has dragged each construction's label, in image pixels, for the open study.
-let labelOffsets = new Map(); // construction key ('L3', 'PI', ...) -> {dx, dy}
-let labelStudyId = null;
+// The dragged construction-label offsets are PER MOUNT, declared inside mountViewer: with a
+// comparison pane on screen two mounts call updateViewer with DIFFERENT studies on every store
+// notification, and a shared pair would clear itself every frame -- the primary's dragged labels
+// would snap back the moment comparison mode came on. Everything above stays shared, and one
+// live pointer gesture at a time is what makes that safe (the compare role starts nothing but a
+// pan, and never writes `hover`).
 
 const measureQueue = createMeasureQueue({ measure, getState, setState, showToast, debounceMs: MEASURE_DEBOUNCE_MS });
 const { commitGeometry } = measureQueue;
@@ -125,14 +132,56 @@ function sameKey(a, b) {
   return a !== null && b !== null && a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
-function currentStudy() {
-  const state = getState();
-  const study = state.studies.find((s) => s.id === state.openId) ?? null;
-  const draft = state.measurementDrafts?.[state.openId];
-  return study && draft ? { ...study, geometry: draft } : study;
-}
+// The Analysis screen mounts this twice in comparison mode (similar-cases plan B Task 8, plan 07
+// Tasks 3-6): the PRIMARY pane draws state.openId and owns every edit, the COMPARE pane draws
+// state.compareId and is read-only -- no edit button, no re-run, no run card, no keyboard, no
+// handle presses -- with its own zoom, pan and pan mode kept in the mount rather than the store.
+export function mountViewer(container, { role = 'primary' } = {}) {
+  const compare = role === 'compare';
 
-export function mountViewer(container) {
+  // The compare pane's view state. The primary keeps reading and writing the store's zoom, panX,
+  // panY and panMode; the compare pane cannot, because those keys are the PRIMARY's -- a shared
+  // panMode would light up both stages from one toolbar's Pan toggle, and a shared zoom would
+  // move both films from one wheel.
+  const local = { zoom: 1, panX: 0, panY: 0, panMode: false };
+
+  // The state every zoom/pan/pan-mode read goes through, and the one writer beside it. In the
+  // compare role writeView paints immediately: there is no store change to ride on.
+  function viewState() {
+    const state = getState();
+    return compare
+      ? { ...state, zoom: local.zoom, panX: local.panX, panY: local.panY, panMode: local.panMode }
+      : state;
+  }
+  function writeView(update) {
+    if (!compare) {
+      setState(update);
+      return;
+    }
+    const next = typeof update === 'function' ? update(viewState()) : update;
+    local.zoom = next.zoom ?? local.zoom;
+    local.panX = next.panX ?? local.panX;
+    local.panY = next.panY ?? local.panY;
+    local.panMode = next.panMode ?? local.panMode;
+    applyTransform(viewState());
+    redrawDynamic(liveGeometry());
+  }
+
+  // The study this mount draws: openId for the primary, compareId for the compare pane. A
+  // pending correction is the OPEN study's, so only the primary reads the drafts.
+  function currentStudy() {
+    const state = getState();
+    const id = compare ? state.compareId : state.openId;
+    const study = state.studies.find((s) => s.id === id) ?? null;
+    const draft = compare ? null : state.measurementDrafts?.[id];
+    return study && draft ? { ...study, geometry: draft } : study;
+  }
+
+  // Where the user has dragged each construction's label, in image pixels, for THIS mount's
+  // study. Per mount, not module scope -- see the note above the measure queue.
+  let labelOffsets = new Map(); // construction key ('L3', 'PI', ...) -> {dx, dy}
+  let labelStudyId = null;
+
   const stage = el('div', { class: 'viewer-stage' });
   const host = el('div', { class: 'viewer-host' });
   const { staticCanvas, dynamicCanvas, staticCtx, dynamicCtx } = createLayeredCanvases(host);
@@ -145,10 +194,22 @@ export function mountViewer(container) {
   host.append(labelChip);
 
   const chipId = el('div', { class: 'viewer-chip-id' });
-  const chip = el('div', { class: 'viewer-chip' }, chipId);
+  // The compare pane's chip carries what the card that opened it said -- the id and the match --
+  // and the way back out. The primary's chip is the id alone, as it has always been.
+  function handleChipClose() {
+    setState({ compareId: null });
+  }
+  const chipMatch = compare ? el('div', { class: 'viewer-chip-match' }) : null;
+  const chipClose = compare
+    ? el('button', { type: 'button', class: 'viewer-chip-close', title: 'Stop comparing',
+      'aria-label': 'Stop comparing', onClick: handleChipClose }, MULTIPLICATION_SIGN)
+    : null;
+  const chip = el('div', { class: 'viewer-chip' }, chipId, chipMatch, chipClose);
+  // What the compare chip currently reads, so a film-status repaint can put it back.
+  let chipMatchValue = null;
 
   const zoomLabel = el('div', { class: 'viewer-zoom' }, '100%');
-  const panButton = toolButton('Pan', ICONS.pan, () => setState((s) => ({ panMode: !s.panMode })), { 'aria-pressed': 'false' });
+  const panButton = toolButton('Pan', ICONS.pan, () => writeView((s) => ({ panMode: !s.panMode })), { 'aria-pressed': 'false' });
   const overlayButton = toolButton('Toggle segmentation overlay', ICONS.overlays, () => setState((s) => ({ overlays: !s.overlays })), { 'aria-pressed': 'false' });
   const editButton = toolButton('Edit landmarks', ICONS.edit, () => {
     if (getState().editing) exitEditMode();
@@ -175,11 +236,14 @@ export function mountViewer(container) {
     onInput: (e) => setState({ overlayOpacity: Number(e.target.value) }),
   });
 
+  // The compare pane's toolbar stops at the fill slider: it has the same zoom, fit, pan and
+  // overlay controls -- each writing its own view state through writeView -- and neither the
+  // edit button nor re-run, which belong to the open study.
   const toolbar = el('div', { class: 'viewer-toolbar' },
-    toolButton('Zoom out', ICONS.zoomOut, () => setState((s) => ({ zoom: zoomOut(s.zoom) }))),
+    toolButton('Zoom out', ICONS.zoomOut, () => writeView((s) => ({ zoom: zoomOut(s.zoom) }))),
     zoomLabel,
-    toolButton('Zoom in', ICONS.zoomIn, () => setState((s) => ({ zoom: zoomIn(s.zoom) }))),
-    toolButton('Fit to view', ICONS.fit, () => setState({ zoom: 1, panX: 0, panY: 0 })),
+    toolButton('Zoom in', ICONS.zoomIn, () => writeView((s) => ({ zoom: zoomIn(s.zoom) }))),
+    toolButton('Fit to view', ICONS.fit, () => writeView({ zoom: 1, panX: 0, panY: 0 })),
     el('div', { class: 'viewer-divider' }),
     panButton,
     overlayButton,
@@ -187,9 +251,9 @@ export function mountViewer(container) {
     el('div', { class: 'viewer-fill' },
       el('div', { class: 'viewer-fill-label' }, 'FILL'),
       fillSlider),
-    el('div', { class: 'viewer-divider' }),
-    editButton,
-    rerunButton);
+    compare ? null : el('div', { class: 'viewer-divider' }),
+    compare ? null : editButton,
+    compare ? null : rerunButton);
 
   // Shown only while editing: RETRACE, FIT and RESET TO PREDICTION alongside DONE.
   const addCircleButton = textButton('ADD CIRCLE', () => addCircle(), { title: 'Place at least 3 points around the head, then Fit' });
@@ -221,7 +285,10 @@ export function mountViewer(container) {
   const runCard = el('div', { class: 'run-card is-hidden' },
     el('div', { class: 'run-card-inner' }, runEyebrow, runTitle, runBody, runSpinner, runButton, cancelButton));
 
-  stage.append(host, chip, toolbar, editBar, footer, runCard);
+  // The edit bar is built either way (updateEditBar then writes to it unconditionally) but it
+  // only reaches the DOM in the primary role: the compare pane never edits.
+  if (compare) stage.append(host, chip, toolbar, footer, runCard);
+  else stage.append(host, chip, toolbar, editBar, footer, runCard);
   container.append(stage);
 
   let currentImages = null;
@@ -242,9 +309,12 @@ export function mountViewer(container) {
   }
 
   // The geometry the stage should show right now: a live drag's working copy, else the store's.
+  // `drag` is shared between the two mounts, so the working copy is honoured only when it
+  // belongs to THIS mount's study -- otherwise a handle drag on the primary would paint the open
+  // study's geometry onto the compare pane's film on the next notification.
   function liveGeometry() {
-    if (drag && drag.kind === 'handle') return drag.geometry;
     const study = currentStudy();
+    if (drag && drag.kind === 'handle' && study && drag.studyId === study.id) return drag.geometry;
     return study ? study.geometry : null;
   }
 
@@ -267,7 +337,10 @@ export function mountViewer(container) {
     drawDynamicLayer(dynamicCtx, dynamicCanvas, geometry, {
       selectedLevel: state.selectedLevel,
       measurements: study && !state.measurementDrafts?.[study.id] ? study.measurements : null,
-      editing: state.editing,
+      // `editing` belongs to the OPEN study. The compare pane is read-only, so it keeps its
+      // plan-03 rendering throughout: no handles to grab, no trace points, no hover highlight
+      // -- drawing any of them would be an affordance the pane does not honour.
+      editing: !compare && state.editing,
       selection: state.selection,
       hover,
       tracePoints,
@@ -358,10 +431,10 @@ export function mountViewer(container) {
     // return` guard on pointerdown does not apply -- this DOES fire mid-drag. Without the
     // re-baseline below, the next pointermove would silently discard the pan this wheel just
     // wrote and the film would snap back.
-    const before = drag && drag.kind === 'pan' ? getState() : null;
-    setState((s) => zoomAbout(s, event.deltaY < 0 ? 1 : -1, offsetX, offsetY));
+    const before = drag && drag.kind === 'pan' ? viewState() : null;
+    writeView((s) => zoomAbout(s, event.deltaY < 0 ? 1 : -1, offsetX, offsetY));
     if (before && drag && drag.kind === 'pan') {
-      const after = getState();
+      const after = viewState();
       // Shift the baseline by exactly what the wheel changed, so `drag.panX + mouse delta`
       // keeps yielding the anchored pan. Deliberately does NOT touch drag.clientX/clientY: the
       // wheel may come from a different device than the pointer holding the drag.
@@ -383,7 +456,7 @@ export function mountViewer(container) {
   }
 
   function startPan(event, chord = false) {
-    const state = getState();
+    const state = viewState();
     drag = { kind: 'pan', chord, pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, panX: state.panX, panY: state.panY };
     suppressClick = true;
     stage.classList.add('is-panning');
@@ -451,13 +524,16 @@ export function mountViewer(container) {
     }
     if (drag) return;
     suppressClick = false;
-    const state = getState();
+    const state = viewState();
     if (event.button === 1 || (event.button === 0 && state.panMode)) {
       event.preventDefault();
       startPan(event);
       return;
     }
     if (event.button !== 0) return;
+    // Read-only: below this line a press is a handle press, a retrace point or a click
+    // selection, and the compare pane does none of them. Panning above it is unaffected.
+    if (compare) return;
     const study = currentStudy();
     if (!study || !study.geometry) return;
     // Busy means THIS study's /predict is in flight. A run on a different study must not
@@ -507,6 +583,9 @@ export function mountViewer(container) {
       return;
     }
     if (!drag) {
+      // `hover` is shared module state; the compare role never writes it, which is what keeps
+      // one mount's hover highlight out of the other's.
+      if (compare) return;
       const state = getState();
       if (!state.editing || retracing) return;
       const study = currentStudy();
@@ -516,7 +595,7 @@ export function mountViewer(container) {
     }
     if (event.pointerId !== drag.pointerId) return;
     if (drag.kind === 'pan') {
-      setState({
+      writeView({
         panX: drag.panX + (event.clientX - drag.clientX),
         panY: drag.panY + (event.clientY - drag.clientY),
       });
@@ -541,6 +620,9 @@ export function mountViewer(container) {
   }
 
   function handlePointerLeave() {
+    // Same rule as handlePointerMove: the compare role neither sets nor clears the shared
+    // hover, so leaving its stage cannot drop the primary's handle highlight.
+    if (compare) return;
     if (!drag) setHover(null);
   }
 
@@ -610,6 +692,9 @@ export function mountViewer(container) {
   // Coarse click-select: the vertebra under the pointer becomes the construction target.
   // A click that ended a gesture is not a selection.
   function handleClick(event) {
+    // Read-only: a click on the compare pane selects nothing. suppressClick is left as the
+    // gesture set it; the next pointerdown clears it before any click can be read.
+    if (compare) return;
     if (suppressClick) {
       suppressClick = false;
       return;
@@ -732,6 +817,23 @@ export function mountViewer(container) {
   // film, so every other branch would read it as an unprocessed real study and offer a Run
   // segmentation button whose only possible outcome is a "file is no longer available" toast.
   function describeCard(study, state, hasResult) {
+    // The compare pane says only what it knows about its own film. It never offers a run: the
+    // run card's button segments state.openId, and the compared study is not the open one.
+    if (compare) {
+      if (filmStatus === 'loading') {
+        return { eyebrow: 'LOADING', title: 'Loading the film\u2026', body: 'Reading the saved segmentation for this study.', spinner: true, button: null };
+      }
+      if (filmStatus === 'missing') {
+        return {
+          eyebrow: 'FILM UNAVAILABLE',
+          title: 'The saved segmentation was not found',
+          body: 'The film and overlay for this study are missing from this profile. Open it and re-run segmentation to restore them; the measurements are unchanged.',
+          spinner: false,
+          button: null,
+        };
+      }
+      return null;
+    }
     if (study.source === 'demo') {
       return {
         eyebrow: 'DEMO STUDY',
@@ -864,7 +966,10 @@ export function mountViewer(container) {
   dynamicCanvas.addEventListener('pointerup', handlePointerUp);
   dynamicCanvas.addEventListener('pointercancel', handlePointerUp);
   dynamicCanvas.addEventListener('click', handleClick);
-  window.addEventListener('keydown', handleKeyDown);
+  // The shortcuts drive edit mode and the construction selection, both of which belong to the
+  // open study. The compare pane attaches none of them -- and two window listeners would in any
+  // case both fire for one key press.
+  if (!compare) window.addEventListener('keydown', handleKeyDown);
 
   function detach() {
     stage.removeEventListener('wheel', handleWheel);
@@ -880,6 +985,7 @@ export function mountViewer(container) {
     labelChip.removeEventListener('pointermove', handleLabelPointerMove);
     labelChip.removeEventListener('pointerup', handleLabelPointerUp);
     labelChip.removeEventListener('pointercancel', handleLabelPointerUp);
+    if (chipClose) chipClose.removeEventListener('click', handleChipClose);
     resizeObserver.disconnect();
     drag = null;
     suppressClick = false;
@@ -931,20 +1037,31 @@ export function mountViewer(container) {
   function setFilmStatus(status) {
     filmStatus = status;
     const study = currentStudy();
-    if (study) updateViewer(study);
+    // The match is the caller's, not this mount's, and a film-status repaint is not a new one:
+    // pass back what the last updateViewer was given so the chip does not blink empty.
+    if (study) updateViewer(study, { match: chipMatchValue });
   }
 
-  function updateViewer(study) {
+  // `match` is the Find similar card's own percentage for this pair; only the compare chip
+  // shows it, and only screens/analysis.js passes it.
+  function updateViewer(study, { match = null } = {}) {
     const state = getState();
     // state.running is the id of the study whose /predict is in flight, so "busy" is only
     // true for the study on screen. A run on another study leaves this one alone.
     const busy = state.running === study.id;
-    applyTransform(state);
+    // Read once: in the compare role this is the store's state with this mount's zoom, pan and
+    // pan mode over it, and both the transform and the redraw gate below need the same picture.
+    const view = viewState();
+    applyTransform(view);
     if (study.id !== labelStudyId) {
       labelStudyId = study.id;
       labelOffsets = new Map();
     }
     chipId.textContent = study.id;
+    if (chipMatch) {
+      chipMatchValue = match;
+      chipMatch.textContent = match === null ? '' : `${match}%`;
+    }
     footer.textContent = footerText(study);
 
     const hasResult = Boolean(study.measurements && study.geometry);
@@ -955,19 +1072,22 @@ export function mountViewer(container) {
     // remedy -- but must not be editable until the film is back: the handles are drawn in the
     // film's pixel space. Re-run is the one control that answers to ANY run in flight, because
     // only one run is allowed at a time. A demo study has neither measurements nor geometry,
-    // so hasResult keeps both disabled for it.
-    editButton.disabled = !hasResult || busy || filmStatus !== null;
-    // Re-run answers to ANY run in flight and to a batch, because only one run is allowed at a time.
-    rerunButton.disabled = !hasResult || Boolean(state.running) || Boolean(state.batch) || filmStatus === 'loading' || !inferenceView(study.view);
-    rerunButton.title = inferenceView(study.view) ? 'Re-run segmentation' : unsupportedViewReason(study.view);
-    editButton.setAttribute('aria-pressed', String(state.editing));
-    editButton.classList.toggle('is-active', state.editing);
-    const editLabel = state.editing ? 'Done editing' : 'Edit landmarks';
-    editButton.title = editLabel;
-    editButton.setAttribute('aria-label', editLabel);
-    editBar.classList.toggle('is-hidden', !state.editing);
-    stage.classList.toggle('is-editing', state.editing);
-    updateEditBar(state, study);
+    // so hasResult keeps both disabled for it. None of it exists on the compare pane, whose
+    // stage must not pick up the OPEN study's edit mode either.
+    if (!compare) {
+      editButton.disabled = !hasResult || busy || filmStatus !== null;
+      // Re-run answers to ANY run in flight and to a batch, because only one run is allowed at a time.
+      rerunButton.disabled = !hasResult || Boolean(state.running) || Boolean(state.batch) || filmStatus === 'loading' || !inferenceView(study.view);
+      rerunButton.title = inferenceView(study.view) ? 'Re-run segmentation' : unsupportedViewReason(study.view);
+      editButton.setAttribute('aria-pressed', String(state.editing));
+      editButton.classList.toggle('is-active', state.editing);
+      const editLabel = state.editing ? 'Done editing' : 'Edit landmarks';
+      editButton.title = editLabel;
+      editButton.setAttribute('aria-label', editLabel);
+      editBar.classList.toggle('is-hidden', !state.editing);
+      stage.classList.toggle('is-editing', state.editing);
+      updateEditBar(state, study);
+    }
 
     const staticKey = [state.overlays, state.overlayOpacity, currentImages];
     if (!sameKey(staticKey, lastStatic)) {
@@ -981,14 +1101,19 @@ export function mountViewer(container) {
     // editing, selection and zoom are in the key: handles appear and disappear with
     // editing, follow selection, and are sized in CSS pixels so zoom changes their image-
     // space size. panX/panY are deliberately NOT here -- a pan moves the host, not the pixels.
-    const dynamicKey = [study.geometry, state.measurementDrafts?.[study.id], state.selectedLevel, study.measurements, state.editing, state.selection, state.zoom];
+    // The zoom is this mount's: in the compare role the store's is the PRIMARY's, so this gate
+    // would track a zoom that never reaches this stage and miss the one that does.
+    const dynamicKey = [study.geometry, state.measurementDrafts?.[study.id], state.selectedLevel, study.measurements, state.editing, state.selection, view.zoom];
     if (!sameKey(dynamicKey, lastDynamic)) {
       lastDynamic = dynamicKey;
       redrawDynamic(liveGeometry());
     }
   }
 
+  // The compare pane never shows the run card's button (describeCard), so it has nothing to
+  // hand a run handler to.
   function setRunHandler(handler) {
+    if (compare) return;
     runHandler = handler;
     runButton.onclick = handler;
   }

@@ -105,8 +105,12 @@ export function studyFromFile({ id, fileName, filePath }) {
 // imports from screens/, so the seven keys are written out twice and must not drift.
 export const FRESH_VIEW = { selectedLevel: null, zoom: 1, panX: 0, panY: 0, panMode: false, editing: false, selection: null };
 
+// compareId rides with openId everywhere (similar-cases plan B Task 8): a comparison is a pair,
+// and half of it changing underneath would leave the panel, the drawer and the second pane
+// describing a study nobody chose. The Analysis header's back button deliberately does NOT clear
+// it -- returning to the same study keeps the comparison.
 function openStudy(study) {
-  setState({ screen: 'analysis', openId: study.id, ...FRESH_VIEW });
+  setState({ screen: 'analysis', openId: study.id, compareId: null, ...FRESH_VIEW });
 }
 
 // The one entry point for the picker and a drop. Inserts at the front.
@@ -116,6 +120,7 @@ function addStudy({ name, data, path }) {
   setState((state) => ({
     studies: [studyFromFile({ id, fileName: name, filePath: path ?? null }), ...state.studies],
     openId: id,
+    compareId: null,
     screen: 'analysis',
     ...FRESH_VIEW,
   }));
@@ -513,6 +518,11 @@ async function deleteStudy(id) {
     // array -- the selection is replaced, never mutated.
     paramSelected: withIds(s.paramSelected, [id], false),
     ...(s.openId === id ? { openId: null, screen: 'studies', ...FRESH_VIEW } : {}),
+    // Deleting the compared study ends the comparison, exactly as the bulk delete's line does,
+    // and conditional for the same reason: deleting some OTHER study is not a reason to close a
+    // comparison the user is reading. A dangling compareId renders as "not comparing" and never
+    // throws, but ids are max+1, so the next film added can carry this one.
+    ...(s.compareId === id ? { compareId: null } : {}),
   }));
   showToast(`Deleted ${label}`);
 }

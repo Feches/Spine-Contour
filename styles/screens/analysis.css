@@ -922,3 +922,28 @@
 .confidence-breakdown p { margin: 0 0 9px; }
 .confidence-breakdown p:last-child { margin-bottom: 0; color: var(--body); }
 .viewer-edit-help { flex-basis: 100%; padding: 4px 8px; color: var(--stage-accent); font-size: 11px; text-align: right; }
+
+/* ===== 06 — COMPARISON MODE (similar-cases spec 8.5; plan 07 Tasks 3-6, adapted) ========
+   The stage host holds two panes. The second is display:none until a study is compared, so a
+   hidden pane contributes no flex gap and the primary keeps the whole stage. The panel widens
+   by 40px to carry the {other} and delta columns. */
+.analysis-viewer-host { display: flex; gap: 2px; }
+.analysis-pane { flex: 1; min-width: 0; display: flex; position: relative; }
+.analysis-pane.is-hidden { display: none; }
+.analysis-panel.is-comparing { width: 440px; }
+.analysis-compare { color: var(--accent); white-space: nowrap; }
+/* The chip floats over the stage, so its two new parts take the --stage-* tokens section 02
+   declares for exactly that, not the theme's: body colour is var(--body), which in the light
+   theme is a near-black that would leave the close control invisible on the dark chip. */
+.viewer-chip-match { font-family: 'Chivo Mono', monospace; font-size: 10px; letter-spacing: .1em; color: var(--stage-muted); margin-left: 8px; }
+.viewer-chip-close { margin-left: 6px; border: none; background: transparent; color: var(--stage-muted); cursor: pointer; font: inherit; }
+.viewer-chip-close:hover { color: var(--stage-ink); }
+.viewer-chip-close:focus-visible { outline: 2px solid var(--stage-accent); outline-offset: 2px; }
+.meas-compare-head { display: flex; align-items: baseline; gap: 8px; padding: 0 12px; font-family: 'Chivo Mono', monospace; font-size: 8.5px; letter-spacing: .12em; }
+.meas-compare-id { width: 64px; text-align: right; color: var(--ink); }
+.meas-compare-other { color: var(--muted); }
+.meas-compare-delta { width: 46px; text-align: right; color: var(--muted); }
+.meas-value-other { color: var(--body); }
+.meas-delta { width: 46px; text-align: right; font-family: 'Chivo Mono', monospace; font-size: 10.5px; font-weight: 500; color: var(--muted); }
+.meas-delta.is-over { color: var(--accent); }
+.meas-value-stacked div + div { font-size: 11px; }
