@@ -7,16 +7,21 @@
 import { getState, setState } from './store.js';
 import { showToast } from './components/toast.js';
 import { persistenceDisabledReason } from './api.js';
-import { segmentStudy } from './screens/analysis.js';
+import { segmentStudy, embedStudy } from './screens/analysis.js';
+import { needsEmbedding } from './embeddings.js';
 import { createBatchDriver } from './data/batch.js';
 
 const driver = createBatchDriver({
   segment: (studyId) => segmentStudy(studyId, { batch: true }),
+  // The Embed kind (similar-cases spec, 2026-09-12, section 12): the same loop, the other run core.
+  embed: (studyId) => embedStudy(studyId, { batch: true }),
+  embedNeeded: needsEmbedding,
   getState,
   setState,
   showToast,
   persistenceDisabledReason,
 });
 
-export const startBatch = driver.startBatch;
+export const startBatch = (ids) => driver.startBatch(ids, 'segment');
+export const startEmbedBatch = (ids) => driver.startBatch(ids, 'embed');
 export const stopBatch = driver.stopBatch;

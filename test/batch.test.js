@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  planBatch, newBatch, advance, withStopping, isQueued, progressText, sidebarText, batchMessage,
+  planBatch, planEmbed, newBatch, advance, withStopping, isQueued, progressText, sidebarText, batchMessage,
   createBatchDriver, STOPPING_TEXT, WAIT_FOR_RUN, WAIT_FOR_BATCH, UNSAVED_BATCH,
 } from '../renderer/data/batch.js';
 
@@ -97,7 +97,7 @@ test('batch excludes unsupported views without falling back from an unsupported 
 test('newBatch copies the ids and starts at zero', () => {
   const ids = ['SP-1', 'SP-2'];
   const batch = newBatch(ids);
-  assert.deepEqual(batch, { ids: ['SP-1', 'SP-2'], done: 0, failed: [], warnings: [], skipped: 0, stopping: false });
+  assert.deepEqual(batch, { ids: ['SP-1', 'SP-2'], kind: 'segment', done: 0, failed: [], warnings: [], skipped: 0, stopping: false });
   assert.notEqual(batch.ids, ids);
 });
 
@@ -229,7 +229,7 @@ test('driver rejects direct unsupported ids and rechecks a queued film whose vie
 test('startBatch sets state.batch before its first await, runs the ids one at a time in order, folds each outcome, then clears the batch and toasts once', async () => {
   const h = harness({ studies: [film('SP-1'), film('SP-2'), film('SP-3')] });
   const started = h.driver.startBatch(['SP-1', 'SP-2', 'SP-3']);
-  assert.deepEqual(h.state.batch, { ids: ['SP-1', 'SP-2', 'SP-3'], done: 0, failed: [], warnings: [], skipped: 0, stopping: false });
+  assert.deepEqual(h.state.batch, { ids: ['SP-1', 'SP-2', 'SP-3'], kind: 'segment', done: 0, failed: [], warnings: [], skipped: 0, stopping: false });
   await tick();
   assert.equal(h.calls.length, 1);
   assert.equal(h.calls[0].id, 'SP-1');
@@ -337,4 +337,56 @@ test('a failure names the study by its display name', async () => {
   h.calls[0].resolve({ ok: false, reason: 'file not found' });
   await run;
   assert.deepEqual(h.toasts, ['Segmented 0 of 1 film. \u00B7 1 could not be segmented: Smith pre-op (file not found)']);
+});
+
+// ---------------------------------------------------------------------------
+// The Embed batch kind (similar-cases spec, 2026-09-12, section 12)
+// ---------------------------------------------------------------------------
+
+// The Embed batch kind (similar-cases spec, 2026-09-12, section 12).
+const needs = (study) => study.id === 'SP-2' || study.id === 'SP-3';
+
+test('planEmbed counts the visible (or ticked visible) real studies that need an embedding, hidden at zero', () => {
+  const visible = [segmented('SP-1'), segmented('SP-2'), segmented('SP-3'), demo('SP-0042')];
+  assert.deepEqual(planEmbed({ visible, selected: [], running: null, needs }),
+    { ids: ['SP-2', 'SP-3'], label: 'Embed 2', note: null, enabled: true, hidden: false });
+  assert.deepEqual(planEmbed({ visible, selected: ['SP-3', 'SP-1'], running: null, needs }),
+    { ids: ['SP-3'], label: 'Embed 1 selected', note: null, enabled: true, hidden: false });
+  assert.deepEqual(planEmbed({ visible, selected: [], running: 'SP-9', needs }),
+    { ids: ['SP-2', 'SP-3'], label: 'Embed 2', note: WAIT_FOR_RUN, enabled: false, hidden: false });
+  assert.deepEqual(planEmbed({ visible: [segmented('SP-1')], selected: [], running: null, needs }),
+    { ids: [], label: 'Embed 0', note: null, enabled: false, hidden: true });
+});
+
+test('newBatch carries its kind; progress, sidebar and closing texts read it', () => {
+  assert.equal(newBatch(['SP-1']).kind, 'segment');
+  const batch = newBatch(['SP-1', 'SP-2', 'SP-3'], 'embed');
+  assert.equal(batch.kind, 'embed');
+  assert.equal(progressText(batch), 'Embedding 0 of 3');
+  assert.equal(sidebarText(batch), 'EMBEDDING 0 OF 3');
+  assert.equal(progressText(withStopping(batch)), STOPPING_TEXT);
+  let done = advance(batch, { ok: true, id: 'SP-1', name: 'a' });
+  done = advance(done, { ok: false, id: 'SP-2', name: 'b', reason: 'no stored segmentation' });
+  done = advance(done, { skipped: true });
+  assert.equal(batchMessage(done), 'Embedded 1 of 3 films. \u00B7 1 could not be embedded: b (no stored segmentation) \u00B7 1 skipped (deleted, or embedded meanwhile)');
+  assert.equal(batchMessage(advance(newBatch(['SP-1'], 'embed'), { ok: true, id: 'SP-1', name: 'a', warning: 'not stored' })),
+    'Embedded 1 of 1 film. \u00B7 1 embedded without a stored record: a (not stored)');
+});
+
+test('the driver runs the embed dependency for an embed batch and skips studies that no longer need one', async () => {
+  let state = { studies: [segmented('SP-1'), segmented('SP-2'), segmented('SP-3')], batch: null, running: null, deletingStudies: false };
+  const calls = [];
+  const driver = createBatchDriver({
+    segment: async (id) => { calls.push(`segment:${id}`); return { ok: true }; },
+    embed: async (id) => { calls.push(`embed:${id}`); return id === 'SP-3' ? { ok: false, reason: 'no stored segmentation' } : { ok: true }; },
+    embedNeeded: (study) => study.id !== 'SP-1',
+    getState: () => state,
+    setState: (patch) => { state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) }; },
+    showToast: (text) => calls.push(`toast:${text}`),
+    persistenceDisabledReason: () => null,
+  });
+  assert.equal(await driver.startBatch(['SP-1', 'SP-2', 'SP-3'], 'embed'), true);
+  assert.deepEqual(calls, ['embed:SP-2', 'embed:SP-3',
+    'toast:Embedded 1 of 3 films. \u00B7 1 could not be embedded: SP-3 (no stored segmentation) \u00B7 1 skipped (deleted, or embedded meanwhile)']);
+  assert.equal(state.batch, null);
 });

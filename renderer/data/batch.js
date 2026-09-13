@@ -50,10 +50,23 @@ export function planBatch({ visible, selected, running }) {
   return { ids, label, note, enabled: ids.length > 0 && !running };
 }
 
-// The batch object (spec 8.1). Every transition returns a NEW object: the store's gates compare
-// by reference. `done` counts every turn that ended, so the count always reaches the total.
-export function newBatch(ids) {
-  return { ids: [...ids], done: 0, failed: [], warnings: [], skipped: 0, stopping: false };
+// The Embed button (similar-cases spec, 2026-09-12, section 12): the visible (or ticked visible)
+// real studies that `needs` says lack a current embedding -- segmented before this build, with the
+// setting off, after a failed stage, or under an older graph. Hidden at zero, like nothing else on
+// the bar: an absent count is not a state the user has to read.
+export function planEmbed({ visible, selected, running, needs }) {
+  const real = (visible ?? []).filter((study) => study.source === 'real');
+  const chosen = selectedVisible(real, selected);
+  const pool = chosen.length > 0 ? chosen : real;
+  const ids = pool.filter((study) => needs(study)).map((study) => study.id);
+  const label = chosen.length > 0 ? `Embed ${ids.length} selected` : `Embed ${ids.length}`;
+  return { ids, label, note: running ? WAIT_FOR_RUN : null, enabled: ids.length > 0 && !running, hidden: ids.length === 0 };
+}
+
+// The batch object (spec 8.1), with its kind (similar-cases spec section 12): 'segment' or 'embed'.
+// Every transition returns a NEW object: the store's gates compare by reference.
+export function newBatch(ids, kind = 'segment') {
+  return { ids: [...ids], kind, done: 0, failed: [], warnings: [], skipped: 0, stopping: false };
 }
 
 // One turn ended. `outcome` is { skipped: true }, { ok: true, id, name, warning? } or
@@ -85,11 +98,13 @@ export function isQueued(batch, studyId) {
 
 // The filter bar's progress text (spec 7.4) and the Studies nav row's sublabel (spec 9).
 export function progressText(batch) {
-  return batch.stopping ? STOPPING_TEXT : `${batch.done} of ${batch.ids.length} done`;
+  if (batch.stopping) return STOPPING_TEXT;
+  return batch.kind === 'embed' ? `Embedding ${batch.done} of ${batch.ids.length}` : `${batch.done} of ${batch.ids.length} done`;
 }
 
 export function sidebarText(batch) {
-  return batch.stopping ? 'STOPPING' : `${batch.done} OF ${batch.ids.length} DONE`;
+  if (batch.stopping) return 'STOPPING';
+  return batch.kind === 'embed' ? `EMBEDDING ${batch.done} OF ${batch.ids.length}` : `${batch.done} OF ${batch.ids.length} DONE`;
 }
 
 function names(entries) {
@@ -103,12 +118,15 @@ export function batchMessage(batch) {
   const total = batch.ids.length;
   const ok = batch.done - batch.failed.length - batch.skipped;
   const stopped = batch.stopping && batch.done < total;
-  let text = `Segmented ${ok} of ${total} ${total === 1 ? 'film' : 'films'}${stopped ? ', then stopped' : ''}.`;
-  if (batch.failed.length > 0) text += `${SEP}${batch.failed.length} could not be segmented: ${names(batch.failed)}`;
-  if (batch.warnings.length > 0) text += `${SEP}${batch.warnings.length} segmented without stored images: ${names(batch.warnings)}`;
+  const embed = batch.kind === 'embed';
+  let text = `${embed ? 'Embedded' : 'Segmented'} ${ok} of ${total} ${total === 1 ? 'film' : 'films'}${stopped ? ', then stopped' : ''}.`;
+  if (batch.failed.length > 0) text += `${SEP}${batch.failed.length} could not be ${embed ? 'embedded' : 'segmented'}: ${names(batch.failed)}`;
+  if (batch.warnings.length > 0) {
+    text += `${SEP}${batch.warnings.length} ${embed ? 'embedded without a stored record' : 'segmented without stored images'}: ${names(batch.warnings)}`;
+  }
   const cancelled = batch.cancelled ?? 0;
   if (cancelled) text += `${SEP}${cancelled} cancelled`;
-  if (batch.skipped > cancelled) text += `${SEP}${batch.skipped - cancelled} skipped (deleted, or segmented meanwhile)`;
+  if (batch.skipped > cancelled) text += `${SEP}${batch.skipped - cancelled} skipped (deleted, or ${embed ? 'embedded' : 'segmented'} meanwhile)`;
   return text;
 }
 
@@ -117,29 +135,44 @@ export function batchMessage(batch) {
 // run core in batch mode: it resolves { ok: true, warning? } or { ok: false, reason } and promises
 // never to reject; a rejection is still counted as a failure so state.batch can never be left
 // stuck. Strictly serial: the next film starts only after the previous outcome is folded in.
-export function createBatchDriver({ segment, getState, setState, showToast, persistenceDisabledReason }) {
+export function createBatchDriver({ segment, embed = null, embedNeeded = () => false, getState, setState, showToast, persistenceDisabledReason }) {
   // Each id's addedAt at the click. Ids are max+1, so a deleted id is reused by the next film
   // added; the record's identity is addedAt, which a reused id never carries.
   const identity = new Map();
 
-  async function startBatch(ids) {
+  async function startBatch(ids, kind = 'segment') {
     const state = getState();
     // deletingStudies as well: a bulk delete is removing the records these ids name, and the
     // first turn's segmentStudy would refuse anyway -- every film would be counted as a failure
     // and named in the closing toast. Refusing here means no batch was ever started.
     if (state.batch || state.running || state.deletingStudies || !Array.isArray(ids) || ids.length === 0) return false;
+    if (kind === 'embed' && typeof embed !== 'function') return false;
     identity.clear();
     for (const id of ids) {
       const study = state.studies.find((item) => item.id === id);
       identity.set(id, study ? study.addedAt : null);
     }
     // Before the first await, so nothing can start a run or a second batch in between.
-    setState({ batch: newBatch(ids) });
+    setState({ batch: newBatch(ids, kind) });
     if (persistenceDisabledReason()) showToast(UNSAVED_BATCH);
     for (const id of ids) {
       const study = getState().studies.find((item) => item.id === id);
       let outcome;
-      if (!study || study.addedAt !== identity.get(id) || study.measurements != null) {
+      if (!study || study.addedAt !== identity.get(id)) {
+        outcome = { skipped: true };
+      } else if (kind === 'embed') {
+        if (!embedNeeded(study)) {
+          outcome = { skipped: true };
+        } else {
+          let result;
+          try {
+            result = await embed(id);
+          } catch (error) {
+            result = { ok: false, reason: error && error.message ? error.message : String(error) };
+          }
+          outcome = { ...result, id, name: studyName(study) };
+        }
+      } else if (study.measurements != null) {
         outcome = { skipped: true };
       } else if (!inferenceView(study.view)) {
         outcome = { ok: false, id, name: studyName(study), reason: unsupportedViewReason(study.view) };

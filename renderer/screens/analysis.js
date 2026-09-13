@@ -2,14 +2,14 @@ import { imageConfidence, scorePercent } from '../data/confidence.js';
 import { el, mount } from '../dom.js';
 import { getState, setState, subscribe } from '../store.js';
 import {
-  predict, saveCsv, savePrediction, loadPrediction, persistenceDisabledReason, readFile, selectFile,
+  predict, embed, saveCsv, savePrediction, loadPrediction, persistenceDisabledReason, readFile, selectFile,
 } from '../api.js';
 import { showToast } from '../components/toast.js';
 import { toCsv } from '../data/csv.js';
 import { loadStudyImages, disposeStudyImages, thumbnailDataUri } from '../viewer/canvas.js';
 import { mountViewer, recordPrediction } from '../components/viewer.js';
 import { describeModels } from '../data/models.js';
-import { WAIT_FOR_BATCH } from '../data/batch.js';
+import { WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
 import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
 import { studyName, defaultName } from '../data/labels.js';
 import { displayStatus, isReviewed, reviewedLabel, reviewBlockedReason } from '../data/status.js';
@@ -393,6 +393,56 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       return { ok: false, reason: error.message };
     }
     return { ok: false, reason: 'superseded' };
+  }
+}
+
+// The Embed batch's run core (similar-cases spec, 2026-09-12, section 12): the stored sidecar's
+// image and framing to /embed, the record to embeddings/<id>.json. Sets and clears state.running
+// like a segmentation, so every surface that reads `running` stays right; never reads the film
+// file (the sidecar's image is the whole film). Returns an outcome and never throws.
+export async function embedStudy(studyId, { batch = false } = {}) {
+  const study = getState().studies.find((s) => s.id === studyId);
+  if (!study) return { ok: false, reason: 'The study is no longer in the library.' };
+  if (getState().running) return { ok: false, reason: WAIT_FOR_RUN };
+  if (!batch && getState().batch) return { ok: false, reason: WAIT_FOR_BATCH };
+  const addedAt = study.addedAt;
+  let sidecar = null;
+  try {
+    sidecar = persistenceDisabledReason() ? null : await loadPrediction(studyId);
+  } catch (error) {
+    return { ok: false, reason: `the stored segmentation could not be read: ${error.message}` };
+  }
+  if (!sidecar || typeof sidecar.image_png !== 'string' || sidecar.image_png === '') {
+    return { ok: false, reason: 'no stored segmentation' };
+  }
+  const live = getState().studies.find((s) => s.id === studyId);
+  if (!live || live.addedAt !== addedAt) return { ok: false, reason: 'The study is no longer in the library.' };
+  if (getState().running || getState().deletingStudies) return { ok: false, reason: WAIT_FOR_RUN };
+  const requestId = crypto.randomUUID();
+  setState({ running: studyId, runStage: { requestId, mode: getState().performance.mode,
+    stage: 'embedding', message: 'Computing appearance embedding', elapsed_seconds: 0, kind: 'embed' } });
+  try {
+    const response = await embed({ id: studyId, imagePng: sidecar.image_png, framing: sidecar.qc?.framing ?? null });
+    const after = getState().studies.find((s) => s.id === studyId);
+    if (!after || after.addedAt !== addedAt) {
+      setState({ running: null, runStage: null });
+      return { ok: false, reason: 'The study is no longer in the library.' };
+    }
+    const record = embeddingRecord(studyId, response?.embedding ?? null,
+      { sourceSha256: after.calibration?.source_sha256 ?? null });
+    if (!record) throw new Error('The backend returned no embedding.');
+    let warning = null;
+    if (persistenceDisabledReason()) {
+      warning = 'not stored: studies are not being saved this session';
+    } else {
+      await storeEmbedding(record);
+    }
+    setState({ running: null, runStage: null });
+    return warning ? { ok: true, warning } : { ok: true };
+  } catch (error) {
+    setState({ running: null, runStage: null });
+    if (!batch) showToast(`Could not embed: ${error.message}`);
+    return { ok: false, reason: error.message };
   }
 }
 
