@@ -132,3 +132,4 @@ def test_predict_endpoint_rejects_a_non_boolean_embeddings_field():
         files={"file": ("radiograph.png", upload.getvalue(), "image/png")},
     )
     assert response.status_code == 422
+    assert any(entry["loc"][-1] == "embeddings" for entry in response.json()["detail"])
