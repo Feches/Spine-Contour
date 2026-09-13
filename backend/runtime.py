@@ -19,6 +19,9 @@ class Options:
     cpu_threads: int = 2
     crop_localizer: bool = True
     toolbar_removal: bool = False
+    # Appearance embeddings during /predict (similar-cases spec, 2026-09-12, section 10.6).
+    # Off skips the stage entirely; /embed ignores this and always runs.
+    embeddings: bool = True
 
     @property
     def low_memory(self):
@@ -38,7 +41,7 @@ class Options:
         return 60 if self.low_memory else 8
 
 
-def parse_options(mode="standard", cpu_threads=2, crop_localizer=True, toolbar_removal=False):
+def parse_options(mode="standard", cpu_threads=2, crop_localizer=True, toolbar_removal=False, embeddings=True):
     if mode not in ("standard", "low-memory"):
         raise ValueError("Processing mode must be standard or low-memory")
     if isinstance(cpu_threads, bool) or not isinstance(cpu_threads, int) or not 1 <= cpu_threads <= 4:
@@ -47,7 +50,9 @@ def parse_options(mode="standard", cpu_threads=2, crop_localizer=True, toolbar_r
         raise ValueError("Crop localizer must be on or off")
     if not isinstance(toolbar_removal, bool):
         raise ValueError("Toolbar removal must be on or off")
-    return Options(mode, min(cpu_threads, os.cpu_count() or 1), crop_localizer, toolbar_removal)
+    if not isinstance(embeddings, bool):
+        raise ValueError("Appearance embeddings must be on or off")
+    return Options(mode, min(cpu_threads, os.cpu_count() or 1), crop_localizer, toolbar_removal, embeddings)
 
 
 _options = ContextVar("processing_options", default=Options())

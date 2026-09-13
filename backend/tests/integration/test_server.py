@@ -121,3 +121,14 @@ def test_health_endpoint_reports_ready():
     response = TestClient(server.app).get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_predict_endpoint_rejects_a_non_boolean_embeddings_field():
+    upload = io.BytesIO()
+    Image.fromarray(np.full((24, 16), 127, dtype=np.uint8)).save(upload, format="PNG")
+    response = TestClient(server.app).post(
+        "/predict",
+        data={"modality": "xray", "body_part": "lumbar", "view": "lateral", "embeddings": "maybe"},
+        files={"file": ("radiograph.png", upload.getvalue(), "image/png")},
+    )
+    assert response.status_code == 422

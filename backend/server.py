@@ -86,6 +86,7 @@ async def prediction_request(
     processing_mode: str = Form("standard"), cpu_threads: int = Form(2),
     crop_localizer: bool = Form(True),
     toolbar_removal: bool = Form(False),
+    embeddings: bool = Form(True),
 ):
     payload = await file.read(MAX_UPLOAD_BYTES + 1)
     if not payload:
@@ -93,7 +94,7 @@ async def prediction_request(
     if len(payload) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="The uploaded file exceeds 50 MB")
     try:
-        settings = runtime.parse_options(processing_mode, cpu_threads, crop_localizer, toolbar_removal)
+        settings = runtime.parse_options(processing_mode, cpu_threads, crop_localizer, toolbar_removal, embeddings)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return {"settings": settings, "payload": payload, "modality": modality, "body_part": body_part,
