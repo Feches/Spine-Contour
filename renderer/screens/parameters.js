@@ -16,7 +16,7 @@
  */
 import { el, clear } from '../dom.js';
 import { setState } from '../store.js';
-import { saveCsv } from '../api.js';
+import { saveCsv, saveDataset } from '../api.js';
 import { showToast } from '../components/toast.js';
 import { checkbox } from '../components/checkbox.js';
 import { toCsv, toPairedCsv } from '../data/csv.js';
@@ -30,6 +30,9 @@ import {
   timepointOptions, viewOptions, pairedWithOptions, hiddenUnpaired, subjectBreaks,
 } from '../data/parameters.js';
 import { pairStudies, postFromFilters, pairedExportMessage } from '../data/pairing.js';
+import { buildDataset, datasetMessage } from '../data/dataset.js';
+import { ensureEmbeddings, embeddingsMap, bundledModelSha } from '../embeddings.js';
+import { VERSION_LABEL } from '../data/version.js';
 
 const EMPTY_COPY = {
   none: 'No studies yet \u2014 choose or drop a radiograph on the Find tab, or load a workspace folder.',
@@ -96,6 +99,20 @@ export function mountParameters(host, { onOpen }) {
     try {
       const savedTo = await saveCsv({ text: csv, suggestedName: exportFileName(filters.workspace, 'paired') });
       if (savedTo) showToast(pairedExportMessage(pairing, savedTo));
+    } catch (error) {
+      showToast(`Could not export: ${error.message}`);
+    }
+  }
+
+  // The research dataset over the same rows (similar-cases spec section 13): a folder, four
+  // files, no images. The embeddings load first so the vectors file is complete.
+  async function exportDataset(rows, filters) {
+    if (rows.filter((study) => study.source === 'real').length === 0) return;
+    try {
+      await ensureEmbeddings();
+      const built = buildDataset({ rows, post: postFromFilters(filters), embeddings: embeddingsMap(), bundledSha: bundledModelSha(), version: VERSION_LABEL.replace(/^v/, '') });
+      const folder = await saveDataset({ folder: built.folder, files: built.files });
+      if (folder) showToast(datasetMessage(built, folder));
     } catch (error) {
       showToast(`Could not export: ${error.message}`);
     }
@@ -217,6 +234,13 @@ export function mountParameters(host, { onOpen }) {
       onClick: () => exportPaired(pairing, filters),
     }, chosen.length > 0 ? `Export paired \u00B7 ${chosen.length} selected` : 'Export paired CSV');
 
+    const datasetButton = el('button', {
+      type: 'button', class: 'btn btn-small param-export param-export-dataset', 'data-param-key': 'export-dataset',
+      disabled: exportable === 0,
+      title: exportable > 0 ? 'Write the per-film and per-pair tables, every vector and a manifest into a folder' : reason,
+      onClick: () => exportDataset(rows, filters),
+    }, chosen.length > 0 ? `Export dataset \u00B7 ${chosen.length} selected` : 'Export dataset');
+
     // One note for the group: when the long button is disabled its reason applies to both buttons
     // and one note after them stands for both; the paired button's own reason shows only when the
     // long one is enabled. Each disabled button still carries its reason in its title.
@@ -232,7 +256,7 @@ export function mountParameters(host, { onOpen }) {
         `${visible.length} OF ${live.studies.length} STUDIES SHOWN${chosen.length > 0 ? ` \u00B7 ${chosen.length} SELECTED` : ''}`),
       // Buttons and note in one group: the bar wraps, and on their own they land on separate lines
       // with the reason at the far left, reading as a stray line rather than as the buttons'.
-      el('div', { class: 'param-export-group' }, exportButton, pairedButton, note));
+      el('div', { class: 'param-export-group' }, exportButton, pairedButton, datasetButton, note));
   }
 
   // `lead` is a node placed before the sort button inside the header cell -- the STUDY column's

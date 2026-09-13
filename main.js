@@ -229,6 +229,27 @@ ipcMain.handle('save-csv', async (_event, request) => {
   return result.filePath;
 });
 
+// Export dataset (similar-cases spec, 2026-09-12, section 13): a folder of four text files. The
+// renderer builds every byte; this picks the parent folder, creates `<folder>` (a -2, -3 suffix
+// when it exists), and writes each file .tmp then rename. Cancelling resolves null.
+ipcMain.handle('save-dataset', async (_event, request) => {
+  if (!request || typeof request.folder !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9 ._-]*$/.test(request.folder)) throw new Error('Nothing to export.');
+  if (!request.files || typeof request.files !== 'object') throw new Error('Nothing to export.');
+  const result = await dialog.showOpenDialog(mainWindow, { title: 'Choose where to write the dataset folder', properties: ['openDirectory', 'createDirectory'] });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  const parent = result.filePaths[0];
+  let target = path.join(parent, request.folder);
+  for (let n = 2; fs.existsSync(target); n += 1) target = path.join(parent, `${request.folder}-${n}`);
+  await fsPromises.mkdir(target, { recursive: true });
+  for (const [name, text] of Object.entries(request.files)) {
+    if (!/^[A-Za-z0-9._-]+$/.test(name) || typeof text !== 'string') throw new Error('Nothing to export.');
+    const file = path.join(target, name);
+    await fsPromises.writeFile(`${file}.tmp`, text, 'utf8');
+    await fsPromises.rename(`${file}.tmp`, file);
+  }
+  return target;
+});
+
 // A quarantined studies.json must take its sidecars with it (plan 05 final review). Left behind,
 // predictions/ is a set of orphans the fresh store cannot see: nextId() restarts at SP-1000 and
 // the first completed run's savePrediction writes over the previous library's film and overlay,
