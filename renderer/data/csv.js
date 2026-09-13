@@ -385,6 +385,45 @@ export function autoMap(headers) {
   });
 }
 
+// Keep column name (similar-cases spec, 2026-09-12, section 9.5): an unknown spreadsheet column
+// imported under its own name as a custom clinical field. The chip select's option value:
+export const KEEP_NAME = '__keep__';
+
+export function keepColumnName(header) {
+  return String(header ?? '').trim();
+}
+
+// The headers the load reads itself -- the join key and the four structural columns -- which are
+// never clinical fields and never kept.
+function reservedHeaders(headers) {
+  return new Set([findJoinHeader(headers ?? []), ...Object.values(findStructuralHeaders(headers ?? []))].filter((h) => h !== null));
+}
+
+// The bulk action: every header still unmapped gets its own trimmed name -- unless it names a FREE
+// known field (that field instead), or its name is empty, reserved, or already another column's
+// destination (left unmapped). Unchanged rows are returned by reference, so a caller can count
+// what would change.
+export function keepUnmapped(mapping, headers) {
+  const reserved = reservedHeaders(headers);
+  const taken = new Set((mapping ?? []).filter((m) => m.dest).map((m) => m.dest));
+  const known = KNOWN_FIELDS.map((field) => ({ field, key: normalizeFieldName(field) }))
+    .sort((a, b) => b.key.length - a.key.length);
+  return (mapping ?? []).map((m) => {
+    if (m.dest || reserved.has(m.src)) return m;
+    const key = normalizeFieldName(m.src);
+    const match = key === '' ? undefined : known.find((f) => key === f.key || key.startsWith(f.key));
+    const dest = match && !taken.has(match.field) ? match.field : keepColumnName(m.src);
+    if (dest === '' || taken.has(dest)) return m;
+    taken.add(dest);
+    return { src: m.src, dest };
+  });
+}
+
+export function keepableCount(mapping, headers) {
+  const next = keepUnmapped(mapping, headers);
+  return next.filter((row, index) => row !== (mapping ?? [])[index]).length;
+}
+
 // The join column is whichever header normalises to 'studyid' (study_id, Study ID, studyId…).
 // It is found independently of autoMap: study_id is the join key, never a clinical field.
 export function findJoinHeader(headers) {
