@@ -432,6 +432,11 @@ into the app once its recipe is stable. The later stages, in order:
   midpoint alone proves too little.
 - A taller whole-film input (for example 448×224) if the 224 px whole-film block proves too coarse.
 - A mask-contour block, only if the shape block leaves something on the table.
+- **An embedding registry**, several appearance models stored side by side (`embeddings/<id>.json`
+  keyed by model, one block per model in the fusion and in `vectors.json`), so a model comparison — the
+  user named MedSAM, RAD-DINO and BiomedCLIP as candidates — needs one recompute per model rather than a
+  swap, a recompute and an export each time. Stage 1's swap path (spec decision 4, §11) is enough for
+  one candidate at a time; build the registry when a bake-off of several is actually planned.
 - `Compare with…` for the same subject (pp §12) — the next entry into comparison mode, its own small
   plan.
 
