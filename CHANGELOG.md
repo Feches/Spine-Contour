@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.8
 
 - Read the subject, timepoint, film date and a note from a film's name on load: underscores
   separate the fields (`sub225_post-op_3-22-2024_femoral heads`), in any order after the subject;
@@ -29,6 +29,8 @@
   of the SP-nnnn record id, which no longer appears anywhere a person looks: not in either file and
   not in the tooltips over a study's name. The name is also what a workspace CSV's `study_id`
   column must hold to match a film.
+
+[Release notes](docs/releases/1.0.8.md)
 
 ## 1.0.7
 
