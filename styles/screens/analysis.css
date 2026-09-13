@@ -817,6 +817,11 @@
 .clinical-cell::placeholder { color: var(--muted); }
 .clinical-cell:disabled { color: var(--muted); cursor: not-allowed; }
 
+/* Outcome cells (similar-cases spec, 2026-09-12, section 9.2): the Yes/No select shares the cell's
+   box; a date that is not YYYY-MM-DD is flagged, kept, and not counted. */
+.clinical-cell-select { appearance: auto; cursor: pointer; }
+.clinical-cell-invalid { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+
 .clinical-empty {
   padding: 14px;
   border: 1.5px dashed var(--border);

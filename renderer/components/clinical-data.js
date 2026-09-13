@@ -17,6 +17,7 @@ import { showToast } from './toast.js';
 import { KNOWN_FIELDS, joinClinical, fileStem, findStructuralHeaders, structuralFromRow } from '../data/csv.js';
 import { studyName } from '../data/labels.js';
 import { TIMEPOINT_SUGGESTIONS, VIEW_SUGGESTIONS, normaliseTimepoint, normaliseView } from '../data/timepoints.js';
+import { isOutcomeField, isOutcomeDateField, normaliseOutcomeValue, recognisedDate } from '../data/outcomes.js';
 
 // 12x12 chevron pointing UP (the drawer is open by default); .clinical-toggle-closed rotates
 // it 180deg in CSS. Same construction as sidebar.js's CHEVRON_SVG.
@@ -340,6 +341,55 @@ export function mountClinicalData(host) {
     return input;
   }
 
+  // One clinical cell. An outcome field is a select over blank, Yes and No (spec 9.2), keeping an
+  // unrecognised stored value as a fourth option so it is never silently lost; a date field is a
+  // text cell flagged while its text is not YYYY-MM-DD; every other field is the text cell it was.
+  // All three carry the same class and data attributes, so the rebuild's focus and typing restore
+  // treat them alike (a select has no caret; the restore skips it).
+  function clinicalCell(study, name, isDemo) {
+    const stored = study.clinical?.[name] != null ? String(study.clinical[name]) : '';
+    const shared = {
+      class: 'clinical-cell',
+      'aria-label': `${studyName(study)} ${name}`,
+      'data-focus-key': `cell:${study.id}:${name}`,
+      'data-study-id': study.id,
+      'data-field': name,
+      'data-kind': 'clinical',
+      disabled: isDemo,
+      title: isDemo ? DEMO_TITLE : undefined,
+    };
+    if (isOutcomeField(name)) {
+      const select = el('select', {
+        ...shared,
+        class: 'clinical-cell clinical-cell-select',
+        onChange: (event) => {
+          const value = normaliseOutcomeValue(event.target.value);
+          queueMicrotask(() => setValue(study.id, name, value));
+        },
+      },
+        el('option', { value: '' }, '\u2014'),
+        el('option', { value: 'Yes' }, 'Yes'),
+        el('option', { value: 'No' }, 'No'),
+        stored !== '' && stored !== 'Yes' && stored !== 'No' ? el('option', { value: stored }, `${stored} (not recognised)`) : null);
+      select.value = stored;
+      return select;
+    }
+    const isDate = isOutcomeDateField(name);
+    const invalid = isDate && stored !== '' && recognisedDate(stored) === null;
+    return el('input', {
+      ...shared,
+      type: 'text',
+      class: `clinical-cell${isDate ? ' clinical-cell-outcome-date' : ''}${invalid ? ' clinical-cell-invalid' : ''}`,
+      value: stored,
+      placeholder: isDate ? 'YYYY-MM-DD' : '\u2014',
+      title: isDemo ? DEMO_TITLE : (invalid ? 'Enter a date as YYYY-MM-DD; this value is not counted' : (isDate ? 'YYYY-MM-DD' : undefined)),
+      onChange: (event) => {
+        const value = event.target.value;
+        queueMicrotask(() => setValue(study.id, name, value));
+      },
+    });
+  }
+
   function buildGrid(state, studies) {
     const fields = state.fields;
     // The group row: a blank over the name column, STUDY over the five fixed columns, CLINICAL
@@ -374,38 +424,7 @@ export function mountClinicalData(host) {
         // the id, which is what the focus-restore machinery looks the row back up by.
         el('div', { class: 'clinical-grid-cell clinical-grid-id' }, studyName(study)),
         ...STUDY_COLUMNS.map((column) => studyCell(study, column, isDemo)),
-        ...fields.map((name) => el('input', {
-          type: 'text',
-          class: 'clinical-cell',
-          // A present value renders as itself -- String() keeps a numeric 0 from a hand-edited
-          // store visible; only null/undefined is absent, and absent shows the placeholder.
-          value: study.clinical?.[name] != null ? String(study.clinical[name]) : '',
-          placeholder: '—',
-          'aria-label': `${studyName(study)} ${name}`,
-          'data-focus-key': `cell:${study.id}:${name}`,
-          // The cell's identity, readable back off the node after a rebuild replaced it.
-          // Both go through setAttribute (they are not node properties), which is why they
-          // are written as attribute names and not as a forbidden `dataset` prop.
-          'data-study-id': study.id,
-          'data-field': name,
-          'data-kind': 'clinical',
-          disabled: isDemo,
-          title: isDemo ? DEMO_TITLE : undefined,
-          // Chromium fires `change` SYNCHRONOUSLY when a rebuild's clear(host) removes a
-          // focused, edited cell -- i.e. inside a store notification, where setState throws
-          // (store.js's re-entrancy guard) and the throw is swallowed by the subscriber
-          // try/catch, leaving a console exception and an uncommitted edit. Defer the commit
-          // past the notification, the same mechanism the restore's blur listener uses.
-          // event.target.value is captured BEFORE queuing: the node may be detached by the
-          // time the microtask runs, but the captured string is what the user typed. In the
-          // ordinary Tab/click case the microtask runs right after the `change` dispatch and
-          // before `blur`, so setValue's pre-arm still keeps the component's own commit from
-          // rebuilding, and the restored cell's blur listener later sees equal values and skips.
-          onChange: (event) => {
-            const value = event.target.value;
-            queueMicrotask(() => setValue(study.id, name, value));
-          },
-        })));
+        ...fields.map((name) => clinicalCell(study, name, isDemo)));
     });
 
     const grid = el('div', { class: 'clinical-grid' }, group, head, ...rows);
@@ -515,9 +534,10 @@ export function mountClinicalData(host) {
             });
           }, { once: true });
         }
-        // Text controls carry a caret; a date cell reports a null selection and is skipped here, and
-        // (never seen on a text input, but cheap to tolerate) just skips the caret restore.
-        if (typed.selectionStart !== null && typed.selectionEnd !== null) {
+        // Text controls carry a caret; a date cell reports a null selection and is skipped here. An
+        // outcome <select> (spec 9.2) reports `undefined` rather than null and has no
+        // setSelectionRange at all, so the guard is loose on both ends and checks for the method.
+        if (typed.selectionStart != null && typed.selectionEnd != null && typeof field.setSelectionRange === 'function') {
           field.setSelectionRange(typed.selectionStart, typed.selectionEnd);
         }
         field.focus();

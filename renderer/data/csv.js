@@ -1,6 +1,7 @@
 import { normaliseTimepoint, normaliseView, parseFilmDate, PRE_OP } from './timepoints.js';
 import { normalizeCalibration } from './calibration.js';
 import { fileStem, studyName } from './labels.js';
+import { OUTCOME_FIELDS, isOutcomeField, normaliseOutcomeValue } from './outcomes.js';
 
 // fileStem moved to data/labels.js on 2026-09-12 (labels.js must not import this module, which now
 // imports studyName from it); re-exported so its importers and the contract's module list hold.
@@ -217,8 +218,10 @@ export function toPairedCsv(pairing) {
 
 /** @typedef {{src: string, dest: string|null}} Mapping */
 
+// The nine names the contract fixed, then the outcome registry's fields and the follow-up
+// (similar-cases spec, 2026-09-12, section 9.1) -- appended, so no existing export column moves.
 export const KNOWN_FIELDS = ['Age', 'Sex', 'BMI', 'Diagnosis', 'ODI',
-  'Treatment plan', 'Surgical history', 'Follow-up', 'Notes'];
+  'Treatment plan', 'Surgical history', 'Follow-up', 'Notes', ...OUTCOME_FIELDS];
 
 // Hand-written RFC 4180 reader. Beyond quoted fields, embedded commas/newlines, doubled
 // quotes and CRLF it also: strips a leading UTF-8 BOM (Excel "CSV UTF-8"); opens quoted mode
@@ -336,7 +339,8 @@ function normalizeFieldName(value) {
 // Each known field is claimed by at most one header; the first matching header wins and any
 // later match comes back unmapped, so one clinical value is never fed by two columns.
 export function autoMap(headers) {
-  const known = KNOWN_FIELDS.map((field) => ({ field, key: normalizeFieldName(field) }));
+  const known = KNOWN_FIELDS.map((field) => ({ field, key: normalizeFieldName(field) }))
+    .sort((a, b) => b.key.length - a.key.length);
   const claimed = new Set();
   // A structural header (subject_id, timepoint, film_date, view -- pre-op/post-op spec §8.2) is
   // read by the load itself and is never a clinical field, whatever a known field's prefix might
@@ -471,7 +475,8 @@ export function joinClinical({ files, headers, rows, mapping }) {
     matched += 1;
     const clinical = {};
     for (const m of mapped) {
-      const value = String(row[m.src] ?? '').trim();
+      const raw = String(row[m.src] ?? '').trim();
+      const value = isOutcomeField(m.dest) ? normaliseOutcomeValue(raw) : raw;
       if (value !== '') clinical[m.dest] = value;
     }
     byFile.set(films[0], clinical);

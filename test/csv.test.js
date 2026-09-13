@@ -370,9 +370,10 @@ test('autoMap maps agent -> Age: the known cost of the prefix rule, corrected in
 // KNOWN_FIELDS
 // ---------------------------------------------------------------------------
 
-test('KNOWN_FIELDS lists exactly the nine clinical fields in order', () => {
+test('KNOWN_FIELDS lists the nine clinical fields, then the outcome registry fields and the follow-up', () => {
   assert.deepEqual(KNOWN_FIELDS, ['Age', 'Sex', 'BMI', 'Diagnosis', 'ODI',
-    'Treatment plan', 'Surgical history', 'Follow-up', 'Notes']);
+    'Treatment plan', 'Surgical history', 'Follow-up', 'Notes',
+    'Fusion extension', 'Fusion extension date', 'Last follow-up']);
 });
 
 // ---------------------------------------------------------------------------
