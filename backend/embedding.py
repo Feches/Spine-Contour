@@ -21,6 +21,11 @@ except ImportError:  # Support `uvicorn server:app` from backend/.
     import runtime
     from models import models
 
+class EmbeddingUnavailable(RuntimeError):
+    """The bundled encoder cannot be used: its metadata is missing, unreadable or incomplete (a
+    broken install, never a bad request)."""
+
+
 EMBED_KIND = "embed"
 REQUIRED_KEYS = ("input", "channels", "dim", "pooling", "mean", "std", "onnx_sha256", "source")
 
@@ -30,11 +35,14 @@ def load_metadata() -> dict:
     """embed.json beside the graph. Cached for the process: it changes only with a re-export."""
     path = models.ONNX_DIRECTORY / f"{EMBED_KIND}.json"
     if not path.is_file():
-        raise FileNotFoundError(f"Missing embedding metadata: {path}. Run python tools/export_onnx.py --kind embed.")
-    metadata = json.loads(path.read_text())
+        raise EmbeddingUnavailable(f"Missing embedding metadata: {path}. Run python tools/export_onnx.py --kind embed.")
+    try:
+        metadata = json.loads(path.read_text())
+    except ValueError as error:
+        raise EmbeddingUnavailable(f"embed.json could not be read: {error}") from error
     for key in REQUIRED_KEYS:
         if key not in metadata:
-            raise ValueError(f"embed.json is missing '{key}'")
+            raise EmbeddingUnavailable(f"embed.json is missing '{key}'")
     return metadata
 
 

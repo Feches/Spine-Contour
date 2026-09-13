@@ -6,7 +6,7 @@ import numpy as np
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from backend import server
+from backend import embedding, server
 from backend.models import VertebraLabel
 
 
@@ -141,7 +141,10 @@ def _fake_run(monkeypatch):
     def fake_prediction(pixel_array, modality, body_part, view, laterality, models):
         mask = np.zeros(pixel_array.shape, dtype=np.uint8)
         mask[4:12, 3:13] = int(VertebraLabel.L1)
-        return {"image": pixel_array, "mask": mask, "femoral_mask": np.zeros_like(mask),
+        # Deterministic but distinct from the raw upload everywhere, so a test can tell "the stored
+        # film" from "the bytes the client sent" apart.
+        stored_image = (pixel_array // 2 + 7).astype(np.uint8)
+        return {"image": stored_image, "mask": mask, "femoral_mask": np.zeros_like(mask),
                 "landmarks": {"S1": {"superior": [[2, 20], [14, 18]]}, "vertebrae": {"L1": {}}},
                 "models": {"vertebrae": "unet", "femoral": "unet", "s1": "keypointrcnn"},
                 "framing": {"window": [0, 0, 16, 24], "reframed": False, "searched": True, "whole_film_won": False}}
@@ -171,13 +174,19 @@ def test_predict_carries_the_embedding_and_records_that_it_computed_one(monkeypa
     post = _fake_run(monkeypatch)
     seen = {}
     def fake_record(image, framing):
-        seen["shape"], seen["framing"] = image.shape, framing
+        seen["shape"], seen["framing"], seen["image"] = image.shape, framing, image.copy()
         return dict(RECORD)
     monkeypatch.setattr(server, "embedding_record", fake_record)
     body = post().json()
     assert body["embedding"] == RECORD
     assert body["qc"]["processing"]["embeddings"] is True
     assert seen["shape"] == (24, 16) and seen["framing"]["window"] == [0, 0, 16, 24]
+    # /predict must embed exactly the bytes it stores as image_png, not the raw upload: a future
+    # refactor that passed the pre-rescale pixel array instead of prediction["image"] would silently
+    # produce a second, incompatible embedding population under an unchanged model.onnx_sha256.
+    decoded = np.asarray(Image.open(io.BytesIO(base64.b64decode(body["image_png"]))))
+    assert np.array_equal(seen["image"], decoded)
+    assert not np.array_equal(seen["image"], np.full((24, 16), 127, np.uint8))
 
 
 def test_predict_skips_the_embedding_when_the_setting_is_off(monkeypatch):
@@ -251,3 +260,19 @@ def test_embedding_model_endpoint_reports_the_bundled_graph_or_its_absence(monke
         raise FileNotFoundError("Missing embedding metadata")
     monkeypatch.setattr(server, "load_metadata", missing)
     assert TestClient(server.app).get("/embedding-model").status_code == 503
+
+
+def test_embed_and_embedding_model_report_a_broken_install_as_unavailable(monkeypatch):
+    def broken_record(image, framing):
+        raise embedding.EmbeddingUnavailable("embed.json is missing 'input'")
+    monkeypatch.setattr(server, "embedding_record", broken_record)
+    response = TestClient(server.app).post("/embed", files={"file": ("SP-1000.png", _png(), "image/png")})
+    assert response.status_code == 503
+    assert "embed.json is missing 'input'" in response.json()["detail"]
+
+    def broken_metadata():
+        raise embedding.EmbeddingUnavailable("embed.json is missing 'input'")
+    monkeypatch.setattr(server, "load_metadata", broken_metadata)
+    response = TestClient(server.app).get("/embedding-model")
+    assert response.status_code == 503
+    assert "embed.json is missing 'input'" in response.json()["detail"]

@@ -90,10 +90,15 @@ def test_embedding_record_uses_the_crop_then_the_whole_film(monkeypatch):
 def test_load_metadata_names_the_export_tool_when_the_graph_is_missing(monkeypatch, tmp_path):
     embedding.load_metadata.cache_clear()
     monkeypatch.setattr(models, 'ONNX_DIRECTORY', tmp_path)
-    with pytest.raises(FileNotFoundError, match='export_onnx.py --kind embed'):
+    with pytest.raises(embedding.EmbeddingUnavailable, match='export_onnx.py --kind embed'):
         embedding.load_metadata()
     (tmp_path / 'embed.json').write_text('{"kind": "embed"}')
     embedding.load_metadata.cache_clear()
-    with pytest.raises(ValueError, match="missing 'input'"):
+    with pytest.raises(embedding.EmbeddingUnavailable, match="missing 'input'"):
+        embedding.load_metadata()
+    embedding.load_metadata.cache_clear()
+    (tmp_path / 'embed.json').write_text('not json')
+    embedding.load_metadata.cache_clear()
+    with pytest.raises(embedding.EmbeddingUnavailable, match='could not be read'):
         embedding.load_metadata()
     embedding.load_metadata.cache_clear()

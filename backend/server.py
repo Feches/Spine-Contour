@@ -22,7 +22,7 @@ try:
     from .progress import stream_job
     from .models.models import release_models
     from .calibration import calibration_from_payload, learn_profile, validate_profile
-    from .embedding import embedding_record, load_metadata, model_record
+    from .embedding import EmbeddingUnavailable, embedding_record, load_metadata, model_record
     from .models import MODEL_CHOICES, VERTEBRA_LABELS, spinopelvic_prediction
     from .utils import (
         spinopelvic_measurements_from_geometry,
@@ -33,7 +33,7 @@ except ImportError:  # Support `uvicorn server:app` from backend/.
     from progress import stream_job
     from models.models import release_models
     from calibration import calibration_from_payload, learn_profile, validate_profile
-    from embedding import embedding_record, load_metadata, model_record
+    from embedding import EmbeddingUnavailable, embedding_record, load_metadata, model_record
     from models import MODEL_CHOICES, VERTEBRA_LABELS, spinopelvic_prediction
     from utils import (
         spinopelvic_measurements_from_geometry,
@@ -265,7 +265,7 @@ def run_embedding(request, reporter=None, cancelled=None):
             return {"embedding": result}
         except runtime.Cancelled:
             raise
-        except FileNotFoundError as error:
+        except (EmbeddingUnavailable, FileNotFoundError) as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
@@ -285,7 +285,7 @@ def embedding_model() -> dict[str, object]:
     current one (similar-cases spec, 2026-09-12, section 11). 503 when no graph is installed."""
     try:
         return model_record(load_metadata())
-    except FileNotFoundError as error:
+    except (EmbeddingUnavailable, FileNotFoundError) as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
 
 
