@@ -1,5 +1,6 @@
 import base64
 import io
+import json
 
 import numpy as np
 from fastapi.testclient import TestClient
@@ -201,3 +202,52 @@ def test_predict_survives_an_embedding_failure(monkeypatch):
     assert body["embedding"] is None
     assert body["qc"]["processing"]["embeddings"] is False
     assert body["measurements"]["PI"] == 42.0
+
+
+def _png(height=24, width=16):
+    upload = io.BytesIO()
+    Image.fromarray(np.full((height, width), 127, dtype=np.uint8)).save(upload, format="PNG")
+    return upload.getvalue()
+
+
+def test_embed_endpoint_returns_the_record_from_the_stored_image_and_framing(monkeypatch):
+    seen = {}
+    def fake_record(image, framing):
+        seen["shape"], seen["framing"] = image.shape, framing
+        return dict(RECORD)
+    monkeypatch.setattr(server, "embedding_record", fake_record)
+    framing = {"window": [0, 0, 8, 8], "searched": True, "whole_film_won": False}
+    response = TestClient(server.app).post(
+        "/embed", data={"framing": json.dumps(framing)}, files={"file": ("SP-1000.png", _png(), "image/png")})
+    assert response.status_code == 200
+    assert response.json() == {"embedding": RECORD}
+    assert seen["shape"] == (24, 16) and seen["framing"] == framing
+
+
+def test_embed_endpoint_without_framing_and_with_bad_inputs(monkeypatch):
+    monkeypatch.setattr(server, "embedding_record", lambda image, framing: {**RECORD, "film_type": None if framing is None else "x"})
+    client = TestClient(server.app)
+    ok = client.post("/embed", files={"file": ("SP-1000.png", _png(), "image/png")})
+    assert ok.status_code == 200 and ok.json()["embedding"]["film_type"] is None
+    assert client.post("/embed", files={"file": ("x.png", b"not an image", "image/png")}).status_code == 422
+    assert client.post("/embed", data={"framing": "[1, 2]"}, files={"file": ("SP-1000.png", _png(), "image/png")}).status_code == 422
+    assert client.post("/embed", data={"framing": "{not json"}, files={"file": ("SP-1000.png", _png(), "image/png")}).status_code == 422
+    assert client.post("/embed", files={"file": ("empty.png", b"", "image/png")}).status_code == 400
+
+
+def test_embed_endpoint_reports_a_missing_graph_as_unavailable(monkeypatch):
+    def missing(image, framing):
+        raise FileNotFoundError("Missing embedding metadata: embed.json. Run python tools/export_onnx.py --kind embed.")
+    monkeypatch.setattr(server, "embedding_record", missing)
+    response = TestClient(server.app).post("/embed", files={"file": ("SP-1000.png", _png(), "image/png")})
+    assert response.status_code == 503
+    assert "export_onnx.py --kind embed" in response.json()["detail"]
+
+
+def test_embedding_model_endpoint_reports_the_bundled_graph_or_its_absence(monkeypatch):
+    monkeypatch.setattr(server, "load_metadata", lambda: {"source": "fixture", "dim": 2, "input": [8, 8], "onnx_sha256": "h"})
+    assert TestClient(server.app).get("/embedding-model").json() == {"id": "fixture", "dim": 2, "input": [8, 8], "onnx_sha256": "h"}
+    def missing():
+        raise FileNotFoundError("Missing embedding metadata")
+    monkeypatch.setattr(server, "load_metadata", missing)
+    assert TestClient(server.app).get("/embedding-model").status_code == 503

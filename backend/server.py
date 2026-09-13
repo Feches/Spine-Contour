@@ -22,7 +22,7 @@ try:
     from .progress import stream_job
     from .models.models import release_models
     from .calibration import calibration_from_payload, learn_profile, validate_profile
-    from .embedding import embedding_record
+    from .embedding import embedding_record, load_metadata, model_record
     from .models import MODEL_CHOICES, VERTEBRA_LABELS, spinopelvic_prediction
     from .utils import (
         spinopelvic_measurements_from_geometry,
@@ -33,7 +33,7 @@ except ImportError:  # Support `uvicorn server:app` from backend/.
     from progress import stream_job
     from models.models import release_models
     from calibration import calibration_from_payload, learn_profile, validate_profile
-    from embedding import embedding_record
+    from embedding import embedding_record, load_metadata, model_record
     from models import MODEL_CHOICES, VERTEBRA_LABELS, spinopelvic_prediction
     from utils import (
         spinopelvic_measurements_from_geometry,
@@ -231,6 +231,62 @@ async def measure(geometry: dict[str, object]) -> dict[str, object]:
         )
     except (AttributeError, TypeError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+async def embed_request(file: UploadFile = File(...), framing: str | None = Form(None),
+                        processing_mode: str = Form("standard"), cpu_threads: int = Form(2)):
+    """The stored sidecar image and its framing record (similar-cases spec, 2026-09-12, section
+    10.4). The film file is never needed: the sidecar's image is the whole film."""
+    payload = await file.read(MAX_UPLOAD_BYTES + 1)
+    if not payload:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty")
+    if len(payload) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="The uploaded file exceeds 50 MB")
+    try:
+        parsed = json.loads(framing) if framing else None
+        settings = runtime.parse_options(processing_mode, cpu_threads)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if parsed is not None and not isinstance(parsed, dict):
+        raise HTTPException(status_code=422, detail="framing must be a JSON object")
+    return {"payload": payload, "framing": parsed, "settings": settings}
+
+
+def run_embedding(request, reporter=None, cancelled=None):
+    with runtime.session(request["settings"], reporter, cancelled):
+        if request["settings"].low_memory:
+            release_models()
+        try:
+            runtime.report("decoding", "Reading the stored film")
+            image = _decode_grayscale(request["payload"])
+            runtime.report("embedding", "Computing appearance embeddings")
+            result = embedding_record(image, request["framing"])
+            runtime.checkpoint()
+            return {"embedding": result}
+        except runtime.Cancelled:
+            raise
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        finally:
+            if request["settings"].low_memory:
+                release_models()
+
+
+@app.post("/embed", summary="Appearance embeddings for a stored segmentation image")
+async def embed(request=Depends(embed_request)):
+    return await run_in_threadpool(run_embedding, request)
+
+
+@app.get("/embedding-model", summary="Which appearance encoder this backend bundles")
+def embedding_model() -> dict[str, object]:
+    """The bundled graph's model record, so the renderer can tell a stale stored embedding from a
+    current one (similar-cases spec, 2026-09-12, section 11). 503 when no graph is installed."""
+    try:
+        return model_record(load_metadata())
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
 
 
 @app.get("/models", summary="Which model can read which structure")
