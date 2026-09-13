@@ -22,6 +22,7 @@ try:
     from .progress import stream_job
     from .models.models import release_models
     from .calibration import calibration_from_payload, learn_profile, validate_profile
+    from .embedding import embedding_record
     from .models import MODEL_CHOICES, VERTEBRA_LABELS, spinopelvic_prediction
     from .utils import (
         spinopelvic_measurements_from_geometry,
@@ -32,6 +33,7 @@ except ImportError:  # Support `uvicorn server:app` from backend/.
     from progress import stream_job
     from models.models import release_models
     from calibration import calibration_from_payload, learn_profile, validate_profile
+    from embedding import embedding_record
     from models import MODEL_CHOICES, VERTEBRA_LABELS, spinopelvic_prediction
     from utils import (
         spinopelvic_measurements_from_geometry,
@@ -158,9 +160,26 @@ def _analyze(payload, modality, body_part, view, laterality,
         output = io.BytesIO()
         Image.fromarray(prediction[name]).save(output, format="PNG", optimize=True)
         encoded[f"{name}_png"] = base64.b64encode(output.getvalue()).decode("ascii")
+    # Appearance embeddings (similar-cases spec, 2026-09-12, section 10.3): one more stage inside
+    # the run the user already waits for, and never able to fail it. Off in Settings skips it
+    # entirely -- the graph is never loaded. `image` is the whole film; the crop is cut by the
+    # framing window inside embedding_record.
+    embedding = None
+    if runtime.options().embeddings:
+        runtime.report("embedding", "Computing appearance embeddings")
+        try:
+            embedding = embedding_record(prediction["image"], prediction["framing"])
+        except runtime.Cancelled:
+            raise
+        except Exception:
+            logging.getLogger(__name__).exception('Optional appearance embedding failed')
+            embedding = None
+        finally:
+            if runtime.options().low_memory:
+                release_models()
     # `qc` stays opaque to the renderer, which reads only `qc.femoral.confidence`;
     # the model choice and the crop ride along so a stored result says what
-    # produced it.
+    # produced it. `processing.embeddings` says whether this run computed one.
     qc = {**analysis.get("qc", {}), "models": prediction["models"], "framing": prediction["framing"],
           "processing": {"mode": runtime.options().mode,
                          "cpu_threads": runtime.options().inference_threads,
@@ -168,7 +187,8 @@ def _analyze(payload, modality, body_part, view, laterality,
                          "providers": runtime.providers(),
                          "crop_localizer": runtime.options().crop_localizer,
                          "toolbar_removal": runtime.options().toolbar_removal,
-                         "search_batch": runtime.options().search_batch}}
+                         "search_batch": runtime.options().search_batch,
+                         "embeddings": embedding is not None}}
     # Every run, including the serial batch, reads the ORIGINAL image's ruler. The
     # inference crop can exclude it. Calibration failure must not lose segmentation.
     try:
@@ -193,7 +213,8 @@ def _analyze(payload, modality, body_part, view, laterality,
             'message': 'Automatic calibration unavailable. Review the reference in Image calibration.',
         }
     runtime.report("complete", "Measurements ready")
-    return {**encoded, **analysis, "qc": qc, "labels": VERTEBRA_LABELS, "calibration": image_calibration}
+    return {**encoded, **analysis, "qc": qc, "labels": VERTEBRA_LABELS, "calibration": image_calibration,
+            "embedding": embedding}
 
 
 @app.post("/measure", summary="Recalculate measurements from corrected landmarks")

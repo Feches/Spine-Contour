@@ -23,6 +23,7 @@ def test_stream_matches_legacy_prediction_for_partial_anatomy_in_both_modes(monk
     monkeypatch.setattr(framing, 'locate', lambda *args: None)
     monkeypatch.setattr(models, '_read_frame', lambda *args: frame(['L1']))
     monkeypatch.setattr(server, 'calibration_from_payload', lambda *args, **kwargs: {'status': 'unavailable'})
+    monkeypatch.setattr(server, 'embedding_record', lambda image, framing: {'model': {'id': 'x', 'dim': 1, 'input': [8, 8], 'onnx_sha256': 'h'}, 'crop': [1.0], 'whole': [1.0], 'film_type': 'lumbar'})
     data = {'modality': 'xray', 'body_part': 'lumbar', 'view': 'lateral', 'vertebra_model': model,
             'crop_localizer': str(localizer).lower()}
     client = TestClient(server.app)
@@ -44,7 +45,8 @@ def test_stream_matches_legacy_prediction_for_partial_anatomy_in_both_modes(monk
         assert result['geometry']['femoral_circles'] == []
         assert result['measurements']['PI'] is None
         stages = [e['stage'] for e in events if e['type'] == 'progress']
-        assert stages.index('decoding') < stages.index('landmarks') < stages.index('measuring') < stages.index('calibration') < stages.index('complete')
+        assert stages.index('decoding') < stages.index('landmarks') < stages.index('measuring') < stages.index('encoding') < stages.index('embedding') < stages.index('calibration') < stages.index('complete')
+        assert result['embedding']['crop'] == [1.0] and result['qc']['processing']['embeddings'] is True
 
 
 @pytest.mark.parametrize('mode,threads', [('unknown', 2), ('low-memory', 0), ('low-memory', 10)])
