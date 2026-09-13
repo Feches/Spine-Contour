@@ -5,11 +5,14 @@ function normalizePerformance(value) {
   const cpuThreads = value?.cpuThreads ?? 2;
   const cropLocalizer = value?.cropLocalizer === undefined ? true : value.cropLocalizer;
   const toolbarRemoval = value?.toolbarRemoval === undefined ? false : value.toolbarRemoval;
+  // Appearance embeddings (similar-cases spec, 2026-09-12, section 10.6): on for every
+  // preference file written before the switch existed.
+  const embeddings = value?.embeddings === undefined ? true : value.embeddings;
   if (!['standard', 'low-memory'].includes(mode) || !Number.isInteger(cpuThreads) || cpuThreads < 1 || cpuThreads > 4
-    || typeof cropLocalizer !== 'boolean' || typeof toolbarRemoval !== 'boolean') {
+    || typeof cropLocalizer !== 'boolean' || typeof toolbarRemoval !== 'boolean' || typeof embeddings !== 'boolean') {
     throw new Error('Invalid processing settings.');
   }
-  return { mode, cpuThreads, cropLocalizer, toolbarRemoval };
+  return { mode, cpuThreads, cropLocalizer, toolbarRemoval, embeddings };
 }
 
 // Node's default fetch header deadline is unsuitable for long local inference.

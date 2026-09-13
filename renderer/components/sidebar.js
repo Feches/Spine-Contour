@@ -81,7 +81,17 @@ function performanceBlock(state) {
         onClick: () => changePerformance({ toolbarRemoval }),
       }, label))),
     el('p', { class: 'processing-note' },
-      'Quickly removes detected bottom PACS toolbars before segmentation. Keeps uncertain images unchanged and preserves the original for calibration.'));
+      'Quickly removes detected bottom PACS toolbars before segmentation. Keeps uncertain images unchanged and preserves the original for calibration.'),
+    el('div', { class: 'sidebar-models-label' }, 'APPEARANCE EMBEDDINGS'),
+    el('div', { class: 'model-choice', role: 'group', 'aria-label': 'Appearance embeddings' },
+      ...[[true, 'On'], [false, 'Off']].map(([embeddings, label]) => el('button', {
+        type: 'button', class: 'model-choice-btn', disabled: busy,
+        'aria-pressed': settings.embeddings === embeddings ? 'true' : 'false',
+        'data-setting': `embeddings-${embeddings ? 'on' : 'off'}`,
+        onClick: () => changePerformance({ embeddings }),
+      }, label))),
+    el('p', { class: 'processing-note' },
+      'Computes the appearance embeddings the Find similar tab ranks by, about a second per film. Off skips them; the Find tab can embed later.'));
 }
 
 // (2026-09-10, studies-table spec 9) DEMO STUDIES: Show / Hide, development builds only. Built

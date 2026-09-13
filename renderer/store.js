@@ -41,7 +41,7 @@ let state = {
 
   // Which model reads which structure on the next run; see renderer/data/models.js.
   models: { vertebrae: 'unet', femoral: 'unet', s1: 'keypointrcnn' },
-  performance: { mode: 'standard', cpuThreads: 2, cropLocalizer: true, toolbarRemoval: false },
+  performance: { mode: 'standard', cpuThreads: 2, cropLocalizer: true, toolbarRemoval: false, embeddings: true },
 
   editing: false,
   selection: null,

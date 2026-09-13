@@ -85,6 +85,7 @@ function appendPerformance(form, value) {
   form.append('cpu_threads', String(settings.cpuThreads));
   form.append('crop_localizer', String(settings.cropLocalizer));
   form.append('toolbar_removal', String(settings.toolbarRemoval));
+  form.append('embeddings', String(settings.embeddings));
   return settings;
 }
 

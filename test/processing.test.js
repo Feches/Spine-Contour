@@ -21,8 +21,8 @@ test('resource defaults agree across the desktop and renderer; invalid settings 
 
 test('crop localizer defaults on for legacy preferences and persists explicit off', () => {
   const legacy = { mode: 'low-memory', cpuThreads: 1 };
-  assert.deepEqual(normalizePerformance(legacy), { ...legacy, cropLocalizer: true, toolbarRemoval: false });
-  const off = { ...legacy, cropLocalizer: false, toolbarRemoval: false };
+  assert.deepEqual(normalizePerformance(legacy), { ...legacy, cropLocalizer: true, toolbarRemoval: false, embeddings: true });
+  const off = { ...legacy, cropLocalizer: false, toolbarRemoval: false, embeddings: true };
   assert.deepEqual(normalizePerformance(JSON.parse(JSON.stringify(off))), off);
   assert.equal(validPerformance(off), true);
   for (const cropLocalizer of [null, 'false', 0, 1]) {
@@ -33,15 +33,30 @@ test('crop localizer defaults on for legacy preferences and persists explicit of
 
 test('toolbar removal defaults off for older preferences and saves independently of crop localizer', () => {
   const legacy = { mode: 'standard', cpuThreads: 2, cropLocalizer: false };
-  assert.deepEqual(normalizePerformance(legacy), { ...legacy, toolbarRemoval: false });
+  assert.deepEqual(normalizePerformance(legacy), { ...legacy, toolbarRemoval: false, embeddings: true });
   for (const toolbarRemoval of [true, false]) {
-    const saved = { ...legacy, toolbarRemoval };
+    const saved = { ...legacy, toolbarRemoval, embeddings: true };
     assert.deepEqual(normalizePerformance(JSON.parse(JSON.stringify(saved))), saved);
     assert.equal(validPerformance(saved), true);
   }
   for (const toolbarRemoval of [null, 'false', 0, 1]) {
     assert.throws(() => normalizePerformance({ ...legacy, toolbarRemoval }));
     assert.equal(validPerformance({ ...legacy, toolbarRemoval }), false);
+  }
+});
+
+test('appearance embeddings default on for older preferences and save independently of the other switches', () => {
+  const legacy = { mode: 'standard', cpuThreads: 2, cropLocalizer: true, toolbarRemoval: false };
+  assert.deepEqual(normalizePerformance(legacy), { ...legacy, embeddings: true });
+  assert.deepEqual(DEFAULT_PERFORMANCE, { ...legacy, embeddings: true });
+  for (const embeddings of [true, false]) {
+    const saved = { ...legacy, embeddings };
+    assert.deepEqual(normalizePerformance(JSON.parse(JSON.stringify(saved))), saved);
+    assert.equal(validPerformance(saved), true);
+  }
+  for (const embeddings of [null, 'false', 0, 1]) {
+    assert.throws(() => normalizePerformance({ ...legacy, embeddings }));
+    assert.equal(validPerformance({ ...legacy, embeddings }), false);
   }
 });
 
