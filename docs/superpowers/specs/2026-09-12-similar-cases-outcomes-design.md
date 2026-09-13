@@ -124,7 +124,9 @@ The researcher (spec §2), doing this:
   one film per later label, judging unpaired and ambiguous subjects; `toPairedCsv` writes it.
 - **Clinical fields**: `KNOWN_FIELDS` is nine names; every value is a trimmed string on `study.clinical`;
   `autoMap` is a prefix match, one column per known field, first wins; the drawer is one row per
-  visible study.
+  visible study and can add a custom field by name. The import's mapping select offers only
+  `Unmapped` or a known field, so a spreadsheet column the app does not know (interbody type, levels
+  fused) is dropped at load; its values can only be typed by hand.
 - **Parameters filter bar**: `Export CSV` and `Export paired CSV` over the same rows (visible, or ticked
   visible), each with a disabled note and a toast sized by `toastDuration`.
 - **Workspace scope**: `matchesWorkspace(study, root)` in `renderer/data/parameters.js`, with
@@ -197,6 +199,11 @@ Each with what it costs if it is wrong.
     `[PI, PT, SS, LL, PI−LL]` with its weights.** Ranking under `Alignment` alone is plan 07's ranking,
     kept as one of the four modes; under `All` the angles count beside the geometry they came from.
     *Cost if wrong:* the weights are one line, and a sixth angle (L1PA) is one more entry.
+16. **A spreadsheet column the app does not know can be kept under its own name, per column, by
+    choice.** `Keep column name` in the mapping select imports it as a custom clinical field; `autoMap`
+    never chooses it, because an unknown column can be an identifier and the import must never take
+    one by accident. *Cost if wrong:* a bulk `Keep all unmapped` is one more option on the `Set all…`
+    control, and nothing stored changes — a custom key is already an ordinary clinical value.
 
 ## 7. Vectors
 
@@ -425,6 +432,18 @@ The join is unchanged (per film, by filename stem). A spreadsheet with one row p
 needs the outcome on at least one of that subject's films' rows; the Load message's existing counts
 apply. A subject-keyed join is ROADMAP §8.
 
+### 9.5 Columns the app does not know
+
+The mapping select for each CSV header gains one choice after the known fields: `Keep column name`.
+Choosing it sets the header's destination to the header text itself, trimmed, so the column imports as
+a custom clinical field under that name — `Interbody type` stays `Interbody type` — and from then on it
+is an ordinary clinical key: a column in the drawer, a column in `Export CSV`, a per-visit column in
+the paired export and in `subjects.csv`, a column in `films.csv`. The rules that already protect the
+known fields apply: a name another column already maps to, known or kept, is taken and not offered
+again; a header that normalises to a known field's name is offered that field, not a duplicate
+custom one; the load fills only blank keys on a known film. `autoMap` never selects it (decision 16).
+The Load message's existing clinical counts cover kept columns without a new clause.
+
 ## 10. Backend
 
 ### 10.1 The graph
@@ -622,6 +641,10 @@ Pure modules get `node --test`; the DOM gets a smoke suite and a human gate; the
   one timestamp.
 - The performance-settings tests (extend): `embeddings` defaults to `true`, survives a save and a load,
   and rides on every `predict` request beside `cropLocalizer`.
+- `test/workspace.test.js` (extend): `Keep column name` maps a header to itself, trimmed; a kept name is
+  taken for every other column; a header normalising to a known field is not offered as a custom name;
+  `autoMap` leaves an unknown header `Unmapped`; the kept values land on `clinical` and fill only blank
+  keys on a known film.
 - Backend: `test_embedding.py` — `preprocess` shape, dtype, letterbox geometry and normalisation on a
   synthetic image; `embed` returns 384 finite unit-norm values on the real graph when it exists (skipped
   otherwise, as the ONNX tests already are); `film_type` per §7.3; `/embed` with both inputs, one input,
@@ -662,6 +685,8 @@ To the architecture contract, in the same commit as the plan:
    atomic write in `store-io.js`.
 10. **Settings**: `state.performance.embeddings` (default `true`), the `save-performance` normaliser,
     the `/predict` form field `embeddings`, `Options.embeddings`, `qc.processing.embeddings`.
+11. **Workspace mapping**: the `Keep column name` choice (§9.5); a `Mapping.dest` may now be any
+    non-empty name, not only a known field; `joinClinical` is unchanged.
 
 ## 17. Sequencing
 
