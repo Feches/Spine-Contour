@@ -11,6 +11,7 @@ import { createMeasureQueue } from '../viewer/measure-queue.js';
 import { isQueued, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
 import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
 import { progressTitle, progressDetail } from '../data/processing.js';
+import { studyName } from '../data/labels.js';
 import { cancelProcessing } from '../processing.js';
 
 // Icons lifted verbatim from design-reference/template.html's Study Analysis toolbar.
@@ -905,7 +906,10 @@ export function mountViewer(container, { role = 'primary' } = {}) {
     runTitle.textContent = card.title;
     runBody.textContent = card.body;
     runSpinner.classList.toggle('is-hidden', !card.spinner);
-    cancelButton.classList.toggle('is-hidden', !card.spinner);
+    // `card.button` governs the run button only, so the cancel button needs the role test of its
+    // own: the compare pane's LOADING card spins while a SIDECAR is read, and cancelProcessing
+    // would reach into the open study's run (or the batch) from a pane with no controls at all.
+    cancelButton.classList.toggle('is-hidden', !card.spinner || compare);
     const progress = getState().runStage;
     cancelButton.disabled = Boolean(progress?.cancelling) || progress?.stage === 'saving';
     runButton.classList.toggle('is-hidden', !card.button);
@@ -1057,7 +1061,10 @@ export function mountViewer(container, { role = 'primary' } = {}) {
       labelStudyId = study.id;
       labelOffsets = new Map();
     }
-    chipId.textContent = study.id;
+    // The compare chip names its study the way the card that opened it does. The PRIMARY chip
+    // keeps the record id it has always shown -- changing that is a gate question, not this
+    // task's -- so only the new surface moves to the name.
+    chipId.textContent = compare ? studyName(study) : study.id;
     if (chipMatch) {
       chipMatchValue = match;
       chipMatch.textContent = match === null ? '' : `${match}%`;

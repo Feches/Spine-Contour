@@ -592,7 +592,7 @@ export function render(state) {
   // only when it would change.
   const statusHost = el('div', { class: 'analysis-status' });
 
-  // The comparison badge -- COMPARING, the separator and the compared study's id -- beside the
+  // The comparison badge -- COMPARING, the separator and the compared study's name -- beside the
   // status badge, for as long as a second study is in the viewer (similar-cases spec 8.5, plan 07
   // Task 4). Hidden, not absent, so update() only has a boolean and a string to write.
   const compareBadge = el('div', { class: 'eyebrow analysis-compare', hidden: true, 'data-similar-key': 'comparing' });
@@ -720,14 +720,27 @@ export function render(state) {
     disposeStudyImages(images);
   }
 
+  // True only while THIS render's mount is the live one. restoreFilm's own live() compares
+  // mounted.studyId, which cannot work here -- the compared study is never openId -- so this
+  // render's own releaseCompare is the identity. Without it, Back pressed mid-restore leaves
+  // teardown()'s releaseCompare() with nothing to free (compareImages is still null), and the
+  // restore then assigns the decoded bitmaps into a dead closure that nothing will ever release,
+  // hands them to a detached mount, and on the error path toasts about a comparison the user
+  // has already closed.
+  const liveMount = () => mounted !== null && mounted.releaseCompare === releaseCompare;
+
   // restoreFilm's sibling for the compared study. Same sidecar gate (a refused store makes
   // predictions/SP-nnnn.json the PREVIOUS library's film), same identity guard -- the id still
   // compared and the record's addedAt unchanged -- and the same two card states while it runs.
   // No imageCache write and no recordPrediction: neither belongs to a study nobody opened.
   async function restoreCompareFilm(compareId) {
     const revision = ++compareRevision;
-    const addedAt = getState().studies.find((s) => s.id === compareId)?.addedAt ?? null;
-    const stale = () => revision !== compareRevision || getState().compareId !== compareId
+    const record = getState().studies.find((s) => s.id === compareId) ?? null;
+    const addedAt = record ? record.addedAt : null;
+    // Captured now, while the record is in hand: the failure toast is something a person reads,
+    // so it names the study, and by the time it fires the record may be gone.
+    const name = studyName(record);
+    const stale = () => !liveMount() || revision !== compareRevision || getState().compareId !== compareId
       || (getState().studies.find((s) => s.id === compareId)?.addedAt ?? null) !== addedAt;
     // The outgoing film goes first, before anything is awaited: the pane is already drawing the
     // NEW study's geometry, and a frame of that over the old study's radiograph would be a
@@ -753,9 +766,11 @@ export function render(state) {
       compareViewer.setImages(images);
       compareViewer.setFilmStatus(null);
     } catch (error) {
-      if (revision !== compareRevision) return;
+      // Same mount-identity term as stale(): a screen torn down mid-read must not report a
+      // failure about a comparison that is no longer on screen.
+      if (!liveMount() || revision !== compareRevision) return;
       compareViewer.setFilmStatus('missing');
-      showToast(`Could not load the film for ${compareId}: ${error.message}`);
+      showToast(`Could not load the film for ${name}: ${error.message}`);
     }
   }
 
@@ -859,7 +874,9 @@ export function render(state) {
     compareHost.classList.toggle('is-hidden', !other);
     panel.classList.toggle('is-comparing', Boolean(other));
     compareBadge.hidden = !other;
-    if (other) compareBadge.textContent = `COMPARING \u00B7 ${other.id}`;
+    // The NAME, not the record id: the card the user clicked is named by studyName, and the
+    // SP-nnnn id never appears where a person reads (spec 5, v1.0.8 identity rule).
+    if (other) compareBadge.textContent = `COMPARING \u00B7 ${studyName(other)}`;
 
     // The chip's percentage is the CARD's own figure, so it has to be computed the card's way:
     // the same scope, because medianScale normalises each block over the candidate pool and a

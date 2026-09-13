@@ -4,6 +4,7 @@ import { getState, setState } from '../store.js';
 import { calibrationSummary } from '../data/calibration.js';
 import { DISC_POSITIONS } from '../data/disc-heights.js';
 import { sagittalRows, lordosisRows, discRows, alignmentRows, isConsistent, deltaRow } from '../data/measurements.js';
+import { studyName } from '../data/labels.js';
 
 const INCONSISTENCY_WARNING = 'Parameters inconsistent \u2014 check S1 and femoral landmarks.';
 const NOT_COMPUTED_NOTE = 'Not computed in this build.';
@@ -236,14 +237,18 @@ export function mountMeasurements(container) {
         onClick: () => setState({ screen: 'calibration', calibrationRequest: { studyId: study.id, filePath: study.filePath } }),
       }, 'REVIEW IMAGE SCALE'));
     }
-    // Which column is which, once there are two. aria-hidden: the ids are already on the panes'
+    // Which column is which, once there are two. The studies are named the way every other
+    // surface names them -- never the SP-nnnn record id -- and the cell ellipsises inside its
+    // 64px, so the full name is on the title. aria-hidden: the names are already on the panes'
     // chips and in the header badge, and a screen reader reading them again here as a bare row
     // of three tokens says nothing the rows below do not.
     if (other) {
+      const openName = studyName(study);
+      const otherName = studyName(other);
       root.append(el('div', { class: 'meas-compare-head', 'aria-hidden': 'true' },
         el('div', { class: 'meas-spacer' }),
-        el('div', { class: 'meas-compare-id' }, study.id),
-        el('div', { class: 'meas-compare-id meas-compare-other' }, other.id),
+        el('div', { class: 'meas-compare-id', title: openName }, openName),
+        el('div', { class: 'meas-compare-id meas-compare-other', title: otherName }, otherName),
         el('div', { class: 'meas-compare-delta' }, '\u0394')));
     }
     root.append(section1, section2, section3, calibrationSection);
