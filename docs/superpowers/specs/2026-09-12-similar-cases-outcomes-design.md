@@ -203,7 +203,11 @@ Each with what it costs if it is wrong.
 15. **The measured angles enter the ranking explicitly, as the alignment block `A`: spec §10.5's
     `[PI, PT, SS, LL, PI−LL]` with its weights.** Ranking under `Alignment` alone is plan 07's ranking,
     kept as one of the four modes; under `All` the angles count beside the geometry they came from.
-    *Cost if wrong:* the weights are one line, and a sixth angle (L1PA) is one more entry.
+    *Cost if wrong:* the weights are one line, and a sixth angle (L1PA) is one more entry. A new
+    single angle joins `A` the same way; a per-level family (segmental angulation, segmental lordosis,
+    planned by the user) becomes its own block with its own median scale, so ten per-level numbers
+    never outweigh the five global angles — the fusion takes another block without changing shape
+    (decision 1).
 16. **A spreadsheet column the app does not know can be kept under its own name, per column, by
     choice.** `Keep column name` in the mapping select imports it as a custom clinical field; `autoMap`
     never chooses it, because an unknown column can be an identifier and the import must never take
@@ -272,7 +276,9 @@ exist and the median is positive, else `1`. Then
 d(c) = sqrt( Σ_present w_i · (d_i(c) / m_i)²  /  Σ_present w_i )
 ```
 
-A block is present for the pair when both studies have it and its weight is not zero; `H` needs a hip
+The weight table is data: the four modes are the presets, and the fusion takes any table of block
+weights, so a later stage can expose sliders or import learned weights without a code path
+changing (ROADMAP §8). A block is present for the pair when both studies have it and its weight is not zero; `H` needs a hip
 midpoint on both films, `A` needs the four measured angles on both, `C` and `W` need embeddings from the same model on both
 (§11), and `W` needs both film types `'whole-spine'`. A candidate with no present block is dropped. Candidates sort by
 `d` ascending, ties by id. `matchScore(d) = round(100 · exp(−d))`, an integer 0–100; the median-scaled

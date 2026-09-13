@@ -635,7 +635,7 @@ Message: `feat: store appearance embeddings one file per study; load them once; 
   - `blocks(study, embedding) -> { V, H, A, C, W, filmType, model }`.
   - `shapeDistance(a, b)`, `pelvicDistance(a, b)`, `alignmentDistance(a, b)`, `appearanceDistance(a, b)` over arrays.
   - `pairDistances(open, candidate, mode) -> { V, H, A, C, W }` (a number or `null` per block).
-  - `medianScale(values) -> number`; `fuse(distances, scales, mode) -> { d, blocks } | null`; `matchScore(d) -> integer 0..100`.
+  - `medianScale(values) -> number`; `fuse(distances, scales, weights) -> { d, blocks } | null` (`weights` is a `{ V, H, A, C, W }` table such as `MODES[mode]`, so a later stage can pass its own); `matchScore(d) -> integer 0..100`.
   - `candidates(open, all, { scope, mode, embeddings }) -> Study[]` (`embeddings` is a Map or a plain object keyed by study id, everywhere below).
   - `findSimilar(open, all, { scope, mode, embeddings, n = 5 }) -> { matches: [{ study, d, match, blocks }], total, stale }`.
   - `openReason(open, mode, embeddings) -> 'unsegmented' | 'partial' | 'no-embedding' | 'no-alignment' | null`.
@@ -806,14 +806,17 @@ test('medianScale needs three present values and a positive median, else 1', () 
 
 test('fuse is the weighted root-mean-square of the present scaled blocks and names them; nothing present is null', () => {
   const scales = { V: 2, H: 1, A: 10, C: 0.5, W: 0.5 };
-  const one = fuse({ V: 2, H: null, A: null, C: null, W: null }, scales, 'all');
+  const one = fuse({ V: 2, H: null, A: null, C: null, W: null }, scales, MODES.all);
   assert.deepEqual(one, { d: 1, blocks: ['V'] });
-  const two = fuse({ V: 2, H: 3, A: null, C: null, W: null }, scales, 'all');
+  const two = fuse({ V: 2, H: 3, A: null, C: null, W: null }, scales, MODES.all);
   assert.ok(Math.abs(two.d - Math.sqrt((1 + 9) / 2)) < 1e-12);
   assert.deepEqual(two.blocks, ['V', 'H']);
-  assert.deepEqual(fuse({ V: 2, H: 3, A: 20, C: 1, W: 1 }, scales, 'alignment'), { d: 2, blocks: ['A'] });
-  assert.equal(fuse({ V: null, H: null, A: null, C: null, W: null }, scales, 'all'), null);
-  assert.equal(fuse({ V: 2, H: 3, A: null, C: null, W: null }, scales, 'appearance'), null);
+  assert.deepEqual(fuse({ V: 2, H: 3, A: 20, C: 1, W: 1 }, scales, MODES.alignment), { d: 2, blocks: ['A'] });
+  assert.equal(fuse({ V: null, H: null, A: null, C: null, W: null }, scales, MODES.all), null);
+  assert.equal(fuse({ V: 2, H: 3, A: null, C: null, W: null }, scales, MODES.appearance), null);
+  // Any weight table works, not only the four presets: a later stage's sliders pass their own.
+  const custom = fuse({ V: 2, H: 3, A: null, C: null, W: null }, scales, { V: 3, H: 1, A: 0, C: 0, W: 0 });
+  assert.ok(Math.abs(custom.d - Math.sqrt((3 * 1 + 1 * 9) / 4)) < 1e-12);
 });
 
 test('matchScore is 100 at zero distance, falls with it, and is clamped to 0..100', () => {
@@ -1116,9 +1119,11 @@ export function medianScale(values) {
   return median > 0 ? median : 1;
 }
 
-// sqrt(sum w_i (d_i / m_i)^2 / sum w_i) over the present, weighted blocks; null with none.
-export function fuse(distances, scales, mode) {
-  const w = MODES[mode] ?? MODES.all;
+// sqrt(sum w_i (d_i / m_i)^2 / sum w_i) over the present, weighted blocks; null with none. `weights`
+// is a { V, H, A, C, W } table -- one of MODES today, a user's own sliders in a later stage -- so
+// changing what counts is a table, never a code path.
+export function fuse(distances, scales, weights) {
+  const w = weights ?? MODES.all;
   let sum = 0;
   let weight = 0;
   const present = [];
@@ -1170,7 +1175,7 @@ export function findSimilar(open, all, { scope = 'all', mode = 'all', embeddings
   let stale = 0;
   for (const entry of entries) {
     if (needsEmbedding(mode) && entry.b.model !== null && openBlocks.model !== null && entry.b.model !== openBlocks.model) stale += 1;
-    const fused = fuse(entry.distances, scales, mode);
+    const fused = fuse(entry.distances, scales, MODES[mode] ?? MODES.all);
     if (!fused) continue;
     ranked.push({ study: entry.study, d: fused.d, match: matchScore(fused.d), blocks: fused.blocks });
   }

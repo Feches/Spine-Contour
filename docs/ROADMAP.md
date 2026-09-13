@@ -405,6 +405,16 @@ into the app once its recipe is stable. The later stages, in order:
   to its post-op film, click to open. UMAP stays out until a Python dependency is justified.
 - **A subject-keyed CSV import** for outcome fields, so a one-row-per-subject spreadsheet needs no
   fill-down. Decide first how it coexists with the per-film stem join.
+- **Similarity weights as a control.** The fusion already takes any `{V, H, A, C, W}` weight table (the
+  four `Rank by` presets are tables); stage 2 may add sliders under an Advanced disclosure on the tab,
+  persisted like the processing settings, with the presets as buttons that set them. Do not build it
+  before outcomes exist: without labels no weighting can be shown better than another, and once the
+  dataset carries outcomes the notebook can find the weighting that predicts best and the app can
+  import it with the model file.
+- **Segmental angulation and segmental lordosis** (the user's planned measurements, 2026-09-13): first a
+  measurement feature (backend, `validateStudy`'s optional keys, export columns, the panel and grid);
+  then in similarity as their own per-level block beside `A` with its own median scale, one reader and one
+  entry in the mode table (spec decision 15). A single new global angle joins `A` instead.
 - **More outcomes.** Any-cause reoperation, rod fracture, screw loosening, adjacent-segment disease or
   junctional kyphosis on their own: each is one registry line in `renderer/data/outcomes.js` (stage-1 spec §9.1) once the user captures it, plus an
   outcome selector on the Find similar tab so the cards and footer can show any registered outcome,
