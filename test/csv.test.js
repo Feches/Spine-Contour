@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   toCsv, parse, autoMap, KNOWN_FIELDS, fileStem, findJoinHeader, joinClinical, clinicalFieldNames,
   findStructuralHeaders, structuralField, STRUCTURAL_LABELS, structuralFromRow,
-  toPairedCsv, delta1,
+  toPairedCsv, delta1, keepUnmapped, keepableCount, keepColumnName, KEEP_NAME,
 } from '../renderer/data/csv.js';
 import { pairStudies } from '../renderer/data/pairing.js';
 
@@ -804,4 +804,33 @@ test('toPairedCsv over a pairing with nothing written is the citation block and 
   assert.equal(lines.length, 5);
   assert.ok(lines[3].startsWith('Subject,Pre-op study,Pre-op view,Pre-op film date,LL L1-S1 Pre-op,PI Pre-op,'));
   assert.equal(lines[3].split(',').length, 29);
+});
+
+// Keep column name (similar-cases spec, 2026-09-12, section 9.5).
+test('keepUnmapped gives every unmapped header its own name, skips the reserved ones, prefers a free known field, leaves a taken name', () => {
+  const headers = ['study_id', 'subject', 'Interbody type', ' Levels fused ', 'odi_base', 'odi_6mo', 'Age', 'age_at_surgery', ''];
+  const mapping = [
+    { src: 'study_id', dest: null }, { src: 'subject', dest: null }, { src: 'Interbody type', dest: null },
+    { src: ' Levels fused ', dest: null }, { src: 'odi_base', dest: 'ODI' }, { src: 'odi_6mo', dest: null },
+    { src: 'Age', dest: null }, { src: 'age_at_surgery', dest: 'Age' }, { src: '', dest: null },
+  ];
+  const kept = keepUnmapped(mapping, headers);
+  assert.deepEqual(kept, [
+    { src: 'study_id', dest: null }, { src: 'subject', dest: null }, { src: 'Interbody type', dest: 'Interbody type' },
+    { src: ' Levels fused ', dest: 'Levels fused' }, { src: 'odi_base', dest: 'ODI' }, { src: 'odi_6mo', dest: 'odi_6mo' },
+    { src: 'Age', dest: null }, { src: 'age_at_surgery', dest: 'Age' }, { src: '', dest: null },
+  ]);
+  // Unchanged rows keep their identity, so a caller can count what the action would change.
+  assert.equal(kept[0], mapping[0]);
+  assert.equal(kept[4], mapping[4]);
+  assert.equal(keepableCount(mapping, headers), 3);
+  assert.equal(keepableCount(kept, headers), 0);
+  assert.equal(keepColumnName('  Interbody type '), 'Interbody type');
+  assert.equal(KEEP_NAME, '__keep__');
+});
+
+test('keepUnmapped takes a free known field for a header that names one, rather than a custom copy', () => {
+  const headers = ['study_id', 'diagnosis_text'];
+  const mapping = [{ src: 'study_id', dest: null }, { src: 'diagnosis_text', dest: null }];
+  assert.deepEqual(keepUnmapped(mapping, headers)[1], { src: 'diagnosis_text', dest: 'Diagnosis' });
 });
