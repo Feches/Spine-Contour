@@ -16,6 +16,7 @@ Copied from `CLAUDE.md` and the spec. Every task's requirements include these.
 
 - **Never display a fabricated measurement or a fabricated status.** Absent values render `—` (U+2014). A card's angle line shows `—` per absent angle; the outcome line says `Outcome not recorded`, never a guess; the footer counts what is recorded and never reads as a rate or a risk (§8.3).
 - **Never rank across models.** Two embeddings enter a distance only when their `model.onnx_sha256` match (§11); the whole-film block only between two whole-spine films (§7.4).
+- **Identity is the study name (v1.0.8).** `studyName(study)` — the stored name, else the film's stem — is what every export writes under `Study ID` and what the dataset's three files key on; the `SP-nnnn` record id appears in no file a person reads. It still keys the store, the sidecars and `embeddings/<id>.json`, and `pairStudies` now returns visits (spec §5).
 - **Never mutate store state in place.** Every `setState` patch passes a NEW object or array; `similarScope`, `similarRank`, `batch` are replaced wholesale. `setState` must not be called from inside a subscriber: the tab, the Analysis screen's `update()` and the Studies screen's `update()` run inside store notifications; only DOM event handlers, microtasks queued from them, and async functions call `setState` — which is why `renderer/embeddings.js`'s `ensureEmbeddings()` is async and its `bump()` runs after an `await`.
 - **The Studies screen's `update()` key array must list every store key and module-scope value the Find tab reads** — this plan adds `embeddingsVersion` to it (Task 7). The Analysis screen's tab subscribes to the store itself and reads `embeddingsVersion` (Task 6). `router.js`'s `SIDEBAR_KEYS` already carries `performance` (Task 1 changes nothing there).
 - **Every optional record field must be listed in `validateStudy`'s returned object.** This plan adds none: outcomes are clinical values, embeddings live in their own files, shape is derived. No `STORE_VERSION` bump.
@@ -23,11 +24,11 @@ Copied from `CLAUDE.md` and the spec. Every task's requirements include these.
 - **Never change the form of a non-ASCII character on a line you touch, and write any NEW non-ASCII character in JS source as a `\uXXXX` escape** (HANDOFF known trap): `\u00B7` for `·`, `\u2014` for `—`, `\u2212` for `−`, `\u2026` for `…`. Byte-check the diff before every commit that touches such a line — `git diff -U0 -- <files> | grep -nP '^[+-].*[^\x00-\x7F]'` must show every `+` line that carries a glyph paired with a `-` twin carrying the same glyph, and no other `+` line — and repair with a small Python script written to a file, never with `sed` or a `bash -c` one-liner. Markdown files are exempt.
 - **No bundler, no framework, no runtime dependencies.** `dependencies` stays empty; `devDependencies` stays exactly `electron` and `electron-builder`. **Do not loosen the CSP.** No allowlist change: both electron-builder allowlists ship `renderer/**/*` and `styles/**/*` by glob; `main.js`, `preload.js`, `store-io.js` and `backend-client.cjs` are already listed, and this plan adds no root file.
 - **`renderer/data/*` never imports from `renderer/screens/`, `renderer/components/`, `renderer/api.js` or the root-level `renderer/*.js`.** `data/outcomes.js` imports only `data/timepoints.js`; `data/csv.js` imports `data/outcomes.js` (no cycle: `outcomes.js` does not import `csv.js`); `data/similarity.js` imports `data/parameters.js`; `data/dataset.js` imports `data/csv.js`, `data/pairing.js`, `data/outcomes.js`, `data/similarity.js`, `data/embeddings.js`, `data/labels.js`, `data/version.js`.
-- **Unit tests run as `node --test test/*.test.js`** (the glob form; the directory form fails on Node 24). Record the baseline count on `6704586` before Task 1 in the ledger.
+- **Unit tests run as `node --test test/*.test.js`** (the glob form; the directory form fails on Node 24). Record the baseline count on the v1.0.8 base before Task 1 in the ledger (fork PR #21 reports 542).
 - **Pure-logic modules get real `node --test` coverage. DOM code gets explicit manual verification and smoke checks.** Never write a fake test.
 - **Smoke selectors key on `data-find-key`, `data-param-key`, `data-similar-key`, `data-study-id` and `data-focus-key`, never on a visible label.** A smoke suite that prints nothing has thrown — re-run it bare and read the stack. Run every suite in the FOREGROUND and capture its output to a file under `tools/smoke/out/` (`> tools/smoke/out/<name>.txt 2>&1`); never background one and wait for it. Never re-run a suite on an instance where one was killed mid-run; relaunch. `smoke-studies.mjs` runs on a FRESH launch.
 - **Conventional commit prefixes** (`feat:`, `fix:`, `test:`, `docs:`, `chore:`); commit after every task; every commit message ends with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`. Write a multi-line message to a file under `tools/smoke/out/` and `git commit -F` it.
-- **Branch:** `claude/image-similarity-visualization-400922` in the worktree `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`, on `fork/main` @ `6704586` (v1.0.7). Push only to `fork`, never `origin`; never merge to `main`; never rename onto `ui-redesign-cw`; push only after the last amend of the gated commit.
+- **Branch:** `claude/image-similarity-visualization-400922` in the worktree `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`, on `fork/main` at v1.0.8 (the merge of fork PR #21, 2026-09-13; `git merge-base HEAD fork/main` prints the commit; PR #21 rewrote `data/pairing.js`, `data/csv.js`, `data/labels.js` and the studies, workspace and parameters screens, and this plan's anchors and Task 9 were amended to it on 2026-09-13). Push only to `fork`, never `origin`; never merge to `main`; never rename onto `ui-redesign-cw`; push only after the last amend of the gated commit.
 - **Running the app from source** (three lines, from PowerShell; the shell starts in `C:\Users\codyj`):
 
   ```
@@ -88,7 +89,7 @@ Settled with the user at the brainstorm (the spec's §6) or made by the planner 
 - Modify: `renderer/data/processing.js:1-7` (`DEFAULT_PERFORMANCE`, `validPerformance`)
 - Modify: `backend-client.cjs:3-13` (`normalizePerformance`)
 - Modify: `main.js:78-85` (`appendPerformance`)
-- Modify: `renderer/components/sidebar.js:45-84` (`performanceBlock`)
+- Modify: `renderer/components/sidebar.js:47-86` (`performanceBlock`)
 - Test: `test/processing.test.js`
 
 **Interfaces:**
@@ -198,7 +199,7 @@ Message: `feat: an Appearance embeddings switch in Settings, on by default, sent
 - Create: `renderer/embeddings.js`
 - Modify: `main.js` (after `delete-prediction`; `load-studies`; after `measure`), `preload.js`, `renderer/api.js`
 - Modify: `renderer/store.js` (`embeddingsVersion: 0` after `compareId`)
-- Modify: `renderer/screens/analysis.js:363-380` (the run completion), `renderer/screens/studies.js:486-487` and `:545` (the two delete paths)
+- Modify: `renderer/screens/analysis.js:363-380` (the run completion), `renderer/screens/studies.js:501-502` and `:560` (the two delete paths)
 - Test: `test/embeddings.test.js` (new), `test/api-persistence.test.js`, `test/store.test.js`
 
 **Interfaces:**
@@ -602,7 +603,7 @@ export function needsEmbedding(study) {
     }
 ```
 
-`renderer/screens/studies.js`: import `{ forgetEmbedding }` from `'../embeddings.js'`; at both delete sites (`forgetPrediction(id); releaseStudy(id);` at ~487 and the loop at ~545), add `forgetEmbedding(id);` beside `releaseStudy(id)`. The bulk site already nulls `compareId` when the compare study goes.
+`renderer/screens/studies.js`: import `{ forgetEmbedding }` from `'../embeddings.js'`; at both delete sites (`forgetPrediction(id); releaseStudy(id);` at ~502 and the loop at ~560), add `forgetEmbedding(id);` beside `releaseStudy(id)`. The bulk site already nulls `compareId` when the compare study goes.
 
 - [ ] **Step 7: Run the suites, then commit**
 
@@ -1243,8 +1244,8 @@ Message: `feat: the fused similarity ranking — shape, hip, alignment and appea
 
 **Files:**
 - Create: `renderer/data/outcomes.js`
-- Modify: `renderer/data/csv.js:186-189` (`KNOWN_FIELDS`), `:296-321` (`autoMap`), `:404-461` (`joinClinical`'s copy)
-- Modify: `renderer/components/clinical-data.js:396-430` (the clinical cell in `buildGrid`), `styles/screens/analysis.css` (after `.clinical-cell`)
+- Modify: `renderer/data/csv.js:218-221` (`KNOWN_FIELDS`), `:328-353` (`autoMap`), `:428-482` (`joinClinical`'s copy)
+- Modify: `renderer/components/clinical-data.js:398-432` (the clinical cell in `buildGrid`), `styles/screens/analysis.css` (after `.clinical-cell`)
 - Test: `test/outcomes.test.js` (new), `test/csv.test.js`
 
 **Interfaces:**
@@ -2039,7 +2040,7 @@ Message: `feat: the Find similar tab — scope, rank by, five cards with outcome
 - Modify: `renderer/data/batch.js` (`planEmbed`, `newBatch(ids, kind)`, `progressText`, `sidebarText`, `batchMessage`, `createBatchDriver`)
 - Modify: `renderer/batch.js`
 - Modify: `renderer/screens/analysis.js` (new `embedStudy` beside `segmentStudy`)
-- Modify: `renderer/screens/studies.js:757-766` (the segment group), `:830-833` (the update key), `render()` (one `ensureEmbeddings()` call)
+- Modify: `renderer/screens/studies.js:772-781` (the segment group), `:835-838` (the update key), `render()` (one `ensureEmbeddings()` call)
 - Test: `test/batch.test.js`
 
 **Interfaces:**
@@ -2360,7 +2361,7 @@ Message: `feat: an Embed batch fills the embeddings of films segmented without o
 **Files:**
 - Modify: `renderer/components/viewer.js` (`mountViewer(container, { role })`; the role-aware study, view state, toolbar, card, chip, handlers)
 - Modify: `renderer/components/measurements.js` (`updateMeasurements(study, other)`)
-- Modify: `renderer/components/clinical-data.js:110-113` (`visibleStudies`)
+- Modify: `renderer/components/clinical-data.js:107-110` (`visibleStudies`)
 - Modify: `renderer/screens/analysis.js` (the second pane, its film, the badge, the panel width, `compareId` hygiene)
 - Modify: `renderer/screens/studies.js` (every writer of `openId` also writes `compareId: null`; the single-delete site nulls it)
 - Modify: `styles/screens/analysis.css`
@@ -2559,8 +2560,8 @@ Message: `feat: comparison mode — a second read-only pane, the other column an
 - Test: `test/dataset.test.js` (new)
 
 **Interfaces:**
-- Consumes: `toCsv`, `toPairedCsv`, `clinicalFieldNames` (`csv.js`); `pairStudies`, `postFromFilters` (`pairing.js`); `resolveOutcomes`, `OUTCOMES`, `FOLLOW_UP_FIELD` (Task 4); `vector`, `alignment`, `subjectFilms`, `LANDMARK_ORDER`, `ALIGNMENT_ORDER`, `ALIGNMENT_WEIGHTS` (Task 3); `validEmbedding` (Task 2); `APP_VERSION` from `data/version.js` (check its export name with `cat renderer/data/version.js` — two lines); `rowsToExport`, `exportFileName` (`parameters.js`); `saveDataset` (api, Task 2); `ensureEmbeddings`, `embeddingsMap`, `bundledModelSha` (Task 2).
-- Produces: `buildDataset({ rows, post, embeddings, bundledSha, version, now }) -> { folder, files: { 'films.csv', 'subjects.csv', 'vectors.json', 'manifest.json' }, counts, pairing }`; `datasetMessage(result, folder) -> string`; the IPC `save-dataset({ folder, files })` → the folder's absolute path, or `null` on cancel.
+- Consumes: `toCsv`, `toPairedCsv`, `clinicalFieldNames` (`csv.js`); `pairStudies`, `postFromFilters` (`pairing.js`, by visit since v1.0.8: `subjects[].visits` is a Map keyed by header, `Pre-op` first, each visit `{header, label, filmDate, films, values, disagreements, derived}` with films primary first; `pairing.visits` the later headers; `pairing.merged` the multi-film visits); `studyName`, `lastSegment` (`labels.js`); `resolveOutcomes`, `OUTCOMES`, `FOLLOW_UP_FIELD` (Task 4); `vector`, `alignment`, `subjectFilms`, `LANDMARK_ORDER`, `ALIGNMENT_ORDER`, `ALIGNMENT_WEIGHTS` (Task 3); `validEmbedding` (Task 2); `APP_VERSION` from `data/version.js` (check its export name with `cat renderer/data/version.js` — two lines); `rowsToExport`, `exportFileName` (`parameters.js`); `saveDataset` (api, Task 2); `ensureEmbeddings`, `embeddingsMap`, `bundledModelSha` (Task 2).
+- Produces: `buildDataset({ rows, post, embeddings, bundledSha, version, now }) -> { folder, files: { 'films.csv', 'subjects.csv', 'vectors.json', 'manifest.json' }, counts, pairing }` (`counts` has `mergedVisits`; `vectors.json`'s `films` is an array in `films.csv` row order, each with `name`, the study name); `datasetMessage(result, folder) -> string`; the IPC `save-dataset({ folder, files })` → the folder's absolute path, or `null` on cancel.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2575,23 +2576,25 @@ function geometry() {
   const body = (top) => ({ superior: [[160, top], [100, top]], inferior: [[160, top + 80], [100, top + 80]], quadrilateral: [[160, top], [100, top], [100, top + 80], [160, top + 80]] });
   return { vertebrae: { L1: body(100), L2: body(200), L3: body(300), L4: body(400), L5: body(500) }, s1_superior: [[170, 610], [110, 620]], l1_center: [130, 140], hip_midpoint: [260, 760], femoral_circles: [[250, 760, 30], [270, 760, 30]] };
 }
-function film(id, subjectId, timepoint, clinical = {}, extra = {}) {
-  return { id, source: 'real', filePath: `C:\\films\\${id}.png`, fileName: `${id}.png`, name: null, workspaceFolder: 'C:\\films', subjectId, timepoint,
-    filmDate: '2025-01-01', reviewedAt: null, addedAt: '2026-09-12T00:00:00.000Z', view: 'Standing lateral', thumbnail: null,
+// A film is named by its study name in every export since v1.0.8 (set explicitly here; a film with no
+// stored name reads as its stem); the SP id keys the record and appears in no file.
+function film(id, name, subjectId, timepoint, clinical = {}, extra = {}) {
+  return { id, source: 'real', filePath: `C:\\films\\${id}.png`, fileName: `${id}.png`, name, workspaceFolder: 'C:\\films', subjectId, timepoint,
+    filmDate: '2025-01-01', note: null, reviewedAt: null, addedAt: '2026-09-12T00:00:00.000Z', view: 'Standing lateral', thumbnail: null,
     measurements: { PI: 50, PT: 12, SS: 38, L1PA: 8, LL: { 'L1-S1': 49, 'L2-S1': 40, 'L3-S1': 30, 'L4-S1': 20, 'L5-S1': 10 } },
     geometry: geometry(), qc: { coverage: { partial: false, unoriented: [] }, models: { vertebrae: 'unet', femoral: 'unet', s1: 'keypointrcnn' }, framing: { searched: true, whole_film_won: false }, processing: { crop_localizer: true } },
-    calibration: { version: 1, source_sha256: `sha-${id}`, status: 'unavailable', spacing: null, candidates: [], selected_index: null, coordinate_space: 'original_image', width: 1, height: 1 },
+    calibration: { version: 1, source_sha256: `digest-${id.slice(3)}`, status: 'unavailable', spacing: null, candidates: [], selected_index: null, coordinate_space: 'original_image', width: 1, height: 1 },
     clinical, ...extra };
 }
 const unit = (v) => { const n = Math.hypot(...v); return v.map((x) => x / n); };
 const embedding = (id, sha = 'abc') => ({ version: 1, id, computedAt: 'x', sourceSha256: null, model: { onnx_sha256: sha }, filmType: 'whole-spine', crop: unit([1, 0]), whole: unit([0, 1]) });
 
 const rows = [
-  film('SP-1000', 'S001', 'Pre-op', { 'Fusion extension': 'Yes', 'Fusion extension date': '2026-01-10' }),
-  film('SP-1001', 'S001', 'Post-op', { 'Last follow-up': '2026-06-01', 'Interbody type': 'PEEK' }),
-  film('SP-1002', 'S002', 'Pre-op'),
-  film('SP-1003', null, null, {}, { geometry: null, measurements: null, qc: null }),
-  { ...film('SP-0042', 'D', 'Pre-op'), source: 'demo' },
+  film('SP-1000', 'S001 pre', 'S001', 'Pre-op', { 'Fusion extension': 'Yes', 'Fusion extension date': '2026-01-10' }),
+  film('SP-1001', 'S001 post', 'S001', 'Post-op', { 'Last follow-up': '2026-06-01', 'Interbody type': 'PEEK' }, { filmDate: '2025-06-01' }),
+  film('SP-1002', 'S002 pre', 'S002', 'Pre-op'),
+  film('SP-1003', 'lone film', null, null, {}, { geometry: null, measurements: null, qc: null }),
+  { ...film('SP-0042', 'demo', 'D', 'Pre-op'), source: 'demo' },
 ];
 const embeddings = new Map([['SP-1000', embedding('SP-1000')], ['SP-1001', embedding('SP-1001', 'old')]]);
 const built = () => buildDataset({ rows, post: '__any__', embeddings, bundledSha: 'abc', version: '1.0.8', now: new Date('2026-09-12T20:00:00.000Z') });
@@ -2601,50 +2604,73 @@ test('the folder name carries the workspace label and the date', () => {
   assert.equal(buildDataset({ rows: [], post: '__any__', embeddings: new Map(), bundledSha: null, version: '1', now: new Date('2026-09-12T20:00:00.000Z') }).folder, 'library-dataset-2026-09-12');
 });
 
-test('films.csv is toCsv plus the provenance, then the resolved outcome columns, one row per real film', () => {
+test('films.csv is toCsv plus the provenance, then the resolved outcome columns, one row per real film named by study name', () => {
   const text = built().files['films.csv'];
   const lines = text.split('\r\n').filter((l) => l !== '');
   assert.equal(lines[0], '# Spine Contour export');
   const header = lines[3].split(',');
+  assert.equal(header[0], 'Study ID');
   assert.deepEqual(header.slice(-12), ['Film type', 'Coverage', 'Reviewed', 'Embedding', 'Crop localizer', 'Vertebra model', 'Femoral model', 'S1 model', 'Source SHA-256', ...RESOLVED_COLUMNS]);
   assert.deepEqual(RESOLVED_COLUMNS, ['Subject fusion extension', 'Subject fusion extension date', 'Subject last follow-up']);
   assert.equal(lines.length - 4, 4);
   const first = lines[4].split(',');
-  assert.equal(first[0], 'SP-1000');
+  assert.equal(first[0], 'S001 pre');
   const at = (name) => first[header.indexOf(name)];
   assert.equal(at('Film type'), 'whole-spine');
   assert.equal(at('Coverage'), 'full');
   assert.equal(at('Embedding'), 'yes');
   assert.equal(at('Crop localizer'), 'on');
   assert.equal(at('Vertebra model'), 'unet');
-  assert.equal(at('Source SHA-256'), 'sha-SP-1000');
+  assert.equal(at('Source SHA-256'), 'digest-1000');
   assert.equal(at('Subject fusion extension'), 'yes');
   assert.equal(at('Subject fusion extension date'), '2026-01-10');
   assert.equal(at('Subject last follow-up'), '2026-06-01');
   const second = lines[5].split(',');
   assert.equal(second[header.indexOf('Embedding')], 'no');
   const unsegmented = lines[7].split(',');
+  assert.equal(unsegmented[0], 'lone film');
   assert.equal(unsegmented[header.indexOf('Coverage')], '');
   assert.equal(unsegmented[header.indexOf('Subject fusion extension')], 'not-recorded');
-  assert.ok(!text.includes('SP-0042'));
+  assert.equal(lines.filter((l) => l.startsWith('demo,')).length, 0, 'demo rows dropped');
   assert.ok(!text.includes('C:\\films'), 'no path');
-  assert.ok(!text.includes('.png'), 'no file name');
+  assert.ok(!text.includes('.png'), 'no extension');
+  assert.ok(!text.includes('SP-'), 'no record id');
 });
 
-test('subjects.csv is the paired export plus the resolved columns and the film types', () => {
+test('subjects.csv is the paired export by visit plus the resolved columns and the film types', () => {
   const lines = built().files['subjects.csv'].split('\r\n').filter((l) => l !== '');
   const header = lines[3].split(',');
   assert.deepEqual(header.slice(-5), [...RESOLVED_COLUMNS, 'Pre-op film type', 'Post-op film type']);
   assert.equal(lines.length - 4, 1);
   const row = lines[4].split(',');
   assert.equal(row[0], 'S001');
+  assert.equal(row[header.indexOf('Pre-op study')], 'S001 pre');
   assert.equal(row[header.indexOf('Subject fusion extension')], 'yes');
   assert.equal(row[header.indexOf('Pre-op film type')], 'whole-spine');
   // SP-1001's stored embedding came from another graph, so nothing current says its film type.
   assert.equal(row[header.indexOf('Post-op film type')], '');
 });
 
-test('vectors.json carries the blocks per film, null where absent, and never an embedding from another graph', () => {
+test('a merged visit counts once, is flagged in the toast, and takes its primary film\u2019s type', () => {
+  const merged = buildDataset({
+    rows: [
+      film('SP-2000', 'S003 pre', 'S003', 'Pre-op'),
+      film('SP-2001', 'S003 pre flexion', 'S003', 'Pre-op', {}, { note: 'flexion' }),
+      film('SP-2002', 'S003 post', 'S003', 'Post-op', {}, { filmDate: '2025-06-01' }),
+    ],
+    post: '__any__', embeddings: new Map([['SP-2000', embedding('SP-2000')]]), bundledSha: 'abc', version: '1', now: new Date('2026-09-12T20:00:00.000Z'),
+  });
+  assert.equal(merged.counts.pairs, 1);
+  assert.equal(merged.counts.mergedVisits, 1);
+  const lines = merged.files['subjects.csv'].split('\r\n').filter((l) => l !== '');
+  const header = lines[3].split(',');
+  const row = lines[4].split(',');
+  assert.equal(row[header.indexOf('Pre-op study')], 'S003 pre + S003 pre flexion');
+  assert.equal(row[header.indexOf('Pre-op film type')], 'whole-spine');
+  assert.equal(datasetMessage(merged, 'D'), 'Dataset written to D \u00B7 1 pair \u00B7 1 merged visit \u00B7 2 films without an embedding');
+});
+
+test('vectors.json carries the blocks per film in films.csv order, named by study name, null where absent, never an embedding from another graph', () => {
   const vectors = JSON.parse(built().files['vectors.json']);
   assert.equal(vectors.version, 1);
   assert.equal(vectors.shape.dim, 44);
@@ -2652,27 +2678,30 @@ test('vectors.json carries the blocks per film, null where absent, and never an 
   assert.equal(vectors.hip.dim, 2);
   assert.deepEqual(vectors.alignment.order, ['PI', 'PT', 'SS', 'LL L1-S1', 'PI-LL']);
   assert.deepEqual(vectors.alignment.weights, [1, 0.8, 0.8, 0.6, 1]);
-  assert.deepEqual(Object.keys(vectors.films), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
-  assert.equal(vectors.films['SP-1000'].shape.length, 44);
-  assert.equal(vectors.films['SP-1000'].hip.length, 2);
-  assert.equal(vectors.films['SP-1000'].alignment.length, 5);
-  assert.equal(vectors.films['SP-1000'].crop.length, 2);
-  assert.equal(vectors.films['SP-1000'].whole.length, 2);
-  assert.equal(vectors.films['SP-1000'].filmType, 'whole-spine');
-  assert.equal(vectors.films['SP-1001'].crop, null);
-  assert.equal(vectors.films['SP-1001'].whole, null);
-  assert.equal(vectors.films['SP-1003'].shape, null);
-  assert.equal(vectors.films['SP-1003'].alignment, null);
+  assert.deepEqual(vectors.films.map((f) => f.name), ['S001 pre', 'S001 post', 'S002 pre', 'lone film']);
+  const [pre, post, , lone] = vectors.films;
+  assert.equal(pre.shape.length, 44);
+  assert.equal(pre.hip.length, 2);
+  assert.equal(pre.alignment.length, 5);
+  assert.equal(pre.crop.length, 2);
+  assert.equal(pre.whole.length, 2);
+  assert.equal(pre.filmType, 'whole-spine');
+  assert.equal(post.crop, null);
+  assert.equal(post.whole, null);
+  assert.equal(lone.shape, null);
+  assert.equal(lone.alignment, null);
+  assert.ok(!built().files['vectors.json'].includes('SP-'), 'no record id');
   assert.ok(!built().files['vectors.json'].includes('\n'), 'not pretty-printed');
 });
 
-test('manifest.json names the app, the date, the counts, the models and the disclaimer', () => {
+test('manifest.json names the app, the date, the counts, the models, the identity and the disclaimer', () => {
   const manifest = JSON.parse(built().files['manifest.json']);
   assert.equal(manifest.app.version, '1.0.8');
   assert.equal(manifest.exportedAt, '2026-09-12T20:00:00.000Z');
-  assert.deepEqual(manifest.counts, { films: 4, pairs: 1, unpaired: 1, ambiguous: 0, withOutcome: 1, conflicting: 0, withoutEmbedding: 3, noSubject: 1 });
+  assert.deepEqual(manifest.counts, { films: 4, pairs: 1, unpaired: 1, ambiguous: 0, mergedVisits: 0, withOutcome: 1, conflicting: 0, withoutEmbedding: 3, noSubject: 1 });
   assert.deepEqual(manifest.embedding, { onnx_sha256: 'abc' });
   assert.deepEqual(manifest.models, { vertebrae: ['unet'], femoral: ['unet'], s1: ['keypointrcnn'] });
+  assert.equal(manifest.identity, 'Films are named by study name (the stored name, else the film stem), the Study ID of every export; the record id is not exported.');
   assert.equal(manifest.disclaimer, 'Investigational software. NOT FOR CLINICAL USE.');
   assert.ok(manifest.citation.startsWith('Created by'));
   assert.equal(built().files['manifest.json'].includes('\n  '), true, 'pretty-printed');
@@ -2702,10 +2731,11 @@ Create `renderer/data/dataset.js`:
 
 ```js
 /**
- * Export dataset (similar-cases spec, 2026-09-12, section 13): the four files a notebook trains on,
- * built entirely here from the rows the paired export would write. No images, no file names, no
- * paths -- the only per-film identity beyond the app's id is the calibration digest. Pure: the
- * folder is written by main.js's save-dataset handler; screens/parameters.js wires the button.
+ * Export dataset (similar-cases spec, 2026-09-12, section 13; amended 2026-09-13 for v1.0.8): the four
+ * files a notebook trains on, built entirely here from the rows the paired export would write. No
+ * images, no paths, no record ids -- a film is named by its study name, the Study ID every export
+ * writes, and the only other per-film identity is the calibration digest. Pure: the folder is written
+ * by main.js's save-dataset handler; screens/parameters.js wires the button.
  */
 import { toCsv, toPairedCsv } from './csv.js';
 import { pairStudies } from './pairing.js';
@@ -2713,10 +2743,11 @@ import { PRE_OP } from './timepoints.js';
 import { OUTCOMES, FOLLOW_UP_FIELD, resolveOutcomes, primaryOutcome } from './outcomes.js';
 import { vector, alignment, subjectFilms, LANDMARK_ORDER, ALIGNMENT_ORDER, ALIGNMENT_WEIGHTS } from './similarity.js';
 import { validEmbedding, isCurrent } from './embeddings.js';
-import { lastSegment } from './labels.js';
+import { lastSegment, studyName } from './labels.js';
 
 const CITATION = 'Created by Cody Woodhouse, MD; Michael Jayasuriya, BS.';
 const DISCLAIMER = 'Investigational software. NOT FOR CLINICAL USE.';
+const IDENTITY = 'Films are named by study name (the stored name, else the film stem), the Study ID of every export; the record id is not exported.';
 const SEP = ' \u00B7 ';
 
 // Per registered outcome: `Subject <field>` (the status) and `Subject <date field>`, then the follow-up.
@@ -2790,32 +2821,38 @@ export function buildDataset({ rows, post, embeddings, bundledSha, version, now 
   const filmsCsv = appendColumns(toCsv(real), [...PROVENANCE_COLUMNS, ...RESOLVED_COLUMNS],
     real.map((study) => [...provenanceCells(study, embeddings, bundledSha), ...resolvedCells(study, real)]));
 
+  // Pairing by visit (v1.0.8): a written subject's visits are a Map keyed by header, Pre-op first,
+  // each visit's films primary first. The resolved outcome is the subject's, so its pre-op visit's
+  // primary film serves; a visit's film type is its primary film's.
   const pairing = pairStudies(real, { post });
-  const labels = [PRE_OP, ...pairing.visits];
+  const headers = [PRE_OP, ...pairing.visits];
   const subjectsCsv = appendColumns(toPairedCsv(pairing),
-    [...RESOLVED_COLUMNS, ...labels.map((l) => `${l} film type`)],
+    [...RESOLVED_COLUMNS, ...headers.map((h) => `${h} film type`)],
     pairing.subjects.map((row) => {
-      const pre = row.films.get(PRE_OP);
+      const pre = row.visits.get(PRE_OP).films[0];
       return [
         ...resolvedCells(pre, real),
-        ...labels.map((l) => { const f = row.films.get(l); return f ? filmType(currentEmbedding(embeddings, f.id, bundledSha)) : ''; }),
+        ...headers.map((h) => { const visit = row.visits.get(h); return visit ? filmType(currentEmbedding(embeddings, visit.films[0].id, bundledSha)) : ''; }),
       ];
     }));
 
-  const films = {};
+  // One entry per films.csv data row, in that order, named by study name: an array, so two films
+  // that share a name both survive.
+  const films = [];
   let withoutEmbedding = 0;
   for (const study of real) {
     const shape = vector(study);
     const embedding = currentEmbedding(embeddings, study.id, bundledSha);
     if (!embedding) withoutEmbedding += 1;
-    films[study.id] = {
+    films.push({
+      name: studyName(study),
       shape: shape ? shape.V : null,
       hip: shape ? shape.H : null,
       alignment: alignment(study),
       crop: embedding ? embedding.crop : null,
       whole: embedding ? embedding.whole : null,
       filmType: embedding ? embedding.filmType : null,
-    };
+    });
   }
   const vectors = {
     version: 1,
@@ -2842,7 +2879,7 @@ export function buildDataset({ rows, post, embeddings, bundledSha, version, now 
   for (const study of real) for (const slot of Object.keys(models)) if (study.qc?.models?.[slot]) models[slot].add(study.qc.models[slot]);
   const counts = {
     films: real.length, pairs: pairing.subjects.length, unpaired: pairing.unpaired.length, ambiguous: pairing.ambiguous.length,
-    withOutcome, conflicting, withoutEmbedding, noSubject: pairing.noSubject,
+    mergedVisits: pairing.merged.length, withOutcome, conflicting, withoutEmbedding, noSubject: pairing.noSubject,
   };
   const manifest = {
     app: { name: 'Spine Contour', version },
@@ -2852,6 +2889,7 @@ export function buildDataset({ rows, post, embeddings, bundledSha, version, now 
     embedding: { onnx_sha256: bundledSha ?? null },
     outcomes: OUTCOMES.map((o) => ({ key: o.key, field: o.field, dateField: o.dateField, primary: o.primary })),
     followUpField: FOLLOW_UP_FIELD,
+    identity: IDENTITY,
     citation: CITATION,
     disclaimer: DISCLAIMER,
   };
@@ -2873,12 +2911,13 @@ function plural(count, one, many) {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-// The toast (spec 13): what was written, then each thing left out, only when nonzero.
+// The toast (spec 13): what was written, then each thing left out or flagged, only when nonzero.
 export function datasetMessage(result, folder) {
   const { counts } = result;
   let text = `Dataset written to ${folder}${SEP}${plural(counts.pairs, 'pair', 'pairs')}`;
   if (counts.unpaired > 0) text += `${SEP}${plural(counts.unpaired, 'film without a pair', 'films without a pair')}`;
   if (counts.ambiguous > 0) text += `${SEP}${plural(counts.ambiguous, 'ambiguous subject', 'ambiguous subjects')}`;
+  if (counts.mergedVisits > 0) text += `${SEP}${plural(counts.mergedVisits, 'merged visit', 'merged visits')}`;
   if (counts.conflicting > 0) text += `${SEP}${plural(counts.conflicting, 'subject with conflicting outcomes', 'subjects with conflicting outcomes')}`;
   if (counts.withoutEmbedding > 0) text += `${SEP}${plural(counts.withoutEmbedding, 'film without an embedding', 'films without an embedding')}`;
   return text;
@@ -2986,7 +3025,7 @@ Sections, each a `check` group, selectors by `data-similar-key`, `data-find-key`
 8. **Compare.** Click `card-SP-9202`: `.analysis-pane-compare` visible, `[data-similar-key="comparing"]` reads `COMPARING · SP-9202`, the panel has `is-comparing`, `.meas-delta` cells exist, the drawer has two `.clinical-grid-row`s beyond the head and group rows, the card reads `IN VIEWER · CLICK TO REMOVE`; click again: all of it gone.
 9. **Empty states.** Open the partial study: the `empty` node reads the partial sentence. Open a study with no embedding under `all`: the `no-embedding` sentence; under `shape` cards return.
 10. **Embed count.** Back on Studies: `[data-find-key="embed"]` reads `Embed N` where N is the injected fully-covered studies without a current record (the partial one excluded); it is absent when every study has one (inject the rest, check).
-11. **Export dataset.** Parameters tab: `[data-param-key="export-dataset"]` enabled; the button's `datasetMessage` cannot be driven through the native folder picker over CDP — instead call `buildDataset` through the page's own module over the visible rows and assert the four keys, the row counts and that `films.csv` contains no `.png`.
+11. **Export dataset.** Parameters tab: `[data-param-key="export-dataset"]` enabled; the button's `datasetMessage` cannot be driven through the native folder picker over CDP — instead call `buildDataset` through the page's own module over the visible rows and assert the four keys, the row counts, and that `films.csv` names its rows by study name and contains no path, no extension and no `SP-` record id.
 12. **Cleanup** in `finally`: `forgetEmbedding` for the injected ids, remove the records, reset `compareId`, `tab`, `similarScope`, `similarRank`.
 
 Print `{ passed, failed, results }` and exit non-zero on a failure, as the other suites do.
@@ -3071,7 +3110,7 @@ Message: `docs: similar cases and outcomes, stage 1 — the contract amendment, 
 - **§10.6 the setting, renderer half**: Task 1.
 - **§11 storage**: Task 2 (`embeddings/<id>.json`, the lazy load, `embeddingsVersion`, delete removes two files, the quarantine triple, the stale rule through `isCurrent` and Task 3's `stale`).
 - **§12 the Embed action**: Task 7 (`planEmbed`, the batch kind, `embedStudy` from the sidecar alone, the texts).
-- **§13 Export dataset**: Task 9 (the four files, the columns including the resolved subject columns and film types, `vectors.json` without other-model embeddings, the manifest counts, the toast; no images, names or paths).
+- **§13 Export dataset**: Task 9 (the four files, the columns including the resolved subject columns and per-visit film types, `vectors.json` as an array in row order without other-model embeddings, the manifest counts and identity line, the toast; no images, paths or record ids; every film named by its study name, v1.0.8).
 - **§15 tests**: `similarity.test.js`, `outcomes.test.js`, `embeddings.test.js`, `dataset.test.js`, the `batch.test.js`, `processing.test.js`, `store.test.js`, `api-persistence.test.js`, `csv.test.js` extensions, `smoke-similar.mjs`, the human gate — all present. `test/workspace.test.js` is exercised by Task 5's csv-level tests; the mapping card itself is smoke and gate.
 - **§16 amendments**: Task 12.
 - Placeholder scan: none. Type consistency: `findSimilar(open, all, { scope, mode, embeddings, n })` returns `{ matches, total, stale }` in Tasks 3, 6 and 8; `embeddingRecord(id, embedding, { sourceSha256 })` in Tasks 2 and 7; `mountViewer(container, { role })` and `updateViewer(study, { match })` in Task 8 only; `updateMeasurements(study, other)` in Task 8; `newBatch(ids, kind)` / `startBatch(ids, kind)` in Task 7 only; `RESOLVED_COLUMNS` in Task 9's module and test.

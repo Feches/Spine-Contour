@@ -1,7 +1,8 @@
 # Next session — prompt
 
 Written at the wrap of the 2026-09-12 planning session (the similar-cases spec approved by the user, the two plans written
-and committed). Paste everything below the line as the first message of the next session.
+and committed); updated 2026-09-13 for the v1.0.8 base (fork PR #21). Paste everything below the line as the first message of
+the next session.
 
 ---
 
@@ -10,9 +11,12 @@ radiographs.
 Working directory (absolute): `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`
 This is a git worktree, not the primary checkout; its directory name predates this work and means nothing. Run
 everything from here; do not `cd` to `C:\Users\codyj\spine contour`.
-Branch: `claude/image-similarity-visualization-400922`, re-pointed at `fork/main` @ `6704586` (v1.0.7) on 2026-09-12, carrying
-the spec and the two plans as docs commits and nothing else. **`fork/main` is the trunk**; upstream `origin/main` still has
-the OLD single-page UI and is never a base. Nothing is pushed yet. **Nothing is mid-flight: Plan A's Task 1 has not started.**
+Branch: `claude/image-similarity-visualization-400922`, on `fork/main` at v1.0.8 (the merge of fork PR #21, 2026-09-13;
+`git merge-base HEAD fork/main` prints the commit), carrying the spec and the two plans as docs commits and nothing else.
+**`fork/main` is the trunk**; upstream `origin/main` still has the OLD single-page UI and is never a base. Nothing is
+pushed yet. **Nothing is mid-flight: Plan A's Task 1 has not started.** On 2026-09-13 the spec and Plan B were amended for
+v1.0.8 (a film's identity is its study name; pairing is by visit; Plan B Task 9 rewritten; its line anchors moved to the
+v1.0.8 tree), so nothing in the plans still describes v1.0.7.
 
 Read in this order before doing anything:
 
@@ -44,7 +48,8 @@ every dispatch. Every dispatch that runs pytest or a smoke suite says "foregroun
 
 Before Plan A Task 1, do the pre-flight scan the plan-execution protocol asks for: every anchor the plans quote (file paths
 with line ranges, function names, the `KNOWN_FIELDS` array, `currentStudy` in `viewer.js`, `newBatch`'s deep-equal tests)
-checked against the working tree at `6704586`; record the findings under each plan's `## Ledger`; make at most one reviewed
+checked against the working tree at the v1.0.8 base, with particular care over Plan B Task 9 against `data/pairing.js`'s
+visit shape and `data/csv.js`'s `toPairedCsv`; record the findings under each plan's `## Ledger`; make at most one reviewed
 amendment per plan before starting. The one known soft spot is Plan B Task 8 (comparison mode across four components): its
 behaviour is normative, its anchors are approximate, and it is the task the gate watches most.
 

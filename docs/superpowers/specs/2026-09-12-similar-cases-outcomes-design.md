@@ -1,8 +1,8 @@
 # Similar cases and outcomes — stage 1 design
 
-**Status:** draft for review, 2026-09-12. Brainstormed on branch
-`claude/image-similarity-visualization-400922` (off `fork/main` @ `6704586`, v1.0.7). Nothing here is
-implemented.
+**Status:** approved 2026-09-12; amended 2026-09-13 for the v1.0.8 base (fork PR #21: a film's identity is
+its study name, pairing is by visit). Brainstormed on branch `claude/image-similarity-visualization-400922`,
+now on `fork/main` at v1.0.8. Nothing here is implemented.
 
 **Builds on:** the approved spec `2026-08-31-spine-contour-ui-redesign-design.md` ("spec §" below;
 §10.5 and §10.6 in particular), the pre-op/post-op spec `2026-09-06-preop-postop-organisation-design.md`
@@ -121,8 +121,18 @@ The researcher (spec §2), doing this:
 - **Batch segmentation** (batch §8): `createBatchDriver` in `renderer/data/batch.js`, wired once in
   `renderer/batch.js` to `segmentStudy(id, {batch: true})`; `state.batch` is `{ids, done, failed,
   warnings, skipped, stopping}`; `state.running` stays a single id.
-- **Pairing** (pp §11.2): `pairStudies(rows, {post})` groups a subject's films into one pre-op film plus
-  one film per later label, judging unpaired and ambiguous subjects; `toPairedCsv` writes it.
+- **Pairing** (pp §11.2, by visit since v1.0.8): a visit is subject + label + film date. `pairStudies(rows,
+  {post})` returns `{visits, subjects, unpaired, ambiguous, noSubject, noTimepoint, merged, disagreements,
+  derived, …}`: `visits` are the later visits' headers (`Post-op`, or `Post-op 1`, `Post-op 2` when a label
+  repeats for some subject); each written subject carries `visits`, a Map keyed by header with `Pre-op`
+  first, each visit `{header, label, filmDate, films, values, disagreements, derived}` with its films
+  primary first — two same-day films merge when exactly one carries a note. `toPairedCsv` writes it and
+  names each visit's films by study name.
+- **Identity** (v1.0.8, "names everywhere"): a film is named by `studyName(study)` — its stored `name`, else
+  its film's stem — everywhere a person looks. `toCsv` writes it under `Study ID` (then `View`, `Subject`,
+  `Timepoint`, `Film date`, `Note`, the measurements, the clinical fields), the workspace CSV joins a row by
+  it, and the `SP-nnnn` record id appears in no export. The id still keys the store, the sidecars and this
+  document's `embeddings/<id>.json`.
 - **Clinical fields**: `KNOWN_FIELDS` is nine names; every value is a trimmed string on `study.clinical`;
   `autoMap` is a prefix match, one column per known field, first wins; the drawer is one row per
   visible study and can add a custom field by name. The import's mapping select offers only
@@ -187,8 +197,9 @@ Each with what it costs if it is wrong.
     studies, and films segmented with the setting off, catch up through an `Embed` batch mode that posts
     the stored framed image and the film to `/embed`. *Cost if wrong:* a film without an embedding
     shows on the Find tab's `Embed` count until it has one; nothing is lost.
-11. **`Export dataset` writes a folder, not a file, over the paired export's rows, with no images, no
-    file names and no paths (user ruling, 2026-09-12).**
+11. **`Export dataset` writes a folder, not a file, over the paired export's rows, with no images and no
+    paths (user ruling, 2026-09-12); a film's identity in every file is its study name, as in every export
+    since v1.0.8 (user decision, 2026-09-13) — never a path, an extension or the record id.**
     Four files: `films.csv`, `subjects.csv`, `vectors.json`, `manifest.json`. *Cost if wrong:* the
     notebook reads a different layout; the manifest carries a version for that.
 12. **Comparison mode is plan 07's Tasks 3–6, unchanged in behaviour.** *Cost if wrong:* none new;
@@ -606,8 +617,10 @@ through `state.running` and `state.batch`.
 A third button on the Parameters filter bar, after `Export paired CSV`: `Export dataset`, or `Export
 dataset · N selected` when rows are ticked, over exactly the rows the paired export would write
 (visible, or ticked visible; demo rows dropped), disabled with the long button's note when that is
-disabled. It never writes images, and nothing in it names or locates one — no file name, no path: the
-vectors are what the notebook trains on, and the films stay where they already are.
+disabled. It never writes images, and nothing in it locates one — no path, no extension, no record id: the
+vectors are what the notebook trains on, and the films stay where they already are. A film's identity in
+all three tables is its study name, `studyName(study)`, the `Study ID` every export writes since v1.0.8, so
+the files join on it.
 
 `api.saveDataset(request)` (IPC `save-dataset`) opens a folder picker (`openDirectory`,
 `createDirectory`), then creates `<workspace label or library>-dataset-<YYYY-MM-DD>/` inside it (a
@@ -617,14 +630,14 @@ resolves `null` and stays quiet.
 | File | One row per | Columns |
 |---|---|---|
 | `films.csv` | film in the rows | everything `toCsv` writes, then `Film type`, `Coverage` (`full`/`partial`), `Reviewed` (the `reviewedAt` date or blank), `Embedding` (`yes`/`no`), `Crop localizer` (`on`/`off` from `qc.processing`), `Vertebra model`, `Femoral model`, `S1 model`, `Source SHA-256` (the digest the calibration record keeps: an identity for the film across exports and re-runs, which cannot reproduce or locate the image), then, per registered outcome (§9.1), the status and date resolved per subject (§9.3) as `Subject <field>` (`yes`/`no`/`not-recorded`/`conflicting`) and `Subject <date field>` — `Subject fusion extension`, `Subject fusion extension date` in stage 1 — then `Subject last follow-up`, so a film-level analysis, a pre-op-only model for instance, has its label on the row without joining the pair table |
-| `subjects.csv` | pair per pp §11.2, same `with` rule as the paired export | everything `toPairedCsv` writes, then the same resolved columns as `films.csv` (per registered outcome `Subject <field>` and `Subject <date field>`, then `Subject last follow-up`), then `Pre-op film type`, `<label> film type` per written visit |
-| `vectors.json` | — | `{version: 1, exportedAt, shape: {dim: 44, order: [...22 point names], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation'}, hip: {dim: 2, normalisation: 'the shape transform'}, alignment: {order: ['PI', 'PT', 'SS', 'LL L1-S1', 'PI-LL'], weights: [1, 0.8, 0.8, 0.6, 1]}, embedding: {model}, films: {id: {shape, hip, alignment, crop, whole, filmType}}}`, with `null` for a block the film lacks; an embedding from a model other than the bundled one exports as `null` and counts in the manifest as without an embedding, so a vectors file never mixes models |
-| `manifest.json` | — | app version, `exportedAt`, the counts (films, pairs, unpaired, ambiguous, with a recorded outcome, conflicting, without an embedding), the set of model ids and processing settings seen, the embedding model record, the citation line and `NOT FOR CLINICAL USE` |
+| `subjects.csv` | written subject per pp §11.2 (visits by header, merged same-day films, numbered repeats), exactly the paired export's rows | everything `toPairedCsv` writes, then the same resolved columns as `films.csv` (per registered outcome `Subject <field>` and `Subject <date field>`, then `Subject last follow-up`), then `<header> film type` per written visit (`Pre-op` first; a merged visit's is its primary film's) |
+| `vectors.json` | — | `{version: 1, exportedAt, shape: {dim: 44, order: [...22 point names], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation'}, hip: {dim: 2, normalisation: 'the shape transform'}, alignment: {order: ['PI', 'PT', 'SS', 'LL L1-S1', 'PI-LL'], weights: [1, 0.8, 0.8, 0.6, 1]}, embedding: {model}, films: [{name, shape, hip, alignment, crop, whole, filmType}]}`, with `null` for a block the film lacks; an embedding from a model other than the bundled one exports as `null` and counts in the manifest as without an embedding, so a vectors file never mixes models; `films` is an array in `films.csv` row order with `name` the study name, so two films that share a name both survive and the notebook joins by name or by row |
+| `manifest.json` | — | app version, `exportedAt`, the counts (films, pairs, unpaired, ambiguous, merged visits, with a recorded outcome, conflicting, without an embedding), the set of model ids and processing settings seen, the embedding model record, an `identity` line saying the study name is the key and the record id is absent, the citation line and `NOT FOR CLINICAL USE` |
 
 Both CSVs open with the same `#` comment block the existing exports carry. The toast, sized by
 `toastDuration`: `Dataset written to {folder} · {pairs} pairs · {unpaired} films without a pair ·
-{conflicting} subjects with conflicting outcomes`, each clause present only when its count is, in the
-paired export's pattern.
+{merged} merged visits · {conflicting} subjects with conflicting outcomes`, each clause present only when its
+count is, in the paired export's pattern.
 
 ## 14. Compute and size
 
@@ -720,6 +733,9 @@ To the architecture contract, in the same commit as the plan:
     the `/predict` form field `embeddings`, `Options.embeddings`, `qc.processing.embeddings`.
 11. **Workspace mapping**: the `Keep column name` choice and the `Keep all unmapped` button (§9.5); a
     `Mapping.dest` may now be any non-empty name, not only a known field; `joinClinical` is unchanged.
+12. **v1.0.8 base (2026-09-13)**: the dataset's three files key a film by its study name (§13); `subjects.csv`
+    follows the paired export by visit; `vectors.json`'s `films` is an array in `films.csv` row order; the
+    manifest counts merged visits and carries an `identity` line.
 
 ## 17. Sequencing
 
