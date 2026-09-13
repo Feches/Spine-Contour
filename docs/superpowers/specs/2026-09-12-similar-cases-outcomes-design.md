@@ -105,8 +105,9 @@ The researcher (spec §2), doing this:
   `l1_center`, all in source pixels. The corner naming in `backend/landmarks.py` is `SA, SP, IA, IP`.
   Partial results (2026-09-09) carry `qc.coverage.{partial, available, missing, unoriented}`; an
   unoriented body has no trustworthy anterior/posterior assignment.
-- **The sidecar** `predictions/<id>.json` is the raw `/predict` response: `image_png` (the framed image
-  at source resolution), the masks, `measurements`, `geometry`, `qc`, `labels`, `calibration`. Read
+- **The sidecar** `predictions/<id>.json` is the raw `/predict` response: `image_png` (the whole film at
+  source resolution after the optional toolbar trim, robust-rescaled to 8 bit — not the lumbar crop;
+  the crop is `qc.framing.window`, `[x0, y0, x1, y1]` in those pixels), the masks, `measurements`, `geometry`, `qc`, `labels`, `calibration`. Read
   lazily; ids validated in the main process; deleted with the study; quarantined with `studies.json`.
 - **Thumbnails** are on the record (`≤128 px` JPEG data URI). Nothing displays them yet; plan 07's
   cards were written to.
@@ -246,8 +247,8 @@ therefore count explicitly, with named weights, beside the geometry they were co
 
 ### 7.3 The appearance blocks `C` and `W`
 
-The backend computes both from one graph (§10): `C` from the framed image the models ran on, `W` from
-the whole film. Each is 384 numbers, L2-normalised. `appearanceDistance(a, b)` is `1 − a·b`.
+The backend computes both from one graph (§10): `C` from the framed crop the models ran on —
+`image` cut by `framing.window` — and `W` from the whole film. Each is 384 numbers, L2-normalised. `appearanceDistance(a, b)` is `1 − a·b`.
 
 `filmType` is `'whole-spine'` when the framing record says the search ran and chose a crop smaller than
 the film, else `'lumbar'`. `W` enters a distance only when both studies are `'whole-spine'`.
@@ -484,14 +485,17 @@ is never offered by `GET /models`; `resolve_models` does not know it.
 - `embed(image)`: run the graph, pool per the metadata (`cls` in stage 1), L2-normalise, return `dim`
   `float32`. Every constant comes from `embed.json`; the module holds none of its own.
 - `film_type(framing)`: `'whole-spine'` or `'lumbar'` per §7.3, `None` when `framing` is absent.
-- `embedding_record(crop_image, whole_image, framing)` → `{model: {id, dim, size, onnx_sha256}, crop,
-  whole, film_type}` with `null` for an input that was not given.
+- `crop_window(image, framing)`: the film cut by `framing['window']`, clipped to the film; the whole film
+  when the window is absent or degenerate.
+- `embedding_record(image, framing)` → `{model: {id, dim, input, onnx_sha256}, crop, whole, film_type}`:
+  `whole` from `image`, `crop` from `crop_window(image, framing)`, `film_type` per §7.3, `null` for a
+  block that could not be computed.
 
 ### 10.3 In `/predict`
 
 When the `Appearance embeddings` setting is on (§10.6), after `encoding` and before `calibration`:
 `runtime.report("embedding", "Computing appearance embeddings")`, then
-`embedding_record(prediction["image"], pixel_array, prediction["framing"])`. In low-memory mode the
+`embedding_record(prediction["image"], prediction["framing"])`. In low-memory mode the
 structure models are already released by then; the embed graph is released after the stage. Any
 exception is logged with the same discipline as calibration's and the response carries `embedding:
 null`; `/predict-stream` reports the stage like every other. With the setting off the stage is skipped
@@ -502,12 +506,13 @@ therefore holds a copy, which nothing reads (§11).
 
 ### 10.4 `POST /embed`
 
-Multipart: `file` (the whole film, optional), `crop_png` (the sidecar's `image_png`, optional),
-`framing` (the stored `qc.framing` as JSON, optional). Runs under `runtime.session` — serialised with
-predictions, cancellable, reported as one `embedding` stage — decodes what it was given with the same
-readers `/predict` uses, and returns `{embedding}` per §10.2 with `null` blocks for absent inputs. With
-neither image it is a 422. Rounded to five decimals on the way out, like everything the renderer
-stores.
+Multipart: `file` (the sidecar's `image_png`, required) and `framing` (the stored `qc.framing` as JSON,
+optional; without it the crop block is the whole film and the film type is `null`). The sidecar alone
+is enough for both blocks because its image is the whole film (§5), so the backfill never reads the
+film file. Runs under `runtime.session` — serialised with predictions, cancellable, reported as one
+`embedding` stage — decodes the image with the same reader `/predict` uses, and returns `{embedding}`
+per §10.2. An unreadable image is a 422. Rounded to five decimals on the way out, like everything the
+renderer stores.
 
 ### 10.5 Verification and packaging
 
@@ -539,7 +544,7 @@ embedded later in one click, or never. The tab's empty state names the setting (
 ```
 
 `sourceSha256` is the film's `calibration.source_sha256` when the record has one, else `null`; `whole`
-is `null` when the film was not available (§12).
+is `null` only when the backend could not compute it.
 
 - Written atomically by `api.saveEmbedding(id, record)` (IPC `save-embedding`) when a run completes with
   a non-null `embedding`, **after** the sidecar and before the record commit, and by the `Embed` run
@@ -579,17 +584,15 @@ It runs through the batch driver as a second kind: `state.batch.kind` is `'segme
 in `screens/analysis.js`, beside `segmentStudy`:
 
 1. Reads the sidecar for `image_png` and `qc.framing`; no sidecar → failed, `no stored segmentation`.
-2. Reads the film's bytes (this session's payload map, else `api.readFile(filePath)`); `null` in a
-   batch → the whole-film block is `null` and the run continues, counted as a warning `film not found
-   — appearance of the whole film not computed`, never a picker.
-3. Sets `state.running`, posts `/embed`, checks the record's identity by `addedAt` after every `await`.
-4. Saves `embeddings/<id>.json`, updates the map, bumps `embeddingsVersion`, clears `running` in one
+   The film file is never read: the sidecar's image is the whole film (§5).
+2. Sets `state.running`, posts `/embed`, checks the record's identity by `addedAt` after every `await`.
+3. Saves `embeddings/<id>.json`, updates the map, bumps `embeddingsVersion`, clears `running` in one
    `setState`.
 
 Progress reads `Embedding {done} of {total}` wherever the batch's text appears (batch §9), the viewer's
 run card reads `Computing appearance embedding…` for the running study, `Stop` works after the current
-film, and the closing toast follows `batchMessage`'s shape: `Embedded 38 films · 2 without the whole
-film (not found)`. Segment runs, embed runs, delete-all and a single run stay mutually exclusive
+film, and the closing toast follows `batchMessage`'s shape: `Embedded 38 films · 2 could not be embedded
+(no stored segmentation)`. Segment runs, embed runs, delete-all and a single run stay mutually exclusive
 through `state.running` and `state.batch`.
 
 ## 13. `Export dataset`
@@ -624,7 +627,7 @@ Measured on the development laptop (i5-1135G7, CPU only, two threads) or derived
 | | Amount |
 |---|---|
 | `/predict`, added by the embedding stage | about 1 s (two 224 px passes) |
-| `Embed` backfill, per film | about 1.5 s including the file read |
+| `Embed` backfill, per film | about 1.5 s including the sidecar read |
 | `Embed` backfill, 1,000 films | about 25 min, unattended |
 | `embed.onnx` on disk | about 88 MB, beside 560 MB of existing graphs |
 | One `embeddings/<id>.json` | about 8 KB |
@@ -671,8 +674,8 @@ Pure modules get `node --test`; the DOM gets a smoke suite and a human gate; the
 - Backend: `test_embedding.py` — `preprocess` shape, dtype, letterbox geometry and normalisation on a
   synthetic image, driven by a metadata fixture, and again with a different input shape, channel count
   and dimension to prove nothing is hard-coded; `embed` returns 384 finite unit-norm values on the real graph when it exists (skipped
-  otherwise, as the ONNX tests already are); `film_type` per §7.3; `/embed` with both inputs, one input,
-  none (422); `/predict` carries `embedding` and survives a missing graph with `null`; with `embeddings` off it skips
+  otherwise, as the ONNX tests already are); `film_type` per §7.3; `/embed` with and without `framing`,
+  and with an unreadable image (422); `/predict` carries `embedding` and survives a missing graph with `null`; with `embeddings` off it skips
   the stage, never loads the graph, and records `qc.processing.embeddings: false`; `parse_options`
   rejects a non-boolean `embeddings`.
   `test_onnx_models.py` / `test_onnx_runtime.py` (extend): five kinds; `embed.json`'s fields.
@@ -740,7 +743,7 @@ the two can run in parallel on separate branches if wanted.
   makes no such judgement and its footer counts what is recorded.
 - **The hub download at export time** (decision 13). If it proves flaky, commit the checkpoint to LFS
   and point the export tool at it.
-- **`/embed` inputs.** The framed `image_png` is source resolution; a very large film's PNG round-trips
+- **`/embed` inputs.** The sidecar's `image_png` is the whole film at source resolution; it round-trips
   through the renderer today for the viewer, so the multipart size is nothing new, but the batch reads
   a thousand sidecars in a night — the read is lazy and sequential, one at a time, like the runs.
 - **Card copy for `conflicting`.** Surfacing a data problem as an outcome line is deliberate; if it
