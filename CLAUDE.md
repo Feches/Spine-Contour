@@ -224,7 +224,7 @@ Backend tests:
 
 ## Backend API
 
-Local only, on a random port. Five endpoints the measurement UI uses, plus the backend developer's two calibration
+Local only, on a random port. Six endpoints the measurement UI uses, plus the backend developer's two calibration
 endpoints (`POST /calibrate`, `POST /calibration-profile`, 2026-09-07; `scipy`, `pytesseract` and the Tesseract runtime
 are theirs — the venv needs the two packages for the backend to start):
 
@@ -240,12 +240,17 @@ when none is found the backend logs `OCR: no Tesseract binary found ...` and eve
   relevant). Slow: locates the lumbosacral region, then runs the chosen models.
   Optional form fields `vertebra_model`, `femoral_model`, `s1_model` choose which model
   reads each structure; anything the backend does not offer is a 422, and omitted fields
-  take the default. The form field `embeddings` (default true) adds the `embedding` stage and key; see `docs/appearance-embeddings.md`.
+  take the default. The form field `embeddings` (default true) adds the
+  `embedding` stage and key; see `docs/appearance-embeddings.md`.
 - `POST /measure` — geometry only, no image. Returns `{measurements, geometry}`.
   Cheap, which is what makes live re-measurement after landmark correction practical.
 - `POST /embed` — multipart `file` (a stored sidecar `image_png`) and optional `framing` JSON.
   Returns `{embedding: {model, crop, whole, film_type}}`, the same record `/predict` returns
   under `embedding` when the `embeddings` form field is on (the default). About a second.
+- `GET /embedding-model` — `{id, dim, input, onnx_sha256}` for the bundled encoder, the
+  same `model` record every `/predict` and `/embed` embedding carries; 503 when no graph
+  is installed. The renderer reads it once to tell a stale stored embedding from a
+  current one (spec §11).
 - `GET /models` — `{vertebrae: [...], femoral: [...], s1: [...]}`, the offered model ids.
 - `GET /health` — `{"status": "ok"}`.
 
@@ -270,8 +275,9 @@ zero.
 
 Anterior, middle and posterior disc heights (L1–L2 through L5–S1) are derived from facing endplate keypoints and per-image calibration in `renderer/data/disc-heights.js`, displayed in Measurements, and exported in ordinary/paired CSV. See `docs/disc-heights.md` for definitions and blank-value rules. Spondylolisthesis slip remains unimplemented.
 
-The backend bundle collects `timm` (the HRNet trunk) alongside the other model
-packages; keep `--collect-all timm` in both workflows.
+`timm` (the HRNet trunk, also the appearance encoder's export dependency) is
+export-only; every workflow passes `--exclude-module timm` so the backend bundle
+never carries it.
 
 ## Git
 

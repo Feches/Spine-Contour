@@ -64,11 +64,14 @@ pinned training/export libraries and test dependencies. `backend/models/training
 owns PyTorch builders, and importing the application backend does not import them.
 Generated graphs/manifests in `backend/onnx/` are ignored by Git. Export reads the
 existing trusted `.pt` checkpoints, checks ONNX graph validity, compares random/blank
-inputs against PyTorch, and records source/output SHA-256 plus library versions.
+inputs against PyTorch, and records source/output SHA-256 plus library versions. The
+fifth graph, the appearance encoder, has no `.pt` checkpoint: it is instead downloaded
+from the model hub at export time by its timm id, and its weights' SHA-256 is written
+into `embed.json` rather than compared against a trusted local file.
 
 All installer workflows export before tests. PyInstaller includes ONNX Runtime and
 graphs but excludes Torch, torchvision, timm, segmentation-models-pytorch and `.pt`
-files. `check_bundled_inference.py` executes all four graphs in the frozen executable,
+files. `check_bundled_inference.py` executes all five graphs in the frozen executable,
 checks output shapes/finite values and verifies model hashes. Existing bundled OCR,
 desktop source/version and packaging allowlist checks remain required. The numbered
 release still waits for both operating-system installers.
