@@ -153,3 +153,8 @@ test('appendColumns adds cells to every data line of a CSV text and leaves the c
   const text = '# a\r\n# b\r\nX,Y\r\n1,2\r\n3,4\r\n';
   assert.equal(appendColumns(text, ['Z'], [['z1'], ['z2']]), '# a\r\n# b\r\nX,Y,Z\r\n1,2,z1\r\n3,4,z2\r\n');
 });
+
+test('appendColumns keeps a quoted cell carrying an embedded CRLF whole, rather than splitting inside it', () => {
+  const text = '# a\r\n# b\r\nX,Y\r\n"multi\r\nline",2\r\n3,4\r\n';
+  assert.equal(appendColumns(text, ['Z'], [['z1'], ['z2']]), '# a\r\n# b\r\nX,Y,Z\r\n"multi\r\nline",2,z1\r\n3,4,z2\r\n');
+});

@@ -231,7 +231,10 @@ ipcMain.handle('save-csv', async (_event, request) => {
 
 // Export dataset (similar-cases spec, 2026-09-12, section 13): a folder of four text files. The
 // renderer builds every byte; this picks the parent folder, creates `<folder>` (a -2, -3 suffix
-// when it exists), and writes each file .tmp then rename. Cancelling resolves null.
+// when it exists), and writes each file .tmp then rename. Cancelling resolves null. A write that
+// throws partway through removes the folder this call created -- the suffix search above already
+// proved it did not exist -- so a failed export never leaves a half-written folder sitting beside
+// the next attempt's `-2` sibling looking complete.
 ipcMain.handle('save-dataset', async (_event, request) => {
   if (!request || typeof request.folder !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9 ._-]*$/.test(request.folder)) throw new Error('Nothing to export.');
   if (!request.files || typeof request.files !== 'object') throw new Error('Nothing to export.');
@@ -241,11 +244,16 @@ ipcMain.handle('save-dataset', async (_event, request) => {
   let target = path.join(parent, request.folder);
   for (let n = 2; fs.existsSync(target); n += 1) target = path.join(parent, `${request.folder}-${n}`);
   await fsPromises.mkdir(target, { recursive: true });
-  for (const [name, text] of Object.entries(request.files)) {
-    if (!/^[A-Za-z0-9._-]+$/.test(name) || typeof text !== 'string') throw new Error('Nothing to export.');
-    const file = path.join(target, name);
-    await fsPromises.writeFile(`${file}.tmp`, text, 'utf8');
-    await fsPromises.rename(`${file}.tmp`, file);
+  try {
+    for (const [name, text] of Object.entries(request.files)) {
+      if (!/^[A-Za-z0-9._-]+$/.test(name) || typeof text !== 'string') throw new Error('Nothing to export.');
+      const file = path.join(target, name);
+      await fsPromises.writeFile(`${file}.tmp`, text, 'utf8');
+      await fsPromises.rename(`${file}.tmp`, file);
+    }
+  } catch (error) {
+    await fsPromises.rm(target, { recursive: true, force: true });
+    throw error;
   }
   return target;
 });

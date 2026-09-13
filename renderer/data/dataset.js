@@ -31,10 +31,44 @@ function escapeField(value) {
   return text;
 }
 
+// Splits a CSV text on \r\n, but never inside a quoted field: a `"` toggles quoted state, and a
+// doubled `""` while quoted (an escaped quote, csv.js's own escapeField rule) stays inside. A
+// quoted cell may carry an embedded \r\n or \n -- escapeField quotes such a value rather than
+// rejecting it, and csv.js's parse() reads it back as one field -- so splitting blindly on every
+// literal \r\n would tear that one cell into two lines and shift every later row's appended cells.
+function splitCsvLines(text) {
+  const lines = [];
+  let start = 0;
+  let inQuotes = false;
+  let i = 0;
+  const len = text.length;
+  while (i < len) {
+    const char = text[i];
+    if (char === '"') {
+      if (inQuotes && text[i + 1] === '"') {
+        i += 2;
+        continue;
+      }
+      inQuotes = !inQuotes;
+      i += 1;
+      continue;
+    }
+    if (!inQuotes && char === '\r' && text[i + 1] === '\n') {
+      lines.push(text.slice(start, i));
+      i += 2;
+      start = i;
+      continue;
+    }
+    i += 1;
+  }
+  lines.push(text.slice(start));
+  return lines;
+}
+
 // Adds header cells and one cell list per data row to a CSV text: the comment lines are left
 // alone, the header line is the first non-comment line, the data lines follow in order.
 export function appendColumns(text, headers, cells) {
-  const lines = text.split('\r\n');
+  const lines = splitCsvLines(text);
   let dataIndex = -1;
   const out = lines.map((line) => {
     if (line === '' || line.startsWith('#')) return line;
