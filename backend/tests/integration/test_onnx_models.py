@@ -1,4 +1,7 @@
 """Exercise the converted assets, not mocks. Export before running this suite."""
+from pathlib import Path
+import sys
+
 import numpy as np
 import pytest
 import torch
@@ -60,3 +63,21 @@ def test_converted_embedding_model_matches_the_timm_reference():
         assert actual.shape == (1, metadata['dim']) and expected.shape == actual.shape
         np.testing.assert_allclose(actual, expected, rtol=2e-3, atol=2e-3)
     models.release_models()
+
+
+def test_the_encoder_export_never_guesses_its_normalisation_or_its_licence():
+    """The desktop normalises with embed.json's mean and std and ships its licence, so an
+    ImageNet substitute or a stale --embed-licence must stop the export, not reach the file."""
+    root = str(Path(__file__).resolve().parents[3])
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from tools.export_onnx import embed_normalisation_and_licence as reconcile
+
+    with pytest.raises(ValueError, match="dinov2-lookalike has no pretrained_cfg mean"):
+        reconcile({}, 'dinov2-lookalike', 'Apache-2.0')
+    statistics = {'mean': (.1, .2, .3), 'std': (.4, .5, .6)}
+    with pytest.raises(ValueError, match="'Apache-2.0'.*'mit'"):
+        reconcile({**statistics, 'license': 'mit'}, 'dinov2-lookalike', 'Apache-2.0')
+    # Case and surrounding space never make a licence a different licence.
+    assert reconcile({**statistics, 'license': ' apache-2.0 '}, 'dinov2-lookalike',
+                     'Apache-2.0') == ([.1, .2, .3], [.4, .5, .6], 'Apache-2.0')

@@ -87,6 +87,26 @@ DEFAULT_EMBED_POOL = 'cls'
 DEFAULT_EMBED_LICENCE = 'Apache-2.0'
 
 
+def embed_normalisation_and_licence(config, source, licence):
+    """The encoder's own preprocessing constants and its licence, or no export at all.
+
+    The desktop normalises every crop with the `mean` and `std` written into embed.json, so a
+    substituted ImageNet default would mis-normalise every embedding while the metadata still
+    read as if it came from the model: a source whose `pretrained_cfg` does not carry both is
+    not exportable. The licence is stamped into a file that ships inside the installer, so
+    `--embed-licence` must agree with whatever the model itself declares.
+    """
+    config = config or {}
+    for key in ('mean', 'std'):
+        if key not in config:
+            raise ValueError(f"{source} has no pretrained_cfg {key}; "
+                             "the export cannot guess the encoder's normalisation")
+    declared = next((str(config[key]) for key in ('license', 'licence') if config.get(key)), None)
+    if declared is not None and declared.strip().lower() != licence.strip().lower():
+        raise ValueError(f'--embed-licence {licence!r} must match the licence {source} declares, {declared!r}')
+    return [float(v) for v in config['mean']], [float(v) for v in config['std']], licence
+
+
 def export_embed(destination, source=DEFAULT_EMBED_SOURCE, input_size=DEFAULT_EMBED_INPUT,
                  pooling=DEFAULT_EMBED_POOL, licence=DEFAULT_EMBED_LICENCE):
     """The appearance encoder (similar-cases spec, 2026-09-12, section 10.1). Every constant the
@@ -100,6 +120,9 @@ def export_embed(destination, source=DEFAULT_EMBED_SOURCE, input_size=DEFAULT_EM
     torch.set_num_threads(2)
     height, width = (int(v) for v in input_size)
     network = build_embedding_model(source, (height, width), pooling).eval()
+    # Fail before the expensive conversion, never by guessing a constant the desktop relies on.
+    mean, std, licence = embed_normalisation_and_licence(
+        getattr(network, 'pretrained_cfg', None), source, licence)
     torch.manual_seed(123)
     sample = torch.rand(1, 3, height, width)
     path = destination / 'embed.onnx'
@@ -124,11 +147,9 @@ def export_embed(destination, source=DEFAULT_EMBED_SOURCE, input_size=DEFAULT_EM
     for name in sorted(state):
         weights.update(name.encode('utf-8'))
         weights.update(state[name].detach().cpu().contiguous().numpy().tobytes())
-    config = getattr(network, 'pretrained_cfg', {}) or {}
     metadata = {'kind': 'embed', 'opset': 17, 'input': [height, width], 'channels': 3, 'dim': dim,
                 'pooling': pooling, 'precision': 'float32', 'source': source,
-                'mean': [float(v) for v in config.get('mean', (0.485, 0.456, 0.406))],
-                'std': [float(v) for v in config.get('std', (0.229, 0.224, 0.225))],
+                'mean': mean, 'std': std,
                 'licence': licence, 'weights_sha256': weights.hexdigest(),
                 'onnx_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
                 'torch': torch.__version__, 'onnx': onnx.__version__, 'onnxruntime': ort.__version__}
