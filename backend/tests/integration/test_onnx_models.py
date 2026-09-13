@@ -36,3 +36,27 @@ def test_converted_models_match_checkpoints_on_empty_and_varied_inputs(kind):
             # Float32 kernels may flip a near-tied boundary pixel, never a region.
             assert np.mean(before == after) > .9999
     models.release_models()
+
+
+import json
+
+
+def test_converted_embedding_model_matches_the_timm_reference():
+    from backend.models.training import build_embedding_model
+    path = models.ONNX_DIRECTORY / 'embed.onnx'
+    assert path.exists(), 'Run python tools/export_onnx.py --kind embed before testing'
+    metadata = json.loads(path.with_suffix('.json').read_text())
+    assert metadata['kind'] == 'embed' and metadata['channels'] == 3 and metadata['pooling'] in ('cls', 'mean')
+    torch.set_num_threads(2)
+    reference = build_embedding_model(metadata['source'], tuple(metadata['input']), metadata['pooling']).eval()
+    session = models._load_model('embed', (2, True))
+    generator = np.random.default_rng(51)
+    height, width = metadata['input']
+    for value in (np.zeros((1, 3, height, width), np.float32),
+                  generator.standard_normal((1, 3, height, width)).astype(np.float32)):
+        with torch.inference_mode():
+            expected = reference(torch.from_numpy(value)).numpy()
+        actual = session.run(None, {'image': value})[0]
+        assert actual.shape == (1, metadata['dim']) and expected.shape == actual.shape
+        np.testing.assert_allclose(actual, expected, rtol=2e-3, atol=2e-3)
+    models.release_models()

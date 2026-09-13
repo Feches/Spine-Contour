@@ -162,7 +162,10 @@ def _letterbox(image: np.ndarray) -> tuple[np.ndarray, LetterboxTransform]:
 
 ONNX_DIRECTORY = Path(__file__).resolve().parent.parent / "onnx"
 MODEL_NAMES = {"s1": "S1 detector", "vertebra": "vertebra model",
-               "femoral": "femoral-head model", "hrnet": "HRNet landmark model"}
+               "femoral": "femoral-head model", "hrnet": "HRNet landmark model",
+               # The appearance encoder (similar-cases spec, 2026-09-12, section 10): loaded,
+               # cached and released like the four structure models, never offered by /models.
+               "embed": "appearance embedding model"}
 _resident_key = None
 _cache_policy = None
 

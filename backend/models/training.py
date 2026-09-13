@@ -64,3 +64,23 @@ def load_checkpoint(kind: str, device: str) -> nn.Module:
     model.load_state_dict(checkpoint["model"], strict=True)
     return model.to(torch.device(device)).eval()
 
+
+def build_embedding_model(source: str, input_size: tuple[int, int], pooling: str) -> nn.Module:
+    """The appearance encoder, from timm's pretrained catalogue (similar-cases spec, 2026-09-12,
+    section 10.1). Export and parity tests only; the desktop runs its ONNX graph.
+
+    `source` is a timm model id (stage 1: vit_small_patch14_dinov2.lvd142m, Apache 2.0);
+    `input_size` is (height, width), a multiple of the patch size, and timm resamples the
+    pretrained position embeddings to it; `pooling` picks the graph's single output: the class
+    token ('cls') or the mean over patch tokens ('mean'). Fused attention is turned off so the
+    TorchScript exporter sees plain matmuls and softmaxes.
+    """
+    import timm
+    from timm.layers import set_fused_attn
+
+    if pooling not in ("cls", "mean"):
+        raise ValueError("pooling must be cls or mean")
+    set_fused_attn(False)
+    return timm.create_model(source, pretrained=True, num_classes=0, img_size=tuple(input_size),
+                             global_pool="token" if pooling == "cls" else "avg")
+

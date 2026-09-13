@@ -81,15 +81,79 @@ def export(kind, destination):
     print(f'Exported and validated {kind}: {path}', flush=True)
 
 
+DEFAULT_EMBED_SOURCE = 'vit_small_patch14_dinov2.lvd142m'
+DEFAULT_EMBED_INPUT = (224, 224)
+DEFAULT_EMBED_POOL = 'cls'
+DEFAULT_EMBED_LICENCE = 'Apache-2.0'
+
+
+def export_embed(destination, source=DEFAULT_EMBED_SOURCE, input_size=DEFAULT_EMBED_INPUT,
+                 pooling=DEFAULT_EMBED_POOL, licence=DEFAULT_EMBED_LICENCE):
+    """The appearance encoder (similar-cases spec, 2026-09-12, section 10.1). Every constant the
+    desktop needs goes into embed.json, so a different network is a different command line."""
+    import numpy as np
+    import onnx
+    import onnxruntime as ort
+    import torch
+    from backend.models.training import build_embedding_model
+
+    torch.set_num_threads(2)
+    height, width = (int(v) for v in input_size)
+    network = build_embedding_model(source, (height, width), pooling).eval()
+    torch.manual_seed(123)
+    sample = torch.rand(1, 3, height, width)
+    path = destination / 'embed.onnx'
+    destination.mkdir(parents=True, exist_ok=True)
+    with torch.inference_mode():
+        torch.onnx.export(network, (sample,), str(path), dynamo=False, opset_version=17,
+                          input_names=['image'], output_names=['embedding'])
+    onnx.checker.check_model(str(path))
+    settings = ort.SessionOptions()
+    settings.intra_op_num_threads = 2
+    session = ort.InferenceSession(str(path), sess_options=settings, providers=['CPUExecutionProvider'])
+    dim = None
+    for tensor in (sample, torch.zeros_like(sample)):
+        with torch.inference_mode():
+            expected = network(tensor).numpy()
+        actual = session.run(None, {'image': tensor.numpy()})[0]
+        assert expected.ndim == 2 and expected.shape[0] == 1, f'unexpected encoder output shape {expected.shape}'
+        np.testing.assert_allclose(actual, expected, rtol=2e-3, atol=2e-3)
+        dim = int(expected.shape[1])
+    weights = hashlib.sha256()
+    state = network.state_dict()
+    for name in sorted(state):
+        weights.update(name.encode('utf-8'))
+        weights.update(state[name].detach().cpu().contiguous().numpy().tobytes())
+    config = getattr(network, 'pretrained_cfg', {}) or {}
+    metadata = {'kind': 'embed', 'opset': 17, 'input': [height, width], 'channels': 3, 'dim': dim,
+                'pooling': pooling, 'precision': 'float32', 'source': source,
+                'mean': [float(v) for v in config.get('mean', (0.485, 0.456, 0.406))],
+                'std': [float(v) for v in config.get('std', (0.229, 0.224, 0.225))],
+                'licence': licence, 'weights_sha256': weights.hexdigest(),
+                'onnx_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                'torch': torch.__version__, 'onnx': onnx.__version__, 'onnxruntime': ort.__version__}
+    path.with_suffix('.json').write_text(json.dumps(metadata, indent=2) + '\n')
+    print(f'Exported and validated embed: {path} ({source}, {height}x{width}, {pooling}, dim {dim})', flush=True)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--kind', choices=['vertebra', 'femoral', 's1', 'hrnet'])
+    parser.add_argument('--kind', choices=['vertebra', 'femoral', 's1', 'hrnet', 'embed'])
     parser.add_argument('--output', type=Path, default=ROOT / 'backend' / 'onnx')
+    parser.add_argument('--embed-source', default=DEFAULT_EMBED_SOURCE, help='timm model id of the appearance encoder')
+    parser.add_argument('--embed-input', type=int, nargs=2, default=list(DEFAULT_EMBED_INPUT), metavar=('HEIGHT', 'WIDTH'))
+    parser.add_argument('--embed-pool', choices=['cls', 'mean'], default=DEFAULT_EMBED_POOL)
+    parser.add_argument('--embed-licence', default=DEFAULT_EMBED_LICENCE)
     args = parser.parse_args()
-    if args.kind:
+    embed_args = ['--embed-source', args.embed_source, '--embed-input', *map(str, args.embed_input),
+                  '--embed-pool', args.embed_pool, '--embed-licence', args.embed_licence]
+    if args.kind == 'embed':
+        export_embed(args.output, args.embed_source, tuple(args.embed_input), args.embed_pool, args.embed_licence)
+    elif args.kind:
         export(args.kind, args.output)
     else:
         # Bound conversion memory; each model is exported in a fresh process.
         import subprocess
-        for kind in ('s1', 'vertebra', 'femoral', 'hrnet'):
-            subprocess.run([sys.executable, __file__, '--kind', kind, '--output', str(args.output)], check=True)
+        for kind in ('s1', 'vertebra', 'femoral', 'hrnet', 'embed'):
+            extra = embed_args if kind == 'embed' else []
+            subprocess.run([sys.executable, __file__, '--kind', kind, '--output', str(args.output), *extra], check=True)

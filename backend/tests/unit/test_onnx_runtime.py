@@ -113,3 +113,8 @@ def test_apple_cache_is_bound_to_graph_hash_and_disabled_for_low_memory(monkeypa
         assert options['RequireStaticInputShapes'] == '1'
     assert observed[-1] == ['CPUExecutionProvider']
     models.release_models()
+
+
+def test_the_embedding_graph_is_a_known_kind_with_its_own_name():
+    assert models.MODEL_NAMES['embed'] == 'appearance embedding model'
+    assert set(models.MODEL_NAMES) == {'s1', 'vertebra', 'femoral', 'hrnet', 'embed'}

@@ -18,11 +18,16 @@ def verify():
             metadata = json.loads(path.with_suffix('.json').read_text())
             assert metadata['kind'] == kind and metadata['precision'] == 'float32'
             assert hashlib.sha256(path.read_bytes()).hexdigest() == metadata['onnx_sha256']
-            shape = (1, 3 if kind == 's1' else 1, 768, 768)
+            if kind == 'embed':
+                shape = (1, int(metadata['channels']), *(int(v) for v in metadata['input']))
+            else:
+                shape = (1, 3 if kind == 's1' else 1, 768, 768)
             output = models._infer(kind, lambda session: session.run(None, {'image': np.zeros(shape, np.float32)}), None)
             assert all(np.isfinite(value).all() for value in output)
             if kind == 's1':
                 assert output[0].ndim == 1 and output[1].shape == (len(output[0]), 2, 3)
+            elif kind == 'embed':
+                assert output[0].shape == (1, int(metadata['dim']))
             else:
                 expected = {'vertebra': (1, 6, 768, 768), 'femoral': (1, 1, 768, 768), 'hrnet': (1, 22, 2)}[kind]
                 assert output[0].shape == expected
