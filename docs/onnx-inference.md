@@ -19,8 +19,9 @@ Missing anatomy remains absent, and dependent measurements remain null.
 
 ## Runtime and resource policy
 
-All four original models are exported as float32 ONNX graphs at the trained 768-square
-resolution. There is no quantization or retraining. S1's exported graph keeps only
+The four structure models are exported as float32 ONNX graphs at the trained 768-square
+resolution, and the appearance encoder as a fifth graph at its own input size (see
+`appearance-embeddings.md`). There is no quantization or retraining. S1's exported graph keeps only
 the highest-scoring box after the unchanged box scoring/NMS stage, before its
 keypoint head. The original application also consumed only that box; tests compare
 against the original five-box checkpoint path. Empty detections are supported.

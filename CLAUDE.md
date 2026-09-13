@@ -224,7 +224,7 @@ Backend tests:
 
 ## Backend API
 
-Local only, on a random port. Four endpoints the measurement UI uses, plus the backend developer's two calibration
+Local only, on a random port. Five endpoints the measurement UI uses, plus the backend developer's two calibration
 endpoints (`POST /calibrate`, `POST /calibration-profile`, 2026-09-07; `scipy`, `pytesseract` and the Tesseract runtime
 are theirs — the venv needs the two packages for the backend to start):
 
@@ -240,9 +240,12 @@ when none is found the backend logs `OCR: no Tesseract binary found ...` and eve
   relevant). Slow: locates the lumbosacral region, then runs the chosen models.
   Optional form fields `vertebra_model`, `femoral_model`, `s1_model` choose which model
   reads each structure; anything the backend does not offer is a 422, and omitted fields
-  take the default.
+  take the default. The form field `embeddings` (default true) adds the `embedding` stage and key; see `docs/appearance-embeddings.md`.
 - `POST /measure` — geometry only, no image. Returns `{measurements, geometry}`.
   Cheap, which is what makes live re-measurement after landmark correction practical.
+- `POST /embed` — multipart `file` (a stored sidecar `image_png`) and optional `framing` JSON.
+  Returns `{embedding: {model, crop, whole, film_type}}`, the same record `/predict` returns
+  under `embedding` when the `embeddings` form field is on (the default). About a second.
 - `GET /models` — `{vertebrae: [...], femoral: [...], s1: [...]}`, the offered model ids.
 - `GET /health` — `{"status": "ok"}`.
 
