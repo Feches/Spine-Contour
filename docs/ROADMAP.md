@@ -432,9 +432,6 @@ into the app once its recipe is stable. The later stages, in order:
   midpoint alone proves too little.
 - A taller whole-film input (for example 448×224) if the 224 px whole-film block proves too coarse.
 - A mask-contour block, only if the shape block leaves something on the table.
-- An optional `images/` folder in `Export dataset`, off by default, holding the framed crops the models
-  ran on — only when an analysis needs pixels rather than vectors (a fine-tune, a different embedding),
-  and only after the identifier question for burned-in text is settled.
 - `Compare with…` for the same subject (pp §12) — the next entry into comparison mode, its own small
   plan.
 

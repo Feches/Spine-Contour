@@ -183,7 +183,8 @@ Each with what it costs if it is wrong.
     studies, and films segmented with the setting off, catch up through an `Embed` batch mode that posts
     the stored framed image and the film to `/embed`. *Cost if wrong:* a film without an embedding
     shows on the Find tab's `Embed` count until it has one; nothing is lost.
-11. **`Export dataset` writes a folder, not a file, over the paired export's rows, with no images.**
+11. **`Export dataset` writes a folder, not a file, over the paired export's rows, with no images, no
+    file names and no paths (user ruling, 2026-09-12).**
     Four files: `films.csv`, `subjects.csv`, `vectors.json`, `manifest.json`. *Cost if wrong:* the
     notebook reads a different layout; the manifest carries a version for that.
 12. **Comparison mode is plan 07's Tasks 3–6, unchanged in behaviour.** *Cost if wrong:* none new;
@@ -586,9 +587,8 @@ through `state.running` and `state.batch`.
 A third button on the Parameters filter bar, after `Export paired CSV`: `Export dataset`, or `Export
 dataset · N selected` when rows are ticked, over exactly the rows the paired export would write
 (visible, or ticked visible; demo rows dropped), disabled with the long button's note when that is
-disabled. It never writes images: the vectors are what the notebook trains on, the films stay where
-they already are, and `films.csv` names each one by file name and digest for the rare analysis that
-needs pixels.
+disabled. It never writes images, and nothing in it names or locates one — no file name, no path: the
+vectors are what the notebook trains on, and the films stay where they already are.
 
 `api.saveDataset(request)` (IPC `save-dataset`) opens a folder picker (`openDirectory`,
 `createDirectory`), then creates `<workspace label or library>-dataset-<YYYY-MM-DD>/` inside it (a
@@ -597,7 +597,7 @@ resolves `null` and stays quiet.
 
 | File | One row per | Columns |
 |---|---|---|
-| `films.csv` | film in the rows | everything `toCsv` writes, then `Film type`, `Coverage` (`full`/`partial`), `Reviewed` (the `reviewedAt` date or blank), `Embedding` (`yes`/`no`), `Crop localizer` (`on`/`off` from `qc.processing`), `Vertebra model`, `Femoral model`, `S1 model`, `File name` and `Source SHA-256` (the film's name and the digest the calibration record keeps, never its path, so a notebook that needs pixels can find and verify the film on disk without the export copying it), then, per registered outcome (§9.1), the status and date resolved per subject (§9.3) as `Subject <field>` (`yes`/`no`/`not-recorded`/`conflicting`) and `Subject <date field>` — `Subject fusion extension`, `Subject fusion extension date` in stage 1 — then `Subject last follow-up`, so a film-level analysis, a pre-op-only model for instance, has its label on the row without joining the pair table |
+| `films.csv` | film in the rows | everything `toCsv` writes, then `Film type`, `Coverage` (`full`/`partial`), `Reviewed` (the `reviewedAt` date or blank), `Embedding` (`yes`/`no`), `Crop localizer` (`on`/`off` from `qc.processing`), `Vertebra model`, `Femoral model`, `S1 model`, `Source SHA-256` (the digest the calibration record keeps: an identity for the film across exports and re-runs, which cannot reproduce or locate the image), then, per registered outcome (§9.1), the status and date resolved per subject (§9.3) as `Subject <field>` (`yes`/`no`/`not-recorded`/`conflicting`) and `Subject <date field>` — `Subject fusion extension`, `Subject fusion extension date` in stage 1 — then `Subject last follow-up`, so a film-level analysis, a pre-op-only model for instance, has its label on the row without joining the pair table |
 | `subjects.csv` | pair per pp §11.2, same `with` rule as the paired export | everything `toPairedCsv` writes, then the same resolved columns as `films.csv` (per registered outcome `Subject <field>` and `Subject <date field>`, then `Subject last follow-up`), then `Pre-op film type`, `<label> film type` per written visit |
 | `vectors.json` | — | `{version: 1, exportedAt, shape: {dim: 44, order: [...22 point names], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation'}, hip: {dim: 2, normalisation: 'the shape transform'}, alignment: {order: ['PI', 'PT', 'SS', 'LL L1-S1', 'PI-LL'], weights: [1, 0.8, 0.8, 0.6, 1]}, embedding: {model}, films: {id: {shape, hip, alignment, crop, whole, filmType}}}`, with `null` for a block the film lacks |
 | `manifest.json` | — | app version, `exportedAt`, the counts (films, pairs, unpaired, ambiguous, with a recorded outcome, conflicting, without an embedding), the set of model ids and processing settings seen, the embedding model record, the citation line and `NOT FOR CLINICAL USE` |
