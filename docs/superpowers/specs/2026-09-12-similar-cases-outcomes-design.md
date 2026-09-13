@@ -202,8 +202,9 @@ Each with what it costs if it is wrong.
 16. **A spreadsheet column the app does not know can be kept under its own name, per column, by
     choice.** `Keep column name` in the mapping select imports it as a custom clinical field; `autoMap`
     never chooses it, because an unknown column can be an identifier and the import must never take
-    one by accident. *Cost if wrong:* a bulk `Keep all unmapped` is one more option on the `Set all…`
-    control, and nothing stored changes — a custom key is already an ordinary clinical value.
+    one by accident; a `Keep all unmapped` button does it for every remaining column at once, still by
+    the user's hand. *Cost if wrong:* nothing stored changes — a custom key is already an ordinary
+    clinical value.
 
 ## 7. Vectors
 
@@ -444,6 +445,15 @@ again; a header that normalises to a known field's name is offered that field, n
 custom one; the load fills only blank keys on a known film. `autoMap` never selects it (decision 16).
 The Load message's existing clinical counts cover kept columns without a new clause.
 
+A `Keep all unmapped` button sits on the mapping card above the chips, labelled with its count
+(`Keep 6 unmapped columns`) and absent at zero. One click sets every header still `Unmapped` to its own
+name: the structural headers and the join column keep their fixed destinations and are not counted, a
+header that normalises to a free known field takes that field instead, and a header whose name is
+already taken stays `Unmapped`. Its help line reads `Imports every remaining column under its own name —
+check that none is an identifier.` It is one click the other way too: each chip's select can be set
+back to `Unmapped` afterwards, and `Set all… → Unmapped` on the card clears every destination, kept
+and known alike.
+
 ## 10. Backend
 
 ### 10.1 The graph
@@ -644,7 +654,8 @@ Pure modules get `node --test`; the DOM gets a smoke suite and a human gate; the
 - `test/workspace.test.js` (extend): `Keep column name` maps a header to itself, trimmed; a kept name is
   taken for every other column; a header normalising to a known field is not offered as a custom name;
   `autoMap` leaves an unknown header `Unmapped`; the kept values land on `clinical` and fill only blank
-  keys on a known film.
+  keys on a known film; the bulk action keeps every unmapped header, skips the structural and join
+  headers, prefers a free known field, leaves a taken name `Unmapped`, and its count matches its label.
 - Backend: `test_embedding.py` — `preprocess` shape, dtype, letterbox geometry and normalisation on a
   synthetic image; `embed` returns 384 finite unit-norm values on the real graph when it exists (skipped
   otherwise, as the ONNX tests already are); `film_type` per §7.3; `/embed` with both inputs, one input,
@@ -685,8 +696,8 @@ To the architecture contract, in the same commit as the plan:
    atomic write in `store-io.js`.
 10. **Settings**: `state.performance.embeddings` (default `true`), the `save-performance` normaliser,
     the `/predict` form field `embeddings`, `Options.embeddings`, `qc.processing.embeddings`.
-11. **Workspace mapping**: the `Keep column name` choice (§9.5); a `Mapping.dest` may now be any
-    non-empty name, not only a known field; `joinClinical` is unchanged.
+11. **Workspace mapping**: the `Keep column name` choice and the `Keep all unmapped` button (§9.5); a
+    `Mapping.dest` may now be any non-empty name, not only a known field; `joinClinical` is unchanged.
 
 ## 17. Sequencing
 
