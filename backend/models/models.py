@@ -184,7 +184,9 @@ def session_options(policy):
     return settings
 
 
-@lru_cache(maxsize=4)
+# Five kinds: the four structure models and the appearance encoder. Standard mode keeps all
+# five cached and never evicts one mid-run; low-memory mode releases by key change in _infer.
+@lru_cache(maxsize=5)
 def _load_model(kind, policy):
     if kind not in MODEL_NAMES:
         raise ValueError(f"unknown model kind: {kind}")
