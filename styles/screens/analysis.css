@@ -202,6 +202,47 @@
 .analysis-panel-host.is-hidden,
 .analysis-similar.is-hidden { display: none; }
 
+/* ===== 05 — FIND SIMILAR TAB (similar-cases spec, 2026-09-12, section 8) ================= */
+.analysis-similar { color: var(--body); }
+.similar-tab { display: flex; flex-direction: column; gap: 12px; }
+.similar-control .sidebar-models-label { margin-bottom: 4px; }
+.similar-cards { display: flex; flex-direction: column; gap: 8px; }
+.similar-card {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+  font: 400 13px 'Source Sans 3', sans-serif;
+  transition: background .15s ease, border-color .15s ease;
+}
+.similar-card:hover { background: var(--well); }
+.similar-card.is-active {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, var(--card));
+}
+.similar-card:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.similar-thumb { width: 56px; height: 56px; flex-shrink: 0; object-fit: cover; border-radius: 8px; background: var(--well); }
+.similar-thumb-empty { border: 1px solid var(--border); }
+.similar-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.similar-line-1 { display: flex; align-items: baseline; gap: 8px; }
+.similar-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
+.similar-match { font-family: 'Chivo Mono', monospace; font-size: 12px; font-weight: 500; color: var(--ink); white-space: nowrap; }
+.similar-missing { color: var(--muted); font-size: 10px; letter-spacing: .08em; }
+.similar-meta, .similar-angles { color: var(--muted); font-variant-numeric: tabular-nums; }
+.similar-outcome[data-outcome="yes"] { color: var(--accent); }
+.similar-outcome[data-outcome="conflicting"] { color: var(--accent); font-style: italic; }
+.similar-state { color: var(--muted); }
+.similar-card.is-active .similar-state { color: var(--accent); }
+.similar-footer { padding-top: 6px; border-top: 1px solid var(--border); color: var(--ink); }
+.similar-tail { color: var(--muted); }
+.similar-empty { color: var(--muted); font: 400 13px 'Source Sans 3', sans-serif; }
+
 /* ===== 02 — VIEWER STAGE ================================================
    The stage is deliberately OFF-THEME in both light and dark mode: a radiograph is read
    on a black field, not a warm cream one. The architecture contract grants this

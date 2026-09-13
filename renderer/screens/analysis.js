@@ -16,6 +16,7 @@ import { displayStatus, isReviewed, reviewedLabel, reviewBlockedReason } from '.
 import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
 import { mountMeasurements } from '../components/measurements.js';
 import { mountClinicalData } from '../components/clinical-data.js';
+import { mountSimilar } from '../components/similar.js';
 import { calibrationForStudy } from '../calibration.js';
 import { preferReviewedCalibration } from '../data/calibration.js';
 import { storeEmbedding } from '../embeddings.js';
@@ -569,8 +570,7 @@ export function render(state) {
   const reviewNote = el('span', { class: 'param-export-note analysis-review-note', hidden: true });
 
   const measurementsHost = el('div', { class: 'analysis-panel-host' });
-  const similarHost = el('div', { class: 'analysis-similar is-hidden' },
-    'Find similar arrives in a later build.');
+  const similarHost = el('div', { class: 'analysis-similar is-hidden' });
 
   const panel = el('aside', { class: 'analysis-panel' },
     el('div', { class: 'analysis-tabs' },
@@ -593,6 +593,7 @@ export function render(state) {
   const viewer = mountViewer(viewerHost);
   const measurementsPanel = mountMeasurements(measurementsHost);
   const clinical = mountClinicalData(clinicalHost);
+  const similar = mountSimilar(similarHost);
 
   viewer.setRunHandler(() => {
     const live = getState();
@@ -731,6 +732,8 @@ export function render(state) {
     // included, and the component's own reference-keyed gate decides whether to rebuild. It
     // reads the store itself, so it takes no argument.
     clinical.update();
+    // Same contract again: every notification, its own reference-keyed gate, reads the store itself.
+    similar.update();
   }
 
   // mounted.studyId is refreshed ONLY here, and render() runs only when the router sees a

@@ -34,6 +34,10 @@ let state = {
   embeddingsVersion: 0,
 
   tab: 'meas',
+  // (similar-cases spec, 2026-09-12, section 8.1) the Find similar tab's two controls: the scope of
+  // the candidates and what the ranking weighs. Session-only, replaced wholesale, never persisted.
+  similarScope: 'all',
+  similarRank: 'all',
   selectedLevel: null,
   overlays: true,
   overlayOpacity: 50,
