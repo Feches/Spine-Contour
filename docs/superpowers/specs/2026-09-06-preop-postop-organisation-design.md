@@ -180,6 +180,9 @@ them by accident; any can be reversed before implementation starts.
  * @property {string|null} timepoint   'Pre-op' | 'Intra-op' | 'Post-op' | '6 wk' | '1 yr' | … or any
  *                                     user label (§7.2)
  * @property {string|null} filmDate   'YYYY-MM-DD'; the film's acquisition date, never addedAt
+ * @property {string|null} note       (2026-09-11) free text; the filename's plain fields after the
+ *                                     recognised ones (§8.1 rule 3) or typed in the drawer; what
+ *                                     tells two same-day films of one subject apart
  */
 ```
 
@@ -242,10 +245,17 @@ segments strictly below the workspace root, plus the filename stem, and classifi
 1. Any segment that normalises to a timepoint (§7.2) supplies `timepoint`; any that normalises to a
    view (§7.3) supplies `view`. The **last** such segment wins if two of the same kind match.
 2. The **first** segment below the root that is neither a timepoint nor a view supplies `subjectId`.
-3. If no folder segment supplied a subject, the stem does. Its trailing `-`/`_`/space separated
-   tokens are examined right to left for as long as they normalise to a timepoint or a view, each
-   supplying its field; whatever remains is the subject. A stem made only of such tokens supplies no
-   subject.
+3. The stem is read as **underscore-separated fields** (amended 2026-09-11, user decision;
+   spaces and hyphens inside a field are content, so `post-op`, `post op`, `6 wk` and `3-22-2024`
+   are each one field). A field that normalises to a timepoint (§7.2) or a view (§7.3), or that
+   reads as a date — `M-D-YYYY` or `YYYY-MM-DD`, four-digit year, calendar-checked — supplies that
+   value, in any order, the last of a kind winning. The text before the first such field is the
+   subject, verbatim (`IMG_0001` stays whole), used when no folder segment supplied one; when
+   nothing precedes it, the first plain field after it is the subject (`preop_S001`). Every other
+   plain field after the first recognised one joins the `note`, space-separated. A stem with no
+   recognised field is all subject; one made only of recognised fields has no subject. Hyphens
+   never separate fields, so `S001-6-wk` is a subject named `S001-6-wk`. The date form is the
+   filename's own: the CSV's `film_date` rule (§8.2) is unchanged and still rejects `3-22-2024`.
 
 | Layout | subjectId | timepoint | view |
 |---|---|---|---|
@@ -260,6 +270,24 @@ segments strictly below the workspace root, plus the filename stem, and classifi
 | `root/CohortA/1yr/S001.png` | `CohortA` | `1 yr` | default |
 | `root/S001.png` | `S001` | `null` | default |
 | `root/IMG_0001.png` | `IMG_0001` | `null` | default |
+
+With the 2026-09-11 grammar, film date and note read from the stem too (subject, timepoint, film
+date, view, note):
+
+| Layout | subjectId | timepoint | filmDate | view | note |
+|---|---|---|---|---|---|
+| `root/sub225_post-op_3-22-2024.jpg` | `sub225` | `Post-op` | `2024-03-22` | default | `null` |
+| `root/sub225_pre-op_10-23-2023_femoral heads.jpg` | `sub225` | `Pre-op` | `2023-10-23` | default | `femoral heads` |
+| `root/sub225_6 wk_2024-04-30.jpg` | `sub225` | `6 wk` | `2024-04-30` | default | `null` |
+| `root/sub225_3-22-2024.jpg` | `sub225` | `null` | `2024-03-22` | default | `null` |
+| `root/sub225_post-op_2-30-2024.jpg` | `sub225` | `Post-op` | `null` | default | `2-30-2024` |
+| `root/P-9/sub225_post-op_3-22-2024.jpg` | `P-9` | `Post-op` | `2024-03-22` | default | `null` |
+| `root/S001-6-wk.png` | `S001-6-wk` | `null` | `null` | default | `null` |
+
+A field that only looks like a date (an impossible day, a two-digit year) is not one and lands in
+the note, where it can be seen and fixed. A film added with the picker or dropped on the list is
+read the same way, through `studyFromFile` in `screens/studies.js`, with no root and no folder
+table.
 
 "default" is the folder's row in the folder table (§8.5), which starts at `Standing lateral` and is
 whatever the user set it to before Load. The `CohortA` row is the heuristic's known weakness: a
@@ -285,7 +313,8 @@ duplicates and ambiguous stems are reported exactly as today.
 ### 8.3 Precedence
 
 Per field, per film, most specific first: an existing non-null stored value is kept; else the CSV
-value if the row supplied one; else a token in the film's own stem (§8.1 rule 3); else, for
+value if the row supplied one; else a field in the film's own stem (§8.1 rule 3 — since 2026-09-11
+the film date and the note too; the note has no CSV step); else, for
 `timepoint` and `view`, the folder table row for the folder the film sits in (§8.5) — which starts
 at the folder's own inferred token and is whatever the user set it to; else null. `view` never
 reaches null on a workspace load because its row always holds a value. `subjectId` has no folder-row
@@ -297,7 +326,8 @@ drawer overwrites anything.
 
 `workspaceLoadedMessage` gains up to three clauses, each present only when its count is non-zero:
 
-- `· subject, timepoint or view read from folder or file names for N films`
+- `· subject, timepoint, film date, view or note read from folder or file names for N films`
+  (the film date and note were added to the clause on 2026-09-11)
 - `· subject, timepoint, film date or view set from the CSV for N films`
 - `· N films have no subject` (or `no timepoint`; both when both)
 - `· N film dates could not be read` — the rejected text is stored nowhere; the film's empty Film date cell in
@@ -338,7 +368,8 @@ folder heuristic's weaknesses; a misread cohort folder shows up here as a row, n
 
 The clinical data drawer (spec §9.5) gets four fixed columns ahead of the clinical field columns,
 under a **Study** group heading: Subject (text), Timepoint (text with the §7.2 chips), Film date
-(date input), View (text with the §7.3 chips). The grid keeps its shape — one row per visible study —
+(date input), View (text with the §7.3 chips) — and, since 2026-09-11, a fifth, Note (free text,
+trimmed, empty stores null). The grid keeps its shape — one row per visible study —
 so the new cells sit beside that study's clinical values. These four columns cannot be removed and
 do not appear in the `ADD FIELD` chips, because they are not clinical fields. The same deferred
 commit pattern the clinical grid uses (HANDOFF, "two deferred commits") applies, so a rebuild does not
@@ -430,8 +461,14 @@ disabled for the same two reasons as the long one. The Analysis screen's per-stu
 
 ### 11.1 Long format
 
-`toCsv` gains three columns after `View`: `Subject`, `Timepoint`, `Film date`. Absent values are
-empty, never `0` or `—`. The comment block stays (roadmap item 1 decides whether import skips it).
+`toCsv` gains three columns after `View`: `Subject`, `Timepoint`, `Film date` — and a fourth,
+`Note`, since 2026-09-11. Absent values are empty, never `0` or `—`. The paired export gained visits
+and merging the same day (§11.2). **Since 2026-09-12 `Study ID` holds the study's name** — its film's
+stem, what every screen shows and what the workspace CSV joins a row by (`findJoinHeader`) — not the
+`SP-nnnn` record id, which is written nowhere in either file: it is shown nowhere in the app either,
+not even as a tooltip (user decision: "sp-1000 isn't anywhere in the UI so it's weird to see it when
+you hover over a study and export too"; roadmap item 2's identity decision). A record with no usable
+filename falls back to its id, as the screens do. The comment block stays (roadmap item 1 decides whether import skips it).
 
 **Clinical columns are the union of every clinical key present on the exported studies**, in
 `KNOWN_FIELDS` order then custom, using the existing union helper — not the session's visible field
@@ -441,9 +478,9 @@ The per-study export on the Analysis screen changes with it, since both call `to
 contract amendment rather than leaving a parameter that is silently ignored.
 
 ```
-Study ID,View,Subject,Timepoint,Film date,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,...,Age,Sex,ODI
-SP-1000,Standing lateral,S001,Pre-op,2025-03-02,38.2,52.1,21.4,30.7,13.9,...,61,F,44
-SP-1001,Standing lateral,S001,Post-op,2025-09-14,49.1,52.3,14.0,38.3,3.2,...,61,F,18
+Study ID,View,Subject,Timepoint,Film date,Note,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,...,Age,Sex,ODI
+SP-1000,Standing lateral,S001,Pre-op,2025-03-02,,38.2,52.1,21.4,30.7,13.9,...,61,F,44
+SP-1001,Standing lateral,S001,Post-op,2025-09-14,femoral heads,49.1,52.3,14.0,38.3,3.2,...,61,F,18
 ```
 
 ### 11.2 Paired (wide) format
@@ -462,24 +499,45 @@ in `with`, that label is the only candidate and the file collapses to the two-vi
 least one subject that gets a row has a film on it, so a label carried only by unpaired subjects adds
 no empty group.
 
-**Rows.** A subject gets a row when it has exactly one `Pre-op` film and at least one film carrying a
-visit the file writes, with exactly one film per such label. Unpaired is judged first: a subject with
-no `Pre-op` film, or with no film on any visit the file writes, is **unpaired**. A subject that could
-pair but has two films on any label the file writes (`Pre-op` included) is **ambiguous** and gets no
-row — the user relabels one (`Pre-op flexion`) in the drawer and exports again; under a single-label
-export only `Pre-op` and that label are checked, so a duplicate on another label does not matter. A
-blank cell that meant "two films, neither chosen" is the silent omission this spec forbids, which is
-why the row is dropped and named rather than written with a gap (decided 2026-09-08). A subject
-missing a visit has empty cells in that visit's columns. Rows are in order of first appearance among
+**Rows (amended 2026-09-11, user decision).** A **visit** is one subject's films on one label on one
+film date. A subject gets a row when it has exactly one `Pre-op` visit and at least one visit on a
+label the file writes. Unpaired is judged first: a subject with no `Pre-op` film, or with no film on
+any label the file writes, is **unpaired**. Two films on one visit **merge** when exactly one of them
+carries no note: that film is the primary, and a noted film (`femoral heads`) only fills the
+measurements the primary lacks; where both carry a value the primary's is kept and the column is
+listed as a **disagreement**, flagged in the toast (§11.3) and in the file. A merged visit's `PI-LL
+Mismatch` is derived from its merged PI and LL over the written one-decimal values (the delta rule), so
+the row agrees with itself whichever films they came from; when PI and LL came from different films the
+column is flagged as **derived across films** in the toast and in the file, naming the film behind each
+input (user decision 2026-09-11). Disc heights are read per film. Two same-day films that both lack a note, or both
+carry one, are **ambiguous**, as are two `Pre-op` visits on different dates; the subject gets no row
+and is named instead — the user adds a note to one film, or relabels it, and exports again. Under a
+single-label export only `Pre-op` and that label are checked, so a duplicate on another label does
+not matter. A blank cell that meant "two films, neither chosen" is the silent omission this spec
+forbids, which is why the row is dropped and named rather than written with a gap (decided
+2026-09-08). A label's visits are ordered by film date, an undated visit last, and numbered
+`<label> 1`, `<label> 2`, … when any written subject has more than one on it; every subject fills
+them from its earliest, and a label with one visit everywhere keeps its bare name. A subject with
+fewer visits than the file's columns has empty cells in the rest.
+
+Before the amendment a subject needed exactly one film per label, so a follow-up series labelled
+`Post-op` throughout (the user's practice: one label, the date on the film) never paired, and a
+second same-day film of different anatomy made the subject ambiguous. Rows are in order of first appearance among
 the input rows, so the file follows the grid as the long export does. An unsegmented film that is
 visible because segmented-only is off writes empty measurement and delta cells; it is not dropped.
 
 **Columns**, measurement-major — each parameter's trajectory is contiguous, which is the range a reader
 selects for a chart or a mean (decided 2026-09-08 over a visit-major layout, from two worked tables):
-`Subject`; then `<label> study` per visit, `Pre-op` first; then `<label> view` per visit; then
-`<label> film date` per visit; then for each of the ten measurement columns of §11.1, `<M> Pre-op`
-followed by `<M> <label>`, `Delta <M> <label>` per later visit; then for each clinical key in the
-union (§11.1's rule), `<F> <label>` per visit. Every clinical field is exported per visit rather than
+`Subject`; then `<visit> study` per visit, `Pre-op` first — the film's name, as the long export's
+`Study ID` (2026-09-12) — then `<visit> view` per visit; then
+`<visit> film date` per visit; then — only when some visit in the file merged films — `<visit>
+disagreements` per visit, the columns whose values the films disagreed on, `; `-separated, and `<visit>
+derived across films` per visit (`PI-LL Mismatch: PI from SP-1005, LL L1-S1 from SP-1004`); then for
+each of the ten measurement columns of §11.1, `<M> Pre-op` followed by `<M> <visit>`, `Delta <M>
+<visit>` per later visit; then for each clinical key in the union (§11.1's rule), `<F> <visit>` per
+visit. `<visit>` is the label, or `<label> N` when numbered (2026-09-11). A merged visit's study cell
+lists its films primary first, joined with ` + ` (`SP-1004 + SP-1005`); its view and calibration are
+the primary's; its clinical values follow the same primary-first rule. Every clinical field is exported per visit rather than
 guessing which are per-subject and which are per-visit. Headers use the stored label, never a
 `pre`/`post` shorthand, and `Delta` is spelled in ASCII, following the file's own precedent of
 `PI-LL Mismatch` for the on-screen `PI–LL`, so Excel and R read the header without a byte-order mark.
@@ -510,7 +568,9 @@ standing-versus-prone one without opening the app. They are not optional.
 
 **Where it lives.** `data/pairing.js` (new, pure): `pairStudies(rows, {post})` does the grouping and
 returns the visits, the subjects that get a row, and the report of §11.3; `pairedExportMessage` builds
-the toast from that report. `data/csv.js`: `toPairedCsv(pairing)` writes the text only — the citation
+the toast from that report. Since 2026-09-11 it also merges each visit's films per measurement column
+(reading each film through `data/csv.js`'s exported `measurementValues`) and returns `merged` and
+`disagreements`; `toPairedCsv` writes a visit's merged `values` rather than reading the films itself. `data/csv.js`: `toPairedCsv(pairing)` writes the text only — the citation
 block, the header, one row per subject — and exports its delta helper beside `round1` so comparison
 mode (plan 07) applies the same rule. `screens/parameters.js` reads `pairedOnly` and `pairedWith` from
 the filters it already has to choose `post`; no new store key, so the grid's key array is unchanged.
@@ -522,10 +582,18 @@ Both exports toast what they wrote and what they left out. The long export says 
 each present only when its count is nonzero, naming up to five subjects per clause and then an
 ellipsis (`…`):
 
+- `· N merged visits (sub225 Pre-op: 2 films, sub226 Post-op 1: 3 films)` — (2026-09-11) visits
+  built from more than one film, right after the count, so a merge is never silent;
+- `· D disagreements, the unnoted film's values kept (sub225 Pre-op: SS, LL L2-S1, LL L3-S1, +14 more)`
+  — (2026-09-11) the values a merge set aside, counted across visits; at most three columns named per
+  visit, the file's disagreements cell carrying them all;
+- `· V values derived across films (sub225 Pre-op: PI-LL Mismatch)` — (2026-09-11) a merged visit's
+  mismatch whose PI and LL came from different films; the file's cell names the films;
 - `· M unpaired (S007, S012, S020)` — subjects among the rows with no `Pre-op` film, or with no film on
   any visit the file writes (§11.2's first check);
-- `· K ambiguous (two Pre-op films: S003; two 6 wk films: S009)` — §11.2's duplicate rule, each subject
-  with the label it duplicated;
+- `· K ambiguous (two Pre-op films: S003; two 6 wk films: S009; two Pre-op visits: S010)` — §11.2's
+  duplicate rule, each subject with the label it duplicated: `films` for two same-day films neither or
+  both noted, `visits` for two `Pre-op` dates (2026-09-11);
 - `· J films with no subject` and `· L films with no timepoint` — counted, not named, since they have
   nothing to be named by; the second counts every film with a subject and no timepoint, whichever
   subject it belongs to, because such a film can never be written;
@@ -684,3 +752,23 @@ comparison pane; PDF export.
   `data/csv.js` exports its delta helper; `exportFileName(workspace, kind)` in `data/parameters.js`;
   `toastDuration(text)` in `components/toast.js`; the paired button and its note in
   `screens/parameters.js`.
+- **Filename grammar and note (2026-09-11, user decision):** §8.1 rule 3 is the underscore grammar
+  above; `Study` gains `note` (§7.1, listed in `validateStudy`); `inferFromStem` returns five
+  fields and `seedFields` seeds `filmDate` and `note` from the stem; `studyFromFile` in
+  `screens/studies.js` seeds a picked or dropped film; the drawer's fifth Study column; `toCsv`'s
+  `Note` column; `matchesQuery` searches the note; the §8.4 clause names the five fields. Records
+  whose subject the old parser stored as the whole stem are not rewritten by a load (fill-blanks
+  holds): the user deletes and re-adds those films.
+- **Paired export visits and merging (2026-09-11, user decision):** §11.2's rows rule is per visit
+  (subject + label + film date); same-day films merge under the unnoted-primary rule with
+  disagreements flagged in the toast and the file; later labels' visits are numbered by date when a
+  subject has several; `pairStudies` returns `subjects[].visits: Map<header, Visit>` (a Visit carries
+  `header`, `label`, `filmDate`, `films`, `values`, `disagreements`), `merged` and `disagreements`,
+  and `ambiguous[]` entries carry `kind`; `data/csv.js` exports `MEASUREMENT_COLUMNS` and
+  `measurementValues`; `toPairedCsv` adds the conditional `<visit> disagreements` columns. 2026-09-12:
+  both exports name a film by `studyName` (the stem) and neither writes the record id; the four
+  id tooltips (Find name cell, grid name button, drawer name cell, sidebar card) go; `fileStem` moves to
+  `data/labels.js` (re-exported by `data/csv.js`) so labels.js no longer imports csv.js. Same day,
+  later: a merged visit's `PI-LL Mismatch` is derived from the merged PI and LL and flagged when they
+  came from different films — a Visit carries `derived`, the pairing `derived`, and `toPairedCsv` the
+  conditional `<visit> derived across films` columns.

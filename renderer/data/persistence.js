@@ -173,6 +173,9 @@ function validateStudy(entry, index) {
     subjectId: optionalText(entry.subjectId),
     timepoint: optionalText(entry.timepoint),
     filmDate,
+    // (2026-09-11) the note read from the filename or typed in the drawer; optional-null like the
+    // three above, so no STORE_VERSION bump.
+    note: optionalText(entry.note),
     reviewedAt,
     thumbnail: typeof entry.thumbnail === 'string' && entry.thumbnail.startsWith('data:image/') ? entry.thumbnail : null,
     measurements: complete ? measurements : null,

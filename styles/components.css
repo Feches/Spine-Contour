@@ -461,6 +461,12 @@
   cursor: pointer;
 }
 .sidebar-open-study:hover { border-color: var(--accent); }
+/* Collapsed (2026-09-12): the icon-only form, centred like .sidebar-collapsed .nav-row. */
+.sidebar-open-study-collapsed {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+}
 .open-study-id {
   margin-top: 5px;
   font-family: 'Chivo Mono', monospace;
@@ -469,6 +475,8 @@
   letter-spacing: 0.08em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+  /* A filename has no spaces to break at; without this a 24-character name ran past the card. */
+  overflow-wrap: anywhere;
 }
 .open-study-meta {
   margin-top: 2px;

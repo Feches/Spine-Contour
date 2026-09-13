@@ -181,7 +181,7 @@ function films(n) {
 function seedingClauses(seeding) {
   if (!seeding) return '';
   const { fromFolders = 0, fromCsv = 0, noSubject = 0, noTimepoint = 0, badDates = 0 } = seeding;
-  return (fromFolders ? ` · subject, timepoint or view read from folder or file names for ${films(fromFolders)}` : '')
+  return (fromFolders ? ` · subject, timepoint, film date, view or note read from folder or file names for ${films(fromFolders)}` : '')
     + (fromCsv ? ` · subject, timepoint, film date or view set from the CSV for ${films(fromCsv)}` : '')
     + (noSubject ? ` · ${films(noSubject)} ${noSubject === 1 ? 'has' : 'have'} no subject` : '')
     + (noTimepoint ? ` · ${films(noTimepoint)} ${noTimepoint === 1 ? 'has' : 'have'} no timepoint` : '')

@@ -114,7 +114,8 @@ renderer/                         (new)
                                   clinicalUpdated}) (plan 06; §8.4 clauses 2026-09-07); the folder table (§8.5) and fixed chips
                                   for structural columns; clinicalUpdated gates the "no blank clinical fields to fill" clause
                                   (2026-09-07)
-  screens/studies.js              exports render(state), formatDate, matchesQuery, newStudy; mounts screens/parameters.js
+  screens/studies.js              exports render(state), formatDate, matchesQuery, newStudy, studyFromFile (2026-09-11: newStudy plus the
+                                  fields the film's own name supplies, for the picker and a drop); mounts screens/parameters.js
                                   under a Find | Parameters tab strip (2026-09-06); (2026-09-08) the Find tab's filter bar
                                   (workspace and folder selects over the shared keys), row ticks and select-all over the
                                   shared paramSelected, the segment button and the batch's progress group; the summary
@@ -163,19 +164,30 @@ renderer/                         (new)
   data/measurements.js            API response → display rows
   data/similarity.js              weighted distance
   data/status.js                  status derivation
-  data/csv.js                     parse, auto-map, export; toPairedCsv and delta1 (2026-09-08)
+  data/csv.js                     parse, auto-map, export; toPairedCsv and delta1 (2026-09-08); (2026-09-12) toCsv's
+                                  Study ID is studyName (the stem) and the record id is not written; fileStem now
+                                  lives in data/labels.js and is re-exported here, so labels.js imports nothing from csv.js
   data/labels.js                  how a study names itself and where it came from
   data/timepoints.js              (2026-09-07) pure: timepoint and view vocabularies, token normalisation, §7.2 sort order,
                                   parseFilmDate, the drawer's suggestion lists
   data/seeding.js                 (2026-09-07) pure: folder segments, §8.1 inference from folders and stems, folderRows for the
-                                  Workspace card's table, seedFields for the §8.3 precedence
+                                  Workspace card's table, seedFields for the §8.3 precedence; (2026-09-11) inferFromStem reads
+                                  underscore-separated fields -- subject, then timepoint/view/date in any order, then the note --
+                                  and seedFields seeds filmDate and note from the stem (spec §8.1 rule 3 amended)
   data/parameters.js              (2026-09-06) pure: columns, values, filter options, filter, sort, empty reason, export
                                   filename for the Parameters tab -- see the file header for the exported names;
                                   selection helpers toggleId/withIds/selectedVisible/rowsToExport (2026-09-07); exportFileName(workspace, kind = 'parameters') (2026-09-08);
                                   matchesLocation(study, filters) (2026-09-08)
-  data/pairing.js                 (2026-09-08) pure: pairStudies(rows, {post}) → {visits, post, subjects: [{key, subject, films: Map}],
-                                  unpaired, ambiguous, noSubject, noTimepoint, otherVisits} for the paired export (spec §11.2);
-                                  postFromFilters(filters); pairedExportMessage(pairing, savedTo) (§11.3)
+  data/pairing.js                 (2026-09-08) pure: pairStudies(rows, {post}) → {visits, post, subjects: [{key, subject, visits: Map}],
+                                  unpaired, ambiguous, noSubject, noTimepoint, otherVisits, merged, disagreements} for the paired
+                                  export (spec §11.2, amended 2026-09-11: a VISIT is subject + label + film date; `visits` are
+                                  headers, numbered `<label> N` by date when a subject has several; a subject's Map is keyed by
+                                  header and each Visit carries header, label, filmDate, films (primary first), values per
+                                  MEASUREMENT_COLUMNS, disagreements and derived (a merged visit's PI-LL mismatch is derived
+                                  from its merged PI and LL and flagged when they came from different films); same-day films
+                                  merge under the unnoted-primary rule; ambiguous entries carry kind 'films'|'visits');
+                                  postFromFilters(filters); pairedExportMessage(pairing, savedTo) (§11.3, with the merged,
+                                  disagreement and derived-across-films clauses)
   data/batch.js                   (2026-09-08) pure: planBatch({visible, selected, running}) → {ids, label, note, enabled};
                                   newBatch, advance, withStopping, isQueued, progressText, sidebarText, batchMessage;
                                   createBatchDriver({segment, getState, setState, showToast, persistenceDisabledReason})
@@ -217,6 +229,8 @@ The single record type. Demo and real studies share it exactly.
  *                                     subject; compared case-insensitively after trimming; never an MRN, never burned in
  * @property {string|null} timepoint   'Pre-op' | 'Intra-op' | 'Post-op' | 'N wk' | 'N mo' | 'N yr' | any user label (§7.2)
  * @property {string|null} filmDate    'YYYY-MM-DD', the acquisition date; never addedAt
+ * @property {string|null} note        (2026-09-11, pre-op/post-op spec §7.1 amended) free text: the filename's plain
+ *                                     fields after the recognised ones (spec §8.1 rule 3), or typed in the drawer
  * @property {string|null} reviewedAt  (2026-09-10, studies-table spec §8.1) ISO timestamp of the human review, set on the
  *                                     Analysis screen; null until marked; cleared by every write that replaces
  *                                     measurements, geometry or calibration (§8.4)
@@ -233,9 +247,9 @@ The single record type. Demo and real studies share it exactly.
 
 `status` is **derived from the record, the review mark included** — see `data/status.js` (2026-09-10).
 
-`name`, `workspaceFolder`, `subjectId`, `timepoint`, `filmDate` and `reviewedAt` are all **optional and default to `null`**, so they carry no
+`name`, `workspaceFolder`, `subjectId`, `timepoint`, `filmDate`, `note` and `reviewedAt` are all **optional and default to `null`**, so they carry no
 `STORE_VERSION` bump: a record written before they existed loads unchanged and simply reads as
-its `SP-nnnn` id with no workspace. All six must appear in `validateStudy`'s returned object or the
+its `SP-nnnn` id with no workspace. All seven must appear in `validateStudy`'s returned object or the
 saver writes them and the next load silently drops them. `id` remains the record's identity —
 it names the sidecar, keys the delete, and is the CSV's `Study ID` — so a rename is cosmetic by
 construction and can never orphan a file. The folder shown beside the workspace is **derived
@@ -650,7 +664,11 @@ export function toCsv(studies)           // → string   (2026-09-07) Study ID,V
                                          //   the Source column and the includeDemo option are gone. (2026-09-06) clinical
                                          //   columns are clinicalFieldNames() over the exported rows -- the `fields`
                                          //   parameter is gone; see the pre-op/post-op spec §11.1
-export function toPairedCsv(pairing)     // → string   (2026-09-08, spec §11.2) the wide file from data/pairing.js's pairStudies:
+export const MEASUREMENT_COLUMNS         // (2026-09-11) the export's measurement column names, the order data/pairing.js merges in
+export function measurementValues(study) // → Array<number|''>  (2026-09-11) one value per MEASUREMENT_COLUMNS entry, for data/pairing.js
+export function toPairedCsv(pairing)     // → string   (2026-09-08, spec §11.2; 2026-09-11 visits, `<visit> disagreements` and
+                                         //   `<visit> derived across films` columns when any visit merged, a merged visit's films
+                                         //   joined with ` + `) the wide file from pairStudies:
                                          //   citation block; layout-B header (every visit's `<label> study`, then every visit's
                                          //   view, then every visit's film date, then per measurement `<M> Pre-op`, `<M> <label>`,
                                          //   `Delta <M> <label>` per later visit, then `<F> <label>` per clinical key on the

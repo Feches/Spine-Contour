@@ -17,6 +17,7 @@ import { inferenceView } from '../data/inference-view.js';
 import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle, subjectLabel } from '../data/labels.js';
 import { nextId } from '../data/persistence.js';
 import { DEFAULT_VIEW } from '../data/timepoints.js';
+import { seedFields } from '../data/seeding.js';
 import {
   withIds, toggleId, selectedVisible, workspaceOptions, folderOptions, normaliseFilters, patchFilters, matchesLocation, HAND_ADDED,
 } from '../data/parameters.js';
@@ -54,12 +55,13 @@ export function formatDate(iso) {
 // user text of any shape, so the string filter below still guards the join. The study's name,
 // its workspace and its containing folder are searchable because the table shows all three and
 // a visible column you cannot search reads as broken. The subject, timepoint and film date are
-// on the Parameters grid, which the box also filters. The FULL file path is still not: only the
-// two folder names the cells actually display are matched.
+// on the Parameters grid, which the box also filters; the note is in the drawer, and is what
+// tells two same-day films of one subject apart. The FULL file path is still not: only the two
+// folder names the cells actually display are matched.
 export function matchesQuery(study, query) {
   const needle = (query ?? '').trim().toLowerCase();
   if (!needle) return true;
-  return [study.id, studyName(study), study.subjectId, study.timepoint, study.filmDate, workspaceLabel(study), folderLabel(study), study.pt, study.dx, study.view, ...Object.values(study.clinical ?? {})]
+  return [study.id, studyName(study), study.subjectId, study.timepoint, study.filmDate, study.note, workspaceLabel(study), folderLabel(study), study.pt, study.dx, study.view, ...Object.values(study.clinical ?? {})]
     .filter((value) => typeof value === 'string')
     .join(' ')
     .toLowerCase()
@@ -78,11 +80,22 @@ export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
     name: defaultName(fileName), workspaceFolder,
     // Pre-op/post-op spec §7.1: set by a workspace load, the CSV or the drawer; null until then.
     subjectId: null, timepoint: null, filmDate: null,
+    // (2026-09-11) the note: read from the filename by studyFromFile or the workspace load, or
+    // typed in the drawer; null until then.
+    note: null,
     // (2026-09-10, studies-table spec 8.1) the review mark; set on the Analysis screen, cleared by every write that changes the numbers.
     reviewedAt: null,
     addedAt: new Date().toISOString(), view: DEFAULT_VIEW, thumbnail: null,
     measurements: null, geometry: null, qc: null, clinical: {},
   };
+}
+
+// A picked or dropped film's record: newStudy plus the fields its own name supplies (spec §8.1
+// rule 3, user decision 2026-09-11). No root and no folder table, so only the stem is read and
+// the view falls to Standing lateral; a workspace load builds its records itself, with both.
+export function studyFromFile({ id, fileName, filePath }) {
+  const { fields } = seedFields({ filePath: filePath ?? fileName, root: null });
+  return { ...newStudy({ id, fileName, filePath }), ...fields };
 }
 
 // Every path that changes openId resets the per-study view state, so a study never inherits
@@ -100,7 +113,7 @@ function addStudy({ name, data, path }) {
   const id = nextId(getState().studies);
   setFilePayload(id, data);
   setState((state) => ({
-    studies: [newStudy({ id, fileName: name, filePath: path ?? null }), ...state.studies],
+    studies: [studyFromFile({ id, fileName: name, filePath: path ?? null }), ...state.studies],
     openId: id,
     screen: 'analysis',
     ...FRESH_VIEW,
@@ -284,7 +297,9 @@ function buildRow(study, runningId, selected) {
       if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openStudy(study); }
     },
   },
-    el('div', { class: 'studies-cell-id', title: study.id },
+    // No title: the SP-nnnn id keys the row (data-study-id) but is never shown to a person
+    // (user decision 2026-09-12).
+    el('div', { class: 'studies-cell-id' },
       // The tick (batch spec 7.2), on real rows only: a demo study has no film to segment, as it
       // has no delete control. The label's click stops at the label, so the row's own click does
       // not open the study; Space on the box is the box's own activation and already bypasses
@@ -299,7 +314,7 @@ function buildRow(study, runningId, selected) {
           onChange: () => setState((s) => ({ paramSelected: toggleId(s.paramSelected, study.id) })),
         })
         : null,
-      el('span', { class: 'studies-name' }, studyName(study))),
+      el('span', { class: 'studies-name study-name' }, studyName(study))),
     subjectCell(study),
     el('div', { class: 'studies-cell-view' }, study.view || '—'),
     confirming ? null : el('div', { class: 'studies-cell-workspace' }, workspaceLabel(study)),

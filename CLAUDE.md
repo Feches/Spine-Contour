@@ -1,5 +1,24 @@
 # Spine Contour
 
+**2026-09-11 filename grammar / note:** branch `claude/spine-contour-filename-parse-b6c1bb` off `fork/main` @
+`6704586` (v1.0.7). Filename stems are read as underscore-separated fields — subject, then a timepoint, view or
+`M-D-YYYY`/`YYYY-MM-DD` date in any order, then plain fields as a new `note` — by `inferFromStem`; `seedFields` seeds
+`filmDate` and `note`; `studyFromFile` seeds picked/dropped films; the drawer has a fifth NOTE column and `toCsv` a
+`Note` column. See the pre-op/post-op spec §8.1 (amended). A load never rewrites a stored subject, even one the old
+parser stored as the whole stem (user decision: delete and re-add such films). The paired export (`data/pairing.js`,
+`toPairedCsv`) now groups films into VISITS (subject + label + film date): a label's visits are numbered by date when a
+subject has several, two same-day films merge under the unnoted-primary rule, a merged visit's PI-LL mismatch is
+derived from the merged PI and LL, and every merge, disagreement and cross-film derivation is flagged in the toast and
+in the file (spec §11.2/§11.3 amended). (2026-09-12) The study name on the Find list and the Parameters grid shares
+one rule, `.study-name` at the end of `styles/screens/studies.css` (280px cap, wrap anywhere, no ellipsis; it must stay
+after `.param-open`, whose `all: unset` would erase it), and the Find list's STUDY track flexes with a floor; the
+sidebar's open-study card is an icon-only button when collapsed (`openStudyCard(state, collapsed)`). Both CSV exports
+name a film by `studyName` (the stem) — `toCsv`'s `Study ID` holds it — and the SP-nnnn record id is shown nowhere a
+person looks: not in either file, not in a tooltip (user rule 2026-09-12); `fileStem` moved to `data/labels.js`
+(re-exported by `csv.js`). **Release commit `51ecba2` (v1.0.8, 2026-09-13) is on the branch, pushed to `fork`; the user
+opens the PR to `fork/main` and merges it with Create a merge commit, which publishes the installers.** Read HANDOFF's
+first "Where things stand" section (the rulings and what was not run) and `docs/superpowers/NEXT-SESSION.md`.
+
 **2026-09-10 circle editing / confidence:** v1.0.7 supports 0/1/2 editable femoral circles and hides raw femoral masks. See `docs/releases/1.0.7.md` and the latest architecture amendment. Overall confidence is a categorical QC assessment, never a repurposed femoral percentage. Manual edits preserve original score provenance; reset restores QC too.
 
 **2026-09-10 manual reference persistence:** v1.0.5 fixes calibration before study
@@ -253,9 +272,10 @@ packages; keep `--collect-all timm` in both workflows.
 
 ## Git
 
-This worktree (`.claude/worktrees/studies-ui-updates-bb040d`, whose directory name predates this work) is on branch
-`claude/femoral-confidence-1.0.7` (2026-09-10), off `fork/codex/editable-femoral-confidence` @ `ee735e1`, merged
-with `fork/main` @ `b083d7d` (v1.0.6). Two remotes:
+This worktree (`.claude/worktrees/spine-contour-segmentation-failures-82e370`, whose directory name predates this
+work) is on branch `claude/spine-contour-filename-parse-b6c1bb` (2026-09-11 → 13), off `fork/main` @ `6704586` (v1.0.7),
+carrying the 1.0.8 release commit. The sibling worktree `studies-ui-updates-bb040d` is on `claude/wrap-2026-09-11`
+(older code — never launch the app from it while testing this branch; both read the same library). Two remotes:
 
 - `fork` → `github.com/Feches/Spine-Contour` — **push here**
 - `origin` → `github.com/mjayasur/Spine-Contour` — upstream, read-only in practice

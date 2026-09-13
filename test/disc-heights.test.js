@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { discRows } from '../renderer/data/disc-heights.js';
 import { toCsv, toPairedCsv, parse } from '../renderer/data/csv.js';
+import { pairStudies } from '../renderer/data/pairing.js';
 
 function calibratedStudy(scale = .5) {
   const vertebrae = {};
@@ -129,11 +130,16 @@ test('CSV has 15 explicit millimetre columns, calculated values and empty uncali
 });
 
 test('paired CSV uses each visit\'s own scale and deltas of the written heights; missing visits stay blank', () => {
-  const pre = calibratedStudy(.5), post = calibratedStudy(.6);
-  post.id = 'SP-1001';
-  const pairing = { visits: ['Post-op', '1 yr'], subjects: [{ subject: 'S1',
-    films: new Map([['Pre-op', pre], ['Post-op', post]]) }] };
-  const { rows, headers } = csvData(toPairedCsv(pairing));
+  const pre = { ...calibratedStudy(.5), subjectId: 'S1', timepoint: 'Pre-op' };
+  const post = { ...calibratedStudy(.6), id: 'SP-1001', subjectId: 'S1', timepoint: 'Post-op' };
+  // A second subject carries the 1 yr visit, so the file has 1 yr columns that S1 leaves blank.
+  const other = [
+    { ...calibratedStudy(.5), id: 'SP-1002', subjectId: 'S2', timepoint: 'Pre-op' },
+    { ...calibratedStudy(.5), id: 'SP-1003', subjectId: 'S2', timepoint: '1 yr' },
+  ];
+  // The pairing reads each film's heights when it is built, so it is rebuilt after a change.
+  const pairing = () => pairStudies([pre, post, ...other]);
+  const { rows, headers } = csvData(toPairedCsv(pairing()));
   assert.equal(headers.filter(h => /^(Delta )?Disc height /.test(h)).length, 75);
   const row = rows[0];
   assert.equal(row['Disc height L5-S1 middle (mm) Pre-op'], '31.3');
@@ -142,7 +148,7 @@ test('paired CSV uses each visit\'s own scale and deltas of the written heights;
   assert.equal(row['Disc height L1-L2 anterior (mm) 1 yr'], '');
   assert.equal(row['Delta Disc height L1-L2 anterior (mm) 1 yr'], '');
   post.calibration = null;
-  const missing = csvData(toPairedCsv(pairing)).rows[0];
+  const missing = csvData(toPairedCsv(pairing())).rows[0];
   assert.equal(missing['Disc height L1-L2 anterior (mm) Post-op'], '');
   assert.equal(missing['Delta Disc height L1-L2 anterior (mm) Post-op'], '');
   assert.equal(missing['Disc height L1-L2 anterior (mm) Pre-op'], '25');

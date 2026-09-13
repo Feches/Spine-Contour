@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.0.8
+
+- Read the subject, timepoint, film date and a note from a film's name on load: underscores
+  separate the fields (`sub225_post-op_3-22-2024_femoral heads`), in any order after the subject;
+  the date is `M-D-YYYY` or `YYYY-MM-DD`. A film added with the picker or dropped on the list is
+  read the same way.
+- Add a Note to each study: a fifth column in the drawer's Study group, a `Note` column in the
+  CSV export after Film date, and searchable from the Find box. It is what tells two same-day
+  films of one subject apart.
+- A film named with a date after its timepoint used to load with the whole name as its subject and
+  no timepoint, so it never paired. Such films loaded before this release keep that subject: delete
+  them and load the folder again.
+- The paired CSV now writes one column group per visit: a subject's Post-op films on different
+  dates become `Post-op 1`, `Post-op 2`, … in date order, each with its film date, instead of
+  making the subject ambiguous. Two films on the same day merge when one carries a note: the
+  film without a note leads and the noted film fills what it lacks. Every merge is flagged in
+  the toast and in a `disagreements` column beside the visit, naming the measurements the two
+  films disagreed on. A merged visit's PI-LL mismatch is computed from its merged PI and LL, and
+  a `derived across films` column beside the visit says which film supplied each when they differ.
+- Show a study's full name on the Find list, as the Parameters grid does. Both screens now share
+  one rule for the name: the same face, a 280 pixel cap, and a wrap past it instead of an
+  ellipsis, so a long filename reads in full on either screen.
+- Collapse the sidebar with a study open and the OPEN STUDY card becomes an icon-only button with
+  the name in its tooltip, instead of a filename wrapped one letter per line; expanded, a long
+  name wraps inside the card instead of running past its edge.
+- Both CSV exports now name a film by its study name, the filename without its extension, instead
+  of the SP-nnnn record id, which no longer appears anywhere a person looks: not in either file and
+  not in the tooltips over a study's name. The name is also what a workspace CSV's `study_id`
+  column must hold to match a film.
+
+[Release notes](docs/releases/1.0.8.md)
+
 ## 1.0.7
 
 - Show femoral heads as editable circles with centre marks and a bilateral midpoint; hide the raw femoral segmentation in analysis and comparison views.

@@ -7,12 +7,16 @@ import {
 } from '../renderer/data/csv.js';
 import { pairStudies } from '../renderer/data/pairing.js';
 
-function study(overrides) {
+// The film is named after the id (`SP-1000.dcm`), so the study name the exports write equals the
+// id and the row pins below read the same either way; the tests that prove the NAME is written
+// give a film a real filename.
+function study(overrides = {}) {
+  const id = overrides.id ?? 'SP-1000';
   return {
-    id: 'SP-1000',
+    id,
     source: 'real',
-    filePath: 'C:/films/a.dcm',
-    fileName: 'a.dcm',
+    filePath: `C:/films/${id}.dcm`,
+    fileName: `${id}.dcm`,
     addedAt: '2026-08-31T00:00:00Z',
     view: 'Standing lateral',
     thumbnail: null,
@@ -48,8 +52,8 @@ test('toCsv exports absent measurements as empty cells, never 0', () => {
   const csv = toCsv([study({ measurements: null })]);
   const dataLine = csv.split('\r\n').find((line) => line.startsWith('SP-1000'));
   const cells = dataLine.split(',');
-  // Study ID, View, Subject, Timepoint, Film date, then the ten measurement columns.
-  for (let i = 5; i < 5 + 10; i += 1) assert.equal(cells[i], '');
+  // Study ID, View, Subject, Timepoint, Film date, Note, then the ten measurement columns.
+  for (let i = 6; i < 6 + 10; i += 1) assert.equal(cells[i], '');
 });
 
 test('toCsv exports real measurements including the derived PI-LL mismatch column', () => {
@@ -71,9 +75,9 @@ test('toCsv writes every clinical field present on the exported studies, KNOWN_F
   ]);
   const lines = csv.split('\r\n');
   const header = lines[3].split(',');
-  // Study ID, View, Subject, Timepoint, Film date, 25 measurement columns, then the union: known
-  // fields in KNOWN_FIELDS order, then custom names in first-seen order.
-  assert.deepEqual(header.slice(30), ['Age', 'Diagnosis', 'Zeta']);
+  // Study ID, View, Subject, Timepoint, Film date, Note, 25 measurement columns, then the union:
+  // known fields in KNOWN_FIELDS order, then custom names in first-seen order.
+  assert.deepEqual(header.slice(31), ['Age', 'Diagnosis', 'Zeta']);
   const row1000 = lines[4];
   const row1001 = lines[5];
   assert.ok(row1000.startsWith('SP-1000'));
@@ -85,8 +89,28 @@ test('toCsv writes every clinical field present on the exported studies, KNOWN_F
 test('toCsv writes no clinical columns when no exported study carries a value', () => {
   const csv = toCsv([study({ clinical: {} }), study({ id: 'SP-1001' })]);
   const header = csv.split('\r\n')[3].split(',');
-  assert.equal(header.length, 30);
-  assert.equal(header[29], 'Disc height L5-S1 posterior (mm)');
+  assert.equal(header.length, 31);
+  assert.equal(header[30], 'Disc height L5-S1 posterior (mm)');
+});
+
+// The screens name a study by its film's stem (data/labels.js studyName) and the workspace CSV
+// joins a row to a film by that same stem, so the export's Study ID -- the join key -- carries
+// the stem. The SP-nnnn record id appears nowhere in the file: it is shown nowhere in the app
+// either (user decision 2026-09-12: "sp-1000 isn't anywhere in the UI").
+test('toCsv writes the study name under Study ID and never the record id', () => {
+  const csv = toCsv([study({ id: 'SP-1000', fileName: 'sub225_post-op_3-22-2024.jpg', filePath: 'C:/films/sub225_post-op_3-22-2024.jpg', clinical: { Age: '70' } })]);
+  const lines = csv.split('\r\n');
+  const header = lines[3].split(',');
+  assert.equal(header[0], 'Study ID');
+  assert.ok(!header.includes('Record ID'));
+  const cells = lines[4].split(',');
+  assert.equal(cells[0], 'sub225_post-op_3-22-2024');
+  assert.equal(cells.at(-1), '70');
+  assert.ok(!csv.includes('SP-1000'));
+  // The join column is still found, so the app's own export names its films the way a workspace CSV must.
+  assert.equal(findJoinHeader(header), 'Study ID');
+  // A record with no usable filename falls back to its id, as the screens do.
+  assert.ok(toCsv([study({ id: 'SP-1001', fileName: '' })]).split('\r\n')[4].startsWith('SP-1001,'));
 });
 
 test("toCsv ignores an excluded demo study's clinical keys when choosing the columns", () => {
@@ -95,7 +119,7 @@ test("toCsv ignores an excluded demo study's clinical keys when choosing the col
     study({ id: 'SP-0042', source: 'demo', clinical: { Notes: 'demo only' } }),
   ]);
   const header = csv.split('\r\n')[3].split(',');
-  assert.deepEqual(header.slice(30), ['Age']);
+  assert.deepEqual(header.slice(31), ['Age']);
   assert.ok(!csv.includes('demo only'));
 });
 
@@ -186,15 +210,15 @@ test('toCsv exports a real measured 0 as 0, not an empty cell', () => {
   assert.equal(dataLine[llL1Index], '0');
 });
 
-test('toCsv writes Subject, Timepoint and Film date after View, empty when absent (spec §11.1)', () => {
+test('toCsv writes Subject, Timepoint, Film date and Note after View, empty when absent (spec §11.1)', () => {
   const csv = toCsv([
-    study({ id: 'SP-1000', subjectId: 'S001', timepoint: 'Pre-op', filmDate: '2025-03-02' }),
+    study({ id: 'SP-1000', subjectId: 'S001', timepoint: 'Pre-op', filmDate: '2025-03-02', note: 'femoral heads' }),
     study({ id: 'SP-1001' }),
   ]);
   const lines = csv.split('\r\n');
-  assert.deepEqual(lines[3].split(',').slice(0, 5), ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date']);
-  assert.ok(lines[4].startsWith('SP-1000,Standing lateral,S001,Pre-op,2025-03-02,'), lines[4]);
-  assert.ok(lines[5].startsWith('SP-1001,Standing lateral,,,,'), lines[5]);
+  assert.deepEqual(lines[3].split(',').slice(0, 6), ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date', 'Note']);
+  assert.ok(lines[4].startsWith('SP-1000,Standing lateral,S001,Pre-op,2025-03-02,femoral heads,'), lines[4]);
+  assert.ok(lines[5].startsWith('SP-1001,Standing lateral,,,,,'), lines[5]);
 });
 
 // ---------------------------------------------------------------------------
@@ -706,6 +730,72 @@ test('toPairedCsv never writes a demo row and quotes a label or value that needs
   assert.ok(csv.includes('"Spondylolisthesis, grade 2"'));
   const lines = csv.split('\r\n');
   assert.equal(lines.length, 6);
+});
+
+test('toPairedCsv writes a merged visit\'s films joined with +, and a disagreements column per visit when any visit merged', () => {
+  const rows = [
+    study({ id: 'SP-1000', subjectId: 'sub225', timepoint: 'Pre-op', filmDate: '2023-10-23', measurements: { SS: 43.7, LL: { 'L1-S1': 56.0 } }, clinical: { Age: '70' } }),
+    study({ id: 'SP-1001', subjectId: 'sub225', timepoint: 'Pre-op', filmDate: '2023-10-23', note: 'femoral heads', measurements: { PI: 62.3, PT: 18.1, SS: 44.2 }, clinical: { Sex: 'M' } }),
+    study({ id: 'SP-1002', subjectId: 'sub225', timepoint: 'Post-op', filmDate: '2024-03-22', measurements: PAIR_POST }),
+  ];
+  const lines = toPairedCsv(pairStudies(rows)).split('\r\n');
+  const header = lines[3].split(',');
+  assert.deepEqual(header.slice(0, 14), [
+    'Subject', 'Pre-op study', 'Post-op study', 'Pre-op view', 'Post-op view', 'Pre-op film date', 'Post-op film date',
+    'Pre-op disagreements', 'Post-op disagreements', 'Pre-op derived across films', 'Post-op derived across films',
+    'LL L1-S1 Pre-op', 'LL L1-S1 Post-op', 'Delta LL L1-S1 Post-op',
+  ]);
+  const cells = lines[4].split(',');
+  assert.deepEqual(cells.slice(0, 9), ['sub225', 'SP-1000 + SP-1001', 'SP-1002', 'Standing lateral', 'Standing lateral', '2023-10-23', '2024-03-22', 'SS', '']);
+  // The derived-across-films cell names the column and the film each input came from; it holds
+  // a comma, so the writer quotes it.
+  assert.equal(cells[9], '"PI-LL Mismatch: PI from SP-1001');
+  assert.equal(cells[10], ' LL L1-S1 from SP-1000"');
+  assert.equal(cells[11], '');
+  // LL from the unnoted film, PI and PT from the noted one, SS from the unnoted one; the mismatch
+  // is derived from the merged PI and LL (62.3 - 56) and its delta from the written cells.
+  assert.deepEqual(cells.slice(12, 27), ['56', '49.1', '-6.9', '62.3', '52.3', '-10', '18.1', '14', '-4.1', '43.7', '38.3', '-5.4', '6.3', '3.2', '-3.1']);
+  // Clinical values merge the same way: Age from the unnoted film, Sex from the noted one.
+  assert.ok(lines[4].endsWith(',70,,M,'), lines[4]);
+  assert.equal(lines.length, 6);
+});
+
+test('toPairedCsv numbers a label\'s column groups when a subject has several visits on it, in date order, blank where a subject has fewer', () => {
+  const rows = [
+    study({ id: 'SP-1000', subjectId: 'S001', timepoint: 'Pre-op', filmDate: '2024-01-02', measurements: PAIR_PRE }),
+    study({ id: 'SP-1001', subjectId: 'S001', timepoint: 'Post-op', filmDate: '2024-05-31', measurements: PAIR_YEAR }),
+    study({ id: 'SP-1002', subjectId: 'S001', timepoint: 'Post-op', filmDate: '2024-04-30', measurements: PAIR_POST }),
+    study({ id: 'SP-1003', subjectId: 'S002', timepoint: 'Pre-op', filmDate: '2024-02-01', measurements: PAIR_PRE }),
+    study({ id: 'SP-1004', subjectId: 'S002', timepoint: 'Post-op', filmDate: '2024-06-01', measurements: PAIR_POST }),
+  ];
+  const lines = toPairedCsv(pairStudies(rows)).split('\r\n');
+  const header = lines[3].split(',');
+  assert.deepEqual(header.slice(0, 15), [
+    'Subject', 'Pre-op study', 'Post-op 1 study', 'Post-op 2 study', 'Pre-op view', 'Post-op 1 view', 'Post-op 2 view',
+    'Pre-op film date', 'Post-op 1 film date', 'Post-op 2 film date',
+    'LL L1-S1 Pre-op', 'LL L1-S1 Post-op 1', 'Delta LL L1-S1 Post-op 1', 'LL L1-S1 Post-op 2', 'Delta LL L1-S1 Post-op 2',
+  ]);
+  assert.ok(lines[4].startsWith('S001,SP-1000,SP-1002,SP-1001,Standing lateral,Standing lateral,Standing lateral,2024-01-02,2024-04-30,2024-05-31,38.2,49.1,10.9,47.5,9.3,'), lines[4]);
+  assert.ok(lines[5].startsWith('S002,SP-1003,SP-1004,,Standing lateral,Standing lateral,,2024-02-01,2024-06-01,,38.2,49.1,10.9,,,'), lines[5]);
+  // No visit merged films, so neither the disagreements nor the derived-across-films columns.
+  assert.ok(!lines[3].includes('disagreements'));
+  assert.ok(!lines[3].includes('derived across films'));
+});
+
+test('toPairedCsv names each visit\'s films by their study names, not their record ids, in the study cells and the derived-across-films cell alike', () => {
+  const rows = [
+    study({ id: 'SP-1000', fileName: 'sub225_pre-op_10-23-2023.jpg', subjectId: 'sub225', timepoint: 'Pre-op', filmDate: '2023-10-23', measurements: { SS: 43.7, LL: { 'L1-S1': 56.0 } } }),
+    study({ id: 'SP-1001', fileName: 'sub225_pre-op_10-23-2023_femoral heads.jpg', subjectId: 'sub225', timepoint: 'Pre-op', filmDate: '2023-10-23', note: 'femoral heads', measurements: { PI: 62.3, PT: 18.1 } }),
+    study({ id: 'SP-1002', fileName: 'sub225_post-op_3-22-2024.jpg', subjectId: 'sub225', timepoint: 'Post-op', filmDate: '2024-03-22', measurements: PAIR_POST }),
+  ];
+  const csv = toPairedCsv(pairStudies(rows));
+  const cells = csv.split('\r\n')[4].split(',');
+  assert.deepEqual(cells.slice(0, 3), ['sub225', 'sub225_pre-op_10-23-2023 + sub225_pre-op_10-23-2023_femoral heads', 'sub225_post-op_3-22-2024']);
+  // Study, view, film date and disagreements columns for two visits come first; the derived cell
+  // holds a comma, so it is quoted and the naive split leaves it in two pieces.
+  assert.equal(cells[9], '"PI-LL Mismatch: PI from sub225_pre-op_10-23-2023_femoral heads');
+  assert.equal(cells[10], ' LL L1-S1 from sub225_pre-op_10-23-2023"');
+  assert.ok(!csv.includes('SP-100'), 'no record id anywhere in the paired file');
 });
 
 test('toPairedCsv over a pairing with nothing written is the citation block and a Pre-op-only header', () => {

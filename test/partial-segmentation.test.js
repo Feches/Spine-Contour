@@ -5,6 +5,7 @@ import { sagittalRows, piResidual, isConsistent } from '../renderer/data/measure
 import { deriveStatus, reviewReasons } from '../renderer/data/status.js';
 import { discRows } from '../renderer/data/disc-heights.js';
 import { toCsv, toPairedCsv, parse } from '../renderer/data/csv.js';
+import { pairStudies } from '../renderer/data/pairing.js';
 import { planBatch } from '../renderer/data/batch.js';
 import { landmarkAt, nearestLandmark } from '../renderer/viewer/geometry.js';
 import { nextSelection, nudge, vertebraAt } from '../renderer/viewer/interactions.js';
@@ -89,8 +90,9 @@ test('unknown anterior orientation permits midpoint distance but withholds A/P v
   const later = structuredClone(saved);
   later.id = 'SP-9902';
   later.calibration.spacing.row_mm = 1;
-  const row = csvRow(toPairedCsv({ visits: ['Post-op'], subjects: [{ subject: 'test',
-    films: new Map([['Pre-op', saved], ['Post-op', later]]) }] }));
+  const row = csvRow(toPairedCsv(pairStudies([
+    { ...saved, subjectId: 'test', timepoint: 'Pre-op' }, { ...later, subjectId: 'test', timepoint: 'Post-op' },
+  ])));
   assert.equal(row['Disc height L1-L2 anterior (mm) Pre-op'], '');
   assert.equal(row['Delta Disc height L1-L2 anterior (mm) Post-op'], '');
   assert.equal(row['Delta Disc height L1-L2 middle (mm) Post-op'], '10');
