@@ -55,6 +55,13 @@ function predictionPath(id) {
   return path.join(app.getPath('userData'), 'predictions', `${id}.json`);
 }
 
+function embeddingPath(id) {
+  if (typeof id !== 'string' || !REAL_STUDY_ID.test(id) || Number(id.slice(3)) < 1000) {
+    throw new Error('Invalid study id.');
+  }
+  return path.join(app.getPath('userData'), 'embeddings', `${id}.json`);
+}
+
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const APP_ICON = path.join(__dirname, 'assets', 'branding', 'spinecontour-mark-dark.png');
 
@@ -269,19 +276,22 @@ ipcMain.handle('load-studies', async () => {
 
   // Share the store's own timestamp so the two names pair up on sight.
   const stamp = /\.corrupt-(\d+)$/.exec(store.quarantined);
-  const sidecarDir = `predictions.corrupt-${stamp ? stamp[1] : Date.now()}`;
+  const suffix = `.corrupt-${stamp ? stamp[1] : Date.now()}`;
+  const sidecarDir = `predictions${suffix}`;
   const root = app.getPath('userData');
-  try {
-    await fsPromises.rename(path.join(root, 'predictions'), path.join(root, sidecarDir));
-  } catch (error) {
-    // A fresh profile has no predictions/ at all. That is the normal case, not a failure.
-    if (error.code !== 'ENOENT') {
-      return {
-        ...store,
-        notice: sidecarMoveFailedNotice(store.quarantined),
-        persistenceUnsafe: true,
-        demoStudies: SHOW_DEMO_STUDIES,
-      };
+  for (const folder of ['predictions', 'embeddings']) {
+    try {
+      await fsPromises.rename(path.join(root, folder), path.join(root, `${folder}${suffix}`));
+    } catch (error) {
+      // A fresh profile has neither folder. That is the normal case, not a failure.
+      if (error.code !== 'ENOENT') {
+        return {
+          ...store,
+          notice: sidecarMoveFailedNotice(store.quarantined),
+          persistenceUnsafe: true,
+          demoStudies: SHOW_DEMO_STUDIES,
+        };
+      }
     }
   }
   return { ...store, notice: quarantineNotice(store.quarantined, sidecarDir), demoStudies: SHOW_DEMO_STUDIES };
@@ -308,12 +318,68 @@ ipcMain.handle('delete-prediction', async (_event, id) => {
   // (an antivirus scan, a synced profile, a read-only file) raises EPERM/EBUSY, and re-throwing
   // it puts an errno string and an absolute path containing the user's account name in a toast.
   const file = predictionPath(id);
-  try {
-    await fsPromises.unlink(file);
-  } catch (error) {
-    if (error.code === 'ENOENT') return;
-    throw new Error('The file is locked or the folder is not writable. Close anything that may be using it, then try again.');
+  const embedding = embeddingPath(id);
+  for (const target of [file, embedding]) {
+    try {
+      await fsPromises.unlink(target);
+    } catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw new Error('The file is locked or the folder is not writable. Close anything that may be using it, then try again.');
+    }
   }
+});
+
+// Appearance embeddings (similar-cases spec, 2026-09-12, section 11): one small file per study,
+// written once per run or Embed and read all at once when something first asks.
+ipcMain.handle('save-embedding', async (_event, id, record) => {
+  if (!record || typeof record !== 'object') throw new Error('Nothing to save.');
+  await writeJsonAtomic(embeddingPath(id), record);
+});
+
+ipcMain.handle('load-embeddings', async () => {
+  const dir = path.join(app.getPath('userData'), 'embeddings');
+  let names;
+  try {
+    names = await fsPromises.readdir(dir);
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw new Error('The saved embeddings could not be read.');
+  }
+  const records = [];
+  for (const name of names) {
+    if (!/^SP-\d{4,}\.json$/.test(name)) continue;
+    const parsed = await readJsonOrNull(path.join(dir, name));
+    if (parsed) records.push(parsed);
+    else console.warn(`embeddings: ${name} could not be read and is skipped`);
+  }
+  return records;
+});
+
+ipcMain.handle('embedding-model', async () => {
+  if (!backendBaseUrl) throw new Error('The bundled backend is not ready.');
+  const response = await fetch(`${backendBaseUrl}/embedding-model`);
+  if (response.status === 503) return null;
+  if (!response.ok) throw new Error(`The embedding model could not be read (status ${response.status}).`);
+  return response.json();
+});
+
+// The Embed batch's request (spec section 12): the sidecar's image_png and framing, never the film.
+ipcMain.handle('embed', async (_event, request) => {
+  if (!backendBaseUrl) throw new Error('The bundled backend is not ready.');
+  if (!request || typeof request.imagePng !== 'string' || !request.imagePng) throw new Error('No stored segmentation image.');
+  const bytes = Buffer.from(request.imagePng, 'base64');
+  if (bytes.byteLength === 0) throw new Error('No stored segmentation image.');
+  if (bytes.byteLength > MAX_UPLOAD_BYTES) throw new Error('The stored image exceeds 50 MB.');
+  const form = new FormData();
+  form.append('file', new Blob([bytes]), `${typeof request.id === 'string' ? request.id : 'study'}.png`);
+  if (request.framing && typeof request.framing === 'object') form.append('framing', JSON.stringify(request.framing));
+  const settings = normalizePerformance(request.performance);
+  form.append('processing_mode', settings.mode);
+  form.append('cpu_threads', String(settings.cpuThreads));
+  const response = await fetch(`${backendBaseUrl}/embed`, { method: 'POST', body: form });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.detail || `Embedding failed with status ${response.status}.`);
+  return body;
 });
 
 // The film bytes for a persisted study. Resolves null when the file is gone — that is an

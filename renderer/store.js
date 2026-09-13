@@ -28,6 +28,10 @@ let state = {
   findSort: { key: 'date', dir: 'desc' },
   openId: null,
   compareId: null,
+  // (similar-cases spec, 2026-09-12, section 11) bumped by renderer/embeddings.js on every change
+  // to the loaded embeddings map, so the Find similar tab and the Embed button repaint. The
+  // vectors themselves are never in state.
+  embeddingsVersion: 0,
 
   tab: 'meas',
   selectedLevel: null,

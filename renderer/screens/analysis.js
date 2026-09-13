@@ -18,6 +18,8 @@ import { mountMeasurements } from '../components/measurements.js';
 import { mountClinicalData } from '../components/clinical-data.js';
 import { calibrationForStudy } from '../calibration.js';
 import { preferReviewedCalibration } from '../data/calibration.js';
+import { storeEmbedding } from '../embeddings.js';
+import { embeddingRecord } from '../data/embeddings.js';
 
 const BACK_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12 H5"></path><path d="M11 6 L5 12 L11 18"></path></svg>';
 
@@ -316,6 +318,23 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       }
     }
     if (revision !== runRevision) { disposeStudyImages(images); return { ok: false, reason: 'superseded' }; }
+
+    // The embedding record (similar-cases spec, 2026-09-12, section 11), after the sidecar and
+    // before the record commit. A failed write is a warning, never a failed run; a response
+    // without an embedding (the setting off, or the stage failed) stores nothing and the Find
+    // tab's Embed button counts the study.
+    const embedding = embeddingRecord(studyId, response.embedding ?? null,
+      { sourceSha256: response.calibration?.source_sha256 ?? null });
+    if (embedding && !persistenceDisabledReason()) {
+      try {
+        await storeEmbedding(embedding);
+      } catch (error) {
+        warning = warning ? `${warning}; the appearance embedding could not be stored: ${error.message}`
+          : `the appearance embedding could not be stored: ${error.message}`;
+        if (!batch) showToast(`Saved the measurements, but ${warning}`);
+      }
+      if (revision !== runRevision) { disposeStudyImages(images); return { ok: false, reason: 'superseded' }; }
+    }
 
     // ORDER MATTERS (BD-6). setState notifies synchronously, so the module-scope
     // subscription's update() runs INSIDE the setState call below and asks the viewer to

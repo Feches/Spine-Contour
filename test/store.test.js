@@ -21,6 +21,7 @@ test('getState returns the documented initial shape', () => {
   assert.deepEqual(state.findSort, { key: 'date', dir: 'desc' });
   assert.equal(state.openId, null);
   assert.equal(state.compareId, null);
+  assert.equal(state.embeddingsVersion, 0);
   assert.equal(state.tab, 'meas');
   assert.equal(state.selectedLevel, null);
   assert.equal(state.overlays, true);

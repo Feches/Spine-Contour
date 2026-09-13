@@ -152,12 +152,40 @@ export async function savePrediction(id, response) {
   return invoke('savePrediction', id, response);
 }
 
-// Removes predictions/<id>.json. A missing sidecar resolves (the main process treats ENOENT as
-// done). Gated like every other write: after disablePersistence nothing on disk is touched,
-// because a sidecar under a reused id may belong to the library this build cannot read.
+// Removes predictions/<id>.json and embeddings/<id>.json. A missing sidecar resolves (the main
+// process treats ENOENT as done). Gated like every other write: after disablePersistence nothing
+// on disk is touched, because a sidecar under a reused id may belong to the library this build
+// cannot read.
 export async function deletePrediction(id) {
   assertWritable();
   return invoke('deletePrediction', id);
+}
+
+// Appearance embeddings (similar-cases spec, 2026-09-12, section 11). The write is gated like the
+// sidecar's; the read is not -- a refused store has no embeddings to mis-attribute, because ids
+// are validated on the way in and the map is keyed by id only for the session.
+export async function saveEmbedding(id, record) {
+  assertWritable();
+  return invoke('saveEmbedding', id, record);
+}
+
+export async function loadEmbeddings() {
+  const records = await invoke('loadEmbeddings');
+  return Array.isArray(records) ? records : [];
+}
+
+// The bundled graph's model record, or null when the backend has none installed.
+export async function embeddingModel() {
+  return invoke('embeddingModel');
+}
+
+// The Embed batch's call (spec section 12): the sidecar's image_png and framing.
+export async function embed(request) {
+  return invoke('embed', { performance: getState().performance, ...request });
+}
+
+export async function saveDataset(request) {
+  return invoke('saveDataset', request);
 }
 
 // Uint8Array of the file's bytes, or null when the file no longer exists.

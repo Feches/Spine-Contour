@@ -29,6 +29,7 @@ import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js
 import { startBatch, stopBatch } from '../batch.js';
 import { setFilePayload, releaseStudy } from './analysis.js';
 import { forgetPrediction } from '../components/viewer.js';
+import { forgetEmbedding } from '../embeddings.js';
 import { mountParameters } from './parameters.js';
 
 const DASH = '\u2014';
@@ -499,6 +500,7 @@ async function deleteStudy(id) {
     return;
   }
   forgetPrediction(id);
+  forgetEmbedding(id);
   releaseStudy(id);
   // The screen is already 'studies'. Naming it again is a no-op for the router (same value,
   // no remount) and covers the one gap the await above opens: the open study deleted from
@@ -557,7 +559,7 @@ async function deleteSelectedStudies(ids) {
   try {
     const { deleted, failed } = await deleteStudyBatch(targets, { deletePrediction });
     const removed = new Set(deleted);
-    for (const id of removed) { forgetPrediction(id); releaseStudy(id); }
+    for (const id of removed) { forgetPrediction(id); forgetEmbedding(id); releaseStudy(id); }
     setState((current) => ({
       studies: current.studies.filter((study) => !removed.has(study.id)),
       deletingStudies: false,

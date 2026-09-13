@@ -56,3 +56,12 @@ test('after disablePersistence, deletePrediction rejects without touching the br
   });
   assert.equal(touched, 0);
 });
+
+// Appended by the similar-cases plan B, Task 2. Runs after the tests above, so persistence is off.
+test('after disablePersistence, saveEmbedding rejects without touching the bridge', async () => {
+  const { saveEmbedding, persistenceDisabledReason } = await import('../renderer/api.js');
+  assert.ok(persistenceDisabledReason(), 'precondition: persistence is already disabled');
+  await withWindow({ spineContour: { saveEmbedding: async () => { throw new Error('the bridge must not be reached'); } } }, async () => {
+    await assert.rejects(saveEmbedding('SP-1000', { version: 1 }), /not being saved/);
+  });
+});
