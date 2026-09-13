@@ -88,8 +88,9 @@ Settled with the user at the brainstorm (the spec's §6) or made by the planner 
 **Files:**
 - Modify: `renderer/data/processing.js:1-7` (`DEFAULT_PERFORMANCE`, `validPerformance`)
 - Modify: `backend-client.cjs:3-13` (`normalizePerformance`)
-- Modify: `main.js:78-85` (`appendPerformance`)
+- Modify: `main.js:82-89` (`appendPerformance`; the `toolbar_removal` line is 87)
 - Modify: `renderer/components/sidebar.js:47-86` (`performanceBlock`)
+- Modify: `renderer/store.js:44` (the initial `performance`)
 - Test: `test/processing.test.js`
 
 **Interfaces:**
@@ -173,18 +174,39 @@ function normalizePerformance(value) {
       'Computes the appearance embeddings the Find similar tab ranks by, about a second per film. Off skips them; the Find tab can embed later.'),
 ```
 
+`renderer/store.js:44`, the initial `performance` — replace
+
+```js
+  performance: { mode: 'standard', cpuThreads: 2, cropLocalizer: true, toolbarRemoval: false },
+```
+
+with
+
+```js
+  performance: { mode: 'standard', cpuThreads: 2, cropLocalizer: true, toolbarRemoval: false, embeddings: true },
+```
+
+Without it `validPerformance(state.performance)` is false for the INITIAL state, and `changePerformance()` (`renderer/processing.js:22`) returns silently whenever the merged value fails validation — so on any session where `initializeProcessing()`'s `loadPerformance()` throws or returns something invalid, the whole Processing block goes inert, not just the new switch.
+
+Then update the two existing `test/processing.test.js` expectations that deep-equal a normalised object — the only intended change to old tests, and the same note Tasks 4 and 7 carry. `normalizePerformance` now adds `embeddings: true`, so an expectation without the key fails, and `validPerformance` on an object without it is now `false`:
+
+- the crop-localizer test (lines 24-27): line 24's expectation becomes `{ ...legacy, cropLocalizer: true, toolbarRemoval: false, embeddings: true }`, and line 25's fixture becomes `const off = { ...legacy, cropLocalizer: false, toolbarRemoval: false, embeddings: true };` — which carries line 26's round-trip and line 27's `validPerformance(off) === true` with it;
+- the toolbar-removal test (lines 36-40): line 36's expectation becomes `{ ...legacy, toolbarRemoval: false, embeddings: true }`, and line 38's fixture becomes `const saved = { ...legacy, toolbarRemoval, embeddings: true };` — which carries line 39's round-trip and line 40's `validPerformance(saved) === true`.
+
+Both tests' `for (const … of [null, 'false', 0, 1])` loops are unchanged: a bad `cropLocalizer` or `toolbarRemoval` still throws and still fails `validPerformance`, whatever `embeddings` does. The first test (`normalizePerformance(null)` against `DEFAULT_PERFORMANCE`) needs no change — both sides gain the key.
+
 - [ ] **Step 4: Run the suite to verify it passes**
 
 Run: `node --test test/processing.test.js`
-Expected: PASS.
+Expected: PASS — the new test and the two amended older ones. A failure on lines 24-27 or 36-40 means Step 3's test edits were skipped.
 
 - [ ] **Step 5: Run the whole unit suite and commit**
 
 Run: `node --test test/*.test.js > tools/smoke/out/b1-unit.txt 2>&1`
-Expected: PASS; the count is the baseline plus one.
+Expected: PASS; the count is the baseline plus one (Step 3 amends two existing tests, it adds none).
 
 ```bash
-git add renderer/data/processing.js backend-client.cjs main.js renderer/components/sidebar.js test/processing.test.js
+git add renderer/data/processing.js backend-client.cjs main.js renderer/components/sidebar.js renderer/store.js test/processing.test.js
 git commit -F tools/smoke/out/b1-commit.txt
 ```
 
@@ -199,7 +221,7 @@ Message: `feat: an Appearance embeddings switch in Settings, on by default, sent
 - Create: `renderer/embeddings.js`
 - Modify: `main.js` (after `delete-prediction`; `load-studies`; after `measure`), `preload.js`, `renderer/api.js`
 - Modify: `renderer/store.js` (`embeddingsVersion: 0` after `compareId`)
-- Modify: `renderer/screens/analysis.js:363-380` (the run completion), `renderer/screens/studies.js:501-502` and `:560` (the two delete paths)
+- Modify: `renderer/screens/analysis.js:312-339` (the run completion: the insertion goes after the superseded guard at 318 and before `const onScreen` at 339), `renderer/screens/studies.js:501-502` and `:560` (the two delete paths)
 - Test: `test/embeddings.test.js` (new), `test/api-persistence.test.js`, `test/store.test.js`
 
 **Interfaces:**
@@ -1244,8 +1266,8 @@ Message: `feat: the fused similarity ranking — shape, hip, alignment and appea
 
 **Files:**
 - Create: `renderer/data/outcomes.js`
-- Modify: `renderer/data/csv.js:218-221` (`KNOWN_FIELDS`), `:328-353` (`autoMap`), `:428-482` (`joinClinical`'s copy)
-- Modify: `renderer/components/clinical-data.js:398-432` (the clinical cell in `buildGrid`), `styles/screens/analysis.css` (after `.clinical-cell`)
+- Modify: `renderer/data/csv.js:218-221` (`KNOWN_FIELDS`), `:338-354` (`autoMap`; the `known` line is 339), `:428-482` (`joinClinical`'s copy)
+- Modify: `renderer/components/clinical-data.js:377-408` (the clinical cell in `buildGrid`) and `:518-522` (the rebuild's caret restore), `styles/screens/analysis.css` (after `.clinical-cell`)
 - Test: `test/outcomes.test.js` (new), `test/csv.test.js`
 
 **Interfaces:**
@@ -1558,7 +1580,18 @@ In `renderer/components/clinical-data.js`, import `{ isOutcomeField, isOutcomeDa
   }
 ```
 
-The rebuild's typing restore reads `active.value` and `selectionStart` off a `.clinical-cell`; a `<select>` has `value` and no `selectionStart`, which the existing null-caret branch already handles. `setValue` stores the string exactly as given, so the select writes `Yes`/`No` and the date cell writes what was typed (spec 9.2: kept as typed, flagged).
+The rebuild's typing restore snapshots `active.value` and `active.selectionStart` off any focused `.clinical-cell` (`clinical-data.js:446`), which the outcome `<select>` now is. `HTMLSelectElement` has no `selectionStart`, so it reads `undefined`, not `null`; the guard at `clinical-data.js:518-522` tests `!== null`, which `undefined` passes, and the call that follows throws on a node with no `setSelectionRange` — inside `rebuild()`, inside a store notification, where `store.js` swallows the subscriber's error and leaves the drawer half-built with only a console line. Replace those five lines with:
+
+```js
+        // Text controls carry a caret; a date cell reports a null selection and is skipped here. An
+        // outcome <select> (spec 9.2) reports `undefined` rather than null and has no
+        // setSelectionRange at all, so the guard is loose on both ends and checks for the method.
+        if (typed.selectionStart != null && typed.selectionEnd != null && typeof field.setSelectionRange === 'function') {
+          field.setSelectionRange(typed.selectionStart, typed.selectionEnd);
+        }
+```
+
+`setValue` stores the string exactly as given, so the select writes `Yes`/`No` and the date cell writes what was typed (spec 9.2: kept as typed, flagged).
 
 In `styles/screens/analysis.css`, after the `.clinical-cell` rules, add:
 
@@ -1590,7 +1623,7 @@ Message: `feat: the outcome registry — fusion extension, its date and the last
 
 **Files:**
 - Modify: `renderer/data/csv.js` (after `autoMap`: `KEEP_NAME`, `keepColumnName`, `keepUnmapped`, `keepableCount`)
-- Modify: `renderer/screens/workspace.js:423-470` (`buildMappingCard`), `styles/screens/workspace.css`
+- Modify: `renderer/screens/workspace.js:427-490` (`buildMappingCard`; the chip container `workspace-chip-row`, where `bulk` goes, is line 484), `styles/screens/workspace.css`
 - Test: `test/csv.test.js`
 
 **Interfaces:**
@@ -1771,7 +1804,7 @@ Message: `feat: keep an unknown CSV column under its own name, one at a time or 
 
 **Files:**
 - Create: `renderer/components/similar.js`
-- Modify: `renderer/store.js` (`similarScope`, `similarRank` after `tab`), `renderer/screens/analysis.js:552-561` (the placeholder host) and `:700-712` (`update()`), `styles/screens/analysis.css` (after `.analysis-similar.is-hidden`)
+- Modify: `renderer/store.js` (`similarScope`, `similarRank` after `tab`), `renderer/screens/analysis.js:553-576` (the placeholder host at 553-554; `mountClinicalData(clinicalHost)`, which `mountSimilar` follows, is 576) and `:703-714` (`update()`; `clinical.update()` is 714), `styles/screens/analysis.css` (after `.analysis-similar.is-hidden`)
 - Test: `test/store.test.js`; the DOM in Task 10's smoke suite and Task 11's gate
 
 **Interfaces:**
@@ -2387,16 +2420,19 @@ This is the plan's one large DOM task. The behaviour below is normative; where `
    }
    ```
    and delete the module-level function once `grep -n "currentStudy" renderer/components/viewer.js` shows every caller is inside the mount.
-3. View state: the primary keeps reading and writing the store's `zoom`, `panX`, `panY`; the compare pane keeps its own `const local = { zoom: 1, panX: 0, panY: 0 }`. Introduce two closures used at every zoom/pan read and write — `handleWheel` (`zoomAbout`), `startPan`, the pan branch of `handlePointerMove`, the toolbar's zoom out/in/fit buttons, and `applyTransform(state)`:
+3. View state: the primary keeps reading and writing the store's `zoom`, `panX`, `panY` and `panMode`; the compare pane keeps its own `const local = { zoom: 1, panX: 0, panY: 0, panMode: false }`. `panMode` is localised exactly like the other three — it is a store key today (`store.js:39`), so a shared one would make the compare toolbar's Pan toggle light up the primary's stage as well; the store's `panMode` stays the primary's. The two remaining `panMode` writes stay `setState`: `editButton`'s `setState({ editing: true, panMode: false })` (`viewer.js:164`) and `addCircle`'s (`viewer.js:662`) are edit-only paths the compare role never reaches, and the first also writes `editing`, which `writeView`'s compare branch would drop. Introduce two closures used at every other zoom, pan and pan-mode read and write — `handleWheel` (`zoomAbout`), `startPan`, the pan branch of `handlePointerMove`, the toolbar's zoom out/in/fit buttons, the toolbar's Pan toggle (`panButton`, `viewer.js:151`), `handlePointerDown`'s pan test (`viewer.js:455`), `applyTransform(state)` (`viewer.js:901-904`, which toggles `is-pan-mode` and the Pan button's `is-active`/`aria-pressed`), and `updateViewer`'s `dynamicKey` (`viewer.js:984`, whose last entry reads `state.zoom` from `getState()` today — in the compare role that gate would track the PRIMARY's zoom, so it must read `viewState().zoom`):
    ```js
    function viewState() {
      const state = getState();
-     return role === 'compare' ? { ...state, zoom: local.zoom, panX: local.panX, panY: local.panY } : state;
+     return role === 'compare'
+       ? { ...state, zoom: local.zoom, panX: local.panX, panY: local.panY, panMode: local.panMode }
+       : state;
    }
    function writeView(update) {
      if (role === 'compare') {
        const next = typeof update === 'function' ? update(viewState()) : update;
        local.zoom = next.zoom ?? local.zoom; local.panX = next.panX ?? local.panX; local.panY = next.panY ?? local.panY;
+       local.panMode = next.panMode ?? local.panMode;
        applyTransform(viewState());
        redrawDynamic(liveGeometry());
      } else {
@@ -2404,11 +2440,13 @@ This is the plan's one large DOM task. The behaviour below is normative; where `
      }
    }
    ```
-   Every `setState((s) => ({ zoom: ... }))`, `setState({ zoom: 1, panX: 0, panY: 0 })` and `setState((s) => zoomAbout(s, ...))` in the zoom/pan paths becomes `writeView(...)`; `applyTransform(state)` in `updateViewer` receives `viewState()`; `startPan` baselines from `viewState()`; `handleWheel`'s `before`/`after` read `viewState()`.
-4. Read-only: in the compare role the toolbar has zoom out, the label, zoom in, fit, a divider, the pan toggle, the overlay toggle and the fill slider — no edit button, no re-run button, no edit bar; `describeCard` returns `null` unless `filmStatus` is `'loading'` or `'missing'` (the `LOADING` and `FILM UNAVAILABLE` cards, the latter without a button); `handleKeyDown` is not attached; `handlePointerDown` treats a primary-button press as a pan only when `state.panMode`, never as a handle press, a retrace point or a click selection; `handleClick` does nothing; `setRunHandler` stores nothing and the run button is never shown.
+   Every `setState((s) => ({ zoom: ... }))`, `setState({ zoom: 1, panX: 0, panY: 0 })`, `setState((s) => zoomAbout(s, ...))` and the Pan toggle's `setState((s) => ({ panMode: !s.panMode }))` becomes `writeView(...)`; `applyTransform(state)` in `updateViewer` receives `viewState()`; `startPan` baselines from `viewState()`; `handleWheel`'s `before`/`after` read `viewState()`; `handlePointerDown` tests `viewState().panMode`; and `dynamicKey`'s last entry is `viewState().zoom`.
+4. Read-only: in the compare role the toolbar has zoom out, the label, zoom in, fit, a divider, the pan toggle, the overlay toggle and the fill slider — no edit button, no re-run button, no edit bar. The pan toggle is the compare pane's own: its click is `writeView((s) => ({ panMode: !s.panMode }))`, and `applyTransform(viewState())` repaints its own `is-active`/`aria-pressed` from `local.panMode`, so the two stages light up independently. `describeCard` returns `null` unless `filmStatus` is `'loading'` or `'missing'` (the `LOADING` and `FILM UNAVAILABLE` cards, the latter without a button); `handleKeyDown` is not attached; `handlePointerDown` treats a primary-button press as a pan only when `viewState().panMode`, never as a handle press, a retrace point or a click selection; `handleClick` does nothing; `setRunHandler` stores nothing and the run button is never shown.
 5. The chip: in the compare role `chip` holds `chipId` (the study id), `chipMatch` (`{match}%` when `updateViewer` is given a match, else empty) and `chipClose`, a `button.viewer-chip-close` with `aria-label: 'Stop comparing'` whose click is `setState({ compareId: null })`. `updateViewer(study, { match = null } = {})` writes `chipMatch.textContent = match === null ? '' : `${match}%``.
 6. `footerText` is unchanged (it reads the study it is given).
 7. `detach()` also removes the chip close listener; nothing else changes.
+8. The dragged label offsets become per-mount. `labelOffsets` and `labelStudyId` are module scope today (`viewer.js:52-53`), `updateViewer` clears them whenever `study.id !== labelStudyId` (`viewer.js:943-946`) and `detach()` resets them (`viewer.js:891-892`). With two mounts calling `updateViewer` with DIFFERENT studies on every store notification, that pair thrashes and the primary's dragged construction labels snap back on every update while comparison mode is on. Move both declarations inside `mountViewer` so each pane owns its own — they are already per-study state, so this is a pure move — and let `detach()` reset the mount's own.
+9. The rest of viewer.js's transient state stays SHARED and is left at module scope: `drag`, `suppressClick`, `hover`, `retracing`, `tracePoints` and `tracePointPointer` (`viewer.js:41-49`). The invariant that makes that safe is one live pointer gesture at a time — the compare role can only ever start a pan drag (item 4), so the two mounts cannot both own a gesture — and the compare role's `handlePointerMove` never sets `hover`, so hover state cannot cross mounts. `detach()`'s reset of the shared state (`viewer.js:884-890`) is acceptable for the same reason: the compare mount is detached only in `teardown()`, beside the primary. Do not add a compare-only `detach()` call anywhere else.
 
 Smoke and gate check every item above; `test/interactions.test.js` and `test/canvas.test.js` stay green because nothing in `viewer/*` changes.
 
@@ -2511,7 +2549,29 @@ function visibleStudies(state) {
 1. Imports: `findSimilar` from `'../data/similarity.js'`, `embeddingsMap` from `'../embeddings.js'`.
 2. Two pane hosts inside `viewerHost`: `const primaryHost = el('div', { class: 'analysis-pane analysis-pane-primary' }); const compareHost = el('div', { class: 'analysis-pane analysis-pane-compare is-hidden' }); const viewerHost = el('div', { class: 'analysis-viewer-host' }, primaryHost, compareHost);` The primary viewer mounts into `primaryHost`; `const compareViewer = mountViewer(compareHost, { role: 'compare' });` beside it. `teardown()` also calls `mounted.compareViewer.detach()` and disposes the compare images.
 3. The compare film: a `restoreCompareFilm(compareId)` sibling of `restoreFilm` — reads the sidecar (gated by `persistenceDisabledReason()` the same way), decodes it with `loadStudyImages`, checks that `getState().compareId` is still the id and the record's `addedAt` unchanged, hands the bitmaps to `compareViewer.setImages`, keeps them in a `compareImages` closure variable, and disposes the previous set. `compareViewer.setFilmStatus('loading')` before the read and `'missing'` when the sidecar is absent. Triggered from `update()` whenever `compareId` changes (`lastCompareId` closure variable), disposed when it becomes null.
-4. `update()`: `const other = live.compareId && live.compareId !== open.id ? live.studies.find((s) => s.id === live.compareId) ?? null : null;` then `compareHost.classList.toggle('is-hidden', !other); panel.classList.toggle('is-comparing', Boolean(other)); compareBadge.hidden = !other; if (other) { compareBadge.textContent = `COMPARING · ${other.id}`; }`. The match for the chip: `const match = other ? findSimilar(open, live.studies, { scope: 'all', mode: live.similarRank, embeddings: embeddingsMap(), n: Infinity }).matches.find((m) => m.study.id === other.id)?.match ?? null : null;` and `if (other) compareViewer.updateViewer(other, { match });`. `measurementsPanel.updateMeasurements(open, other);`.
+4. `update()`: `const other = live.compareId && live.compareId !== open.id ? live.studies.find((s) => s.id === live.compareId) ?? null : null;` then `compareHost.classList.toggle('is-hidden', !other); panel.classList.toggle('is-comparing', Boolean(other)); compareBadge.hidden = !other; if (other) { compareBadge.textContent = `COMPARING · ${other.id}`; }`. The match for the chip is the card's own figure, computed in the card's own scope and memoised. Two more closure variables beside `lastCompareId`, and a reference comparison (`analysis.js` has no `sameKey` helper of its own):
+   ```js
+   let lastMatchKey = null;
+   let lastMatch = null;
+   const sameMatchKey = (a, b) => a !== null && b !== null && a.length === b.length && a.every((v, i) => v === b[i]);
+   ```
+   and in `update()`:
+   ```js
+   let match = null;
+   if (other) {
+     const matchKey = [live.studies, live.openId, live.compareId, live.similarRank, live.similarScope, live.embeddingsVersion];
+     if (sameMatchKey(matchKey, lastMatchKey)) {
+       match = lastMatch;
+     } else {
+       match = findSimilar(open, live.studies, { scope: live.similarScope, mode: live.similarRank, embeddings: embeddingsMap(), n: Infinity })
+         .matches.find((m) => m.study.id === other.id)?.match ?? null;
+       lastMatchKey = matchKey;
+       lastMatch = match;
+     }
+     compareViewer.updateViewer(other, { match });
+   }
+   ```
+   `scope: live.similarScope`, never a fixed `'all'`: `medianScale` normalises each block over the candidate pool, so under `This workspace` an `'all'` pool gives the pair a different `d` and the chip a different percentage than the card that opened it. And the memo is not optional: `update()` is the module-scope subscription that runs on EVERY store notification, pan frames included (the BD-2 comment at `analysis.js:115-119`), while `findSimilar` recomputes `vector()` — 22 points centred and normalised — for every study in the library at `n: Infinity`. Then `measurementsPanel.updateMeasurements(open, other);`.
 5. The badge: `const compareBadge = el('div', { class: 'eyebrow analysis-compare', hidden: true, 'data-similar-key': 'comparing' });` placed in the header after `statusHost`.
 6. Hygiene: `compareId` is nulled by every writer of `openId` — in `screens/studies.js`, `openStudy`, `addStudy` and the single-delete `setState` (add `compareId: null` to each patch; the bulk delete already does it) — and the Analysis header's back button leaves it alone (returning to the same study keeps the comparison). A `compareId` that names no study, or names the open study, renders as not comparing and never throws.
 
@@ -2556,11 +2616,11 @@ Message: `feat: comparison mode — a second read-only pane, the other column an
 
 **Files:**
 - Create: `renderer/data/dataset.js`
-- Modify: `main.js` (after `save-csv`: `save-dataset`), `renderer/screens/parameters.js:88-100` (a third export), `:198-232` (the button and note), `styles/screens/studies.css` (nothing new unless the group wraps badly)
+- Modify: `main.js` (after `save-csv`: `save-dataset`), `renderer/screens/parameters.js:93-102` (`exportPaired`, beside which the third export goes), `:198-235` (the buttons and the note; the `param-export-group` line, edited last, is 235), `styles/screens/studies.css` (nothing new unless the group wraps badly)
 - Test: `test/dataset.test.js` (new)
 
 **Interfaces:**
-- Consumes: `toCsv`, `toPairedCsv`, `clinicalFieldNames` (`csv.js`); `pairStudies`, `postFromFilters` (`pairing.js`, by visit since v1.0.8: `subjects[].visits` is a Map keyed by header, `Pre-op` first, each visit `{header, label, filmDate, films, values, disagreements, derived}` with films primary first; `pairing.visits` the later headers; `pairing.merged` the multi-film visits); `studyName`, `lastSegment` (`labels.js`); `resolveOutcomes`, `OUTCOMES`, `FOLLOW_UP_FIELD` (Task 4); `vector`, `alignment`, `subjectFilms`, `LANDMARK_ORDER`, `ALIGNMENT_ORDER`, `ALIGNMENT_WEIGHTS` (Task 3); `validEmbedding` (Task 2); `APP_VERSION` from `data/version.js` (check its export name with `cat renderer/data/version.js` — two lines); `rowsToExport`, `exportFileName` (`parameters.js`); `saveDataset` (api, Task 2); `ensureEmbeddings`, `embeddingsMap`, `bundledModelSha` (Task 2).
+- Consumes: `toCsv`, `toPairedCsv`, `clinicalFieldNames` (`csv.js`); `pairStudies`, `postFromFilters` (`pairing.js`, by visit since v1.0.8: `subjects[].visits` is a Map keyed by header, `Pre-op` first, each visit `{header, label, filmDate, films, values, disagreements, derived}` with films primary first; `pairing.visits` the later headers; `pairing.merged` the multi-film visits); `studyName`, `lastSegment` (`labels.js`); `resolveOutcomes`, `OUTCOMES`, `FOLLOW_UP_FIELD` (Task 4); `vector`, `alignment`, `subjectFilms`, `LANDMARK_ORDER`, `ALIGNMENT_ORDER`, `ALIGNMENT_WEIGHTS` (Task 3); `validEmbedding` (Task 2); `VERSION_LABEL` from `data/version.js` (two lines: `export const VERSION_LABEL = 'v1.0.8';` — there is no `APP_VERSION`, and the label carries a leading `v` the manifest must not); `rowsToExport`, `exportFileName` (`parameters.js`); `saveDataset` (api, Task 2); `ensureEmbeddings`, `embeddingsMap`, `bundledModelSha` (Task 2).
 - Produces: `buildDataset({ rows, post, embeddings, bundledSha, version, now }) -> { folder, files: { 'films.csv', 'subjects.csv', 'vectors.json', 'manifest.json' }, counts, pairing }` (`counts` has `mergedVisits`; `vectors.json`'s `films` is an array in `films.csv` row order, each with `name`, the study name); `datasetMessage(result, folder) -> string`; the IPC `save-dataset({ folder, files })` → the folder's absolute path, or `null` on cancel.
 
 - [ ] **Step 1: Write the failing tests**
@@ -2599,9 +2659,14 @@ const rows = [
 const embeddings = new Map([['SP-1000', embedding('SP-1000')], ['SP-1001', embedding('SP-1001', 'old')]]);
 const built = () => buildDataset({ rows, post: '__any__', embeddings, bundledSha: 'abc', version: '1.0.8', now: new Date('2026-09-12T20:00:00.000Z') });
 
-test('the folder name carries the workspace label and the date', () => {
+test('the folder name carries the workspace label and the date, reduced to what save-dataset accepts', () => {
   assert.equal(built().folder, 'films-dataset-2026-09-12');
   assert.equal(buildDataset({ rows: [], post: '__any__', embeddings: new Map(), bundledSha: null, version: '1', now: new Date('2026-09-12T20:00:00.000Z') }).folder, 'library-dataset-2026-09-12');
+  // An ordinary Windows folder carries brackets; save-dataset accepts only
+  // /^[A-Za-z0-9][A-Za-z0-9 ._-]*$/, so the label is reduced here rather than refused there.
+  const bracketed = [{ ...rows[0], workspaceFolder: 'C:\\Fusion 2025 (v2)' }];
+  assert.equal(buildDataset({ rows: bracketed, post: '__any__', embeddings: new Map(), bundledSha: null, version: '1', now: new Date('2026-09-12T20:00:00.000Z') }).folder,
+    'Fusion 2025 v2-dataset-2026-09-12');
 });
 
 test('films.csv is toCsv plus the provenance, then the resolved outcome columns, one row per real film named by study name', () => {
@@ -2811,11 +2876,25 @@ function provenanceCells(study, embeddings, bundledSha) {
   ];
 }
 
+// main.js's save-dataset handler accepts /^[A-Za-z0-9][A-Za-z0-9 ._-]*$/ and nothing else, and an
+// ordinary workspace folder is `Fusion 2025 (v2)`: unreduced, the user would see `Could not export:
+// Nothing to export.` on a perfectly good library. Every run of other characters becomes one space,
+// whitespace collapses, and a leading non-alphanumeric goes -- the sibling reduction
+// exportFileName (renderer/data/parameters.js:381) already applies to a suggested file name.
+function folderLabel(segment) {
+  const cleaned = String(segment ?? '')
+    .replace(/[^A-Za-z0-9 ._-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[^A-Za-z0-9]+/, '');
+  return cleaned === '' ? 'library' : cleaned;
+}
+
 export function buildDataset({ rows, post, embeddings, bundledSha, version, now = new Date() }) {
   const real = (rows ?? []).filter((study) => study.source === 'real');
   const date = now.toISOString().slice(0, 10);
   const roots = new Set(real.map((s) => (typeof s.workspaceFolder === 'string' && s.workspaceFolder !== '' ? s.workspaceFolder : null)).filter((r) => r !== null));
-  const label = roots.size === 1 ? (lastSegment([...roots][0]) || 'library') : 'library';
+  const label = roots.size === 1 ? folderLabel(lastSegment([...roots][0])) : 'library';
   const folder = `${label}-dataset-${date}`;
 
   const filmsCsv = appendColumns(toCsv(real), [...PROVENANCE_COLUMNS, ...RESOLVED_COLUMNS],
@@ -2953,7 +3032,7 @@ ipcMain.handle('save-dataset', async (_event, request) => {
 });
 ```
 
-`renderer/screens/parameters.js`: import `{ saveDataset }` from `'../api.js'`, `{ buildDataset, datasetMessage }` from `'../data/dataset.js'`, `{ ensureEmbeddings, embeddingsMap, bundledModelSha }` from `'../embeddings.js'`, and the app version from `'../data/version.js'` (its export name from `cat renderer/data/version.js`). Beside `exportPaired`, add:
+`renderer/screens/parameters.js`: import `{ saveDataset }` from `'../api.js'`, `{ buildDataset, datasetMessage }` from `'../data/dataset.js'`, `{ ensureEmbeddings, embeddingsMap, bundledModelSha }` from `'../embeddings.js'`, and `{ VERSION_LABEL }` from `'../data/version.js'` — that is the only export the file has, and its value is `'v1.0.8'`, so the leading `v` is stripped on the way into the manifest, which reads `1.0.8`. Beside `exportPaired`, add:
 
 ```js
   // The research dataset over the same rows (similar-cases spec section 13): a folder, four
@@ -2962,7 +3041,7 @@ ipcMain.handle('save-dataset', async (_event, request) => {
     if (rows.filter((study) => study.source === 'real').length === 0) return;
     try {
       await ensureEmbeddings();
-      const built = buildDataset({ rows, post: postFromFilters(filters), embeddings: embeddingsMap(), bundledSha: bundledModelSha(), version: APP_VERSION });
+      const built = buildDataset({ rows, post: postFromFilters(filters), embeddings: embeddingsMap(), bundledSha: bundledModelSha(), version: VERSION_LABEL.replace(/^v/, '') });
       const folder = await saveDataset({ folder: built.folder, files: built.files });
       if (folder) showToast(datasetMessage(built, folder));
     } catch (error) {
@@ -3007,9 +3086,9 @@ Message: `feat: Export dataset writes the per-film and per-pair tables, every ve
 
 **Files:**
 - Create: `tools/smoke/smoke-similar.mjs`
-- Modify: `tools/smoke/README.md` (a section and the baseline table)
+- Modify: `tools/smoke/README.md` (a section, and the **Known baseline** prose paragraph at line ~267 — there is no baseline table)
 
-The suite follows `smoke-parameters.mjs`'s shape: `connect()`, injected records straight into the store, `check(name, ok, detail)`, results printed as JSON, cleanup in `finally`. Precondition: the app is running from source on a scratch profile, any screen; the backend need not have the graph (the suite injects `embeddings/` records through the page's own module).
+The suite follows `smoke-parameters.mjs`'s shape: `connect()`, injected records straight into the store, `check(name, ok, detail)`, one `PASS`/`FAIL` line per check and then the `N/M checks passed` tally (NOT a JSON object — only `smoke-partial-segmentation.mjs` and `smoke-processing.mjs` do that), cleanup in `finally`. Precondition: the app is running from source on a scratch profile, any screen; the backend need not have the graph (the suite injects `embeddings/` records through the page's own module).
 
 - [ ] **Step 1: Write the suite**
 
@@ -3028,7 +3107,14 @@ Sections, each a `check` group, selectors by `data-similar-key`, `data-find-key`
 11. **Export dataset.** Parameters tab: `[data-param-key="export-dataset"]` enabled; the button's `datasetMessage` cannot be driven through the native folder picker over CDP — instead call `buildDataset` through the page's own module over the visible rows and assert the four keys, the row counts, and that `films.csv` names its rows by study name and contains no path, no extension and no `SP-` record id.
 12. **Cleanup** in `finally`: `forgetEmbedding` for the injected ids, remove the records, reset `compareId`, `tab`, `similarScope`, `similarRank`.
 
-Print `{ passed, failed, results }` and exit non-zero on a failure, as the other suites do.
+Close exactly as `smoke-parameters.mjs` and `smoke-studies.mjs` close — one line per check, then the tally, then the exit code — so the new suite's output is greppable by the same convention:
+
+```js
+for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.ok ? '' : `  -> ${JSON.stringify(r.detail)}`}`);
+const failed = results.filter((r) => !r.ok).length;
+console.log(`${results.length - failed}/${results.length} checks passed`);
+process.exit(failed ? 1 : 0);
+```
 
 - [ ] **Step 2: Run it**
 
@@ -3048,7 +3134,7 @@ Expected: `smoke-similar.mjs` all green; the three existing suites at their READ
 
 - [ ] **Step 3: Record the baseline and commit**
 
-Add a `smoke-similar.mjs` row to `tools/smoke/README.md`'s baseline table with its count and the sequencing note (DOM-only, no backend graph needed, injects `embeddings/` records and removes them).
+`tools/smoke/README.md`'s baselines are a prose paragraph, not a table: the second **Known baseline** paragraph (line ~267, the one that opens `unit 505/505`). Add `smoke-similar.mjs` and its count to that paragraph as one more clause, with the sequencing note (DOM-only, no backend graph needed, injects `embeddings/` records and removes them) — and correct its stale `unit 505/505` to the count actually measured here, which is also the number the ledger recorded as the baseline before Task 1 (the plan's Global Constraints say 542 on the authority of fork PR #21; the README says 505; neither is trusted, the measured one is written).
 
 ```bash
 git add tools/smoke/smoke-similar.mjs tools/smoke/README.md
@@ -3085,7 +3171,10 @@ The orchestrator runs this itself: launch from source on the user's real library
 - Modify: `CLAUDE.md` (the branch paragraph at the top; the "Read these first" table gains the spec and the two plans)
 - Modify: this plan's `## Ledger`
 
-- [ ] **Step 1: Write the contract amendment** — one section `## 2026-09-12 amendment: similar cases and outcomes (stage 1)` carrying the spec's §16 items 1–11 with the final signatures from Tasks 2–9, and the `renderer/data/similarity.js` block replaced by the one in Task 3's Interfaces.
+- [ ] **Step 1: Write the contract amendment** — one section `## 2026-09-12 amendment: similar cases and outcomes (stage 1)` carrying the spec's §16 items 1–11 with the final signatures from Tasks 2–9, and three edits to the body the amendment supersedes. The contract wins over this plan, so a block it still pins wrongly is not a documentation debt but a contradiction:
+  1. The `renderer/data/similarity.js` block (contract lines 637-651 — `WEIGHTS`, `vector → [LL, PI, PT, SS, PI-LL]`, `distance`, `matchScore(a, b) → 58..100`, `findSimilar(study, all, n = 3)`) is replaced by the one in Task 3's Interfaces.
+  2. The `renderer/data/csv.js` block (contract 652-720): `KNOWN_FIELDS` (the export at 657-658) is replaced by Task 4's twelve names in order, `KEEP_NAME`, `keepColumnName`, `keepUnmapped` and `keepableCount` join the code fence after `autoMap`, and the mapping-card paragraph (706-710, "a `<select>` of `KNOWN_FIELDS` plus `Unmapped`") gains the `Keep column name (<header>)` option, the `Keep N unmapped columns` bulk action and `Set all… → Unmapped` from Task 5.
+  3. One paragraph recording that v1.0.8 (fork PR #21, merged 2026-09-13) made pairing by visit and identity by study name, pointing at the pre-op/post-op spec's amended §11.2 — a POINTER, not a rewrite: that gap predates this plan (the contract's last amendment is `## 2026-09-10 amendment: editable femoral circles and image confidence (v1.0.7)` at line 1140) and a full v1.0.8 amendment is a separate piece of work this plan does not take on.
 - [ ] **Step 2: Update the spec's status line, HANDOFF, ROADMAP and CLAUDE.md** as listed.
 - [ ] **Step 3: Fill the ledger** — one entry per task: the commit, the counts, the reviewer's findings and how each was settled; the gate's answers and the checks not run; every ruling made on the way.
 - [ ] **Step 4: Run the whole unit suite one last time and commit**
@@ -3120,3 +3209,5 @@ Message: `docs: similar cases and outcomes, stage 1 — the contract amendment, 
 Session ended 2026-09-12 (the planning session): resume at **Plan A Task 1**, then this plan's Task 1; nothing started, no fix round, no open finding. The spec is at `2c145bf` on `claude/image-similarity-visualization-400922`; the rulings made while planning are above, each with its cost.
 
 Filled during execution: one entry per task — the commit, the counts, the reviewer's findings and how each was settled; the gate's answers and the checks not run; every ruling made on the way.
+
+**Pre-flight scan (2026-09-13, before Plan A Task 1)** — every anchor above checked against the working tree at `caa0fe8` (v1.0.8 base + docs) by a read-only Opus scan: 94 anchors, 79 matching, 10 line drifts, nothing missing, and 13 findings, each verified against the tree by the controller. The one amendment pass (this commit) folds fourteen rulings, each with its cost if wrong: **R1** `data/version.js` exports `VERSION_LABEL` (`'v1.0.8'`), so Task 9 strips the `v` for the manifest. **R2** `buildDataset` reduces the folder label to what `save-dataset`'s pattern accepts (`Fusion 2025 (v2)` → `Fusion 2025 v2`). **R3** `labelOffsets`/`labelStudyId` move into the viewer mount closure (they were module scope, and two mounts would wipe each other's every frame). **R4** the rest of the viewer's module-scope gesture state stays shared, stated with its invariant. **R5** `panMode` is local to the compare pane like zoom and pan. **R6** `updateViewer`'s `dynamicKey` reads `viewState().zoom`. **R7** the compare chip's match uses `state.similarScope`, not a fixed `'all'`. **R8** that match is memoised behind a key, so pan frames never re-rank. **R9** Task 1 amends the two existing `processing.test.js` expectations that lack `embeddings`. **R10** `store.js`'s initial `performance` gains `embeddings: true` (else `changePerformance` goes inert when the preference load fails). **R11** the drawer's caret restore is guarded for a `<select>` (`selectionStart` is `undefined`, not `null`). **R12** `smoke-similar.mjs` prints `PASS`/`FAIL` lines then `N/M checks passed`, and the README's baseline is a prose paragraph whose `unit 505/505` is stale. **R13** the contract amendment also rewrites the `csv.js` block's `KNOWN_FIELDS` and points at the pre-op/post-op spec's §11.2 for v1.0.8's pairing by visit. **R14** the ten drifted anchors corrected in place. The amendment was reviewed independently (Opus): 14/14 folded faithfully; two wording corrections folded (the two `panMode` writes that stay `setState`; the contract block starts at 652). Baselines on `caa0fe8`: unit 542/542; backend pytest 402 passed, 2 skipped.
