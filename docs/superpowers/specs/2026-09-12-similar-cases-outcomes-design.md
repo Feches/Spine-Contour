@@ -152,9 +152,12 @@ Each with what it costs if it is wrong.
    film taken with a tilted cassette ranks farther than it should; the card's angle differences make
    that visible.
 4. **Appearance is DINOv2 ViT-S/14 at 224 px, the CLS token, cosine distance.** Generic weights,
-   Apache 2.0, about 88 MB, exported to ONNX like the other graphs. *Cost if wrong:* the block is
-   replaced by re-exporting under the same `embed` kind; every stored embedding records the model, so
-   a change invalidates cleanly and `Embed` recomputes.
+   Apache 2.0, about 88 MB, exported to ONNX like the other graphs. **Nothing about the model is
+   hard-coded outside `embed.json`**: input height and width, channels, mean and standard deviation,
+   output dimension and pooling all come from the metadata, and the renderer never assumes a
+   dimension. *Cost if wrong:* the block is replaced by re-exporting a different network under the
+   same `embed` kind; every stored embedding records the model, so a change invalidates cleanly,
+   embeddings from different models are never compared (§11), and `Embed` recomputes the library.
 5. **Two appearance blocks, and `W` compares only whole-spine films with whole-spine films.** A
    lumbar-only film's whole-film block is nearly its crop block; comparing it with a whole-spine film's
    would rank the presence of a thorax. Film type comes from the framing record. *Cost if wrong:* with
@@ -269,8 +272,8 @@ d(c) = sqrt( Σ_present w_i · (d_i(c) / m_i)²  /  Σ_present w_i )
 ```
 
 A block is present for the pair when both studies have it and its weight is not zero; `H` needs a hip
-midpoint on both films, `A` needs the four measured angles on both, and `W` needs both film types
-`'whole-spine'`. A candidate with no present block is dropped. Candidates sort by
+midpoint on both films, `A` needs the four measured angles on both, `C` and `W` need embeddings from the same model on both
+(§11), and `W` needs both film types `'whole-spine'`. A candidate with no present block is dropped. Candidates sort by
 `d` ascending, ties by id. `matchScore(d) = round(100 · exp(−d))`, an integer 0–100; the median-scaled
 `d` is around 1 for a typical candidate, so the nearest of a few hundred usually reads 60–80.
 
@@ -463,8 +466,10 @@ and known alike.
 pretrained weights (downloaded at export time, decision 13), wraps it so the graph's single output
 `embedding` is the CLS token after the final norm, exports at `1×3×224×224`, opset 17, validates two
 tensors against PyTorch at the other kinds' tolerance, and writes `embed.json` with `kind: 'embed'`,
-`size: 224`, `channels: 3`, `dim: 384`, `source` (the timm id), `weights_sha256`, `licence:
-'Apache-2.0'`, the ImageNet mean and standard deviation, and the usual `onnx_sha256` and versions. The
+`input: [224, 224]` (height, width), `channels: 3`, `dim: 384`, `pooling: 'cls'`, `source` (the timm
+id), `weights_sha256`, `licence: 'Apache-2.0'`, `mean` and `std` (ImageNet's), and the usual
+`onnx_sha256` and versions. The export tool takes the timm id, the input shape and the pooling as
+arguments with these as defaults, so a different network is a different command line, not new code. The
 no-argument run exports all five kinds, each in its own process.
 
 `backend/models/models.py` loads, caches and releases the `embed` graph through the same
@@ -473,10 +478,11 @@ is never offered by `GET /models`; `resolve_models` does not know it.
 
 ### 10.2 `backend/embedding.py`
 
-- `preprocess(image)`: robust-rescale to 8 bit as the models do, letterbox to a 224 square with zero
-  padding, replicate to three channels, scale to `[0, 1]`, subtract the ImageNet mean and divide by the
-  standard deviation, `float32`, `1×3×224×224`.
-- `embed(image)`: run the graph, L2-normalise, return 384 `float32`.
+- `preprocess(image, metadata)`: robust-rescale to 8 bit as the models do, letterbox to the metadata's
+  `input` height and width with zero padding, replicate to its `channels`, scale to `[0, 1]`, subtract
+  its `mean` and divide by its `std`, `float32`. With the stage-1 graph that is `1×3×224×224`.
+- `embed(image)`: run the graph, pool per the metadata (`cls` in stage 1), L2-normalise, return `dim`
+  `float32`. Every constant comes from `embed.json`; the module holds none of its own.
 - `film_type(framing)`: `'whole-spine'` or `'lumbar'` per §7.3, `None` when `framing` is absent.
 - `embedding_record(crop_image, whole_image, framing)` → `{model: {id, dim, size, onnx_sha256}, crop,
   whole, film_type}` with `null` for an input that was not given.
@@ -550,9 +556,13 @@ is `null` when the film was not available (§12).
 - Quarantined with the store: the `load-studies` handler moves `embeddings/` aside as
   `embeddings.corrupt-<timestamp>` under the **same** timestamp as `predictions/`, and the same fallback
   rule (a failed move sets `persistenceUnsafe`) covers it.
-- A record whose `model.onnx_sha256` differs from the bundled `embed.json`'s is stale: it is loaded,
-  used, and counted by the Find tab's `Embed` button so it can be recomputed; it is never silently
-  discarded.
+- A record whose `model.onnx_sha256` differs from the bundled `embed.json`'s is stale: it is loaded and
+  counted by the Find tab's `Embed` button so it can be recomputed, and it is never silently discarded —
+  but **two embeddings are compared only when their `model.onnx_sha256` match.** For a pair from
+  different models the appearance blocks are absent (§7.4), exactly as if one film had no embedding,
+  and the tab's tail reads `{m} STUDIES NEED RE-EMBEDDING` for the candidates dropped that way. A
+  model swap therefore never ranks old numbers against new ones; it shows a count until `Embed` has
+  run.
 
 No `STORE_VERSION` bump: `studies.json` is unchanged.
 
@@ -599,7 +609,7 @@ resolves `null` and stays quiet.
 |---|---|---|
 | `films.csv` | film in the rows | everything `toCsv` writes, then `Film type`, `Coverage` (`full`/`partial`), `Reviewed` (the `reviewedAt` date or blank), `Embedding` (`yes`/`no`), `Crop localizer` (`on`/`off` from `qc.processing`), `Vertebra model`, `Femoral model`, `S1 model`, `Source SHA-256` (the digest the calibration record keeps: an identity for the film across exports and re-runs, which cannot reproduce or locate the image), then, per registered outcome (§9.1), the status and date resolved per subject (§9.3) as `Subject <field>` (`yes`/`no`/`not-recorded`/`conflicting`) and `Subject <date field>` — `Subject fusion extension`, `Subject fusion extension date` in stage 1 — then `Subject last follow-up`, so a film-level analysis, a pre-op-only model for instance, has its label on the row without joining the pair table |
 | `subjects.csv` | pair per pp §11.2, same `with` rule as the paired export | everything `toPairedCsv` writes, then the same resolved columns as `films.csv` (per registered outcome `Subject <field>` and `Subject <date field>`, then `Subject last follow-up`), then `Pre-op film type`, `<label> film type` per written visit |
-| `vectors.json` | — | `{version: 1, exportedAt, shape: {dim: 44, order: [...22 point names], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation'}, hip: {dim: 2, normalisation: 'the shape transform'}, alignment: {order: ['PI', 'PT', 'SS', 'LL L1-S1', 'PI-LL'], weights: [1, 0.8, 0.8, 0.6, 1]}, embedding: {model}, films: {id: {shape, hip, alignment, crop, whole, filmType}}}`, with `null` for a block the film lacks |
+| `vectors.json` | — | `{version: 1, exportedAt, shape: {dim: 44, order: [...22 point names], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation'}, hip: {dim: 2, normalisation: 'the shape transform'}, alignment: {order: ['PI', 'PT', 'SS', 'LL L1-S1', 'PI-LL'], weights: [1, 0.8, 0.8, 0.6, 1]}, embedding: {model}, films: {id: {shape, hip, alignment, crop, whole, filmType}}}`, with `null` for a block the film lacks; an embedding from a model other than the bundled one exports as `null` and counts in the manifest as without an embedding, so a vectors file never mixes models |
 | `manifest.json` | — | app version, `exportedAt`, the counts (films, pairs, unpaired, ambiguous, with a recorded outcome, conflicting, without an embedding), the set of model ids and processing settings seen, the embedding model record, the citation line and `NOT FOR CLINICAL USE` |
 
 Both CSVs open with the same `#` comment block the existing exports carry. The toast, sized by
@@ -634,8 +644,8 @@ Pure modules get `node --test`; the DOM gets a smoke suite and a human gate; the
   spec §10.5's weights, `null` with an angle missing; a
   partial or unoriented study → `null`; shape distance is
   zero for a copy and symmetric; cosine distance on unit vectors; median scaling with 2, 3 and many
-  candidates and with a zero median; each mode's weights; `H` only when both have a hip, `A` only when both have the four angles, `W` only between two
-  whole-spine films;
+  candidates and with a zero median; each mode's weights; `H` only when both have a hip, `A` only when both have the four angles, `C` and `W` only between
+  embeddings of the same model, `W` only between two whole-spine films;
   `matchScore` bounds; candidates: real only, not self, scope both ways including `HAND_ADDED`, same
   subject excluded, no embedding excluded under `all`/`appearance` and kept under `shape`/`alignment`; sort and
   tie order; `n`.
@@ -659,7 +669,8 @@ Pure modules get `node --test`; the DOM gets a smoke suite and a human gate; the
   keys on a known film; the bulk action keeps every unmapped header, skips the structural and join
   headers, prefers a free known field, leaves a taken name `Unmapped`, and its count matches its label.
 - Backend: `test_embedding.py` — `preprocess` shape, dtype, letterbox geometry and normalisation on a
-  synthetic image; `embed` returns 384 finite unit-norm values on the real graph when it exists (skipped
+  synthetic image, driven by a metadata fixture, and again with a different input shape, channel count
+  and dimension to prove nothing is hard-coded; `embed` returns 384 finite unit-norm values on the real graph when it exists (skipped
   otherwise, as the ONNX tests already are); `film_type` per §7.3; `/embed` with both inputs, one input,
   none (422); `/predict` carries `embedding` and survives a missing graph with `null`; with `embeddings` off it skips
   the stage, never loads the graph, and records `qc.processing.embeddings: false`; `parse_options`
