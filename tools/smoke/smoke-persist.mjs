@@ -73,6 +73,10 @@ const STATE_FILE = path.join(OUT_DIR, 'persist-state.json');
 const USER_DATA = process.env.SPINE_CONTOUR_USER_DATA || path.join(os.tmpdir(), 'spine-contour-smoke');
 const STUDY_ID = 'SP-9000';
 const SIDECAR = path.join(USER_DATA, 'predictions', `${STUDY_ID}.json`);
+// Plan A's appearance embedding (similar-cases spec, 2026-09-12, section 11; Plan B task 10): when
+// the bundled graph is in the tree, segmentStudy's own embedding stage writes this alongside the
+// prediction sidecar during --phase run. --phase restart proves it is loaded back.
+const EMBEDDING_FILE = path.join(USER_DATA, 'embeddings', `${STUDY_ID}.json`);
 const JPEG_PREFIX = 'data:image/jpeg;base64,';
 
 const PHASES = ['run', 'restart', 'measurefail'];
@@ -487,6 +491,28 @@ try {
     check('the geometry survived the restart', Boolean(restored) && same(restored.geometry, before.geometry), null);
     check('the subject survived the restart (studies-table spec 7)', Boolean(restored) && restored.subjectId === 'PERSIST-01' && restored.subjectId === before.subjectId, restored ? restored.subjectId : null);
     check('the review mark survived the restart (studies-table spec 8.1)', Boolean(restored) && typeof before.reviewedAt === 'string' && restored.reviewedAt === before.reviewedAt, restored ? restored.reviewedAt : null);
+
+    // A2. Plan A's appearance embedding (similar-cases spec section 11; Plan B task 10). When the
+    // bundled graph is in this tree, segmentStudy's embedding stage runs for real during --phase
+    // run and writes embeddings/SP-9000.json alongside the prediction sidecar; this proves the
+    // restarted session's renderer/embeddings.js module loads that record back through its own
+    // ensureEmbeddings()/embeddingFor(), not merely that the file survived on disk. Self-gated: a
+    // tree without the graph (Plan A not present, or the stage failed) never wrote the file in
+    // --phase run, and this section says so instead of failing a check that never had a subject.
+    const EMBEDDING_SECTION = 'the SP-9000 appearance embedding written in --phase run is loaded back by embeddings.js after the restart';
+    if (!fs.existsSync(EMBEDDING_FILE)) {
+      skip(EMBEDDING_SECTION, `no ${EMBEDDING_FILE} on disk -- Plan A's graph was not in the tree, or the embedding stage did not complete, during --phase run`);
+    } else {
+      const loadedEmbedding = await cdp.evaluate(`(async () => {
+        const m = await import('./renderer/embeddings.js');
+        await m.ensureEmbeddings();
+        const record = m.embeddingFor(${JSON.stringify(STUDY_ID)});
+        return record ? { id: record.id, cropLength: Array.isArray(record.crop) ? record.crop.length : null, model: (record.model && record.model.onnx_sha256) || null } : null;
+      })()`);
+      check(EMBEDDING_SECTION,
+        Boolean(loadedEmbedding) && loadedEmbedding.id === STUDY_ID && Number.isInteger(loadedEmbedding.cropLength) && loadedEmbedding.cropLength > 0 && typeof loadedEmbedding.model === 'string' && loadedEmbedding.model.length > 0,
+        loadedEmbedding);
+    }
 
     // The correction, not the prediction. Read before section B moves the sidecar aside. Phase 1
     // deliberately ends on a nudge rather than the reset, so these two geometries differ; that
