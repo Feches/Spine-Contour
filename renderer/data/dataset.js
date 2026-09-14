@@ -65,15 +65,23 @@ function splitCsvLines(text) {
   return lines;
 }
 
-// Adds header cells and one cell list per data row to a CSV text: the comment lines are left
-// alone, the header line is the first non-comment line, the data lines follow in order.
+// Adds header cells and one cell list per data row to a CSV text: only the lines BEFORE the
+// header are comments, so `#` is tested by position, not by content -- a data row named with a
+// leading `#` (escapeField quotes only on [",\r\n], so a bare `#` reaches the file) still gets
+// its own appended cells rather than being read as a comment and shifting every later row up.
 export function appendColumns(text, headers, cells) {
   const lines = splitCsvLines(text);
+  let seenHeader = false;
   let dataIndex = -1;
   const out = lines.map((line) => {
-    if (line === '' || line.startsWith('#')) return line;
+    if (!seenHeader) {
+      if (line === '' || line.startsWith('#')) return line;
+      seenHeader = true;
+      return `${line},${headers.map(escapeField).join(',')}`;
+    }
+    if (line === '') return line;
     dataIndex += 1;
-    const extra = dataIndex === 0 ? headers : (cells[dataIndex - 1] ?? headers.map(() => ''));
+    const extra = cells[dataIndex] ?? headers.map(() => '');
     return `${line},${extra.map(escapeField).join(',')}`;
   });
   return out.join('\r\n');
@@ -127,15 +135,19 @@ function folderLabel(segment) {
   return cleaned === '' ? 'library' : cleaned;
 }
 
-export function buildDataset({ rows, post, embeddings, bundledSha, version, now = new Date() }) {
+export function buildDataset({ rows, post, embeddings, bundledSha, bundledModel = null, version, now = new Date() }) {
   const real = (rows ?? []).filter((study) => study.source === 'real');
+  // The full model record when the caller has it (spec section 13), else just the sha for
+  // callers -- and the older tests -- that only have that.
+  const sha = bundledModel?.onnx_sha256 ?? bundledSha ?? null;
+  const embeddingRecord = bundledModel ? { ...bundledModel } : { onnx_sha256: sha };
   const date = now.toISOString().slice(0, 10);
   const roots = new Set(real.map((s) => (typeof s.workspaceFolder === 'string' && s.workspaceFolder !== '' ? s.workspaceFolder : null)).filter((r) => r !== null));
   const label = roots.size === 1 ? folderLabel(lastSegment([...roots][0])) : 'library';
   const folder = `${label}-dataset-${date}`;
 
   const filmsCsv = appendColumns(toCsv(real), [...PROVENANCE_COLUMNS, ...RESOLVED_COLUMNS],
-    real.map((study) => [...provenanceCells(study, embeddings, bundledSha), ...resolvedCells(study, real)]));
+    real.map((study) => [...provenanceCells(study, embeddings, sha), ...resolvedCells(study, real)]));
 
   // Pairing by visit (v1.0.8): a written subject's visits are a Map keyed by header, Pre-op first,
   // each visit's films primary first. The resolved outcome is the subject's, so its pre-op visit's
@@ -148,7 +160,7 @@ export function buildDataset({ rows, post, embeddings, bundledSha, version, now 
       const pre = row.visits.get(PRE_OP).films[0];
       return [
         ...resolvedCells(pre, real),
-        ...headers.map((h) => { const visit = row.visits.get(h); return visit ? filmType(currentEmbedding(embeddings, visit.films[0].id, bundledSha)) : ''; }),
+        ...headers.map((h) => { const visit = row.visits.get(h); return visit ? filmType(currentEmbedding(embeddings, visit.films[0].id, sha)) : ''; }),
       ];
     }));
 
@@ -158,7 +170,7 @@ export function buildDataset({ rows, post, embeddings, bundledSha, version, now 
   let withoutEmbedding = 0;
   for (const study of real) {
     const shape = vector(study);
-    const embedding = currentEmbedding(embeddings, study.id, bundledSha);
+    const embedding = currentEmbedding(embeddings, study.id, sha);
     if (!embedding) withoutEmbedding += 1;
     films.push({
       name: studyName(study),
@@ -176,7 +188,7 @@ export function buildDataset({ rows, post, embeddings, bundledSha, version, now 
     shape: { dim: 44, order: [...LANDMARK_ORDER], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation' },
     hip: { dim: 2, normalisation: 'the shape transform' },
     alignment: { order: [...ALIGNMENT_ORDER], weights: [...ALIGNMENT_WEIGHTS] },
-    embedding: { onnx_sha256: bundledSha ?? null },
+    embedding: embeddingRecord,
     films,
   };
 
@@ -202,7 +214,7 @@ export function buildDataset({ rows, post, embeddings, bundledSha, version, now 
     exportedAt: now.toISOString(),
     counts,
     models: Object.fromEntries(Object.entries(models).map(([slot, set]) => [slot, [...set].sort()])),
-    embedding: { onnx_sha256: bundledSha ?? null },
+    embedding: embeddingRecord,
     outcomes: OUTCOMES.map((o) => ({ key: o.key, field: o.field, dateField: o.dateField, primary: o.primary })),
     followUpField: FOLLOW_UP_FIELD,
     identity: IDENTITY,

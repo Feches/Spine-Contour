@@ -57,6 +57,13 @@ export function bundledModelSha() {
   return typeof model?.onnx_sha256 === 'string' ? model.onnx_sha256 : null;
 }
 
+// The full record the backend returned ({id, dim, input, onnx_sha256}), for the export's
+// manifest and vectors file (spec section 13) -- not just the sha bundledModelSha gives callers
+// that only need to compare against a stored record.
+export function bundledModel() {
+  return model && typeof model === 'object' && typeof model.onnx_sha256 === 'string' ? { ...model } : null;
+}
+
 export async function storeEmbedding(record) {
   await saveEmbedding(record.id, record);
   records.set(record.id, record);

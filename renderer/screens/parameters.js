@@ -31,7 +31,7 @@ import {
 } from '../data/parameters.js';
 import { pairStudies, postFromFilters, pairedExportMessage } from '../data/pairing.js';
 import { buildDataset, datasetMessage } from '../data/dataset.js';
-import { ensureEmbeddings, embeddingsMap, bundledModelSha } from '../embeddings.js';
+import { ensureEmbeddings, embeddingsMap, bundledModelSha, bundledModel } from '../embeddings.js';
 import { VERSION_LABEL } from '../data/version.js';
 
 const EMPTY_COPY = {
@@ -110,7 +110,7 @@ export function mountParameters(host, { onOpen }) {
     if (rows.filter((study) => study.source === 'real').length === 0) return;
     try {
       await ensureEmbeddings();
-      const built = buildDataset({ rows, post: postFromFilters(filters), embeddings: embeddingsMap(), bundledSha: bundledModelSha(), version: VERSION_LABEL.replace(/^v/, '') });
+      const built = buildDataset({ rows, post: postFromFilters(filters), embeddings: embeddingsMap(), bundledSha: bundledModelSha(), bundledModel: bundledModel(), version: VERSION_LABEL.replace(/^v/, '') });
       const folder = await saveDataset({ folder: built.folder, files: built.files });
       if (folder) showToast(datasetMessage(built, folder));
     } catch (error) {

@@ -246,7 +246,9 @@ ipcMain.handle('save-dataset', async (_event, request) => {
   await fsPromises.mkdir(target, { recursive: true });
   try {
     for (const [name, text] of Object.entries(request.files)) {
-      if (!/^[A-Za-z0-9._-]+$/.test(name) || typeof text !== 'string') throw new Error('Nothing to export.');
+      // A leading alphanumeric excludes both `.` and `..` on its own; stated explicitly so a
+      // future edit does not widen the class back to admit a `..` segment.
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) || typeof text !== 'string') throw new Error('Nothing to export.');
       const file = path.join(target, name);
       await fsPromises.writeFile(`${file}.tmp`, text, 'utf8');
       await fsPromises.rename(`${file}.tmp`, file);

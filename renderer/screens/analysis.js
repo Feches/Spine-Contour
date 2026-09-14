@@ -425,7 +425,7 @@ export async function embedStudy(studyId, { batch = false } = {}) {
   if (getState().running || getState().deletingStudies) return { ok: false, reason: WAIT_FOR_RUN };
   const requestId = crypto.randomUUID();
   setState({ running: studyId, runStage: { requestId, mode: getState().performance.mode,
-    stage: 'embedding', message: 'Computing appearance embedding', elapsed_seconds: 0, kind: 'embed' } });
+    stage: 'embedding', message: 'Computing appearance embedding\u2026', elapsed_seconds: 0, kind: 'embed' } });
   try {
     const response = await embed({ id: studyId, imagePng: sidecar.image_png, framing: sidecar.qc?.framing ?? null });
     const after = getState().studies.find((s) => s.id === studyId);

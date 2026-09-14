@@ -27,7 +27,10 @@ const rows = [
   { ...film('SP-0042', 'demo', 'D', 'Pre-op'), source: 'demo' },
 ];
 const embeddings = new Map([['SP-1000', embedding('SP-1000')], ['SP-1001', embedding('SP-1001', 'old')]]);
-const built = () => buildDataset({ rows, post: '__any__', embeddings, bundledSha: 'abc', version: '1.0.8', now: new Date('2026-09-12T20:00:00.000Z') });
+// The full bundled-model record (spec section 13): built() passes it so vectors.json and
+// manifest.json carry the encoder's id and shape, not just its sha.
+const BUNDLED_MODEL = { id: 'vit_small_patch14_dinov2.lvd142m', dim: 2, input: [224, 224], onnx_sha256: 'abc' };
+const built = () => buildDataset({ rows, post: '__any__', embeddings, bundledSha: 'abc', bundledModel: BUNDLED_MODEL, version: '1.0.8', now: new Date('2026-09-12T20:00:00.000Z') });
 
 test('the folder name carries the workspace label and the date, reduced to what save-dataset accepts', () => {
   assert.equal(built().folder, 'films-dataset-2026-09-12');
@@ -125,6 +128,7 @@ test('vectors.json carries the blocks per film in films.csv order, named by stud
   assert.equal(post.whole, null);
   assert.equal(lone.shape, null);
   assert.equal(lone.alignment, null);
+  assert.deepEqual(vectors.embedding, BUNDLED_MODEL);
   assert.ok(!built().files['vectors.json'].includes('SP-'), 'no record id');
   assert.ok(!built().files['vectors.json'].includes('\n'), 'not pretty-printed');
 });
@@ -134,7 +138,7 @@ test('manifest.json names the app, the date, the counts, the models, the identit
   assert.equal(manifest.app.version, '1.0.8');
   assert.equal(manifest.exportedAt, '2026-09-12T20:00:00.000Z');
   assert.deepEqual(manifest.counts, { films: 4, pairs: 1, unpaired: 1, ambiguous: 0, mergedVisits: 0, withOutcome: 1, conflicting: 0, withoutEmbedding: 3, noSubject: 1 });
-  assert.deepEqual(manifest.embedding, { onnx_sha256: 'abc' });
+  assert.deepEqual(manifest.embedding, BUNDLED_MODEL);
   assert.deepEqual(manifest.models, { vertebrae: ['unet'], femoral: ['unet'], s1: ['keypointrcnn'] });
   assert.equal(manifest.identity, 'Films are named by study name (the stored name, else the film stem), the Study ID of every export; the record id is not exported.');
   assert.equal(manifest.disclaimer, 'Investigational software. NOT FOR CLINICAL USE.');
@@ -157,4 +161,9 @@ test('appendColumns adds cells to every data line of a CSV text and leaves the c
 test('appendColumns keeps a quoted cell carrying an embedded CRLF whole, rather than splitting inside it', () => {
   const text = '# a\r\n# b\r\nX,Y\r\n"multi\r\nline",2\r\n3,4\r\n';
   assert.equal(appendColumns(text, ['Z'], [['z1'], ['z2']]), '# a\r\n# b\r\nX,Y,Z\r\n"multi\r\nline",2,z1\r\n3,4,z2\r\n');
+});
+
+test('appendColumns treats `#` as a comment only before the header, so a data row named with a leading # keeps its own cells', () => {
+  const text = '# a\r\n# b\r\nX,Y\r\n#12 smith,2\r\nplain,4\r\n';
+  assert.equal(appendColumns(text, ['Z'], [['z1'], ['z2']]), '# a\r\n# b\r\nX,Y,Z\r\n#12 smith,2,z1\r\nplain,4,z2\r\n');
 });
