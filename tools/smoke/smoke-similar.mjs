@@ -379,12 +379,22 @@ try {
   check(`the Embed button counts the fully-covered studies without a current record (the partial one excluded)`,
     embedTextBefore === `Embed ${expectedNeeded.length}`, { embedTextBefore, expectedNeeded, bundledSha });
 
+  // The gate ruling (2026-09-12): SP-9205 (partial coverage) is the one segmented-but-unrankable
+  // study in the baseline, so the note beside the Embed button reads "1 partial -- not embeddable".
+  const embedNoteText = await text('[data-find-key="embed-note"]');
+  check('the Embed note counts the one partial study the count leaves out', embedNoteText === `1 partial ${DASH} not embeddable`, embedNoteText);
+  const embedNoteTitle = await attr('[data-find-key="embed-note"]', 'title');
+  check('the Embed note explains why in its title',
+    embedNoteTitle === 'Find similar needs all five lumbar levels and S1; a partial segmentation cannot be ranked, so it is not embedded.', embedNoteTitle);
+
   await embedRecord('SP-9201', CURRENT_SHA, [0.5, 0.5, 0]);
   await embedRecord('SP-9204', CURRENT_SHA, [0.5, 0.5, 0]);
   await embedRecord('SP-9206', CURRENT_SHA, [0.5, 0.5, 0]);
   await embedRecord('SP-9208', CURRENT_SHA, [0.5, 0.5, 0]);
   await cdp.settle(300);
   check('with every fully-covered study current, the Embed button is absent', !(await has('[data-find-key="embed"]')), await text('[data-find-key="embed"]'));
+  check('the Embed note still shows the one partial study even with the Embed button hidden',
+    (await text('[data-find-key="embed-note"]')) === `1 partial ${DASH} not embeddable`, await text('[data-find-key="embed-note"]'));
 
   // ---- 11. Export dataset ------------------------------------------------------------------
   await clickParam('tab-parameters');

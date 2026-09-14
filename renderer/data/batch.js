@@ -53,14 +53,20 @@ export function planBatch({ visible, selected, running }) {
 // The Embed button (similar-cases spec, 2026-09-12, section 12): the visible (or ticked visible)
 // real studies that `needs` says lack a current embedding -- segmented before this build, with the
 // setting off, after a failed stage, or under an older graph. Hidden at zero, like nothing else on
-// the bar: an absent count is not a state the user has to read.
-export function planEmbed({ visible, selected, running, needs }) {
+// the bar: an absent count is not a state the user has to read. `ineligible` counts, over the same
+// pool, how many are segmented but can never be embedded (the gate ruling, 2026-09-12) -- the Find
+// tab's note beside the button, shown even when the button itself is hidden.
+export function planEmbed({ visible, selected, running, needs, ineligible = () => false }) {
   const real = (visible ?? []).filter((study) => study.source === 'real');
   const chosen = selectedVisible(real, selected);
   const pool = chosen.length > 0 ? chosen : real;
   const ids = pool.filter((study) => needs(study)).map((study) => study.id);
+  const excluded = pool.filter((study) => ineligible(study)).length;
   const label = chosen.length > 0 ? `Embed ${ids.length} selected` : `Embed ${ids.length}`;
-  return { ids, label, note: running ? WAIT_FOR_RUN : null, enabled: ids.length > 0 && !running, hidden: ids.length === 0 };
+  return {
+    ids, label, note: running ? WAIT_FOR_RUN : null, enabled: ids.length > 0 && !running,
+    hidden: ids.length === 0, excluded,
+  };
 }
 
 // The batch object (spec 8.1), with its kind (similar-cases spec section 12): 'segment' or 'embed'.

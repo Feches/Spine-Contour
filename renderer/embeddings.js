@@ -83,3 +83,10 @@ export function needsEmbedding(study) {
   if (vector(study) === null) return false;
   return !isCurrent(records.get(study.id), bundledModelSha());
 }
+
+// The Embed note's rule (the studies-table review ruling, 2026-09-12): a real, segmented study
+// that needsEmbedding will never count, because partial coverage makes it impossible to rank.
+export function cannotEmbed(study) {
+  if (!study || study.source !== 'real' || study.measurements == null || study.geometry == null) return false;
+  return vector(study) === null;
+}

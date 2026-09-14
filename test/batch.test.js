@@ -349,13 +349,28 @@ const needs = (study) => study.id === 'SP-2' || study.id === 'SP-3';
 test('planEmbed counts the visible (or ticked visible) real studies that need an embedding, hidden at zero', () => {
   const visible = [segmented('SP-1'), segmented('SP-2'), segmented('SP-3'), demo('SP-0042')];
   assert.deepEqual(planEmbed({ visible, selected: [], running: null, needs }),
-    { ids: ['SP-2', 'SP-3'], label: 'Embed 2', note: null, enabled: true, hidden: false });
+    { ids: ['SP-2', 'SP-3'], label: 'Embed 2', note: null, enabled: true, hidden: false, excluded: 0 });
   assert.deepEqual(planEmbed({ visible, selected: ['SP-3', 'SP-1'], running: null, needs }),
-    { ids: ['SP-3'], label: 'Embed 1 selected', note: null, enabled: true, hidden: false });
+    { ids: ['SP-3'], label: 'Embed 1 selected', note: null, enabled: true, hidden: false, excluded: 0 });
   assert.deepEqual(planEmbed({ visible, selected: [], running: 'SP-9', needs }),
-    { ids: ['SP-2', 'SP-3'], label: 'Embed 2', note: WAIT_FOR_RUN, enabled: false, hidden: false });
+    { ids: ['SP-2', 'SP-3'], label: 'Embed 2', note: WAIT_FOR_RUN, enabled: false, hidden: false, excluded: 0 });
   assert.deepEqual(planEmbed({ visible: [segmented('SP-1')], selected: [], running: null, needs }),
-    { ids: [], label: 'Embed 0', note: null, enabled: false, hidden: true });
+    { ids: [], label: 'Embed 0', note: null, enabled: false, hidden: true, excluded: 0 });
+});
+
+// The gate ruling (2026-09-12): the note beside the Embed button counts, over the same pool, the
+// segmented studies that can never be ranked -- `ineligible` is injected, like `needs`, so
+// renderer/data/* never imports the root module (renderer/embeddings.js's cannotEmbed). SP-4 is
+// segmented but ineligible (a partial coverage stand-in); it never matches `needs`, so `ids` is
+// unaffected by whether `ineligible` is passed at all.
+const ineligible = (study) => study.id === 'SP-4';
+
+test('planEmbed counts ineligible segmented studies over the same pool, unaffected ids, none by default', () => {
+  const visible = [segmented('SP-2'), segmented('SP-4'), demo('SP-0042')];
+  assert.deepEqual(planEmbed({ visible, selected: [], running: null, needs, ineligible }),
+    { ids: ['SP-2'], label: 'Embed 1', note: null, enabled: true, hidden: false, excluded: 1 });
+  assert.deepEqual(planEmbed({ visible, selected: [], running: null, needs }),
+    { ids: ['SP-2'], label: 'Embed 1', note: null, enabled: true, hidden: false, excluded: 0 });
 });
 
 test('newBatch carries its kind; progress, sidebar and closing texts read it', () => {
