@@ -422,16 +422,16 @@ try {
       vectorsFilmCount: JSON.parse(built.files['vectors.json']).films.length,
       vectorsIsSingleLine: !built.files['vectors.json'].includes('\\n'),
       manifestIsMultiLine: built.files['manifest.json'].includes('\\n'),
-      filmsCsv: built.files['films.csv'],
+      filmsCsv: built.files['parameters.csv'],
     };
   })`);
-  check('buildDataset writes exactly the four files', JSON.stringify(dataset.keys) === JSON.stringify(['films.csv', 'manifest.json', 'subjects.csv', 'vectors.json']), dataset.keys);
-  check('films.csv and vectors.json both carry one row/entry per real visible study', dataset.filmsCount === dataset.realCount && dataset.vectorsFilmCount === dataset.realCount && dataset.realCount > 0, dataset);
+  check('buildDataset writes exactly the five files', JSON.stringify(dataset.keys) === JSON.stringify(['README.md', 'manifest.json', 'paired.csv', 'parameters.csv', 'vectors.json']), dataset.keys);
+  check('parameters.csv and vectors.json both carry one row/entry per real visible study', dataset.filmsCount === dataset.realCount && dataset.vectorsFilmCount === dataset.realCount && dataset.realCount > 0, dataset);
   check('vectors.json is written single-line, manifest.json pretty-printed', dataset.vectorsIsSingleLine && dataset.manifestIsMultiLine, { vectorsIsSingleLine: dataset.vectorsIsSingleLine, manifestIsMultiLine: dataset.manifestIsMultiLine });
 
   const filmsLines = dataset.filmsCsv.split('\r\n').filter((line) => line !== '' && !line.startsWith('#'));
   const firstFields = filmsLines.slice(1).map((line) => (line.startsWith('"') ? line.slice(1, line.indexOf('"', 1)) : line.slice(0, line.indexOf(','))));
-  check('films.csv names every row by study name: no path separator, no extension, no SP- record id',
+  check('parameters.csv names every row by study name: no path separator, no extension, no SP- record id',
     firstFields.length === dataset.realCount && firstFields.every((name) => !/[\\/]/.test(name) && !/\.[A-Za-z0-9]+$/.test(name) && !/^SP-\d+$/.test(name)),
     firstFields);
   check("SP-9202's own row is named by its study name", firstFields.includes('sim-9202'), firstFields);

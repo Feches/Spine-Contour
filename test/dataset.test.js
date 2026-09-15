@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDataset, datasetMessage, appendColumns, RESOLVED_COLUMNS } from '../renderer/data/dataset.js';
+import { buildDataset, datasetMessage, appendColumns, RESOLVED_COLUMNS, datasetReadme } from '../renderer/data/dataset.js';
 
 function geometry() {
   const body = (top) => ({ superior: [[160, top], [100, top]], inferior: [[160, top + 80], [100, top + 80]], quadrilateral: [[160, top], [100, top], [100, top + 80], [160, top + 80]] });
@@ -42,8 +42,8 @@ test('the folder name carries the workspace label and the date, reduced to what 
     'Fusion 2025 v2-dataset-2026-09-12');
 });
 
-test('films.csv is toCsv plus the provenance, then the resolved outcome columns, one row per real film named by study name', () => {
-  const text = built().files['films.csv'];
+test('parameters.csv is toCsv plus the provenance, then the resolved outcome columns, one row per real film named by study name', () => {
+  const text = built().files['parameters.csv'];
   const lines = text.split('\r\n').filter((l) => l !== '');
   assert.equal(lines[0], '# Spine Contour export');
   const header = lines[3].split(',');
@@ -75,8 +75,8 @@ test('films.csv is toCsv plus the provenance, then the resolved outcome columns,
   assert.ok(!text.includes('SP-'), 'no record id');
 });
 
-test('subjects.csv is the paired export by visit plus the resolved columns and the film types', () => {
-  const lines = built().files['subjects.csv'].split('\r\n').filter((l) => l !== '');
+test('paired.csv is the paired export by visit plus the resolved columns and the film types', () => {
+  const lines = built().files['paired.csv'].split('\r\n').filter((l) => l !== '');
   const header = lines[3].split(',');
   assert.deepEqual(header.slice(-5), [...RESOLVED_COLUMNS, 'Pre-op film type', 'Post-op film type']);
   assert.equal(lines.length - 4, 1);
@@ -100,7 +100,7 @@ test('a merged visit counts once, is flagged in the toast, and takes its primary
   });
   assert.equal(merged.counts.pairs, 1);
   assert.equal(merged.counts.mergedVisits, 1);
-  const lines = merged.files['subjects.csv'].split('\r\n').filter((l) => l !== '');
+  const lines = merged.files['paired.csv'].split('\r\n').filter((l) => l !== '');
   const header = lines[3].split(',');
   const row = lines[4].split(',');
   assert.equal(row[header.indexOf('Pre-op study')], 'S003 pre + S003 pre flexion');
@@ -108,7 +108,7 @@ test('a merged visit counts once, is flagged in the toast, and takes its primary
   assert.equal(datasetMessage(merged, 'D'), 'Dataset written to D \u00B7 1 pair \u00B7 1 merged visit \u00B7 2 films without an embedding');
 });
 
-test('vectors.json carries the blocks per film in films.csv order, named by study name, null where absent, never an embedding from another graph', () => {
+test('vectors.json carries the blocks per film in parameters.csv order, named by study name, null where absent, never an embedding from another graph', () => {
   const vectors = JSON.parse(built().files['vectors.json']);
   assert.equal(vectors.version, 1);
   assert.equal(vectors.shape.dim, 44);
@@ -144,6 +144,23 @@ test('manifest.json names the app, the date, the counts, the models, the identit
   assert.equal(manifest.disclaimer, 'Investigational software. NOT FOR CLINICAL USE.');
   assert.ok(manifest.citation.startsWith('Created by'));
   assert.equal(built().files['manifest.json'].includes('\n  '), true, 'pretty-printed');
+});
+
+test('buildDataset writes exactly the five files, named as the exports and the fixed three', () => {
+  assert.deepEqual(Object.keys(built().files).sort(), ['README.md', 'manifest.json', 'paired.csv', 'parameters.csv', 'vectors.json']);
+});
+
+test('README.md names all five files, carries the identity sentence, the disclaimer, and says the split is by subject', () => {
+  assert.equal(typeof datasetReadme, 'function');
+  const readme = built().files['README.md'];
+  assert.equal(typeof readme, 'string');
+  for (const name of ['parameters.csv', 'paired.csv', 'vectors.json', 'manifest.json', 'README.md']) {
+    assert.ok(readme.includes(name), `README.md does not mention ${name}`);
+  }
+  assert.ok(readme.includes('the record id is not exported'), 'README.md carries the identity sentence');
+  assert.ok(readme.includes('Investigational software. NOT FOR CLINICAL USE.'), 'README.md carries the disclaimer');
+  assert.ok(readme.includes('Split by subject'), 'README.md says the split is by subject');
+  assert.ok(readme.startsWith('# Spine Contour dataset'), 'README.md opens with its title');
 });
 
 test('datasetMessage counts what was written and left out, each clause only when nonzero', () => {

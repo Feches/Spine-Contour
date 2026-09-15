@@ -1,9 +1,10 @@
 /**
- * Export dataset (similar-cases spec, 2026-09-12, section 13; amended 2026-09-13 for v1.0.8): the four
- * files a notebook trains on, built entirely here from the rows the paired export would write. No
- * images, no paths, no record ids -- a film is named by its study name, the Study ID every export
- * writes, and the only other per-film identity is the calibration digest. Pure: the folder is written
- * by main.js's save-dataset handler; screens/parameters.js wires the button.
+ * Export dataset (similar-cases spec, 2026-09-12, section 13; amended 2026-09-13 for v1.0.8, and again
+ * for the gate ruling that renamed two of the tables and added a README): the five files a notebook
+ * trains on, built entirely here from the rows the paired export would write. No images, no paths, no
+ * record ids -- a film is named by its study name, the Study ID every export writes, and the only
+ * other per-film identity is the calibration digest. Pure: the folder is written by main.js's
+ * save-dataset handler; screens/parameters.js wires the button.
  */
 import { toCsv, toPairedCsv } from './csv.js';
 import { pairStudies } from './pairing.js';
@@ -121,6 +122,55 @@ function provenanceCells(study, embeddings, bundledSha) {
   ];
 }
 
+// The folder's own README (gate ruling, 2026-09-14): pure markdown, called from buildDataset with
+// what it already computed, so the file always describes the sibling tables' actual shape rather
+// than a hand-written copy that can drift. ASCII throughout -- ordinary hyphens stand in for what
+// would otherwise be an em dash, since this text is JS source even though it reads as markdown.
+export function datasetReadme({ counts, version, exportedAt, embeddingRecord }) {
+  const provenance = PROVENANCE_COLUMNS.join(', ');
+  const resolved = RESOLVED_COLUMNS.join(', ');
+  const encoder = embeddingRecord?.id ?? 'the bundled encoder';
+  const lines = [
+    '# Spine Contour dataset',
+    '',
+    `Spine Contour v${version}, exported ${exportedAt}.`,
+    '',
+    '## Files',
+    '',
+    `- \`parameters.csv\` - one row per film: the Export CSV file (the measurements, disc heights, calibration and clinical fields) plus the provenance columns ${provenance}, then the outcome columns resolved per subject: ${resolved}.`,
+    `- \`paired.csv\` - one row per subject with a pre-op film and at least one later visit: the Export paired CSV file plus the same resolved outcome columns (${resolved}) and a \`<visit> film type\` column per written visit (for example \`Pre-op film type\`, \`Post-op film type\`).`,
+    `- \`vectors.json\` - one entry per row of parameters.csv, in the same order, named by study name: \`shape\` is 44 numbers, the 22 landmarks (${LANDMARK_ORDER.join(', ')}) in that order after mirroring anterior to +x, centring and scaling to unit centroid size -- never rotated; \`hip\` is 2 numbers under the same transform; \`alignment\` is 5 numbers, ${ALIGNMENT_ORDER.join(', ')}, weighted ${ALIGNMENT_WEIGHTS.join(', ')}; \`crop\` and \`whole\` are the appearance embeddings from ${encoder}, unit length. A block is \`null\` where a film lacks it, and an embedding is never carried from an encoder other than the one manifest.json names.`,
+    '- `manifest.json` - the counts, the models seen, the encoder record, the identity line, the disclaimer.',
+    '- `README.md` - this file.',
+    '',
+    '## Identity',
+    '',
+    `${IDENTITY} The file path and the image are not exported either, and neither can be recovered from these files.`,
+    '',
+    '## Blanks',
+    '',
+    'A blank cell is unknown, never zero. A partial segmentation has no `shape`. `not-recorded` and `conflicting` outcomes are unknown, not a result.',
+    '',
+    '## Before training',
+    '',
+    "Split by subject, never by film: a subject's films share one outcome, and the app's own similar-cases tab excludes the same subject for the same reason.",
+    '',
+    `- ${counts.films} films`,
+    `- ${counts.pairs} pairs`,
+    `- ${counts.unpaired} unpaired`,
+    `- ${counts.ambiguous} ambiguous`,
+    `- ${counts.mergedVisits} merged visits`,
+    `- ${counts.withOutcome} with a recorded outcome`,
+    `- ${counts.conflicting} conflicting`,
+    `- ${counts.withoutEmbedding} without an embedding`,
+    '',
+    CITATION,
+    DISCLAIMER,
+    '',
+  ];
+  return lines.join('\n');
+}
+
 // main.js's save-dataset handler accepts /^[A-Za-z0-9][A-Za-z0-9 ._-]*$/ and nothing else, and an
 // ordinary workspace folder is `Fusion 2025 (v2)`: unreduced, the user would see `Could not export:
 // Nothing to export.` on a perfectly good library. Every run of other characters becomes one space,
@@ -164,7 +214,7 @@ export function buildDataset({ rows, post, embeddings, bundledSha, bundledModel 
       ];
     }));
 
-  // One entry per films.csv data row, in that order, named by study name: an array, so two films
+  // One entry per parameters.csv data row, in that order, named by study name: an array, so two films
   // that share a name both survive.
   const films = [];
   let withoutEmbedding = 0;
@@ -222,13 +272,16 @@ export function buildDataset({ rows, post, embeddings, bundledSha, bundledModel 
     disclaimer: DISCLAIMER,
   };
 
+  const readme = datasetReadme({ counts, version, exportedAt: manifest.exportedAt, embeddingRecord });
+
   return {
     folder,
     files: {
-      'films.csv': filmsCsv,
-      'subjects.csv': subjectsCsv,
+      'parameters.csv': filmsCsv,
+      'paired.csv': subjectsCsv,
       'vectors.json': JSON.stringify(vectors),
       'manifest.json': `${JSON.stringify(manifest, null, 2)}\n`,
+      'README.md': readme,
     },
     counts,
     pairing,
