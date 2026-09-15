@@ -212,6 +212,10 @@ async function embedRecord(id, model, crop) {
 
 try {
   // ---- 1. Injection --------------------------------------------------------------------
+  // The page target exists before renderer/main.js's initial loadStudies() has resolved (HANDOFF's
+  // "alive is not ready" trap); injecting into that empty store lets the load replace the fixture a
+  // moment later. Wait for the library, as the other suites do.
+  for (let i = 0; i < 60 && (await store('s.studies.length')) === 0; i += 1) await cdp.settle(500);
   await cdp.setState(`{ ack: true, screen: 'studies', studiesTab: 'find', query: '', tab: 'meas', openId: null, compareId: null, similarScope: 'all', similarRank: 'all' }`);
   await resetStudies();
   await cdp.setState(`{ openId: 'SP-9200', screen: 'analysis' }`);
