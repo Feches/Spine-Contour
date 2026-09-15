@@ -29,6 +29,8 @@ persistence-disabled `Embed`; the three-button export row at a narrow window. Th
 were answered by the user as one pass, not itemised. See the architecture contract's `## 2026-09-12 amendment: similar cases
 and outcomes (stage 1)`, HANDOFF's first "Where things stand" section and `docs/ROADMAP.md` §8. **Next:**
 the user says when to push to `fork`; then a PR to `fork/main`. A release commit is separate, later work.
+Wrapped 2026-09-14 with both suites green (unit 591/591; backend 429 passed, 2 skipped); `docs/superpowers/NEXT-SESSION.md`
+is the prompt, and it resumes at the 1.0.9 release step.
 
 **2026-09-11 filename grammar / note:** branch `claude/spine-contour-filename-parse-b6c1bb` off `fork/main` @
 `6704586` (v1.0.7). Filename stems are read as underscore-separated fields — subject, then a timepoint, view or
