@@ -25,7 +25,8 @@ its rulings are HANDOFF decisions 75-77. Not run: the packaged five-graph check 
 size growth (needs a packaged build); the release workflows' hub download and `export_embed`'s
 mean/std and licence guards on the pinned export pair (`requirements-export.txt`'s torch 2.11.0/timm
 1.0.27 versus the validating venv's 2.13.0/1.0.29); `/embed` over a real uvicorn socket; a
-persistence-disabled `Embed`. See the architecture contract's `## 2026-09-12 amendment: similar cases
+persistence-disabled `Embed`; the three-button export row at a narrow window. The gate's nine checks
+were answered by the user as one pass, not itemised. See the architecture contract's `## 2026-09-12 amendment: similar cases
 and outcomes (stage 1)`, HANDOFF's first "Where things stand" section and `docs/ROADMAP.md` §8. **Next:**
 the user says when to push to `fork`; then a PR to `fork/main`. A release commit is separate, later work.
 
