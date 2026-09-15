@@ -104,7 +104,7 @@ export function mountParameters(host, { onOpen }) {
     }
   }
 
-  // The research dataset over the same rows (similar-cases spec section 13): a folder, four
+  // The research dataset over the same rows (similar-cases spec section 13): a folder, five
   // files, no images. The embeddings load first so the vectors file is complete.
   async function exportDataset(rows, filters) {
     if (rows.filter((study) => study.source === 'real').length === 0) return;

@@ -3210,4 +3210,322 @@ Session ended 2026-09-12 (the planning session): resume at **Plan A Task 1**, th
 
 Filled during execution: one entry per task — the commit, the counts, the reviewer's findings and how each was settled; the gate's answers and the checks not run; every ruling made on the way.
 
+**Pre-flight scan (2026-09-13, before Task 1)** — dispatched as a read-only agent. Plan B pre-flight: 94
+anchors (79 match, 10 line drifts), 13 findings; every finding verified against the tree by the
+controller; rulings R1-R14 recorded in `preflight-rulings.md` (R1 the manifest version strips a leading
+`v`; R2 the folder label is sanitised to the `save-dataset` handler's name pattern; R3/R4/R5/R6/R7/R8
+localise the compare pane's label offsets, panMode and `dynamicKey`, and memoise the chip match on a
+closure key while leaving the shared pointer-gesture state module-scope; R9/R10 update the two existing
+`processing.test.js` expectations and `store.js`'s initial `performance` for the new `embeddings` key;
+R11 restates the drawer's caret-restore guard for a `<select>`, whose `selectionStart` is `undefined`,
+not `null`; R12 fixes `smoke-similar.mjs`'s baseline shape and the stale unit count in
+`tools/smoke/README.md`; R13 folds the `csv.js` contract block's final `KNOWN_FIELDS`/`Keep` wording
+and the v1.0.8 pointer paragraph into Task 12's job; R14 corrects the ten drifted line anchors). The
+amendment was written by an Opus writer as one pass (141 lines changed), reviewed independently by
+Opus (14/14 faithful, 2 minor wording corrections folded by the controller), and committed as "docs:
+Plan B amended after the pre-flight scan" before any Plan B briefs were extracted. Plan A completed
+first, at `fcf94b9` (its own ledger committed there); Plan B execution starts from that commit.
+
+**Task 1 (settings: the `embeddings` toggle)** — dispatched (Sonnet), BASE `fcf94b9`. Implementer
+DONE, commit `c139a53`; unit 543/543. Review (Sonnet) on `review-fcf94b9..c139a53.diff`: spec
+compliant, Approved, no findings. Task complete, commits `fcf94b9..c139a53`, review clean.
+
+**Ruling** (made before Task 3 was dispatched, ahead of Task 2): "Task 3 (data/similarity.js) executes
+before Task 2 (the embeddings store), because Task 2's root module renderer/embeddings.js imports
+vector from data/similarity.js and the plan forbids a stub; each task then gets its own commit and
+review. Task 3 depends on nothing from Task 2. Cost if wrong: none identified."
+
+**Task 3 (`renderer/data/similarity.js`)** — dispatched (Opus), BASE `c139a53` (ahead of Task 2 per the
+ordering ruling above). Implementer DONE_WITH_CONCERNS, commit `da022f8`; unit 558/558 (the brief said
+fourteen tests, the file has fifteen); the Write tool turned three `\u` escapes into glyphs once,
+repaired with a Python script; observations: median scaling amplifies a block whose distances are
+nearly all zero (spec-designed), `vector()` derived twice per candidate per ranking. Review (Opus) on
+`review-c139a53..da022f8.diff`: spec compliant, Approved; the mirror rule, similarity invariance and
+the normative ranking re-derived independently (C median 0.003096). 8 minor, all deferred: `qc: null`
+admitted as full coverage (`landmarks()` still requires all levels + S1); `isAnterior` hard-codes the
+layout instead of reading `LANDMARK_ORDER`; no test pins `V[2i]` to `LANDMARK_ORDER[i]`, the Map branch
+of `embeddingOf`, or the size-0 guard (plan-mandated test file); `unitList` does not check unit norm; a
+second private `rootOf` differs from `parameters.js`'s without a comment; `candidates(null)` throws
+(callers gate on `openReason`); `vector()` runs twice per candidate; `stale` is counted only under
+`all`/`appearance` and only for known-and-differing models. Note left for Task 6: under `all`, stale
+candidates are still ranked and shown — the tail must not read as "dropped". Task complete, commits
+`c139a53..da022f8`, review clean.
+
+**Task 2 (the embeddings store: `data/embeddings.js`, root `renderer/embeddings.js`, the IPC)** —
+dispatched (Sonnet), BASE `da022f8`. Implementer DONE_WITH_CONCERNS, commit `5078bf9`; unit 562/562;
+the brief's file-list "after measure" anchor for `main.js` had no matching code block — the handlers
+sit after `delete-prediction` per Step 4's actual code. Review (Sonnet) on
+`review-da022f8..5078bf9.diff`: spec compliant, Approved. 4 minor, all deferred (plan-mandated code):
+`validEmbedding` and `load-embeddings` do not enforce the id ≥ 1000 rule the write side does;
+`embeddingPath` duplicates `predictionPath`'s validation; a non-ENOENT read error on one embeddings
+file aborts the whole load (caught by `ensureEmbeddings`, zero records that session); the embed handler
+re-appends `processing_mode`/`cpu_threads` by hand instead of `appendPerformance` (intended — `/embed`
+takes only those two). Task complete, commits `da022f8..5078bf9`, review clean.
+
+**Task 4 (outcomes: the registry, resolution, `KNOWN_FIELDS`, the drawer's outcome cells)** —
+dispatched (Sonnet), BASE `5078bf9`. Implementer DONE, commit `8873de7`; unit 569/569; the non-ASCII
+repair needed a Python script run through PowerShell — Bash refused the venv python again. Review
+(Sonnet) on `review-5078bf9..8873de7.diff`: spec compliant, Approved. 2 minor, deferred:
+`.clinical-cell-select { appearance: auto }` is a no-op (nothing resets it); the blur re-commit path is
+inert for a select. Task complete, commits `5078bf9..8873de7`, review clean.
+
+**Ruling** (ahead of Task 5): "the brief's 'from source' manual check of the mapping card is not run by
+the implementer (launching the app from a Sonnet dispatch is the stall pattern); it is covered by the
+human gate's check 7 (Keep column name, Keep N unmapped, the column reaching the drawer and both
+exports) and recorded as not run until then. Cost if wrong: a DOM defect on the mapping card surfaces
+at the gate instead of at Task 5."
+
+**Task 5 (`Keep column name` / `Keep all unmapped` on the mapping card)** — dispatched (Sonnet), BASE
+`8873de7`. Implementer DONE, commit `e8eb247`; unit 571/571; the Edit tool mangled one em dash,
+repaired with a Python script; the manual check not run per the ruling above. Review (Sonnet) on
+`review-8873de7..e8eb247.diff`: spec compliant, Approved. 2 minor, deferred: `keepUnmapped` duplicates
+`autoMap`'s known-list construction and match expression (brief-inherited); no test for two custom
+headers whose trimmed names collide (behaviour verified by trace). Task complete, commits
+`8873de7..e8eb247`, review clean; manual check not run (gate check 7).
+
+**Ruling** (ahead of Task 6): "the brief's from-source check runs through the smoke harness on a
+scratch profile (launch.mjs, one cdp.mjs --file script that opens a study on the sim tab and reads the
+data-similar-key nodes, cdp.mjs --quit), bounded to one attempt; a held port or any failure is recorded
+as not run and Task 10's suite covers it. Cost if wrong: a DOM defect surfaces at Task 10 instead of
+Task 6."
+
+**Task 6 (the Find similar tab, `renderer/components/similar.js`)** — dispatched (Opus), BASE
+`e8eb247`. Implementer DONE, commit `4be07d7`; unit 571/571; the from-source check on a scratch profile
+passed: controls, eyebrow, 2 cards under shape, footer, card click toggle, the no-embedding sentence
+under `all`, no page errors; the CSS banner carries a literal em dash like the four existing banners;
+the `analysis.js` anchors had drifted ~19 lines after Task 2. Review (Opus) on
+`review-e8eb247..4be07d7.diff`: 2 Important (plan-mandated) — (a) `title: study.id` on the card name
+puts the record id in a tooltip; (b) an absent `filmDate` is omitted from line 2 instead of `—`. 6
+Minor: the tails are pluralised (unrequested); `resolveOutcomes` computed twice per card; an unknown
+`similarRank` throws in the component where the data layer defends; `??` vs `||` on one line; the CSS
+banner `05` sits above `02`-`04`; `<div>`s inside a `<button>`. Notes for Task 10 written to
+`task-10-notes.md`.
+
+**Ruling**: "(a) the tooltip is studyName(study) — the user's standing rule, the record id appears
+nowhere a person looks; (b) line 2 always carries four parts with — for an absent date, spec section
+8.2. Cost if wrong: none. Ruling on the tails: the singular forms stay (better English, the spec's
+literal reads as a template); Task 10 keys on MORE STUD / RE-EMBEDDING and Task 12 notes the singular
+forms beside section 8.1. Cost if wrong: two ternaries."
+
+Fix round 1/5 (resume implementer): DONE, commit `a8b0beb`; byte check clean; unit 571/571. Scoped
+re-review (Sonnet) on `review-4be07d7..a8b0beb.diff`: 2 addressed, 0 open. Task complete, commits
+`e8eb247..a8b0beb`, review clean after one fix round.
+
+**Ruling** (ahead of Task 7): "the brief's from-source check (segment a film with the switch off,
+Embed 1, the toast, the file on disk) needs a real radiograph and the backend; it is not run by the
+implementer — the human gate's check 1 and Task 10's smoke-persist run cover it. Cost if wrong: an
+Embed-path defect surfaces at Task 10 or the gate."
+
+**Task 7 (the `Embed` batch kind)** — dispatched (Sonnet), BASE `a8b0beb`. Implementer DONE, commit
+`6319a46`; unit 574/574; two old batch tests gained `kind: 'segment'`; the from-source check not run
+per the ruling above. Review (Sonnet) on `review-a8b0beb..6319a46.diff`: spec compliant, Approved. 4
+minor, deferred: the driver's segment/embed branches duplicate the try/catch-into-outcome shape
+(brief-mandated); `embedStudy`'s `deletingStudies` branch reuses `WAIT_FOR_RUN`'s wording; the run-card
+message lacked the spec prose's ellipsis at review time (the brief's string was binding for the
+implementer — fixed later at the ellipsis, see M4 below); the `planEmbed` test never exercises the
+real-only filter. Two notes appended to `task-10-notes.md`. Task complete, commits `a8b0beb..6319a46`,
+review clean; from-source check not run (gate check 1, Task 10).
+
+**Ruling** (ahead of Task 8): "the from-source check runs through the smoke harness on a scratch
+profile, one bounded attempt, with two injected segmented studies (no sidecars, so the compare pane
+shows FILM UNAVAILABLE — the pane, badge, panel width, delta cells, two drawer rows and the toggle are
+what the check reads); the film restore itself is the gate's check 6. Cost if wrong: a pane-restore
+defect surfaces at the gate."
+
+**Task 8 (comparison mode: the compare pane, the badge, the wider panel)** — dispatched (Opus), BASE
+`6319a46`. Implementer DONE, commit `623ae3b`; unit 574/574; the from-source check green on a scratch
+profile: pane, badge, 440px panel, 22 delta cells, 2 drawer rows, chip with match and close,
+independent compare zoom, both exits, no console errors; 13 adaptations listed in the report including
+`liveGeometry` gated on the drag's study id, the primary's edit chrome suppressed on the read-only
+pane, and the chip close control moved onto `--stage-*` tokens because `color: inherit` was invisible
+in light mode; concerns: a shared `tracePointPointer` reachable from a chord pan on the compare pane
+during a primary retrace; the compare film's success path not exercised (gate check 6); the chip memo
+recomputes on any studies replacement. Review (Opus) on `review-6319a46..623ae3b.diff`: the role
+refactor clean, the primary untouched, all 13 adaptations judged behaviour-preserving; 3 Important: (1)
+an `ImageBitmap` leak when the screen tears down mid-restore (`stale()` has no mount-identity term;
+Back during a card click); (2) the compare pane's LOADING card shows a live Cancel-processing button
+(`cancelButton` toggles off `card.spinner` alone); (3) plan-mandated: the badge, the compare chip and
+the measurements header show `SP-nnnn` where the card shows the study name. 7 Minor, deferred:
+`writeView` redraws the dynamic layer on every compare pan frame (brief-literal); a second `getState()`
+per primary `updateViewer`; `.analysis-viewer-host` declared twice; chip margins compound with the chip
+gap; the module comment overstates the compare role's invariant (it can start a label drag); stale text
+in the hidden compare pane; `.viewer-chip-*` split across sections. Notes for Task 10: scope every
+comparison assertion to `.analysis-pane-primary` / `.analysis-pane-compare`; `.run-card`,
+`.viewer-chip`, `.viewer-stage`, `.viewer-toolbar`, `.meas-value` now match twice.
+
+**Ruling**: "(1) fix — stale() and the catch guard gain a mount-identity term as restoreFilm has; (2)
+fix — the compare role never shows the cancel button; (3) the three NEW surfaces show studyName (the
+badge COMPARING · {name}, the compare chip {name} {match}%, the measurements header the two names,
+ellipsised with a title), per the user's standing rule; the PRIMARY chip keeps the record id today
+(pre-existing, visible to the user on v1.0.8) and becomes a gate question rather than a scope widening.
+Cost if wrong: three strings and one CSS rule; the primary chip one line later."
+
+Fix round 1/5 (resume implementer): DONE, commit `5dc11df`; covering 77/77; unit 574/574; re-check
+green: teardown mid-restore drops the result with no toast, Cancel hidden on the compare LOADING card,
+badge/chip/header read the study name; the `restoreCompareFilm` failure toast also names the study —
+accepted, consistent with the rule. Scoped re-review (Sonnet) on `review-623ae3b..5dc11df.diff`: 3
+addressed, 0 open. Task complete, commits `6319a46..5dc11df`, review clean after one fix round. **Gate
+question recorded here, closed at the gate by decision 76:** the primary viewer chip still showed the
+`SP-nnnn` record id (pre-existing); the compare chip, the badge and the panel header showed the study
+name.
+
+**Ruling** (ahead of Task 9): "the brief's from-source check needs the native folder picker, which CDP
+cannot drive; it is the human gate's check 8 and Task 10 exercises buildDataset through the page's
+module. Not run by the implementer. Cost if wrong: a save-dataset handler defect surfaces at the
+gate."
+
+**Task 9 (`Export dataset`, `data/dataset.js`, `save-dataset`)** — dispatched (Sonnet), BASE `5dc11df`.
+Implementer DONE, commit `138776f`; unit 582/582; from-source check not run per the ruling above; the
+three-button group's wrap not exercised live. Review (Sonnet) on `review-5dc11df..138776f.diff`: 2
+Important — (1) `appendColumns` splits the rendered CSV on every CRLF with no quote-state tracking, so
+a quoted cell with an embedded line break (which `csv.js`'s parser and `escapeField` both allow) is
+torn and every later row's appended cells shift; (2) plan-mandated: a write failure after `mkdir`
+leaves a half-written dataset folder that later exports skip with `-2`, `-3`. 4 Minor, deferred:
+`escapeField` duplicated from `csv.js` (private there); `folderLabel` collides in name with
+`labels.js`'s export; no unit test pins the v-strip (only `parameters.js` does it); no DOM test for the
+third button (smoke and gate).
+
+**Ruling**: "(1) appendColumns splits only on a CRLF outside a quoted field (a quote-state scan,
+doubled quotes stay inside), with a unit test over a cell holding an embedded CRLF; (2) the
+save-dataset handler removes the folder it created (rm recursive, force) before rethrowing when any
+file write fails — the folder was created by this call, so removing it is safe; the toast then reads
+the error. Cost if wrong: one scan and one catch."
+
+Fix round 1/5 (resume implementer): DONE, commit `a5c1e6c`; unit 583/583 with the embedded-CRLF test.
+Scoped re-review (Sonnet) on `review-138776f..a5c1e6c.diff`: 2 addressed, 0 open; minor, deferred: if
+the cleanup `rm` itself rejects, its error masks the original write error. Task complete, commits
+`5dc11df..a5c1e6c`, review clean after one fix round; from-source check not run (gate check 8).
+
+**Task 10 (smoke — `smoke-similar.mjs`, and the README's baseline)** — dispatched (Sonnet), BASE
+`a5c1e6c`. Implementer DONE_WITH_CONCERNS, commit `7fcfc9b`; `smoke-similar.mjs` 66/66;
+`smoke-studies.mjs` 136/136; `smoke-parameters.mjs` 49/58 — run AFTER `smoke-studies.mjs` against its
+README precondition (SP-9000/SP-9005 left in the library), a pre-existing ordering fragility the
+brief's own sequence triggered, not a regression; `smoke-persist.mjs` run 40/40, restart 48/48 with the
+new embeddings round-trip check passing for real; unit 583/583. The controller re-ran
+`smoke-parameters.mjs` alone on a fresh scratch launch: 58/58 (`tools/smoke/out/b10c-parameters.txt`),
+no console errors — confirming the 49/58 was purely the run order, as the implementer said. Review
+(Sonnet) on `review-a5c1e6c..7fcfc9b.diff`: spec compliant, Approved; all twelve sections check-backed
+against the component source; the 49/58 explanation holds (every FAIL traces to SP-9000/SP-9005 from
+`smoke-studies.mjs`). 4 minor, deferred: one check reads back values the suite itself set; the
+more-tail check omits the count; the manifest's no-leading-`v` assertion is not in the suite; scope
+narrowing uses a null-workspace candidate rather than a distinct real root. Not covered (needs a
+backend run): a persistence-disabled Embed, cancel during an embed. Task complete, commits
+`a5c1e6c..7fcfc9b`, review clean. Baselines on `7fcfc9b`: unit 583/583; `smoke-similar.mjs` 66/66;
+`smoke-studies.mjs` 136/136; `smoke-parameters.mjs` 58/58 (fresh launch); `smoke-persist.mjs` run
+40/40, restart 48/48 (embeddings round-trip real).
+
+**Plan B final whole-branch review** — per HANDOFF decision 74 the review runs BEFORE the human gate,
+once every code task is complete. Dispatched (Opus) on `review-final-fcf94b9..7fcfc9b.diff` (37 files,
+3041 insertions; six reading passes plus four files opened beyond the diff for seams the hunks cut
+off). Strengths: the cross-plan contract exact field-for-field; the store's re-entrancy rule respected
+everywhere (every new `setState` traced); identity by study name confirmed in every file a person reads
+(`dataset.test.js` pins the absence of `SP-`, `.png` and a Windows path in both CSVs); comparison
+mode's role split judged disciplined; no fabricated value found anywhere; the glyph trap clean across
+all thirteen commits; no allowlist change needed and none made; the pure suites test behaviour, not
+shape; the smoke suite judged the best on the branch. 1 Critical — `appendColumns` treated a data row
+whose first cell starts with `#` as a comment (only lines BEFORE the header should count), dropping its
+appended cells and shifting every later row's — a film named `#3 pre-op` would corrupt the outcome
+labels. 2 Important — (I1) the compare pane's watermark footer printed the `SP-nnnn` id, a NEW
+on-screen surface Task 8's ruling had not covered; (I2) `vectors.json`/`manifest.json` recorded only
+`{onnx_sha256}` where spec §13 wants the full embedding model record. 8 minor, including
+`save-dataset`'s file-name pattern admitting `..`, the Embed count briefly inflated before the map
+loads, `similar.js` indexing `MODES[mode]` unguarded, the run card lacking the spec's ellipsis, a stale
+embedding never invalidated by `sourceSha256` (ROADMAP §5), and orphan embeddings files left on the
+scratch profile.
+
+**Ruling** — one fix wave: "(C1) appendColumns treats only the lines BEFORE the header as comments (a
+seenHeader flag) with a test for a #-prefixed cell; (I2) renderer/embeddings.js exports bundledModel()
+(the full {id, dim, input, onnx_sha256} record or null), buildDataset takes bundledModel (bundledSha
+still accepted, derived from it) and writes the record into vectors.json and manifest.json, tests
+updated; (M1) a dataset file name must match ^[A-Za-z0-9][A-Za-z0-9._-]*$ and never be . or ..; (M4)
+the embed run card reads "Computing appearance embedding…" per spec section 12. Cost if wrong: one
+flag, one accessor, one pattern, one string."
+
+**Ruling** — I1: "OVERRULED — HANDOFF decision 26 (user, 2026-09-06): the film's watermark keeps the
+SP-nnnn id, not the name, because a filename can carry PHI and the dropzone promises de-identified
+input; the compare pane's footer is the same watermark and keeps the id for the same reason. The gate
+question stays: the primary and compare chips (the on-screen identity strip) show the id where every
+other surface shows the name — the user decides. Cost if wrong: two strings." (This ruling, together
+with Task 8's primary-chip gate question, was itself superseded at the human gate by decision 76, which
+puts every on-screen surface — including this watermark — on `filmLabel` instead.)
+
+Parked — the other minors stay deferred per the reviewer's triage: eight to ROADMAP §5; the singular
+tails stand; Plan A's stale spec lines and the five-graph onnx note were left for Task 12. Fix wave
+dispatched (Sonnet), FIX_BASE `7fcfc9b`. DONE, commit `a7e4a9e`; unit 584/584. Scoped re-review
+(Sonnet) on `review-7fcfc9b..a7e4a9e.diff`: 4 of 4 addressed (C1, I2, M1, M4), no new breakage; Plan B
+code complete at `a7e4a9e` (unit 584/584). The re-reviewer's out-of-scope note on the Fable trailer is
+wrong: the trailer is the user's instruction.
+
+**Task 11 (human gate)** — opened 2026-09-13: the app launched from source in this worktree on the real
+library (`npm.cmd run dev`, log `tools/smoke/out/gate-app.log`, backend healthy); the nine spec checks
+plus the reviews' additions listed in chat.
+
+Gate (user, 2026-09-14): "Embed counted 5 of 9 because four stored segmentations are partial (two with
+a complete column but no femoral heads, two missing L1 or L1-L2)." **Ruling (user)**: "the eligibility
+rule stays — a partial film is never ranked, so it is not embedded — but the Find tab must say why the
+count is smaller: beside the Embed button, a note in the Segment note's style reads '{k} partial — not
+embeddable' (title: Find similar needs all five lumbar levels and S1), shown whenever the pool holds a
+segmented real film that cannot be ranked, even when Embed itself is hidden. planEmbed gains an
+`excluded` count through an `ineligible` predicate exported by renderer/embeddings.js. Cost if wrong:
+one note." (Decision 75.) Fix dispatched (Sonnet), BASE `a7e4a9e`. DONE, commit `dd9480b`; unit
+585/585. The controller ran `smoke-similar.mjs` on a scratch profile with the user's app still up on
+the real library: 69/69 (66 + 3 new checks), no console errors (`tools/smoke/out/b14-similar.txt`).
+Scoped review (Sonnet) on `review-a7e4a9e..dd9480b.diff`: Approved, no findings — the pool identity
+between ids and `excluded` is structural; the note survives a hidden Embed button; the byte count
+unchanged. Gate remained open: the user's app still ran the pre-fix renderer until relaunched.
+
+Gate (user, 2026-09-14): "the viewer strip printed `id · pt · sex · age` — three demo-only labels
+always — on both panes, and the user asked how to name films there given long stems." **Ruling (user,
+"agree")**: "the strip and both chips show the PARSED fields — subject · timepoint · film date, then ·
+note when present, — per absent part, falling back to the study name when no field is parsed; the
+badge reads COMPARING · the same label; the chip's tooltip carries the full study name; the record id
+leaves the viewer (the strip is on-screen only, not burned into any export, so decision 26 does not
+bind it). Cost if wrong: one label function." (Decision 76.)
+
+Gate (user, 2026-09-14): the dataset folder's tables take the names of the exports they extend —
+`parameters.csv` (Export CSV + provenance and resolved outcomes) and `paired.csv` (Export paired CSV +
+outcomes and film types) — and the folder gains `README.md` describing every file, the identity rule,
+the blank rule, the vector blocks and the subject-split warning; `vectors.json`, `manifest.json` and
+the folder name unchanged. Spec §13 amended at Task 12. Cost if wrong: two file names. (Decision 77.)
+
+Gate fixes 2+3 dispatched together (Sonnet), BASE `dd9480b`. Implementer DONE, commits `872d6e1` (the
+film label on the strip, both chips and the badge) and `61f0765` (`parameters.csv`, `paired.csv`,
+`README.md`); unit 591/591. The controller's `smoke-similar.mjs` then threw at its first click on two
+fresh launches; diagnosed with an instrumented copy — the suite injected its fixture before the
+initial `loadStudies()` resolved and the load replaced it (the alive-is-not-ready trap; it had passed
+earlier by winning the race); a separate probe proved the product renders the label, strip, chip and
+tab with no console errors. The controller fixed the suite (a wait for the library before injecting),
+commit `ffb8982`; `smoke-similar.mjs` 69/69 on a fresh launch (`tools/smoke/out/b17-similar.txt`).
+Review (Sonnet) over `dd9480b..ffb8982` (`review-gate-2.diff`), including the controller's suite fix:
+Approved, all three rulings met, named risks clean (the demo fallback, empty-string fields, no
+`study.id` in any rendered text, the chip's flex layout, the README's ASCII-only content and column
+names generated from the same constants). 2 minor, deferred: the `parameters.js` comment still said
+"four files" (this task, Task 12, fixes it); no test for an empty-string timepoint/filmDate/note in
+`filmLabel`. Branch at `ffb8982`; gate open — awaiting the user's checks 2-9 and the app relaunch.
+
+**Task 11: HUMAN GATE PASSED 2026-09-14** (user: "passed the gates") on the app relaunched from source
+at `ffb8982` on the real library. Rulings made at the gate, each already committed: the Embed count's
+partial films explained beside the button (`dd9480b`); the viewer strip, both chips and the badge name
+a film by its parsed fields (`872d6e1`) — which also settled the record-id question, the id now
+appears nowhere on screen; the dataset's tables named `parameters.csv` and `paired.csv` with a README
+(`61f0765`); the suite waits for the library (`ffb8982`). Not itemised by the user: the nine checks
+were answered as one pass. Not run in this session: the packaged five-graph check and installer
+growth; the workflows' hub download on the pinned pair; `/embed` over a real uvicorn socket; a
+persistence-disabled Embed; the three-button export row at a narrow window.
+
+**Task 12 (records — the contract, the spec, HANDOFF, ROADMAP, CLAUDE.md, this ledger)** — dispatched
+(Sonnet), BASE `ffb8982`. Wrote the architecture contract's `## 2026-09-12 amendment: similar cases and
+outcomes (stage 1)` (the replaced `similarity.js` and `csv.js` blocks, the v1.0.8 pairing/identity
+pointer paragraph, and the eleven-item amendment body with the final signatures, including the two
+naming corrections `matchesLocation` and the two distinct `needsEmbedding` functions); amended the
+spec's status line and nine sections (§7.1, §8.1, §8.2, §8.5, §10.2, §10.5, §11, §12, §13) to say what
+actually shipped; added a new "Where things stand" subsection, decisions 75-77 and five Known-traps
+entries to HANDOFF; added the stage-1-shipped paragraph to ROADMAP §8, the pinned-export-pair and
+packaged-build items to §4, and eleven deferred-minor bullets to §5; added the top dated paragraph,
+three "Read these first" rows and the rewritten Git worktree paragraph to CLAUDE.md; changed the
+`parameters.js` comment from "four files" to "five files"; filled this Ledger. Unit suite:
+`node --test test/*.test.js` — see `tools/smoke/out/b12-unit.txt`, recorded below. Not run: unchanged
+from Task 11's list above — the packaged five-graph check and installer growth still need a packaged
+build, and the release workflows' pinned-pair export still needs its first CI run.
+
 **Pre-flight scan (2026-09-13, before Plan A Task 1)** — every anchor above checked against the working tree at `caa0fe8` (v1.0.8 base + docs) by a read-only Opus scan: 94 anchors, 79 matching, 10 line drifts, nothing missing, and 13 findings, each verified against the tree by the controller. The one amendment pass (this commit) folds fourteen rulings, each with its cost if wrong: **R1** `data/version.js` exports `VERSION_LABEL` (`'v1.0.8'`), so Task 9 strips the `v` for the manifest. **R2** `buildDataset` reduces the folder label to what `save-dataset`'s pattern accepts (`Fusion 2025 (v2)` → `Fusion 2025 v2`). **R3** `labelOffsets`/`labelStudyId` move into the viewer mount closure (they were module scope, and two mounts would wipe each other's every frame). **R4** the rest of the viewer's module-scope gesture state stays shared, stated with its invariant. **R5** `panMode` is local to the compare pane like zoom and pan. **R6** `updateViewer`'s `dynamicKey` reads `viewState().zoom`. **R7** the compare chip's match uses `state.similarScope`, not a fixed `'all'`. **R8** that match is memoised behind a key, so pan frames never re-rank. **R9** Task 1 amends the two existing `processing.test.js` expectations that lack `embeddings`. **R10** `store.js`'s initial `performance` gains `embeddings: true` (else `changePerformance` goes inert when the preference load fails). **R11** the drawer's caret restore is guarded for a `<select>` (`selectionStart` is `undefined`, not `null`). **R12** `smoke-similar.mjs` prints `PASS`/`FAIL` lines then `N/M checks passed`, and the README's baseline is a prose paragraph whose `unit 505/505` is stale. **R13** the contract amendment also rewrites the `csv.js` block's `KNOWN_FIELDS` and points at the pre-op/post-op spec's §11.2 for v1.0.8's pairing by visit. **R14** the ten drifted anchors corrected in place. The amendment was reviewed independently (Opus): 14/14 folded faithfully; two wording corrections folded (the two `panMode` writes that stay `setState`; the contract block starts at 652). Baselines on `caa0fe8`: unit 542/542; backend pytest 402 passed, 2 skipped.

@@ -102,8 +102,10 @@ renderer/                         (new)
   store.js                        state container
   router.js                       screen switching
   api.js                          wraps window.spineContour
-  batch.js                        (2026-09-08, batch spec §8.2) startBatch(ids), stopBatch() — the one wiring of data/batch.js's
-                                  createBatchDriver to the store, the toast, persistenceDisabledReason and segmentStudy; module scope
+  batch.js                        (2026-09-08, batch spec §8.2; 2026-09-12 similar-cases §12 adds the embed kind)
+                                  startBatch(ids, kind = 'segment'), stopBatch() — the one wiring of data/batch.js's
+                                  createBatchDriver to the store, the toast, persistenceDisabledReason, segmentStudy and embedStudy;
+                                  module scope
   demo-studies.js                 (2026-09-10, studies-table spec §9) demoToggleAvailable(), setDemoStudiesShown(shown) — the one wiring of
                                   data/demo-visibility.js to the store, the toast and api.setDemoStudiesHidden; module scope
   dom.js                          el() helper, tiny render utilities
@@ -188,9 +190,15 @@ renderer/                         (new)
                                   merge under the unnoted-primary rule; ambiguous entries carry kind 'films'|'visits');
                                   postFromFilters(filters); pairedExportMessage(pairing, savedTo) (§11.3, with the merged,
                                   disagreement and derived-across-films clauses)
-  data/batch.js                   (2026-09-08) pure: planBatch({visible, selected, running}) → {ids, label, note, enabled};
-                                  newBatch, advance, withStopping, isQueued, progressText, sidebarText, batchMessage;
-                                  createBatchDriver({segment, getState, setState, showToast, persistenceDisabledReason})
+  data/batch.js                   (2026-09-08; 2026-09-12 similar-cases §12 adds the embed kind) pure:
+                                  planBatch({visible, selected, running}) → {ids, label, note, enabled};
+                                  planEmbed({visible, selected, running, needs, ineligible}) → {ids, label, note, enabled, hidden, excluded} —
+                                  needs(study) picks eligible-but-not-yet-embedded studies, ineligible(study) counts the partial films
+                                  that can never be embedded (gate decision 75);
+                                  newBatch(ids, kind = 'segment'), advance, withStopping, isQueued, progressText, sidebarText, batchMessage;
+                                  createBatchDriver({segment, embed = null, embedNeeded = () => false, getState, setState, showToast,
+                                  persistenceDisabledReason}) — the run callback is chosen by the batch's kind ('segment'|'embed');
+                                  startBatch(ids, kind) in renderer/batch.js is the one wiring to the store
   data/find.js                    (2026-09-10, studies-table spec §6) DEFAULT_FIND_SORT, FIND_SORT_KEYS, statusRank, toggleFindSort,
                                   sortFindRows(studies, sort, runningId) — the Find list's sort; pure
   data/demo-visibility.js         (2026-09-10, §9) demoStudiesShown(state), demoVisibilityPatch(state, shown) — pure
@@ -636,18 +644,47 @@ in the demo set.
 
 ### `renderer/data/similarity.js`
 
-```js
-export const WEIGHTS = [1, 0.8, 0.8, 0.6, 1]
+**Replaced 2026-09-12 (similar-cases spec, stage 1) — see the `## 2026-09-12 amendment` below for the
+full picture; this is the module's current interface.**
 
-export function vector(study)            // → [LL, PI, PT, SS, PI-LL] | null
-export function distance(a, b)           // → number
-export function matchScore(a, b)         // → number 58..100 (integer)
-export function findSimilar(study, all, n = 3)   // → Study[]
+```js
+export const LANDMARK_ORDER      // the 22-point collection order, §7.1: L1..L5 SA/SP/IA/IP, then S1 SA/SP
+export const ALIGNMENT_ORDER     // ['PI', 'PT', 'SS', 'LL L1-S1', 'PI-LL']
+export const ALIGNMENT_WEIGHTS   // [1, 0.8, 0.8, 0.6, 1]
+export const MODES               // {all, shape, alignment, appearance} → per-block weight tables, §7.4
+export const BLOCK_KEYS          // ['V', 'H', 'A', 'C', 'W']
+export const SCOPES              // {workspace, all}, state.similarScope's values
+
+export function vector(study)            // → {V: 44 numbers, H: 2 numbers|null} | null   §7.1
+export function alignment(study)         // → [PI, PT, SS, LL, PI-LL] | null              §7.2
+export function blocks(study)            // → {V, H, A, C, W} assembled from vector/alignment/embeddingOf
+export function shapeDistance(a, b)      // → number   Euclidean over V
+export function pelvicDistance(a, b)     // → number | null   Euclidean over H, both required
+export function alignmentDistance(a, b)  // → number | null   weighted Euclidean over ALIGNMENT_WEIGHTS
+export function appearanceDistance(a, b) // → number | null   1 - a·b, unit vectors
+export function pairDistances(o, c)      // → {V, H, A, C, W} per-block distance or absent, §7.4's presence rules
+export function medianScale(values)      // → number   median of positive values over ≥3, else 1
+export function fuse(distances, weights) // → number | null   §7.4's weighted RMS over present blocks
+export function matchScore(d)            // → number 0..100 (integer)   round(100 * exp(-d))
+export function openReason(study, mode)  // → string | null   why the OPEN study has no cards (§8.4)
+export function angleLine(open, candidate)   // → {PI, PT, SS, LL} deltas | null, for card line 3
+export function subjectFilms(all, study) // → Study[]   same subjectKey as study, real only
+export function needsEmbedding(mode)     // → boolean   whether `mode` requires an embedding (all/appearance)
+export function candidates(open, all, {scope, mode, embeddings})   // → Study[]   §7.5's five rules
+export function findSimilar(open, all, {scope, mode, embeddings, n = 5})
+                                          // → {matches: [{study, d, match, blocks}], total, stale}
 ```
 
-`distance` is `sqrt(Σ Wᵢ (aᵢ − bᵢ)²)`. `matchScore` is
-`max(58, round(100 − distance × 1.35))`. `findSimilar` excludes the study itself and
-any study whose `vector()` is `null`, sorts ascending by distance, returns the first `n`.
+Two names the plan's own text used loosely, recorded as they resolved: `candidates` calls
+`matchesLocation(study, {workspace, folder})` (`renderer/data/parameters.js`), not `matchesWorkspace`.
+There are two different `needsEmbedding` functions in the codebase and neither is a typo: this module's
+takes a MODE (`'all'|'shape'|'alignment'|'appearance'`) and asks whether that ranking needs an
+embedding at all; `renderer/embeddings.js`'s (root module, not `data/`) takes a STUDY and asks whether
+that particular film still needs one computed. `stale` in `findSimilar`'s result counts candidates
+dropped from `C`/`W` only, under `all`/`appearance`, because their embedding's `model.onnx_sha256`
+differs from the bundled model's — never under `shape`/`alignment`, which do not touch embeddings.
+`embeddingOf` (private) accepts either a `Map` or a plain object keyed by study id: production passes
+the `Map` from `renderer/embeddings.js`'s `embeddingsMap()`, the unit tests pass plain objects.
 
 ### `renderer/data/csv.js`
 
@@ -655,10 +692,27 @@ any study whose `vector()` is `null`, sorts ascending by distance, returns the f
 /** @typedef {{src: string, dest: string|null}} Mapping */
 
 export const KNOWN_FIELDS = ['Age','Sex','BMI','Diagnosis','ODI',
-                             'Treatment plan','Surgical history','Follow-up','Notes']
+                             'Treatment plan','Surgical history','Follow-up','Notes',
+                             // similar-cases spec, 2026-09-12, §9.1: the outcome registry's fields and
+                             // the shared follow-up, appended so no existing export column moves.
+                             'Fusion extension','Fusion extension date','Last follow-up']
 
 export function parse(text)              // → {headers: string[], rows: Object[]}
-export function autoMap(headers)         // → Mapping[]   dest null when unmatched
+export function autoMap(headers)         // → Mapping[]   dest null when unmatched; (2026-09-12) matches
+                                         //   KNOWN_FIELDS longest name first, so 'fusion_extension_date'
+                                         //   claims 'Fusion extension date', not 'Fusion extension'
+export const KEEP_NAME                   // (2026-09-12) the mapping select's sentinel value for
+                                         //   "Keep column name": distinct from a KNOWN_FIELDS entry and from 'Unmapped'
+export function keepColumnName(header)   // → string   (2026-09-12) the header trimmed, for a chip whose
+                                         //   destination is KEEP_NAME — the custom clinical field's name
+export function keepUnmapped(mapping, headers)   // → Mapping[]   (2026-09-12) `Keep all unmapped`: every
+                                         //   still-`Unmapped` chip set to its own trimmed name, except a structural or
+                                         //   join header (unchanged) and a header whose normalised name matches a
+                                         //   free KNOWN_FIELDS entry (mapped to that field instead); a header whose
+                                         //   trimmed name is already taken (by another kept or known column) stays Unmapped;
+                                         //   unchanged rows come back BY REFERENCE, so a caller can count what would change
+export function keepableCount(mapping, headers)   // → number   (2026-09-12) how many chips `keepUnmapped`
+                                         //   would change, for the button's `Keep N unmapped columns` label
 export function toCsv(studies)           // → string   (2026-09-07) Study ID,View,Subject,Timepoint,Film date, then the
                                          //   measurement columns, then the clinical union; demo rows are never written;
                                          //   the Source column and the includeDemo option are gone. (2026-09-06) clinical
@@ -691,10 +745,21 @@ export const STRUCTURAL_LABELS                   // {subjectId: 'Subject', …} 
 and treats a quote as opening only at field start, leading whitespace allowed — a quote after
 other text is literal (plan 06).
 
+**Pointer (2026-09-13, v1.0.8, fork PR #21):** identity and pairing changed under this module after
+this contract's last full pass here. A film's identity everywhere a person looks is `studyName(study)`
+(`data/labels.js`), not the `SP-nnnn` record id, and pairing groups films into VISITS (subject + label
++ film date) rather than one film per label. `toCsv` and `toPairedCsv` above already reflect the
+current shape (`Study ID` holds the study name; `toPairedCsv` is visit-based); the full description of
+the visit grammar, the merge and disagreement rules, and the paired export's exact columns is the
+pre-op/post-op spec's amended §11.2/§11.3 (`docs/superpowers/specs/2026-09-06-preop-postop-organisation-design.md`),
+not restated here — this is a pointer, not a rewrite, because that gap predates the similar-cases plan
+below and a full v1.0.8 contract amendment is a separate piece of work.
+
 `autoMap` matches case-insensitively after stripping non-alphanumerics, treating the known
 field's stripped name as a prefix of the stripped header, so `odi_base` → `ODI` and
 `age_yrs` → `Age`; each known field is claimed by at most one column — the first matching
-header wins (plan 06). It is a **convenience, not an authority**.
+header wins (plan 06). **(2026-09-12)** Known fields are matched longest-name-first, so a header
+`fusion_extension_date` claims `Fusion extension date` rather than the shorter `Fusion extension`. It is a **convenience, not an authority**.
 It deliberately has no medical synonym table: `dx_text` does not map to `Diagnosis`,
 because teaching it `dx` would force teaching it `tx`, and a guess that silently maps
 the wrong column is worse than one that maps nothing.
@@ -707,7 +772,13 @@ Instead, **the mapping is user-editable**. Each chip on the Workspace screen ren
 `<select>` of `KNOWN_FIELDS` plus `Unmapped`, a field already claimed by another column
 is not offered twice, and edits write back to `state.wsMapping`. Rendering reads
 `state.wsMapping`, never `autoMap()` directly, so overrides survive re-render; choosing
-a new CSV resets to `autoMap`'s output.
+a new CSV resets to `autoMap`'s output. **(2026-09-12, similar-cases spec §9.5)** The select
+gains one more option after the known fields, `Keep column name (<header>)` — its value is
+`KEEP_NAME`, distinct from a `KNOWN_FIELDS` entry and from `Unmapped` — which imports the column
+as a custom clinical field under its own trimmed name (`keepColumnName`); the taken-name rule
+covers it exactly like a known field. A `Keep N unmapped columns` button above the chips
+(`keepableCount`, hidden at zero) runs `keepUnmapped` for every remaining `Unmapped` chip in one
+click; `Set all… → Unmapped` clears every destination, kept and known alike.
 `toCsv` emits the citation comment block first, absent values as empty, and never writes a
 `source === 'demo'` study (2026-09-07: the `includeDemo` option and the `Source` column are
 gone — no dialog ever set the option and no installer ships demos). **Measurement columns are written to
@@ -1162,3 +1233,150 @@ partial anatomy, calibration, orientation, consistency and manual-edit provenanc
 remain visible. Pending corrections display Updating; a run in flight on the open
 study displays it too (2026-09-10). No schema-version bump,
 CSP change or new runtime dependency.
+
+## 2026-09-12 amendment: similar cases and outcomes (stage 1)
+
+Spec `docs/superpowers/specs/2026-09-12-similar-cases-outcomes-design.md` ("the spec" below); plans
+`docs/superpowers/plans/2026-09-12-a-embeddings-backend.md` (Plan A, backend) and
+`docs/superpowers/plans/2026-09-12-b-similar-cases-renderer.md` (Plan B, renderer). Implemented on
+branch `claude/image-similarity-visualization-400922`, off `fork/main` @ `efe1df6` (v1.0.8); the human
+gate passed 2026-09-14. This section carries spec §16's eleven amendment items with the interfaces'
+**final** signatures, which in a few places differ from the spec's and the plans' own text — those
+differences are called out, because a reader who trusts only the plan will name the wrong function.
+
+**1. `renderer/data/similarity.js` replaced.** The body above (`### renderer/data/similarity.js`) now
+carries the current interface directly; it is not repeated here. The old `WEIGHTS`/`vector →
+[LL,PI,PT,SS,PI-LL]`/`distance`/`matchScore(a,b) → 58..100`/`findSimilar(study,all,n=3)` shape is gone.
+
+**2. New modules.**
+
+- `renderer/data/outcomes.js` (pure; imports only `data/timepoints.js`): `OUTCOMES` (the registry,
+  spec §9.1 — one entry, `fusionExtension`, `{key, field, dateField, primary, cardYes, cardNo,
+  footer}`), `FOLLOW_UP_FIELD = 'Last follow-up'`, `OUTCOME_FIELDS` (every registry field plus the
+  follow-up, in order — what `data/csv.js` folds into `KNOWN_FIELDS`), `primaryOutcome()`,
+  `isOutcomeField(name)`, `isOutcomeDateField(name)`, `normaliseOutcomeValue(text)`,
+  `recognisedOutcome(value)`, `recognisedDate(value)`, `resolveOutcomes(films, registry = OUTCOMES)`
+  (spec §9.3's per-subject resolution table), `outcomeLine(resolved, outcome)` (card line 4),
+  `footerLine(statuses, outcome)` (the footer's counts).
+- `renderer/data/embeddings.js` (pure; the stored-record SHAPE only): `EMBEDDING_VERSION = 1`,
+  `validEmbedding(record)`, `embeddingRecord(id, embedding, {sourceSha256 = null, computedAt} = {})`,
+  `isCurrent(record, bundledSha)` (an unknown `bundledSha`, i.e. `null` from a 503, reads as "keep what
+  is stored" per the planning ruling).
+- `renderer/embeddings.js` — a ROOT module (not `data/`; the planning ruling), the lazy-loaded map and
+  its IPC: `ensureEmbeddings()` (async; the first caller of any of the below triggers the one load;
+  its `bump()` — the `embeddingsVersion` counter increment that tells subscribers to redraw — runs only
+  after the `await`, never synchronously, because `store.js` throws on a re-entrant `setState` from
+  inside a subscriber notification), `embeddingFor(id)`, `embeddingsMap()` (the `Map` that
+  `similarity.js`'s `embeddingOf` reads), `bundledModelSha()`, `bundledModel()` (the full
+  `{id, dim, input, onnx_sha256}` record from `GET /embedding-model`, or `null`; added at the final
+  whole-branch review's fix wave so `Export dataset` can write it — `bundledModelSha()` is kept,
+  derived from it, for existing callers), `storeEmbedding(id, record)`, `forgetEmbedding(id)`,
+  `needsEmbedding(study)` (STUDY-keyed — see the note under `similarity.js`'s own `needsEmbedding`
+  above, a MODE-keyed function of the same name in a different module), `cannotEmbed(study)`.
+- `renderer/data/dataset.js` (pure; imports `data/csv.js`, `data/pairing.js`, `data/outcomes.js`,
+  `data/similarity.js`, `data/embeddings.js`, `data/labels.js`, `data/version.js`):
+  `RESOLVED_COLUMNS` (the per-outcome `Subject <field>`/`Subject <date field>` column names plus
+  `Subject last follow-up`, shared by `films.csv` and `subjects.csv`), `appendColumns(text, headers,
+  cells)` (quote-aware: tracks quote state across the rendered CSV so a CRLF inside a quoted cell is
+  never mistaken for a row break, and — after the final review's Critical fix — treats a line as a
+  citation comment only BEFORE the header row is seen, `seenHeader`, so a data row whose first cell
+  starts with `#` — a film literally named `#3 pre-op` — is never dropped as a comment and never
+  shifts every later row's appended cells), `datasetReadme({counts, version, exportedAt,
+  embeddingRecord})` (the gate's decision 77: the folder's `README.md`), `buildDataset({rows, post,
+  embeddings, bundledSha, bundledModel = null, version, now})` (`bundledModel` added at the final
+  review's fix wave, alongside `bundledSha`, so `vectors.json` and `manifest.json` both carry the full
+  model record, not the SHA alone — spec §13's "the embedding model record"), `datasetMessage(result,
+  folder)`.
+- `renderer/components/similar.js`: `mountSimilar(host) -> {update}` — the Find similar tab (spec §8).
+- `backend/embedding.py` (Plan A): `EMBED_KIND`, `load_metadata()` (cached; raises
+  `EmbeddingUnavailable` — added at Plan A's final review, subsuming a missing, unreadable or
+  incomplete `embed.json` under one exception both endpoints map to 503, where the plan's own text
+  had `/embedding-model` returning a bare 500 on a corrupt file and `/embed` a 422) — `model_record`,
+  `preprocess`, `crop_window`, `film_type`, `embed`, `embedding_record`.
+
+**3. State keys.** `similarScope` (default `'all'`), `similarRank` (default `'all'`),
+`embeddingsVersion` (a counter; every subscriber that reads the embeddings map lists it in its key
+array — the Analysis screen's tab, the Find tab's `update()`, the chip-match memo), `batch.kind`
+(`'segment'` default or `'embed'`), `performance.embeddings` (default `true`; already listed under
+Settings below).
+
+**4. `renderer/api.js` / `main.js`.** `api.js`: `saveEmbedding(id, record)`, `loadEmbeddings()`,
+`embeddingModel()`, `embed(request)`, `saveDataset(request)`; `deletePrediction(id)` now removes both
+`predictions/<id>.json` and `embeddings/<id>.json` (ENOENT success for each). `main.js` IPC handlers:
+`save-embedding`, `load-embeddings`, `embedding-model` (proxies the backend's `GET /embedding-model`,
+mapping a 503 to `null`), `embed` (proxies `POST /embed`), `save-dataset`; the `load-studies`
+quarantine handler now moves THREE things under one timestamp — `studies.json`, `predictions/`,
+`embeddings/`.
+
+**5. Backend API.** `/predict` and `/predict-stream` responses gain `embedding: {model, crop, whole,
+film_type} | null`; `qc.processing.embeddings: bool`. New `POST /embed` (multipart `file` + optional
+`framing`) → `{embedding}`; a missing/unreadable/incomplete `embed.json` is a 503 on both `/embed` and
+`GET /embedding-model` (`EmbeddingUnavailable`, item 2 above), an unreadable image or malformed
+`framing` a 422. New `GET /embedding-model` → `{id, dim, input, onnx_sha256} | 503`. The `embedding`
+progress stage (`"Computing appearance embeddings"`) sits between `encoding` and `calibration`. The
+fifth ONNX graph, `embed.onnx` (about 88 MB, dim 384), is exported, cached (`lru_cache(maxsize=5)` —
+grown from four to hold all five kinds resident in standard mode) and verified alongside the four
+structure models; `backend/verify_onnx.py` and `tools/packaging/check_bundled_inference.py` check five
+graphs. `timm` stays export-only (`--exclude-module timm` in every workflow — see the correction to
+§10.5 below).
+
+**6. `KNOWN_FIELDS` is twelve names.** The body above (`### renderer/data/csv.js`) carries the full
+list and `autoMap`'s longest-first matching rule directly.
+
+**7. Persistence.** `embeddings/<id>.json` under `userData`, beside `predictions/`, one file per real
+study — shape per `data/embeddings.js`'s `embeddingRecord`/`validEmbedding` above; `sourceSha256` is
+the film's `calibration.source_sha256` or `null`. Written by `api.saveEmbedding` after the sidecar and
+before the record commit (and by the `Embed` run core), refused for the session after
+`disablePersistence`. Loaded once, lazily, into `renderer/embeddings.js`'s module-scope map (not at
+bootstrap — corrects spec §11's text, which named `renderer/data/embeddings.js`; the planning ruling
+already put the map in the root module and the record shape alone in `data/`). Deleted with the study;
+quarantined with the store as the THREE-way move in item 4. Two embeddings compare only when their
+`model.onnx_sha256` match (`isCurrent`); a mismatched pair is `stale`, counted by `findSimilar` and by
+the Find tab's tail, never silently discarded. No `STORE_VERSION` bump.
+
+**8. Plan 07.** Tasks 1 (the five-angle distance) and 2 (the three-card tab) are superseded by this
+spec. Tasks 3–6 (comparison mode) are kept, adapted: `mountViewer(container, {role = 'primary'})` — the
+compare pane is the same component with `currentStudy()` reading `state.compareId`, no edit, re-run,
+run card or keyboard shortcuts, its own zoom/pan/panMode kept in the mount closure (`viewState()` /
+`writeView()`), while the pointer-gesture state (`drag`, `hover`, `retracing`, `tracePoints`,
+`tracePointPointer`) stays module-scope and shared — one live gesture at a time, the compare role can
+only start a pan, and `detach()` resets it for both mounts together, which is safe only because the
+compare mount is torn down together with the primary in `teardown()`, never on its own. The internal
+`updateViewer(study, {match = null})` (inside `mountViewer`'s closure, not a separate export) draws the
+chip; the internal `updateMeasurements(study, other = null)` (inside `mountMeasurements`'s closure)
+draws the second column, with `deltaRow(row, otherRow, threshold)` in `data/measurements.js` computing
+`Δ` at 5° for angles and 2 mm for disc heights. `clinical-data.js`'s private `visibleStudies(state)`
+returns `[open]` or `[open, compare]`, so the drawer shows two rows in comparison mode. **Naming, per
+the gate (decision 76):** the badge, the compare chip, the viewer strip and its tooltip, and the
+compare pane's watermark footer all read `filmLabel(study)` (`data/labels.js`) — never `study.id` —
+so the `SP-nnnn` record id no longer appears on any viewer surface, on either pane; this supersedes an
+earlier Task 8 ruling that had left the PRIMARY chip on the record id as a gate question.
+
+**9. Both packaging allowlists: unchanged.** No new root file; `renderer/embeddings.js` ships under
+`renderer/**/*`, already globbed by both `package.json`'s `build.files` and
+`electron-builder.preview.yml`.
+
+**10. Settings.** `state.performance.embeddings` (default `true`), normalised by the existing
+`normalizePerformance`/`save-performance` path alongside `cropLocalizer`/`toolbarRemoval`; sent with
+every `/predict` and `/predict-stream` request as the form field `embeddings`; parsed by
+`runtime.parse_options(..., embeddings=True)` into `Options.embeddings` (a non-boolean is the same 422
+shape the other switches raise); recorded on the result as `qc.processing.embeddings`. `/embed` ignores
+the setting — it always runs.
+
+**11. Workspace mapping.** The body above (`### renderer/data/csv.js`, the mapping-card paragraph)
+carries `Keep column name (<header>)`, `Keep N unmapped columns` and `Set all… → Unmapped`
+directly. `joinClinical` is unchanged; a `Mapping.dest` may now be any non-empty name, not only a
+`KNOWN_FIELDS` entry.
+
+**v1.0.8 base note.** The dataset's three tables (item 2 above; renamed at the gate to `parameters.csv`
+and `paired.csv`, decision 77) key a film by its study name, following the pre-op/post-op spec's
+amended §11.2 (the pointer paragraph above, under `### renderer/data/csv.js`); `subjects.csv`'s
+successor `paired.csv` follows the paired export by visit; `vectors.json`'s `films` array is in
+`films.csv`'s successor `parameters.csv`'s row order; the manifest's counts include merged visits and
+carry an `identity` line naming the study-name rule.
+
+**Not carried forward from the plans' own text (recorded so a reader does not go looking for them):**
+spec §11's sample JSON showed `model: {..., "size": 224}` — the stored and wire shape is
+`{id, dim, input: [height, width], onnx_sha256}`, no `size` key, on every endpoint and every stored
+record; spec §10.5 said `--collect-all timm` — every workflow passes `--exclude-module timm`, and
+`timm` has been export-only since the 2026-09-09 ONNX amendment above.

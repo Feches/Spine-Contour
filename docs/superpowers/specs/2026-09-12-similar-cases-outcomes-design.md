@@ -1,8 +1,15 @@
 # Similar cases and outcomes — stage 1 design
 
 **Status:** approved 2026-09-12; amended 2026-09-13 for the v1.0.8 base (fork PR #21: a film's identity is
-its study name, pairing is by visit). Brainstormed on branch `claude/image-similarity-visualization-400922`,
-now on `fork/main` at v1.0.8. Nothing here is implemented.
+its study name, pairing is by visit); **implemented 2026-09-14** on branch
+`claude/image-similarity-visualization-400922` (off `fork/main` @ `efe1df6`, v1.0.8) by Plan A
+(`docs/superpowers/plans/2026-09-12-a-embeddings-backend.md`, complete at `fcf94b9`) and Plan B
+(`docs/superpowers/plans/2026-09-12-b-similar-cases-renderer.md`, complete at `a7e4a9e`, with three
+gate-fix commits `dd9480b`, `872d6e1`, `61f0765` and a suite fix `ffb8982`). The human gate passed
+2026-09-14 (the user: "passed the gates"). The corrections below (amended 2026-09-14) record where the
+built code differs from what this document originally said; the architecture contract's
+`## 2026-09-12 amendment: similar cases and outcomes (stage 1)` is the binding interface record. Nothing
+pushed to `fork` yet; that is the user's call.
 
 **Builds on:** the approved spec `2026-08-31-spine-contour-ui-redesign-design.md` ("spec §" below;
 §10.5 and §10.6 in particular), the pre-op/post-op spec `2026-09-06-preop-postop-organisation-design.md`
@@ -180,7 +187,12 @@ Each with what it costs if it is wrong.
    ranking.
 7. **Five cards; scope defaults to `All studies`; the same subject is excluded; partial or unoriented
    studies and demo studies are never candidates.** *Cost if wrong:* each is a one-line rule in the
-   pure module with a test.
+   pure module with a test. **(amended 2026-09-14, gate decision 75)** The edge this rule creates: a
+   film with a complete lumbar column but no femoral heads is `partial` (`qc.coverage.partial`) and
+   therefore excluded from ranking, even though the hip block `H` is itself optional (§7.1's `H` is
+   `null` without a hip midpoint and the fused distance already tolerates that). The user kept the
+   stricter rule at the gate rather than relaxing it for this case; the Find tab's `Embed` row now says
+   why a film like this is not embeddable (§12).
 8. **An outcome is a registered pair of clinical fields — a `Yes`/`No` field and its date — stored per
    film like every clinical value, resolved per subject when read, and shown as counts.** `Last
    follow-up` is one shared field. Stage 1 registers one outcome, fusion extension; a second is one registry
@@ -201,7 +213,10 @@ Each with what it costs if it is wrong.
     paths (user ruling, 2026-09-12); a film's identity in every file is its study name, as in every export
     since v1.0.8 (user decision, 2026-09-13) — never a path, an extension or the record id.**
     Four files: `films.csv`, `subjects.csv`, `vectors.json`, `manifest.json`. *Cost if wrong:* the
-    notebook reads a different layout; the manifest carries a version for that.
+    notebook reads a different layout; the manifest carries a version for that. **(amended 2026-09-14,
+    gate decision 77)** Built as FIVE files: `films.csv` and `subjects.csv` renamed to `parameters.csv`
+    and `paired.csv` to match the exports they extend, plus a new `README.md` describing all five. §13
+    has the full, corrected table.
 12. **Comparison mode is plan 07's Tasks 3–6, unchanged in behaviour.** *Cost if wrong:* none new;
     those tasks were already approved.
 13. **The DINOv2 weights are downloaded at export time from the model hub, and their SHA-256 is
@@ -326,7 +341,12 @@ The right panel's second tab (spec §9, 400 px, 440 px in comparison mode). Top 
 4. Up to five cards (§8.2), the nearest first.
 5. The footer (§8.3).
 6. The tail, plan 07's wording: `{m} MORE STUDIES BELOW`, where `m` is the candidate count beyond the
-   cards, or nothing when `m` is 0.
+   cards, or nothing when `m` is 0. **(amended 2026-09-14, Task 6 ruling)** At `m === 1` the tail reads
+   singular, `1 MORE STUDY BELOW` — read as prose it is better English than the plan's literal template,
+   which would print `1 MORE STUDIES BELOW`. The stale-embedding tail (§11) follows the same rule:
+   `1 STUDY NEEDS RE-EMBEDDING` / `{m} STUDIES NEED RE-EMBEDDING`. Under `all`, a stale candidate is
+   still ranked and shown on a card — the tail counts what was DROPPED for lacking a comparable
+   embedding, and never implies the shown cards are incomplete.
 
 Both controls are session-only store keys (like `findSort`), replaced wholesale; the tab is a
 subscriber that recomputes on every store change and on `state.embeddingsVersion` (§11). Ranking a
@@ -337,7 +357,7 @@ thousand candidates is under five milliseconds; no memo is needed.
 | Line | Content | Absent value |
 |---|---|---|
 | Thumbnail | `study.thumbnail`, 56 px, left | an empty bordered box |
-| 1 | `studyName(study)` left; `{match}%` right in Chivo Mono | — |
+| 1 | `studyName(study)` left, its `title` tooltip the same study name (amended 2026-09-14, Task 6 review — not `study.id`); `{match}%` right in Chivo Mono | — |
 | 2 | `{subject} · {timepoint} · {view}` then `{filmDate}` | `—` per part |
 | 3 | `PI {±n} · LL {±n} · PT {±n} · SS {±n}`, the candidate's angle minus the open study's, whole degrees with sign — a difference between two films, never a pre-op/post-op delta | `—` per angle |
 | 4 | the primary outcome (§9.1) resolved per subject (§9.3): `Fusion extended · {date}`, `Fusion not extended · last follow-up {date}`, `Outcome not recorded`, `Outcome conflicting`; the wording is the registry entry's `cardYes` and `cardNo` | — |
@@ -346,7 +366,10 @@ thousand candidates is under five milliseconds; no memo is needed.
 When a block the mode asked for did not enter the distance, line 1 names it in the muted colour:
 ` · no hip` (`H` absent on either film), ` · no alignment` (`A` absent, an angle missing on either film),
 ` · no whole film` (`W` absent, one or both films lumbar), so a
-card never implies a comparison that did not happen. Line 3 is the "why" in numbers a clinician reads directly; under `all` and `alignment` the same
+card never implies a comparison that did not happen. **(amended 2026-09-14)** A fifth label, ` · no
+appearance`, covers `C` absent (one or both films have no current embedding, or their embeddings come
+from different models) — not in the original text, but the honest label the built code shows, by the
+same rule as the other four. Line 3 is the "why" in numbers a clinician reads directly; under `all` and `alignment` the same
 angles also enter the distance through `A`.
 
 Clicking a card toggles `compareId` (plan 07 Task 2); everything comparison mode does from there is
@@ -382,6 +405,14 @@ Task 3 (two panes, per-pane chip with id, match and close; `mountPane` reuse), T
 badge, 440 px panel), Task 5 (`{other}` and `Δ` columns, 5° and 2 mm thresholds), Task 6 (two clinical
 rows). The chip's match figure is this document's `match`, not plan 07's. Where plan 07 names an
 export plan 06 does not have, HANDOFF's "Resume plan 07 here" is the map.
+
+**Corrections (amended 2026-09-14):** the compare pane is `mountViewer(container, {role: 'compare'})`
+— the same component as the primary, parameterised, not a second `mountPane`. Its `LOADING` card has
+no Cancel control (a compare-role fix at Task 8's review: `/embed` and `/predict` register nothing
+cancellable for a pane that never runs anything). Per the gate (decision 76), the chip, the viewer
+strip and its tooltip, and the compare pane's watermark footer all read `filmLabel(study)`
+(`data/labels.js`) — never the `SP-nnnn` id, on either pane — which supersedes an earlier ruling that
+would have left the primary chip on the record id as an open gate question.
 
 ## 9. Outcomes
 
@@ -506,7 +537,12 @@ is never offered by `GET /models`; `resolve_models` does not know it.
   when the window is absent or degenerate.
 - `embedding_record(image, framing)` → `{model: {id, dim, input, onnx_sha256}, crop, whole, film_type}`:
   `whole` from `image`, `crop` from `crop_window(image, framing)`, `film_type` per §7.3, `null` for a
-  block that could not be computed.
+  block that could not be computed. **(amended 2026-09-14)** As built, `embedding_record` is
+  ALL-OR-NOTHING, not per-block: if either `embed()` call raises, the whole record is lost (`/predict`
+  turns that into `embedding: null`; `/embed` turns it into the same error the caller already handles).
+  In practice both blocks run through the one graph and fail together, so the difference is unobserved;
+  Plan B's `embeddingRecord`/`validEmbedding` (renderer) already tolerate a stored `whole: null` in case
+  a future encoder changes this. Recorded as a deviation, not fixed — see ROADMAP for the status.
 
 ### 10.3 In `/predict`
 
@@ -536,7 +572,10 @@ renderer stores.
 `backend/verify_onnx.py` and `tools/packaging/check_bundled_inference.py` verify five graphs: the
 `embed` check runs zeros at `1×3×224×224` and asserts shape `(1, 384)` and finite values. Both workflows
 are otherwise unchanged: `tools/export_onnx.py` exports the fifth graph into `backend/onnx/`, which the
-PyInstaller `--add-data` already ships. `--collect-all timm` stays; `timm` is still export-only.
+PyInstaller `--add-data` already ships. **(corrected 2026-09-14)** Every workflow passes
+`--exclude-module timm`, not `--collect-all timm` as this line originally said (the 2026-09-09 ONNX
+amendment already made `timm` export-only; this document simply had the wrong flag name); `timm` is
+still export-only.
 
 ### 10.6 The `Appearance embeddings` setting
 
@@ -552,11 +591,14 @@ embedded later in one click, or never. The tab's empty state names the setting (
 
 ## 11. Storage
 
-`embeddings/<id>.json` under `app.getPath('userData')`, beside `predictions/`, one file per real study:
+`embeddings/<id>.json` under `app.getPath('userData')`, beside `predictions/`, one file per real study.
+**Corrected 2026-09-14:** the stored (and wire) `model` record is `{id, dim, input: [height, width],
+onnx_sha256}` — no `size` key. The sample below is corrected to match what every endpoint and every
+stored record actually carries:
 
 ```json
 { "version": 1, "id": "SP-1000", "computedAt": "2026-09-12T20:14:03.000Z",
-  "sourceSha256": "…", "model": { "id": "vit_small_patch14_dinov2.lvd142m", "dim": 384, "size": 224, "onnx_sha256": "…" },
+  "sourceSha256": "…", "model": { "id": "vit_small_patch14_dinov2.lvd142m", "dim": 384, "input": [224, 224], "onnx_sha256": "…" },
   "filmType": "whole-spine", "crop": [384 numbers], "whole": [384 numbers] }
 ```
 
@@ -594,7 +636,12 @@ On the Find tab's filter bar, beside `Segment`: `Embed {n}`, where `n` counts th
 visible) real studies that are segmented with full coverage and have no current embedding record —
 segmented before this build, with the setting off (§10.6), after a failed stage, or under an older
 model. Hidden when `n` is 0; disabled with `WAIT_FOR_RUN` / `WAIT_FOR_BATCH` while anything runs, like
-`Segment`.
+`Segment`. **(amended 2026-09-14, gate decision 75)** Beside the button, whenever the pool holds a
+segmented real film that is not full coverage and therefore can never be embedded — even while `Embed`
+itself is hidden because `n` is 0 — a note in the Segment note's style reads `{k} partial — not
+embeddable`, title `Find similar needs all five lumbar levels and S1`. `planEmbed` gains an `excluded`
+count through an `ineligible` predicate exported by `renderer/embeddings.js`, so the pool identity
+between the counted ids and the excluded ones is structural, not a second guess at the same set.
 
 It runs through the batch driver as a second kind: `state.batch.kind` is `'segment'` (today's) or
 `'embed'`, and the driver's run callback is chosen by kind. The run core `embedStudy(studyId, {batch})`
@@ -624,20 +671,37 @@ the files join on it.
 
 `api.saveDataset(request)` (IPC `save-dataset`) opens a folder picker (`openDirectory`,
 `createDirectory`), then creates `<workspace label or library>-dataset-<YYYY-MM-DD>/` inside it (a
-`-2`, `-3` suffix when it exists) and writes four files atomically, each `.tmp` then rename. Cancel
-resolves `null` and stays quiet.
+`-2`, `-3` suffix when it exists) and writes files atomically, each `.tmp` then rename. Cancel
+resolves `null` and stays quiet. **(amended 2026-09-14)** The folder label passed through is reduced to
+what the `save-dataset` handler's name pattern accepts (`^[A-Za-z0-9][A-Za-z0-9 ._-]*$`, a pre-flight
+ruling): other characters collapse to a space, the result is trimmed, a non-alphanumeric lead is
+dropped, and an empty result falls back to `library`.
+
+**(amended 2026-09-14, gate decision 77)** The folder holds **five** files, not four, and two of the
+original four are renamed to match the exports they extend:
 
 | File | One row per | Columns |
 |---|---|---|
-| `films.csv` | film in the rows | everything `toCsv` writes, then `Film type`, `Coverage` (`full`/`partial`), `Reviewed` (the `reviewedAt` date or blank), `Embedding` (`yes`/`no`), `Crop localizer` (`on`/`off` from `qc.processing`), `Vertebra model`, `Femoral model`, `S1 model`, `Source SHA-256` (the digest the calibration record keeps: an identity for the film across exports and re-runs, which cannot reproduce or locate the image), then, per registered outcome (§9.1), the status and date resolved per subject (§9.3) as `Subject <field>` (`yes`/`no`/`not-recorded`/`conflicting`) and `Subject <date field>` — `Subject fusion extension`, `Subject fusion extension date` in stage 1 — then `Subject last follow-up`, so a film-level analysis, a pre-op-only model for instance, has its label on the row without joining the pair table |
-| `subjects.csv` | written subject per pp §11.2 (visits by header, merged same-day films, numbered repeats), exactly the paired export's rows | everything `toPairedCsv` writes, then the same resolved columns as `films.csv` (per registered outcome `Subject <field>` and `Subject <date field>`, then `Subject last follow-up`), then `<header> film type` per written visit (`Pre-op` first; a merged visit's is its primary film's) |
-| `vectors.json` | — | `{version: 1, exportedAt, shape: {dim: 44, order: [...22 point names], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation'}, hip: {dim: 2, normalisation: 'the shape transform'}, alignment: {order: ['PI', 'PT', 'SS', 'LL L1-S1', 'PI-LL'], weights: [1, 0.8, 0.8, 0.6, 1]}, embedding: {model}, films: [{name, shape, hip, alignment, crop, whole, filmType}]}`, with `null` for a block the film lacks; an embedding from a model other than the bundled one exports as `null` and counts in the manifest as without an embedding, so a vectors file never mixes models; `films` is an array in `films.csv` row order with `name` the study name, so two films that share a name both survive and the notebook joins by name or by row |
-| `manifest.json` | — | app version, `exportedAt`, the counts (films, pairs, unpaired, ambiguous, merged visits, with a recorded outcome, conflicting, without an embedding), the set of model ids and processing settings seen, the embedding model record, an `identity` line saying the study name is the key and the record id is absent, the citation line and `NOT FOR CLINICAL USE` |
+| `parameters.csv` (renamed 2026-09-14, gate decision 77 — was `films.csv`) | film in the rows | everything `toCsv` writes, then `Film type`, `Coverage` (`full`/`partial`), `Reviewed` (the `reviewedAt` date or blank), `Embedding` (`yes`/`no`), `Crop localizer` (`on`/`off` from `qc.processing`), `Vertebra model`, `Femoral model`, `S1 model`, `Source SHA-256` (the digest the calibration record keeps: an identity for the film across exports and re-runs, which cannot reproduce or locate the image), then, per registered outcome (§9.1), the status and date resolved per subject (§9.3) as `Subject <field>` (`yes`/`no`/`not-recorded`/`conflicting`) and `Subject <date field>` — `Subject fusion extension`, `Subject fusion extension date` in stage 1 — then `Subject last follow-up`, so a film-level analysis, a pre-op-only model for instance, has its label on the row without joining the pair table |
+| `paired.csv` (renamed 2026-09-14, gate decision 77 — was `subjects.csv`) | written subject per pp §11.2 (visits by header, merged same-day films, numbered repeats), exactly the paired export's rows | everything `toPairedCsv` writes, then the same resolved columns as `parameters.csv` (per registered outcome `Subject <field>` and `Subject <date field>`, then `Subject last follow-up`), then `<header> film type` per written visit (`Pre-op` first; a merged visit's is its primary film's) |
+| `vectors.json` | — | `{version: 1, exportedAt, shape: {dim: 44, order: [...22 point names], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation'}, hip: {dim: 2, normalisation: 'the shape transform'}, alignment: {order: ['PI', 'PT', 'SS', 'LL L1-S1', 'PI-LL'], weights: [1, 0.8, 0.8, 0.6, 1]}, embedding: {model}, films: [{name, shape, hip, alignment, crop, whole, filmType}]}`, with `null` for a block the film lacks; an embedding from a model other than the bundled one exports as `null` and counts in the manifest as without an embedding, so a vectors file never mixes models; `films` is an array in `parameters.csv` row order with `name` the study name, so two films that share a name both survive and the notebook joins by name or by row; `embedding` is the full bundled-model record `{id, dim, input, onnx_sha256}` (fixed at the final whole-branch review, I2 — not the SHA alone) |
+| `manifest.json` | — | app version, `exportedAt`, the counts (films, pairs, unpaired, ambiguous, merged visits, with a recorded outcome, conflicting, without an embedding), the set of model ids and processing settings seen, the embedding model record (the same full `{id, dim, input, onnx_sha256}` shape as `vectors.json`'s `embedding`, fixed by the same I2 review finding), an `identity` line saying the study name is the key and the record id is absent, the citation line and `NOT FOR CLINICAL USE` |
+| `README.md` (new 2026-09-14, gate decision 77) | — | describes every file in the folder, the identity rule (a film's key is its study name), the blank-value rule (never `0`/`N/A`, always empty), the vector blocks (`shape`, `hip`, `alignment`, `embedding`) and a subject-split warning for the notebook (exclude by subject, not by film, when training) |
 
 Both CSVs open with the same `#` comment block the existing exports carry. The toast, sized by
 `toastDuration`: `Dataset written to {folder} · {pairs} pairs · {unpaired} films without a pair ·
 {merged} merged visits · {conflicting} subjects with conflicting outcomes`, each clause present only when its
 count is, in the paired export's pattern.
+
+**(amended 2026-09-14)** `appendColumns` — the function that adds the provenance and outcome columns
+onto the rendered `toCsv`/`toPairedCsv` text — is quote-aware: it tracks quote state across the text so
+a CRLF inside a quoted cell (a clinical note with an embedded line break) is never mistaken for a row
+break. It also treats a line as a citation comment only BEFORE the header row has been seen
+(`seenHeader`); the original text's `#`-prefix test had no such guard and would silently drop the
+appended cells — and shift every later row's — for any film whose study name happens to start with
+`#` (fixed at the final whole-branch review, Critical finding C1). A write failure after the folder is
+created removes the half-written folder before the error reaches the toast, so a failed export never
+leaves a partial dataset for the next export's `-2`/`-3` suffix to collide with.
 
 ## 14. Compute and size
 

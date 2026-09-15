@@ -182,6 +182,20 @@ Not code quality; these stand between the branch and a production release.
   gate rides the existing `load-studies` payload — it is **not** an allowlist exclusion, because
   `renderer/**/*` ships by glob and dropping `demo-studies.js` would leave a bare import resolving
   to nothing, failing the renderer boot while the allowlist CI check still passed.
+- **(2026-09-14, similar-cases stage 1) `backend/requirements-export.txt` pins torch 2.11.0 and
+  timm 1.0.27, while the venv that validated the appearance-encoder export ran torch 2.13.0 and
+  timm 1.0.29.** The next CI run (either release workflow, or a fresh runner following this branch)
+  is therefore the FIRST time `tools/export_onnx.py --kind embed` runs on the pinned pair, and it now
+  has two new ways to refuse: `export_embed`'s mean/std guard (raises if `pretrained_cfg` lacks them
+  rather than falling back to ImageNet's) and its licence guard (raises if the cfg's licence does not
+  case-fold to `Apache-2.0`). It fails loudly if it fails — no bad artifact can ship — but it can break
+  a release build that otherwise looks ready, so the release session should expect to possibly need a
+  requirements bump before the workflow goes green.
+- **(2026-09-14) The packaged five-graph check and the installer's size growth are unverified.**
+  `tools/packaging/check_bundled_inference.py` now asserts all five ONNX graphs (`s1`, `vertebra`,
+  `femoral`, `hrnet`, `embed`) run inside the frozen executable, and the installer grows by roughly
+  86 MB (the `embed.onnx` graph); neither has been checked because no packaged build of this branch
+  exists yet. Check both the first time a preview or release installer is built from it.
 
 ---
 
@@ -349,6 +363,57 @@ Not code quality; these stand between the branch and a production release.
   cursor at the end of the string, so the check would need to type, press ArrowLeft, then assert caret 1/1 to
   actually pin the restore rather than the setter's own default. `tools/smoke/smoke-studies.mjs` section 16. Found
   at the final fix wave's re-review, 2026-09-10.
+- **(2026-09-14, similar-cases stage 1) `renderer/embeddings.js`'s `load-embeddings` aborts the whole
+  load on one unreadable file.** A non-ENOENT read error on any single `embeddings/<id>.json` degrades
+  the session to zero embeddings with a console warning, rather than skipping just that file. The write
+  side already validates ids like every other sidecar path; a per-file try/catch is the fix. Found at
+  Plan B Task 2's review, 2026-09-13.
+- **(2026-09-14) `renderer/data/similarity.js`'s `vector()` is derived twice per candidate per
+  ranking** — once inside `pairDistances` and again wherever the caller needs it directly. Harmless at
+  library sizes seen so far; revisit if a library reaches a few thousand films. Found at Plan B Task 3's
+  review.
+- **(2026-09-14) A stale embedding is never invalidated when the film behind it changes.** With
+  `Appearance embeddings` off, a re-run, a relocate onto a different file, or a toolbar-removal toggle
+  that changes the stored image all leave the previous `embeddings/<id>.json` in place describing an
+  image the record no longer has. The record already stores `sourceSha256` for exactly this check and
+  nothing reads it. Not reachable with the default setting on, since a normal run overwrites the file.
+  A full fix needs a single-embedding delete IPC. Found at Plan B's final whole-branch review (M5).
+- **(2026-09-14) The Find tab's `Embed n` count is briefly wrong on a cold Studies screen.**
+  `needsEmbedding(study)` consults the embeddings map without knowing whether it has loaded yet, so
+  between the screen's `render()` and the load's `bump()` every segmented visible study counts as
+  needing one; it self-corrects within a tick because `embeddingsVersion` is in the table's key array,
+  but a large library will flash an inflated count first. A `loaded` flag returning `false` until the
+  first load resolves would remove it. Found at Plan B's final whole-branch review (M2).
+- **(2026-09-14) The compare pane's `writeView` redraws its dynamic canvas layer on every pan frame**,
+  by the brief's literal instruction; revisit if it ever shows on the hardware the app targets. Found at
+  Plan B Task 8's review.
+- **(2026-09-14) `save-dataset`'s cleanup can mask the write error it is cleaning up after.** When any
+  file write fails after the dataset folder is created, the handler removes the folder before
+  rethrowing so a failed export never leaves a half-written folder for the next export's `-2`/`-3`
+  suffix to collide with (spec §13, Task 9's fix); if that cleanup `rm` itself rejects, its error masks
+  the original write error in the toast. A `catch {}` around the cleanup is the one-line fix if it ever
+  bites. Found at Plan B Task 9's fix-round review.
+- **(2026-09-14) The backend's 400/413 upload guard is now a third verbatim copy** across
+  `prediction_request`, `calibration_request` and `embed_request` in `backend/server.py`; a shared
+  `_read_upload(file)` helper would remove the duplication. `/embed`'s 413 branch also has no test.
+  Found at Plan A's final whole-branch review.
+- **(2026-09-14) `runtime.checkpoint()` after `embedding_record` in `POST /embed` is a no-op** — `/embed`
+  passes `cancelled=None` and has no streaming twin, by ruling, so the call reads as cancellation
+  support that does not exist. Harmless; a comment or its removal is the fix if the file is touched
+  again. Found at Plan A's final whole-branch review.
+- **(2026-09-14) Two untested collision cases in the similar-cases branch:** two custom CSV headers
+  whose trimmed names collide under `Keep column name` (the `taken` set makes the behaviour correct;
+  only the pinning test is missing, `renderer/data/csv.js`'s `keepUnmapped`), and `planEmbed`'s
+  real-only filter (the existing fixture's demo study is excluded by the `needs` stub rather than by
+  the filter itself, so the real/demo distinction is unexercised). Found at Plan B Tasks 5 and 7's
+  reviews.
+- **(2026-09-14) `backend/embedding.py`'s `embedding_record` is all-or-nothing, not per-block, where
+  spec §10.2/§11 describe a `null` for whichever block could not be computed.** If either the crop or
+  the whole-film `embed()` call raises, the entire record is lost rather than one block of it. In
+  practice both blocks run through the same graph and fail together, so this has not been observed to
+  matter; `renderer/data/embeddings.js`'s `validEmbedding`/`embeddingRecord` already tolerate a stored
+  `whole: null` in case a future encoder changes that. Found at Plan A's final whole-branch review;
+  recorded as a deviation rather than implemented.
 
 ---
 
@@ -378,6 +443,20 @@ popover. Decide first whether the two tabs share one filter state or each keeps 
 ---
 
 ## 8. Similar cases and outcomes — stages 2 to 4
+
+**Stage 1 shipped (2026-09-14).** Branch `claude/image-similarity-visualization-400922` (worktree
+`studies-ui-updates-bb040d`, off `fork/main` @ `efe1df6`, v1.0.8); the human gate passed 2026-09-14.
+Everything below this paragraph is what it builds toward — the fused shape-and-appearance ranking on
+the Find similar tab, the outcome registry and its three clinical fields, the appearance-embedding
+backend and its `embeddings/<id>.json` store, the `Embed` batch kind, comparison mode named by
+`filmLabel`, and `Export dataset`'s five-file folder — is now IN the app, not deferred. See the spec's
+status line (`docs/superpowers/specs/2026-09-12-similar-cases-outcomes-design.md`), the architecture
+contract's `## 2026-09-12 amendment: similar cases and outcomes (stage 1)`, and HANDOFF's "Where things
+stand" for the branch, the counts, the gate rulings (decisions 75-77) and what has not been run yet
+(a packaged build's five-graph check, the release workflows' pinned-pair export, `/embed` over a real
+uvicorn socket). Stage 2 begins only after a notebook has trained the first model on a stage-1 export
+and the human gate has judged the stage-1 neighbours' quality; the stage-2/3/4 items below are
+unchanged by stage 1 shipping.
 
 **Deferred 2026-09-12 (user ruling at the similar-cases brainstorm).** Stage 1 is
 `docs/superpowers/specs/2026-09-12-similar-cases-outcomes-design.md`: the fused shape-and-appearance

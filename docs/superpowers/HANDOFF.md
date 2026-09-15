@@ -42,6 +42,67 @@ algorithm changed; no screenshots were added.
 
 ## Where things stand
 
+### Similar cases and outcomes, stage 1 — DONE (branch `claude/image-similarity-visualization-400922`, worktree `studies-ui-updates-bb040d`, off `fork/main` @ `efe1df6`, v1.0.8)
+
+2026-09-13/14. Spec `docs/superpowers/specs/2026-09-12-similar-cases-outcomes-design.md` (amended
+2026-09-13 for the v1.0.8 base, and again 2026-09-14 for what actually shipped). Two plans, executed by
+subagent-driven development, each starting with a controller pre-flight scan: Plan A, the backend,
+`docs/superpowers/plans/2026-09-12-a-embeddings-backend.md` (Tasks 1-6, its `## Ledger` at the end; 40
+anchors, no amendment needed), complete at `fcf94b9`; Plan B, the renderer,
+`docs/superpowers/plans/2026-09-12-b-similar-cases-renderer.md` (Tasks 1-12, its `## Ledger` at the
+end; 94 anchors, 13 findings folded into one reviewed amendment, `1e1fff5`), complete at `a7e4a9e`
+before three gate-fix commits and one suite fix. Every task was reviewed; both whole-branch reviews
+came back clean after one fix wave each (Plan A: `e169765` docs, `b72efc0` backend; Plan B: `a7e4a9e`).
+The human gate passed 2026-09-14 (the user: "passed the gates").
+
+**What it builds.** The backend computes two appearance embeddings — DINOv2 ViT-S/14, 224 px, the CLS
+token, exported as a fifth ONNX graph — inside every `/predict` run, unless `Appearance embeddings` is
+off in Settings; `POST /embed` backfills a stored film from its sidecar alone, with no need for the
+original file; `GET /embedding-model` names the bundled encoder so the renderer can tell a stale stored
+embedding from a current one. The renderer's Find similar tab (`renderer/components/similar.js`) ranks
+the library by a fused distance over five blocks — column shape `V`, hip `H`, spinopelvic alignment
+`A`, crop appearance `C`, whole-film appearance `W` — under four modes (`All`/`Shape`/`Alignment`/
+`Appearance`) and two scopes (this workspace/all studies), showing up to five cards with a resolved
+outcome line and a footer count that is a fact, never a risk. Outcomes are three new clinical fields
+(fusion extension, its date, last follow-up), registered generically (`renderer/data/outcomes.js`) and
+resolved per subject. `Keep column name` and `Keep all unmapped` let a workspace CSV import an unknown
+column under its own name rather than dropping it. `Embed {n}` on the Find tab is a second batch kind
+beside `Segment`. Comparison mode (plan 07's Tasks 3-6) is built on `mountViewer(container, {role})`
+serving both panes — the compare pane has no edit, run card or keyboard chrome, and its own zoom/pan
+state — and, per the gate, every on-screen surface (the badge, both viewer chips, the viewer strip, the
+compare pane's watermark) names a film by its parsed fields through `filmLabel` (decision 76), not the
+`SP-nnnn` record id the primary chip had kept until this gate. `Export dataset` on the Parameters bar
+writes a five-file folder — `parameters.csv`, `paired.csv`, `vectors.json`, `manifest.json`,
+`README.md` (two renamed and one added at the gate, decision 77) — keyed entirely by study name: no
+images, no paths, no record ids anywhere in it.
+
+**Counts at the close:** unit 591/591; backend pytest 429 passed, 2 skipped; `smoke-similar.mjs` 69/69;
+`smoke-studies.mjs` 136/136; `smoke-parameters.mjs` 58/58 (fresh launch); `smoke-persist.mjs` 40/40 then
+48/48 (a REAL embedding round-trips through the exported graph this time, not a fake). The DINOv2 graph
+was exported and verified locally: `embed.onnx` 86.6 MB, dim 384. `backend/onnx/` is gitignored, so a
+sibling worktree copy now needs all five graphs, not four (`test_onnx_models.py` hard-asserts
+`embed.onnx` exists).
+
+**Not run this session:** `tools/packaging/check_bundled_inference.py`'s five-graph assertion and the
+installer's size growth (~86 MB) — both need a packaged build; the release workflows' hub download of
+the DINOv2 weights and `export_embed`'s new mean/std and licence guards on the pinned export pair
+(`requirements-export.txt`'s torch 2.11.0/timm 1.0.27, against the validating venv's 2.13.0/1.0.29 —
+ROADMAP §4); `/embed` over a real uvicorn socket (checked in-process only, by ruling); a
+persistence-disabled `Embed` and Cancel during an embed (no suite covers either); the three-button
+export row at a narrow window. The gate's nine checks were answered by the user as one pass, not
+itemised one by one.
+
+**Gate rulings, 2026-09-14 (HANDOFF decisions 75-77 below, each already committed):** the Embed count's
+partial-film note beside the button; every viewer surface naming a film by its parsed fields, which
+also closes the record-id question the branch had carried as an open gate question since Task 8; the
+dataset's two renamed tables and its new README.
+
+**Next.** The user says when to push to `fork` (never `origin`); then a PR to `fork/main` whose merge
+publishes nothing on its own — a release commit (1.0.9) is a separate, later piece of work, not part of
+this branch. Stage 2 — pair-vector ranking, the Research screen, the model registry, the risk panel,
+the cluster map — is `docs/ROADMAP.md` §8, deliberately deferred until a notebook has trained the first
+model on a stage-1 export and the human gate has judged the stage-1 neighbours' quality.
+
 ### Filename grammar, note, paired visits, names — DONE; release 1.0.8 awaiting the PR (branch `claude/spine-contour-filename-parse-b6c1bb`, off `fork/main` @ `6704586`, v1.0.7)
 
 2026-09-11 → 13, worktree `.claude/worktrees/spine-contour-segmentation-failures-82e370` (its directory name predates
@@ -1589,6 +1650,29 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
 74. **The final whole-branch code review runs BEFORE the human gate** (2026-09-10, controller ruling). *Why:* so the user
     gates the code the branch ships and no fix wave lands after the gate.
 
+The following were settled at the human gate for the similar-cases branch, **2026-09-14**
+(`claude/image-similarity-visualization-400922`), and are the spec's decisions 75-77 amendment
+(`docs/superpowers/specs/2026-09-12-similar-cases-outcomes-design.md`, amended 2026-09-14).
+
+75. **The Embed count's eligibility rule stays** (only films with all five lumbar levels, S1 and
+    nothing unoriented are embedded, because only they can be ranked), **and the Find tab says why the
+    count is smaller**: `{k} partial — not embeddable` beside the button, with the reason in its
+    tooltip, shown even when nothing is left to embed. *Cost if wrong:* one note. (Commit `dd9480b`.)
+    Note the edge: a film with a complete column but no femoral heads is `partial` and therefore
+    excluded, although the hip block is optional in the ranking; the user kept the rule.
+76. **The viewer's footer strip, both viewer chips and the comparison badge name a film by its parsed
+    fields** — `subject · timepoint · film date`, then `· note` when present, `—` per absent part, the
+    study name when nothing is parsed — **never the record id and never the raw stem**; the chip's
+    tooltip carries the full study name. The strip's three demo-only labels (`pt`, `sex`, `age`) are
+    gone. The strip is on-screen only, so decision 26 (the burned-in watermark keeps the id) does not
+    bind it; with this the `SP-nnnn` id appears nowhere on screen. *Cost if wrong:* one label function.
+    (Commit `872d6e1`, `filmLabel` in `renderer/data/labels.js`.)
+77. **The dataset folder's tables take the names of the exports they extend** — `parameters.csv`
+    (Export CSV plus provenance and resolved outcomes) and `paired.csv` (Export paired CSV plus
+    outcomes and per-visit film types) — **and the folder gains `README.md`** describing every file,
+    the identity rule, the blank rule, the vector blocks and the subject-split warning. *Cost if
+    wrong:* two file names. (Commit `61f0765`.)
+
 ## Release prerequisites — v1.0.0 main promotion
 
 Current instructions: [main release](../release-main.md). The earlier statements that
@@ -1613,6 +1697,35 @@ plan 06 had never been packaged, or that installed previews contain demos, are s
 
 ## Known traps
 
+- **(2026-09-14) `similarity.js`'s `embeddingOf` accepts either a `Map` or a plain object keyed by
+  study id.** Production passes the `Map` from `renderer/embeddings.js`'s `embeddingsMap()`; the unit
+  tests pass plain objects for convenience. Both branches are real code, not one dead one — do not
+  "simplify" it to a single shape without checking both callers.
+- **(2026-09-14) `bump()` in `renderer/embeddings.js` must run only after an `await`.** `store.js`
+  throws on a `setState` called from inside a subscriber notification (the tab's `update()`, the
+  Studies screen's `update()`, the Analysis screen's own subscription all run as notifications), and
+  the throw is swallowed with a `console.error`, so a re-entrant call fails quietly rather than loudly.
+  `ensureEmbeddings()` is async specifically so its `bump()` — the `embeddingsVersion` increment that
+  tells every subscriber to redraw — lands after the load's `await`, never synchronously inside a
+  caller that might itself be a notification.
+- **(2026-09-14) The compare pane keeps its own zoom/pan/panMode in the `mountViewer` closure**
+  (`viewState()` / `writeView()`), but the lower-level pointer-gesture state (`drag`, `hover`,
+  `retracing`, `tracePoints`, `tracePointPointer`) stays module-scope and SHARED between the primary and
+  compare mounts — the invariant is one live gesture at a time, and the compare role can only ever
+  start a pan drag. `detach()` resets the shared state for both mounts together, which is safe only
+  because the compare mount is torn down together with the primary in `teardown()`, never on its own; a
+  future "mount the compare pane on demand" change would need to revisit this.
+- **(2026-09-14) `smoke-similar.mjs` must wait for the library before injecting its fixture** (the page
+  target exists before the app's own `loadStudies()` resolves, and injecting first loses the race when
+  the load replaces the fixture) **and must run BEFORE `smoke-studies.mjs`** — the same ordering rule
+  `smoke-parameters.mjs` already had. Running parameters after studies drops real segmented rows
+  (SP-9000/SP-9005) into the library and reads 49/58 instead of 58/58; the same class of fragility bit
+  this suite on its first two runs before the wait was added (`ffb8982`).
+- **(2026-09-14) A sibling copy of `backend/onnx/` now needs all five graphs, not four.**
+  `test_onnx_models.py` hard-asserts `embed.onnx` exists (matching the module's existing convention for
+  the four structure graphs), so a developer who copies only the old four from a sibling worktree —
+  `backend/onnx/` is gitignored, so this is the documented way to get the models onto a new tree — now
+  gets a red suite instead of a skip.
 - **(2026-09-13) Two worktrees, one library, one version string.** `npm.cmd run dev` from the wrong worktree runs
   the wrong code against the same `%APPDATA%\spine-contour` library, and both footers read the same version until the
   release bump. When a report contradicts what the branch does on `studies.json`, check the running executable first:

@@ -1,5 +1,34 @@
 # Spine Contour
 
+**2026-09-14 similar cases and outcomes (stage 1):** branch `claude/image-similarity-visualization-400922`
+(worktree `studies-ui-updates-bb040d`) off `fork/main` @ `efe1df6` (v1.0.8), built by Plan A
+(`docs/superpowers/plans/2026-09-12-a-embeddings-backend.md`, complete at `fcf94b9`) and Plan B
+(`docs/superpowers/plans/2026-09-12-b-similar-cases-renderer.md`, complete at `a7e4a9e` plus three
+gate-fix commits and a suite fix, `ffb8982`); spec
+`docs/superpowers/specs/2026-09-12-similar-cases-outcomes-design.md`. The backend computes two
+appearance embeddings (DINOv2 ViT-S/14, 224 px, CLS token) as a fifth ONNX graph inside every
+`/predict`, unless `Appearance embeddings` is off, and serves `POST /embed` and `GET /embedding-model`
+for backfilling and staleness checks. The Find similar tab (`renderer/components/similar.js`) ranks the
+library by a fused shape/hip/alignment/appearance distance under four modes and two scopes, five cards
+with a recorded outcome line and a footer count, never a risk. Outcomes are three new clinical fields
+(fusion extension, its date, last follow-up) registered generically and resolved per subject
+(`renderer/data/outcomes.js`). `Keep column name` and `Keep all unmapped` let a workspace CSV import an
+unknown column under its own name. `Embed {n}` on the Find tab is a second batch kind beside `Segment`.
+Comparison mode (plan 07's Tasks 3-6) is `mountViewer(container, {role})` serving both panes, every
+on-screen surface naming a film by its parsed fields via `filmLabel` (`renderer/data/labels.js`), never
+the `SP-nnnn` record id. `Export dataset` on the Parameters bar writes a five-file folder —
+`parameters.csv`, `paired.csv`, `vectors.json`, `manifest.json`, `README.md` — keyed by study name, no
+images, no paths, no record ids. Counts: unit 591/591; backend pytest 429 passed, 2 skipped;
+`smoke-similar.mjs` 69/69; `smoke-studies.mjs` 136/136; `smoke-parameters.mjs` 58/58 (fresh launch);
+`smoke-persist.mjs` 40/40 then 48/48. The human gate passed 2026-09-14 (the user: "passed the gates");
+its rulings are HANDOFF decisions 75-77. Not run: the packaged five-graph check and the installer's
+size growth (needs a packaged build); the release workflows' hub download and `export_embed`'s
+mean/std and licence guards on the pinned export pair (`requirements-export.txt`'s torch 2.11.0/timm
+1.0.27 versus the validating venv's 2.13.0/1.0.29); `/embed` over a real uvicorn socket; a
+persistence-disabled `Embed`. See the architecture contract's `## 2026-09-12 amendment: similar cases
+and outcomes (stage 1)`, HANDOFF's first "Where things stand" section and `docs/ROADMAP.md` §8. **Next:**
+the user says when to push to `fork`; then a PR to `fork/main`. A release commit is separate, later work.
+
 **2026-09-11 filename grammar / note:** branch `claude/spine-contour-filename-parse-b6c1bb` off `fork/main` @
 `6704586` (v1.0.7). Filename stems are read as underscore-separated fields — subject, then a timepoint, view or
 `M-D-YYYY`/`YYYY-MM-DD` date in any order, then plain fields as a new `note` — by `inferFromStem`; `seedFields` seeds
@@ -163,6 +192,9 @@ author" is rewritten for him.
 | `docs/superpowers/specs/2026-08-31-spine-contour-ui-redesign-design.md` | The approved spec |
 | `docs/superpowers/plans/2026-08-31-00-architecture-contract.md` | **Binding** module interfaces |
 | `docs/superpowers/plans/2026-08-31-0{1..7}-*.md` | Seven sequenced implementation plans |
+| `docs/superpowers/specs/2026-09-12-similar-cases-outcomes-design.md` | Similar cases and outcomes, stage 1 (approved; implemented 2026-09-14) |
+| `docs/superpowers/plans/2026-09-12-a-embeddings-backend.md` | Similar cases, Plan A: the backend appearance-embedding endpoints |
+| `docs/superpowers/plans/2026-09-12-b-similar-cases-renderer.md` | Similar cases, Plan B: the Find similar tab, outcomes, comparison mode, `Export dataset` |
 
 The architecture contract wins over any individual plan. If a plan contradicts it,
 raise the discrepancy rather than guessing.
@@ -281,10 +313,11 @@ never carries it.
 
 ## Git
 
-This worktree (`.claude/worktrees/spine-contour-segmentation-failures-82e370`, whose directory name predates this
-work) is on branch `claude/spine-contour-filename-parse-b6c1bb` (2026-09-11 → 13), off `fork/main` @ `6704586` (v1.0.7),
-carrying the 1.0.8 release commit. The sibling worktree `studies-ui-updates-bb040d` is on `claude/wrap-2026-09-11`
-(older code — never launch the app from it while testing this branch; both read the same library). Two remotes:
+This worktree (`.claude/worktrees/studies-ui-updates-bb040d`) is on branch
+`claude/image-similarity-visualization-400922` (2026-09-13 → 14, similar cases and outcomes stage 1),
+off `fork/main` @ `efe1df6` (v1.0.8). The sibling worktree
+`.claude/worktrees/spine-contour-segmentation-failures-82e370` is on an older branch — never launch the
+app from it while testing this branch; both worktrees read the same library. Two remotes:
 
 - `fork` → `github.com/Feches/Spine-Contour` — **push here**
 - `origin` → `github.com/mjayasur/Spine-Contour` — upstream, read-only in practice
