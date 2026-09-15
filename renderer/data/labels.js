@@ -77,3 +77,21 @@ export function subjectLabel(study) {
   if (typeof study.pt === 'string' && study.pt.trim() !== '') return study.pt;
   return DASH;
 }
+
+// A short label built from the record's PARSED fields (filename grammar, 2026-09-11):
+// subject, timepoint, film date, then note. Used wherever a film needs naming without
+// showing the SP-nnnn record id or, once fields exist, the raw filename stem (similar-cases
+// gate ruling). When none of subjectId/timepoint/filmDate/note is present at all, this is
+// just studyName(study) -- an unparsed film reads exactly as it always has. Otherwise the
+// three identity parts are always shown, each an em dash when that field is absent, and the
+// note (if any) is appended after them.
+export function filmLabel(study) {
+  if (!study) return DASH;
+  const subject = typeof study.subjectId === 'string' && study.subjectId.trim() !== '' ? study.subjectId.trim() : null;
+  const timepoint = typeof study.timepoint === 'string' && study.timepoint.trim() !== '' ? study.timepoint : null;
+  const filmDate = typeof study.filmDate === 'string' && study.filmDate.trim() !== '' ? study.filmDate : null;
+  const note = typeof study.note === 'string' && study.note.trim() !== '' ? study.note : null;
+  if (subject === null && timepoint === null && filmDate === null && note === null) return studyName(study);
+  const parts = [subject ?? DASH, timepoint ?? DASH, filmDate ?? DASH].join(' \u00B7 ');
+  return note === null ? parts : `${parts} \u00B7 ${note}`;
+}

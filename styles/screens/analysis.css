@@ -338,6 +338,10 @@
   letter-spacing: 0.13em;
   color: var(--stage-ink);
   font-variant-numeric: tabular-nums;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .viewer-toolbar {

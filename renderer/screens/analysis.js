@@ -11,7 +11,7 @@ import { mountViewer, recordPrediction } from '../components/viewer.js';
 import { describeModels } from '../data/models.js';
 import { WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
 import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
-import { studyName, defaultName } from '../data/labels.js';
+import { studyName, defaultName, filmLabel } from '../data/labels.js';
 import { displayStatus, isReviewed, reviewedLabel, reviewBlockedReason } from '../data/status.js';
 import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
 import { mountMeasurements } from '../components/measurements.js';
@@ -874,9 +874,10 @@ export function render(state) {
     compareHost.classList.toggle('is-hidden', !other);
     panel.classList.toggle('is-comparing', Boolean(other));
     compareBadge.hidden = !other;
-    // The NAME, not the record id: the card the user clicked is named by studyName, and the
-    // SP-nnnn id never appears where a person reads (spec 5, v1.0.8 identity rule).
-    if (other) compareBadge.textContent = `COMPARING \u00B7 ${studyName(other)}`;
+    // The film's parsed fields, not the record id and not the raw stem when fields exist
+    // (similar-cases gate ruling); studyName is still the fallback filmLabel uses when nothing
+    // was parsed. The SP-nnnn id never appears where a person reads (spec 5, v1.0.8 identity rule).
+    if (other) compareBadge.textContent = `COMPARING \u00B7 ${filmLabel(other)}`;
 
     // The chip's percentage is the CARD's own figure, so it has to be computed the card's way:
     // the same scope, because medianScale normalises each block over the candidate pool and a

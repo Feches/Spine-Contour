@@ -321,7 +321,10 @@ try {
   await clickSimilar('card-SP-9202');
   await cdp.settle(600);
   check('the compare pane is visible', !(await cdp.evaluate("document.querySelector('.analysis-pane-compare').classList.contains('is-hidden')")), null);
-  check('the comparing badge names the study, not the record id', (await text('[data-similar-key="comparing"]')) === `COMPARING${SEP}sim-9202`, await text('[data-similar-key="comparing"]'));
+  // SP-9202 carries subjectId 'SIM-S002', timepoint 'Pre-op', filmDate '2025-01-15' and no note --
+  // filmLabel joins those three parts, never the record id and never the raw stem 'sim-9202' now
+  // that fields are parsed (similar-cases gate ruling).
+  check('the comparing badge names the study by its parsed fields, not the record id', (await text('[data-similar-key="comparing"]')) === `COMPARING${SEP}SIM-S002${SEP}Pre-op${SEP}2025-01-15`, await text('[data-similar-key="comparing"]'));
   check('the panel carries is-comparing', (await count('.analysis-panel.is-comparing')) === 1, null);
   check('the measurements panel shows delta cells', (await count('.meas-delta')) > 0, await count('.meas-delta'));
   check('the clinical drawer shows exactly two data rows beyond the group and head rows', (await count('.clinical-grid-row:not(.clinical-grid-group):not(.clinical-grid-head)')) === 2, await count('.clinical-grid-row:not(.clinical-grid-group):not(.clinical-grid-head)'));

@@ -11,7 +11,7 @@ import { createMeasureQueue } from '../viewer/measure-queue.js';
 import { isQueued, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
 import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
 import { progressTitle, progressDetail } from '../data/processing.js';
-import { studyName } from '../data/labels.js';
+import { studyName, filmLabel } from '../data/labels.js';
 import { cancelProcessing } from '../processing.js';
 
 // Icons lifted verbatim from design-reference/template.html's Study Analysis toolbar.
@@ -115,12 +115,7 @@ function textButton(label, onClick, props = {}) {
 }
 
 function footerText(study) {
-  // `study.pt` is the demo-set PATIENT label. It is not the PT pelvic-tilt measurement,
-  // which lives at study.measurements.PT. Do not "fix" this to a number.
-  const patient = study.pt ?? '\u2014';
-  const sex = study.sex ?? '\u2014';
-  const age = study.age ?? '\u2014';
-  return `${study.id} \u00B7 ${patient} \u00B7 ${sex} \u00B7 ${age} \u2014 NOT FOR CLINICAL USE`;
+  return `${filmLabel(study)} \u2014 NOT FOR CLINICAL USE`;
 }
 
 // Redraw gating compares by REFERENCE, not by JSON.stringify: the dynamic key contains
@@ -1061,10 +1056,11 @@ export function mountViewer(container, { role = 'primary' } = {}) {
       labelStudyId = study.id;
       labelOffsets = new Map();
     }
-    // The compare chip names its study the way the card that opened it does. The PRIMARY chip
-    // keeps the record id it has always shown -- changing that is a gate question, not this
-    // task's -- so only the new surface moves to the name.
-    chipId.textContent = compare ? studyName(study) : study.id;
+    // Both chips (and the footer strip) name the film by its parsed fields, never the record id
+    // and never the raw stem when fields exist (similar-cases gate ruling). The title carries the
+    // stored/derived study name in full, for when the label ellipsises.
+    chipId.textContent = filmLabel(study);
+    chipId.title = studyName(study);
     if (chipMatch) {
       chipMatchValue = match;
       chipMatch.textContent = match === null ? '' : `${match}%`;

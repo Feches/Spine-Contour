@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle, lastSegment, subjectLabel } from '../renderer/data/labels.js';
+import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle, lastSegment, subjectLabel, filmLabel } from '../renderer/data/labels.js';
+import { DEMO_STUDIES } from '../renderer/data/demo-studies.js';
 
 const DASH = '\u2014';
 
@@ -88,4 +89,34 @@ test('subjectLabel shows the subject id, else the demo patient label, else an em
   assert.equal(subjectLabel({ subjectId: '  ', pt: '' }), DASH);
   assert.equal(subjectLabel({}), DASH);
   assert.equal(subjectLabel(null), DASH);
+});
+
+test('filmLabel joins subject, timepoint and film date, then the note', () => {
+  assert.equal(
+    filmLabel({ subjectId: 'sub225', timepoint: 'Post-op', filmDate: '2024-03-22' }),
+    'sub225 \u00B7 Post-op \u00B7 2024-03-22',
+  );
+  assert.equal(
+    filmLabel({ subjectId: 'sub225', timepoint: 'Post-op', filmDate: '2024-03-22', note: 'femoral heads' }),
+    'sub225 \u00B7 Post-op \u00B7 2024-03-22 \u00B7 femoral heads',
+  );
+});
+
+test('filmLabel fills an absent part with an em dash', () => {
+  assert.equal(filmLabel({ subjectId: 'sub225' }), `sub225 \u00B7 ${DASH} \u00B7 ${DASH}`);
+});
+
+test('filmLabel falls back to studyName when nothing was parsed at all', () => {
+  assert.equal(filmLabel({ id: 'SP-1001', fileName: 'pre01.jpg' }), 'pre01');
+  assert.equal(filmLabel({ id: 'SP-1001' }), 'SP-1001');
+  assert.equal(filmLabel(null), DASH);
+  // Blank/whitespace-only fields count as absent, same as null.
+  assert.equal(filmLabel({ id: 'SP-1001', fileName: 'pre01.jpg', subjectId: '  ', timepoint: '', filmDate: null, note: '   ' }), 'pre01');
+});
+
+test('filmLabel falls back to studyName for a demo study, which has pt but no parsed subject fields', () => {
+  const demo = DEMO_STUDIES.find((s) => s.id === 'SP-0041');
+  assert.ok(demo && typeof demo.pt === 'string' && demo.subjectId == null);
+  assert.equal(filmLabel(demo), studyName(demo));
+  assert.equal(filmLabel(demo), 'SP-0041');
 });
