@@ -1,8 +1,9 @@
-# Spine Contour v1.0.8
+# Spine Contour v1.0.9
 
 Automated measurements from lateral lumbar and cervical radiographs, running locally.
 
-This branch adds a cervical HRNET model. Select **Cervical** and the
+Cervical analysis is on `main` but not yet in a numbered release; the v1.0.9
+installers are lumbar only. Running from source, select **Cervical** and the
 image's **anterior side** before processing. Review the C2–C7 Cobb and SVA
 construction lines, correct the landmarks if needed, and calibrate the image for
 SVA in millimetres. See [cervical alignment](docs/cervical-alignment.md) for the
@@ -11,7 +12,7 @@ model provenance, measurement definitions and development checks.
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.0.8 release notes](docs/releases/1.0.8.md) and
+[changelog](CHANGELOG.md), [v1.0.9 release notes](docs/releases/1.0.9.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
@@ -215,8 +216,9 @@ DICOM `PixelSpacing` preserves row and column spacing; detector-plane spacing is
 
 On **Studies**, select **Delete all studies**, then confirm the displayed count. This clears every study, including entries hidden by search, plus saved segmentation results; in a development build that includes the demo studies (a packaged build has none). Original radiograph files are kept. Demo studies remain hidden after restarting. The action is unavailable during segmentation or when the saved library cannot safely be written. If a saved result cannot be deleted, its study remains in the library and the app reports the failure.
 
+## License
 
-Copyright (C) 2026 Cody Woodhouse and Michael Jayasuriya 
+Copyright (C) 2026 Cody Woodhouse and Michael Jayasuriya
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
