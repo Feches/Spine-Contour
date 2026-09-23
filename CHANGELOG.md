@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.10
 
 - Add cervical HRNET and its paired spine detector,
   with offline ONNX inference and explicit anterior-side selection.
@@ -8,6 +8,10 @@
   construction overlays, editable landmarks, persistence and CSV export.
 - Keep uncalibrated SVA in pixels; use the current image calibration for
   millimetres and for angles when row and column pixel spacing differ.
+- License the source under the GNU AGPL, version 3 or later: the complete text in `LICENSE`,
+  the notice in the README and the `license` field in `package.json`.
+
+[Release notes](docs/releases/1.0.10.md)
 
 ## 1.0.9
 
