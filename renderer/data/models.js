@@ -21,7 +21,7 @@ export function isVertebraModel(id) {
 
 // The display label for a model id, or null when it is not one this build offers.
 export function modelLabel(structure, id) {
-  if (structure === 'vertebrae' && id === 'cervical_hrnet') return 'HRNET';
+  if (structure === 'vertebrae' && ['cervical_hrnet', 'dual_hrnet'].includes(id)) return 'HRNET';
   const options = BY_STRUCTURE[structure];
   if (!options) return null;
   const found = options.find((model) => model.id === id);

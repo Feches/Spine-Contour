@@ -1205,3 +1205,31 @@ Cervical HRNET and its paired DETR are exported to
 `cervical_hrnet.onnx` and `cervical_detr.onnx`. Both share the existing ONNX
 session/resource/cancellation policy. The runtime imports no training libraries.
 The common export and packaged-model verification cover all six models.
+
+
+## 2026-09-23 amendment: global C7–S1 SVA
+
+Study `region` additionally accepts `full_spine`. The existing cervical and
+lumbar workflows remain independent. Full-spine requests explicitly carry
+`bodyPart: 'full_spine'`, `models.vertebrae: 'dual_hrnet'`, and `anteriorSide`;
+`/models?body_part=full_spine` advertises this combination. The pipeline searches
+regional crops using the existing cervical detector/HRNET and S1 detector/lumbar
+HRNET graphs. It adds no model weights or runtime dependencies.
+
+Global geometry carries `region: 'full_spine'`, `anterior_side`, `c7_centroid`,
+and `s1_superior` ordered anterior then posterior. The C7 centroid prediction is
+the mean of its four predicted body corners. All anchors, crop rectangles,
+source dimensions and calibration use the untouched uploaded image frame.
+Internal anterior-left normalization is reversed before returning any landmarks.
+Invalid, missing or competing crop clusters leave dependent anchors absent.
+
+`/measure` dispatches global geometry independently. `GLOBAL_SVA_PX` and
+`GLOBAL_SVA_MM` represent the horizontal offset of C7 from the S1 posterior
+corner, signed positive anterior. Millimetres require the current source-bound
+column spacing; missing or cleared calibration never creates a millimetre value.
+`state.selectedLevel = 'GLOBAL_SVA'` draws the vertical C7 plumb line and
+horizontal S1 offset. Three handles edit the centroid and S1 endplate endpoints,
+using the existing correction queue and saved-prediction reset workflow.
+Persistence, Parameters and single/paired exports keep global and cervical
+measurements in their own fields. Crop agreement is not an accuracy probability;
+landmark identity, anatomy and source orientation require review.

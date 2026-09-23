@@ -1,4 +1,5 @@
-import { cervicalMeasurements, studyRegion, regionRunReason } from '../data/cervical.js';
+import { globalSvaMeasurements } from '../data/global-sva.js';
+import { cervicalMeasurements, studyRegion, requiresAnteriorSide, regionRunReason } from '../data/cervical.js';
 import { el } from '../dom.js';
 import { getState, setState } from '../store.js';
 import { measure } from '../api.js';
@@ -268,7 +269,8 @@ export function mountViewer(container) {
     drawDynamicLayer(dynamicCtx, dynamicCanvas, geometry, {
       selectedLevel: state.selectedLevel,
       measurements: study && !state.measurementDrafts?.[study.id]
-        ? (studyRegion(study) === 'cervical' ? cervicalMeasurements(study) : study.measurements) : null,
+        ? (studyRegion(study) === 'cervical' ? cervicalMeasurements(study)
+          : studyRegion(study) === 'full_spine' ? globalSvaMeasurements(study) : study.measurements) : null,
       editing: state.editing,
       selection: state.selection,
       hover,
@@ -290,7 +292,8 @@ export function mountViewer(container) {
     const study = currentStudy();
     const label = constructionLabel(geometry, state.selectedLevel,
       study && !state.measurementDrafts?.[study.id]
-        ? (studyRegion(study) === 'cervical' ? cervicalMeasurements(study) : study.measurements) : null);
+        ? (studyRegion(study) === 'cervical' ? cervicalMeasurements(study)
+          : studyRegion(study) === 'full_spine' ? globalSvaMeasurements(study) : study.measurements) : null);
     labelChip.classList.toggle('is-hidden', !label);
     if (!label) return;
     const offset = labelOffsets.get(state.selectedLevel) ?? { dx: 0, dy: 0 };
@@ -320,7 +323,7 @@ export function mountViewer(container) {
     // the hit radius is a constant 14 CSS pixels at any zoom, as nearestLandmark's is.
     const rect = dynamicCanvas.getBoundingClientRect();
     const scale = rect.width / dynamicCanvas.width;
-    const circles = geometry.femoral_circles.map(([cx, cy, r]) => [...imageToClient([cx, cy], rect, dynamicCanvas), r * scale]);
+    const circles = (geometry.femoral_circles ?? []).map(([cx, cy, r]) => [...imageToClient([cx, cy], rect, dynamicCanvas), r * scale]);
     return hitTestFemoral(circles, event.clientX, event.clientY);
   }
 
@@ -657,7 +660,8 @@ export function mountViewer(container) {
 
   function addCircle() {
     const study = currentStudy();
-    const count = study?.geometry?.femoral_circles.length;
+    if (requiresAnteriorSide(study)) return;
+    const count = study?.geometry?.femoral_circles?.length;
     if (count == null || count >= 2 || getState().running === study.id) return;
     cancelRetrace();
     retracing = true;
@@ -712,17 +716,18 @@ export function mountViewer(container) {
   // Edit-bar button states. Called from updateViewer on every notification and directly by
   // the retrace handlers; it only writes DOM, never the store.
   function updateEditBar(state, study) {
-    for (const button of [addCircleButton, deleteCircleButton, retraceButton, fitButton]) button.classList.toggle('is-hidden', studyRegion(study) === 'cervical');
+    for (const button of [addCircleButton, deleteCircleButton, retraceButton, fitButton]) button.classList.toggle('is-hidden', requiresAnteriorSide(study));
     // Only a run on THIS study disables the edit bar; a run on another study leaves it alone.
     // A null study is never busy -- toggleRetrace passes currentStudy(), which may be null.
     const busy = Boolean(study) && state.running === study.id;
     const femoralSelected = Boolean(state.selection && state.selection.kind === 'femoral');
     const geometry = state.measurementDrafts?.[study?.id] ?? study?.geometry;
     const hasSelectedCircle = femoralSelected && femoralCircle(geometry, state.selection.side);
-    addCircleButton.disabled = busy || !geometry || geometry.femoral_circles.length >= 2 || retracing;
+    addCircleButton.disabled = busy || !geometry || (geometry.femoral_circles?.length ?? 0) >= 2 || retracing;
     deleteCircleButton.disabled = busy || !hasSelectedCircle;
     retraceButton.disabled = busy || !hasSelectedCircle;
-    editHelp.textContent = studyRegion(study) === 'cervical' ? 'Drag a landmark, or use Tab and arrow keys. C2 centroid and C2/C7 endplates define these measurements.'
+    editHelp.textContent = studyRegion(study) === 'full_spine' ? 'Drag a landmark, or use Tab and arrow keys. Review the C7 centroid and both S1 endplate corners.'
+      : studyRegion(study) === 'cervical' ? 'Drag a landmark, or use Tab and arrow keys. C2 centroid and C2/C7 endplates define these measurements.'
       : retracing ? 'Click at least 3 points around the head, then Fit. Escape cancels.'
       : 'Drag a centre to move; drag its rim to resize. The diamond marks the hip midpoint.';
     retraceButton.setAttribute('aria-pressed', String(retracing));
@@ -757,9 +762,9 @@ export function mountViewer(container) {
     const batch = state.batch ?? null;
     const queued = !busy && isQueued(batch, study.id);
     const waitTitle = batch ? WAIT_FOR_BATCH : (otherRunning ? WAIT_FOR_RUN : '');
-    if (!hasResult && !busy && studyRegion(study) === 'cervical' && currentImages?.preview) return null;
+    if (!hasResult && !busy && requiresAnteriorSide(study) && currentImages?.preview) return null;
     if (!hasResult && !busy && regionRunReason(study)) {
-      return { eyebrow: 'CERVICAL SETUP', title: 'Confirm image orientation',
+      return { eyebrow: studyRegion(study) === 'full_spine' ? 'FULL SPINE SETUP' : 'CERVICAL SETUP', title: 'Confirm image orientation',
         body: regionRunReason(study), spinner: false, button: null };
     }
     if (!hasResult && !busy && !inferenceView(study.view)) {

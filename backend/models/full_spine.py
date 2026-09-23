@@ -1,0 +1,283 @@
+"""Bounded, image-only search for global C7–S1 sagittal balance anchors.
+
+The two HRNETs operate on overlapping regional crops of an upright lateral
+radiograph. Detectors propose crops; independent crop agreement gates the
+landmarks. Agreement is a repeatability check, not calibrated confidence or
+proof of vertebral identity. Every result requires anatomical review.
+"""
+from __future__ import annotations
+
+import numpy as np
+
+from . import cervical, models
+try:
+    from .. import framing, runtime
+except ImportError:
+    import framing
+    import runtime
+
+MODEL_NAME = "dual_hrnet"
+MAX_CERVICAL_CROPS = 12
+MIN_SUPPORT = 2
+CONSENSUS_RADIUS = .75  # in local body/endplate widths; not physical units
+
+
+def cervical_windows(height, width):
+    """Overlap upper-film windows at several scales; retain source origins."""
+    windows = set()
+    for fraction in (.18, .28, .40):
+        h = max(64, round(height * fraction))
+        w = min(width, h)
+        ys = np.arange(0, max(1, round(height * .55) - h + 1), max(1, h // 2))
+        ys = np.unique(np.append(ys, max(0, min(height-h, round(height*.55)-h))))
+        for y in ys:
+            for x in np.linspace(0, max(0, width-w), 3):
+                left, top = int(round(x)), int(y)
+                windows.add((left, top, min(width, left+w), min(height, top+h)))
+    return sorted(w for w in windows if w[2]-w[0] >= 32 and w[3]-w[1] >= 32)
+
+
+def _inside(points, window):
+    p = np.asarray(points)
+    left, top, right, bottom = window
+    return (p.ndim == 2 and p.shape[1] == 2 and np.isfinite(p).all()
+            and (p[:, 0] >= left).all() and (p[:, 0] <= right-1).all()
+            and (p[:, 1] >= top).all() and (p[:, 1] <= bottom-1).all())
+
+
+def _body_chain(points):
+    """Broad geometric rejection of collapsed, reversed, or unordered bodies."""
+    bodies = np.asarray(points, np.float64).reshape(-1, 4, 2)
+    widths = (np.linalg.norm(bodies[:, 1]-bodies[:, 0], axis=1)
+              + np.linalg.norm(bodies[:, 3]-bodies[:, 2], axis=1))/2
+    heights = bodies[:, 2:, 1].mean(1)-bodies[:, :2, 1].mean(1)
+    centres = bodies.mean(1)
+    scale = float(np.median(widths))
+    if (not np.isfinite(bodies).all() or scale < 3 or (widths < scale*.3).any()
+            or (widths > scale*3).any() or (heights < widths*.1).any()
+            or (heights > widths*2.5).any() or (np.diff(centres[:, 1]) < scale*.2).any()):
+        return None
+    # The model frame is canonical anterior-left; do not fix crossed endpoints.
+    if ((bodies[:, 1, 0] <= bodies[:, 0, 0]).any()
+            or (bodies[:, 3, 0] <= bodies[:, 2, 0]).any()):
+        return None
+    polygon = bodies[:, [0, 1, 3, 2], :]
+    edges = np.roll(polygon, -1, axis=1)-polygon
+    turns = edges[..., 0]*np.roll(edges[..., 1], -1, axis=1)-edges[..., 1]*np.roll(edges[..., 0], -1, axis=1)
+    if not ((turns > 1e-6).all(1) | (turns < -1e-6).all(1)).all():
+        return None
+    return scale
+
+
+def select_consensus(candidates):
+    """Choose an observed medoid, never average incompatible level assignments."""
+    if not candidates:
+        return None, {"candidates": 0, "support": 0, "status": "not_found"}
+    anchors = np.array([c["anchor"] for c in candidates], np.float64)
+    scales = np.array([c["scale"] for c in candidates], np.float64)
+    distance = np.linalg.norm(anchors[:, None]-anchors[None, :], axis=-1)
+    agreement = distance <= CONSENSUS_RADIUS * np.minimum(scales[:, None], scales[None, :])
+    support = agreement.sum(1)
+    order = sorted(range(len(candidates)), key=lambda i: (
+        -int(support[i]), float(np.mean(distance[i, agreement[i]])),
+        -candidates[i]["score"]))
+    best = order[0]
+    info = {"candidates": len(candidates), "support": int(support[best]),
+            "status": "accepted", "spread_px": float(distance[best, agreement[best]].max())}
+    if support[best] < MIN_SUPPORT:
+        return None, {**info, "status": "insufficient_agreement"}
+    # Similar-sized distant clusters may be different vertebrae. Withhold them.
+    rivals = [i for i in order[1:] if not agreement[best, i]
+              and support[i] >= max(MIN_SUPPORT, .75*support[best])]
+    if rivals:
+        return None, {**info, "status": "ambiguous_clusters"}
+    return candidates[best], info
+
+
+def unique_cervical_crops(proposals):
+    """Identical source rectangles provide only one spatial observation."""
+    chosen = {}
+    for proposal in sorted(proposals, key=lambda p: -p["score"]):
+        ox, oy = proposal["origin"]
+        t = proposal["transform"]
+        source_crop = (ox+t.x0, oy+t.y0, ox+t.x1, oy+t.y1)
+        if source_crop not in chosen:
+            chosen[source_crop] = {**proposal, "source_crop": source_crop}
+    return list(chosen.values())
+
+
+def _cervical_candidates(raw):
+    height, width = raw.shape
+    windows = cervical_windows(height, width)
+    proposals = []
+    # Group calls by graph to keep low-memory mode from swapping on every crop.
+    def detect(session):
+        for index, window in enumerate(windows):
+            runtime.report("search", "Searching upper-spine crops", index, len(windows))
+            left, top, right, bottom = window
+            crop = raw[top:bottom, left:right]
+            crop = crop.copy() if crop.dtype == np.uint8 else models._robust_rescale(crop)
+            logits, boxes = session.run(None, cervical.detector_input(crop))
+            found = cervical.detection_from_output(logits, boxes, crop.shape, threshold=.2)
+            if found is None:
+                continue
+            prepared = cervical.landmark_input(crop, found["bbox"])
+            if prepared is not None:
+                tensor, transform = prepared
+                proposals.append({"tensor": tensor, "transform": transform,
+                                  "origin": [left, top], "window": window,
+                                  "score": found["score"]})
+        runtime.report("search", "Upper-spine crop search complete", len(windows), len(windows))
+    models._infer("cervical_detr", detect, "Locating the cervical spine")
+    selected = unique_cervical_crops(proposals)[:MAX_CERVICAL_CROPS]
+    candidates = []
+    invalid_outputs = 0
+    if selected:
+        def predict(session):
+            nonlocal invalid_outputs
+            for index, proposal in enumerate(selected):
+                runtime.report("landmarks", "Comparing cervical HRNET crops", index, len(selected))
+                heat = session.run(None, {"image": proposal["tensor"]})[0]
+                try:
+                    decoded = cervical.decode_heatmaps(heat)
+                except ValueError:
+                    invalid_outputs += 1
+                    continue
+                points = proposal["transform"].restore(decoded) + proposal["origin"]
+                if not _inside(points, proposal["window"]):
+                    continue
+                scale = _body_chain(points[3:])
+                if scale is None or points[2, 1] >= points[3:7, 1].mean():
+                    continue
+                body = points[19:23]
+                c7_scale = float((np.linalg.norm(body[1]-body[0])+np.linalg.norm(body[3]-body[2]))/2)
+                candidates.append({"anchor": body.mean(0), "scale": c7_scale,
+                                   "points": points, "window": proposal["source_crop"],
+                                   "score": proposal["score"]})
+        models._infer("cervical_hrnet", predict, "Locating C7 with HRNET")
+    return candidates, {"windows": len(windows), "detections": len(proposals), "hrnet_crops": len(selected), "invalid_outputs": invalid_outputs}
+
+
+def lumbar_windows(window, shape):
+    """Small translations and scale changes around the detector-selected crop."""
+    left, top, right, bottom = window
+    height, width = shape
+    w, h = right-left, bottom-top
+    cx, cy = (left+right)/2, (top+bottom)/2
+    variants = [(0, 0, 1), (-.06, 0, 1), (.06, 0, 1), (0, -.06, 1),
+                (0, .06, 1), (0, 0, .9), (0, 0, 1.1)]
+    return sorted({framing.clip_window(cx+dx*w, cy+dy*h, w*scale, h*scale, height, width)
+                   for dx, dy, scale in variants})
+
+
+def _lumbar_candidates(raw):
+    # Existing image-only sliding detector establishes a lumbosacral crop.
+    located = framing.locate(raw, models._score_s1)
+    if located is None:
+        return [], {"windows": 0, "hrnet_crops": 0, "localizer": None}
+    windows = lumbar_windows(located["window"], raw.shape)
+    prepared = [framing.prepare_crop(raw, window) for window in windows]
+    detections = models._score_s1([canvas for canvas, _ in prepared])
+    proposals = []
+    for window, (canvas, transform), (score, detected) in zip(windows, prepared, detections):
+        if detected is None or score < .5:
+            continue
+        detected_source = transform.restore_points(detected)
+        if _inside(detected_source, window):
+            proposals.append((window, canvas, transform, score, detected_source))
+    candidates = []
+    if proposals:
+        def predict(session):
+            for index, (window, canvas, transform, score, detected) in enumerate(proposals):
+                runtime.report("landmarks", "Comparing lumbar HRNET crops", index, len(proposals))
+                points = session.run(None, {"image": models._segmentation_input(canvas)})[0][0]
+                if points.shape != (22, 2) or not np.isfinite(points).all():
+                    continue
+                points = transform.restore_points(points)
+                if not _inside(points, window):
+                    continue
+                body_scale = _body_chain(points[:20])
+                endplate = points[20:22]
+                scale = float(np.linalg.norm(endplate[1]-endplate[0]))
+                if (body_scale is None or scale < 3 or not .5 < scale/body_scale < 2.5
+                        or endplate[1, 0] <= endplate[0, 0]
+                        or endplate[:, 1].mean() <= points[16:20, 1].mean()):
+                    continue
+                # HRNET supplies S1; an independent detector corroborates its location.
+                detected = detected[np.argsort(detected[:, 0])]
+                discrepancy = float(np.linalg.norm(endplate-detected, axis=1).max()/scale)
+                if discrepancy > .75:
+                    continue
+                candidates.append({"anchor": endplate[1], "scale": scale,
+                                   "points": points, "endplate": endplate,
+                                   "window": window, "score": float(score),
+                                   "detector_disagreement_widths": discrepancy})
+        models._infer("hrnet", predict, "Locating the S1 endplate with HRNET")
+    return candidates, {"windows": len(windows), "hrnet_crops": len(proposals), "localizer": located}
+
+
+def _source_points(points, width, mirrored):
+    result = np.asarray(points, np.float64).copy()
+    if mirrored:
+        result[..., 0] = width-1-result[..., 0]
+    return result
+
+
+def full_spine_prediction(pixel_array, anterior_side, model=MODEL_NAME):
+    if anterior_side not in ("left", "right"):
+        raise ValueError("Select the anterior image side for the full-spine radiograph")
+    if model != MODEL_NAME:
+        raise ValueError("The available full-spine model is dual_hrnet")
+    raw = np.asarray(pixel_array)
+    if (raw.ndim != 2 or not raw.size or not np.issubdtype(raw.dtype, np.number)
+            or not np.isfinite(raw).all()):
+        raise ValueError("pixel_array must contain finite two-dimensional grayscale pixels")
+    runtime.report("preparing", "Preparing the full-spine radiograph")
+    height, width = raw.shape
+    mirrored = anterior_side == "right"
+    canonical = np.ascontiguousarray(raw[:, ::-1]) if mirrored else raw
+    neck_candidates, neck_search = _cervical_candidates(canonical)
+    pelvis_candidates, pelvis_search = _lumbar_candidates(canonical)
+    neck, neck_qc = select_consensus(neck_candidates)
+    pelvis, pelvis_qc = select_consensus(pelvis_candidates)
+    warnings = ["Review C7 identity, the S1 posterior corner, image orientation and calibration before accepting global SVA."]
+    # A region reversal or overlapping anatomical regions cannot define global SVA.
+    if neck is not None and pelvis is not None:
+        if pelvis["anchor"][1]-neck["anchor"][1] <= 2*max(neck["scale"], pelvis["scale"]):
+            neck = pelvis = None
+            neck_qc["status"] = pelvis_qc["status"] = "incompatible_region_order"
+    if neck is None:
+        warnings.append("C7 centroid was not established consistently across crops; global SVA is unavailable.")
+    if pelvis is None:
+        warnings.append("S1 posterior corner was not established consistently across crops; global SVA is unavailable.")
+    geometry = {"region": "full_spine", "anterior_side": anterior_side,
+                "c7_centroid": None if neck is None else _source_points(neck["anchor"], width, mirrored).tolist(),
+                "s1_superior": None if pelvis is None else _source_points(pelvis["endplate"], width, mirrored).tolist(),
+                "vertebrae": {}}
+    if neck is not None:
+        p = _source_points(neck["points"][19:23], width, mirrored)
+        geometry["vertebrae"]["C7"] = {"superior": p[:2].tolist(), "inferior": p[2:].tolist(),
+                                       "quadrilateral": p[[0, 1, 3, 2]].tolist()}
+    def source_window(candidate):
+        if candidate is None:
+            return None
+        left, top, right, bottom = candidate["window"]
+        return [width-right, top, width-left, bottom] if mirrored else [left, top, right, bottom]
+    if mirrored and pelvis_search.get("localizer") is not None:
+        localizer = dict(pelvis_search["localizer"])
+        a, b, c, d = localizer["window"]
+        localizer["window"] = [width-c, b, width-a, d]
+        pelvis_search = {**pelvis_search, "localizer": localizer}
+    return {"image": raw.copy() if raw.dtype == np.uint8 else models._robust_rescale(raw),
+            "mask": np.zeros(raw.shape, np.uint8), "femoral_mask": np.zeros(raw.shape, np.uint8),
+            "landmarks": geometry,
+            "models": {"vertebrae": MODEL_NAME, "cervical": "cervical_hrnet", "lumbar": "hrnet",
+                       "detector": "cervical_detr+s1"},
+            "framing": {"coordinate_space": "original_image", "canonical_mirror": mirrored,
+                        "cervical_window": source_window(neck), "lumbar_window": source_window(pelvis),
+                        "cervical": {**neck_search, **neck_qc}, "lumbar": {**pelvis_search, **pelvis_qc}},
+            "warnings": warnings,
+            "provenance": {"reference_landmarks_used": False, "segmentation_available": False,
+                           "c7_centroid_method": "mean_of_four_body_corners",
+                           "s1_source": "lumbar_hrnet", "vertical_reference": "image_vertical",
+                           "anterior_side_source": "user"}}
