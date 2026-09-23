@@ -15,7 +15,8 @@ def test_converted_models_match_checkpoints_on_empty_and_varied_inputs(kind):
     assert path.exists(), 'Run python tools/export_onnx.py before testing'
     session = models._load_model(kind, (2, True))
     generator = np.random.default_rng(51)
-    for image in (np.zeros((768, 768), np.uint8), generator.integers(0, 255, (768, 768), np.uint8)):
+    size = models.FEMORAL_IMAGE_SIZE if kind == 'femoral' else models.MODEL_IMAGE_SIZE
+    for image in (np.zeros((size, size), np.uint8), generator.integers(0, 255, (size, size), np.uint8)):
         value = models._detection_input(image) if kind == 's1' else models._segmentation_input(image)
         with torch.inference_mode():
             output = reference([torch.from_numpy(value[0])])[0] if kind == 's1' else reference(torch.from_numpy(value))

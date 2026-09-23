@@ -49,12 +49,13 @@ def export(kind, destination):
 
     network = Detector(model) if kind == 's1' else Landmarks(model) if kind == 'hrnet' else model
     torch.manual_seed(123)
-    sample = torch.rand(1, 3 if kind == 's1' else 1, 768, 768)
+    size = models.FEMORAL_IMAGE_SIZE if kind == 'femoral' else models.MODEL_IMAGE_SIZE
+    sample = torch.rand(1, 3 if kind == 's1' else 1, size, size)
     names = ['scores', 'keypoints'] if kind == 's1' else ['output']
     path = destination / f'{kind}.onnx'
     destination.mkdir(parents=True, exist_ok=True)
     # TorchVision's supported detection exporter uses scripted ONNX loops for
-    # variable proposals/keypoints. Keep fixed batch=1 and the trained 768 frame.
+    # variable proposals/keypoints. Keep fixed batch=1 and each model's trained input size.
     with torch.inference_mode():
         torch.onnx.export(network.eval(), (sample,), str(path), dynamo=False,
                           opset_version=17, input_names=['image'], output_names=names,
@@ -72,11 +73,17 @@ def export(kind, destination):
             np.testing.assert_allclose(left.numpy(), right, rtol=2e-3, atol=2e-3)
     checkpoint = {'s1': models.S1_WEIGHTS_PATH, 'vertebra': models.VERTEBRA_WEIGHTS_PATH,
                   'femoral': models.FEMORAL_WEIGHTS_PATH, 'hrnet': models.HRNET_WEIGHTS_PATH}[kind]
-    metadata = {'kind': kind, 'opset': 17, 'size': 768, 'precision': 'float32',
+    metadata = {'kind': kind, 'opset': 17, 'size': size, 'precision': 'float32',
                 's1_top_detection_only': kind == 's1',
                 'checkpoint_sha256': hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
                 'onnx_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
                 'torch': torch.__version__, 'onnx': onnx.__version__, 'onnxruntime': ort.__version__}
+    if kind == 'femoral':
+        metadata['inference'] = {'revision': models.FEMORAL_MODEL_REVISION,
+                                 'threshold': models.FEMORAL_THRESHOLD,
+                                 'clahe': {'clip_limit': 2., 'tile_grid': [8, 8]},
+                                 'horizontal_flip_average': True,
+                                 'reference_canvas': models.MODEL_IMAGE_SIZE}
     path.with_suffix('.json').write_text(json.dumps(metadata, indent=2) + '\n')
     print(f'Exported and validated {kind}: {path}', flush=True)
 

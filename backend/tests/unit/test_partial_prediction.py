@@ -42,7 +42,7 @@ def test_failed_s1_redetection_restores_whole_film_instead_of_discarding_l1(monk
                'whole_film_cost': 1., 'confidence': .95, 'cost': 1., 'candidates': 8}
     monkeypatch.setattr(framing, 'locate', lambda *args: located)
     calls = []
-    def read(canvas, choice):
+    def read(canvas, choice, femoral_image):
         calls.append(canvas.shape)
         return frame(['L1'])
     monkeypatch.setattr(models, '_read_frame', read)
