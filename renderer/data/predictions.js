@@ -8,7 +8,7 @@ export function predictionMatchesStudy(study, sidecar) {
   if (study.predictionId && study.predictionId !== sidecar.prediction_id) return false;
   if (studyRegion(study) !== studyRegion({ geometry: sidecar.geometry })) return false;
   const current = study.geometry, saved = sidecar.geometry;
-  if (current.region === 'cervical' && current.anterior_side !== saved.anterior_side) return false;
+  if (['cervical', 'full_spine'].includes(current.region) && current.anterior_side !== saved.anterior_side) return false;
   for (const key of ['source_sha256', 'image_width', 'image_height', 'coordinate_space']) {
     if (current[key] != null && current[key] !== saved[key]) return false;
   }

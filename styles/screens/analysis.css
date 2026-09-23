@@ -464,6 +464,7 @@
 
 /* --- Plan 04: landmark editing ------------------------------------------ */
 .viewer-tool:disabled { opacity: .35; cursor: not-allowed; }
+.viewer-tool.is-hidden { display: none; }
 .viewer-tool:disabled:hover { background: transparent; color: var(--stage-muted); }
 
 .viewer-tool-text {

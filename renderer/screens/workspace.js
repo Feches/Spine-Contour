@@ -1,4 +1,4 @@
-import { validAnteriorSide } from '../data/cervical.js';
+import { validAnteriorSide, studyRegion, requiresAnteriorSide } from '../data/cervical.js';
 /**
  * Workspace screen (spec 9.3). Three step cards -- image folder, optional clinical CSV, column
  * mapping -- and one Load workspace button that turns every scanned film into an unsegmented
@@ -134,7 +134,7 @@ export function loadWorkspaceStudies(state) {
       // The seeded subject, timepoint, film date and view (§8.3). view is never null here: the
       // folder row always holds one, and it was on screen before Load.
       ...seeded.fields,
-      region: rowByFolder.get(folderKey(filePath, root))?.region === 'cervical' ? 'cervical' : 'lumbar',
+      region: studyRegion(rowByFolder.get(folderKey(filePath, root))),
       anteriorSide: validAnteriorSide(rowByFolder.get(folderKey(filePath, root))?.anteriorSide)
         ? rowByFolder.get(folderKey(filePath, root)).anteriorSide : null,
       // Spread, never the join's own object: the store never holds a reference the join still owns.
@@ -317,7 +317,7 @@ export function render(state) {
   function rowSelect({ key, label, value, choices, none, onChange }) {
     const select = el('select', { class: 'workspace-folder-select', 'aria-label': label, 'data-ws-key': key, onChange });
     if (none !== null) select.append(el('option', { value: '' }, none));
-    for (const choice of choices) select.append(el('option', { value: choice }, choice));
+    for (const choice of choices) select.append(el('option', { value: choice }, choice === 'full_spine' ? 'Full spine' : choice));
     select.value = value ?? '';
     return select;
   }
@@ -332,7 +332,7 @@ export function render(state) {
     });
     select.append(el('option', { value: '__all__' }, 'Set all…'));
     if (none !== null) select.append(el('option', { value: '' }, none));
-    for (const choice of choices) select.append(el('option', { value: choice }, choice));
+    for (const choice of choices) select.append(el('option', { value: choice }, choice === 'full_spine' ? 'Full spine' : choice));
     select.value = '__all__';
     return select;
   }
@@ -359,10 +359,10 @@ export function render(state) {
         onChange: (value) => setAllFolderRows({ view: value }),
       })));
     head.append(el('th', { scope: 'col' }, 'REGION', setAllSelect({
-      key: 'all-region', label: 'Set the region of every folder', choices: ['lumbar', 'cervical'], none: null,
+      key: 'all-region', label: 'Set the region of every folder', choices: ['lumbar', 'cervical', 'full_spine'], none: null,
       onChange: value => setAllFolderRows({ region: value, anteriorSide: null }),
     })), el('th', { scope: 'col' }, 'ANTERIOR IMAGE SIDE', setAllSelect({
-      key: 'all-anterior', label: 'Set the anterior image side of every cervical folder', choices: ['left', 'right'], none: 'unconfirmed',
+      key: 'all-anterior', label: 'Set the anterior image side of every cervical and full spine folder', choices: ['left', 'right'], none: 'unconfirmed',
       onChange: value => setAllFolderRows({ anteriorSide: value || null }),
     })));
     const body = rows.map((row) => el('tr', { 'data-ws-folder': row.folder },
@@ -377,10 +377,10 @@ export function render(state) {
         onChange: (event) => setFolderRow(row.folder, { view: event.target.value }),
       })),
       el('td', {}, rowSelect({
-        key: `region:${row.folder}`, label: `Region for ${row.folder}`, value: row.region ?? 'lumbar', choices: ['lumbar', 'cervical'], none: null,
+        key: `region:${row.folder}`, label: `Region for ${row.folder}`, value: row.region ?? 'lumbar', choices: ['lumbar', 'cervical', 'full_spine'], none: null,
         onChange: event => setFolderRow(row.folder, { region: event.target.value, anteriorSide: null }),
       })),
-      el('td', {}, row.region === 'cervical' ? rowSelect({
+      el('td', {}, requiresAnteriorSide(row) ? rowSelect({
         key: `anterior:${row.folder}`, label: `Anterior image side for ${row.folder}`, value: row.anteriorSide, choices: ['left', 'right'], none: 'Choose…',
         onChange: event => setFolderRow(row.folder, { anteriorSide: event.target.value || null }),
       }) : '—')));

@@ -184,6 +184,13 @@ function beyondAnterior(sa, sp) {
 // Every selectedLevel value is handled explicitly; anything else has no label.
 export function constructionLabel(geometry, selectedLevel, measurements) {
   if (!geometry || !selectedLevel || !measurements) return null;
+  if (geometry.region === 'full_spine') {
+    if (selectedLevel !== 'GLOBAL_SVA' || !Number.isFinite(measurements.GLOBAL_SVA_PX)
+        || !geometry.c7_centroid || !geometry.s1_superior?.[1]) return null;
+    const mm = Number.isFinite(measurements.GLOBAL_SVA_MM);
+    return { text: `C7–S1 SVA ${(mm ? measurements.GLOBAL_SVA_MM : measurements.GLOBAL_SVA_PX).toFixed(1)} ${mm ? 'mm' : 'px (uncalibrated)'}`,
+      anchor: [geometry.c7_centroid[0], geometry.s1_superior[1][1]], side: 1 };
+  }
   if (geometry.region === 'cervical') {
     if (selectedLevel === 'C2C7_COBB' && Number.isFinite(measurements.C2C7_COBB)) {
       return { text: `C2–C7 Cobb ${measurements.C2C7_COBB.toFixed(1)}°`,
@@ -249,7 +256,14 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
   try {
     ctx.strokeStyle = STAGE_SELECTED_COLOR;
     ctx.lineWidth = Math.max(2, canvas.width / 400);
-    if (geometry.region === 'cervical') {
+    if (geometry.region === 'full_spine') {
+      const c = geometry.c7_centroid, p = geometry.s1_superior[1];
+      const foot = [c[0], p[1]];
+      strokeReference(ctx, c, foot);
+      ctx.beginPath(); ctx.moveTo(...foot); ctx.lineTo(...p); ctx.stroke();
+      const tick = Math.max(4, canvas.width / 150);
+      for (const x of [foot[0], p[0]]) { ctx.beginPath(); ctx.moveTo(x, p[1] - tick); ctx.lineTo(x, p[1] + tick); ctx.stroke(); }
+    } else if (geometry.region === 'cervical') {
       if (selectedLevel === 'C2C7_COBB') {
         for (const level of ['C2', 'C7']) {
           const [a, p] = geometry.vertebrae[level].inferior;
@@ -444,8 +458,8 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
   const selectedLevel = opts.selectedLevel ?? null;
   const lineWidth = Math.max(2, canvas.width / 600);
   ctx.lineJoin = 'round';
-  for (const level of geometry.region === 'cervical' ? CERVICAL_LEVELS : LEVELS) {
-    const body = geometry.vertebrae[level];
+  for (const level of geometry.region === 'cervical' ? CERVICAL_LEVELS : geometry.region === 'full_spine' ? [] : LEVELS) {
+    const body = geometry.vertebrae?.[level];
     if (!body) continue;
     const selected = level === selectedLevel;
     ctx.strokeStyle = selected ? STAGE_SELECTED_COLOR : STAGE_LINE_COLOR;
@@ -468,9 +482,17 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
     ctx.stroke();
     drawSelectedStageLabel(ctx, 'S1', geometry.s1_superior[0], selectedS1, canvas.width);
   }
+  if (geometry.region === 'full_spine' && geometry.c7_centroid) {
+    const [x, y] = geometry.c7_centroid;
+    const arm = Math.max(4, canvas.width / 150);
+    ctx.strokeStyle = STAGE_LINE_COLOR;
+    ctx.beginPath(); ctx.moveTo(x - arm, y); ctx.lineTo(x + arm, y);
+    ctx.moveTo(x, y - arm); ctx.lineTo(x, y + arm); ctx.stroke();
+    drawSelectedStageLabel(ctx, 'C7', geometry.c7_centroid, selectedLevel === 'GLOBAL_SVA', canvas.width);
+  }
 
   const pixelRatio = opts.pixelRatio ?? 1;
-  geometry.femoral_circles.forEach(([x, y, r], index) => {
+  (geometry.femoral_circles ?? []).forEach(([x, y, r], index) => {
     const selectedCircle = Boolean(opts.editing) && opts.selection?.kind === 'femoral'
       && opts.selection.side === FEMORAL_SIDES[index];
     ctx.strokeStyle = selectedCircle ? STAGE_SELECTED_COLOR : FEMORAL_HANDLE_COLOR;
@@ -486,7 +508,7 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
       ctx.stroke();
     }
   });
-  if (geometry.femoral_circles.length === 2 && geometry.hip_midpoint) {
+  if (geometry.femoral_circles?.length === 2 && geometry.hip_midpoint) {
     const [a, b] = geometry.femoral_circles;
     const [x, y] = geometry.hip_midpoint;
     ctx.save();

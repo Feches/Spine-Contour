@@ -1,4 +1,5 @@
 import { CERVICAL_COLUMNS, cervicalMeasurements, studyRegion } from './cervical.js';
+import { GLOBAL_SVA_COLUMNS, globalSvaMeasurements } from './global-sva.js';
 /**
  * Pure logic for the Parameters tab of the Studies screen (pre-op/post-op spec, 2026-09-06 §10):
  * which columns the grid shows, each study's value in them, the filter options, the timepoint,
@@ -53,8 +54,9 @@ export const LEVEL_COLUMNS = Object.freeze([
   { key: 'L5-S1', label: 'LL L5\u2013S1' },
 ]);
 
-export function measurementColumns(showLevels, cervical = false) {
-  return [...CORE_COLUMNS, ...(showLevels ? LEVEL_COLUMNS : []), ...(cervical ? CERVICAL_COLUMNS : [])];
+export function measurementColumns(showLevels, cervical = false, fullSpine = false) {
+  return [...CORE_COLUMNS, ...(showLevels ? LEVEL_COLUMNS : []), ...(cervical ? CERVICAL_COLUMNS : []),
+    ...(fullSpine ? GLOBAL_SVA_COLUMNS : [])];
 }
 
 // One study's value in every measurement column: a finite number or null. sagittalRows keys its
@@ -63,10 +65,11 @@ export function parameterValues(study) {
   const values = {};
   for (const row of sagittalRows(study.measurements)) values[row.key] = row.absent ? null : row.value;
   for (const row of lordosisRows(study.measurements)) values[row.key] = row.absent ? null : row.value;
-  if (studyRegion(study) === 'cervical') {
+  if (studyRegion(study) !== 'lumbar') {
     for (const key of Object.keys(values)) values[key] = null;
-    const cervical = cervicalMeasurements(study);
-    for (const column of CERVICAL_COLUMNS) values[column.key] = cervical[column.key];
+    const cervical = studyRegion(study) === 'cervical';
+    const measurements = cervical ? cervicalMeasurements(study) : globalSvaMeasurements(study);
+    for (const column of cervical ? CERVICAL_COLUMNS : GLOBAL_SVA_COLUMNS) values[column.key] = measurements[column.key];
   }
   return values;
 }

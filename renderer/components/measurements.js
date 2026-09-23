@@ -1,4 +1,5 @@
 import { cervicalRows, studyRegion } from '../data/cervical.js';
+import { globalSvaRows } from '../data/global-sva.js';
 import { landmarkReviewReasons } from '../data/status.js';
 import { el, clear } from '../dom.js';
 import { getState, setState } from '../store.js';
@@ -136,14 +137,16 @@ export function mountMeasurements(container) {
     const pending = Boolean(state.measurementDrafts?.[study.id]);
     const measurements = pending ? null : study.measurements;
     const cervical = studyRegion(study) === 'cervical';
+    const fullSpine = studyRegion(study) === 'full_spine';
     const rows = cervical ? cervicalRows(pending ? { region: 'cervical' } : study, state.selectedLevel)
+      : fullSpine ? globalSvaRows(pending ? { region: 'full_spine' } : study, state.selectedLevel)
       : sagittalRows(measurements, { selectedLevel: state.selectedLevel });
 
-    const section1 = section(cervical ? '01 — CERVICAL ALIGNMENT' : '01 \u2014 SAGITTAL PARAMETERS',
+    const section1 = section(cervical ? '01 — CERVICAL ALIGNMENT' : fullSpine ? '01 — GLOBAL ALIGNMENT' : '01 \u2014 SAGITTAL PARAMETERS',
       el('div', { class: 'meas-rows' },
-        ...rows.map((row) => rowButton(row, () => toggleLevel(cervical ? row.key : ROW_LEVELS[row.key])))));
+        ...rows.map((row) => rowButton(row, () => toggleLevel(cervical || fullSpine ? row.key : ROW_LEVELS[row.key])))));
 
-    if (!cervical) section1.append(el('button', {
+    if (!cervical && !fullSpine) section1.append(el('button', {
       type: 'button',
       class: 'meas-disclosure',
       'aria-expanded': state.showAllLordosis ? 'true' : 'false',
@@ -151,7 +154,7 @@ export function mountMeasurements(container) {
       onClick: () => setState((s) => ({ showAllLordosis: !s.showAllLordosis })),
     }, state.showAllLordosis ? 'HIDE LORDOSIS LEVELS' : 'SHOW ALL LORDOSIS LEVELS'));
 
-    if (!cervical && state.showAllLordosis) {
+    if (!cervical && !fullSpine && state.showAllLordosis) {
       section1.append(el('div', { class: 'meas-rows' },
         // lordosisRows always returns highlight: false -- the component, not the data
         // layer, owns highlighting here, because state.selectedLevel lives on the store
@@ -194,7 +197,11 @@ export function mountMeasurements(container) {
         onClick: () => setState({ screen: 'calibration', calibrationRequest: { studyId: study.id, filePath: study.filePath } }),
       }, 'REVIEW IMAGE SCALE'));
     }
-    if (cervical) {
+    if (fullSpine) {
+      section1.append(el('div', { class: 'meas-note' },
+        'C7–S1 SVA: C7 body centroid to the S1 posterosuperior corner, parallel to the image horizontal; positive anterior. Review the C7 centroid and both S1 endplate corners.'));
+      root.append(section1, calibrationSection);
+    } else if (cervical) {
       section1.append(el('div', { class: 'meas-note' },
         'Cobb: unsigned acute angle between the C2 and C7 inferior endplates. SVA: C2 body centroid to the C7 posterosuperior corner, parallel to the image horizontal; positive anterior. Verify the six editable landmarks.'));
       root.append(section1, calibrationSection);

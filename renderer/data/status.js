@@ -8,6 +8,7 @@
  */
 
 import { piResidual, RESIDUAL_LIMIT } from './measurements.js';
+import { studyRegion } from './cervical.js';
 
 export { RESIDUAL_LIMIT };
 export const CONFIDENCE_LIMIT = 0.6;
@@ -16,6 +17,13 @@ export const S1_CONFIDENCE_LIMIT = 0.6;
 
 export function landmarkReviewReasons(qc) {
   const reasons = [];
+  if (qc?.models?.vertebrae === 'dual_hrnet' || qc?.global_sva) {
+    if (qc?.coverage?.partial || qc?.global_sva?.coverage?.partial) reasons.push('Partial full-spine landmarks — C7–S1 SVA requires the C7 centroid and S1 superior endplate.');
+    if (qc?.manual_edits?.landmarks) reasons.push('Manually edited landmarks — verify the corrected positions.');
+    reasons.push('Verify the C7 centroid, S1 endplate and selected anterior image side.');
+    for (const warning of qc?.warnings ?? []) if (typeof warning === 'string' && !reasons.includes(warning)) reasons.push(warning);
+    return reasons;
+  }
   if (qc?.models?.vertebrae === 'cervical_hrnet' || qc?.models?.cervical === 'cervical_hrnet') {
     if (qc?.coverage?.partial) reasons.push('Partial cervical landmarks — only available measurements are shown.');
     if (qc?.manual_edits?.landmarks) reasons.push('Manually edited landmarks — verify the corrected positions.');
@@ -51,6 +59,9 @@ export function landmarkReviewReasons(qc) {
 export function reviewReasons(study) {
   if (!study?.measurements) return [];
   const reasons = landmarkReviewReasons(study.qc);
+  if (studyRegion(study) === 'full_spine' && !reasons.includes('Verify the C7 centroid, S1 endplate and selected anterior image side.')) {
+    reasons.push('Verify the C7 centroid, S1 endplate and selected anterior image side.');
+  }
   if (piResidual(study.measurements) > RESIDUAL_LIMIT) {
     reasons.unshift('Parameters inconsistent — check S1 and femoral landmarks.');
   }

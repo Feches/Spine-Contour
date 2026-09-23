@@ -15,6 +15,15 @@ export function imageConfidence(study, pending = false) {
   }
   const { geometry: g, qc } = study;
   const reasons = reviewReasons(study);
+  if (studyRegion(study) === 'full_spine') {
+    const scale = normalizeCalibration(study.calibration)?.spacing;
+    return { label: 'Review recommended', tone: 'review', details: [
+      ...reasons, 'Verify C7 identification, its body centroid, and both S1 superior-endplate corners.',
+      `Anterior side: image ${g.anterior_side ?? 'unconfirmed'}.`,
+      scale ? `Calibration: ${calibrationSummary(study.calibration)}` : 'Image scale unavailable — C7–S1 SVA is shown in pixels only.',
+      explanation,
+    ] };
+  }
   if (studyRegion(study) === 'cervical') {
     const scale = normalizeCalibration(study.calibration)?.spacing;
     return { label: 'Review recommended', tone: 'review', details: [

@@ -1,12 +1,17 @@
-# Spine Contour v1.0.10
+# Spine Contour
 
-Automated measurements from lateral lumbar and cervical radiographs, running locally.
+Automated measurements from lateral lumbar, cervical and full-spine radiographs, running locally.
 
-v1.0.10 adds a cervical HRNET model. Select **Cervical** and the
+Select **Cervical** and the
 image's **anterior side** before processing. Review the C2–C7 Cobb and SVA
 construction lines, correct the landmarks if needed, and calibrate the image for
 SVA in millimetres. See [cervical alignment](docs/cervical-alignment.md) for the
 model provenance, measurement definitions and development checks.
+
+Select **Full spine · HRNET** for the separate global C7–S1 SVA workflow.
+Review the C7 centroid and S1 posterior corner, and calibrate the image for
+millimetres. See [global SVA](docs/global-sva.md) for the construction, crop
+search and review requirements.
 
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).

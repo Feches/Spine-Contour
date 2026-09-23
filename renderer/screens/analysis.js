@@ -1,5 +1,5 @@
 import { predictionMatchesStudy } from '../data/predictions.js';
-import { studyRegion, regionRunReason, validAnteriorSide } from '../data/cervical.js';
+import { studyRegion, studyRegionLabel, requiresAnteriorSide, regionRunReason, validAnteriorSide } from '../data/cervical.js';
 import { imageConfidence, scorePercent } from '../data/confidence.js';
 import { el, mount } from '../dom.js';
 import { getState, setState, subscribe } from '../store.js';
@@ -282,7 +282,8 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       bodyPart: studyRegion(current),
       anteriorSide: current.anteriorSide ?? null,
       view,
-      models: studyRegion(current) === 'cervical' ? { vertebrae: 'cervical_hrnet' } : getState().models,
+      models: studyRegion(current) === 'cervical' ? { vertebrae: 'cervical_hrnet' }
+        : studyRegion(current) === 'full_spine' ? { vertebrae: 'dual_hrnet' } : getState().models,
       calibration: calibrationForStudy(current),
     });
     if (revision !== runRevision) return { ok: false, reason: 'superseded' };
@@ -455,7 +456,7 @@ let previewRevision = 0;
 // required anterior-side selection. This is never a prediction or a saved measurement.
 async function previewOriginal(studyId) {
   const start = getState().studies.find(s => s.id === studyId);
-  if (!start || start.geometry || studyRegion(start) !== 'cervical') return;
+  if (!start || start.geometry || !requiresAnteriorSide(start)) return;
   const revision = ++previewRevision;
   const runAtStart = runsByStudy.get(studyId) ?? 0;
   const live = () => {
@@ -463,7 +464,7 @@ async function previewOriginal(studyId) {
     return mounted?.studyId === studyId && getState().screen === 'analysis'
       && revision === previewRevision && (runsByStudy.get(studyId) ?? 0) === runAtStart
       && current?.addedAt === start.addedAt && !current.geometry
-      && studyRegion(current) === 'cervical' && getState().running !== studyId;
+      && requiresAnteriorSide(current) && getState().running !== studyId;
   };
   if (!live()) return;
   mounted.previewMessage = 'Loading original radiograph…';
@@ -643,7 +644,8 @@ export function render(state) {
   }
   const regionSelect = el('select', { 'aria-label': 'Spine region', class: 'workspace-folder-select',
     onChange: e => changeRegion({ region: e.target.value, anteriorSide: null }) },
-    el('option', { value: 'lumbar' }, 'Lumbar'), el('option', { value: 'cervical' }, 'Cervical · HRNET'));
+    el('option', { value: 'lumbar' }, 'Lumbar'), el('option', { value: 'cervical' }, 'Cervical · HRNET'),
+    el('option', { value: 'full_spine' }, 'Full spine · HRNET'));
   const anteriorSelect = el('select', { 'aria-label': 'Cervical anterior image side', class: 'workspace-folder-select',
     onChange: e => changeRegion({ anteriorSide: validAnteriorSide(e.target.value) ? e.target.value : null }) },
     el('option', { value: '' }, 'Choose anterior side…'), el('option', { value: 'left' }, 'Anterior is image left'),
@@ -652,9 +654,9 @@ export function render(state) {
   const regionNote = el('span', { class: 'meas-note' });
   const previewButton = el('button', { type: 'button', class: 'btn btn-small',
     onClick: () => previewOriginal(getState().openId) }, 'View original');
-  const cervicalRunButton = el('button', { type: 'button', class: 'btn btn-small btn-primary',
+  const alignmentRunButton = el('button', { type: 'button', class: 'btn btn-small btn-primary',
     onClick: () => segmentStudy(getState().openId) }, 'Run segmentation');
-  const regionBar = el('div', { class: 'analysis-region-bar' }, el('label', {}, 'Region ', regionSelect), anteriorLabel, previewButton, cervicalRunButton, regionNote);
+  const regionBar = el('div', { class: 'analysis-region-bar' }, el('label', {}, 'Region ', regionSelect), anteriorLabel, previewButton, alignmentRunButton, regionNote);
   const root = el('main', { class: 'analysis-screen' }, header, regionBar, body, clinicalHost);
 
   const viewer = mountViewer(viewerHost);
@@ -727,13 +729,15 @@ export function render(state) {
     const produced = describeModels(open.qc);
     regionSelect.value = studyRegion(open);
     anteriorSelect.value = open.anteriorSide ?? '';
-    anteriorLabel.hidden = studyRegion(open) !== 'cervical';
+    anteriorLabel.hidden = !requiresAnteriorSide(open);
+    anteriorSelect.setAttribute('aria-label', studyRegion(open) === 'full_spine' ? 'Full spine anterior image side' : 'Cervical anterior image side');
     regionSelect.disabled = anteriorSelect.disabled = Boolean(live.running || live.batch || open.source === 'demo');
-    const cervicalSetup = studyRegion(open) === 'cervical' && !open.measurements;
-    previewButton.hidden = cervicalRunButton.hidden = !cervicalSetup;
+    const alignmentSetup = requiresAnteriorSide(open) && !open.measurements;
+    previewButton.hidden = alignmentRunButton.hidden = !alignmentSetup;
     previewButton.disabled = Boolean(live.running || live.batch);
-    cervicalRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view));
-    regionNote.textContent = mounted?.previewMessage && cervicalSetup ? mounted.previewMessage : open.measurements ? 'Changing region or orientation clears these measurements; run again.'
+    alignmentRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view));
+    regionNote.textContent = mounted?.previewMessage && alignmentSetup ? mounted.previewMessage : open.measurements ? 'Changing region or orientation clears these measurements; run again.'
+      : studyRegion(open) === 'full_spine' ? 'Use a lateral full-spine film showing C7 and S1. Confirm which image side is anterior.'
       : studyRegion(open) === 'cervical' ? 'Use a lateral cervical film. Confirm which image side is anterior.' : '';
     // Never overwrite what the user is in the middle of typing.
     if (document.activeElement !== nameField) {
@@ -749,7 +753,7 @@ export function render(state) {
 
     // The rest of the header line. The name leads because that is what the user recognises; the
     // SP-nnnn id stays reachable on the title rather than disappearing entirely.
-    headerMeta.textContent = `${studyRegion(open).toUpperCase()} · ${(open.view || '—').toUpperCase()} · ${open.pt ?? '—'}`
+    headerMeta.textContent = `${studyRegionLabel(open).toUpperCase()} · ${(open.view || '—').toUpperCase()} · ${open.pt ?? '—'}`
       + (produced ? ` · ${produced.toUpperCase()}` : '');
     // A run in flight counts as pending too: the numbers on the record are the PREVIOUS run's,
     // so an assessment of them would be a stale claim about a study that is being re-measured.
@@ -820,6 +824,6 @@ export function render(state) {
   mounted = { viewer, update, studyId: study.id };
   update();
   if (needsRestore) restoreFilm(study.id);
-  else if (!study.geometry && studyRegion(study) === 'cervical' && !(imageCache?.studyId === study.id && imageCache.images?.preview)) previewOriginal(study.id);
+  else if (!study.geometry && requiresAnteriorSide(study) && !(imageCache?.studyId === study.id && imageCache.images?.preview)) previewOriginal(study.id);
   return root;
 }
