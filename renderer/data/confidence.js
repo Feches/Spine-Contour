@@ -1,3 +1,4 @@
+import { studyRegion } from './cervical.js';
 import { reviewReasons } from './status.js';
 import { normalizeCalibration, calibrationSummary } from './calibration.js';
 
@@ -14,6 +15,15 @@ export function imageConfidence(study, pending = false) {
   }
   const { geometry: g, qc } = study;
   const reasons = reviewReasons(study);
+  if (studyRegion(study) === 'cervical') {
+    const scale = normalizeCalibration(study.calibration)?.spacing;
+    return { label: 'Review recommended', tone: 'review', details: [
+      ...reasons, 'Verify C2 and C7 identification and the six measurement landmarks.',
+      `Anterior side: image ${g.anterior_side ?? 'unconfirmed'}.`,
+      scale ? `Calibration: ${calibrationSummary(study.calibration)}` : 'Image scale unavailable — SVA is shown in pixels only.',
+      explanation,
+    ] };
+  }
   const available = ['L1', 'L2', 'L3', 'L4', 'L5'].filter(level => g.vertebrae[level]);
   if (g.s1_superior) available.push('S1');
   const count = g.femoral_circles.length;

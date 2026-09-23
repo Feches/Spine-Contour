@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Add cervical HRNET and its paired spine detector,
+  with offline ONNX inference and explicit anterior-side selection.
+- Add C2–C7 inferior-endplate Cobb angle and C2–C7 sagittal vertical axis,
+  construction overlays, editable landmarks, persistence and CSV export.
+- Keep uncalibrated SVA in pixels; use the current image calibration for
+  millimetres and for angles when row and column pixel spacing differ.
+
 ## 1.0.9
 
 - Update the femoral-head U-Net using the expanded rim-annotation dataset.

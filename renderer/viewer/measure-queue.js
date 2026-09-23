@@ -1,3 +1,4 @@
+import { cervicalMeasureGeometry } from '../data/cervical.js';
 import { debounce } from './interactions.js';
 
 // The /measure round-trip, extracted from components/viewer.js so its bookkeeping is testable
@@ -44,7 +45,8 @@ export function createMeasureQueue({ measure, getState, setState, showToast, deb
     const geometry = getState().measurementDrafts?.[studyId];
     if (!study || !geometry) { discardDraft(studyId); return; }
     try {
-      const result = await measure({
+      const result = await measure(geometry.region === 'cervical'
+        ? cervicalMeasureGeometry(geometry, study.calibration) : {
         vertebrae: geometry.vertebrae,
         s1_superior: geometry.s1_superior,
         femoral_circles: geometry.femoral_circles,

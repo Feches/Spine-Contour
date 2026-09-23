@@ -1,3 +1,4 @@
+import { studyRegion } from '../data/cervical.js';
 /**
  * Parameters tab of the Studies screen (pre-op/post-op spec, 2026-09-06 §10). One row per film
  * with every measurement, a filter bar, sortable headers and two exports of the visible rows: long
@@ -302,7 +303,7 @@ export function mountParameters(host, { onOpen }) {
         const flag = column.key === 'PI' && inconsistent && values.PI !== null;
         return el('td', {
           class: `param-cell-num${flag ? ' is-inconsistent' : ''}`, ...(flag ? { title: INCONSISTENT_TITLE } : {}),
-        }, formatParameter(values[column.key]));
+        }, formatParameter(values[column.key], column.unit));
       }),
       ...fields.map((field) => el('td', { class: 'param-cell-text' },
         study.clinical && study.clinical[field] != null && study.clinical[field] !== '' ? String(study.clinical[field]) : '')),
@@ -311,7 +312,7 @@ export function mountParameters(host, { onOpen }) {
   }
 
   function buildGrid(live, visible) {
-    const columns = measurementColumns(live.paramLevels === true);
+    const columns = measurementColumns(live.paramLevels === true, visible.some(study => studyRegion(study) === 'cervical'));
     const fields = live.fields ?? [];
     const sort = { ...DEFAULT_SORT, ...(live.paramSort ?? {}) };
     const selected = live.paramSelected ?? [];

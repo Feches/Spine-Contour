@@ -876,3 +876,8 @@
 .confidence-breakdown p { margin: 0 0 9px; }
 .confidence-breakdown p:last-child { margin-bottom: 0; color: var(--body); }
 .viewer-edit-help { flex-basis: 100%; padding: 4px 8px; color: var(--stage-accent); font-size: 11px; text-align: right; }
+
+.analysis-region-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; padding: 8px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.analysis-region-bar label { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.analysis-region-bar [hidden] { display: none; }
+.analysis-region-bar .meas-note { margin: 0; }

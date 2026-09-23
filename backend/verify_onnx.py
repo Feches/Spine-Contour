@@ -18,15 +18,26 @@ def verify():
             metadata = json.loads(path.with_suffix('.json').read_text())
             assert metadata['kind'] == kind and metadata['precision'] == 'float32'
             assert hashlib.sha256(path.read_bytes()).hexdigest() == metadata['onnx_sha256']
-            size = models.FEMORAL_IMAGE_SIZE if kind == 'femoral' else models.MODEL_IMAGE_SIZE
-            assert metadata['size'] == size
-            shape = (1, 3 if kind == 's1' else 1, size, size)
-            output = models._infer(kind, lambda session: session.run(None, {'image': np.zeros(shape, np.float32)}), None)
+            if kind == 'cervical_detr':
+                inputs = {'pixel_values': np.zeros((1, 3, 800, 800), np.float32),
+                          'pixel_mask': np.ones((1, 800, 800), np.int64)}
+            elif kind == 'cervical_hrnet':
+                inputs = {'image': np.zeros((1, 3, 384, 384), np.float32)}
+            else:
+                size = models.FEMORAL_IMAGE_SIZE if kind == 'femoral' else models.MODEL_IMAGE_SIZE
+                assert metadata['size'] == size
+                shape = (1, 3 if kind == 's1' else 1, size, size)
+                inputs = {'image': np.zeros(shape, np.float32)}
+            output = models._infer(kind, lambda session: session.run(None, inputs), None)
             assert all(np.isfinite(value).all() for value in output)
             if kind == 's1':
                 assert output[0].ndim == 1 and output[1].shape == (len(output[0]), 2, 3)
+            elif kind == 'cervical_detr':
+                assert output[0].shape == (1, 100, 2) and output[1].shape == (1, 100, 4)
             else:
-                expected = {'vertebra': (1, 6, 768, 768), 'femoral': (1, 1, models.FEMORAL_IMAGE_SIZE, models.FEMORAL_IMAGE_SIZE), 'hrnet': (1, 22, 2)}[kind]
+                expected = {'vertebra': (1, 6, 768, 768),
+                            'femoral': (1, 1, models.FEMORAL_IMAGE_SIZE, models.FEMORAL_IMAGE_SIZE),
+                            'hrnet': (1, 22, 2), 'cervical_hrnet': (1, 23, 96, 96)}[kind]
                 assert output[0].shape == expected
             results[kind] = [list(value.shape) for value in output]
         models.release_models()

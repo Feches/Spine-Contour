@@ -100,3 +100,5 @@ if __name__ == '__main__':
         import subprocess
         for kind in ('s1', 'vertebra', 'femoral', 'hrnet'):
             subprocess.run([sys.executable, __file__, '--kind', kind, '--output', str(args.output)], check=True)
+        subprocess.run([sys.executable, str(ROOT / 'tools' / 'export_cervical_onnx.py'),
+                        '--output', str(args.output)], check=True)

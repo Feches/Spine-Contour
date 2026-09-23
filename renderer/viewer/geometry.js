@@ -1,3 +1,4 @@
+import { CERVICAL_HANDLES } from '../data/cervical.js';
 export const LEVELS = ['L1', 'L2', 'L3', 'L4', 'L5'];
 export const CORNERS = ['SA', 'SP', 'IA', 'IP'];
 
@@ -42,17 +43,23 @@ export function fitCircle(points) {
 }
 
 export function landmarkAt(geometry, level, corner) {
+  if (level === 'C2' && corner === 'CENTROID') return geometry?.c2_centroid ?? null;
   if (level === 'S1') return geometry?.s1_superior?.[corner === 'SA' ? 0 : 1] ?? null;
   const body = geometry?.vertebrae?.[level];
   if (!body) return null;
-  if (corner === 'SA') return body.superior[0];
-  if (corner === 'SP') return body.superior[1];
-  if (corner === 'IA') return body.inferior[0];
-  return body.inferior[1];
+  if (corner === 'SA') return body.superior?.[0] ?? null;
+  if (corner === 'SP') return body.superior?.[1] ?? null;
+  if (corner === 'IA') return body.inferior?.[0] ?? null;
+  return body.inferior?.[1] ?? null;
 }
 
 export function setLandmarkAt(geometry, level, corner, point) {
   if (!landmarkAt(geometry, level, corner)) return geometry;
+  if (geometry.region === 'cervical') point = [
+    Math.max(0, Math.min((geometry.image_width ?? Infinity) - 1, point[0])),
+    Math.max(0, Math.min((geometry.image_height ?? Infinity) - 1, point[1])),
+  ];
+  if (level === 'C2' && corner === 'CENTROID') { geometry.c2_centroid = point; return geometry; }
   if (level === 'S1') {
     geometry.s1_superior[corner === 'SA' ? 0 : 1] = point;
     return geometry;
@@ -62,7 +69,8 @@ export function setLandmarkAt(geometry, level, corner, point) {
   else if (corner === 'SP') body.superior[1] = point;
   else if (corner === 'IA') body.inferior[0] = point;
   else body.inferior[1] = point;
-  body.quadrilateral = [body.superior[0], body.superior[1], body.inferior[1], body.inferior[0]];
+  body.quadrilateral = body.superior && body.inferior
+    ? [body.superior[0], body.superior[1], body.inferior[1], body.inferior[0]] : null;
   return geometry;
 }
 
@@ -84,15 +92,13 @@ export function imageToClient(pt, rect, canvas) {
 export function nearestLandmark(geometry, clientX, clientY, canvas, radius = 14) {
   const rect = canvas.getBoundingClientRect();
   let nearest = null;
-  for (const level of [...LEVELS, 'S1']) {
-    for (const corner of level === 'S1' ? ['SA', 'SP'] : CORNERS) {
-      const point = landmarkAt(geometry, level, corner);
-      if (!point) continue;
-      const [x, y] = imageToClient(point, rect, canvas);
-      const distance = Math.hypot(clientX - x, clientY - y);
-      if (distance <= radius && (!nearest || distance < nearest.distance)) {
-        nearest = { level, corner, distance };
-      }
+  for (const { level, corner } of landmarkHandles(geometry)) {
+    const point = landmarkAt(geometry, level, corner);
+    if (!point) continue;
+    const [x, y] = imageToClient(point, rect, canvas);
+    const distance = Math.hypot(clientX - x, clientY - y);
+    if (distance <= radius && (!nearest || distance < nearest.distance)) {
+      nearest = { level, corner, distance };
     }
   }
   return nearest;
@@ -127,4 +133,11 @@ export function removeFemoralCircle(geometry, side) {
     geometry.manually_cleared = true;
   }
   return updateHipMidpoint(geometry);
+}
+
+export function landmarkHandles(geometry) {
+  return geometry?.region === 'cervical' ? CERVICAL_HANDLES : [
+    ...LEVELS.flatMap(level => CORNERS.map(corner => ({ kind: 'landmark', level, corner }))),
+    ...['SA', 'SP'].map(corner => ({ kind: 'landmark', level: 'S1', corner })),
+  ];
 }

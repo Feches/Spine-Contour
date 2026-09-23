@@ -165,7 +165,9 @@ def _letterbox(image: np.ndarray) -> tuple[np.ndarray, LetterboxTransform]:
 
 ONNX_DIRECTORY = Path(__file__).resolve().parent.parent / "onnx"
 MODEL_NAMES = {"s1": "S1 detector", "vertebra": "vertebra model",
-               "femoral": "femoral-head model", "hrnet": "HRNet landmark model"}
+               "femoral": "femoral-head model", "hrnet": "HRNet landmark model",
+               "cervical_detr": "cervical detector",
+               "cervical_hrnet": "cervical HRNET landmarks"}
 _resident_key = None
 _cache_policy = None
 

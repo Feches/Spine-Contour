@@ -1,3 +1,4 @@
+import { regionRunReason } from './cervical.js';
 /**
  * Pure logic for batch segmentation (docs/superpowers/specs/2026-09-08-batch-segmentation-design.md,
  * "the spec" below): which films a click on the Find tab's segment button runs and what the button
@@ -29,8 +30,9 @@ export function planBatch({ visible, selected, running }) {
   const chosen = selectedVisible(real, selected);
   const pool = chosen.length > 0 ? chosen : real;
   const unsegmented = pool.filter((study) => !isSegmented(study));
-  const supported = unsegmented.filter((study) => inferenceView(study.view));
-  const unsupported = unsegmented.length - supported.length;
+  const supported = unsegmented.filter((study) => inferenceView(study.view) && !regionRunReason(study));
+  const unconfirmed = unsegmented.filter(study => inferenceView(study.view) && regionRunReason(study)).length;
+  const unsupported = unsegmented.length - supported.length - unconfirmed;
   const ids = supported.map((study) => study.id);
   const already = pool.length - unsegmented.length;
   const label = chosen.length > 0 ? `Segment ${ids.length} selected` : `Segment ${ids.length} unsegmented`;
@@ -47,6 +49,7 @@ export function planBatch({ visible, selected, running }) {
     note = `${unsupported} unsupported ${unsupported === 1 ? 'view' : 'views'} excluded — choose a lateral view`;
     if (already) note += ` · ${already} already segmented`;
   }
+  if (unconfirmed && !running) note = `${note && (unsupported || already) ? `${note} · ` : ''}${unconfirmed} cervical films excluded — choose their anterior image side`;
   return { ids, label, note, enabled: ids.length > 0 && !running };
 }
 
@@ -143,6 +146,8 @@ export function createBatchDriver({ segment, getState, setState, showToast, pers
         outcome = { skipped: true };
       } else if (!inferenceView(study.view)) {
         outcome = { ok: false, id, name: studyName(study), reason: unsupportedViewReason(study.view) };
+      } else if (regionRunReason(study)) {
+        outcome = { ok: false, id, name: studyName(study), reason: regionRunReason(study) };
       } else {
         let result;
         try {
