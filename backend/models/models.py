@@ -66,6 +66,9 @@ class VertebraLabel(IntEnum):
 VERTEBRA_LABELS = {label.name: int(label) for label in VertebraLabel}
 MODEL_IMAGE_SIZE = 768
 MODEL_THRESHOLD = 0.5
+FEMORAL_IMAGE_SIZE = 640
+FEMORAL_THRESHOLD = 0.35
+FEMORAL_MODEL_REVISION = "20260923-conservative-clahe-flip"
 WEIGHTS_DIRECTORY = Path(__file__).resolve().parent.parent / "weights"
 VERTEBRA_WEIGHTS_PATH = WEIGHTS_DIRECTORY / "vertebra_unet.pt"
 FEMORAL_WEIGHTS_PATH = WEIGHTS_DIRECTORY / "femoral_unet.pt"
@@ -365,14 +368,47 @@ def _score_s1(letterboxed):
     return _infer("s1", score, None)
 
 
-def _read_frame(letterboxed, choice):
+def _femoral_input(pixel_array):
+    # CLAHE is applied to native pixels BEFORE padding/resizing, matching training evaluation.
+    image = cv2.createCLAHE(clipLimit=2., tileGridSize=(8, 8)).apply(_robust_rescale(pixel_array))
+    canvas, _ = _letterbox(image)
+    resized = cv2.resize(canvas, (FEMORAL_IMAGE_SIZE, FEMORAL_IMAGE_SIZE), interpolation=cv2.INTER_AREA)
+    return _segmentation_input(resized)
+
+
+def _femoral_probabilities(pixel_array):
+    value = _femoral_input(pixel_array)
+
+    def predict(session):
+        logits = session.run(None, {"image": value})[0][0, 0]
+        probability = 1. / (1. + np.exp(-np.clip(logits, -80., 80.)))
+        runtime.checkpoint()
+        flipped = session.run(None, {"image": np.ascontiguousarray(value[..., ::-1])})[0][0, 0]
+        probability += (1. / (1. + np.exp(-np.clip(flipped, -80., 80.))))[:, ::-1]
+        probability *= .5
+        return cv2.resize(probability, (MODEL_IMAGE_SIZE, MODEL_IMAGE_SIZE), interpolation=cv2.INTER_LINEAR)
+
+    return _infer("femoral", predict, "Segmenting femoral heads")
+
+
+def _restore_femoral_mask(probability, transform, shape):
+    # Resize probabilities first: thresholding a tiny cap before restoring can erase it.
+    inner = transform.inner
+    crop = probability[inner.top:inner.top + inner.resized_height,
+                       inner.left:inner.left + inner.resized_width]
+    left, top, right, bottom = transform.window
+    restored = cv2.resize(crop.astype(np.float32), (right - left, bottom - top),
+                          interpolation=cv2.INTER_LINEAR)
+    mask = np.zeros(shape, dtype=np.uint8)
+    mask[top:bottom, left:right] = restored > FEMORAL_THRESHOLD
+    return mask
+
+
+def _read_frame(letterboxed, choice, femoral_image):
     value = _segmentation_input(letterboxed)
     s1_confidence, s1_points = _infer("s1", lambda session: _detect(session, letterboxed),
                                     "Detecting the S1 endplate")
-    # Compare logits at the sigmoid .5 decision boundary without another array.
-    femoral = _infer("femoral",
-        lambda session: (session.run(None, {"image": value})[0][0, 0] >= 0).astype(np.uint8),
-        "Segmenting femoral heads")
+    femoral = _femoral_probabilities(femoral_image)
     # Retain U-Net presence evidence even when HRNet supplies the corners.
     vertebra_labels = _infer("vertebra",
         lambda session: session.run(None, {"image": value})[0][0].argmax(0).astype(np.uint8),
@@ -450,13 +486,13 @@ def spinopelvic_prediction(
                    "confidence": None, "cost": None, "candidates": 0}
     window = located["window"]
     canvas, transform = framing.prepare_crop(raw, window)
-    frame = _read_frame(canvas, choice)
+    frame = _read_frame(canvas, choice, raw[window[1]:window[3], window[0]:window[2]])
     if _source_s1(frame, transform) is None and not located.get("whole_film_won"):
         runtime.report("framing", "Checking the visible film after an incomplete crop")
         # A search crop without its anchor must not hide other visible levels.
         window = framing.fallback_window(raw)
         canvas, transform = framing.prepare_crop(raw, window)
-        frame = _read_frame(canvas, choice)
+        frame = _read_frame(canvas, choice, raw[window[1]:window[3], window[0]:window[2]])
         fallback = True
 
     # After a search, one reframe from the full-resolution detection, accepted
@@ -470,7 +506,7 @@ def spinopelvic_prediction(
     if proposed is not None and proposed != window and framing.accept_reframe(window, proposed):
         runtime.report("framing", "Refining the selected spine region")
         canvas, transform = framing.prepare_crop(raw, proposed)
-        candidate = _read_frame(canvas, choice)
+        candidate = _read_frame(canvas, choice, raw[proposed[1]:proposed[3], proposed[0]:proposed[2]])
         if _source_s1(candidate, transform) is not None:
             window, frame, reframed = proposed, candidate, True
         else:
@@ -514,7 +550,7 @@ def spinopelvic_prediction(
     return {
         "image": image,
         "mask": transform.restore_mask(common_labels, raw.shape),
-        "femoral_mask": transform.restore_mask(frame["femoral"], raw.shape),
+        "femoral_mask": _restore_femoral_mask(frame["femoral"], transform, raw.shape),
         "landmarks": {
             "S1": {"superior": None if s1_source is None else s1_source.tolist()},
             "vertebrae": contract,

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.9
+
+- Update the femoral-head U-Net using the expanded rim-annotation dataset.
+- Preserve the validated native-image contrast enhancement, 640px input, flipped-view averaging, and 0.35 threshold in the desktop ONNX pipeline.
+- Retain support for zero, one, or two visible heads and existing manual corrections.
+
 ## 1.0.8
 
 - Read the subject, timepoint, film date and a note from a film's name on load: underscores
