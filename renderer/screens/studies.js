@@ -86,6 +86,7 @@ export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
     // (2026-09-10, studies-table spec 8.1) the review mark; set on the Analysis screen, cleared by every write that changes the numbers.
     reviewedAt: null,
     addedAt: new Date().toISOString(), view: DEFAULT_VIEW, thumbnail: null,
+    region: 'lumbar', anteriorSide: null,
     measurements: null, geometry: null, qc: null, clinical: {},
   };
 }

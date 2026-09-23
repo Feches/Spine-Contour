@@ -1,4 +1,4 @@
-import { LEVELS, CORNERS, landmarkAt, setLandmarkAt, femoralCircle, setFemoralCircle, FEMORAL_SIDES } from './geometry.js';
+import { LEVELS, CORNERS, landmarkAt, setLandmarkAt, femoralCircle, setFemoralCircle, FEMORAL_SIDES, landmarkHandles } from './geometry.js';
 
 export const ZOOM_MIN = 0.6;
 export const ZOOM_MAX = 2.4;
@@ -94,6 +94,7 @@ function distanceToSegment(point, a, b) {
 }
 
 export function vertebraAt(geometry, point, radius = 20) {
+  if (geometry.region === 'cervical') return null; // cervical constructions are selected by measurement row
   for (const level of ['L1', 'L2', 'L3', 'L4', 'L5']) {
     const body = geometry.vertebrae?.[level];
     if (body && pointInPolygon(point, body.quadrilateral)) return level;
@@ -146,8 +147,9 @@ function sameStop(stop, current) {
 }
 
 export function nextSelection(current, direction, geometry) {
-  const order = geometry ? FULL_ORDER.filter(stop => stop.kind === 'landmark'
-    ? landmarkAt(geometry, stop.level, stop.corner) : femoralCircle(geometry, stop.side)) : FULL_ORDER;
+  const full = geometry?.region === 'cervical' ? landmarkHandles(geometry) : FULL_ORDER;
+  const order = geometry ? full.filter(stop => stop.kind === 'landmark'
+    ? landmarkAt(geometry, stop.level, stop.corner) : femoralCircle(geometry, stop.side)) : full;
   if (!order.length) return null;
   const step = direction < 0 ? -1 : 1;
   const last = order.length - 1;

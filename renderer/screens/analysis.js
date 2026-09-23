@@ -1,13 +1,15 @@
+import { predictionMatchesStudy } from '../data/predictions.js';
+import { studyRegion, regionRunReason, validAnteriorSide } from '../data/cervical.js';
 import { imageConfidence, scorePercent } from '../data/confidence.js';
 import { el, mount } from '../dom.js';
 import { getState, setState, subscribe } from '../store.js';
 import {
-  predict, saveCsv, savePrediction, loadPrediction, persistenceDisabledReason, readFile, selectFile,
+  predict, calibrate, saveCsv, savePrediction, loadPrediction, persistenceDisabledReason, readFile, selectFile,
 } from '../api.js';
 import { showToast } from '../components/toast.js';
 import { toCsv } from '../data/csv.js';
-import { loadStudyImages, disposeStudyImages, thumbnailDataUri } from '../viewer/canvas.js';
-import { mountViewer, recordPrediction } from '../components/viewer.js';
+import { loadStudyImages, disposeStudyImages, thumbnailDataUri, bitmapFromBase64 } from '../viewer/canvas.js';
+import { mountViewer, recordPrediction, forgetPrediction } from '../components/viewer.js';
 import { describeModels } from '../data/models.js';
 import { WAIT_FOR_BATCH } from '../data/batch.js';
 import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
@@ -187,6 +189,11 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     if (!batch) showToast(reason);
     return { ok: false, reason };
   }
+  if (regionRunReason(study)) {
+    const reason = regionRunReason(study);
+    if (!batch) showToast(reason);
+    return { ok: false, reason };
+  }
   // The record's identity, carried alongside its id for the checks after every await below.
   // Ids are max+1, so a deleted id is reused by the next film added; addedAt is not.
   const addedAt = study.addedAt;
@@ -257,6 +264,11 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     if (!batch) showToast(reason);
     return { ok: false, reason };
   }
+  if (regionRunReason(current)) {
+    const reason = regionRunReason(current);
+    if (!batch) showToast(reason);
+    return { ok: false, reason };
+  }
   const requestId = crypto.randomUUID();
   setState({ running: studyId, runStage: { requestId, mode: getState().performance.mode,
     stage: 'starting', message: 'Sending the image to the processing worker', elapsed_seconds: 0 } });
@@ -267,9 +279,10 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       name: current.fileName,
       data,
       modality: 'xray',
-      bodyPart: 'lumbar',
+      bodyPart: studyRegion(current),
+      anteriorSide: current.anteriorSide ?? null,
       view,
-      models: getState().models,
+      models: studyRegion(current) === 'cervical' ? { vertebrae: 'cervical_hrnet' } : getState().models,
       calibration: calibrationForStudy(current),
     });
     if (revision !== runRevision) return { ok: false, reason: 'superseded' };
@@ -297,6 +310,7 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     }
 
     const thumbnail = thumbnailDataUri(images.image);
+    response.prediction_id = requestId;
     response.calibration = preferReviewedCalibration(response.calibration, calibrationForStudy(stillHere));
 
     // The sidecar first, then the record: a record that says "segmented" must point at a film
@@ -355,7 +369,7 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       editing: state.openId === studyId ? false : state.editing,
       selection: state.openId === studyId ? null : state.selection,
       studies: state.studies.map((s) => (s.id === studyId
-        ? { ...s, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
+        ? { ...s, predictionId: requestId, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
           calibration: preferReviewedCalibration(response.calibration, calibrationForStudy(s)), thumbnail,
           // A re-run replaces every number a review was made over (studies-table spec 2026-09-10, section 8.4, site 1).
           reviewedAt: null }
@@ -403,7 +417,7 @@ async function restoreFilm(studyId) {
     // recreates it) rather than a wrong one.
     const sidecar = persistenceDisabledReason() ? null : await loadPrediction(studyId);
     if (revision !== restoreRevision || runMoved()) return;
-    if (!sidecar) {
+    if (!predictionMatchesStudy(getState().studies.find(s => s.id === studyId), sidecar)) {
       if (live()) mounted.viewer.setFilmStatus('missing');
       return;
     }
@@ -416,7 +430,8 @@ async function restoreFilm(studyId) {
     // with RESET TO PREDICTION live over its numbers. Existence is not enough: ids are max+1,
     // so a record with this id may be the film added AFTER the delete. Identity is `addedAt`,
     // which a reused id never carries.
-    if (!study || study.addedAt !== addedAt || revision !== restoreRevision || runMoved()) {
+    if (!study || study.addedAt !== addedAt || revision !== restoreRevision || runMoved()
+        || !predictionMatchesStudy(study, sidecar)) {
       disposeStudyImages(images);
       return;
     }
@@ -431,6 +446,47 @@ async function restoreFilm(studyId) {
     if (revision !== restoreRevision) return;
     if (live()) mounted.viewer.setFilmStatus('missing');
     showToast(`Could not load the film for ${studyId}: ${error.message}`);
+  }
+}
+
+
+let previewRevision = 0;
+// A clean original-image preview (including DICOM) gives the user evidence for the
+// required anterior-side selection. This is never a prediction or a saved measurement.
+async function previewOriginal(studyId) {
+  const start = getState().studies.find(s => s.id === studyId);
+  if (!start || start.geometry || studyRegion(start) !== 'cervical') return;
+  const revision = ++previewRevision;
+  const runAtStart = runsByStudy.get(studyId) ?? 0;
+  const live = () => {
+    const current = getState().studies.find(s => s.id === studyId);
+    return mounted?.studyId === studyId && getState().screen === 'analysis'
+      && revision === previewRevision && (runsByStudy.get(studyId) ?? 0) === runAtStart
+      && current?.addedAt === start.addedAt && !current.geometry
+      && studyRegion(current) === 'cervical' && getState().running !== studyId;
+  };
+  if (!live()) return;
+  mounted.previewMessage = 'Loading original radiograph…';
+  mounted.update();
+  try {
+    const data = await filmBytes(start);
+    if (!live()) return;
+    if (!data) throw new Error('The source film could not be found.');
+    const response = await calibrate({ name: start.fileName, data, previewOnly: true });
+    if (!live()) return;
+    const image = await bitmapFromBase64(response.image_png);
+    if (!live()) { image.close(); return; }
+    const images = { image, mask: null, overlayCanvas: null, width: image.width, height: image.height, preview: true };
+    const outgoing = imageCache?.studyId === studyId ? imageCache.images : null;
+    cacheImages(studyId, images);
+    mounted.viewer.setImages(images);
+    if (outgoing && outgoing !== images) disposeStudyImages(outgoing);
+    mounted.previewMessage = '';
+    mounted.update();
+  } catch (error) {
+    if (!live()) return;
+    mounted.previewMessage = `Original preview unavailable: ${error.message}`;
+    mounted.update();
   }
 }
 
@@ -569,7 +625,37 @@ export function render(state) {
   // client-to-image hit-testing assumes a fixed stage. Mounted for demo studies too; the
   // component disables its inputs and its Import button for them.
   const clinicalHost = el('section', { class: 'clinical-data' });
-  const root = el('main', { class: 'analysis-screen' }, header, body, clinicalHost);
+  function changeRegion(patch) {
+    const live = getState(), open = currentStudy(live);
+    if (!open || live.running || live.batch || open.source !== 'real') return;
+    // Invalidate any sidecar restoration already awaiting I/O as well as pending edits.
+    runsByStudy.set(open.id, (runsByStudy.get(open.id) ?? 0) + 1);
+    forgetPrediction(open.id);
+    const outgoing = imageCache?.studyId === open.id ? imageCache : null;
+    if (outgoing) imageCache = null;
+    mounted?.viewer.setImages(null);
+    if (outgoing) disposeStudyImages(outgoing.images);
+    setState({ editing: false, selection: null, selectedLevel: null,
+      studies: live.studies.map(s => s.id === open.id ? { ...s, ...patch,
+        geometry: null, measurements: null, qc: null, reviewedAt: null, predictionId: null } : s) });
+    mounted?.viewer.setFilmStatus(null);
+    previewOriginal(open.id);
+  }
+  const regionSelect = el('select', { 'aria-label': 'Spine region', class: 'workspace-folder-select',
+    onChange: e => changeRegion({ region: e.target.value, anteriorSide: null }) },
+    el('option', { value: 'lumbar' }, 'Lumbar'), el('option', { value: 'cervical' }, 'Cervical · HRNET'));
+  const anteriorSelect = el('select', { 'aria-label': 'Cervical anterior image side', class: 'workspace-folder-select',
+    onChange: e => changeRegion({ anteriorSide: validAnteriorSide(e.target.value) ? e.target.value : null }) },
+    el('option', { value: '' }, 'Choose anterior side…'), el('option', { value: 'left' }, 'Anterior is image left'),
+    el('option', { value: 'right' }, 'Anterior is image right'));
+  const anteriorLabel = el('label', {}, 'Orientation ', anteriorSelect);
+  const regionNote = el('span', { class: 'meas-note' });
+  const previewButton = el('button', { type: 'button', class: 'btn btn-small',
+    onClick: () => previewOriginal(getState().openId) }, 'View original');
+  const cervicalRunButton = el('button', { type: 'button', class: 'btn btn-small btn-primary',
+    onClick: () => segmentStudy(getState().openId) }, 'Run segmentation');
+  const regionBar = el('div', { class: 'analysis-region-bar' }, el('label', {}, 'Region ', regionSelect), anteriorLabel, previewButton, cervicalRunButton, regionNote);
+  const root = el('main', { class: 'analysis-screen' }, header, regionBar, body, clinicalHost);
 
   const viewer = mountViewer(viewerHost);
   const measurementsPanel = mountMeasurements(measurementsHost);
@@ -639,6 +725,16 @@ export function render(state) {
     // The model that produced the numbers on screen, when the result recorded one. Older
     // records carry no provenance and show nothing extra rather than a guessed name.
     const produced = describeModels(open.qc);
+    regionSelect.value = studyRegion(open);
+    anteriorSelect.value = open.anteriorSide ?? '';
+    anteriorLabel.hidden = studyRegion(open) !== 'cervical';
+    regionSelect.disabled = anteriorSelect.disabled = Boolean(live.running || live.batch || open.source === 'demo');
+    const cervicalSetup = studyRegion(open) === 'cervical' && !open.measurements;
+    previewButton.hidden = cervicalRunButton.hidden = !cervicalSetup;
+    previewButton.disabled = Boolean(live.running || live.batch);
+    cervicalRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view));
+    regionNote.textContent = mounted?.previewMessage && cervicalSetup ? mounted.previewMessage : open.measurements ? 'Changing region or orientation clears these measurements; run again.'
+      : studyRegion(open) === 'cervical' ? 'Use a lateral cervical film. Confirm which image side is anterior.' : '';
     // Never overwrite what the user is in the middle of typing.
     if (document.activeElement !== nameField) {
       nameField.value = studyName(open);
@@ -653,7 +749,7 @@ export function render(state) {
 
     // The rest of the header line. The name leads because that is what the user recognises; the
     // SP-nnnn id stays reachable on the title rather than disappearing entirely.
-    headerMeta.textContent = `${(open.view || '—').toUpperCase()} · ${open.pt ?? '—'}`
+    headerMeta.textContent = `${studyRegion(open).toUpperCase()} · ${(open.view || '—').toUpperCase()} · ${open.pt ?? '—'}`
       + (produced ? ` · ${produced.toUpperCase()}` : '');
     // A run in flight counts as pending too: the numbers on the record are the PREVIOUS run's,
     // so an assessment of them would be a stale claim about a study that is being re-measured.
@@ -724,5 +820,6 @@ export function render(state) {
   mounted = { viewer, update, studyId: study.id };
   update();
   if (needsRestore) restoreFilm(study.id);
+  else if (!study.geometry && studyRegion(study) === 'cervical' && !(imageCache?.studyId === study.id && imageCache.images?.preview)) previewOriginal(study.id);
   return root;
 }

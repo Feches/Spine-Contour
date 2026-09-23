@@ -1,3 +1,4 @@
+import { cervicalMeasurements, studyRegion, regionRunReason } from '../data/cervical.js';
 import { el } from '../dom.js';
 import { getState, setState } from '../store.js';
 import { measure } from '../api.js';
@@ -266,7 +267,8 @@ export function mountViewer(container) {
     const study = currentStudy();
     drawDynamicLayer(dynamicCtx, dynamicCanvas, geometry, {
       selectedLevel: state.selectedLevel,
-      measurements: study && !state.measurementDrafts?.[study.id] ? study.measurements : null,
+      measurements: study && !state.measurementDrafts?.[study.id]
+        ? (studyRegion(study) === 'cervical' ? cervicalMeasurements(study) : study.measurements) : null,
       editing: state.editing,
       selection: state.selection,
       hover,
@@ -287,7 +289,8 @@ export function mountViewer(container) {
     const state = getState();
     const study = currentStudy();
     const label = constructionLabel(geometry, state.selectedLevel,
-      study && !state.measurementDrafts?.[study.id] ? study.measurements : null);
+      study && !state.measurementDrafts?.[study.id]
+        ? (studyRegion(study) === 'cervical' ? cervicalMeasurements(study) : study.measurements) : null);
     labelChip.classList.toggle('is-hidden', !label);
     if (!label) return;
     const offset = labelOffsets.get(state.selectedLevel) ?? { dx: 0, dy: 0 };
@@ -709,6 +712,7 @@ export function mountViewer(container) {
   // Edit-bar button states. Called from updateViewer on every notification and directly by
   // the retrace handlers; it only writes DOM, never the store.
   function updateEditBar(state, study) {
+    for (const button of [addCircleButton, deleteCircleButton, retraceButton, fitButton]) button.classList.toggle('is-hidden', studyRegion(study) === 'cervical');
     // Only a run on THIS study disables the edit bar; a run on another study leaves it alone.
     // A null study is never busy -- toggleRetrace passes currentStudy(), which may be null.
     const busy = Boolean(study) && state.running === study.id;
@@ -718,7 +722,8 @@ export function mountViewer(container) {
     addCircleButton.disabled = busy || !geometry || geometry.femoral_circles.length >= 2 || retracing;
     deleteCircleButton.disabled = busy || !hasSelectedCircle;
     retraceButton.disabled = busy || !hasSelectedCircle;
-    editHelp.textContent = retracing ? 'Click at least 3 points around the head, then Fit. Escape cancels.'
+    editHelp.textContent = studyRegion(study) === 'cervical' ? 'Drag a landmark, or use Tab and arrow keys. C2 centroid and C2/C7 endplates define these measurements.'
+      : retracing ? 'Click at least 3 points around the head, then Fit. Escape cancels.'
       : 'Drag a centre to move; drag its rim to resize. The diamond marks the hip midpoint.';
     retraceButton.setAttribute('aria-pressed', String(retracing));
     retraceButton.classList.toggle('is-active', retracing);
@@ -752,6 +757,11 @@ export function mountViewer(container) {
     const batch = state.batch ?? null;
     const queued = !busy && isQueued(batch, study.id);
     const waitTitle = batch ? WAIT_FOR_BATCH : (otherRunning ? WAIT_FOR_RUN : '');
+    if (!hasResult && !busy && studyRegion(study) === 'cervical' && currentImages?.preview) return null;
+    if (!hasResult && !busy && regionRunReason(study)) {
+      return { eyebrow: 'CERVICAL SETUP', title: 'Confirm image orientation',
+        body: regionRunReason(study), spinner: false, button: null };
+    }
     if (!hasResult && !busy && !inferenceView(study.view)) {
       return {
         eyebrow: 'UNSUPPORTED VIEW', title: 'Choose a lateral view',
@@ -958,7 +968,7 @@ export function mountViewer(container) {
     // so hasResult keeps both disabled for it.
     editButton.disabled = !hasResult || busy || filmStatus !== null;
     // Re-run answers to ANY run in flight and to a batch, because only one run is allowed at a time.
-    rerunButton.disabled = !hasResult || Boolean(state.running) || Boolean(state.batch) || filmStatus === 'loading' || !inferenceView(study.view);
+    rerunButton.disabled = !hasResult || Boolean(state.running) || Boolean(state.batch) || filmStatus === 'loading' || !inferenceView(study.view) || Boolean(regionRunReason(study));
     rerunButton.title = inferenceView(study.view) ? 'Re-run segmentation' : unsupportedViewReason(study.view);
     editButton.setAttribute('aria-pressed', String(state.editing));
     editButton.classList.toggle('is-active', state.editing);
@@ -981,7 +991,7 @@ export function mountViewer(container) {
     // editing, selection and zoom are in the key: handles appear and disappear with
     // editing, follow selection, and are sized in CSS pixels so zoom changes their image-
     // space size. panX/panY are deliberately NOT here -- a pan moves the host, not the pixels.
-    const dynamicKey = [study.geometry, state.measurementDrafts?.[study.id], state.selectedLevel, study.measurements, state.editing, state.selection, state.zoom];
+    const dynamicKey = [study.calibration, study.geometry, state.measurementDrafts?.[study.id], state.selectedLevel, study.measurements, state.editing, state.selection, state.zoom];
     if (!sameKey(dynamicKey, lastDynamic)) {
       lastDynamic = dynamicKey;
       redrawDynamic(liveGeometry());

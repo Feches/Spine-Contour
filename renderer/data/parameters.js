@@ -1,3 +1,4 @@
+import { CERVICAL_COLUMNS, cervicalMeasurements, studyRegion } from './cervical.js';
 /**
  * Pure logic for the Parameters tab of the Studies screen (pre-op/post-op spec, 2026-09-06 §10):
  * which columns the grid shows, each study's value in them, the filter options, the timepoint,
@@ -52,8 +53,8 @@ export const LEVEL_COLUMNS = Object.freeze([
   { key: 'L5-S1', label: 'LL L5\u2013S1' },
 ]);
 
-export function measurementColumns(showLevels) {
-  return showLevels ? [...CORE_COLUMNS, ...LEVEL_COLUMNS] : [...CORE_COLUMNS];
+export function measurementColumns(showLevels, cervical = false) {
+  return [...CORE_COLUMNS, ...(showLevels ? LEVEL_COLUMNS : []), ...(cervical ? CERVICAL_COLUMNS : [])];
 }
 
 // One study's value in every measurement column: a finite number or null. sagittalRows keys its
@@ -62,12 +63,17 @@ export function parameterValues(study) {
   const values = {};
   for (const row of sagittalRows(study.measurements)) values[row.key] = row.absent ? null : row.value;
   for (const row of lordosisRows(study.measurements)) values[row.key] = row.absent ? null : row.value;
+  if (studyRegion(study) === 'cervical') {
+    for (const key of Object.keys(values)) values[key] = null;
+    const cervical = cervicalMeasurements(study);
+    for (const column of CERVICAL_COLUMNS) values[column.key] = cervical[column.key];
+  }
   return values;
 }
 
 // As the Measurements panel formats a row: one decimal and the unit, or an em dash.
-export function formatParameter(value) {
-  return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(1)}\u00B0` : DASH;
+export function formatParameter(value, unit = '°') {
+  return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(1)}${unit}` : DASH;
 }
 
 export function isSegmented(study) {

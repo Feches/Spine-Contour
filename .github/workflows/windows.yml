@@ -101,6 +101,8 @@ jobs:
           --exclude-module timm
           --exclude-module segmentation_models_pytorch
           --exclude-module onnx
+          --exclude-module transformers
+          --exclude-module safetensors
           --collect-all uvicorn
           --add-data "backend/onnx;backend/onnx"
           --add-data "C:/Program Files/Tesseract-OCR;ocr"
@@ -275,6 +277,8 @@ jobs:
           --exclude-module timm
           --exclude-module segmentation_models_pytorch
           --exclude-module onnx
+          --exclude-module transformers
+          --exclude-module safetensors
           --collect-all uvicorn
           --add-data "backend/onnx:backend/onnx"
           --add-data "build/ocr:ocr"

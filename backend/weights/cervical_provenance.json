@@ -1,0 +1,47 @@
+{
+  "model_id": "cervical_hrnet",
+  "architecture": "HRNet-W32, 23 heatmaps, spine-crop input",
+  "detector": "Cervical DETR ResNet-50",
+  "dataset": "CSXA",
+  "split_counts": {
+    "train": 3474,
+    "validation": 992,
+    "test": 497
+  },
+  "generic_pretrained_initialization": true,
+  "hrnet_input": [
+    384,
+    384
+  ],
+  "hrnet_heatmaps": [
+    23,
+    96,
+    96
+  ],
+  "checkpoint_selection": "CSXA validation split",
+  "landmark_order": "image-left/image-right; user anterior_side maps anatomical corners",
+  "files": [
+    {
+      "path": "cervical_hrnet.pt",
+      "bytes": 125623878,
+      "sha256": "7aeb1df83ee11ccb3b9ec559f4c3c1e6e2820d49b2de43a973dc81debd04e28f",
+      "source": "csxa_detr_hrnet/runs/hrnet/best.pt"
+    },
+    {
+      "path": "cervical_detr/model.safetensors",
+      "bytes": 166494824,
+      "sha256": "be68a586e1cfe6c2757e7898b3c67d7b52b92ebce32d88909cbb9d7ef874a296",
+      "source": "csxa_detr_hrnet/runs/detr/best/model.safetensors"
+    },
+    {
+      "path": "cervical_detr/config.json",
+      "bytes": 1582,
+      "sha256": "52965a49a437238868d8f7ed22c84bf132f6267488e91f11659538a35c3824cd"
+    },
+    {
+      "path": "cervical_detr/preprocessor_config.json",
+      "bytes": 435,
+      "sha256": "eeefd42e9884a345546dd9130b7c1cf1e059069c726350adf5bd7963ed0c4871"
+    }
+  ]
+}

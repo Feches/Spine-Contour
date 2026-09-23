@@ -1,3 +1,4 @@
+import { cervicalMeasurements, studyRegion } from './cervical.js';
 import { normaliseTimepoint, normaliseView, parseFilmDate, PRE_OP } from './timepoints.js';
 import { normalizeCalibration } from './calibration.js';
 import { fileStem, studyName } from './labels.js';
@@ -25,6 +26,12 @@ const ANGULAR_COLUMNS = [
 export const MEASUREMENT_COLUMNS = [...ANGULAR_COLUMNS,
   ...DISC_LEVEL_PAIRS.flatMap(levels => DISC_POSITIONS.map(position =>
     `Disc height ${levels.join('-')} ${position} (mm)`))];
+
+export const CERVICAL_EXPORT_COLUMNS = ['C2-C7 Cobb (deg)', 'C2-C7 SVA (mm)', 'C2-C7 SVA (px)'];
+export function exportMeasurementColumns(studies) {
+  return studies.some(study => studyRegion(study) === 'cervical')
+    ? [...MEASUREMENT_COLUMNS, ...CERVICAL_EXPORT_COLUMNS] : [...MEASUREMENT_COLUMNS];
+}
 
 // Measurement columns are written to one decimal, matching what the Measurements panel
 // displays, so a value read off the screen and the same value in the file agree. It also
@@ -72,9 +79,16 @@ function measurementValue(study, column) {
 
 // One value per MEASUREMENT_COLUMNS entry, rounded to one decimal, '' where absent. Exported for
 // data/pairing.js, which reads each film through it before merging a visit's films.
-export function measurementValues(study) {
-  return [...ANGULAR_COLUMNS.map(column => measurementValue(study, column)),
-    ...discRows(study).flatMap(row => DISC_POSITIONS.map(position => round1(row[position])))];
+export function measurementValues(study, columns = MEASUREMENT_COLUMNS) {
+  const lumbar = studyRegion(study) !== 'cervical';
+  const values = lumbar ? [...ANGULAR_COLUMNS.map(column => measurementValue(study, column)),
+    ...discRows(study).flatMap(row => DISC_POSITIONS.map(position => round1(row[position])))]
+    : MEASUREMENT_COLUMNS.map(() => '');
+  const m = study.measurements ? cervicalMeasurements(study) : null;
+  const cervical = [m?.C2C7_COBB, m?.C2C7_SVA_MM, m?.C2C7_SVA_PX].map(round1);
+  const all = Object.fromEntries([...MEASUREMENT_COLUMNS, ...CERVICAL_EXPORT_COLUMNS].map((key, index) =>
+    [key, [...values, ...cervical][index]]));
+  return columns.map(column => all[column] ?? '');
 }
 
 function escapeField(value) {
@@ -97,6 +111,8 @@ export function toCsv(studies) {
   // cannot add a column.
   const fields = clinicalFieldNames(rows);
   const withCalibration = rows.some(study => normalizeCalibration(study.calibration));
+  const columns = exportMeasurementColumns(rows);
+  const withCervical = rows.some(study => studyRegion(study) === 'cervical');
 
   const citation = [
     '# Spine Contour export',
@@ -110,7 +126,7 @@ export function toCsv(studies) {
   // Subject, Timepoint, Film date and Note sit after View (pre-op/post-op spec §11.1, note added
   // 2026-09-11): the identity a paired analysis groups on, the acquisition date, then what tells
   // two same-day films of one subject apart. Absent values are empty, never 0 or —.
-  const header = ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date', 'Note', ...MEASUREMENT_COLUMNS, ...fields,
+  const header = ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date', 'Note', ...(withCervical ? ['Spine region', 'Anterior image side'] : []), ...columns, ...fields,
     ...(withCalibration ? CALIBRATION_COLUMNS : [])];
 
   const lines = [...citation, header.map(escapeField).join(',')];
@@ -122,7 +138,8 @@ export function toCsv(studies) {
       study.timepoint ?? '',
       study.filmDate ?? '',
       study.note ?? '',
-      ...measurementValues(study),
+      ...(withCervical ? [studyRegion(study), studyRegion(study) === 'cervical' ? study.geometry?.anterior_side ?? study.anteriorSide ?? '' : ''] : []),
+      ...measurementValues(study, columns),
       ...fields.map((field) => (study.clinical && study.clinical[field] != null ? study.clinical[field] : '')),
       ...(withCalibration ? calibrationCells(study) : []),
     ];
@@ -161,6 +178,8 @@ export function toPairedCsv(pairing) {
   const fields = clinicalFieldNames(written);
   const withCalibration = written.some(study => normalizeCalibration(study.calibration));
   const flagMerges = merged.length > 0;
+  const columns = pairing.measurementColumns ?? MEASUREMENT_COLUMNS;
+  const withCervical = written.some(study => studyRegion(study) === 'cervical');
 
   const citation = [
     '# Spine Contour export',
@@ -172,9 +191,10 @@ export function toPairedCsv(pairing) {
     ...headers.map((name) => `${name} study`),
     ...headers.map((name) => `${name} view`),
     ...headers.map((name) => `${name} film date`),
+    ...(withCervical ? headers.map(name => `${name} regions and orientation`) : []),
     ...(flagMerges ? headers.map((name) => `${name} disagreements`) : []),
     ...(flagMerges ? headers.map((name) => `${name} derived across films`) : []),
-    ...MEASUREMENT_COLUMNS.flatMap((column) => [
+    ...columns.flatMap((column) => [
       `${column} ${PRE_OP}`,
       ...visits.flatMap((name) => [`${column} ${name}`, `Delta ${column} ${name}`]),
     ]),
@@ -191,9 +211,11 @@ export function toPairedCsv(pairing) {
       ...headers.map((name) => (visit(name) ? visit(name).films.map((study) => studyName(study)).join(' + ') : '')),
       ...headers.map((name) => visit(name)?.films[0]?.view ?? ''),
       ...headers.map((name) => visit(name)?.filmDate ?? ''),
+      ...(withCervical ? headers.map(name => (visit(name)?.films ?? []).map(study =>
+        `${studyName(study)}: ${studyRegion(study)}${studyRegion(study) === 'cervical' ? `, anterior image ${study.geometry?.anterior_side ?? study.anteriorSide ?? 'unconfirmed'}` : ''}`).join('; ')) : []),
       ...(flagMerges ? headers.map((name) => (visit(name)?.disagreements ?? []).join('; ')) : []),
       ...(flagMerges ? headers.map((name) => (visit(name)?.derived ?? []).map((entry) => `${entry.column}: ${entry.note}`).join('; ')) : []),
-      ...MEASUREMENT_COLUMNS.flatMap((_column, index) => {
+      ...columns.flatMap((_column, index) => {
         const before = values(PRE_OP)[index] ?? '';
         return [
           before,

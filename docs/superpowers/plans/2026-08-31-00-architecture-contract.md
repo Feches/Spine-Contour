@@ -1162,3 +1162,46 @@ partial anatomy, calibration, orientation, consistency and manual-edit provenanc
 remain visible. Pending corrections display Updating; a run in flight on the open
 study displays it too (2026-09-10). No schema-version bump,
 CSP change or new runtime dependency.
+
+## 2026-09-23 amendment: HRNET cervical landmarks and alignment
+
+User-authorized cervical inference extends the existing lumbar application.
+Study `region` is `lumbar` (including absent legacy values) or `cervical`.
+`anteriorSide` is explicitly `left`/`right` for a cervical run; no default
+anatomical side is inferred from image-left/right model labels. Prediction
+requests use `bodyPart: 'cervical'`, `models.vertebrae: 'cervical_hrnet'`, and
+`anteriorSide`; the bridge sends `anterior_side`. Lumbar request fields and model
+selection are unchanged. `/models?body_part=cervical` advertises the cervical
+landmark model; the default `/models` response remains lumbar-compatible.
+
+Cervical geometry is discriminated by `region: 'cervical'`, retains
+`anterior_side`, and carries `c2_centroid` plus C2–C7 `vertebrae`. Endplate arrays
+are always anatomically ordered anterior then posterior. C2 has only its inferior
+endplate; its superior endplate and quadrilateral are null. Any absent endplate
+remains null. Lumbar-specific S1/hip/L1-centre fields are null and femoral circles
+are empty. Source coordinates preserve the uploaded image origin, dimensions and
+vertical axis; no segmentation mask is fabricated from heatmap landmarks.
+
+`/measure` dispatches cervical geometry to the independent cervical calculator.
+Measurements use `region: 'cervical'`, `C2C7_COBB`, `C2C7_SVA_PX`, and
+`C2C7_SVA_MM`. Cobb is the unsigned acute C2/C7 inferior-endplate angle. SVA uses
+the C2 centroid and C7 superior-posterior corner, signed positive anterior.
+Dependent values remain null when their anchors are absent. Optional
+`pixel_spacing` uses `[row_mm, column_mm]`; missing scale never produces mm.
+The current study calibration controls display, export and correction requests,
+including anisotropic angle calculations and explicit scale clearing.
+
+`state.selectedLevel` additionally accepts `C2C7_COBB` and `C2C7_SVA`, each with
+its own construction. Cervical editing exposes the C2 centroid, C2 inferior pair,
+C7 superior-posterior corner and C7 inferior pair; it preserves the existing
+clone/measure/commit/reset queue. Persistence accepts discriminated cervical
+geometry and measurements while retaining all existing lumbar validation.
+Optional `Study.predictionId` and sidecar `prediction_id` bind each saved result
+to its prediction run. Sidecar restoration checks run identity, region, anterior
+side and source coordinates, including after decoding; an old sidecar cannot
+become a new region's reset target if a newer sidecar write failed.
+
+Cervical HRNET and its paired DETR are exported to
+`cervical_hrnet.onnx` and `cervical_detr.onnx`. Both share the existing ONNX
+session/resource/cancellation policy. The runtime imports no training libraries.
+The common export and packaged-model verification cover all six models.

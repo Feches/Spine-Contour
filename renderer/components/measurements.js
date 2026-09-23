@@ -1,3 +1,4 @@
+import { cervicalRows, studyRegion } from '../data/cervical.js';
 import { landmarkReviewReasons } from '../data/status.js';
 import { el, clear } from '../dom.js';
 import { getState, setState } from '../store.js';
@@ -111,7 +112,7 @@ export function mountMeasurements(container) {
     // Compared by reference: `measurements` is replaced wholesale by /predict, never
     // mutated. Same caveat as components/viewer.js -- plan 04 must replace, not mutate.
     const discPending = Boolean(state.measurementDrafts?.[study.id]);
-    const key = [study.id, study.measurements, study.geometry, study.calibration, discPending, state.selectedLevel, state.showAllLordosis];
+    const key = [study.region, study.id, study.measurements, study.geometry, study.calibration, discPending, state.selectedLevel, state.showAllLordosis];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
 
@@ -134,13 +135,15 @@ export function mountMeasurements(container) {
     clear(root);
     const pending = Boolean(state.measurementDrafts?.[study.id]);
     const measurements = pending ? null : study.measurements;
-    const rows = sagittalRows(measurements, { selectedLevel: state.selectedLevel });
+    const cervical = studyRegion(study) === 'cervical';
+    const rows = cervical ? cervicalRows(pending ? { region: 'cervical' } : study, state.selectedLevel)
+      : sagittalRows(measurements, { selectedLevel: state.selectedLevel });
 
-    const section1 = section('01 \u2014 SAGITTAL PARAMETERS',
+    const section1 = section(cervical ? '01 — CERVICAL ALIGNMENT' : '01 \u2014 SAGITTAL PARAMETERS',
       el('div', { class: 'meas-rows' },
-        ...rows.map((row) => rowButton(row, () => toggleLevel(ROW_LEVELS[row.key])))));
+        ...rows.map((row) => rowButton(row, () => toggleLevel(cervical ? row.key : ROW_LEVELS[row.key])))));
 
-    section1.append(el('button', {
+    if (!cervical) section1.append(el('button', {
       type: 'button',
       class: 'meas-disclosure',
       'aria-expanded': state.showAllLordosis ? 'true' : 'false',
@@ -148,7 +151,7 @@ export function mountMeasurements(container) {
       onClick: () => setState((s) => ({ showAllLordosis: !s.showAllLordosis })),
     }, state.showAllLordosis ? 'HIDE LORDOSIS LEVELS' : 'SHOW ALL LORDOSIS LEVELS'));
 
-    if (state.showAllLordosis) {
+    if (!cervical && state.showAllLordosis) {
       section1.append(el('div', { class: 'meas-rows' },
         // lordosisRows always returns highlight: false -- the component, not the data
         // layer, owns highlighting here, because state.selectedLevel lives on the store
@@ -191,7 +194,11 @@ export function mountMeasurements(container) {
         onClick: () => setState({ screen: 'calibration', calibrationRequest: { studyId: study.id, filePath: study.filePath } }),
       }, 'REVIEW IMAGE SCALE'));
     }
-    root.append(section1, section2, section3, calibrationSection);
+    if (cervical) {
+      section1.append(el('div', { class: 'meas-note' },
+        'Cobb: unsigned acute angle between the C2 and C7 inferior endplates. SVA: C2 body centroid to the C7 posterosuperior corner, parallel to the image horizontal; positive anterior. Verify the six editable landmarks.'));
+      root.append(section1, calibrationSection);
+    } else root.append(section1, section2, section3, calibrationSection);
 
     // Focus restore. Find the rebuilt node carrying the same data-row-key and
     // refocus it, so there is no rendered frame in which focus visibly rests on

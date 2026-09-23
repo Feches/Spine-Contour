@@ -1,3 +1,4 @@
+import { CERVICAL_LEVELS, validAnteriorSide } from './cervical.js';
 /**
  * Study store logic: ids, shape validation, demo/real merge, and the
  * save-on-change coalescer (spec 13, 13.1; architecture contract
@@ -62,6 +63,7 @@ function points(list, n) {
 function isValidMeasurements(m) {
   if (!m || typeof m !== 'object' || Array.isArray(m)) return false;
   const nullable = value => value === null || finite(value);
+  if (m.region === 'cervical') return [m.C2C7_COBB, m.C2C7_SVA_PX, m.C2C7_SVA_MM].every(nullable);
   if (![m.PI, m.PT, m.SS].every(nullable)) return false;
   if (!m.LL || typeof m.LL !== 'object' || Array.isArray(m.LL) || !nullable(m.LL['L1-S1'])) return false;
   if (m.L1PA != null && !finite(m.L1PA)) return false;
@@ -74,6 +76,15 @@ function isValidMeasurements(m) {
 function isValidGeometry(g) {
   if (!g || typeof g !== 'object') return false;
   if (!g.vertebrae || typeof g.vertebrae !== 'object' || Array.isArray(g.vertebrae)) return false;
+  if (g.region === 'cervical') {
+    if (!validAnteriorSide(g.anterior_side) || (g.c2_centroid !== null && !point(g.c2_centroid))) return false;
+    if (g.s1_superior !== null || g.hip_midpoint !== null || g.l1_center !== null
+        || !Array.isArray(g.femoral_circles) || g.femoral_circles.length) return false;
+    return Object.entries(g.vertebrae).every(([level, v]) => CERVICAL_LEVELS.includes(level) && v
+      && (v.inferior === null || points(v.inferior, 2))
+      && (v.superior === null || points(v.superior, 2))
+      && (v.quadrilateral === null || points(v.quadrilateral, 4)));
+  }
   for (const [level, v] of Object.entries(g.vertebrae)) {
     if (!['L1', 'L2', 'L3', 'L4', 'L5'].includes(level)) return false;
     if (!v || typeof v !== 'object') return false;
@@ -96,6 +107,9 @@ function isValidGeometry(g) {
 
 function measurementsHaveLandmarks(m, g) {
   if (!m || !g) return false;
+  if (m.region === 'cervical' || g.region === 'cervical') return m.region === g.region
+    && (m.C2C7_COBB === null || Boolean(g.vertebrae.C2?.inferior && g.vertebrae.C7?.inferior))
+    && ([m.C2C7_SVA_PX, m.C2C7_SVA_MM].every(v => v === null) || Boolean(g.c2_centroid && g.vertebrae.C7?.superior));
   if (m.SS !== null && !g.s1_superior) return false;
   if ((m.PI !== null || m.PT !== null) && (!g.s1_superior || !g.hip_midpoint)) return false;
   if (m.L1PA != null && (!g.l1_center || !g.s1_superior || !g.hip_midpoint)) return false;
@@ -140,7 +154,10 @@ function validateStudy(entry, index) {
 
   const measurements = isValidMeasurements(entry.measurements) ? entry.measurements : null;
   const geometry = isValidGeometry(entry.geometry) ? entry.geometry : null;
-  const complete = measurementsHaveLandmarks(measurements, geometry);
+  const regionAgrees = !entry.region || entry.region === (geometry?.region ?? 'lumbar');
+  const sideAgrees = !validAnteriorSide(entry.anteriorSide) || geometry?.region !== 'cervical'
+    || entry.anteriorSide === geometry.anterior_side;
+  const complete = regionAgrees && sideAgrees && measurementsHaveLandmarks(measurements, geometry);
   if (!complete && (entry.measurements != null || entry.geometry != null)) {
     console.warn(`persistence: ${entry.id} has a malformed measurements/geometry payload; it will need to be re-run.`);
   }
@@ -164,6 +181,9 @@ function validateStudy(entry, index) {
     id: entry.id, source: 'real',
     filePath: typeof entry.filePath === 'string' ? entry.filePath : null,
     fileName: entry.fileName, addedAt: entry.addedAt, view: entry.view,
+    region: ['lumbar', 'cervical'].includes(entry.region) ? entry.region : geometry?.region === 'cervical' ? 'cervical' : 'lumbar',
+    anteriorSide: validAnteriorSide(entry.anteriorSide) ? entry.anteriorSide : geometry?.anterior_side ?? null,
+    predictionId: optionalText(entry.predictionId),
     // Both are optional and default to null, so no STORE_VERSION bump: a record written before
     // they existed loads fine and simply reads as its SP-nnnn id with no workspace. They must
     // be listed HERE or they are written to disk and then dropped on the next load, which looks

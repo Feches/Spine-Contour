@@ -28,7 +28,7 @@
  */
 import { subjectKey, ANY_POST } from './parameters.js';
 import { PRE_OP, compareTimepoints } from './timepoints.js';
-import { MEASUREMENT_COLUMNS, measurementValues, delta1 } from './csv.js';
+import { MEASUREMENT_COLUMNS, exportMeasurementColumns, measurementValues, delta1 } from './csv.js';
 import { studyName } from './labels.js';
 
 const PI_INDEX = MEASUREMENT_COLUMNS.indexOf('PI');
@@ -127,12 +127,12 @@ function visitsOnLabel(label, films) {
 // LL over the written one-decimal values (the delta rule), so the three cells agree to the digit
 // whichever films they came from; when PI and LL came from different films the column is flagged
 // as derived across films, with the film behind each input named. Disc heights are read per film.
-function mergeVisit(visit) {
-  const perFilm = visit.films.map((study) => measurementValues(study));
+function mergeVisit(visit, columns) {
+  const perFilm = visit.films.map((study) => measurementValues(study, columns));
   const values = [];
   const sources = [];
   const disagreements = [];
-  MEASUREMENT_COLUMNS.forEach((column, index) => {
+  columns.forEach((column, index) => {
     const present = perFilm
       .map((row, film) => ({ value: row[index], film }))
       .filter((entry) => entry.value !== '' && entry.value != null);
@@ -159,6 +159,7 @@ function mergeVisit(visit) {
 export function pairStudies(rows, { post = ANY_POST } = {}) {
   const single = typeof post === 'string' && post !== '' && post !== ANY_POST && post !== PRE_OP ? post : null;
   const real = (rows ?? []).filter((study) => study.source === 'real');
+  const measurementColumns = exportMeasurementColumns(real);
 
   // Group by subject key in first-appearance order; count the films no group can hold.
   const groups = new Map();
@@ -220,7 +221,7 @@ export function pairStudies(rows, { post = ANY_POST } = {}) {
         problem = { subject: group.subject, label, count: result.visits.length, kind: 'visits' };
         break;
       }
-      visitsByLabel.set(label, result.visits.map(mergeVisit));
+      visitsByLabel.set(label, result.visits.map(visit => mergeVisit(visit, measurementColumns)));
     }
     if (problem !== null) { ambiguous.push(problem); continue; }
     judged.push({ key: group.key, subject: group.subject, visitsByLabel });
@@ -269,7 +270,7 @@ export function pairStudies(rows, { post = ANY_POST } = {}) {
   });
 
   return {
-    visits, post: single, subjects, unpaired, ambiguous, noSubject, noTimepoint,
+    measurementColumns, visits, post: single, subjects, unpaired, ambiguous, noSubject, noTimepoint,
     otherVisits: { count: otherCount, labels: otherLabels },
     merged, disagreements, derived,
   };

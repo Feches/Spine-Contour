@@ -16,6 +16,12 @@ export const S1_CONFIDENCE_LIMIT = 0.6;
 
 export function landmarkReviewReasons(qc) {
   const reasons = [];
+  if (qc?.models?.vertebrae === 'cervical_hrnet' || qc?.models?.cervical === 'cervical_hrnet') {
+    if (qc?.coverage?.partial) reasons.push('Partial cervical landmarks — only available measurements are shown.');
+    if (qc?.manual_edits?.landmarks) reasons.push('Manually edited landmarks — verify the corrected positions.');
+    reasons.push('Verify C2/C7 landmarks and the selected anterior image side.');
+    return reasons;
+  }
   if (qc?.coverage?.partial) {
     const missing = Array.isArray(qc.coverage.missing) ? qc.coverage.missing.join(', ') : 'landmarks';
     reasons.push(`Partial segmentation — missing ${missing}. Only available landmarks are measured.`);

@@ -1,3 +1,4 @@
+import { validAnteriorSide } from '../data/cervical.js';
 /**
  * Workspace screen (spec 9.3). Three step cards -- image folder, optional clinical CSV, column
  * mapping -- and one Load workspace button that turns every scanned film into an unsegmented
@@ -133,6 +134,9 @@ export function loadWorkspaceStudies(state) {
       // The seeded subject, timepoint, film date and view (§8.3). view is never null here: the
       // folder row always holds one, and it was on screen before Load.
       ...seeded.fields,
+      region: rowByFolder.get(folderKey(filePath, root))?.region === 'cervical' ? 'cervical' : 'lumbar',
+      anteriorSide: validAnteriorSide(rowByFolder.get(folderKey(filePath, root))?.anteriorSide)
+        ? rowByFolder.get(folderKey(filePath, root)).anteriorSide : null,
       // Spread, never the join's own object: the store never holds a reference the join still owns.
       clinical: { ...(join?.byFile.get(filePath) ?? {}) },
     };
@@ -354,6 +358,13 @@ export function render(state) {
         key: 'all-view', label: 'Set the view of every folder', choices: views, none: null,
         onChange: (value) => setAllFolderRows({ view: value }),
       })));
+    head.append(el('th', { scope: 'col' }, 'REGION', setAllSelect({
+      key: 'all-region', label: 'Set the region of every folder', choices: ['lumbar', 'cervical'], none: null,
+      onChange: value => setAllFolderRows({ region: value, anteriorSide: null }),
+    })), el('th', { scope: 'col' }, 'ANTERIOR IMAGE SIDE', setAllSelect({
+      key: 'all-anterior', label: 'Set the anterior image side of every cervical folder', choices: ['left', 'right'], none: 'unconfirmed',
+      onChange: value => setAllFolderRows({ anteriorSide: value || null }),
+    })));
     const body = rows.map((row) => el('tr', { 'data-ws-folder': row.folder },
       el('td', { class: 'workspace-folders-name', title: row.folder }, row.folder),
       el('td', { class: 'workspace-folders-num' }, String(row.count)),
@@ -364,7 +375,15 @@ export function render(state) {
       el('td', {}, rowSelect({
         key: `view:${row.folder}`, label: `View for ${row.folder}`, value: row.view, choices: views, none: null,
         onChange: (event) => setFolderRow(row.folder, { view: event.target.value }),
-      }))));
+      })),
+      el('td', {}, rowSelect({
+        key: `region:${row.folder}`, label: `Region for ${row.folder}`, value: row.region ?? 'lumbar', choices: ['lumbar', 'cervical'], none: null,
+        onChange: event => setFolderRow(row.folder, { region: event.target.value, anteriorSide: null }),
+      })),
+      el('td', {}, row.region === 'cervical' ? rowSelect({
+        key: `anterior:${row.folder}`, label: `Anterior image side for ${row.folder}`, value: row.anteriorSide, choices: ['left', 'right'], none: 'Choose…',
+        onChange: event => setFolderRow(row.folder, { anteriorSide: event.target.value || null }),
+      }) : '—')));
     return el('div', { class: 'workspace-folders-wrap' },
       el('div', { class: 'workspace-folders-scroll' },
         el('table', { class: 'workspace-folders', 'data-ws-key': 'folders' },
