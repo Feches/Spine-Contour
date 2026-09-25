@@ -146,7 +146,10 @@ export function mountMeasurements(container) {
       el('div', { class: 'meas-rows' },
         ...rows.map((row) => rowButton(row, () => toggleLevel(cervical || fullSpine ? row.key : ROW_LEVELS[row.key])))));
 
-    if (!cervical && !fullSpine) section1.append(el('button', {
+    const lumbarSection = fullSpine ? section('03 — SAGITTAL PARAMETERS',
+      el('div', { class: 'meas-rows' }, ...sagittalRows(measurements, { selectedLevel: state.selectedLevel })
+        .map(row => rowButton(row, () => toggleLevel(ROW_LEVELS[row.key]))))) : section1;
+    if (!cervical) lumbarSection.append(el('button', {
       type: 'button',
       class: 'meas-disclosure',
       'aria-expanded': state.showAllLordosis ? 'true' : 'false',
@@ -154,8 +157,8 @@ export function mountMeasurements(container) {
       onClick: () => setState((s) => ({ showAllLordosis: !s.showAllLordosis })),
     }, state.showAllLordosis ? 'HIDE LORDOSIS LEVELS' : 'SHOW ALL LORDOSIS LEVELS'));
 
-    if (!cervical && !fullSpine && state.showAllLordosis) {
-      section1.append(el('div', { class: 'meas-rows' },
+    if (!cervical && state.showAllLordosis) {
+      lumbarSection.append(el('div', { class: 'meas-rows' },
         // lordosisRows always returns highlight: false -- the component, not the data
         // layer, owns highlighting here, because state.selectedLevel lives on the store
         // and lordosisRows' signature is fixed by the architecture contract. Map it in
@@ -179,7 +182,7 @@ export function mountMeasurements(container) {
       section1.append(el('div', { class: 'meas-warning' }, reason));
     }
 
-    const section2 = section('02 \u2014 DISC HEIGHTS \u00B7 MM',
+    const section2 = section(fullSpine ? '04 — DISC HEIGHTS · MM' : '02 — DISC HEIGHTS · MM',
       discTable(discPending ? null : study),
       el('div', { class: 'meas-note' }, discPending ? 'Updating disc heights…'
         : 'Facing endplates: anterior to anterior, midpoint to midpoint, posterior to posterior. Requires image scale and both endplates.'));
@@ -188,7 +191,7 @@ export function mountMeasurements(container) {
       el('div', { class: 'meas-rows' }, ...alignmentRows(study).map(rowStatic)),
       el('div', { class: 'meas-note' }, NOT_COMPUTED_NOTE));
 
-    const calibrationSection = section('04 — IMAGE SCALE',
+    const calibrationSection = section(fullSpine ? '05 — IMAGE SCALE' : '04 — IMAGE SCALE',
       el('div', { class: 'meas-note', 'data-calibration-status': study.calibration?.status || 'unchecked' },
         calibrationSummary(study.calibration)));
     if (study.source === 'real' && study.filePath) {
@@ -200,7 +203,11 @@ export function mountMeasurements(container) {
     if (fullSpine) {
       section1.append(el('div', { class: 'meas-note' },
         'C7–S1 SVA: C7 body centroid to the S1 posterosuperior corner, parallel to the image horizontal; positive anterior. Review the C7 centroid and both S1 endplate corners.'));
-      root.append(section1, calibrationSection);
+      const cervicalSection = section('02 — CERVICAL ALIGNMENT',
+        el('div', { class: 'meas-rows' }, ...cervicalRows(pending ? { region: 'full_spine' } : study, state.selectedLevel)
+          .map(row => rowButton(row, () => toggleLevel(row.key)))),
+        el('div', { class: 'meas-note' }, 'Only measurements with visible, usable landmarks are shown. Review C2/C7 endplates and the C2 centroid.'));
+      root.append(section1, cervicalSection, lumbarSection, section2, calibrationSection);
     } else if (cervical) {
       section1.append(el('div', { class: 'meas-note' },
         'Cobb: unsigned acute angle between the C2 and C7 inferior endplates. SVA: C2 body centroid to the C7 posterosuperior corner, parallel to the image horizontal; positive anterior. Verify the six editable landmarks.'));

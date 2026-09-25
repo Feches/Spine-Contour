@@ -1,4 +1,4 @@
-"""Bounded, image-only search for global C7–S1 sagittal balance anchors.
+"""Bounded image-only search for standing-film regional and global landmarks.
 
 The two HRNETs operate on overlapping regional crops of an upright lateral
 radiograph. Detectors propose crops; independent crop agreement gates the
@@ -77,6 +77,12 @@ def select_consensus(candidates):
     scales = np.array([c["scale"] for c in candidates], np.float64)
     distance = np.linalg.norm(anchors[:, None]-anchors[None, :], axis=-1)
     agreement = distance <= CONSENSUS_RADIUS * np.minimum(scales[:, None], scales[None, :])
+    if all("points" in candidate for candidate in candidates):
+        # Regional measurements now use every retained endplate. Agreement on
+        # C7 or S1 alone cannot corroborate inconsistent C2/L1 assignments.
+        points = np.asarray([candidate["points"] for candidate in candidates], np.float64)
+        regional_distance = np.linalg.norm(points[:, None]-points[None, :], axis=-1).max(axis=-1)
+        agreement &= regional_distance <= CONSENSUS_RADIUS * np.minimum(scales[:, None], scales[None, :])
     support = agreement.sum(1)
     order = sorted(range(len(candidates)), key=lambda i: (
         -int(support[i]), float(np.mean(distance[i, agreement[i]])),
@@ -204,7 +210,10 @@ def _lumbar_candidates(raw):
                         or endplate[:, 1].mean() <= points[16:20, 1].mean()):
                     continue
                 # HRNET supplies S1; an independent detector corroborates its location.
-                detected = detected[np.argsort(detected[:, 0])]
+                # Keypoint identities are anatomical [anterior, posterior].
+                # Sorting by x would erase evidence of the wrong orientation.
+                if detected[1, 0] <= detected[0, 0]:
+                    continue
                 discrepancy = float(np.linalg.norm(endplate-detected, axis=1).max()/scale)
                 if discrepancy > .75:
                     continue
@@ -223,9 +232,166 @@ def _source_points(points, width, mirrored):
     return result
 
 
-def full_spine_prediction(pixel_array, anterior_side, model=MODEL_NAME):
+def search_orientation(raw, anterior_side):
+    """Repeatable regional evidence for one anterior-side hypothesis.
+
+    This is shared with film classification so its expensive crop searches can
+    be reused for the eventual standing-film prediction.
+    """
     if anterior_side not in ("left", "right"):
-        raise ValueError("Select the anterior image side for the full-spine radiograph")
+        raise ValueError("An orientation hypothesis must be left or right")
+    canonical = np.ascontiguousarray(raw[:, ::-1]) if anterior_side == "right" else raw
+    neck_candidates, neck_search = _cervical_candidates(canonical)
+    pelvis_candidates, pelvis_search = _lumbar_candidates(canonical)
+    neck, neck_qc = select_consensus(neck_candidates)
+    pelvis, pelvis_qc = select_consensus(pelvis_candidates)
+    return {"anterior_side": anterior_side, "neck": neck, "pelvis": pelvis,
+            "neck_qc": neck_qc, "pelvis_qc": pelvis_qc,
+            "neck_search": neck_search, "pelvis_search": pelvis_search,
+            "neck_candidates": neck_candidates}
+
+
+def _mirror_cervical_candidate(candidate, width):
+    """Reflect image-sided cervical points while preserving their index labels."""
+    order = [1, 0, 2] + [index for start in range(3, 23, 4)
+                         for index in (start+1, start, start+3, start+2)]
+    left, top, right, bottom = candidate["window"]
+    return {**candidate, "anchor": _source_points(candidate["anchor"], width, True),
+            "points": _source_points(candidate["points"], width, True)[order],
+            "window": (width-right, top, width-left, bottom)}
+
+
+def reconcile_cervical_searches(raw, searches):
+    """Share one cervical identity across mirror hypotheses in source space.
+
+    Image-sided cervical landmarks cannot vote on anterior direction. A local
+    detector may mistake thoracic bodies for the neck in just one mirror view;
+    require the complete chosen chain to agree in both views as well as across
+    distinct source crops. Explicit side overrides retain this anatomy check.
+    """
+    if not searches or not any("neck_candidates" in value for value in searches.values()):
+        return searches
+    width = raw.shape[1]
+    candidates_by_side = {}
+    for side in ("left", "right"):
+        if side in searches and "neck_candidates" in searches[side]:
+            candidates_by_side[side] = searches[side]["neck_candidates"]
+        else:
+            canonical = raw if side == "left" else np.ascontiguousarray(raw[:, ::-1])
+            candidates_by_side[side], _ = _cervical_candidates(canonical)
+    unique, conflicted = {}, set()
+    for side, candidates in candidates_by_side.items():
+        for candidate in candidates:
+            source = (_mirror_cervical_candidate(candidate, width) if side == "right"
+                      else dict(candidate))
+            key = tuple(source["window"])
+            if key in conflicted:
+                continue
+            if key not in unique:
+                unique[key] = {**source, "_orientation_sides": {side}}
+            else:
+                previous = unique[key]
+                radius = CONSENSUS_RADIUS*min(source["scale"], previous["scale"])
+                if (np.linalg.norm(source["anchor"]-previous["anchor"]) > radius
+                        or np.linalg.norm(source["points"]-previous["points"], axis=1).max() > radius):
+                    # One rectangle supplies only one spatial observation. A
+                    # conflicting reflection cannot lend its side to the
+                    # higher-scoring prediction from that same rectangle.
+                    del unique[key]
+                    conflicted.add(key)
+                    continue
+                chosen = source if source["score"] > previous["score"] else previous
+                unique[key] = {**chosen, "_orientation_sides": previous["_orientation_sides"] | {side}}
+    candidates = list(unique.values())
+    selected, qc = select_consensus(candidates)
+    orientation_support = set()
+    if selected is not None:
+        for candidate in candidates:
+            radius = CONSENSUS_RADIUS*min(candidate["scale"], selected["scale"])
+            if (np.linalg.norm(candidate["anchor"]-selected["anchor"]) <= radius
+                    and np.linalg.norm(candidate["points"]-selected["points"], axis=1).max() <= radius):
+                orientation_support.update(candidate["_orientation_sides"])
+        if orientation_support != {"left", "right"}:
+            selected = None
+            qc = {**qc, "status": "unconfirmed_across_mirrors"}
+    qc = {**qc, "orientation_support": sorted(orientation_support),
+          "conflicted_source_crops": len(conflicted),
+          "method": "shared_source_cervical_consensus"}
+    reconciled = {}
+    for side, evidence in searches.items():
+        neck = selected
+        if selected is not None and side == "right":
+            neck = _mirror_cervical_candidate(selected, width)
+        regional_qc = dict(qc)
+        pelvis = evidence.get("pelvis")
+        if neck is not None and pelvis is not None:
+            if pelvis["anchor"][1]-neck["anchor"][1] <= 2*max(neck["scale"], pelvis["scale"]):
+                neck = None
+                regional_qc["status"] = "incompatible_region_order"
+        reconciled[side] = {**evidence, "neck": neck, "neck_qc": regional_qc}
+    return reconciled
+
+
+def select_orientation(searches):
+    """Select only a uniquely better supported orientation; never break ties.
+
+    Crop agreement is a repeatability gate, not calibrated probability. A
+    higher detector score or more overlapping crops alone cannot resolve two
+    hypotheses with matching anatomical endpoint identities. Cervical labels
+    are image-sided; only the anatomical S1 detector order provides evidence
+    for anterior direction, corroborated by the lumbar HRNET chain.
+    """
+    hypotheses = {}
+    for side, evidence in searches.items():
+        regions = [name for name, key in (("cervical", "neck"), ("lumbar", "pelvis"))
+                   if evidence.get(key) is not None]
+        hypotheses[side] = {"accepted_regions": regions,
+                            "cervical_support": evidence.get("neck_qc", {}).get("support", 0),
+                            "lumbar_support": evidence.get("pelvis_qc", {}).get("support", 0)}
+    selected = None
+    if set(hypotheses) == {"left", "right"}:
+        supported = [side for side in ("left", "right")
+                     if "lumbar" in hypotheses[side]["accepted_regions"]]
+        if len(supported) == 1:
+            selected = supported[0]
+    return selected, {"status": "accepted" if selected else "ambiguous",
+                      "source": "automatic", "anterior_side": selected,
+                      "method": "mirrored_regional_consensus", "hypotheses": hypotheses,
+                      "review_required": True}
+
+
+def _femoral_region(canonical, pelvis):
+    """Fit the existing femoral model in the accepted lumbar crop only."""
+    try:
+        from ..utils import _femoral_geometry
+    except ImportError:
+        from utils import _femoral_geometry
+    if pelvis is None:
+        return np.zeros(canonical.shape, np.uint8), [], {
+            "qc_pass": False, "reason": "No consistent lumbar crop was established."}
+    window = pelvis["window"]
+    left, top, right, bottom = window
+    _, transform = framing.prepare_crop(canonical, window)
+    probability = models._femoral_probabilities(canonical[top:bottom, left:right])
+    mask = models._restore_femoral_mask(probability, transform, canonical.shape)
+    try:
+        _, circles, qc = _femoral_geometry(mask)
+        return mask, [np.asarray(circle).tolist() for circle in circles] if qc.get("qc_pass") else [], qc
+    except ValueError as error:
+        return mask, [], {"qc_pass": False, "confidence": None, "reason": str(error)}
+
+
+def full_spine_prediction(pixel_array, anterior_side=None, model=MODEL_NAME, *, detection_evidence=None):
+    """Infer source-coordinate anatomy with automatic or explicit orientation.
+
+    ``detection_evidence`` is internal, same-image crop-search output from film
+    classification. It avoids running the two expensive orientation searches
+    again and is never accepted as user-supplied anatomical geometry.
+    """
+    if anterior_side == "":
+        anterior_side = None
+    if anterior_side not in (None, "auto", "left", "right"):
+        raise ValueError("The anterior image side must be auto, left or right")
     if model != MODEL_NAME:
         raise ValueError("The available full-spine model is dual_hrnet")
     raw = np.asarray(pixel_array)
@@ -234,30 +400,61 @@ def full_spine_prediction(pixel_array, anterior_side, model=MODEL_NAME):
         raise ValueError("pixel_array must contain finite two-dimensional grayscale pixels")
     runtime.report("preparing", "Preparing the full-spine radiograph")
     height, width = raw.shape
+    automatic = anterior_side in (None, "auto")
+    searches = dict(detection_evidence or {})
+    for side in (("left", "right") if automatic else (anterior_side,)):
+        if side not in searches:
+            runtime.report("orientation", f"Checking anterior-{side} orientation")
+            searches[side] = search_orientation(raw, side)
+    searches = reconcile_cervical_searches(raw, searches)
+    if automatic:
+        anterior_side, orientation = select_orientation(searches)
+        if anterior_side is None:
+            raise ValueError("Automatic standing-film orientation is uncertain. Select anterior left or right and retry.")
+    else:
+        orientation = {"status": "user_selected", "source": "user", "anterior_side": anterior_side,
+                       "review_required": True}
+    evidence = searches[anterior_side]
+    neck, pelvis = evidence["neck"], evidence["pelvis"]
+    neck_qc, pelvis_qc = evidence["neck_qc"], evidence["pelvis_qc"]
+    neck_search, pelvis_search = evidence["neck_search"], evidence["pelvis_search"]
     mirrored = anterior_side == "right"
     canonical = np.ascontiguousarray(raw[:, ::-1]) if mirrored else raw
-    neck_candidates, neck_search = _cervical_candidates(canonical)
-    pelvis_candidates, pelvis_search = _lumbar_candidates(canonical)
-    neck, neck_qc = select_consensus(neck_candidates)
-    pelvis, pelvis_qc = select_consensus(pelvis_candidates)
     warnings = ["Review C7 identity, the S1 posterior corner, image orientation and calibration before accepting global SVA."]
-    # A region reversal or overlapping anatomical regions cannot define global SVA.
-    if neck is not None and pelvis is not None:
-        if pelvis["anchor"][1]-neck["anchor"][1] <= 2*max(neck["scale"], pelvis["scale"]):
-            neck = pelvis = None
-            neck_qc["status"] = pelvis_qc["status"] = "incompatible_region_order"
+    if automatic:
+        warnings.append("Anterior orientation was selected automatically from regional crop agreement; confirm it before accepting measurements.")
     if neck is None:
         warnings.append("C7 centroid was not established consistently across crops; global SVA is unavailable.")
     if pelvis is None:
         warnings.append("S1 posterior corner was not established consistently across crops; global SVA is unavailable.")
     geometry = {"region": "full_spine", "anterior_side": anterior_side,
+                "c2_centroid": None,
                 "c7_centroid": None if neck is None else _source_points(neck["anchor"], width, mirrored).tolist(),
                 "s1_superior": None if pelvis is None else _source_points(pelvis["endplate"], width, mirrored).tolist(),
                 "vertebrae": {}}
     if neck is not None:
-        p = _source_points(neck["points"][19:23], width, mirrored)
-        geometry["vertebrae"]["C7"] = {"superior": p[:2].tolist(), "inferior": p[2:].tolist(),
-                                       "quadrilateral": p[[0, 1, 3, 2]].tolist()}
+        # The model has already run in canonical anterior-left coordinates.
+        # Preserve endpoint identity while mirroring back, rather than sorting
+        # source x coordinates or reinterpreting them a second time.
+        cervical_geometry = cervical.landmark_contract(neck["points"], "left")
+        geometry["c2_centroid"] = _source_points(cervical_geometry["c2_centroid"], width, mirrored).tolist()
+        for level, body in cervical_geometry["vertebrae"].items():
+            geometry["vertebrae"][level] = {
+                key: None if value is None else _source_points(value, width, mirrored).tolist()
+                for key, value in body.items()}
+    if pelvis is not None:
+        p = _source_points(pelvis["points"][:20], width, mirrored).reshape(5, 4, 2)
+        for level, body in zip(range(1, 6), p):
+            geometry["vertebrae"][f"L{level}"] = {
+                "superior": body[:2].tolist(), "inferior": body[2:].tolist(),
+                "quadrilateral": body[[0, 1, 3, 2]].tolist()}
+    femoral_mask, circles, femoral_qc = _femoral_region(canonical, pelvis)
+    geometry["femoral_circles"] = [[*_source_points(circle[:2], width, mirrored).tolist(), circle[2]]
+                                   for circle in circles]
+    if not femoral_qc["qc_pass"]:
+        warnings.append("Femoral heads were not established reliably; PI, PT and L1PA are unavailable.")
+    if mirrored:
+        femoral_mask = np.ascontiguousarray(femoral_mask[:, ::-1])
     def source_window(candidate):
         if candidate is None:
             return None
@@ -269,15 +466,16 @@ def full_spine_prediction(pixel_array, anterior_side, model=MODEL_NAME):
         localizer["window"] = [width-c, b, width-a, d]
         pelvis_search = {**pelvis_search, "localizer": localizer}
     return {"image": raw.copy() if raw.dtype == np.uint8 else models._robust_rescale(raw),
-            "mask": np.zeros(raw.shape, np.uint8), "femoral_mask": np.zeros(raw.shape, np.uint8),
+            "mask": np.zeros(raw.shape, np.uint8), "femoral_mask": femoral_mask,
             "landmarks": geometry,
             "models": {"vertebrae": MODEL_NAME, "cervical": "cervical_hrnet", "lumbar": "hrnet",
-                       "detector": "cervical_detr+s1"},
+                       "detector": "cervical_detr+s1", "femoral": "unet"},
             "framing": {"coordinate_space": "original_image", "canonical_mirror": mirrored,
                         "cervical_window": source_window(neck), "lumbar_window": source_window(pelvis),
-                        "cervical": {**neck_search, **neck_qc}, "lumbar": {**pelvis_search, **pelvis_qc}},
+                        "cervical": {**neck_search, **neck_qc}, "lumbar": {**pelvis_search, **pelvis_qc},
+                        "orientation": orientation, "femoral": femoral_qc},
             "warnings": warnings,
             "provenance": {"reference_landmarks_used": False, "segmentation_available": False,
                            "c7_centroid_method": "mean_of_four_body_corners",
                            "s1_source": "lumbar_hrnet", "vertical_reference": "image_vertical",
-                           "anterior_side_source": "user"}}
+                           "anterior_side_source": "automatic" if automatic else "user"}}

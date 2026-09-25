@@ -2,14 +2,21 @@
 
 Automated measurements from lateral lumbar, cervical and full-spine radiographs, running locally.
 
-Select **Cervical** and the
+New studies default to **Auto detect**, which checks image landmarks to select
+cervical, lumbar or full-spine processing. Region and orientation can be overridden
+on the study or workspace folder. Inconclusive detection asks for a manual choice.
+See [automatic film detection](docs/automatic-film-detection.md).
+
+For cervical films, select the
 image's **anterior side** before processing. Review the C2–C7 Cobb and SVA
 construction lines, correct the landmarks if needed, and calibrate the image for
 SVA in millimetres. See [cervical alignment](docs/cervical-alignment.md) for the
 model provenance, measurement definitions and development checks.
 
-Select **Full spine · HRNET** for the separate global C7–S1 SVA workflow.
-Review the C7 centroid and S1 posterior corner, and calibrate the image for
+Standing/full-spine processing returns global C7–S1 SVA and the available cervical,
+lumbar and pelvic parameters together. Its **Auto detect** orientation compares
+both horizontal orientations; explicit left/right selections override it.
+Review the regional landmarks, C7 centroid and S1 posterior corner, and calibrate the image for
 millimetres. See [global SVA](docs/global-sva.md) for the construction, crop
 search and review requirements.
 
