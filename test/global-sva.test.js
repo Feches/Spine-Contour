@@ -134,7 +134,7 @@ test('global values stay separate in parameters and single/paired CSV, with blan
   assert.equal(parameterValues(s).GLOBAL_SVA_MM, 10);
   assert.equal(parameterValues(s).PI, null);
   assert.ok(measurementColumns(false, false, true).some(c => c.key === 'GLOBAL_SVA_MM'));
-  assert.ok(!exportMeasurementColumns([s]).includes('C2-C7 SVA (mm)'));
+  assert.ok(exportMeasurementColumns([s]).includes('C2-C7 SVA (mm)'));
   let csv = table(toCsv([s]));
   assert.equal(csv.rows[0]['C7-S1 SVA (mm)'], '10');
   assert.equal(csv.rows[0]['Spine region'], 'full_spine');
@@ -150,14 +150,14 @@ test('global values stay separate in parameters and single/paired CSV, with blan
   assert.equal(csv.rows[0]['C7-S1 SVA (px)'], '40');
 });
 
-test('workspace full-spine setup requires orientation and routes an isolated HRNET model request', async () => {
+test('workspace full-spine setup allows automatic orientation and retains explicit HRNET overrides', async () => {
   const files = ['/synthetic/full-spine/a.png'];
   const rows = folderRows(files, '/synthetic').map(row => ({ ...row, region: 'full_spine', anteriorSide: 'left' }));
   const loaded = loadWorkspaceStudies({ studies: [], wsFiles: files, wsFolder: '/synthetic', wsFolderRows: rows }).studies[0];
   assert.equal(loaded.region, 'full_spine'); assert.equal(loaded.anteriorSide, 'left');
   const unconfirmed = { ...loaded, anteriorSide: null };
-  assert.match(regionRunReason(unconfirmed), /full spine/);
-  assert.deepEqual(planBatch({ visible: [unconfirmed], selected: [], running: null }).ids, []);
+  assert.equal(regionRunReason(unconfirmed), null);
+  assert.deepEqual(planBatch({ visible: [unconfirmed], selected: [], running: null }).ids, [unconfirmed.id]);
   assert.equal(modelLabel('vertebrae', 'dual_hrnet'), 'HRNET');
   const saved = getState(), oldWindow = globalThis.window, s = { ...study(), geometry: null, measurements: null };
   let request;
@@ -196,4 +196,82 @@ test('full-spine results require review and do not inherit cervical-only guidanc
   assert.ok(landmarkReviewReasons(s.qc).some(reason => reason.includes('C7 centroid')));
   assert.ok(!landmarkReviewReasons(s.qc).some(reason => reason.includes('C2/C7')));
   assert.equal(deriveStatus({ ...s, qc: null }), 'rev');
+});
+
+function combinedStudy() {
+  const s = study();
+  const body = (x, y, tilt = 0) => ({ superior: [[x, y], [x + 60, y + tilt]],
+    inferior: [[x, y + 35], [x + 60, y + 35 + tilt]],
+    quadrilateral: [[x, y], [x + 60, y + tilt], [x + 60, y + 35 + tilt], [x, y + 35]] });
+  Object.assign(s.geometry, { c2_centroid: [140, 70], c7_centroid: [160, 280],
+    vertebrae: { C2: body(100, 50), C7: body(130, 250, 15), L1: body(130, 620, -10), L5: body(140, 820, 15) },
+    femoral_circles: [[130, 960, 20], [180, 960, 22]], hip_midpoint: [155, 960], l1_center: [160, 632.5] });
+  s.measurements = { ...cervicalMeasurements(s), ...globalSvaMeasurements(s),
+    SS: 30, PI: 50, PT: 20, L1PA: 15, LL: { 'L1-S1': 45, 'L2-S1': null, 'L3-S1': null, 'L4-S1': null, 'L5-S1': 20 } };
+  return s;
+}
+
+test('standing results retain cervical, lumbar and global measurements across persistence and exports', () => {
+  const s = combinedStudy();
+  s.region = 'auto'; s.anteriorSide = null;
+  const loaded = validate({ version: STORE_VERSION, studies: [JSON.parse(JSON.stringify(s))] })[0];
+  assert.equal(loaded.region, 'auto'); assert.equal(loaded.anteriorSide, null);
+  assert.equal(studyRegion(loaded), 'full_spine');
+  assert.deepEqual(loaded.geometry, s.geometry); assert.deepEqual(loaded.measurements, s.measurements);
+  assert.equal(predictionMatchesStudy(loaded, { geometry: s.geometry, measurements: s.measurements }), true);
+  const values = parameterValues(loaded);
+  assert.equal(values.PI, 50); assert.equal(values.LL, 45); assert.equal(values.PILL, 5);
+  assert.equal(values.C2C7_SVA_MM, 12.5); assert.equal(values.GLOBAL_SVA_MM, 5);
+  assert.equal(values['L2-S1'], null);
+  const csv = table(toCsv([loaded])).rows[0];
+  assert.equal(csv['PI'], '50'); assert.equal(csv['C2-C7 SVA (mm)'], '12.5');
+  assert.equal(csv['C7-S1 SVA (mm)'], '5'); assert.equal(csv['LL L2-S1'], '');
+  const post = { ...structuredClone(s), id: 'SP-9401', timepoint: 'Post-op', fileName: 'standing-post.png' };
+  post.measurements.PI = 55; post.geometry.c2_centroid[0] -= 20; post.geometry.c7_centroid[0] -= 12;
+  const paired = table(toPairedCsv(pairStudies([s, post]))).rows[0];
+  assert.equal(paired['Delta PI Post-op'], '5');
+  assert.equal(paired['Delta C2-C7 SVA (mm) Post-op'], '5');
+  assert.equal(paired['Delta C7-S1 SVA (mm) Post-op'], '3');
+  loaded.calibration = null;
+  const unscaled = parameterValues(loaded);
+  assert.equal(unscaled.C2C7_SVA_MM, null); assert.equal(unscaled.GLOBAL_SVA_MM, null);
+  assert.equal(unscaled.C2C7_SVA_PX, 50); assert.equal(unscaled.GLOBAL_SVA_PX, 20);
+});
+
+test('combined standing result cannot retain a reported regional measurement without its landmarks', () => {
+  for (const damage of [s => { delete s.geometry.vertebrae.C2; }, s => { delete s.geometry.vertebrae.L1; },
+    s => { s.geometry.hip_midpoint = null; }, s => { s.geometry.femoral_circles = [[10, 20, -1]]; }]) {
+    const s = combinedStudy(); damage(s);
+    assert.equal(validate({ version: STORE_VERSION, studies: [s] })[0].measurements, null);
+  }
+  const s = combinedStudy();
+  delete s.geometry.vertebrae.C2; s.geometry.c2_centroid = null;
+  s.measurements.C2C7_COBB = s.measurements.C2C7_SVA_PX = s.measurements.C2C7_SVA_MM = null;
+  const loaded = validate({ version: STORE_VERSION, studies: [s] })[0];
+  assert.equal(loaded.measurements.PI, 50);
+  assert.equal(parameterValues(loaded).C2C7_COBB, null);
+});
+
+test('standing cervical and lumbar landmarks and femoral heads remain editable with appropriate constructions', () => {
+  const s = combinedStudy(), g = s.geometry;
+  const stops = []; let selected = null;
+  do { selected = nextSelection(selected, 1, g); stops.push(selected); } while (stops.length < 100
+    && JSON.stringify(nextSelection(selected, 1, g)) !== JSON.stringify(stops[0]));
+  for (const expected of [{ kind: 'landmark', level: 'C2', corner: 'CENTROID' },
+    { kind: 'landmark', level: 'C7', corner: 'SA' }, { kind: 'landmark', level: 'C7', corner: 'CENTROID' },
+    { kind: 'landmark', level: 'L1', corner: 'SA' }, { kind: 'femoral', side: 'left', part: 'center' }]) {
+    assert.ok(stops.some(stop => JSON.stringify(stop) === JSON.stringify(expected)));
+  }
+  assert.match(constructionLabel(g, 'L1', s.measurements).text, /LL L1-S1/);
+  assert.match(constructionLabel(g, 'PI', s.measurements).text, /PI 50/);
+  assert.match(constructionLabel(g, 'C2C7_COBB', s.measurements).text, /C2–C7 Cobb/);
+  assert.match(constructionLabel(g, 'C2C7_SVA', s.measurements).text, /C2–C7 SVA/);
+  assert.match(constructionLabel(g, 'GLOBAL_SVA', s.measurements).text, /C7–S1 SVA/);
+  const corner = g.vertebrae.C7.superior[0];
+  setLandmarkAt(g, 'C7', 'SA', [corner[0] + 8, corner[1]]);
+  assert.equal(g.c7_centroid[0], 162);
+  setLandmarkAt(g, 'C7', 'CENTROID', [170, 280]);
+  assert.deepEqual(g.c7_centroid, [170, 280], 'independent centroid correction is retained');
+  setLandmarkAt(g, 'L1', 'SA', [138, 620]);
+  assert.deepEqual(g.l1_center, [162, 632.5], 'L1PA uses the edited L1 body centroid');
 });

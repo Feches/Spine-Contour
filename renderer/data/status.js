@@ -17,8 +17,14 @@ export const S1_CONFIDENCE_LIMIT = 0.6;
 
 export function landmarkReviewReasons(qc) {
   const reasons = [];
+  for (const warning of qc?.film_detection?.warnings ?? []) {
+    if (typeof warning === 'string' && warning.trim() && !reasons.includes(warning)) reasons.push(warning);
+  }
+  if (qc?.film_detection?.qc?.requires_review && !reasons.length) {
+    reasons.push('Verify the automatically detected film region and image orientation.');
+  }
   if (qc?.models?.vertebrae === 'dual_hrnet' || qc?.global_sva) {
-    if (qc?.coverage?.partial || qc?.global_sva?.coverage?.partial) reasons.push('Partial full-spine landmarks — C7–S1 SVA requires the C7 centroid and S1 superior endplate.');
+    if (qc?.coverage?.partial || qc?.global_sva?.coverage?.partial) reasons.push('Partial full-spine landmarks — only measurements with usable cervical, lumbar and pelvic landmarks are shown.');
     if (qc?.manual_edits?.landmarks) reasons.push('Manually edited landmarks — verify the corrected positions.');
     reasons.push('Verify the C7 centroid, S1 endplate and selected anterior image side.');
     for (const warning of qc?.warnings ?? []) if (typeof warning === 'string' && !reasons.includes(warning)) reasons.push(warning);

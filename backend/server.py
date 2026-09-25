@@ -93,13 +93,35 @@ def cervical_prediction(pixel_array, anterior_side, model=CERVICAL_MODEL):
     return predict_cervical(pixel_array, anterior_side, model=model)
 
 
-def full_spine_prediction(pixel_array, anterior_side, model=FULL_SPINE_MODEL):
+def full_spine_prediction(pixel_array, anterior_side, model=FULL_SPINE_MODEL, **options):
     # Existing regional inference does not import or initialize this pipeline.
     if __package__:
         from .models.full_spine import full_spine_prediction as predict_full_spine
     else:
         from models.full_spine import full_spine_prediction as predict_full_spine
-    return predict_full_spine(pixel_array, anterior_side, model=model)
+    return predict_full_spine(pixel_array, anterior_side, model=model, **options)
+
+
+def detect_film(pixel_array, anterior_side=None):
+    if __package__:
+        from .film_detection import detect_film as detect
+    else:
+        from film_detection import detect_film as detect
+    return detect(pixel_array, anterior_side=anterior_side)
+
+
+def _validate_auto_request(modality, view, laterality, vertebra_model,
+                           femoral_model, s1_model, anterior_side):
+    normalize = lambda value: (value or "").strip().lower().replace("-", "").replace("_", "")
+    normalized_view, normalized_laterality = normalize(view), normalize(laterality)
+    if normalized_view and normalized_laterality and normalized_view != normalized_laterality:
+        raise ValueError("view and laterality must agree when both are provided")
+    if normalize(modality) != "xray" or (normalized_view or normalized_laterality) != "lateral":
+        raise ValueError("Automatic film detection requires modality='xray', view='lateral'")
+    if anterior_side not in (None, "", "auto", "left", "right"):
+        raise ValueError("Anterior side must be auto, left or right")
+    if vertebra_model or femoral_model or s1_model:
+        raise ValueError("Choose a spine region before overriding its models")
 
 
 def _validate_cervical_request(modality, view, laterality, vertebra_model,
@@ -126,8 +148,8 @@ def _validate_full_spine_request(modality, view, laterality, vertebra_model,
         raise ValueError("view and laterality must agree when both are provided")
     if normalize(modality) != "xray" or (normalized_view or normalized_laterality) != "lateral":
         raise ValueError("Global SVA requires modality='xray', body_part='full_spine', view='lateral'")
-    if anterior_side not in ("left", "right"):
-        raise ValueError("Global SVA requires anterior_side='left' or 'right'; select the anterior image side")
+    if anterior_side not in (None, "", "auto", "left", "right"):
+        raise ValueError("Full-spine anterior side must be auto, left or right")
     if vertebra_model not in (None, "", FULL_SPINE_MODEL):
         raise ValueError(f"Unknown full-spine vertebra model; available: {FULL_SPINE_MODEL}")
     if femoral_model or s1_model:
@@ -157,6 +179,9 @@ async def prediction_request(
         elif body_part.strip().lower() == "full_spine":
             _validate_full_spine_request(modality, view, laterality, vertebra_model,
                                         femoral_model, s1_model, anterior_side)
+        elif body_part.strip().lower() == "auto":
+            _validate_auto_request(modality, view, laterality, vertebra_model,
+                                   femoral_model, s1_model, anterior_side)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return {"settings": settings, "payload": payload, "modality": modality, "body_part": body_part,
@@ -192,12 +217,28 @@ async def predict_stream(request=Depends(prediction_request)):
 
 def _analyze(payload, modality, body_part, view, laterality,
              vertebra_model, femoral_model, s1_model, calibration, anterior_side=None):
-    is_cervical = body_part.strip().lower() == "cervical"
-    is_full_spine = body_part.strip().lower() == "full_spine"
-    landmark_only = is_cervical or is_full_spine
+    body_part = body_part.strip().lower()
+    detection = None
+    requested_anterior_side = anterior_side
     try:
         runtime.report("decoding", "Reading the original image")
         pixel_array = _decode_grayscale(payload)
+        if body_part == "auto":
+            _validate_auto_request(modality, view, laterality, vertebra_model,
+                                   femoral_model, s1_model, anterior_side)
+            runtime.report("detecting", "Identifying the spine region")
+            detection = detect_film(pixel_array, anterior_side=anterior_side)
+            body_part = detection.get("body_part")
+            if body_part not in ("cervical", "lumbar", "full_spine"):
+                reasons = " ".join(detection.get("warnings", []))
+                raise ValueError(reasons or "Could not confidently identify the spine region. Choose cervical, lumbar or full spine, then segment again.")
+            if anterior_side not in ("left", "right"):
+                anterior_side = detection.get("anterior_side")
+            if body_part == "cervical" and anterior_side not in ("left", "right"):
+                raise ValueError("Detected a cervical film. Choose anterior left or right, then segment again.")
+        is_cervical = body_part == "cervical"
+        is_full_spine = body_part == "full_spine"
+        landmark_only = is_cervical or is_full_spine
         if is_cervical:
             _validate_cervical_request(modality, view, laterality, vertebra_model,
                                       femoral_model, s1_model, anterior_side)
@@ -205,7 +246,10 @@ def _analyze(payload, modality, body_part, view, laterality,
         elif is_full_spine:
             _validate_full_spine_request(modality, view, laterality, vertebra_model,
                                         femoral_model, s1_model, anterior_side)
-            prediction = full_spine_prediction(pixel_array, anterior_side, model=vertebra_model or FULL_SPINE_MODEL)
+            options = ({"detection_evidence": detection["_orientation_evidence"]}
+                       if detection and "_orientation_evidence" in detection else {})
+            prediction = full_spine_prediction(pixel_array, requested_anterior_side,
+                                               model=vertebra_model or FULL_SPINE_MODEL, **options)
         else:
             prediction = spinopelvic_prediction(
                 pixel_array,
@@ -258,13 +302,13 @@ def _analyze(payload, modality, body_part, view, laterality,
             'message': 'Automatic calibration unavailable. Review the reference in Image calibration.',
         }
     if landmark_only:
-        runtime.report("measuring", "Calculating global C7–S1 sagittal vertical axis" if is_full_spine
+        runtime.report("measuring", "Calculating global, cervical and lumbar measurements" if is_full_spine
                        else "Calculating C2–C7 Cobb angle and sagittal vertical axis")
         spacing = image_calibration.get("spacing")
         # Calibration has already checked the digest/dimensions of the untouched
         # upload, and landmark models restore every point to that same frame.
         geometry = {**prediction["landmarks"], "region": "full_spine" if is_full_spine else "cervical",
-                    "anterior_side": anterior_side,
+                    "anterior_side": prediction["landmarks"].get("anterior_side") or anterior_side,
                     "source_sha256": image_calibration["source_sha256"],
                     "image_width": int(pixel_array.shape[1]), "image_height": int(pixel_array.shape[0]),
                     "coordinate_space": "original_image",
@@ -294,6 +338,14 @@ def _analyze(payload, modality, body_part, view, laterality,
     for field in ("provenance", "warnings"):
         if field in prediction:
             qc[field] = prediction[field]
+    if is_full_spine and prediction["framing"].get("femoral") is not None:
+        qc["femoral"] = prediction["framing"]["femoral"]
+    if detection is not None:
+        qc["film_detection"] = {key: value for key, value in detection.items() if not key.startswith("_")}
+        # Existing lumbar measurements omit their region; Auto results must carry
+        # the resolved type so saving, display and export do not use the preference.
+        analysis["geometry"]["region"] = body_part
+        analysis["measurements"]["region"] = body_part
     runtime.report("complete", "Measurements ready")
     return {**encoded, **analysis, "qc": qc, "labels": {} if landmark_only else VERTEBRA_LABELS,
             "calibration": image_calibration}
@@ -310,19 +362,25 @@ async def measure(geometry: dict[str, object]) -> dict[str, object]:
             return await run_in_threadpool(global_sva_measurements_from_geometry, geometry)
         if geometry.get("region") not in (None, "lumbar"):
             raise ValueError("Unknown geometry region; available: lumbar, cervical, full_spine")
-        return await run_in_threadpool(
+        result = await run_in_threadpool(
             spinopelvic_measurements_from_geometry,
             geometry.get("vertebrae"),
             geometry.get("s1_superior"),
             geometry.get("femoral_circles"),
             allow_empty=True,
         )
+        if geometry.get("region") == "lumbar":
+            result["geometry"]["region"] = "lumbar"
+            result["measurements"]["region"] = "lumbar"
+        return result
     except (AttributeError, TypeError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @app.get("/models", summary="Which model can read which structure")
 def models(body_part: str = "lumbar") -> dict[str, list[str]]:
+    if body_part.strip().lower() == "auto":
+        return {"vertebrae": [], "femoral": [], "s1": []}
     if body_part.strip().lower() == "cervical":
         return {"vertebrae": [CERVICAL_MODEL], "femoral": [], "s1": []}
     if body_part.strip().lower() == "full_spine":

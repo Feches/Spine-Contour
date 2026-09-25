@@ -21,7 +21,11 @@ def test_global_sva_uses_c7_centroid_and_s1_posterosuperior_corner():
     source = geometry()
     before = copy.deepcopy(source)
     result = measure(source)
-    assert result["measurements"] == {"region": "full_spine", "GLOBAL_SVA_PX": 10, "GLOBAL_SVA_MM": None}
+    assert result["measurements"]["region"] == "full_spine"
+    assert result["measurements"]["GLOBAL_SVA_PX"] == 10
+    assert result["measurements"]["GLOBAL_SVA_MM"] is None
+    assert result["measurements"]["SS"] is not None
+    assert result["measurements"]["C2C7_COBB"] is None
     assert source == before
     assert result["geometry"] is not source
     result["geometry"]["s1_superior"][0][0] = 99
@@ -36,7 +40,8 @@ def test_acquisition_horizontal_is_independent_of_sacral_slope_and_vertical_sepa
     source["s1_superior"][0] = [2, 115]
     source["s1_superior"][1][1] = 110
     source["c7_centroid"][1] = 60
-    assert measure(source)["measurements"] == expected
+    for key in ('GLOBAL_SVA_PX', 'GLOBAL_SVA_MM'):
+        assert measure(source)["measurements"][key] == expected[key]
     assert measure(source)["qc"]["global_sva"]["horizontal_reference"] == "image_horizontal"
 
 
@@ -47,7 +52,7 @@ def test_mirrored_images_keep_anterior_positive_and_posterior_negative_signs():
     mirrored["c7_centroid"][0] = 99 - mirrored["c7_centroid"][0]
     for point in mirrored["s1_superior"]:
         point[0] = 99 - point[0]
-    assert measure(mirrored)["measurements"] == measure(source)["measurements"]
+    assert measure(mirrored)["measurements"]["GLOBAL_SVA_PX"] == measure(source)["measurements"]["GLOBAL_SVA_PX"]
     source["c7_centroid"][0] = 50
     assert measure(source)["measurements"]["GLOBAL_SVA_PX"] == -10
     mirrored["c7_centroid"][0] = 49
@@ -65,7 +70,7 @@ def test_anisotropic_scale_uses_column_spacing_and_preserves_provenance():
     assert result["geometry"]["source_sha256"] == "a" * 64
     assert result["qc"]["global_sva"]["status"] == "available"
     source["pixel_spacing"][0] = .001
-    assert measure(source)["measurements"] == result["measurements"]
+    assert measure(source)["measurements"]["GLOBAL_SVA_MM"] == result["measurements"]["GLOBAL_SVA_MM"]
 
 
 def test_real_zero_is_retained_and_cleared_scale_does_not_restore_old_millimetres():
@@ -146,7 +151,8 @@ def test_optional_dimensions_and_minimal_empty_geometry_are_supported():
     assert result["geometry"]["hip_midpoint"] is None
     assert result["geometry"]["l1_center"] is None
     assert result["measurements"]["GLOBAL_SVA_PX"] is None
-    assert len(result["qc"]["coverage"]["missing"]) == 2
+    assert {'C7 centroid', 'S1 superior', 'C2 centroid', 'L1', 'femoral heads'}.issubset(
+        result["qc"]["coverage"]["missing"])
 
 
 @pytest.mark.parametrize("patch", [{"region": "cervical"}, {"anterior_side": None},
@@ -166,3 +172,117 @@ def test_optional_vertebral_geometry_is_validated(bodies):
 def test_finite_inputs_cannot_return_nonfinite_physical_measurement():
     with pytest.raises(ValueError, match="finite numeric range"):
         measure({**geometry(), "pixel_spacing": [1, 1e308]})
+
+
+def regional_geometry():
+    def body(x, y):
+        return {'superior': [[x, y], [x+20, y+2]],
+                'inferior': [[x, y+8], [x+20, y+12]],
+                'quadrilateral': [[x, y], [x+20, y+2], [x+20, y+12], [x, y+8]]}
+    return {**geometry(), 'c2_centroid': [20, 5],
+            'vertebrae': {'C2': {'superior': None, 'inferior': [[10, 10], [30, 10]],
+                                  'quadrilateral': None},
+                         'C7': body(20, 20), 'L1': body(20, 45), 'L5': body(20, 60)},
+            'femoral_circles': [[20, 105, 5], [30, 105, 5]], 'pixel_spacing': [.5, .5]}
+
+
+def test_standing_measurements_include_independent_cervical_and_lumbar_parameters():
+    source = regional_geometry()
+    before = copy.deepcopy(source)
+    result = measure(source)
+    values = result['measurements']
+    assert values['C2C7_COBB'] == pytest.approx(math.degrees(math.atan(.2)))
+    assert values['C2C7_SVA_PX'] == 20
+    assert values['C2C7_SVA_MM'] == 10
+    for key in ('GLOBAL_SVA_MM', 'SS', 'PI', 'PT', 'L1PA'):
+        assert math.isfinite(values[key])
+    assert values['LL']['L1-S1'] is not None and values['LL']['L5-S1'] is not None
+    assert values['LL']['L2-S1'] is None
+    assert result['geometry']['femoral_circles'] == source['femoral_circles']
+    assert result['geometry']['hip_midpoint'] == [25, 105]
+    assert result['geometry']['l1_center'] == [30, 50.5]
+    assert result['geometry']['vertebrae'] == source['vertebrae']
+    assert source == before
+
+
+def test_missing_c7_preserves_lumbar_and_missing_hips_preserves_both_spines():
+    source = regional_geometry()
+    source['c7_centroid'] = None
+    source['vertebrae'].pop('C7')
+    values = measure(source)['measurements']
+    assert values['GLOBAL_SVA_PX'] is None and values['C2C7_COBB'] is None
+    assert values['C2C7_SVA_PX'] is None and values['LL']['L1-S1'] is not None
+    source = regional_geometry()
+    source['femoral_circles'] = []
+    values = measure(source)['measurements']
+    assert all(values[key] is None for key in ('PI', 'PT', 'L1PA'))
+    assert all(values[key] is not None for key in ('GLOBAL_SVA_PX', 'C2C7_COBB', 'SS'))
+
+
+def test_missing_sacrum_preserves_independent_cervical_measurements():
+    source = regional_geometry()
+    source['s1_superior'] = None
+    values = measure(source)['measurements']
+    assert all(values[key] is None for key in ('SS', 'PI', 'PT', 'L1PA', 'GLOBAL_SVA_PX'))
+    assert all(value is None for value in values['LL'].values())
+    assert values['C2C7_COBB'] is not None and values['C2C7_SVA_MM'] is not None
+
+
+def test_empty_standing_anatomy_contains_only_null_measurements():
+    values = measure({'region': 'full_spine', 'anterior_side': 'left'})['measurements']
+    assert all(value is None for key, value in values.items() if key not in ('region', 'LL'))
+    assert all(value is None for value in values['LL'].values())
+
+
+def test_standing_regional_measurements_preserve_existing_regional_definitions():
+    from backend.cervical_measurements import cervical_measurements_from_geometry
+    from backend.utils import spinopelvic_measurements_from_geometry
+    source = regional_geometry()
+    source['pixel_spacing'] = [2, .5]
+    result = measure(source)
+    lumbar = spinopelvic_measurements_from_geometry(
+        {level: body for level, body in source['vertebrae'].items() if level.startswith('L')},
+        source['s1_superior'], source['femoral_circles'])
+    cervical = cervical_measurements_from_geometry({**source, 'region': 'cervical',
+        'vertebrae': {level: body for level, body in source['vertebrae'].items() if level.startswith('C')}})
+    for key, value in lumbar['measurements'].items():
+        assert result['measurements'][key] == value
+    for key, value in cervical['measurements'].items():
+        if key != 'region':
+            assert result['measurements'][key] == value
+    assert result['geometry']['vertebrae'] == source['vertebrae']
+    assert result['qc']['lumbar']['angle_space'] == 'image'
+
+
+def test_all_standing_measurements_are_mirror_invariant_with_anatomical_endpoint_order():
+    source = regional_geometry()
+    mirrored = copy.deepcopy(source)
+    mirrored['anterior_side'] = 'right'
+    def point(value):
+        return [99-value[0], value[1]]
+    for key in ('c2_centroid', 'c7_centroid'):
+        mirrored[key] = point(mirrored[key])
+    mirrored['s1_superior'] = [point(p) for p in mirrored['s1_superior']]
+    for body in mirrored['vertebrae'].values():
+        for key, value in body.items():
+            if value is not None:
+                body[key] = [point(p) for p in value]
+    mirrored['femoral_circles'] = [[*point(c), c[2]] for c in mirrored['femoral_circles']]
+    actual, expected = measure(mirrored)['measurements'], measure(source)['measurements']
+    for key, value in expected.items():
+        if isinstance(value, dict):
+            assert actual[key] == pytest.approx(value)
+        elif isinstance(value, (int, float)):
+            assert actual[key] == pytest.approx(value)
+        else:
+            assert actual[key] == value
+
+
+@pytest.mark.parametrize('patch', [
+    {'c2_centroid': [100, 2]}, {'c2_centroid': [True, 2]},
+    {'femoral_circles': [[1, 2, 0]]}, {'femoral_circles': [[100, 2, 3]]},
+    {'femoral_circles': [[True, 2, 3]]}, {'l1_center': [1, 120]},
+])
+def test_regional_geometry_requires_finite_in_bounds_anatomical_points(patch):
+    with pytest.raises(ValueError):
+        measure({**regional_geometry(), **patch})

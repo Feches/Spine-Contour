@@ -1,4 +1,4 @@
-import { CERVICAL_HANDLES } from '../data/cervical.js';
+import { CERVICAL_HANDLES, CERVICAL_LEVELS } from '../data/cervical.js';
 import { GLOBAL_SVA_HANDLES } from '../data/global-sva.js';
 export const LEVELS = ['L1', 'L2', 'L3', 'L4', 'L5'];
 export const CORNERS = ['SA', 'SP', 'IA', 'IP'];
@@ -74,6 +74,11 @@ export function setLandmarkAt(geometry, level, corner, point) {
   else body.inferior[1] = point;
   body.quadrilateral = body.superior && body.inferior
     ? [body.superior[0], body.superior[1], body.inferior[1], body.inferior[0]] : null;
+  // Keep derived centroids on the edited body; direct centroid edits remain independent.
+  if (geometry.region === 'full_spine' && ['C7', 'L1'].includes(level) && body.quadrilateral) {
+    geometry[level === 'C7' ? 'c7_centroid' : 'l1_center'] = [0, 1]
+      .map(axis => body.quadrilateral.reduce((sum, p) => sum + p[axis], 0) / 4);
+  }
   return geometry;
 }
 
@@ -122,6 +127,7 @@ function updateHipMidpoint(geometry) {
 }
 
 export function setFemoralCircle(geometry, side, circle) {
+  geometry.femoral_circles ??= [];
   const index = side === 'left' ? 0 : 1;
   // Append only the next head: never create an array with an empty slot.
   if (index > geometry.femoral_circles.length) return geometry;
@@ -132,15 +138,19 @@ export function setFemoralCircle(geometry, side, circle) {
 
 export function removeFemoralCircle(geometry, side) {
   geometry.femoral_circles.splice(side === 'left' ? 0 : 1, 1);
-  if (!Object.keys(geometry.vertebrae).length && !geometry.s1_superior && !geometry.femoral_circles.length) {
+  if (!Object.keys(geometry.vertebrae ?? {}).length && !geometry.s1_superior && !geometry.femoral_circles.length) {
     geometry.manually_cleared = true;
   }
   return updateHipMidpoint(geometry);
 }
 
 export function landmarkHandles(geometry) {
-  return geometry?.region === 'cervical' ? CERVICAL_HANDLES : geometry?.region === 'full_spine' ? GLOBAL_SVA_HANDLES : [
+  const lumbar = [
     ...LEVELS.flatMap(level => CORNERS.map(corner => ({ kind: 'landmark', level, corner }))),
     ...['SA', 'SP'].map(corner => ({ kind: 'landmark', level: 'S1', corner })),
   ];
+  return geometry?.region === 'cervical' ? CERVICAL_HANDLES : geometry?.region === 'full_spine'
+    ? [{ kind: 'landmark', level: 'C2', corner: 'CENTROID' },
+      ...CERVICAL_LEVELS.flatMap(level => CORNERS.map(corner => ({ kind: 'landmark', level, corner }))),
+      ...GLOBAL_SVA_HANDLES.slice(0, 1), ...lumbar] : lumbar;
 }

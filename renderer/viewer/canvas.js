@@ -184,14 +184,14 @@ function beyondAnterior(sa, sp) {
 // Every selectedLevel value is handled explicitly; anything else has no label.
 export function constructionLabel(geometry, selectedLevel, measurements) {
   if (!geometry || !selectedLevel || !measurements) return null;
-  if (geometry.region === 'full_spine') {
-    if (selectedLevel !== 'GLOBAL_SVA' || !Number.isFinite(measurements.GLOBAL_SVA_PX)
+  if (geometry.region === 'full_spine' && selectedLevel === 'GLOBAL_SVA') {
+    if (!Number.isFinite(measurements.GLOBAL_SVA_PX)
         || !geometry.c7_centroid || !geometry.s1_superior?.[1]) return null;
     const mm = Number.isFinite(measurements.GLOBAL_SVA_MM);
     return { text: `C7–S1 SVA ${(mm ? measurements.GLOBAL_SVA_MM : measurements.GLOBAL_SVA_PX).toFixed(1)} ${mm ? 'mm' : 'px (uncalibrated)'}`,
       anchor: [geometry.c7_centroid[0], geometry.s1_superior[1][1]], side: 1 };
   }
-  if (geometry.region === 'cervical') {
+  if (['cervical', 'full_spine'].includes(geometry.region) && ['C2C7_COBB', 'C2C7_SVA'].includes(selectedLevel)) {
     if (selectedLevel === 'C2C7_COBB' && Number.isFinite(measurements.C2C7_COBB)) {
       return { text: `C2–C7 Cobb ${measurements.C2C7_COBB.toFixed(1)}°`,
         ...beyondAnterior(...geometry.vertebrae.C2.inferior) };
@@ -256,14 +256,14 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
   try {
     ctx.strokeStyle = STAGE_SELECTED_COLOR;
     ctx.lineWidth = Math.max(2, canvas.width / 400);
-    if (geometry.region === 'full_spine') {
+    if (geometry.region === 'full_spine' && selectedLevel === 'GLOBAL_SVA') {
       const c = geometry.c7_centroid, p = geometry.s1_superior[1];
       const foot = [c[0], p[1]];
       strokeReference(ctx, c, foot);
       ctx.beginPath(); ctx.moveTo(...foot); ctx.lineTo(...p); ctx.stroke();
       const tick = Math.max(4, canvas.width / 150);
       for (const x of [foot[0], p[0]]) { ctx.beginPath(); ctx.moveTo(x, p[1] - tick); ctx.lineTo(x, p[1] + tick); ctx.stroke(); }
-    } else if (geometry.region === 'cervical') {
+    } else if (['cervical', 'full_spine'].includes(geometry.region) && ['C2C7_COBB', 'C2C7_SVA'].includes(selectedLevel)) {
       if (selectedLevel === 'C2C7_COBB') {
         for (const level of ['C2', 'C7']) {
           const [a, p] = geometry.vertebrae[level].inferior;
@@ -458,7 +458,7 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
   const selectedLevel = opts.selectedLevel ?? null;
   const lineWidth = Math.max(2, canvas.width / 600);
   ctx.lineJoin = 'round';
-  for (const level of geometry.region === 'cervical' ? CERVICAL_LEVELS : geometry.region === 'full_spine' ? [] : LEVELS) {
+  for (const level of geometry.region === 'cervical' ? CERVICAL_LEVELS : geometry.region === 'full_spine' ? [...CERVICAL_LEVELS, ...LEVELS] : LEVELS) {
     const body = geometry.vertebrae?.[level];
     if (!body) continue;
     const selected = level === selectedLevel;

@@ -54,6 +54,11 @@ export function createMeasureQueue({ measure, getState, setState, showToast, deb
         femoral_circles: geometry.femoral_circles,
       });
       if (revision !== revisions.get(studyId)) return;
+      // Legacy lumbar /measure responses omit region. Preserve Auto's resolved
+      // type so an edit cannot turn a measured lumbar film back into an unknown film.
+      if (geometry.region === 'lumbar' && !result.geometry.region) {
+        result.geometry = { ...result.geometry, region: 'lumbar' };
+      }
       const current = getState().studies.find((item) => item.id === studyId);
       if (!current || current.addedAt !== study.addedAt) { discardDraft(studyId); return; }
       measured.set(studyId, result.geometry);

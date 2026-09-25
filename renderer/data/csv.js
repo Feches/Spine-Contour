@@ -32,7 +32,7 @@ export const CERVICAL_EXPORT_COLUMNS = ['C2-C7 Cobb (deg)', 'C2-C7 SVA (mm)', 'C
 export const GLOBAL_SVA_EXPORT_COLUMNS = ['C7-S1 SVA (mm)', 'C7-S1 SVA (px)'];
 export function exportMeasurementColumns(studies) {
   return [...MEASUREMENT_COLUMNS,
-    ...(studies.some(study => studyRegion(study) === 'cervical') ? CERVICAL_EXPORT_COLUMNS : []),
+    ...(studies.some(study => ['cervical', 'full_spine'].includes(studyRegion(study))) ? CERVICAL_EXPORT_COLUMNS : []),
     ...(studies.some(study => studyRegion(study) === 'full_spine') ? GLOBAL_SVA_EXPORT_COLUMNS : [])];
 }
 
@@ -83,7 +83,7 @@ function measurementValue(study, column) {
 // One value per MEASUREMENT_COLUMNS entry, rounded to one decimal, '' where absent. Exported for
 // data/pairing.js, which reads each film through it before merging a visit's films.
 export function measurementValues(study, columns = MEASUREMENT_COLUMNS) {
-  const lumbar = studyRegion(study) === 'lumbar';
+  const lumbar = ['lumbar', 'full_spine'].includes(studyRegion(study));
   const values = lumbar ? [...ANGULAR_COLUMNS.map(column => measurementValue(study, column)),
     ...discRows(study).flatMap(row => DISC_POSITIONS.map(position => round1(row[position])))]
     : MEASUREMENT_COLUMNS.map(() => '');

@@ -18,9 +18,9 @@ export function imageConfidence(study, pending = false) {
   if (studyRegion(study) === 'full_spine') {
     const scale = normalizeCalibration(study.calibration)?.spacing;
     return { label: 'Review recommended', tone: 'review', details: [
-      ...reasons, 'Verify C7 identification, its body centroid, and both S1 superior-endplate corners.',
+      ...reasons, 'Verify cervical and lumbar level identification, C2/C7 landmarks, S1 endplate and femoral heads.',
       `Anterior side: image ${g.anterior_side ?? 'unconfirmed'}.`,
-      scale ? `Calibration: ${calibrationSummary(study.calibration)}` : 'Image scale unavailable — C7–S1 SVA is shown in pixels only.',
+      scale ? `Calibration: ${calibrationSummary(study.calibration)}` : 'Image scale unavailable — SVA is shown in pixels only; disc heights require calibration.',
       explanation,
     ] };
   }

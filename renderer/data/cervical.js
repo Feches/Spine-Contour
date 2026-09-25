@@ -14,15 +14,21 @@ export const CERVICAL_COLUMNS = [
   { key: 'C2C7_SVA_MM', label: 'C2–C7 SVA (mm)', unit: 'mm' },
   { key: 'C2C7_SVA_PX', label: 'C2–C7 SVA (px)', unit: 'px' },
 ];
-export function studyRegion(study) {
-  return ['lumbar', 'cervical', 'full_spine'].includes(study?.region) ? study.region
+// The requested mode persists independently of the region resolved by prediction.
+export function requestedRegion(study) {
+  return ['auto', 'lumbar', 'cervical', 'full_spine'].includes(study?.region) ? study.region
     : ['cervical', 'full_spine'].includes(study?.geometry?.region) ? study.geometry.region : 'lumbar';
+}
+export function studyRegion(study) {
+  const requested = requestedRegion(study);
+  return requested === 'auto' && ['lumbar', 'cervical', 'full_spine'].includes(study?.geometry?.region)
+    ? study.geometry.region : requested;
 }
 export function studyRegionLabel(study) { return studyRegion(study).replace('_', ' '); }
 export function requiresAnteriorSide(study) { return studyRegion(study) !== 'lumbar'; }
 export function validAnteriorSide(side) { return side === 'left' || side === 'right'; }
 export function regionRunReason(study) {
-  return requiresAnteriorSide(study) && !validAnteriorSide(study.anteriorSide)
+  return requestedRegion(study) === 'cervical' && !validAnteriorSide(study.anteriorSide)
     ? `Choose the anterior side of this ${studyRegionLabel(study)} film (image left or image right) before segmentation.` : null;
 }
 const point = p => Array.isArray(p) && p.length === 2 && p.every(value => Number.isFinite(value) && value >= 0);
@@ -42,7 +48,7 @@ export function boundCalibration(geometry, value) {
 // from inference, and an explicit calibration clear must not resurrect those millimetres.
 export function cervicalMeasurements(study) {
   const empty = { region: 'cervical', C2C7_COBB: null, C2C7_SVA_PX: null, C2C7_SVA_MM: null };
-  if (studyRegion(study) !== 'cervical' || !study?.geometry) return empty;
+  if (!['cervical', 'full_spine'].includes(studyRegion(study)) || !study?.geometry) return empty;
   const g = study.geometry;
   const calibration = boundCalibration(g, study.calibration);
   const spacing = calibration?.spacing;
