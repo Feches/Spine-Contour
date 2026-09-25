@@ -5,7 +5,7 @@ import { normaliseView } from './timepoints.js';
 export function inferenceView(view) {
   if (typeof view !== 'string') return null;
   const label = view.trim().toLowerCase().replace(/[-_\s]+/g, ' ');
-  if (normaliseView(label) || ['lateral', 'lumbar lateral', 'lateral lumbar', 'cervical lateral', 'lateral cervical'].includes(label)) return 'lateral';
+  if (normaliseView(label) || ['lateral', 'lumbar lateral', 'lateral lumbar', 'cervical lateral', 'lateral cervical', 'full spine lateral', 'lateral full spine'].includes(label)) return 'lateral';
   return null;
 }
 

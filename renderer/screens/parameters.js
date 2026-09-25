@@ -312,7 +312,8 @@ export function mountParameters(host, { onOpen }) {
   }
 
   function buildGrid(live, visible) {
-    const columns = measurementColumns(live.paramLevels === true, visible.some(study => studyRegion(study) === 'cervical'));
+    const columns = measurementColumns(live.paramLevels === true, visible.some(study => studyRegion(study) === 'cervical'),
+      visible.some(study => studyRegion(study) === 'full_spine'));
     const fields = live.fields ?? [];
     const sort = { ...DEFAULT_SORT, ...(live.paramSort ?? {}) };
     const selected = live.paramSelected ?? [];

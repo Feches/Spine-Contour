@@ -94,7 +94,7 @@ function distanceToSegment(point, a, b) {
 }
 
 export function vertebraAt(geometry, point, radius = 20) {
-  if (geometry.region === 'cervical') return null; // cervical constructions are selected by measurement row
+  if (['cervical', 'full_spine'].includes(geometry.region)) return null; // alignment constructions are selected by measurement row
   for (const level of ['L1', 'L2', 'L3', 'L4', 'L5']) {
     const body = geometry.vertebrae?.[level];
     if (body && pointInPolygon(point, body.quadrilateral)) return level;
@@ -147,7 +147,7 @@ function sameStop(stop, current) {
 }
 
 export function nextSelection(current, direction, geometry) {
-  const full = geometry?.region === 'cervical' ? landmarkHandles(geometry) : FULL_ORDER;
+  const full = ['cervical', 'full_spine'].includes(geometry?.region) ? landmarkHandles(geometry) : FULL_ORDER;
   const order = geometry ? full.filter(stop => stop.kind === 'landmark'
     ? landmarkAt(geometry, stop.level, stop.corner) : femoralCircle(geometry, stop.side)) : full;
   if (!order.length) return null;

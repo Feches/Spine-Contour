@@ -1,4 +1,5 @@
 import { CERVICAL_HANDLES } from '../data/cervical.js';
+import { GLOBAL_SVA_HANDLES } from '../data/global-sva.js';
 export const LEVELS = ['L1', 'L2', 'L3', 'L4', 'L5'];
 export const CORNERS = ['SA', 'SP', 'IA', 'IP'];
 
@@ -44,6 +45,7 @@ export function fitCircle(points) {
 
 export function landmarkAt(geometry, level, corner) {
   if (level === 'C2' && corner === 'CENTROID') return geometry?.c2_centroid ?? null;
+  if (level === 'C7' && corner === 'CENTROID') return geometry?.c7_centroid ?? null;
   if (level === 'S1') return geometry?.s1_superior?.[corner === 'SA' ? 0 : 1] ?? null;
   const body = geometry?.vertebrae?.[level];
   if (!body) return null;
@@ -55,11 +57,12 @@ export function landmarkAt(geometry, level, corner) {
 
 export function setLandmarkAt(geometry, level, corner, point) {
   if (!landmarkAt(geometry, level, corner)) return geometry;
-  if (geometry.region === 'cervical') point = [
+  if (['cervical', 'full_spine'].includes(geometry.region)) point = [
     Math.max(0, Math.min((geometry.image_width ?? Infinity) - 1, point[0])),
     Math.max(0, Math.min((geometry.image_height ?? Infinity) - 1, point[1])),
   ];
   if (level === 'C2' && corner === 'CENTROID') { geometry.c2_centroid = point; return geometry; }
+  if (level === 'C7' && corner === 'CENTROID') { geometry.c7_centroid = point; return geometry; }
   if (level === 'S1') {
     geometry.s1_superior[corner === 'SA' ? 0 : 1] = point;
     return geometry;
@@ -136,7 +139,7 @@ export function removeFemoralCircle(geometry, side) {
 }
 
 export function landmarkHandles(geometry) {
-  return geometry?.region === 'cervical' ? CERVICAL_HANDLES : [
+  return geometry?.region === 'cervical' ? CERVICAL_HANDLES : geometry?.region === 'full_spine' ? GLOBAL_SVA_HANDLES : [
     ...LEVELS.flatMap(level => CORNERS.map(corner => ({ kind: 'landmark', level, corner }))),
     ...['SA', 'SP'].map(corner => ({ kind: 'landmark', level: 'S1', corner })),
   ];

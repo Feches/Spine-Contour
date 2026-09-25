@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add a separate full-spine workflow combining cervical and lumbar HRNET crop
+  searches for global C7–S1 SVA, with explicit orientation and crop-agreement checks.
+- Add its measurement construction, editable C7/S1 anchors, source-bound
+  calibration, persistence and CSV export. Keep cervical measurements separate.
+
 - Add cervical HRNET and its paired spine detector,
   with offline ONNX inference and explicit anterior-side selection.
 - Add C2–C7 inferior-endplate Cobb angle and C2–C7 sagittal vertical axis,

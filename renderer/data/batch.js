@@ -49,7 +49,7 @@ export function planBatch({ visible, selected, running }) {
     note = `${unsupported} unsupported ${unsupported === 1 ? 'view' : 'views'} excluded — choose a lateral view`;
     if (already) note += ` · ${already} already segmented`;
   }
-  if (unconfirmed && !running) note = `${note && (unsupported || already) ? `${note} · ` : ''}${unconfirmed} cervical films excluded — choose their anterior image side`;
+  if (unconfirmed && !running) note = `${note && (unsupported || already) ? `${note} · ` : ''}${unconfirmed} films excluded — choose their anterior image side`;
   return { ids, label, note, enabled: ids.length > 0 && !running };
 }
 

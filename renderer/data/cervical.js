@@ -15,18 +15,21 @@ export const CERVICAL_COLUMNS = [
   { key: 'C2C7_SVA_PX', label: 'C2–C7 SVA (px)', unit: 'px' },
 ];
 export function studyRegion(study) {
-  return study?.region === 'cervical' || study?.geometry?.region === 'cervical' ? 'cervical' : 'lumbar';
+  return ['lumbar', 'cervical', 'full_spine'].includes(study?.region) ? study.region
+    : ['cervical', 'full_spine'].includes(study?.geometry?.region) ? study.geometry.region : 'lumbar';
 }
+export function studyRegionLabel(study) { return studyRegion(study).replace('_', ' '); }
+export function requiresAnteriorSide(study) { return studyRegion(study) !== 'lumbar'; }
 export function validAnteriorSide(side) { return side === 'left' || side === 'right'; }
 export function regionRunReason(study) {
-  return studyRegion(study) === 'cervical' && !validAnteriorSide(study.anteriorSide)
-    ? 'Choose the anterior side of this cervical film (image left or image right) before segmentation.' : null;
+  return requiresAnteriorSide(study) && !validAnteriorSide(study.anteriorSide)
+    ? `Choose the anterior side of this ${studyRegionLabel(study)} film (image left or image right) before segmentation.` : null;
 }
 const point = p => Array.isArray(p) && p.length === 2 && p.every(value => Number.isFinite(value) && value >= 0);
 const endplate = p => Array.isArray(p) && p.length === 2 && p.every(point)
   && Math.hypot(p[1][0] - p[0][0], p[1][1] - p[0][1]) > 0;
 
-function boundCalibration(geometry, value) {
+export function boundCalibration(geometry, value) {
   const calibration = normalizeCalibration(value);
   if (!calibration) return null;
   if (geometry?.source_sha256 && calibration.source_sha256 !== geometry.source_sha256) return null;
