@@ -1,9 +1,10 @@
 {
   "name": "spine-contour",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "private": true,
   "description": "Automated measurements from radiographs.",
   "author": "Michael Jayasuriya",
+  "license": "AGPL-3.0-or-later",
   "main": "main.js",
   "scripts": {
     "dev": "electron .",

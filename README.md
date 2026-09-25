@@ -23,7 +23,7 @@ search and review requirements.
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.0.8 release notes](docs/releases/1.0.8.md) and
+[changelog](CHANGELOG.md), [v1.0.10 release notes](docs/releases/1.0.10.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
@@ -227,8 +227,9 @@ DICOM `PixelSpacing` preserves row and column spacing; detector-plane spacing is
 
 On **Studies**, select **Delete all studies**, then confirm the displayed count. This clears every study, including entries hidden by search, plus saved segmentation results; in a development build that includes the demo studies (a packaged build has none). Original radiograph files are kept. Demo studies remain hidden after restarting. The action is unavailable during segmentation or when the saved library cannot safely be written. If a saved result cannot be deleted, its study remains in the library and the app reports the failure.
 
+## License
 
-Copyright (C) 2026 Cody Woodhouse and Michael Jayasuriya 
+Copyright (C) 2026 Cody Woodhouse and Michael Jayasuriya
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by

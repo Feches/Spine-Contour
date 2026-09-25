@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.10
 
 - Automatically select cervical, lumbar or standing/full-spine processing for new
   imports, with manual region and anterior-side overrides and reviewable provenance.
@@ -11,13 +11,20 @@
   source-bound calibration, persistence and ordinary/paired CSV exports.
 - Compare cervical landmark chains across mirrored searches in the source frame
   to withhold inconsistent regional identities before measuring them.
-
+- Add a separate full-spine workflow combining cervical and lumbar HRNET crop
+  searches for global C7–S1 SVA, with explicit orientation and crop-agreement checks.
+- Add its measurement construction, editable C7/S1 anchors, source-bound
+  calibration, persistence and CSV export. Keep cervical measurements separate.
 - Add cervical HRNET and its paired spine detector,
   with offline ONNX inference and explicit anterior-side selection.
 - Add C2–C7 inferior-endplate Cobb angle and C2–C7 sagittal vertical axis,
   construction overlays, editable landmarks, persistence and CSV export.
 - Keep uncalibrated SVA in pixels; use the current image calibration for
   millimetres and for angles when row and column pixel spacing differ.
+- License the source under the GNU AGPL, version 3 or later: the complete text in `LICENSE`,
+  the notice in the README and the `license` field in `package.json`.
+
+[Release notes](docs/releases/1.0.10.md)
 
 ## 1.0.9
 
