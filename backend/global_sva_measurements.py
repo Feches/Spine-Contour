@@ -16,6 +16,13 @@ from numbers import Real
 
 import numpy as np
 
+try:
+    from .cervical_measurements import CERVICAL_LEVELS, cervical_measurements_from_geometry
+    from .utils import LUMBAR_LEVELS, spinopelvic_measurements_from_geometry
+except ImportError:
+    from cervical_measurements import CERVICAL_LEVELS, cervical_measurements_from_geometry
+    from utils import LUMBAR_LEVELS, spinopelvic_measurements_from_geometry
+
 
 def _numeric_array(value, shape, name):
     """Reject malformed coordinates, including booleans hidden in mixed lists."""
@@ -55,7 +62,7 @@ def _image_bounds(geometry):
 
 
 def global_sva_measurements_from_geometry(geometry: dict) -> dict:
-    """Return normalized geometry, global SVA measurements, and availability QC.
+    """Return global and regional measurements from one source-coordinate film.
 
     Required: region='full_spine' and explicit anterior_side='left' or 'right'.
     c7_centroid is one optional [x, y] point. s1_superior is an optional pair
@@ -79,6 +86,7 @@ def global_sva_measurements_from_geometry(geometry: dict) -> dict:
         raise ValueError("Global SVA landmarks must use original_image coordinates")
     bounds = _image_bounds(geometry)
     centroid = _points(geometry.get("c7_centroid"), (2,), "C7 centroid", bounds)
+    c2_centroid = _points(geometry.get("c2_centroid"), (2,), "C2 centroid", bounds)
     sacrum = _points(geometry.get("s1_superior"), (2, 2), "S1 superior", bounds)
     spacing = geometry.get("pixel_spacing")
     if spacing is not None:
@@ -93,6 +101,7 @@ def global_sva_measurements_from_geometry(geometry: dict) -> dict:
     normalized.update(
         coordinate_space="original_image",
         c7_centroid=None if centroid is None else centroid.tolist(),
+        c2_centroid=None if c2_centroid is None else c2_centroid.tolist(),
         s1_superior=None if sacrum is None else sacrum.tolist(),
         pixel_spacing=None if spacing is None else spacing.tolist(),
         spacing_source=None if spacing is None else geometry.get("spacing_source"),
@@ -109,7 +118,37 @@ def global_sva_measurements_from_geometry(geometry: dict) -> dict:
                 normalized_body[key] = None if points is None else points.tolist()
         normalized["vertebrae"][label] = normalized_body
 
-    measurements = {"region": "full_spine", "GLOBAL_SVA_PX": None, "GLOBAL_SVA_MM": None}
+    # These are independent regional inputs: missing neck, sacrum or hips must
+    # not suppress measurements supported by the remaining anatomy.
+    circles = geometry.get("femoral_circles")
+    if circles is None:
+        circles = []
+    if (not isinstance(circles, (list, tuple, np.ndarray))
+            or (isinstance(circles, np.ndarray) and circles.ndim == 0) or len(circles) > 2):
+        raise ValueError("femoral_circles must contain zero, one or two circles")
+    normalized_circles = []
+    for circle in circles:
+        values = _numeric_array(circle, (3,), "Femoral circle")
+        _points(values[:2], (2,), "Femoral circle center", bounds)
+        if values[2] <= 0:
+            raise ValueError("Femoral circle radius must be positive")
+        normalized_circles.append(values.tolist())
+    l1_center = _points(geometry.get("l1_center"), (2,), "L1 center", bounds)
+    cervical_geometry = {
+        **normalized, "region": "cervical",
+        "vertebrae": {level: body for level, body in normalized["vertebrae"].items()
+                      if level in CERVICAL_LEVELS},
+    }
+    cervical = cervical_measurements_from_geometry(cervical_geometry)
+    lumbar_bodies = {level: body for level, body in normalized["vertebrae"].items()
+                     if level in LUMBAR_LEVELS}
+    lumbar = spinopelvic_measurements_from_geometry(
+        lumbar_bodies, sacrum, normalized_circles, l1_center, allow_empty=True)
+    for key in ("femoral_circles", "hip_midpoint", "l1_center"):
+        normalized[key] = lumbar["geometry"][key]
+
+    measurements = {**lumbar["measurements"], **cervical["measurements"],
+                    "region": "full_spine", "GLOBAL_SVA_PX": None, "GLOBAL_SVA_MM": None}
     if centroid is not None and sacrum is not None:
         direction = -1 if side == "left" else 1
         pixels = float(direction * (centroid[0] - sacrum[1, 0]))
@@ -125,13 +164,21 @@ def global_sva_measurements_from_geometry(geometry: dict) -> dict:
     reasons = [f"{name} is missing; global SVA is unavailable." for name in missing]
     if spacing is None:
         reasons.append("Image scale is unavailable; global SVA in millimetres is unavailable.")
+    regional_coverage = [cervical["qc"]["coverage"], lumbar["qc"]["coverage"]]
+    available = [name for name, value in anchors.items() if value is not None]
+    all_missing = missing.copy()
+    for coverage in regional_coverage:
+        available.extend(name for name in coverage["available"] if name not in available)
+        all_missing.extend(name for name in coverage["missing"] if name not in all_missing)
     return {
         "geometry": normalized,
         "measurements": measurements,
         "qc": {
-            "coverage": {"partial": bool(missing),
-                         "available": [name for name, value in anchors.items() if value is not None],
-                         "missing": missing, "unoriented": []},
+            "coverage": {"partial": bool(all_missing), "available": available,
+                         "missing": all_missing, "unoriented": []},
+            "cervical": {**cervical["qc"]["cervical"], "coverage": cervical["qc"]["coverage"]},
+            "lumbar": {"coverage": lumbar["qc"]["coverage"],
+                       "angle_space": "image"},
             "global_sva": {"status": "incomplete" if missing else "uncalibrated" if spacing is None else "available",
                            "review_required": bool(reasons), "review_reasons": reasons,
                            "upper_reference": "C7 centroid", "lower_reference": "S1 posterosuperior corner",

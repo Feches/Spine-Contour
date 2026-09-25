@@ -1,10 +1,19 @@
 # Global C7–S1 sagittal vertical axis
 
-Select **Full spine · HRNET** for a study, or assign **Full spine** to a workspace
-folder. Use a lateral radiograph showing both C7 and S1. The original-image preview
-is available before processing; explicitly choose whether anterior is on image
-left or image right. The cervical workflow remains separate and continues to
-measure C2–C7 Cobb and C2–C7 SVA.
+Use **Auto detect** or select **Full spine · HRNET** for a study; workspace folders
+offer the same choices. Use a lateral radiograph showing both C7 and S1. The
+original-image preview is available before processing. Orientation defaults to
+automatic comparison of anterior-left and anterior-right hypotheses. If the
+evidence cannot distinguish them, select a side manually and retry. An explicit
+left/right choice always overrides detection; no rotation is applied.
+
+Standing-film results include the available C2–C7 Cobb and SVA, lumbar lordosis,
+sacral slope, pelvic incidence, pelvic tilt, L1 pelvic angle and derived disc
+heights alongside global SVA. Measurements use the same regional definitions as
+the cervical and lumbar workflows. Missing regional landmarks leave only the
+dependent measurements unavailable. In particular, PI/PT/L1PA require reliable
+femoral geometry; the existing femoral model and fitting checks run in the
+accepted lumbar crop.
 
 Global SVA is the horizontal displacement of the **C7 body centroid** from the
 **S1 superior-posterior corner**. Positive values indicate anterior displacement.
@@ -13,7 +22,9 @@ film to make the spine upright. The overlay shows the C7 plumb line and its
 horizontal distance to the posterior S1 corner.
 
 Review C7 identity, its body centroid, and both S1 superior-endplate corners. In
-edit mode, drag those three handles or use Tab and the arrow keys. Corrections
+edit mode, drag those handles or the regional endplate and femoral handles, or use
+Tab and the arrow keys. Moving a C7 body corner updates its centroid; the centroid
+can also be corrected directly. Corrections
 recalculate the result and are saved with the study. Reset restores the original
 prediction. Missing landmarks leave the measurement unavailable; no replacement
 landmark is invented.
@@ -30,11 +41,16 @@ columns. An unavailable millimetre value is blank, never inferred from pixels.
 
 ## Integration contract
 
-Prediction requests use `bodyPart: 'full_spine'`, `models.vertebrae: 'dual_hrnet'`
-and an explicit `anteriorSide`. Geometry uses `region: 'full_spine'`,
+Explicit full-spine prediction requests use `bodyPart: 'full_spine'` and
+`models.vertebrae: 'dual_hrnet'`; `anteriorSide` can be omitted/`auto`, `left` or
+`right`. Automatic region requests use `bodyPart: 'auto'` without model overrides.
+Geometry uses the resolved `region: 'full_spine'`,
 `anterior_side`, `c7_centroid`, and `s1_superior` ordered anterior then posterior.
 Landmarks remain in original-image coordinates with source dimensions and digest.
-Measurements use `GLOBAL_SVA_PX` and `GLOBAL_SVA_MM`.
+Geometry also retains `c2_centroid`, C2–C7 and L1–L5 entries in `vertebrae`, and
+available `femoral_circles`, `hip_midpoint` and `l1_center`. Measurements include
+`GLOBAL_SVA_PX`/`GLOBAL_SVA_MM`, `C2C7_*`, `LL`, `SS`, `PI`, `PT` and `L1PA`.
+The same combined contract is used by `/measure`, persistence and export.
 
 The upper-image search runs cervical DETR and HRNET over overlapping crops. The
 lower-image search uses the sliding S1 localizer and lumbar HRNET over translated

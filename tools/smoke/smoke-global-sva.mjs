@@ -13,7 +13,7 @@ import { connect, quitApp } from './cdp-lib.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const out = path.join(root, 'tools/smoke/out/global-sva');
-const profile = '/tmp/spine-contour-global-sva-ui-20260923';
+const profile = '/tmp/spine-contour-combined-film-ui-20260925';
 const port = process.env.CDP_PORT || '9247';
 const source = path.join(out, 'synthetic-full-spine.png');
 const id = 'SP-9901';
@@ -83,13 +83,22 @@ try {
     return [...e.options].some(o=>o.value==='full_spine'&&o.text==='Full spine · HRNET')&&[...e.options].some(o=>o.value==='cervical');
   })()`));
   await cdp.evaluate("(()=>{const e=document.querySelector('[aria-label=\"Spine region\"]');e.value='full_spine';e.dispatchEvent(new Event('change',{bubbles:true}));})()");
-  check('full spine requires an explicit anterior side before any inference', await cdp.evaluate(`import('./renderer/screens/analysis.js').then(m=>m.segmentStudy('${id}')).then(r=>!r.ok&&r.reason.includes('anterior'))`));
+  check('standing-film orientation offers automatic detection', await cdp.evaluate(`(()=>{
+    const e=document.querySelector('[aria-label="Full spine anterior image side"]');
+    return e&&[...e.options].some(o=>o.value===''&&o.textContent.includes('Auto'));
+  })()`));
   await until("document.querySelector('.viewer-canvas-dynamic')?.width===600 && document.querySelector('.run-card')?.classList.contains('is-hidden')");
   check('synthetic original is previewed without invented measurements', await cdp.evaluate(`import('./renderer/store.js').then(m=>m.getState().studies[0].geometry===null)`));
   await cdp.evaluate("(()=>{const e=document.querySelector('[aria-label=\"Full spine anterior image side\"]');e.value='left';e.dispatchEvent(new Event('change',{bubbles:true}));})()");
   const initial = await cdp.evaluate(`(async()=>{
     const api=await import('./renderer/api.js');const {getState,setState}=await import('./renderer/store.js');
-    const geometry={region:'full_spine',anterior_side:'left',c7_centroid:[270,340],s1_superior:[[220,1050],[340,1050]],
+    const body=(x,y)=>({superior:[[x-40,y],[x+40,y+4]],inferior:[[x-40,y+35],[x+40,y+39]],
+      quadrilateral:[[x-40,y],[x+40,y+4],[x+40,y+39],[x-40,y+35]]});
+    const vertebrae={C2:{superior:null,inferior:[[230,100],[310,105]],quadrilateral:null}};
+    for(let level=3;level<=7;level++)vertebrae['C'+level]=body(270,120+(level-3)*50);
+    for(let level=1;level<=5;level++)vertebrae['L'+level]=body(280,600+(level-1)*85);
+    const geometry={region:'full_spine',anterior_side:'left',c2_centroid:[270,80],c7_centroid:[270,340],
+      vertebrae,femoral_circles:[[250,1110,35],[320,1110,35]],s1_superior:[[220,1050],[340,1050]],
       image_width:600,image_height:1200,source_sha256:'${digest}',coordinate_space:'original_image',pixel_spacing:null};
     const measured=await window.spineContour.measure(geometry);
     const calibration={version:1,source_sha256:'${digest}',width:600,height:1200,coordinate_space:'original_image',
@@ -103,15 +112,17 @@ try {
     return response.measurements;
   })()`);
   check('real backend measures synthetic C7–S1 displacement as 70 pixels', initial.GLOBAL_SVA_PX === 70 && initial.GLOBAL_SVA_MM === null);
+  check('standing film also returns cervical and lumbar parameters',
+    Number.isFinite(initial.C2C7_COBB)&&Number.isFinite(initial.C2C7_SVA_PX)&&Number.isFinite(initial.LL['L1-S1'])&&Number.isFinite(initial.PI));
   await until(`import('./renderer/api.js').then(m=>m.loadStudies()).then(rows=>rows.some(s=>s.id==='${id}'&&s.predictionId==='synthetic-global-sva'&&s.measurements?.GLOBAL_SVA_PX===70))`);
   await openSavedStudy();
-  check('saved sidecar restores only the global SVA row', await cdp.evaluate("document.querySelector('[data-row-key=\"GLOBAL_SVA\"]')&&!document.querySelector('[data-row-key=\"C2C7_SVA\"]')&&!document.querySelector('[data-row-key=\"LL\"]')"));
+  check('saved sidecar restores global, cervical and lumbar rows together', await cdp.evaluate("document.querySelector('[data-row-key=\"GLOBAL_SVA\"]')&&document.querySelector('[data-row-key=\"C2C7_SVA\"]')&&document.querySelector('[data-row-key=\"LL\"]')"));
   check('global overlay is labelled with explicit uncalibrated pixels', await cdp.evaluate("document.querySelector('.viewer-label')?.textContent.includes('C7–S1 SVA 70.0 px')"));
   await cdp.screenshot(path.join(out, 'synthetic-global-sva.png'));
   await cdp.setState('{editing:true,selection:null,panMode:false}');
   await cdp.send('Page.bringToFront');
   await wait(250);
-  check('femoral editing controls are hidden for full spine', await cdp.evaluate("[...document.querySelectorAll('.viewer-editbar .viewer-tool.is-hidden')].length===4&&[...document.querySelectorAll('.viewer-editbar .viewer-tool.is-hidden')].every(e=>e.getClientRects().length===0)"));
+  check('femoral editing controls are available for standing-film pelvic measures', await cdp.evaluate("document.querySelectorAll('.viewer-editbar .viewer-tool.is-hidden').length===0"));
   const c7 = await cdp.toClient(270, 340); await cdp.click(c7.x, c7.y);
   check('C7 centroid is selectable for editing', await cdp.evaluate("import('./renderer/store.js').then(m=>m.getState().selection?.level==='C7'&&m.getState().selection?.corner==='CENTROID')"));
   await cdp.key('ArrowRight');

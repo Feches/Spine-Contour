@@ -2,10 +2,15 @@
 
 ## Unreleased
 
-- Add a separate full-spine workflow combining cervical and lumbar HRNET crop
-  searches for global C7–S1 SVA, with explicit orientation and crop-agreement checks.
-- Add its measurement construction, editable C7/S1 anchors, source-bound
-  calibration, persistence and CSV export. Keep cervical measurements separate.
+- Automatically select cervical, lumbar or standing/full-spine processing for new
+  imports, with manual region and anterior-side overrides and reviewable provenance.
+- Detect standing-film anterior orientation using lumbar/S1 evidence from both
+  image directions; ask for a manual side when evidence is ambiguous.
+- Return cervical, lumbar and available pelvic measurements alongside global
+  C7–S1 SVA on standing films. Preserve regional landmarks through editing,
+  source-bound calibration, persistence and ordinary/paired CSV exports.
+- Compare cervical landmark chains across mirrored searches in the source frame
+  to withhold inconsistent regional identities before measuring them.
 
 - Add cervical HRNET and its paired spine detector,
   with offline ONNX inference and explicit anterior-side selection.

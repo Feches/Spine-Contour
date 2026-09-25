@@ -75,7 +75,9 @@ def test_full_spine_dispatch_uses_original_image_calibration_and_its_own_measure
     result, events = result_from(response, route)
     assert len(observed) == 1 and observed[0][0].shape == (120, 100)
     assert observed[0][1:] == ("left", "dual_hrnet")
-    assert result["measurements"] == {"region": "full_spine", "GLOBAL_SVA_PX": 10, "GLOBAL_SVA_MM": 2.5}
+    assert result["measurements"]["region"] == "full_spine"
+    assert result["measurements"]["GLOBAL_SVA_PX"] == 10
+    assert result["measurements"]["GLOBAL_SVA_MM"] == 2.5
     assert result["geometry"]["c7_centroid"] == [30, 10]
     assert result["geometry"]["s1_superior"] == [[20, 80], [40, 90]]
     assert result["geometry"]["pixel_spacing"] == [2, .25]
@@ -99,7 +101,7 @@ def test_full_spine_dispatch_uses_original_image_calibration_and_its_own_measure
 
 @pytest.mark.parametrize("route", ["/predict", "/predict-stream"])
 @pytest.mark.parametrize("invalid", [
-    {"anterior_side": ""}, {"anterior_side": "unknown"}, {"modality": "CT"}, {"view": "AP"},
+    {"anterior_side": "unknown"}, {"modality": "CT"}, {"view": "AP"},
     {"laterality": "AP"}, {"vertebra_model": "hrnet"}, {"vertebra_model": "cervical_hrnet"},
     {"femoral_model": "unet"}, {"s1_model": "keypointrcnn"},
 ])
@@ -124,8 +126,11 @@ def test_missing_landmarks_return_partial_results_instead_of_fabricated_values(m
     }, files={"file": ("synthetic.png", upload(), "image/png")})
     result, _ = result_from(response, route)
     assert observed[0][1:] == ("right", "dual_hrnet")
-    assert result["measurements"] == {"region": "full_spine", "GLOBAL_SVA_PX": None, "GLOBAL_SVA_MM": None}
-    assert result["qc"]["coverage"]["missing"] == ["C7 centroid", "S1 superior"]
+    assert result["measurements"]["GLOBAL_SVA_PX"] is None
+    assert result["measurements"]["GLOBAL_SVA_MM"] is None
+    assert {"C7 centroid", "S1 superior"} <= set(result["qc"]["coverage"]["missing"])
+    assert result["measurements"]["C2C7_COBB"] is None
+    assert result["measurements"]["PI"] is None
     assert result["qc"]["global_sva"]["review_required"] is True
 
 
@@ -177,7 +182,8 @@ def test_measure_global_sva_edits_anchors_and_respects_current_scale_clear():
     edited.update(pixel_spacing=None, spacing_source=None)
     response = client.post("/measure", json=edited)
     assert response.status_code == 200
-    assert response.json()["measurements"] == {"region": "full_spine", "GLOBAL_SVA_PX": -5, "GLOBAL_SVA_MM": None}
+    assert response.json()["measurements"]["GLOBAL_SVA_PX"] == -5
+    assert response.json()["measurements"]["GLOBAL_SVA_MM"] is None
     edited["s1_superior"] = None
     assert client.post("/measure", json=edited).json()["measurements"]["GLOBAL_SVA_PX"] is None
     edited["c7_centroid"] = [100, 10]

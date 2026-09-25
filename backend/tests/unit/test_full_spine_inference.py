@@ -10,6 +10,12 @@ from backend import runtime
 from backend.models import full_spine as full
 
 
+@pytest.fixture(autouse=True)
+def no_model_femoral_inference(monkeypatch):
+    monkeypatch.setattr(full, '_femoral_region', lambda raw, pelvis:
+                        (np.zeros(raw.shape, np.uint8), [], {'qc_pass': False}))
+
+
 def candidate(x, y=300, score=.9, scale=20):
     return {"anchor": np.array([x, y], float), "scale": scale, "score": score}
 
@@ -82,10 +88,11 @@ def synthetic_regions():
     pelvis = []
     for dx in (-1, 0, 1):
         points = np.vstack(([[90, 70], [110, 70], [100, 60]], body_chain())) + [dx, 0]
-        neck.append({**candidate(100+dx, 227.5), 'points': points, 'window': (10, 20, 300, 450)})
+        neck.append({**candidate(100+dx, 227.5), 'points': points, 'window': (10+dx, 20, 300+dx, 450)})
         plate = np.array([[140+dx, 850], [180+dx, 845]], float)
+        lumbar_points = np.vstack((body_chain()*2 + [dx, 350], plate))
         pelvis.append({**candidate(180+dx, 845, scale=40), 'endplate': plate,
-                       'window': (20, 600, 400, 990)})
+                       'points': lumbar_points, 'window': (20, 600, 400, 990)})
     return neck, pelvis
 
 
@@ -94,15 +101,20 @@ def test_full_pipeline_keeps_source_frame_and_separate_global_contract(monkeypat
     seen = []
     def cervical(image):
         seen.append(image.copy())
-        return neck, {'windows': 3}
+        values = neck if image[0, 0] < image[0, -1] else [full._mirror_cervical_candidate(c, 500) for c in neck]
+        return values, {'windows': 3}
     monkeypatch.setattr(full, '_cervical_candidates', cervical)
     monkeypatch.setattr(full, '_lumbar_candidates', lambda image: (pelvis, {'windows': 3}))
     image = np.tile(np.arange(500, dtype=np.uint16), (1000, 1))
     left = full.full_spine_prediction(image, 'left')
     right = full.full_spine_prediction(image[:, ::-1], 'right')
-    np.testing.assert_array_equal(seen[0], seen[1])
+    np.testing.assert_array_equal(seen[0], seen[2])
+    np.testing.assert_array_equal(seen[1], seen[3])
     g = left['landmarks']; mirror = right['landmarks']
-    assert g['region'] == 'full_spine' and 'c2_centroid' not in g
+    assert g['region'] == 'full_spine' and g['c2_centroid'] == [100, 60]
+    assert set(g['vertebrae']) == {*(f'C{i}' for i in range(2, 8)), *(f'L{i}' for i in range(1, 6))}
+    assert mirror['c2_centroid'] == [399, 60]
+    assert mirror['vertebrae']['L1']['superior'] == [[319, 550], [279, 552]]
     assert g['c7_centroid'] == [100, 227.5] and g['s1_superior'][1] == [180, 845]
     assert mirror['c7_centroid'] == [399, 227.5] and mirror['s1_superior'][1] == [319, 845]
     assert right['framing']['cervical_window'] == [200, 20, 490, 450]
@@ -113,7 +125,8 @@ def test_full_pipeline_keeps_source_frame_and_separate_global_contract(monkeypat
 
 def test_missing_region_withholds_only_its_anchor(monkeypatch):
     neck, _ = synthetic_regions()
-    monkeypatch.setattr(full, '_cervical_candidates', lambda image: (neck, {}))
+    batches = iter((neck, [full._mirror_cervical_candidate(c, 500) for c in neck]))
+    monkeypatch.setattr(full, '_cervical_candidates', lambda image: (next(batches), {}))
     monkeypatch.setattr(full, '_lumbar_candidates', lambda image: ([], {}))
     result = full.full_spine_prediction(np.zeros((1000, 500), np.uint8), 'left')
     assert result['landmarks']['c7_centroid'] is not None
@@ -123,15 +136,16 @@ def test_missing_region_withholds_only_its_anchor(monkeypatch):
 def test_reversed_regions_cannot_define_global_sva(monkeypatch):
     neck, pelvis = synthetic_regions()
     for item in pelvis: item['anchor'][1] = 210
-    monkeypatch.setattr(full, '_cervical_candidates', lambda image: (neck, {}))
+    batches = iter((neck, [full._mirror_cervical_candidate(c, 500) for c in neck]))
+    monkeypatch.setattr(full, '_cervical_candidates', lambda image: (next(batches), {}))
     monkeypatch.setattr(full, '_lumbar_candidates', lambda image: (pelvis, {}))
     result = full.full_spine_prediction(np.zeros((1000, 500), np.uint8), 'left')
-    assert result['landmarks']['c7_centroid'] is None and result['landmarks']['s1_superior'] is None
-    assert result['framing']['lumbar']['status'] == 'incompatible_region_order'
+    assert result['landmarks']['c7_centroid'] is None and result['landmarks']['s1_superior'] is not None
+    assert result['framing']['cervical']['status'] == 'incompatible_region_order'
 
 
-@pytest.mark.parametrize('side', [None, 'auto', '', 'posterior'])
-def test_explicit_anterior_required_before_models_run(monkeypatch, side):
+@pytest.mark.parametrize('side', ['posterior', 'LEFT'])
+def test_invalid_anterior_rejected_before_models_run(monkeypatch, side):
     monkeypatch.setattr(full.models, '_infer', lambda *a: pytest.fail('must not infer'))
     with pytest.raises(ValueError, match='anterior'):
         full.full_spine_prediction(np.zeros((100, 100), np.uint8), side)
@@ -174,3 +188,173 @@ def test_consensus_cannot_favor_inflated_predicted_body_width():
     values = [candidate(100, scale=30), candidate(104), candidate(109)]
     selected, _ = full.select_consensus(values)
     assert selected is values[1]
+
+
+def test_global_anchor_agreement_cannot_validate_disagreeing_regional_landmarks():
+    neck, _ = synthetic_regions()
+    neck[0]['points'][0, 1] += 60
+    neck[2]['points'][0, 1] -= 60
+    selected, qc = full.select_consensus(neck)
+    assert selected is None
+    assert qc['status'] == 'insufficient_agreement'
+
+
+def orientation_evidence(side, regions):
+    neck, pelvis = synthetic_regions()
+    return {'anterior_side': side, 'neck': neck[1] if 'cervical' in regions else None,
+            'pelvis': pelvis[1] if 'lumbar' in regions else None,
+            'neck_qc': {'support': 3, 'status': 'accepted'},
+            'pelvis_qc': {'support': 3, 'status': 'accepted'},
+            'neck_search': {}, 'pelvis_search': {}}
+
+
+@pytest.mark.parametrize('side', ['left', 'right'])
+def test_automatic_orientation_reuses_both_hypotheses_and_preserves_source_pixels(monkeypatch, side):
+    other = 'left' if side == 'right' else 'right'
+    evidence = {side: orientation_evidence(side, ['cervical', 'lumbar']),
+                other: orientation_evidence(other, [])}
+    monkeypatch.setattr(full, 'search_orientation', lambda *args: pytest.fail('must reuse searches'))
+    source = np.tile(np.arange(500, dtype=np.uint16), (1000, 1))
+    result = full.full_spine_prediction(source, detection_evidence=evidence)
+    assert result['landmarks']['anterior_side'] == side
+    assert result['landmarks']['c7_centroid'] == [399 if side == 'right' else 100, 227.5]
+    assert result['framing']['orientation']['status'] == 'accepted'
+    assert result['provenance']['anterior_side_source'] == 'automatic'
+    assert result['image'].shape == source.shape
+
+
+@pytest.mark.parametrize('regions', [[], ['cervical'], ['cervical', 'lumbar']])
+def test_automatic_orientation_withholds_ambiguous_hypotheses(regions):
+    evidence = {side: orientation_evidence(side, regions) for side in ('left', 'right')}
+    # More overlapping detections or detector confidence is not orientation proof.
+    evidence['left']['neck_qc']['support'] = 12
+    with pytest.raises(ValueError, match='orientation is uncertain'):
+        full.full_spine_prediction(np.zeros((1000, 500), np.uint8), 'auto', detection_evidence=evidence)
+
+
+@pytest.mark.parametrize('left_regions,right_regions', [
+    (['cervical'], []), ([], ['cervical']),
+    (['cervical', 'lumbar'], ['lumbar']), (['lumbar'], ['cervical', 'lumbar']),
+])
+def test_cervical_repeatability_cannot_independently_prove_anterior(left_regions, right_regions):
+    selected, qc = full.select_orientation({
+        'left': orientation_evidence('left', left_regions),
+        'right': orientation_evidence('right', right_regions)})
+    assert selected is None and qc['status'] == 'ambiguous'
+
+
+def test_blank_anterior_is_automatic():
+    evidence = {'left': orientation_evidence('left', ['cervical', 'lumbar']),
+                'right': orientation_evidence('right', [])}
+    result = full.full_spine_prediction(np.zeros((1000, 500), np.uint8), '', detection_evidence=evidence)
+    assert result['landmarks']['anterior_side'] == 'left'
+    assert result['provenance']['anterior_side_source'] == 'automatic'
+
+
+def test_manual_orientation_overrides_automatic_evidence_without_search(monkeypatch):
+    evidence = {side: orientation_evidence(side, ['cervical', 'lumbar']) for side in ('left', 'right')}
+    monkeypatch.setattr(full, 'search_orientation', lambda *args: pytest.fail('must reuse selected side'))
+    result = full.full_spine_prediction(np.zeros((1000, 500), np.uint8), 'right', detection_evidence=evidence)
+    assert result['landmarks']['anterior_side'] == 'right'
+    assert result['framing']['orientation']['status'] == 'user_selected'
+    assert result['provenance']['anterior_side_source'] == 'user'
+
+
+def test_femoral_circle_centres_and_mask_return_to_source_frame(monkeypatch):
+    def femoral(raw, pelvis):
+        mask = np.zeros(raw.shape, np.uint8)
+        mask[920, 200] = 1
+        return mask, [[200, 920, 20], [225, 925, 22]], {'qc_pass': True}
+    monkeypatch.setattr(full, '_femoral_region', femoral)
+    result = full.full_spine_prediction(np.zeros((1000, 500), np.uint8), 'right',
+              detection_evidence={'right': orientation_evidence('right', ['cervical', 'lumbar'])})
+    assert result['landmarks']['femoral_circles'] == [[299, 920, 20], [274, 925, 22]]
+    assert result['femoral_mask'][920, 299] == 1
+    assert result['femoral_mask'].sum() == 1
+
+
+def neck_searches(left, right):
+    return {'left': {**orientation_evidence('left', []), 'neck_candidates': left},
+            'right': {**orientation_evidence('right', []), 'neck_candidates': right}}
+
+
+def test_mirroring_cervical_points_preserves_image_sided_labels_and_is_involutive():
+    neck, _ = synthetic_regions()
+    source = neck[1]
+    mirrored = full._mirror_cervical_candidate(source, 500)
+    assert mirrored['points'][:3].tolist() == [[389, 70], [409, 70], [399, 60]]
+    assert mirrored['points'][3:7].tolist() == [[389, 101], [409, 100], [389, 115], [409, 114]]
+    restored = full._mirror_cervical_candidate(mirrored, 500)
+    np.testing.assert_array_equal(restored['points'], source['points'])
+    np.testing.assert_array_equal(restored['anchor'], source['anchor'])
+    assert restored['window'] == source['window']
+
+
+def test_shared_cervical_consensus_cannot_change_vertebral_identity_with_orientation():
+    neck, _ = synthetic_regions()
+    searches = neck_searches(neck[:2], [full._mirror_cervical_candidate(neck[2], 500)])
+    result = full.reconcile_cervical_searches(np.zeros((1000, 500), np.uint8), searches)
+    left, right = result['left'], result['right']
+    assert left['neck_qc']['support'] == 3
+    assert left['neck_qc']['orientation_support'] == ['left', 'right']
+    source_right = full._mirror_cervical_candidate(right['neck'], 500)
+    np.testing.assert_array_equal(source_right['points'], left['neck']['points'])
+
+
+def test_cervical_chain_from_only_one_mirror_is_withheld():
+    neck, _ = synthetic_regions()
+    result = full.reconcile_cervical_searches(np.zeros((1000, 500), np.uint8), neck_searches(neck, []))
+    assert all(value['neck'] is None for value in result.values())
+    assert result['left']['neck_qc']['status'] == 'unconfirmed_across_mirrors'
+
+
+def test_conflicting_same_crop_cannot_supply_false_cross_mirror_corroboration():
+    neck, _ = synthetic_regions()
+    conflict = full._mirror_cervical_candidate(neck[0], 500)
+    conflict['points'][0, 1] += 100
+    result = full.reconcile_cervical_searches(np.zeros((1000, 500), np.uint8),
+                                             neck_searches(neck[:2], [conflict]))
+    assert all(value['neck'] is None for value in result.values())
+    assert result['left']['neck_qc']['conflicted_source_crops'] == 1
+    assert result['left']['neck_qc']['support'] == 1
+
+
+def test_duplicate_mirror_crop_cannot_inflate_spatial_support():
+    neck, _ = synthetic_regions()
+    result = full.reconcile_cervical_searches(np.zeros((1000, 500), np.uint8),
+              neck_searches(neck[:1], [full._mirror_cervical_candidate(neck[0], 500)]))
+    assert result['left']['neck'] is None
+    assert result['left']['neck_qc']['candidates'] == 1
+
+
+def test_explicit_orientation_still_checks_cervical_identity_in_opposite_mirror(monkeypatch):
+    neck, _ = synthetic_regions()
+    seen = []
+    def opposite(raw):
+        seen.append(raw)
+        return [full._mirror_cervical_candidate(c, 500) for c in neck], {}
+    monkeypatch.setattr(full, '_cervical_candidates', opposite)
+    result = full.reconcile_cervical_searches(np.zeros((1000, 500), np.uint8),
+              {'left': {**orientation_evidence('left', []), 'neck_candidates': neck}})
+    assert len(seen) == 1 and result['left']['neck'] is not None
+
+
+def test_reversed_anatomical_s1_labels_cannot_be_sorted_into_orientation_agreement(monkeypatch):
+    from types import SimpleNamespace
+    plate = np.array([[90, 270], [110, 270]], float)
+    points = np.vstack((body_chain(), plate))
+    window = (0, 0, 500, 1000)
+    monkeypatch.setattr(full.framing, 'locate', lambda *args: {'window': window})
+    monkeypatch.setattr(full, 'lumbar_windows', lambda *args: [window])
+    monkeypatch.setattr(full.framing, 'prepare_crop', lambda *args:
+                        (np.zeros((768, 768), np.uint8), SimpleNamespace(restore_points=lambda value: value)))
+    class Session:
+        def run(self, *args):
+            return [points[None]]
+    monkeypatch.setattr(full.models, '_infer', lambda kind, operation, message: operation(Session()))
+    monkeypatch.setattr(full.models, '_score_s1', lambda images: [(.9, plate)])
+    accepted, _ = full._lumbar_candidates(np.zeros((1000, 500), np.uint8))
+    assert len(accepted) == 1
+    monkeypatch.setattr(full.models, '_score_s1', lambda images: [(.9, plate[::-1])])
+    rejected, _ = full._lumbar_candidates(np.zeros((1000, 500), np.uint8))
+    assert rejected == []

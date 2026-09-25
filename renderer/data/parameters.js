@@ -55,7 +55,7 @@ export const LEVEL_COLUMNS = Object.freeze([
 ]);
 
 export function measurementColumns(showLevels, cervical = false, fullSpine = false) {
-  return [...CORE_COLUMNS, ...(showLevels ? LEVEL_COLUMNS : []), ...(cervical ? CERVICAL_COLUMNS : []),
+  return [...CORE_COLUMNS, ...(showLevels ? LEVEL_COLUMNS : []), ...(cervical || fullSpine ? CERVICAL_COLUMNS : []),
     ...(fullSpine ? GLOBAL_SVA_COLUMNS : [])];
 }
 
@@ -65,11 +65,17 @@ export function parameterValues(study) {
   const values = {};
   for (const row of sagittalRows(study.measurements)) values[row.key] = row.absent ? null : row.value;
   for (const row of lordosisRows(study.measurements)) values[row.key] = row.absent ? null : row.value;
-  if (studyRegion(study) !== 'lumbar') {
+  const region = studyRegion(study);
+  if (!['lumbar', 'full_spine'].includes(region)) {
     for (const key of Object.keys(values)) values[key] = null;
-    const cervical = studyRegion(study) === 'cervical';
-    const measurements = cervical ? cervicalMeasurements(study) : globalSvaMeasurements(study);
-    for (const column of cervical ? CERVICAL_COLUMNS : GLOBAL_SVA_COLUMNS) values[column.key] = measurements[column.key];
+  }
+  if (['cervical', 'full_spine'].includes(region)) {
+    const cervical = cervicalMeasurements(study);
+    for (const column of CERVICAL_COLUMNS) values[column.key] = cervical[column.key];
+  }
+  if (region === 'full_spine') {
+    const global = globalSvaMeasurements(study);
+    for (const column of GLOBAL_SVA_COLUMNS) values[column.key] = global[column.key];
   }
   return values;
 }

@@ -270,7 +270,7 @@ export function mountViewer(container) {
       selectedLevel: state.selectedLevel,
       measurements: study && !state.measurementDrafts?.[study.id]
         ? (studyRegion(study) === 'cervical' ? cervicalMeasurements(study)
-          : studyRegion(study) === 'full_spine' ? globalSvaMeasurements(study) : study.measurements) : null,
+          : studyRegion(study) === 'full_spine' ? { ...study.measurements, ...cervicalMeasurements(study), ...globalSvaMeasurements(study) } : study.measurements) : null,
       editing: state.editing,
       selection: state.selection,
       hover,
@@ -293,7 +293,7 @@ export function mountViewer(container) {
     const label = constructionLabel(geometry, state.selectedLevel,
       study && !state.measurementDrafts?.[study.id]
         ? (studyRegion(study) === 'cervical' ? cervicalMeasurements(study)
-          : studyRegion(study) === 'full_spine' ? globalSvaMeasurements(study) : study.measurements) : null);
+          : studyRegion(study) === 'full_spine' ? { ...study.measurements, ...cervicalMeasurements(study), ...globalSvaMeasurements(study) } : study.measurements) : null);
     labelChip.classList.toggle('is-hidden', !label);
     if (!label) return;
     const offset = labelOffsets.get(state.selectedLevel) ?? { dx: 0, dy: 0 };
@@ -660,9 +660,9 @@ export function mountViewer(container) {
 
   function addCircle() {
     const study = currentStudy();
-    if (requiresAnteriorSide(study)) return;
-    const count = study?.geometry?.femoral_circles?.length;
-    if (count == null || count >= 2 || getState().running === study.id) return;
+    if (studyRegion(study) === 'cervical') return;
+    const count = study?.geometry?.femoral_circles?.length ?? 0;
+    if (!study?.geometry || count >= 2 || getState().running === study.id) return;
     cancelRetrace();
     retracing = true;
     clearHover();
@@ -716,7 +716,7 @@ export function mountViewer(container) {
   // Edit-bar button states. Called from updateViewer on every notification and directly by
   // the retrace handlers; it only writes DOM, never the store.
   function updateEditBar(state, study) {
-    for (const button of [addCircleButton, deleteCircleButton, retraceButton, fitButton]) button.classList.toggle('is-hidden', requiresAnteriorSide(study));
+    for (const button of [addCircleButton, deleteCircleButton, retraceButton, fitButton]) button.classList.toggle('is-hidden', studyRegion(study) === 'cervical');
     // Only a run on THIS study disables the edit bar; a run on another study leaves it alone.
     // A null study is never busy -- toggleRetrace passes currentStudy(), which may be null.
     const busy = Boolean(study) && state.running === study.id;
@@ -726,7 +726,7 @@ export function mountViewer(container) {
     addCircleButton.disabled = busy || !geometry || (geometry.femoral_circles?.length ?? 0) >= 2 || retracing;
     deleteCircleButton.disabled = busy || !hasSelectedCircle;
     retraceButton.disabled = busy || !hasSelectedCircle;
-    editHelp.textContent = studyRegion(study) === 'full_spine' ? 'Drag a landmark, or use Tab and arrow keys. Review the C7 centroid and both S1 endplate corners.'
+    editHelp.textContent = studyRegion(study) === 'full_spine' ? 'Drag a landmark, or use Tab and arrow keys. Review the cervical and lumbar endplates, C7 centroid, S1 and femoral heads.'
       : studyRegion(study) === 'cervical' ? 'Drag a landmark, or use Tab and arrow keys. C2 centroid and C2/C7 endplates define these measurements.'
       : retracing ? 'Click at least 3 points around the head, then Fit. Escape cancels.'
       : 'Drag a centre to move; drag its rim to resize. The diamond marks the hip midpoint.';

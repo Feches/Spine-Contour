@@ -1,5 +1,5 @@
 import { predictionMatchesStudy } from '../data/predictions.js';
-import { studyRegion, studyRegionLabel, requiresAnteriorSide, regionRunReason, validAnteriorSide } from '../data/cervical.js';
+import { studyRegion, requestedRegion, studyRegionLabel, requiresAnteriorSide, regionRunReason, validAnteriorSide } from '../data/cervical.js';
 import { imageConfidence, scorePercent } from '../data/confidence.js';
 import { el, mount } from '../dom.js';
 import { getState, setState, subscribe } from '../store.js';
@@ -279,11 +279,12 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       name: current.fileName,
       data,
       modality: 'xray',
-      bodyPart: studyRegion(current),
+      bodyPart: requestedRegion(current),
       anteriorSide: current.anteriorSide ?? null,
       view,
-      models: studyRegion(current) === 'cervical' ? { vertebrae: 'cervical_hrnet' }
-        : studyRegion(current) === 'full_spine' ? { vertebrae: 'dual_hrnet' } : getState().models,
+      ...(requestedRegion(current) === 'auto' ? {} : { models: requestedRegion(current) === 'cervical'
+        ? { vertebrae: 'cervical_hrnet' } : requestedRegion(current) === 'full_spine'
+        ? { vertebrae: 'dual_hrnet' } : getState().models }),
       calibration: calibrationForStudy(current),
     });
     if (revision !== runRevision) return { ok: false, reason: 'superseded' };
@@ -644,11 +645,11 @@ export function render(state) {
   }
   const regionSelect = el('select', { 'aria-label': 'Spine region', class: 'workspace-folder-select',
     onChange: e => changeRegion({ region: e.target.value, anteriorSide: null }) },
-    el('option', { value: 'lumbar' }, 'Lumbar'), el('option', { value: 'cervical' }, 'Cervical · HRNET'),
+    el('option', { value: 'auto' }, 'Auto detect'), el('option', { value: 'lumbar' }, 'Lumbar'), el('option', { value: 'cervical' }, 'Cervical · HRNET'),
     el('option', { value: 'full_spine' }, 'Full spine · HRNET'));
   const anteriorSelect = el('select', { 'aria-label': 'Cervical anterior image side', class: 'workspace-folder-select',
     onChange: e => changeRegion({ anteriorSide: validAnteriorSide(e.target.value) ? e.target.value : null }) },
-    el('option', { value: '' }, 'Choose anterior side…'), el('option', { value: 'left' }, 'Anterior is image left'),
+    el('option', { value: '' }, 'Auto detect'), el('option', { value: 'left' }, 'Anterior is image left'),
     el('option', { value: 'right' }, 'Anterior is image right'));
   const anteriorLabel = el('label', {}, 'Orientation ', anteriorSelect);
   const regionNote = el('span', { class: 'meas-note' });
@@ -727,17 +728,21 @@ export function render(state) {
     // The model that produced the numbers on screen, when the result recorded one. Older
     // records carry no provenance and show nothing extra rather than a guessed name.
     const produced = describeModels(open.qc);
-    regionSelect.value = studyRegion(open);
+    regionSelect.value = requestedRegion(open);
     anteriorSelect.value = open.anteriorSide ?? '';
-    anteriorLabel.hidden = !requiresAnteriorSide(open);
-    anteriorSelect.setAttribute('aria-label', studyRegion(open) === 'full_spine' ? 'Full spine anterior image side' : 'Cervical anterior image side');
+    anteriorLabel.hidden = requestedRegion(open) === 'lumbar';
+    anteriorSelect.options[0].textContent = requestedRegion(open) === 'cervical' ? 'Choose anterior side…' : 'Auto detect';
+    anteriorSelect.setAttribute('aria-label', requestedRegion(open) === 'auto' ? 'Anterior image side'
+      : studyRegion(open) === 'full_spine' ? 'Full spine anterior image side' : 'Cervical anterior image side');
     regionSelect.disabled = anteriorSelect.disabled = Boolean(live.running || live.batch || open.source === 'demo');
     const alignmentSetup = requiresAnteriorSide(open) && !open.measurements;
     previewButton.hidden = alignmentRunButton.hidden = !alignmentSetup;
     previewButton.disabled = Boolean(live.running || live.batch);
     alignmentRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view));
-    regionNote.textContent = mounted?.previewMessage && alignmentSetup ? mounted.previewMessage : open.measurements ? 'Changing region or orientation clears these measurements; run again.'
-      : studyRegion(open) === 'full_spine' ? 'Use a lateral full-spine film showing C7 and S1. Confirm which image side is anterior.'
+    regionNote.textContent = mounted?.previewMessage && alignmentSetup ? mounted.previewMessage : open.measurements
+      ? `${requestedRegion(open) === 'auto' ? `Detected ${studyRegionLabel(open)}. ` : ''}${open.geometry?.anterior_side ? `Anterior: image ${open.geometry.anterior_side}. ` : ''}Changing region or orientation clears measurements; run again.`
+      : requestedRegion(open) === 'auto' ? 'Detect cervical, lumbar or full spine from the film. Choose a region or orientation to override.'
+      : studyRegion(open) === 'full_spine' ? 'Use a lateral full-spine film. Orientation is detected automatically; left/right overrides it.'
       : studyRegion(open) === 'cervical' ? 'Use a lateral cervical film. Confirm which image side is anterior.' : '';
     // Never overwrite what the user is in the middle of typing.
     if (document.activeElement !== nameField) {
