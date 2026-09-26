@@ -52,7 +52,9 @@ Set `SPINE_CONTOUR_REAL_FEMORAL_CASES` to a JSON manifest whose cases contain
 `path`, `mirror`, `expect_expansion`, `expect_truncated`, `expect_heads`, and an
 optional `window` recorded from real model localization. The window uses canonical
 anterior-left coordinates; omission tests the whole source image. This isolates
-the femoral stage without repeating the expensive regional searches.
+the femoral stage without repeating the expensive regional searches. Set
+`expect_original_rejection` to verify that the old crop fails the geometry gate
+before the expanded crop recovers the heads.
 
 ```sh
 SPINE_CONTOUR_REAL_FEMORAL_CASES=/path/to/regression-cases.json \

@@ -14,6 +14,7 @@ import pytest
 
 from backend import framing, server
 from backend.models import models, full_spine
+from backend.utils import _femoral_geometry
 
 
 def _cases():
@@ -37,6 +38,9 @@ def test_real_femoral_crop_retains_visible_heads(case):
     _, transform = framing.prepare_crop(raw, window)
     baseline = models._restore_femoral_mask(
         models._femoral_probabilities(raw[top:bottom, left:right]), transform, raw.shape)
+    if case.get('expect_original_rejection'):
+        with pytest.raises(ValueError, match='femoral-head geometry rejected'):
+            _femoral_geometry(baseline)
     result, circles, qc = full_spine._femoral_region(raw, {'window': window})
     np.testing.assert_array_equal(raw, original)
     assert result.shape == raw.shape
