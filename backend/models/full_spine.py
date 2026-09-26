@@ -361,24 +361,49 @@ def select_orientation(searches):
 
 
 def _femoral_region(canonical, pelvis):
-    """Fit the existing femoral model in the accepted lumbar crop only."""
+    """Read the heads without treating the lumbar crop boundary as anatomy.
+
+    Consensus chooses a crop for vertebral landmarks. That crop can bisect a
+    head even when the source radiograph contains it in full. Expand only the
+    sides reached by the predicted mask, with at most two additional passes.
+    Remaining crop truncation must request review just like a source-frame cut.
+    """
     try:
-        from ..utils import _femoral_geometry
+        from ..utils import _femoral_geometry, EDGE_TOUCH_MAX_CONFIDENCE
     except ImportError:
-        from utils import _femoral_geometry
+        from utils import _femoral_geometry, EDGE_TOUCH_MAX_CONFIDENCE
     if pelvis is None:
         return np.zeros(canonical.shape, np.uint8), [], {
             "qc_pass": False, "reason": "No consistent lumbar crop was established."}
-    window = pelvis["window"]
-    left, top, right, bottom = window
-    _, transform = framing.prepare_crop(canonical, window)
-    probability = models._femoral_probabilities(canonical[top:bottom, left:right])
-    mask = models._restore_femoral_mask(probability, transform, canonical.shape)
+    initial = tuple(pelvis["window"])
+    window = initial
+    height, width = canonical.shape
+    for attempt in range(3):
+        left, top, right, bottom = window
+        _, transform = framing.prepare_crop(canonical, window)
+        probability = models._femoral_probabilities(canonical[top:bottom, left:right])
+        mask = models._restore_femoral_mask(probability, transform, canonical.shape)
+        touches = [bool(mask[top:bottom, left].any()), bool(mask[top, left:right].any()),
+                   bool(mask[top:bottom, right-1].any()), bool(mask[bottom-1, left:right].any())]
+        dx, dy = max(1, round((right-left) * .25)), max(1, round((bottom-top) * .25))
+        expanded = (max(0, left-dx) if touches[0] else left,
+                    max(0, top-dy) if touches[1] else top,
+                    min(width, right+dx) if touches[2] else right,
+                    min(height, bottom+dy) if touches[3] else bottom)
+        if expanded == window or attempt == 2:
+            break
+        runtime.report("femoral", "Extending the crop to include the femoral heads")
+        window = expanded
+    # These windows are canonical here; the caller reflects them with the mask.
+    crop_qc = {"initial_crop_window": list(initial), "crop_window": list(window),
+               "crop_expansions": attempt, "touches_crop_edge": any(touches)}
     try:
         _, circles, qc = _femoral_geometry(mask)
-        return mask, [np.asarray(circle).tolist() for circle in circles] if qc.get("qc_pass") else [], qc
+        if any(touches):
+            qc["confidence"] = min(qc["confidence"], EDGE_TOUCH_MAX_CONFIDENCE)
+        return mask, [np.asarray(circle).tolist() for circle in circles] if qc.get("qc_pass") else [], {**qc, **crop_qc}
     except ValueError as error:
-        return mask, [], {"qc_pass": False, "confidence": None, "reason": str(error)}
+        return mask, [], {"qc_pass": False, "confidence": None, "reason": str(error), **crop_qc}
 
 
 def full_spine_prediction(pixel_array, anterior_side=None, model=MODEL_NAME, *, detection_evidence=None):
@@ -453,7 +478,13 @@ def full_spine_prediction(pixel_array, anterior_side=None, model=MODEL_NAME, *, 
                                    for circle in circles]
     if not femoral_qc["qc_pass"]:
         warnings.append("Femoral heads were not established reliably; PI, PT and L1PA are unavailable.")
+    elif femoral_qc.get("touches_crop_edge"):
+        warnings.append("The femoral mask reaches its crop boundary; review the head circles and pelvic measurements.")
     if mirrored:
+        for key in ("initial_crop_window", "crop_window"):
+            if key in femoral_qc:
+                left, top, right, bottom = femoral_qc[key]
+                femoral_qc[key] = [width-right, top, width-left, bottom]
         femoral_mask = np.ascontiguousarray(femoral_mask[:, ::-1])
     def source_window(candidate):
         if candidate is None:
