@@ -4,8 +4,9 @@ import json
 import sys
 
 import numpy as np
+import onnxruntime as ort
 
-from . import runtime
+from . import processors, runtime
 from .models import models
 
 
@@ -48,7 +49,16 @@ def verify():
             models._infer('s1', lambda session: session.run(None, {'image': np.zeros((1, 3, 768, 768), np.float32)}), None)
             results['apple_s1_providers'] = runtime.providers()['s1']
             models.release_models()
-    print(json.dumps({'runtime': 'onnxruntime', 'verified': results}), flush=True)
+    # Each GPU the bundled runtime offers (CI runners have none; a workstation's
+    # `--verify-models` does). A CPU fallback is valid and is what gets reported.
+    gpus = processors.available()[1:]
+    for gpu in gpus:
+        with runtime.session(runtime.parse_options('standard', 2, False, processor=gpu.id)):
+            models._infer('vertebra', lambda session: session.run(None, {'image': np.zeros((1, 1, 768, 768), np.float32)}), None)
+            results.setdefault('gpu_providers', {})[gpu.id] = runtime.providers()['vertebra']
+            models.release_models()
+    print(json.dumps({'runtime': 'onnxruntime', 'available_providers': ort.get_available_providers(),
+                      'gpus': [gpu.public() for gpu in gpus], 'verified': results}), flush=True)
 
 
 if __name__ == '__main__':

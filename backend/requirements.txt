@@ -4,7 +4,10 @@ opencv-python-headless
 Pillow
 pydicom
 python-multipart
-onnxruntime==1.24.4
+# 64-bit Windows can run the models on any DirectX 12 GPU (docs/gpu-processing.md).
+# The two are builds of one `onnxruntime` package: never install both in one venv.
+onnxruntime==1.24.4; sys_platform != "win32" or platform_machine != "AMD64"
+onnxruntime-directml==1.24.4; sys_platform == "win32" and platform_machine == "AMD64"
 uvicorn[standard]
 scipy
 pytesseract
