@@ -1,5 +1,15 @@
 # Spine Contour
 
+**2026-09-27 GPU processor setting:** branch `claude/gracious-ptolemy-a4pxts` off `fork/main` @ `1c83e05` (v1.0.10 and
+PR #37). Windows and NVIDIA per-program GPU preferences never reached inference: the backend is a separate process and
+shipped CPU-only ONNX Runtime. **Settings → Processing → Processor** now chooses the CPU (default) or a GPU the backend
+lists (`GET /processors`, `backend/processors.py`); 64-bit Windows installs `onnxruntime-directml==1.24.4` by requirement
+markers (never both ONNX Runtime builds in one venv; `run.py` uninstalls first). Saved as `performance.processor`: `cpu`
+or the PCI identity `gpu:<vendor>:<device>[:n]`, never Windows' adapter index. A GPU failure retries that model on the
+CPU; `qc.processing.processor` and per-model `providers` record what ran, and the Analysis header shows GPU, GPU + CPU or
+CPU from the providers. CI has no GPU: check a workstation with `spine-contour-backend.exe --verify-models`, then one
+film. See `docs/gpu-processing.md` and the 2026-09-27 contract amendment.
+
 **2026-09-11 filename grammar / note:** branch `claude/spine-contour-filename-parse-b6c1bb` off `fork/main` @
 `6704586` (v1.0.7). Filename stems are read as underscore-separated fields — subject, then a timepoint, view or
 `M-D-YYYY`/`YYYY-MM-DD` date in any order, then plain fields as a new `note` — by `inferFromStem`; `seedFields` seeds
@@ -245,6 +255,8 @@ when none is found the backend logs `OCR: no Tesseract binary found ...` and eve
   Cheap, which is what makes live re-measurement after landmark correction practical.
 - `GET /models` — `{vertebrae: [...], femoral: [...], s1: [...]}`, the offered model ids.
 - `GET /health` — `{"status": "ok"}`.
+- `GET /processors` — `{processors: [{id, kind, name, memory_mb}]}`: the CPU, then each GPU ONNX Runtime can use.
+  `/predict` and `/predict-stream` take an optional `processor` field (default `cpu`); see `docs/gpu-processing.md`.
 
 `measurements` is `{SS, PI, PT, L1PA, LL: {'L1-S1'…'L5-S1'}}` after the plan-02 rename.
 `PI–LL mismatch` is derived (`PI − LL['L1-S1']`), not returned.

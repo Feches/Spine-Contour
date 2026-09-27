@@ -61,6 +61,16 @@ operations; a model call or OCR pass already executing must finish first.
 
 See [processing modes and validation](docs/low-memory-processing.md).
 
+## GPU processing
+
+**Settings → Processing → Processor** runs the models on a GPU instead of the CPU.
+On Windows it lists each DirectX 12 graphics card — NVIDIA, AMD or Intel — by name;
+nothing else needs installing. A GPU chosen for the app in Windows graphics settings
+or the NVIDIA app does not affect processing; only this setting does. The CPU stays
+the default. A model the GPU cannot run falls back to the CPU, and each result's
+Analysis header says whether it ran on the **GPU**, the **CPU** or both. macOS runs on
+the CPU. See [GPU processing](docs/gpu-processing.md).
+
 ## Workspace
 
 It loads a folder of radiographs into the Studies library in one step, with an optional
