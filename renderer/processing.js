@@ -1,5 +1,5 @@
 import { getState, setState } from './store.js';
-import { loadPerformance, savePerformance, cancelPredict, onPredictionProgress } from './api.js';
+import { loadPerformance, savePerformance, listProcessors, cancelPredict, onPredictionProgress } from './api.js';
 import { validPerformance, progressUpdate } from './data/processing.js';
 import { showToast } from './components/toast.js';
 
@@ -14,6 +14,9 @@ export async function initializeProcessing() {
     const performance = await loadPerformance();
     if (validPerformance(performance)) setState({ performance });
   } catch (error) { console.warn('Could not load processing settings:', error.message); }
+  // Not awaited: the first listing starts ONNX Runtime's device discovery, and boot need not wait.
+  listProcessors().then((processors) => setState({ processors }))
+    .catch((error) => console.warn('Could not list processors:', error.message));
 }
 
 export async function changePerformance(patch) {

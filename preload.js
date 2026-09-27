@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('spineContour', {
   cancelPredict: (requestId) => ipcRenderer.invoke('cancel-predict', requestId),
   loadPerformance: () => ipcRenderer.invoke('load-performance'),
   savePerformance: (settings) => ipcRenderer.invoke('save-performance', settings),
+  listProcessors: () => ipcRenderer.invoke('list-processors'),
   onPredictionProgress: (callback) => {
     const listener = (_event, progress) => callback(progress);
     ipcRenderer.on('prediction-progress', listener);

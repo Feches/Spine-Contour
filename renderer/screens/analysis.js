@@ -11,6 +11,7 @@ import { toCsv } from '../data/csv.js';
 import { loadStudyImages, disposeStudyImages, thumbnailDataUri, bitmapFromBase64 } from '../viewer/canvas.js';
 import { mountViewer, recordPrediction, forgetPrediction } from '../components/viewer.js';
 import { describeModels } from '../data/models.js';
+import { describeProcessor, processorTitle } from '../data/processing.js';
 import { WAIT_FOR_BATCH } from '../data/batch.js';
 import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
 import { studyName, defaultName } from '../data/labels.js';
@@ -758,8 +759,11 @@ export function render(state) {
 
     // The rest of the header line. The name leads because that is what the user recognises; the
     // SP-nnnn id stays reachable on the title rather than disappearing entirely.
+    // Where the models ran, from the providers the result recorded; nothing for older records.
+    const processedOn = describeProcessor(open.qc);
     headerMeta.textContent = `${studyRegionLabel(open).toUpperCase()} · ${(open.view || '—').toUpperCase()} · ${open.pt ?? '—'}`
-      + (produced ? ` · ${produced.toUpperCase()}` : '');
+      + (produced ? ` · ${produced.toUpperCase()}` : '') + (processedOn ? ` · ${processedOn}` : '');
+    headerMeta.title = processorTitle(open.qc);
     // A run in flight counts as pending too: the numbers on the record are the PREVIOUS run's,
     // so an assessment of them would be a stale claim about a study that is being re-measured.
     const pendingForConfidence = Boolean(live.measurementDrafts?.[open.id]) || live.running === open.id;
