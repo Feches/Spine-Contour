@@ -5,8 +5,9 @@ PR #37). Windows and NVIDIA per-program GPU preferences never reached inference:
 shipped CPU-only ONNX Runtime. **Settings → Processing → Processor** now chooses the CPU (default) or a GPU the backend
 lists (`GET /processors`, `backend/processors.py`); 64-bit Windows installs `onnxruntime-directml==1.24.4` by requirement
 markers (never both ONNX Runtime builds in one venv; `run.py` uninstalls first). Saved as `performance.processor`: `cpu`
-or the PCI identity `gpu:<vendor>:<device>[:n]`, never Windows' adapter index. A GPU failure retries that model on the
-CPU; `qc.processing.processor` and per-model `providers` record what ran, and the Analysis header shows GPU, GPU + CPU or
+or the PCI identity `gpu:<vendor>:<device>[:n]`, never Windows' adapter index, which each run re-reads through DXGI
+(ONNX Runtime reads its list once per process). A GPU failure retries that model on the CPU (ONNX Runtime's own silent
+retry is off); `qc.processing.processor` and per-model `providers` record what ran, and the Analysis header shows GPU, GPU + CPU or
 CPU from the providers. CI has no GPU: check a workstation with `spine-contour-backend.exe --verify-models`, then one
 film. See `docs/gpu-processing.md` and the 2026-09-27 contract amendment.
 

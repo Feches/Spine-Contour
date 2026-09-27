@@ -27,10 +27,15 @@ CPU and each hardware GPU ONNX Runtime reports (`GET /processors`), and Settings
 them by name. The choice is saved with the other processing settings in
 `performance.json` as `processor`: `cpu`, or the card's PCI identity,
 `gpu:<vendor>:<device>` in hexadecimal (`gpu:10de:2520`; `:2`, `:3`… for identical
-cards). Windows' adapter index is looked up for each run and never saved, because
-it can change when displays move or the Windows graphics preference changes. Existing
-preferences read as `cpu`. The setting applies to the next single run or batch and
-is locked while processing, like the others. Calibration OCR always uses the CPU.
+cards). DirectML opens a GPU by its Windows adapter index, which can change while the
+app is open (a display moved to the other card, the Windows graphics preference
+changed), and ONNX Runtime reads its device list only once. So the index is never
+saved: each run finds the chosen card by its identity in Windows' current adapter
+list (DXGI), and a card that has gone is reported as not found. The list Settings
+shows is read when the app starts; restart it after adding a GPU or installing its
+driver. Existing preferences read as `cpu`. The setting applies to the next single
+run or batch and is locked while processing, like the others. Calibration OCR always
+uses the CPU.
 
 A GPU session is created with `DmlExecutionProvider` for that adapter, then
 `CPUExecutionProvider`. ONNX Runtime runs any operator DirectML lacks on the CPU
@@ -41,7 +46,8 @@ not support them). Low memory still keeps one model session resident at a time.
 
 If DirectML cannot create or run a model's session — a driver reset, an operator
 the card rejects, too little GPU memory — that model is retried once on the CPU and
-the progress line says so. A cached session then stays on the CPU until the
+the progress line says so. (ONNX Runtime's own silent retry is turned off so the
+backend can report it.) A cached session then stays on the CPU until the
 processing settings change or the app restarts; Low memory, which reloads each
 model, tries the GPU again next time. A CPU error is never retried. If the saved GPU is not
 found (removed, disabled, no driver), the run uses the CPU and says so; Settings

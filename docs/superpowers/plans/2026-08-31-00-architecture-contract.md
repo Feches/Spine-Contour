@@ -1252,14 +1252,18 @@ Preload adds `listProcessors()` (IPC `list-processors` → backend `GET /process
 by `normalizeProcessors`); boot does not wait for it. `SIDEBAR_KEYS` gains `processors`.
 
 Prediction multipart adds `processor` (default `cpu`); a malformed id is a 422.
-`runtime.session` resolves it once per request (`backend/processors.py`): a listed GPU
-yields its current Windows adapter index, which is never persisted; an unlisted GPU runs
-on the CPU with a real `processor` progress event. Session cache policy is
-`(threads, low_memory, adapter)`, so changing processor evicts sessions. GPU sessions are
-`[('DmlExecutionProvider', {device_id}), 'CPUExecutionProvider']` with memory patterns off.
-Any error creating or running an accelerated session (DirectML or the existing Core ML
-S1 path) retries that model once on the CPU with a real progress message; CPU errors
-propagate. Calibration never uses the setting.
+`runtime.session` resolves it once per request (`backend/processors.py`). ONNX Runtime
+reads its device list once per process, but DirectML re-reads Windows' adapter order at
+every session creation, so a listed GPU is matched by PCI identity against a live DXGI
+enumeration (`_dxgi_adapters`) for its current index, which is never persisted. A GPU
+absent from either list runs on the CPU with a real `processor` progress event; if DXGI
+cannot be read, ONNX Runtime's startup index is used and a warning is logged. Session
+cache policy is `(threads, low_memory, adapter)`, so a changed processor or index evicts
+sessions. GPU sessions are `[('DmlExecutionProvider', {device_id}), 'CPUExecutionProvider']`
+with memory patterns off. Sessions are created with `enable_fallback=0`: any error
+creating or running an accelerated session (DirectML or the existing Core ML S1 path)
+retries that model once on the CPU with a real progress message; CPU errors propagate.
+Calibration never uses the setting.
 
 `qc.processing.processor = {requested, resolved, name, note}` joins the per-model
 `providers`. The Analysis header appends `GPU`, `GPU + CPU` or `CPU` only for results

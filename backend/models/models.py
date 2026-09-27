@@ -241,18 +241,22 @@ class InferenceModel:
         first = providers[0]
         self.accelerator = None if len(providers) == 1 else first[0] if isinstance(first, tuple) else first
         try:
-            self.session = ort.InferenceSession(str(path), sess_options=session_options(policy), providers=providers)
+            self.session = self._session(providers)
         except Exception:
             if self.accelerator is None:
                 raise
             self._cpu_fallback()
 
+    def _session(self, providers):
+        # ONNX Runtime's own retry would fall back silently, with only a banner on stdout.
+        return ort.InferenceSession(str(self.path), sess_options=session_options(self.policy),
+                                    providers=providers, enable_fallback=0)
+
     def _cpu_fallback(self):
         model = MODEL_NAMES.get(self.path.stem, "model")
         runtime.report("loading", FALLBACK_MESSAGES.get(self.accelerator, "Acceleration unavailable; using ONNX CPU inference")
                        .format(model=model))
-        self.session = ort.InferenceSession(str(self.path), sess_options=session_options(self.policy),
-                                           providers=["CPUExecutionProvider"])
+        self.session = self._session(["CPUExecutionProvider"])
 
     def get_providers(self):
         return self.session.get_providers()
