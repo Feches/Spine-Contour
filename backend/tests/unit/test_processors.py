@@ -7,6 +7,7 @@ checked by `--verify-models` on a workstation (docs/gpu-processing.md).
 import ctypes
 from functools import lru_cache
 import logging
+import sys
 
 import numpy as np
 import onnxruntime as ort
@@ -194,6 +195,16 @@ def test_windows_adapters_are_read_in_directml_order_and_every_object_is_release
     assert processors._dxgi_adapters(create_factory) == [(0, 0x8086, 0x9a49), (2, 0x10de, 0x2520)]
     assert calls == [(0, processors._IID_IDXGI_FACTORY1)]
     assert sorted(com.released) == sorted(adapters + [factory])
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='DXGI is Windows-only')
+def test_real_dxgi_enumeration_agrees_with_onnx_runtime():
+    # A GPU-less CI runner still has the software Basic Render Driver, which is skipped, so
+    # this runs CreateDXGIFactory2, EnumAdapters1, GetDesc1 and Release for real.
+    adapters = processors._dxgi_adapters()
+    assert all(isinstance(value, int) for adapter in adapters for value in adapter)
+    live = processors._identities(adapters)
+    assert all(gpu.id in live for gpu in processors.available()[1:])
 
 
 def test_a_failing_dxgi_call_raises_after_releasing_what_it_opened():
