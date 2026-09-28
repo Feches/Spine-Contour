@@ -1,3 +1,4 @@
+import { segmentalRows } from '../data/segmental.js';
 import { cervicalRows, studyRegion } from '../data/cervical.js';
 import { globalSvaRows } from '../data/global-sva.js';
 import { landmarkReviewReasons } from '../data/status.js';
@@ -187,6 +188,11 @@ export function mountMeasurements(container) {
       el('div', { class: 'meas-note' }, discPending ? 'Updating disc heights…'
         : 'Facing endplates: anterior to anterior, midpoint to midpoint, posterior to posterior. Requires image scale and both endplates.'));
 
+    const segmentalSection = section('SEGMENTAL ANGLES · °',
+      el('div', { class: 'meas-rows' }, ...segmentalRows(pending ? { region: studyRegion(study) } : study, state.selectedLevel)
+        .map(row => rowButton(row, () => toggleLevel(row.key)))),
+      el('div', { class: 'meas-note' }, 'Lordosis: superior to superior endplate. Angulation: inferior to superior (disc) endplates. Unsigned acute angles; image-space angles when uncalibrated. Missing endplates are unavailable.'));
+
     const section3 = section('03 \u2014 ALIGNMENT',
       el('div', { class: 'meas-rows' }, ...alignmentRows(study).map(rowStatic)),
       el('div', { class: 'meas-note' }, NOT_COMPUTED_NOTE));
@@ -207,12 +213,12 @@ export function mountMeasurements(container) {
         el('div', { class: 'meas-rows' }, ...cervicalRows(pending ? { region: 'full_spine' } : study, state.selectedLevel)
           .map(row => rowButton(row, () => toggleLevel(row.key)))),
         el('div', { class: 'meas-note' }, 'Only measurements with visible, usable landmarks are shown. Review C2/C7 endplates and the C2 centroid.'));
-      root.append(section1, cervicalSection, lumbarSection, section2, calibrationSection);
+      root.append(section1, cervicalSection, lumbarSection, segmentalSection, section2, calibrationSection);
     } else if (cervical) {
       section1.append(el('div', { class: 'meas-note' },
-        'Cobb: unsigned acute angle between the C2 and C7 inferior endplates. SVA: C2 body centroid to the C7 posterosuperior corner, parallel to the image horizontal; positive anterior. Verify the six editable landmarks.'));
-      root.append(section1, calibrationSection);
-    } else root.append(section1, section2, section3, calibrationSection);
+        'Cobb: unsigned acute angle between the C2 and C7 inferior endplates. SVA: C2 body centroid to the C7 posterosuperior corner, parallel to the image horizontal; positive anterior. Verify the editable endplates and centroid.'));
+      root.append(section1, segmentalSection, calibrationSection);
+    } else root.append(section1, segmentalSection, section2, section3, calibrationSection);
 
     // Focus restore. Find the rebuilt node carrying the same data-row-key and
     // refocus it, so there is no rendered frame in which focus visibly rests on

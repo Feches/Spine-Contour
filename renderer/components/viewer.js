@@ -1,3 +1,4 @@
+import { segmentalValues } from '../data/segmental.js';
 import { globalSvaMeasurements } from '../data/global-sva.js';
 import { cervicalMeasurements, studyRegion, requiresAnteriorSide, regionRunReason } from '../data/cervical.js';
 import { el } from '../dom.js';
@@ -269,8 +270,8 @@ export function mountViewer(container) {
     drawDynamicLayer(dynamicCtx, dynamicCanvas, geometry, {
       selectedLevel: state.selectedLevel,
       measurements: study && !state.measurementDrafts?.[study.id]
-        ? (studyRegion(study) === 'cervical' ? cervicalMeasurements(study)
-          : studyRegion(study) === 'full_spine' ? { ...study.measurements, ...cervicalMeasurements(study), ...globalSvaMeasurements(study) } : study.measurements) : null,
+        ? { ...segmentalValues(study), ...(studyRegion(study) === 'cervical' ? cervicalMeasurements(study)
+          : studyRegion(study) === 'full_spine' ? { ...study.measurements, ...cervicalMeasurements(study), ...globalSvaMeasurements(study) } : study.measurements) } : null,
       editing: state.editing,
       selection: state.selection,
       hover,
@@ -292,8 +293,8 @@ export function mountViewer(container) {
     const study = currentStudy();
     const label = constructionLabel(geometry, state.selectedLevel,
       study && !state.measurementDrafts?.[study.id]
-        ? (studyRegion(study) === 'cervical' ? cervicalMeasurements(study)
-          : studyRegion(study) === 'full_spine' ? { ...study.measurements, ...cervicalMeasurements(study), ...globalSvaMeasurements(study) } : study.measurements) : null);
+        ? { ...segmentalValues(study), ...(studyRegion(study) === 'cervical' ? cervicalMeasurements(study)
+          : studyRegion(study) === 'full_spine' ? { ...study.measurements, ...cervicalMeasurements(study), ...globalSvaMeasurements(study) } : study.measurements) } : null);
     labelChip.classList.toggle('is-hidden', !label);
     if (!label) return;
     const offset = labelOffsets.get(state.selectedLevel) ?? { dx: 0, dy: 0 };

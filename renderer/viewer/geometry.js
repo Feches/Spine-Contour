@@ -1,4 +1,4 @@
-import { CERVICAL_HANDLES, CERVICAL_LEVELS } from '../data/cervical.js';
+import { CERVICAL_LEVELS } from '../data/cervical.js';
 import { GLOBAL_SVA_HANDLES } from '../data/global-sva.js';
 export const LEVELS = ['L1', 'L2', 'L3', 'L4', 'L5'];
 export const CORNERS = ['SA', 'SP', 'IA', 'IP'];
@@ -149,7 +149,10 @@ export function landmarkHandles(geometry) {
     ...LEVELS.flatMap(level => CORNERS.map(corner => ({ kind: 'landmark', level, corner }))),
     ...['SA', 'SP'].map(corner => ({ kind: 'landmark', level: 'S1', corner })),
   ];
-  return geometry?.region === 'cervical' ? CERVICAL_HANDLES : geometry?.region === 'full_spine'
+  return geometry?.region === 'cervical' ? [
+    { kind: 'landmark', level: 'C2', corner: 'CENTROID' },
+    ...CERVICAL_LEVELS.flatMap(level => CORNERS.map(corner => ({ kind: 'landmark', level, corner }))),
+  ] : geometry?.region === 'full_spine'
     ? [{ kind: 'landmark', level: 'C2', corner: 'CENTROID' },
       ...CERVICAL_LEVELS.flatMap(level => CORNERS.map(corner => ({ kind: 'landmark', level, corner }))),
       ...GLOBAL_SVA_HANDLES.slice(0, 1), ...lumbar] : lumbar;

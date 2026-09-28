@@ -8,11 +8,13 @@ The original image is previewed before an orientation choice is required,
 including for DICOM uploads. Previewing does not create measurements.
 
 Run the model, review the landmarks on the source image, and select a measurement
-row to display its construction. The six measurement handles can be corrected;
+row to display its construction. The available endplate corners and C2 centroid can be corrected;
 the measurements recalculate and the corrected geometry is saved with the study.
 Reset restores the original prediction. Cervical results are included in the
 Parameters table and CSV exports. A missing anchor leaves its dependent value
 absent; a missed detector does not trigger a whole-image landmark guess.
+
+Segmental lordosis and disc angulation are also available; see [segmental angles](segmental-angles.md).
 
 ## Definitions and scale
 

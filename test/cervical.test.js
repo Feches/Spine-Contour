@@ -1,3 +1,4 @@
+import { landmarkHandles } from '../renderer/viewer/geometry.js';
 import { predictionMatchesStudy } from '../renderer/data/predictions.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -81,10 +82,10 @@ test('missing/invalid landmarks remain absent, without lumbar fallthrough', () =
   assert.match(constructionLabel(study().geometry, 'C2C7_SVA', study().measurements).text, /10.0 mm/);
 });
 
-test('all six relevant handles are keyboard/click reachable and centroid edits preserve C2 null superior anatomy', () => {
+test('all available endplate and centroid handles are keyboard/click reachable and centroid edits preserve C2 null superior anatomy', () => {
   const g = study().geometry;
   let selected = null;
-  for (const expected of CERVICAL_HANDLES) { selected = nextSelection(selected, 1, g); assert.deepEqual(selected, expected); }
+  for (const expected of landmarkHandles(g).filter(h => landmarkAt(g, h.level, h.corner))) { selected = nextSelection(selected, 1, g); assert.deepEqual(selected, expected); }
   assert.deepEqual(nextSelection(selected, 1, g), CERVICAL_HANDLES[0]);
   const canvas = { width: 500, height: 600, getBoundingClientRect: () => ({ left: 0, top: 0, width: 500, height: 600 }) };
   assert.equal(nearestLandmark(g, 140, 110, canvas).corner, 'CENTROID');
