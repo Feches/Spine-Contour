@@ -64,8 +64,11 @@ changing it.
   never from the setting. Older results show nothing.
 - Each saved result keeps `qc.processing.providers` (per model) and
   `qc.processing.processor = {requested, resolved, name, note}`.
-- Windows Task Manager → Performance → the GPU → the **Compute** graph shows work
-  from `spine-contour-backend.exe` while it runs.
+- Windows Task Manager: on **Processes**, `spine-contour-backend.exe` shows GPU use,
+  and its **GPU engine** column (right-click the header to add it) names the card's
+  3D engine, for example `GPU 1 - 3D`. On **Performance**, that GPU's **3D** graph and
+  dedicated memory rise. DirectML submits through a Direct3D 12 graphics queue, so
+  the work appears under 3D rather than Compute.
 - `"<install folder>\resources\backend-runtime\spine-contour-backend.exe" --verify-models`
   runs every model on the CPU, then the vertebra model on each GPU, and prints JSON
   with `gpus` and `gpu_providers` (`["DmlExecutionProvider", "CPUExecutionProvider"]`
