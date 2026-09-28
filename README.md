@@ -20,6 +20,10 @@ Review the regional landmarks, C7 centroid and S1 posterior corner, and calibrat
 millimetres. See [global SVA](docs/global-sva.md) for the construction, crop
 search and review requirements.
 
+Every adjacent level also reports segmental lordosis and disc angulation, drawn on the
+film and carried into the Parameters table and both CSV exports. See
+[segmental angles](docs/segmental-angles.md) for the definitions.
+
 **Settings → Processing → Processor** runs the models on the CPU (the default) or, on
 Windows, on a DirectX 12 graphics card through ONNX Runtime's DirectML build. A card is
 used only after its outputs pass a parity check against the CPU, and any GPU error reruns

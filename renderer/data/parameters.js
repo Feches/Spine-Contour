@@ -1,3 +1,4 @@
+import { segmentalColumns, segmentalValues } from './segmental.js';
 import { CERVICAL_COLUMNS, cervicalMeasurements, studyRegion } from './cervical.js';
 import { GLOBAL_SVA_COLUMNS, globalSvaMeasurements } from './global-sva.js';
 /**
@@ -56,7 +57,7 @@ export const LEVEL_COLUMNS = Object.freeze([
 
 export function measurementColumns(showLevels, cervical = false, fullSpine = false) {
   return [...CORE_COLUMNS, ...(showLevels ? LEVEL_COLUMNS : []), ...(cervical || fullSpine ? CERVICAL_COLUMNS : []),
-    ...(fullSpine ? GLOBAL_SVA_COLUMNS : [])];
+    ...(fullSpine ? GLOBAL_SVA_COLUMNS : []), ...segmentalColumns(cervical || fullSpine ? 'full_spine' : 'lumbar')];
 }
 
 // One study's value in every measurement column: a finite number or null. sagittalRows keys its
@@ -77,7 +78,7 @@ export function parameterValues(study) {
     const global = globalSvaMeasurements(study);
     for (const column of GLOBAL_SVA_COLUMNS) values[column.key] = global[column.key];
   }
-  return values;
+  return { ...values, ...segmentalValues(study) };
 }
 
 // As the Measurements panel formats a row: one decimal and the unit, or an em dash.

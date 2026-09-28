@@ -1,3 +1,4 @@
+import { segmentalColumns } from '../renderer/data/segmental.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -29,11 +30,11 @@ function study(overrides) {
 // columns and values
 // ---------------------------------------------------------------------------
 
-test('measurementColumns is the six core columns, or ten with the lordosis levels', () => {
+test('measurementColumns includes core and segmental angles, with optional lordosis levels', () => {
   assert.deepEqual(CORE_COLUMNS.map((c) => c.key), ['PI', 'PT', 'SS', 'LL', 'PILL', 'L1PA']);
   assert.deepEqual(LEVEL_COLUMNS.map((c) => c.key), ['L2-S1', 'L3-S1', 'L4-S1', 'L5-S1']);
-  assert.deepEqual(measurementColumns(false), CORE_COLUMNS);
-  assert.deepEqual(measurementColumns(true), [...CORE_COLUMNS, ...LEVEL_COLUMNS]);
+  assert.deepEqual(measurementColumns(false), [...CORE_COLUMNS, ...segmentalColumns('lumbar')]);
+  assert.deepEqual(measurementColumns(true), [...CORE_COLUMNS, ...LEVEL_COLUMNS, ...segmentalColumns('lumbar')]);
   // The labels are the measurement panel's names; PI–LL is a derived value and says so.
   assert.equal(CORE_COLUMNS.find((c) => c.key === 'LL').label, 'LL L1\u2013S1');
   assert.equal(CORE_COLUMNS.find((c) => c.key === 'PILL').label, 'PI\u2013LL');

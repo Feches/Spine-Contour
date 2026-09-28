@@ -1,3 +1,4 @@
+import { segmentalColumns, segmentalEndplates } from '../data/segmental.js';
 import { CERVICAL_LEVELS } from '../data/cervical.js';
 import { LEVELS, landmarkAt, femoralCircle, FEMORAL_SIDES, landmarkHandles } from './geometry.js';
 import { sameHandle } from './interactions.js';
@@ -184,6 +185,13 @@ function beyondAnterior(sa, sp) {
 // Every selectedLevel value is handled explicitly; anything else has no label.
 export function constructionLabel(geometry, selectedLevel, measurements) {
   if (!geometry || !selectedLevel || !measurements) return null;
+  if (selectedLevel.startsWith('SEG_')) {
+    const plates = segmentalEndplates(geometry, selectedLevel);
+    const value = measurements[selectedLevel];
+    if (!plates || !Number.isFinite(value)) return null;
+    const def = segmentalColumns('full_spine').find(c => c.key === selectedLevel);
+    return { text: `${def.label} ${value.toFixed(1)}°`, ...beyondAnterior(...plates[0]) };
+  }
   if (geometry.region === 'full_spine' && selectedLevel === 'GLOBAL_SVA') {
     if (!Number.isFinite(measurements.GLOBAL_SVA_PX)
         || !geometry.c7_centroid || !geometry.s1_superior?.[1]) return null;
@@ -256,7 +264,13 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
   try {
     ctx.strokeStyle = STAGE_SELECTED_COLOR;
     ctx.lineWidth = Math.max(2, canvas.width / 400);
-    if (geometry.region === 'full_spine' && selectedLevel === 'GLOBAL_SVA') {
+    if (selectedLevel.startsWith('SEG_')) {
+      for (const [a, p] of segmentalEndplates(geometry, selectedLevel)) {
+        const dx = p[0] - a[0], dy = p[1] - a[1];
+        ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...p); ctx.stroke();
+        strokeReference(ctx, [a[0] - dx, a[1] - dy], [p[0] + dx, p[1] + dy]);
+      }
+    } else if (geometry.region === 'full_spine' && selectedLevel === 'GLOBAL_SVA') {
       const c = geometry.c7_centroid, p = geometry.s1_superior[1];
       const foot = [c[0], p[1]];
       strokeReference(ctx, c, foot);
@@ -407,8 +421,8 @@ function drawHandle(ctx, canvas, point, color, { selected, hovered, label, pixel
   ctx.textBaseline = 'alphabetic';
 }
 
-// Lumbar: 22 landmarks and centre/rim handles for femoral heads. Cervical: six
-// measurement landmarks, including the C2 centroid. Order matters for labels: a selected or
+// Lumbar: 22 landmarks and centre/rim handles for femoral heads. Cervical:
+// all available endplate corners and the C2 centroid. Order matters for labels: a selected or
 // hovered handle's label is drawn with it, so later handles can overlap it.
 function drawHandles(ctx, canvas, geometry, { selection, hover, pixelRatio }) {
   const handleOpts = (handle, label) => ({

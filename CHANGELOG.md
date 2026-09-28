@@ -2,6 +2,13 @@
 
 ## 1.0.11
 
+- Add segmental lordosis and disc angulation at every adjacent level, C2–C3 through C6–C7
+  and L1–L2 through L5–S1, to Measurements, the image constructions, Parameters and both
+  CSV exports, with follow-up deltas in the paired file. Lordosis is superior endplate to
+  superior endplate; angulation is the upper inferior endplate to the lower superior
+  endplate. Both are unsigned acute angles, use the current image calibration and stay
+  empty when either endplate is missing; the cervical model has no C2 superior endplate,
+  so C2–C3 lordosis is unavailable. See [segmental angles](docs/segmental-angles.md).
 - Add **Settings → Processing → Processor**: run the models on the CPU (default) or on
   a GPU listed by name. The Windows installer bundles ONNX Runtime's DirectML build, so
   any DirectX 12 card (NVIDIA, AMD, Intel) works without CUDA. Windows and NVIDIA
