@@ -82,20 +82,24 @@ def available() -> list[Processor]:
         devices = ort.get_ep_devices()
     except Exception:  # A runtime without device discovery can still use the CPU.
         devices = []
-    gpus = {}
-    for device in devices:
-        hardware = device.device
-        metadata = dict(hardware.metadata)
-        adapter = str(metadata.get("DxgiAdapterNumber", ""))
-        # DirectML silently uses adapter 0 for a device without an adapter number,
-        # which may be a different GPU from the one named, so such devices are not offered.
-        if (device.ep_name != DIRECTML or hardware.type != ort.OrtHardwareDeviceType.GPU or not adapter.isdigit()
-                or (hardware.vendor_id, hardware.device_id) == _BASIC_RENDER_DRIVER):
-            continue
-        gpus.setdefault(int(adapter), (hardware.vendor_id, hardware.device_id, _name(hardware, metadata), _memory(metadata)))
-    ids = _identities((adapter, vendor, device) for adapter, (vendor, device, _, _) in gpus.items())
-    return [CPU] + [Processor(identity, "gpu", gpus[adapter][2], adapter, gpus[adapter][3])
-                    for identity, adapter in ids.items()]
+    try:
+        gpus = {}
+        for device in devices:
+            hardware = device.device
+            metadata = dict(hardware.metadata)
+            adapter = str(metadata.get("DxgiAdapterNumber", ""))
+            # DirectML silently uses adapter 0 for a device without an adapter number,
+            # which may be a different GPU from the one named, so such devices are not offered.
+            if (device.ep_name != DIRECTML or hardware.type != ort.OrtHardwareDeviceType.GPU or not adapter.isdigit()
+                    or (hardware.vendor_id, hardware.device_id) == _BASIC_RENDER_DRIVER):
+                continue
+            gpus.setdefault(int(adapter), (hardware.vendor_id, hardware.device_id, _name(hardware, metadata), _memory(metadata)))
+        ids = _identities((adapter, vendor, device) for adapter, (vendor, device, _, _) in gpus.items())
+        return [CPU] + [Processor(identity, "gpu", gpus[adapter][2], adapter, gpus[adapter][3])
+                        for identity, adapter in ids.items()]
+    except Exception:
+        logging.getLogger(__name__).warning("Could not read GPU device details", exc_info=True)
+        return [CPU]
 
 
 def resolve(requested: str) -> tuple[Processor, str | None]:
@@ -108,9 +112,9 @@ def resolve(requested: str) -> tuple[Processor, str | None]:
     try:
         current = _identities(_dxgi_adapters())
     except Exception:
-        # Degrade to the order ONNX Runtime read at startup, which is right unless it changed.
+        # A stale adapter index can select an entirely different card.
         logging.getLogger(__name__).warning("Could not list Windows graphics adapters", exc_info=True)
-        return listed, None
+        return CPU, "Could not verify the selected GPU identity; running the models on the CPU"
     if requested not in current:
         return CPU, NOT_FOUND
     return replace(listed, adapter=current[requested]), None

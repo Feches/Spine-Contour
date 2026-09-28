@@ -6,7 +6,7 @@ import { DEFAULT_MODELS, VERTEBRA_MODELS, modelLabel } from '../data/models.js';
 import { studyName } from '../data/labels.js';
 import { sidebarText } from '../data/batch.js';
 import { VERSION_LABEL } from '../data/version.js';
-import { changePerformance, cancelProcessing } from '../processing.js';
+import { changePerformance, cancelProcessing, refreshProcessors } from '../processing.js';
 import { progressTitle, progressDetail, processorChoices, processorNote } from '../data/processing.js';
 import { demoToggleAvailable, demoStudiesShown, setDemoStudiesShown } from '../demo-studies.js';
 
@@ -251,7 +251,10 @@ export function render(state) {
       label: 'Settings',
       active: state.settingsOpen,
       collapsed,
-      onClick: () => setState((current) => ({ settingsOpen: !current.settingsOpen })),
+      onClick: () => {
+        if (!state.settingsOpen) refreshProcessors();
+        setState((current) => ({ settingsOpen: !current.settingsOpen }));
+      },
     }),
     themeRow,
     state.settingsOpen && !collapsed ? modelsBlock(state) : null,

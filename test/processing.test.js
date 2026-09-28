@@ -88,7 +88,7 @@ test('Settings lists what the backend found and never hides or invents a saved c
   assert.match(processorNote(listed, 'gpu:10de:2520'), /on NVIDIA GeForce RTX 3060 through DirectML/);
   assert.match(processorNote(listed, 'gpu:1002:73df'), /not found/);
   assert.match(processorNote(listed, 'cpu'), /Choose a GPU/);
-  assert.match(processorNote(listed.slice(0, 1), 'cpu'), /No supported GPU/);
+  assert.match(processorNote(listed.slice(0, 1), 'cpu'), /CPU processing is available/);
   for (const selected of ['cpu', 'gpu:10de:2520']) assert.doesNotMatch(processorNote(null, selected), /was not found|No supported|Checking/);
 });
 

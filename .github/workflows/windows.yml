@@ -59,6 +59,9 @@ jobs:
       - name: Export and validate ONNX models
         run: python tools/export_onnx.py
 
+      - name: Verify CPU provider parity between Windows wheels
+        run: python tools/packaging/check_cpu_wheels.py
+
       - name: Test backend
         run: python -m pytest backend/tests -q
 

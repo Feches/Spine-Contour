@@ -1,111 +1,106 @@
-# GPU processing
+# Processor selection and GPU parity
 
-**Settings → Processing → Processor** chooses where the models run: the CPU (the
-default), or a GPU the bundled ONNX Runtime can use. On 64-bit Windows that is any
-DirectX 12 graphics card — NVIDIA, AMD or Intel — through the installed display
-driver. Nothing else needs to be installed: no CUDA, no cuDNN, no model download.
-macOS lists only the CPU.
+Choose **Settings → Processing → Processor**. CPU is the default and validated
+reference path. Windows x64 offers hardware DirectX 12 adapters through the
+bundled ONNX Runtime 1.24.4 DirectML provider; CUDA is not required. macOS,
+including Apple Silicon, keeps the existing CPU path (with CPU-only Core ML
+acceleration for the S1 detector in standard mode). This change does not enable
+Apple GPU inference.
 
-## Why a Windows or NVIDIA GPU preference changes nothing
+A Windows graphics preference controls drawing, not model inference. Choose the
+inference processor inside Spine-Contour. Its PCI identity is saved, and each
+request resolves that identity against the current DXGI adapter order. If the
+identity cannot be verified, processing uses the CPU with an explanation. Settings
+retries discovery and retries again when reopened. Restart after installing a new
+driver or adding hardware.
 
-The models run in the backend process, `resources\backend-runtime\spine-contour-backend.exe`,
-which `main.js` starts; `Spine-Contour.exe` is only the window. Until this setting,
-the installer shipped the CPU-only `onnxruntime` package and every model session
-asked for `CPUExecutionProvider`, so there was no GPU code to switch to.
+## Qualification and fallback
 
-**Windows Settings → Display → Graphics** and the NVIDIA app's per-program preferred
-graphics processor choose which GPU draws a program's graphics. They cannot move
-a CPU library's arithmetic to a GPU, and a preference set on `Spine-Contour.exe` does
-not apply to the backend executable. Neither is needed now: the Processor setting
-names the GPU directly.
+DirectML vendor metacommands are disabled with `disable_metacommands: "True"`.
+The review attached to [issue #40](https://github.com/Feches/Spine-Contour/issues/40)
+found Intel UHD 770 metacommands exceeded export tolerance and moved a landmark
+2.74 pixels and a measurement 0.28 degrees. Disabling them passed the reported raw
+checks on that Intel GPU and an RTX 4070. These are historical measurements, not a
+validation of every driver or of this revision. Integrated GPUs can be slower than
+CPU inference.
 
-## What the setting does
+Before a GPU processes a film, all six models must pass a local numerical check:
 
-The Windows x64 installer bundles `onnxruntime-directml` (the same ONNX Runtime
-release, 1.24.4, built with the DirectML execution provider). The backend lists the
-CPU and each hardware GPU ONNX Runtime reports (`GET /processors`), and Settings shows
-them by name. Windows' software renderer, the Microsoft Basic Render Driver, is never
-offered: DirectML refuses it, and a machine without a GPU driver can report it as one. The choice is saved with the other processing settings in
-`performance.json` as `processor`: `cpu`, or the card's PCI identity,
-`gpu:<vendor>:<device>` in hexadecimal (`gpu:10de:2520`; `:2`, `:3`… for identical
-cards). DirectML opens a GPU by its Windows adapter index, which can change while the
-app is open (a display moved to the other card, the Windows graphics preference
-changed), and ONNX Runtime reads its device list only once. So the index is never
-saved: each run finds the chosen card by its identity in Windows' current adapter
-list (DXGI), and a card that has gone is reported as not found. The list Settings
-shows is read when the app starts; restart it after adding a GPU or installing its
-driver. Existing preferences read as `cpu`. The setting applies to the next single
-run or batch and is locked while processing, like the others. Calibration OCR always
-uses the CPU.
+- finite outputs with matching shapes/dtypes and `abs(gpu - cpu) <= .002 + .002 * abs(cpu)`;
+- repeated GPU runs against the CPU reference;
+- decoded mask agreement of at least 99.99%, unchanged vertebral corners,
+  HRNet/S1 coordinates within .05 model pixels, identical cervical heatmap peaks,
+  and cervical detector presence/query/box checks;
+- bit-identical CPU outputs under the GPU memory-pattern policy;
+- an ONNX Runtime profile showing actual DirectML node execution for each model;
+- an additional low-memory pass for vertebra and S1.
 
-A GPU session is created with `DmlExecutionProvider` for that adapter, then
-`CPUExecutionProvider`. ONNX Runtime runs any operator DirectML lacks on the CPU
-inside the same session: all six graphs are ONNX opset 17, within DirectML's limit,
-and the S1 detector's detection loop and non-maximum suppression are the parts
-expected to stay on the CPU. Memory patterns are off for GPU sessions (DirectML does
-not support them). Low memory still keeps one model session resident at a time.
+The inputs are numerical probes (zero, blank/preprocessed, seeded noise and smooth
+arrays, plus both cervical detector aspect ratios). They are not evidence of
+segmentation accuracy on radiographs. Qualification can take several minutes. Its
+verdict is cached only for the backend lifetime and keyed by GPU identity, adapter,
+live Windows driver versions, ONNX Runtime version and model hashes. A changed
+key reruns it. If driver versions cannot be read, the verdict is not cached.
+A failed check refuses GPU use and processes the film on the CPU.
 
-If DirectML cannot create or run a model's session — a driver reset, an operator
-the card rejects, too little GPU memory — that model is retried once on the CPU and
-the progress line says so. (ONNX Runtime's own silent retry is turned off so the
-backend can report it.) A cached session then stays on the CPU until the
-processing settings change or the app restarts; Low memory, which reloads each
-model, tries the GPU again next time. A CPU error is never retried. If the saved GPU is not
-found (removed, disabled, no driver), the run uses the CPU and says so; Settings
-keeps showing the saved choice as **Saved GPU · not found** rather than silently
-changing it.
+Any DirectML creation/run error aborts the entire GPU attempt. All cached sessions
+and intermediate results are discarded, and the original film is processed again
+from decoding, region detection and crop search through measurements on the CPU.
+There is no per-call CPU retry within a GPU attempt. CPU errors propagate and
+cancellation prevents a restart. The exception is logged; its model and reason
+remain in `qc.processing.processor.note`, with `requested` preserving the saved
+GPU and `resolved` set to `cpu`. A toast makes the fallback visible even when the
+progress line advances immediately.
 
-## Checking where a result ran
+## Verification on a Windows workstation
 
-- While a film processes, the sidebar shows the model loading on the GPU by name,
-  and says so when a model or the whole run falls back to the CPU.
-- A result processed with this version ends its Analysis header with **GPU**,
-  **GPU + CPU** (some models fell back) or **CPU**; hover it for the GPU's name or
-  the reason. This comes from the providers each model's session actually recorded,
-  never from the setting. Older results show nothing.
-- Each saved result keeps `qc.processing.providers` (per model) and
-  `qc.processing.processor = {requested, resolved, name, note}`.
-- Windows Task Manager: on **Processes**, `spine-contour-backend.exe` shows GPU use,
-  and its **GPU engine** column (right-click the header to add it) names the card's
-  3D engine, for example `GPU 1 - 3D`. On **Performance**, that GPU's **3D** graph and
-  dedicated memory rise. DirectML submits through a Direct3D 12 graphics queue, so
-  the work appears under 3D rather than Compute.
-- `"<install folder>\resources\backend-runtime\spine-contour-backend.exe" --verify-models`
-  runs every model on the CPU, then the vertebra model on each GPU, and prints JSON
-  with `gpus` and `gpu_providers` (`["DmlExecutionProvider", "CPUExecutionProvider"]`
-  means the GPU ran it).
+Run the installed backend:
 
-## GPU and CPU results
-
-GPU arithmetic is float32 like the CPU's but not bit-identical, so a mask edge or
-landmark can move by a pixel and a measurement can differ slightly. The export
-parity checks validate the ONNX CPU path, which is why the CPU stays the default.
-Results record where they ran; review GPU results as usual. How much faster a GPU
-is depends on the card and the film, and an integrated GPU may not beat the CPU.
-
-## Development and packaging
-
-`backend/requirements.txt` selects `onnxruntime-directml` on 64-bit Windows and
-`onnxruntime` everywhere else. The two install into the same `onnxruntime` package
-directory, so pip cannot swap one for the other in place. In an existing Windows
-virtual environment:
-
-```sh
-pip uninstall -y onnxruntime onnxruntime-directml
-pip install -r backend/requirements-export.txt
+```text
+spine-contour-backend.exe --verify-models
+spine-contour-backend.exe --verify-models --gpu gpu:10de:2786 --parity-films films.json
 ```
 
-`run.py` does this itself whenever `requirements.txt` changes. The installer
-workflows need no change: `--collect-all onnxruntime` bundles `DirectML.dll` beside
-ONNX Runtime, which loads it from there rather than the older copy in `System32`.
-`tools/packaging/check_bundled_inference.py` fails a Windows build whose frozen
-backend lacks `DmlExecutionProvider` or `DirectML.dll`. The installed backend grows
-by about 34 MB (`DirectML.dll` and the larger DirectML build of ONNX Runtime).
+In development use `python -m backend.verify_onnx` with the same optional flags.
+The final stdout line is a JSON report containing `gpu_parity`, tolerances, hashes,
+per-model metrics, node placement and optional film comparisons. Exit 3 means
+parity failure; exit 4 means a GPU failed or was not found. CPU/model assertions
+retain exit 1. A machine with no GPU reports an empty GPU map and a passing CPU
+check; explicitly requesting a missing GPU fails.
 
-GitHub's Windows runners have no GPU, so CI proves the DirectML bundle and the CPU
-path only. The GPU path is checked on a workstation: `--verify-models` as above,
-then one film with the GPU selected.
+The local manifest is a nonempty JSON array, for example:
 
-Microsoft has put DirectML in sustained engineering: it remains supported, and new
-work goes to Windows ML (`onnxruntime-windowsml`). Moving there later would change
-the package, not the setting or the saved ids.
+```json
+[
+  {"path": "films/lumbar.png", "region": "lumbar", "vertebra_model": "unet", "localizer": true},
+  {"path": "films/lumbar.png", "region": "lumbar", "vertebra_model": "hrnet", "localizer": false},
+  {"path": "films/cervical.dcm", "region": "cervical", "anterior_side": "left"},
+  {"path": "films/standing.png", "region": "full_spine"},
+  {"path": "films/standing.png", "region": "auto"}
+]
+```
+
+Include both cervical orientations, partial anatomy, 8-bit and 16-bit DICOM, both
+resource modes, and localizer on/off. Use `mode: "low-memory"` and `cpu_threads`
+for the low-memory cases. Every CPU model feed, including search windows and
+flipped images, is replayed twice through DirectML. Each film also runs twice
+through the production GPU pipeline. Comparisons require matching geometry
+structure/anatomy, landmarks within .25 source pixels, measurements within .1
+degrees or mm, matching detection/crop behavior, and no CPU fallback. Reports use
+source hashes and indices rather than filenames or pixels. Keep reports per
+vendor/driver and visually inspect real-film overlays before release. Numerical
+qualification alone does not establish real-film parity.
+
+`qc.processing.providers` lists **registered providers**, not a node-execution
+trace. A GPU badge means a DirectML session was used, not that every operator ran
+on the GPU. Unsupported operators may execute on CPU within that session. The
+verification profiler supplies node-placement evidence.
+
+## Packaging and Apple Silicon
+
+The requirements select `onnxruntime-directml` on Windows x64 and `onnxruntime`
+on macOS. Both wheels use the same Python package name and must not be installed
+together. Packaged verification checks the six models, parity report, DirectML
+provider and Windows DLL. GPU-less CI cannot validate a physical GPU. Apple Silicon
+must run the CPU checks and real-film smoke test on arm64; its CPU/Core ML policy
+is retained. Windows driver qualification does not apply to macOS.

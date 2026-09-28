@@ -14,6 +14,13 @@ try:
 except ImportError:  # Support running modules directly from backend/.
     import processors
 
+class GpuFailure(RuntimeError):
+    """Abort the GPU attempt; only the request boundary may retry on CPU."""
+    def __init__(self, kind, reason):
+        self.kind, self.reason = kind, reason
+        super().__init__(f"{kind}: {reason}")
+
+
 class Cancelled(RuntimeError):
     pass
 
@@ -64,6 +71,8 @@ _cancel = ContextVar("processing_cancel", default=None)
 _last_progress = ContextVar("processing_last_progress", default=None)
 _providers = ContextVar("processing_providers", default=None)
 _processor = ContextVar("processing_processor", default=(processors.CPU, None))
+_qualification = ContextVar("gpu_qualification", default=None)
+_fallbacks = ContextVar("gpu_fallbacks", default=None)
 _lock = threading.Lock()
 
 
@@ -94,7 +103,7 @@ def current_progress():
 def record_providers(kind, providers):
     current = _providers.get()
     if current is not None:
-        current[kind] = list(providers)
+        current[kind] = list(dict.fromkeys(current.get(kind, []) + list(providers)))
 
 
 def providers():
@@ -107,16 +116,35 @@ def processor():
 
 
 def processor_record():
-    # Per-model fallbacks to the CPU are in `providers()`; this is the request's target.
+    # Final request target, qualification evidence and whole-film fallback reason.
     chosen, note = _processor.get()
-    return {"requested": options().processor, "resolved": chosen.id, "name": chosen.name, "note": note}
+    record = {"requested": options().processor, "resolved": chosen.id, "name": chosen.name, "note": note}
+    if _qualification.get() is not None:
+        record['qualification'] = _qualification.get()
+    if _fallbacks.get():
+        record['fallbacks'] = dict(_fallbacks.get())
+    return record
+
+
+def record_qualification(record):
+    _qualification.set(record)
+
+
+def fallback_to_cpu(error):
+    checkpoint()
+    note = f"GPU processing failed ({error}); restarting the entire film on the CPU"
+    _processor.set((processors.CPU, note))
+    _fallbacks.set({error.kind: error.reason})
+    _providers.set({})  # Only the successful CPU attempt belongs to the result.
+    report("processor", note)
 
 
 @contextmanager
 def session(settings=None, reporter=None, cancelled=None):
     settings = settings or Options()
     tokens = (_options.set(settings), _reporter.set(reporter), _cancel.set(cancelled), _last_progress.set(None),
-              _providers.set({}), _processor.set((processors.CPU, None)))
+              _providers.set({}), _processor.set((processors.CPU, None)),
+              _qualification.set(None), _fallbacks.set(None))
     acquired = False
     try:
         report("waiting", "Waiting for the processing worker")
@@ -138,3 +166,5 @@ def session(settings=None, reporter=None, cancelled=None):
         _last_progress.reset(tokens[3])
         _providers.reset(tokens[4])
         _processor.reset(tokens[5])
+        _qualification.reset(tokens[6])
+        _fallbacks.reset(tokens[7])

@@ -9,6 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 import gc
 import json
+import logging
 import os
 import sys
 import tempfile
@@ -200,7 +201,7 @@ def _load_model(kind, policy):
     if adapter is not None:
         runtime.report("loading", f"Loading {MODEL_NAMES[kind]} on {runtime.processor().name}")
         # DirectML takes Windows' adapter index. Nodes it cannot run stay on the CPU provider.
-        providers.insert(0, (processors.DIRECTML, {"device_id": str(adapter)}))
+        providers.insert(0, (processors.DIRECTML, {"device_id": str(adapter), "disable_metacommands": "True"}))
         return InferenceModel(path, policy, providers)
     runtime.report("loading", f"Loading {MODEL_NAMES[kind]}")
     # Apple's CPU implementation is faster than generic ARM kernels for this
@@ -228,13 +229,8 @@ FALLBACK_MESSAGES = {
 
 
 class InferenceModel:
-    """Retain CPU fallback if an accelerator cannot compile or run a film.
-
-    The accelerator is Apple's Core ML (the S1 detector) or a DirectML GPU. A
-    DirectML failure can be any ONNX Runtime error (a driver reset, an operator
-    the GPU rejects, too little GPU memory), so any error from an accelerated
-    session retries once on the CPU; a CPU error is always raised. The session's
-    providers then record the CPU, so a result never claims the GPU ran it.
+    """DirectML errors abort the whole request attempt; Core ML retains its
+    existing S1-only CPU fallback. ORT's implicit retry is always disabled.
     """
     def __init__(self, path, policy, providers):
         self.path, self.policy = path, policy
@@ -242,15 +238,27 @@ class InferenceModel:
         self.accelerator = None if len(providers) == 1 else first[0] if isinstance(first, tuple) else first
         try:
             self.session = self._session(providers)
-        except Exception:
+        except Exception as error:
             if self.accelerator is None:
                 raise
-            self._cpu_fallback()
+            self._accelerator_failure(error, creating=True)
 
     def _session(self, providers):
         # ONNX Runtime's own retry would fall back silently, with only a banner on stdout.
-        return ort.InferenceSession(str(self.path), sess_options=session_options(self.policy),
-                                    providers=providers, enable_fallback=0)
+        session = ort.InferenceSession(str(self.path), sess_options=session_options(self.policy),
+                                       providers=providers, enable_fallback=0)
+        if self.accelerator == processors.DIRECTML and session.get_providers()[0] != processors.DIRECTML:
+            raise RuntimeError("DirectML session unexpectedly registered only CPU providers")
+        return session
+
+    def _accelerator_failure(self, error, creating=False):
+        runtime.checkpoint()
+        logging.getLogger(__name__).exception("%s failed for %s", self.accelerator, self.path.stem)
+        if self.accelerator == processors.DIRECTML:
+            raise runtime.GpuFailure(self.path.stem, f"{type(error).__name__}: {error}") from error
+        if not creating and not isinstance(error, ort.capi.onnxruntime_pybind11_state.Fail):
+            raise error
+        self._cpu_fallback()
 
     def _cpu_fallback(self):
         model = MODEL_NAMES.get(self.path.stem, "model")
@@ -264,11 +272,10 @@ class InferenceModel:
     def run(self, output_names, inputs):
         try:
             return self.session.run(output_names, inputs)
-        except Exception:
+        except Exception as error:
             if self.get_providers() == ["CPUExecutionProvider"]:
                 raise
-            runtime.checkpoint()
-            self._cpu_fallback()
+            self._accelerator_failure(error)
             return self.session.run(output_names, inputs)
 
 
@@ -289,10 +296,11 @@ def _infer(kind, operation, message):
     key = (kind, policy)
     # Session thread counts and providers are immutable. Never reuse a different
     # mode's or processor's session, or retain duplicate copies after a change.
-    if policy != _cache_policy or (options.low_memory and key != _resident_key):
+    cache_policy = (policy, runtime.processor().id)
+    if cache_policy != _cache_policy or (options.low_memory and key != _resident_key):
         release_models()
     model = _load_model(kind, policy)
-    _resident_key, _cache_policy = key, policy
+    _resident_key, _cache_policy = key, cache_policy
     if message is not None:
         runtime.report(kind, message)
     elif previous_progress is not None:

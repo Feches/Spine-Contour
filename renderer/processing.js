@@ -9,14 +9,24 @@ export async function initializeProcessing() {
     if (!state.running) return;
     const next = progressUpdate(state.runStage, event);
     if (next !== state.runStage) setState({ runStage: next });
+    if (next !== state.runStage && event.type === 'progress' && event.stage === 'processor') showToast(event.message);
   });
   try {
     const performance = await loadPerformance();
     if (validPerformance(performance)) setState({ performance });
   } catch (error) { console.warn('Could not load processing settings:', error.message); }
   // Not awaited: the first listing starts ONNX Runtime's device discovery, and boot need not wait.
-  listProcessors().then((processors) => setState({ processors }))
-    .catch((error) => console.warn('Could not list processors:', error.message));
+  refreshProcessors();
+}
+
+export async function refreshProcessors() {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try { setState({ processors: await listProcessors() }); return; }
+    catch (error) {
+      if (attempt === 2) showToast(`Could not list GPUs: ${error.message}. Reopen Settings to retry.`);
+      else await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+    }
+  }
 }
 
 export async function changePerformance(patch) {

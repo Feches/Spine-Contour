@@ -10,7 +10,7 @@ from . import processors, runtime
 from .models import models
 
 
-def verify():
+def verify(gpu=None, parity_films=None):
     assert 'torch' not in sys.modules, 'Desktop inference unexpectedly imports PyTorch'
     results = {}
     with runtime.session(runtime.parse_options('low-memory', 1, False)):
@@ -49,17 +49,29 @@ def verify():
             models._infer('s1', lambda session: session.run(None, {'image': np.zeros((1, 3, 768, 768), np.float32)}), None)
             results['apple_s1_providers'] = runtime.providers()['s1']
             models.release_models()
-    # Each GPU the bundled runtime offers (CI runners have none; a workstation's
-    # `--verify-models` does). A CPU fallback is valid and is what gets reported.
-    gpus = processors.available()[1:]
-    for gpu in gpus:
-        with runtime.session(runtime.parse_options('standard', 2, False, processor=gpu.id)):
-            models._infer('vertebra', lambda session: session.run(None, {'image': np.zeros((1, 1, 768, 768), np.float32)}), None)
-            results.setdefault('gpu_providers', {})[gpu.id] = runtime.providers()['vertebra']
-            models.release_models()
+    from .gpu_parity import verify_all, verify_films
+    parity = verify_all(gpu)
+    if parity_films:
+        for identity, result in parity['gpus'].items():
+            if result['passed']:
+                try:
+                    result['films'] = verify_films(parity_films, identity)
+                    result['passed'] = all(film['passed'] for film in result['films'])
+                    if not result['passed']: result['status'] = 'parity_failed'
+                except Exception as error:
+                    result.update(passed=False, status='gpu_failed', error_type=type(error).__name__)
+        parity['passed'] = all(result['passed'] for result in parity['gpus'].values())
     print(json.dumps({'runtime': 'onnxruntime', 'available_providers': ort.get_available_providers(),
-                      'gpus': [gpu.public() for gpu in gpus], 'verified': results}), flush=True)
+                      'gpus': [device.public() for device in processors.available()[1:]],
+                      'verified': results, 'gpu_parity': parity}), flush=True)
+    if not parity['passed']:
+        raise SystemExit(4 if any(v['status'] == 'gpu_failed' for v in parity['gpus'].values()) else 3)
 
 
 if __name__ == '__main__':
-    verify()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--gpu')
+    parser.add_argument('--parity-films')
+    args = parser.parse_args()
+    verify(args.gpu, args.parity_films)

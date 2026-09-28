@@ -135,14 +135,14 @@ def test_a_gpu_removed_while_the_app_is_open_is_not_found(monkeypatch, devices):
     assert [e['message'] for e in events if e['stage'] == 'processor'] == [processors.NOT_FOUND]
 
 
-def test_if_windows_adapters_cannot_be_listed_the_startup_order_is_used_and_logged(monkeypatch, devices, caplog):
+def test_if_windows_adapters_cannot_be_listed_cpu_is_used_and_logged(monkeypatch, devices, caplog):
     devices += [gpu(0, 0x8086, 0x9a49, 'Intel(R) UHD Graphics'), gpu(1)]
     def broken():
         raise OSError('CreateDXGIFactory2 failed (0x887a0004)')
     monkeypatch.setattr(processors, '_dxgi_adapters', broken)
     with caplog.at_level(logging.WARNING, logger=processors.__name__):
         chosen, note = processors.resolve('gpu:10de:2520')
-    assert (chosen.adapter, note) == (1, None)
+    assert chosen is processors.CPU and 'Could not verify' in note
     assert 'Could not list Windows graphics adapters' in caplog.text
 
 
@@ -206,7 +206,7 @@ def test_real_dxgi_enumeration_agrees_with_onnx_runtime():
     adapters = processors._dxgi_adapters()
     assert all(isinstance(value, int) for adapter in adapters for value in adapter)
     live = processors._identities(adapters)
-    assert all(gpu.id in live for gpu in processors.available()[1:])
+    assert all(live[gpu.id] == gpu.adapter for gpu in processors.available()[1:])
 
 
 def test_a_failing_dxgi_call_raises_after_releasing_what_it_opened():
@@ -257,7 +257,7 @@ def test_gpu_sessions_use_directml_on_the_resolved_adapter_without_memory_patter
     models.release_models()
     assert len(created) == 1
     providers, mem_pattern, _ = created[0]
-    assert providers == [('DmlExecutionProvider', {'device_id': '1'}), 'CPUExecutionProvider']
+    assert providers == [('DmlExecutionProvider', {'device_id': '1', 'disable_metacommands': 'True'}), 'CPUExecutionProvider']
     assert mem_pattern is False
     assert 'Loading S1 detector on NVIDIA GeForce RTX 3060 Laptop GPU' in [e['message'] for e in events]
     assert models.session_options((2, False, None)).enable_mem_pattern
@@ -306,17 +306,15 @@ class FailingGpu:
 
 
 @pytest.mark.parametrize('failure', ['create', 'run'])
-def test_a_gpu_failure_retries_on_the_cpu_once_and_records_the_cpu(monkeypatch, tmp_path, failure):
-    calls, events = [], []
+def test_a_gpu_failure_aborts_without_per_call_cpu_retry(monkeypatch, tmp_path, failure, caplog):
+    calls = []
     monkeypatch.setattr(ort, 'InferenceSession', FailingGpu(failure, calls))
     providers = [('DmlExecutionProvider', {'device_id': '0'}), 'CPUExecutionProvider']
-    with runtime.session(reporter=events.append):
+    with pytest.raises(runtime.GpuFailure, match='hrnet: RuntimeException'):
         model = models.InferenceModel(tmp_path / 'hrnet.onnx', (2, False, 0), providers)
-        for _ in range(2):
-            assert model.run(None, {})[0].tolist() == [1.]
-    assert model.get_providers() == ['CPUExecutionProvider']
-    assert calls == [['DmlExecutionProvider', 'CPUExecutionProvider'], ['CPUExecutionProvider']]
-    assert 'The GPU could not run the HRNet landmark model; using ONNX CPU inference' in [e['message'] for e in events]
+        model.run(None, {})
+    assert calls == [['DmlExecutionProvider', 'CPUExecutionProvider']]
+    assert 'failed for hrnet' in caplog.text
 
 
 def test_a_cpu_error_is_raised_rather_than_retried(monkeypatch, tmp_path):
@@ -338,3 +336,83 @@ def test_processors_endpoint_lists_what_the_runtime_offers_and_bad_ids_are_rejec
                                                     'processor': 'NVIDIA'},
                            files={'file': ('film.png', b'not decoded before validation', 'image/png')})
     assert response.status_code == 422
+
+
+def test_reordered_different_cards_at_same_index_invalidate_cached_sessions(monkeypatch, devices):
+    devices += [gpu(0), gpu(1, 0x8086, 0x9a49)]
+    created = []
+    class Model:
+        def get_providers(self): return [processors.DIRECTML]
+    @lru_cache(maxsize=4)
+    def load(kind, policy):
+        created.append(runtime.processor().id)
+        return Model()
+    models.release_models()
+    monkeypatch.setattr(models, '_load_model', load)
+    with runtime.session(runtime.parse_options(processor='gpu:10de:2520')):
+        models._infer('s1', lambda model: None, None)
+    monkeypatch.setattr(processors, '_dxgi_adapters', lambda: [(0, 0x8086, 0x9a49), (1, 0x10de, 0x2520)])
+    with runtime.session(runtime.parse_options(processor='gpu:8086:9a49')):
+        models._infer('s1', lambda model: None, None)
+    assert created == ['gpu:10de:2520', 'gpu:8086:9a49']
+    models.release_models()
+
+
+def test_bad_driver_metadata_preserves_cpu_availability(monkeypatch):
+    class Broken:
+        @property
+        def device(self): raise RuntimeError('driver disappeared')
+    monkeypatch.setattr(ort, 'get_ep_devices', lambda: [Broken()])
+    assert processors.available() == [processors.CPU]
+
+
+@pytest.mark.parametrize('fail_at', [1, 2, 4])
+def test_entire_film_restarts_after_gpu_failure_in_search_or_flip(monkeypatch, devices, fail_at):
+    from backend import gpu_parity
+    devices.append(gpu(0))
+    monkeypatch.setattr(gpu_parity, 'ensure_verified', lambda gpu: None)
+    calls, events = [], []
+    def analyze(**request):
+        attempt = []
+        calls.append(attempt)
+        for i in range(5):
+            runtime.checkpoint()
+            attempt.append(runtime.processor().id)
+            runtime.record_providers('femoral' if i > 2 else 's1',
+                                     [processors.DIRECTML] if runtime.processor().kind == 'gpu' else ['CPUExecutionProvider'])
+            if runtime.processor().kind == 'gpu' and i == fail_at:
+                raise runtime.GpuFailure('femoral' if i > 2 else 's1', 'device removed')
+        return runtime.processor_record(), runtime.providers()
+    monkeypatch.setattr(server, '_analyze', analyze)
+    record, providers = server.run_prediction({'settings': runtime.parse_options(processor='gpu:10de:2520')}, events.append)
+    assert len(calls[0]) == fail_at + 1 and calls[1] == ['cpu'] * 5
+    assert record['requested'] == 'gpu:10de:2520' and record['resolved'] == 'cpu'
+    assert 'device removed' in record['note']
+    assert providers == {'s1': ['CPUExecutionProvider'], 'femoral': ['CPUExecutionProvider']}
+    assert any(e['stage'] == 'processor' for e in events)
+
+
+def test_cancelled_gpu_attempt_never_restarts_on_cpu(monkeypatch, devices):
+    import threading
+    from backend import gpu_parity
+    devices.append(gpu(0))
+    monkeypatch.setattr(gpu_parity, 'ensure_verified', lambda gpu: None)
+    cancelled, calls = threading.Event(), []
+    def analyze(**kwargs):
+        calls.append(runtime.processor().id)
+        cancelled.set()
+        raise runtime.GpuFailure('s1', 'device removed')
+    monkeypatch.setattr(server, '_analyze', analyze)
+    with pytest.raises(runtime.Cancelled):
+        server.run_prediction({'settings': runtime.parse_options(processor='gpu:10de:2520')}, cancelled=cancelled)
+    assert calls == ['gpu:10de:2520']
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='Requires the real DirectML runtime')
+def test_real_directml_invalid_adapter_aborts_without_fallback():
+    path = models.ONNX_DIRECTORY / 'vertebra.onnx'
+    assert path.is_file(), 'Export models before Windows runtime tests'
+    with pytest.raises(runtime.GpuFailure):
+        model = models.InferenceModel(path, (1, True, 2147483647),
+                [(processors.DIRECTML, {'device_id': '2147483647', 'disable_metacommands': 'True'}), 'CPUExecutionProvider'])
+        model.run(None, {'image': np.zeros((1, 1, 768, 768), np.float32)})

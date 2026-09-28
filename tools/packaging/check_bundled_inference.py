@@ -10,6 +10,9 @@ result = subprocess.run([str(executable.resolve()), '--verify-models'], capture_
 if result.returncode:
     raise RuntimeError(f'Bundled model verification failed:\n{result.stdout}\n{result.stderr}')
 report = json.loads(result.stdout.strip().splitlines()[-1])
+assert report['gpu_parity']['tolerance']['rtol'] == 2e-3
+assert report['gpu_parity']['tolerance']['atol'] == 2e-3
+assert report['gpu_parity']['passed'], 'GPU parity verification failed'
 assert {'s1', 'vertebra', 'femoral', 'hrnet', 'cervical_detr', 'cervical_hrnet'} <= set(report['verified'])
 assert not list(bundle.rglob('*.pt')), 'Training checkpoints must not ship alongside ONNX models'
 assert not list(bundle.rglob('*.safetensors')), 'Detector training weights must not ship alongside ONNX models'

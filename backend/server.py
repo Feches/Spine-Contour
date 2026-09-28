@@ -199,7 +199,18 @@ def run_prediction(request, reporter=None, cancelled=None):
         if settings.low_memory:
             release_models()
         try:
-            return _analyze(**request)
+            try:
+                if runtime.processor().kind == "gpu":
+                    try:
+                        from .gpu_parity import ensure_verified
+                    except ImportError:  # uvicorn server:app from backend/
+                        from gpu_parity import ensure_verified
+                    ensure_verified(runtime.processor())
+                return _analyze(**request)
+            except runtime.GpuFailure as error:
+                release_models()
+                runtime.fallback_to_cpu(error)
+                return _analyze(**request)
         finally:
             if settings.low_memory:
                 release_models()

@@ -55,12 +55,12 @@ export function processorNote(processors, selected) {
     // The select clips long adapter names; the note carries the whole name.
     const gpu = gpus.find((item) => item.id === selected);
     return gpu
-      ? `Runs the models on ${gpu.name} through DirectML. A model it cannot run uses the CPU; each result records where it ran.`
+      ? `Runs the models on ${gpu.name} through DirectML. Checks CPU parity before first use. If GPU processing fails, the entire film restarts on the CPU.`
       : 'This GPU was not found. Runs use the CPU until it is back or another is chosen.';
   }
   if (!gpus) return 'Runs the models on the CPU.';
   return gpus.length ? 'Runs the models on the CPU. Choose a GPU to run them there instead.'
-    : 'No supported GPU was found. GPU processing needs Windows and a DirectX 12 graphics card.';
+    : 'CPU processing is available. GPU acceleration requires a supported Windows DirectX 12 device.';
 }
 
 export function progressUpdate(current, event) {
