@@ -30,7 +30,9 @@ were answered by the user as one pass, not itemised. See the architecture contra
 and outcomes (stage 1)`, HANDOFF's first "Where things stand" section and `docs/ROADMAP.md` §8. **Next:**
 the user says when to push to `fork`; then a PR to `fork/main`. A release commit is separate, later work.
 Wrapped 2026-09-14 with both suites green (unit 591/591; backend 429 passed, 2 skipped); `docs/superpowers/NEXT-SESSION.md`
-is the prompt, and it resumes at the 1.0.9 release step.
+is the prompt. Since 2026-09-25 it resumes at merging `fork/main` (v1.0.10, `3ddb8bb`) into this branch, because 1.0.9
+and 1.0.10 went to the backend developer's work: ten files conflict (HANDOFF's first "Where things stand" section).
+Then the owner's offline testing, then the release as 1.0.11.
 
 **2026-09-11 filename grammar / note:** branch `claude/spine-contour-filename-parse-b6c1bb` off `fork/main` @
 `6704586` (v1.0.7). Filename stems are read as underscore-separated fields — subject, then a timepoint, view or

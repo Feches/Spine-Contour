@@ -1,8 +1,9 @@
 # Next session — prompt
 
 Written at the wrap of the 2026-09-13/14 execution session: Plan A (backend embeddings) and Plan B (the similar-cases
-renderer) built, reviewed, gated by the user and recorded. Paste everything below the line as the first message of the
-next session.
+renderer) built, reviewed, gated by the user and recorded. Updated in place at the 2026-09-28 wrap of the GitHub
+versioning audit: the trunk moved to v1.0.10, so the resume point, the release number, the gates and the rulings below
+changed. Paste everything below the line as the first message of the next session.
 
 ---
 
@@ -12,8 +13,12 @@ Working directory (absolute): `C:\Users\codyj\spine contour\.claude\worktrees\st
 This is a git worktree, not the primary checkout; its directory name predates this work. Run everything from here; do
 not `cd` to `C:\Users\codyj\spine contour`. If the harness pins the session to a different worktree, switch with the
 `EnterWorktree` tool and this path before any write (Write/Edit refuse other worktrees; Bash does not).
-Branch: `claude/image-similarity-visualization-400922`, on `fork/main` at v1.0.8 (`efe1df6`, the merge of fork PR #21).
-**`fork/main` is the trunk**; upstream `origin/main` still has the OLD single-page UI and is never a base.
+Branch: `claude/image-similarity-visualization-400922`, cut from `fork/main` at v1.0.8 (`efe1df6`, the merge of fork
+PR #21). **`fork/main` is the trunk** and has since moved to **v1.0.10 (`3ddb8bb`)**, which this branch has NOT merged.
+Upstream `origin/main` still has the OLD single-page UI and is never a base. The harness may open the session on
+another branch in this worktree (the 2026-09-28 session found `claude/github-versioning-audit-82c4c1` @ `92c8e87`,
+which has no unique commits). Switch to this branch with `git switch claude/image-similarity-visualization-400922`.
+The untracked `backend/onnx/*` and `tools/smoke/out/*` it shows are this branch's gitignored files.
 
 **Where things stand.** Stage 1 of the similar-cases programme is COMPLETE on this branch: Plan A
 (`docs/superpowers/plans/2026-09-12-a-embeddings-backend.md`, six tasks) at `fcf94b9`, Plan B
@@ -42,14 +47,23 @@ Read in this order before doing anything:
    not to be started before a notebook has trained on a stage-1 export).
 5. The two plans' `## Ledger` sections, only if a ruling needs its context.
 
-**Resume point: the release.** Method: the project's release process (`docs/release-main.md`; the memory
-`spine-contour-release-process`): bump `package.json`, `renderer/data/version.js` (`VERSION_LABEL`), `CHANGELOG.md`
-("Unreleased" → 1.0.9), `docs/releases/1.0.9.md` and the README together in one `chore: release 1.0.9` commit; push
-to `fork` when the user says; the user opens the PR to `fork/main` from a body file and merges with "Create a merge
-commit", which publishes the installers in about twelve minutes. Before the release commit, ask the user whether the
-`Appearance embeddings` stage (on by default; about a second per run, 86 MB more resident memory in standard mode) is
-what they want the installed default to be — the spec says on. Then the packaged-build checks on the installed 1.0.9,
-which the user owns.
+**Resume point: bring the branch up to the released trunk, then the owner's offline testing, then the release.**
+HEAD is the 2026-09-28 wrap's docs commit, above `f4e24cf`. The owner holds this branch for more offline testing
+before any merge (2026-09-23), so ask before each step.
+
+1. **Merge `fork/main` (v1.0.10, `3ddb8bb`) into this branch.** Do it in a merge commit, as the project has done before.
+   - `git merge-tree --write-tree fork/main HEAD` lists ten conflicting files: `backend/models/models.py`, `backend/server.py`, `backend/verify_onnx.py`, `tools/export_onnx.py`, `tools/packaging/check_bundled_inference.py`, `renderer/components/measurements.js`, `renderer/components/viewer.js`, `renderer/screens/analysis.js`, `styles/screens/analysis.css` and the architecture contract.
+   - The trunk added the femoral 640 px model, six ONNX graphs (cervical DETR + HRNet), and the cervical, full-spine and Auto-detect regions (`region`/`anteriorSide` on a study; `body_part=auto`).
+   - Resolve keep-both. The embed stage must work for every region or be skipped honestly for the non-lumbar ones: the spec's candidate rules name lumbar films.
+   - Re-export `backend/onnx/` (now seven graphs with `embed`). Then re-run the unit and backend suites and the smoke suites in their documented order.
+   - Dispatch the resolution to Opus, never Fable.
+2. **The owner's offline testing** of the merged build.
+3. **The release as 1.0.11** (1.0.9 and 1.0.10 are taken). Follow the project's release process (`docs/release-main.md`; the memory `spine-contour-release-process`):
+   - Bump `package.json`, `renderer/data/version.js` (`VERSION_LABEL`), `CHANGELOG.md` ("Unreleased" → 1.0.11), `docs/releases/1.0.11.md` and the README's release-notes link, together in one `chore: release 1.0.11` commit. The README title is unversioned now, the backend developer's choice.
+   - Push to `fork` when the owner says. The owner opens the PR to `fork/main` from a body file and merges with "Create a merge commit", which publishes the installers in about twelve minutes.
+   - Before the release commit, ask the owner whether the `Appearance embeddings` stage should be on in the installed build (it's on by default; about a second per run and 86 MB more resident memory in standard mode). The spec says on.
+
+   Then come the packaged-build checks on the installed 1.0.11, which the owner does.
 
 **Decisions already made — do not relitigate** (the costs are in HANDOFF and the ledgers):
 - The vector is five blocks (V shape 44, H hip 2, A alignment 5 with weights [1, 0.8, 0.8, 0.6, 1], C crop and W whole
@@ -72,11 +86,18 @@ which the user owns.
   tails read `1 MORE STUDY BELOW` / `n MORE STUDIES BELOW`.
 - Comparison mode is plan 07's Tasks 3–6 adapted: `mountViewer(container, { role })`, `updateMeasurements(study,
   other)`, two drawer rows, the badge, the pane's own zoom/pan/panMode, no cancel control on the read-only pane.
+- Rulings from 2026-09-23/25 (HANDOFF's first "Where things stand" section):
+  - Hold this branch for offline testing; it stays unpushed until the owner says.
+  - Patch numbering continues, so this is 1.0.11. The milestone names were not adopted.
+  - #36 shipped as-is at the owner's call despite review findings. Auto detect is slow for lumbar films, refuses films without an S1 consensus, and ignores the L1–L5 model choice. Those fixes are the backend developer's, not this branch's.
+  - `LICENSE` inside the installers is owed. It needs `package.json` `build` and `electron-builder.preview.yml`, kept in sync.
+  - The owner merges the backend developer's PRs themselves when he asks for review. His "draft" flag does not mean "not ready".
 - Subagents: the lowest model that completes the task; never Fable; the brief's `Co-Authored-By: Claude Fable 5.1
   <noreply@anthropic.com>` trailer wins over a subagent's own instruction; every dispatch that runs a suite says
   "foreground, capture to a file under `tools/smoke/out/`".
 
-**Manual gates the human owns:** the packaged-build checks on the installed 1.0.9 — no DEMO STUDIES row, no
+**Manual gates the human owns:** the offline testing of the merged branch before anything is pushed. Then the
+packaged-build checks on the installed 1.0.11 — no DEMO STUDIES row, no
 `library-preferences.json`, automatic calibration with the bundled OCR, the five ONNX graphs bundled (the installer
 grows by about 86 MB), a real segmentation carrying an embedding, `Embed` on the Find tab, `Export dataset` writing
 the five files; and the items not run in this session: `/embed` over a real uvicorn socket, a persistence-disabled
@@ -86,6 +107,15 @@ Embed, the three-button export row at a narrow window.
 yourself; never rename onto `ui-redesign-cw`; the user opens and merges PRs.
 
 **Live traps and the commands:**
+- A push to `main` without a version bump runs the whole release workflow, and its publish step fails on purpose ("This
+  version already belongs to another commit"). Nothing is published. The owner reads that red X as breakage, so explain it.
+- `gh` is not installed. Read PR and CI state from the unauthenticated API
+  (`https://api.github.com/repos/Feches/Spine-Contour/...`, 60 requests an hour), parsing it with the venv python.
+  Hand PR bodies over as files, and give the owner exact web-UI clicks.
+- A PR run uploads the installers as artifacts; the owner tests those before merging. The direct link has the form
+  `https://github.com/Feches/Spine-Contour/actions/runs/<run>/artifacts/<id>`.
+- A scratch worktree for a docs-only change: `GIT_LFS_SKIP_SMUDGE=1 git worktree add <scratchpad path> <branch>`. It
+  avoids pulling about 850 MB of LFS weights. Unset the upstream of a branch created from `fork/main`.
 - `node --test test/*.test.js` (the glob form; the directory form fails on Node 24). Backend:
   `"C:/Users/codyj/spine contour/.venv/Scripts/python.exe" -m pytest backend -q` — never bare `python`; if the Bash
   tool refuses the venv python (it did for every Sonnet subagent), use the PowerShell tool with

@@ -1,6 +1,6 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-09-13
+**Last updated:** 2026-09-28 (the trunk moved to v1.0.10 — first section under "Where things stand")
 **Branch:** `claude/spine-contour-filename-parse-b6c1bb` (filename grammar, note, paired visits, names; release 1.0.8 awaiting the PR — first section under "Where things stand")
 **Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-segmentation-failures-82e370`
 **Earlier copies (historical):** `claude/studies-ui-updates-bb040d` in worktree `studies-ui-updates-bb040d`, and
@@ -41,6 +41,41 @@ the newest architecture amendment for controls and null rules. No model or calib
 algorithm changed; no screenshots were added.
 
 ## Where things stand
+
+### The trunk moved: v1.0.10 released 2026-09-25 (`fork/main` @ `3ddb8bb`); this branch has not merged it
+
+Recorded 2026-09-28 by the GitHub versioning audit session, which built no feature on this branch.
+
+**What landed on `fork/main` after `efe1df6` (v1.0.8):**
+- The owner's web-UI commits: `LICENSE` (AGPL-3.0) and a README copyright notice.
+- The backend developer's releases:
+  - **v1.0.9** (#23, `5cfaee4`): the femoral-head U-Net update.
+  - **v1.0.10** (#30, `3ddb8bb`): cervical HRNet with C2–C7 Cobb/SVA (#24), global C7–S1 SVA (#27), and automatic film detection (#36; new studies default to **Auto detect**). The release also carries the license fix: `LICENSE` restored to the canonical AGPL text, the README `## License` heading, and `"license": "AGPL-3.0-or-later"` in `package.json`.
+- v1.0.10's installers are about 1.05 GB each.
+
+**What this means for the branch:**
+- 1.0.9 and 1.0.10 are both taken, so this branch releases as **1.0.11** or later.
+- `git merge-tree --write-tree fork/main HEAD` reports conflicts in ten files:
+  - `backend/models/models.py`, `backend/server.py`, `backend/verify_onnx.py`
+  - `tools/export_onnx.py`, `tools/packaging/check_bundled_inference.py`
+  - `renderer/components/measurements.js`, `renderer/components/viewer.js`, `renderer/screens/analysis.js`, `styles/screens/analysis.css`
+  - the architecture contract
+- The ONNX export now has six graphs (cervical DETR + HRNet), plus this branch's `embed`.
+- The README title is unversioned (`# Spine Contour`): the backend developer's choice, kept. A release now bumps only the README's release-notes link.
+
+**Rulings from that session, each with its cost if wrong:**
+- **The owner holds this branch for more offline testing before any merge.** Cost: the stage-1 work waits; it is still unpushed.
+- **Patch numbering continues (1.0.x).** The GitHub milestones "v1.5 - image similarity" and "version 2.0 - cervical and deformity parameters" were not adopted as release numbers. Cost: a later renumber if the owner wants the milestone scheme.
+- **#36 shipped as-is at the owner's call, despite a review** (`review-pr36.md`, handed to the backend developer):
+  - Auto detect runs both-orientation full crop searches before the lumbar pipeline starts from scratch, so it is much slower on the CPU laptop.
+  - Films without an S1 consensus stop as "inconclusive".
+  - Auto ignores the L1–L5 model choice.
+  - Standing-film lumbar levels come from HRNet regression alone.
+
+  Cost: new lumbar films are slow or refused under the default until he fixes it. Setting a film to **Lumbar** avoids all of it.
+- **Owed, not done:** `LICENSE` inside the installers. It needs `package.json` `build` and `electron-builder.preview.yml`, which must stay in sync.
+
+**Trap:** a push to `main` without a version bump runs the whole release workflow, and its publish step fails on purpose ("This version already belongs to another commit"). The owner reads that red X as breakage; it means nothing was published.
 
 ### Similar cases and outcomes, stage 1 — DONE (branch `claude/image-similarity-visualization-400922`, worktree `studies-ui-updates-bb040d`, off `fork/main` @ `efe1df6`, v1.0.8)
 
