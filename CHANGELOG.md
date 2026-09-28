@@ -1,14 +1,36 @@
 # Changelog
 
-## Unreleased
+## 1.0.11
 
+- Add segmental lordosis and disc angulation at every adjacent level, C2–C3 through C6–C7
+  and L1–L2 through L5–S1, to Measurements, the image constructions, Parameters and both
+  CSV exports, with follow-up deltas in the paired file. Lordosis is superior endplate to
+  superior endplate; angulation is the upper inferior endplate to the lower superior
+  endplate. Both are unsigned acute angles, use the current image calibration and stay
+  empty when either endplate is missing; the cervical model has no C2 superior endplate,
+  so C2–C3 lordosis is unavailable. See [segmental angles](docs/segmental-angles.md).
 - Add **Settings → Processing → Processor**: run the models on the CPU (default) or on
   a GPU listed by name. The Windows installer bundles ONNX Runtime's DirectML build, so
   any DirectX 12 card (NVIDIA, AMD, Intel) works without CUDA. Windows and NVIDIA
-  per-program GPU preferences never affected processing and still do not.
-- A model the GPU cannot run, or a saved GPU that is missing, falls back to the CPU and
-  says so. Each result records where its models ran, and its Analysis header shows
-  GPU, GPU + CPU or CPU. See [GPU processing](docs/gpu-processing.md).
+  per-program GPU preferences never affected processing and still do not. macOS keeps
+  the CPU path.
+- Before a GPU processes a film, all six models must pass a local parity check against
+  the CPU reference; a failed check keeps the film on the CPU. DirectML vendor
+  metacommands are off, because the review on issue #40 found them moving a landmark on
+  an Intel UHD 770.
+- A GPU error discards the whole GPU attempt and processes the film again on the CPU,
+  with a toast; the result records the requested and resolved processor, the reason and
+  where its models ran, and its Analysis header shows GPU, GPU + CPU or CPU. See
+  [GPU processing](docs/gpu-processing.md).
+- `spine-contour-backend.exe --verify-models` takes `--gpu` and `--parity-films` to check
+  a workstation's GPU against the CPU, model by model and on real films.
+- On standing films, expand the femoral crop toward a head the lumbar crop cut through,
+  by at most two extra passes within the source image, and record the crop. A mask still
+  reaching the crop edge caps the femoral confidence at 0.5 and asks for review instead
+  of scoring a truncated head as a good fit. See
+  [femoral real-image validation](docs/femoral-real-validation.md).
+
+[Release notes](docs/releases/1.0.11.md)
 
 ## 1.0.10
 
