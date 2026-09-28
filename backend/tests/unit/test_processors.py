@@ -69,6 +69,8 @@ def test_identical_cards_get_ordinals_and_unaddressable_devices_are_not_offered(
         EpDevice(Hardware(0x10de, 0x2684, {'Description': 'NVIDIA GeForce RTX 4090'})),
         EpDevice(Hardware(0x10de, 0x2684, {'DxgiAdapterNumber': '4'}, ort.OrtHardwareDeviceType.NPU)),
         EpDevice(Hardware(0x10de, 0x2684, {'DxgiAdapterNumber': '5'}), 'WebGpuExecutionProvider'),
+        # A GPU-less Windows runner's ONNX Runtime listed WARP like this; DirectML refuses it.
+        EpDevice(Hardware(0x1414, 0x008c, {'Description': 'Microsoft Basic Render Driver', 'DxgiAdapterNumber': '8'}, vendor='Microsoft')),
         EpDevice(Hardware(0x1234, 0x5678, {'DxgiAdapterNumber': '6'}, vendor='')),
         EpDevice(Hardware(0x1002, 0x1638, {'DxgiAdapterNumber': '7'}, vendor='AMD')),
     ]
@@ -185,13 +187,13 @@ def test_dxgi_layout_matches_windows_x64():
 def test_windows_adapters_are_read_in_directml_order_and_every_object_is_released():
     com, calls = Com(), []
     adapters = [com.adapter(0x8086, 0x9a49), com.adapter(0x1414, 0x008c, flags=2),
-                com.adapter(0x10de, 0x2520), com.adapter(0x10de, 0x2520, flags=1)]
+                com.adapter(0x10de, 0x2520), com.adapter(0x10de, 0x2520, flags=1), com.adapter(0x1414, 0x008c)]
     factory = com.factory(adapters)
     def create_factory(flags, iid, out):
         calls.append((flags, bytes(iid._obj)))
         out.contents.value = factory
         return 0
-    # The software (Basic Render Driver) and remote adapters keep their indices but are not GPUs.
+    # The software renderer (flagged or not) and remote adapters keep their indices but are not GPUs.
     assert processors._dxgi_adapters(create_factory) == [(0, 0x8086, 0x9a49), (2, 0x10de, 0x2520)]
     assert calls == [(0, processors._IID_IDXGI_FACTORY1)]
     assert sorted(com.released) == sorted(adapters + [factory])

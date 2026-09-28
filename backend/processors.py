@@ -26,6 +26,9 @@ import onnxruntime as ort
 
 DIRECTML = "DmlExecutionProvider"
 NOT_FOUND = "The selected GPU was not found; running the models on the CPU"
+# Windows' software renderer (WARP). DirectML refuses it by these ids whether or not DXGI
+# flags it as software, and a GPU-less Windows runner lists it unflagged.
+_BASIC_RENDER_DRIVER = (0x1414, 0x008C)
 _GPU_ID = re.compile(r"gpu:[0-9a-f]{4,8}:[0-9a-f]{4,8}(?::(?:[2-9]|[1-9][0-9]))?")
 
 
@@ -86,7 +89,8 @@ def available() -> list[Processor]:
         adapter = str(metadata.get("DxgiAdapterNumber", ""))
         # DirectML silently uses adapter 0 for a device without an adapter number,
         # which may be a different GPU from the one named, so such devices are not offered.
-        if device.ep_name != DIRECTML or hardware.type != ort.OrtHardwareDeviceType.GPU or not adapter.isdigit():
+        if (device.ep_name != DIRECTML or hardware.type != ort.OrtHardwareDeviceType.GPU or not adapter.isdigit()
+                or (hardware.vendor_id, hardware.device_id) == _BASIC_RENDER_DRIVER):
             continue
         gpus.setdefault(int(adapter), (hardware.vendor_id, hardware.device_id, _name(hardware, metadata), _memory(metadata)))
     ids = _identities((adapter, vendor, device) for adapter, (vendor, device, _, _) in gpus.items())
@@ -141,7 +145,7 @@ def _method(interface, slot, *argtypes):
 
 
 def _dxgi_adapters(create_factory=None):
-    """(index, vendor, device) for each hardware adapter, skipping software and remote ones as ONNX Runtime does."""
+    """(index, vendor, device) for each hardware adapter, skipping the software and remote ones as `available` does."""
     if create_factory is None:
         create_factory = ctypes.WinDLL("dxgi").CreateDXGIFactory2
         create_factory.restype = _HRESULT
@@ -165,7 +169,8 @@ def _dxgi_adapters(create_factory=None):
                 desc = _AdapterDesc1()
                 if _method(adapter, _GET_DESC1, ctypes.POINTER(_AdapterDesc1))(ctypes.pointer(desc)) < 0:
                     raise OSError(f"GetDesc1 failed for adapter {index}")
-                if not desc.Flags & (_DXGI_ADAPTER_FLAG_REMOTE | _DXGI_ADAPTER_FLAG_SOFTWARE):
+                if (not desc.Flags & (_DXGI_ADAPTER_FLAG_REMOTE | _DXGI_ADAPTER_FLAG_SOFTWARE)
+                        and (desc.VendorId, desc.DeviceId) != _BASIC_RENDER_DRIVER):
                     adapters.append((index, desc.VendorId, desc.DeviceId))
             finally:
                 _method(adapter, _RELEASE)()

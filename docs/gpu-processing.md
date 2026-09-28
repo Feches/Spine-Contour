@@ -24,7 +24,8 @@ names the GPU directly.
 The Windows x64 installer bundles `onnxruntime-directml` (the same ONNX Runtime
 release, 1.24.4, built with the DirectML execution provider). The backend lists the
 CPU and each hardware GPU ONNX Runtime reports (`GET /processors`), and Settings shows
-them by name. The choice is saved with the other processing settings in
+them by name. Windows' software renderer, the Microsoft Basic Render Driver, is never
+offered: DirectML refuses it, and a machine without a GPU driver can report it as one. The choice is saved with the other processing settings in
 `performance.json` as `processor`: `cpu`, or the card's PCI identity,
 `gpu:<vendor>:<device>` in hexadecimal (`gpu:10de:2520`; `:2`, `:3`… for identical
 cards). DirectML opens a GPU by its Windows adapter index, which can change while the
