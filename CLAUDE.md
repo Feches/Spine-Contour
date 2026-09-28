@@ -1,5 +1,13 @@
 # Spine Contour
 
+**2026-09-28 release 1.0.11:** branch `claude/happy-faraday-vjiqgk` off `fork/main` @ `03d42a4` (PR #41 merged).
+The merges of PR #37 and PR #41 built both installers but published nothing: `tools/packaging/publish_release.py`
+refuses a version whose tag already belongs to another commit, and `package.json` still said 1.0.10. Every
+publication needs the bump in `docs/release-main.md` (`package.json`, `renderer/data/version.js`, `CHANGELOG.md`,
+`docs/releases/<version>.md`, the README link). The 1.0.11 release commit is on the branch; merging it to `fork/main`
+publishes v1.0.11 and moves `latest-windows`. Physical GPU qualification on a workstation is unreported for this
+revision (PR #41's "Draft pending Windows validation" note).
+
 **2026-09-27 GPU processor setting:** branch `claude/gracious-ptolemy-a4pxts` off `fork/main` @ `1c83e05` (v1.0.10 and
 PR #37). Windows and NVIDIA per-program GPU preferences never reached inference: the backend is a separate process and
 shipped CPU-only ONNX Runtime. **Settings → Processing → Processor** now chooses the CPU (default) or a GPU the backend

@@ -20,10 +20,15 @@ Review the regional landmarks, C7 centroid and S1 posterior corner, and calibrat
 millimetres. See [global SVA](docs/global-sva.md) for the construction, crop
 search and review requirements.
 
+**Settings → Processing → Processor** runs the models on the CPU (the default) or, on
+Windows, on a DirectX 12 graphics card through ONNX Runtime's DirectML build. A card is
+used only after its outputs pass a parity check against the CPU, and any GPU error reruns
+the film on the CPU and says so. See [GPU processing](docs/gpu-processing.md).
+
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.0.10 release notes](docs/releases/1.0.10.md) and
+[changelog](CHANGELOG.md), [v1.0.11 release notes](docs/releases/1.0.11.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
