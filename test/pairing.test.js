@@ -31,12 +31,12 @@ test('pairStudies under All paired gives one row per subject with a Pre-op film 
   assert.ok(s001.visits instanceof Map);
   assert.deepEqual([...s001.visits.keys()], ['Pre-op', 'Post-op', '1 yr']);
   // A visit: its header, its label, its date, its films (one here), the merged measurement values
-  // in MEASUREMENT_COLUMNS order (25 columns, all empty for an unsegmented film) and no disagreements.
+  // in MEASUREMENT_COLUMNS order (35 columns, all empty for an unsegmented film) and no disagreements.
   const post = s001.visits.get('Post-op');
   assert.deepEqual(post.films.map((f) => f.id), ['SP-4']);
   assert.deepEqual({ header: post.header, label: post.label, filmDate: post.filmDate, disagreements: post.disagreements },
     { header: 'Post-op', label: 'Post-op', filmDate: null, disagreements: [] });
-  assert.equal(post.values.length, 25);
+  assert.equal(post.values.length, 35);
   assert.ok(post.values.every((value) => value === ''));
   const s002 = pairing.subjects[0];
   assert.deepEqual([...s002.visits.keys()], ['Pre-op', '1 yr']);

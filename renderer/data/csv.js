@@ -1,3 +1,4 @@
+import { segmentalColumns, segmentalRows } from './segmental.js';
 import { cervicalMeasurements, studyRegion } from './cervical.js';
 import { globalSvaMeasurements } from './global-sva.js';
 import { normaliseTimepoint, normaliseView, parseFilmDate, PRE_OP } from './timepoints.js';
@@ -24,16 +25,19 @@ const ANGULAR_COLUMNS = [
   'LL L2-S1', 'LL L3-S1', 'LL L4-S1', 'LL L5-S1',
 ];
 // Exported for data/pairing.js, which merges a visit's films per column in this order.
-export const MEASUREMENT_COLUMNS = [...ANGULAR_COLUMNS,
+const BASE_MEASUREMENT_COLUMNS = [...ANGULAR_COLUMNS,
   ...DISC_LEVEL_PAIRS.flatMap(levels => DISC_POSITIONS.map(position =>
     `Disc height ${levels.join('-')} ${position} (mm)`))];
+
+export const MEASUREMENT_COLUMNS = [...BASE_MEASUREMENT_COLUMNS, ...segmentalColumns('lumbar').map(c => c.exportLabel)];
 
 export const CERVICAL_EXPORT_COLUMNS = ['C2-C7 Cobb (deg)', 'C2-C7 SVA (mm)', 'C2-C7 SVA (px)'];
 export const GLOBAL_SVA_EXPORT_COLUMNS = ['C7-S1 SVA (mm)', 'C7-S1 SVA (px)'];
 export function exportMeasurementColumns(studies) {
   return [...MEASUREMENT_COLUMNS,
     ...(studies.some(study => ['cervical', 'full_spine'].includes(studyRegion(study))) ? CERVICAL_EXPORT_COLUMNS : []),
-    ...(studies.some(study => studyRegion(study) === 'full_spine') ? GLOBAL_SVA_EXPORT_COLUMNS : [])];
+    ...(studies.some(study => studyRegion(study) === 'full_spine') ? GLOBAL_SVA_EXPORT_COLUMNS : []),
+    ...(studies.some(study => ['cervical', 'full_spine'].includes(studyRegion(study))) ? segmentalColumns('cervical').map(c => c.exportLabel) : [])];
 }
 
 // Measurement columns are written to one decimal, matching what the Measurements panel
@@ -86,13 +90,14 @@ export function measurementValues(study, columns = MEASUREMENT_COLUMNS) {
   const lumbar = ['lumbar', 'full_spine'].includes(studyRegion(study));
   const values = lumbar ? [...ANGULAR_COLUMNS.map(column => measurementValue(study, column)),
     ...discRows(study).flatMap(row => DISC_POSITIONS.map(position => round1(row[position])))]
-    : MEASUREMENT_COLUMNS.map(() => '');
+    : BASE_MEASUREMENT_COLUMNS.map(() => '');
   const m = study.measurements ? cervicalMeasurements(study) : null;
   const cervical = [m?.C2C7_COBB, m?.C2C7_SVA_MM, m?.C2C7_SVA_PX].map(round1);
   const global = study.measurements ? globalSvaMeasurements(study) : null;
   const globalValues = [global?.GLOBAL_SVA_MM, global?.GLOBAL_SVA_PX].map(round1);
-  const all = Object.fromEntries([...MEASUREMENT_COLUMNS, ...CERVICAL_EXPORT_COLUMNS, ...GLOBAL_SVA_EXPORT_COLUMNS].map((key, index) =>
+  const all = Object.fromEntries([...BASE_MEASUREMENT_COLUMNS, ...CERVICAL_EXPORT_COLUMNS, ...GLOBAL_SVA_EXPORT_COLUMNS].map((key, index) =>
     [key, [...values, ...cervical, ...globalValues][index]]));
+  for (const row of segmentalRows(study)) all[row.exportLabel] = round1(row.value);
   return columns.map(column => all[column] ?? '');
 }
 
