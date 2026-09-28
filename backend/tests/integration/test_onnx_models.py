@@ -13,7 +13,7 @@ def test_converted_models_match_checkpoints_on_empty_and_varied_inputs(kind):
     reference = load_checkpoint(kind, 'cpu')
     path = models.ONNX_DIRECTORY / f'{kind}.onnx'
     assert path.exists(), 'Run python tools/export_onnx.py before testing'
-    session = models._load_model(kind, (2, True))
+    session = models._load_model(kind, (2, True, None))
     generator = np.random.default_rng(51)
     size = models.FEMORAL_IMAGE_SIZE if kind == 'femoral' else models.MODEL_IMAGE_SIZE
     for image in (np.zeros((size, size), np.uint8), generator.integers(0, 255, (size, size), np.uint8)):

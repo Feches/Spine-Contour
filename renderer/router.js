@@ -64,6 +64,7 @@ export const SIDEBAR_KEYS = [
   'theme',
   'models',
   'performance',
+  'processors',
   'running',
   'screen',
   'openId',

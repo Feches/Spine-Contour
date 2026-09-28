@@ -9,6 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 import gc
 import json
+import logging
 import os
 import sys
 import tempfile
@@ -20,8 +21,9 @@ import onnxruntime as ort
 ort.disable_telemetry_events()
 
 try:
-    from .. import runtime
+    from .. import processors, runtime
 except ImportError:
+    import processors
     import runtime
 
 # The training checkpoint's fixed landmark slot order; no Torch import at runtime.
@@ -173,7 +175,7 @@ _cache_policy = None
 
 
 def session_options(policy):
-    threads, low_memory = policy
+    threads, low_memory, adapter = policy
     settings = ort.SessionOptions()
     settings.intra_op_num_threads = threads
     settings.inter_op_num_threads = 1
@@ -182,7 +184,8 @@ def session_options(policy):
     # Inactive sessions must not spin while another model or OCR is working.
     settings.add_session_config_entry("session.intra_op.allow_spinning", "0")
     settings.enable_cpu_mem_arena = not low_memory
-    settings.enable_mem_pattern = not low_memory
+    # DirectML does not support memory patterns (ONNX Runtime would turn them off).
+    settings.enable_mem_pattern = not low_memory and adapter is None
     return settings
 
 
@@ -193,12 +196,18 @@ def _load_model(kind, policy):
     path = ONNX_DIRECTORY / f"{kind}.onnx"
     if not path.is_file():
         raise FileNotFoundError(f"Missing ONNX model: {path}. Run python tools/export_onnx.py before starting the development app.")
-    runtime.report("loading", f"Loading {MODEL_NAMES[kind]}")
+    _, low_memory, adapter = policy
     providers = ["CPUExecutionProvider"]
+    if adapter is not None:
+        runtime.report("loading", f"Loading {MODEL_NAMES[kind]} on {runtime.processor().name}")
+        # DirectML takes Windows' adapter index. Nodes it cannot run stay on the CPU provider.
+        providers.insert(0, (processors.DIRECTML, {"device_id": str(adapter), "disable_metacommands": "True"}))
+        return InferenceModel(path, policy, providers)
+    runtime.report("loading", f"Loading {MODEL_NAMES[kind]}")
     # Apple's CPU implementation is faster than generic ARM kernels for this
     # detector. Static partitions leave dynamic/empty detections to ORT's CPU
     # provider, which supports them. Low memory keeps the explicit thread cap.
-    if (kind == "s1" and not policy[1] and sys.platform == "darwin"
+    if (kind == "s1" and not low_memory and sys.platform == "darwin"
             and os.environ.get("SPINE_CONTOUR_ORT_CPU_ONLY") != "1"
             and "CoreMLExecutionProvider" in ort.get_available_providers()):
         metadata = json.loads(path.with_suffix('.json').read_text())
@@ -213,21 +222,49 @@ def _load_model(kind, policy):
     return InferenceModel(path, policy, providers)
 
 
+FALLBACK_MESSAGES = {
+    "CoreMLExecutionProvider": "Apple acceleration unavailable; using ONNX CPU inference",
+    processors.DIRECTML: "The GPU could not run the {model}; using ONNX CPU inference",
+}
+
+
 class InferenceModel:
-    """Retain CPU fallback if an Apple compiler/partition cannot handle a film."""
+    """DirectML errors abort the whole request attempt; Core ML retains its
+    existing S1-only CPU fallback. ORT's implicit retry is always disabled.
+    """
     def __init__(self, path, policy, providers):
         self.path, self.policy = path, policy
+        first = providers[0]
+        self.accelerator = None if len(providers) == 1 else first[0] if isinstance(first, tuple) else first
         try:
-            self.session = ort.InferenceSession(str(path), sess_options=session_options(policy), providers=providers)
-        except Exception:
-            if len(providers) == 1:
+            self.session = self._session(providers)
+        except Exception as error:
+            if self.accelerator is None:
                 raise
-            self._cpu_fallback()
+            self._accelerator_failure(error, creating=True)
+
+    def _session(self, providers):
+        # ONNX Runtime's own retry would fall back silently, with only a banner on stdout.
+        session = ort.InferenceSession(str(self.path), sess_options=session_options(self.policy),
+                                       providers=providers, enable_fallback=0)
+        if self.accelerator == processors.DIRECTML and session.get_providers()[0] != processors.DIRECTML:
+            raise RuntimeError("DirectML session unexpectedly registered only CPU providers")
+        return session
+
+    def _accelerator_failure(self, error, creating=False):
+        runtime.checkpoint()
+        logging.getLogger(__name__).exception("%s failed for %s", self.accelerator, self.path.stem)
+        if self.accelerator == processors.DIRECTML:
+            raise runtime.GpuFailure(self.path.stem, f"{type(error).__name__}: {error}") from error
+        if not creating and not isinstance(error, ort.capi.onnxruntime_pybind11_state.Fail):
+            raise error
+        self._cpu_fallback()
 
     def _cpu_fallback(self):
-        runtime.report("loading", "Apple acceleration unavailable; using ONNX CPU inference")
-        self.session = ort.InferenceSession(str(self.path), sess_options=session_options(self.policy),
-                                           providers=["CPUExecutionProvider"])
+        model = MODEL_NAMES.get(self.path.stem, "model")
+        runtime.report("loading", FALLBACK_MESSAGES.get(self.accelerator, "Acceleration unavailable; using ONNX CPU inference")
+                       .format(model=model))
+        self.session = self._session(["CPUExecutionProvider"])
 
     def get_providers(self):
         return self.session.get_providers()
@@ -235,11 +272,10 @@ class InferenceModel:
     def run(self, output_names, inputs):
         try:
             return self.session.run(output_names, inputs)
-        except ort.capi.onnxruntime_pybind11_state.Fail:
-            if "CoreMLExecutionProvider" not in self.get_providers():
+        except Exception as error:
+            if self.get_providers() == ["CPUExecutionProvider"]:
                 raise
-            runtime.checkpoint()
-            self._cpu_fallback()
+            self._accelerator_failure(error)
             return self.session.run(output_names, inputs)
 
 
@@ -256,14 +292,15 @@ def _infer(kind, operation, message):
     runtime.checkpoint()
     previous_progress = runtime.current_progress()
     options = runtime.options()
-    policy = (options.inference_threads, options.low_memory)
+    policy = (options.inference_threads, options.low_memory, runtime.processor().adapter)
     key = (kind, policy)
-    # Session thread counts are immutable. Never reuse a different mode's session
-    # or retain duplicate copies after changing CPU settings.
-    if policy != _cache_policy or (options.low_memory and key != _resident_key):
+    # Session thread counts and providers are immutable. Never reuse a different
+    # mode's or processor's session, or retain duplicate copies after a change.
+    cache_policy = (policy, runtime.processor().id)
+    if cache_policy != _cache_policy or (options.low_memory and key != _resident_key):
         release_models()
     model = _load_model(kind, policy)
-    _resident_key, _cache_policy = key, policy
+    _resident_key, _cache_policy = key, cache_policy
     if message is not None:
         runtime.report(kind, message)
     elif previous_progress is not None:

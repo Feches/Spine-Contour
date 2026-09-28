@@ -55,6 +55,7 @@ export async function predict(request) {
 
 export async function loadPerformance() { return invoke('loadPerformance'); }
 export async function savePerformance(settings) { return invoke('savePerformance', settings); }
+export async function listProcessors() { return invoke('listProcessors'); }
 export async function cancelPredict(requestId) { return invoke('cancelPredict', requestId); }
 export function onPredictionProgress(callback) {
   return getBridge()?.onPredictionProgress?.(callback) ?? (() => {});

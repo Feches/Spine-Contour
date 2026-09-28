@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { once } from 'node:events';
 import { createRequire } from 'node:module';
-import { DEFAULT_PERFORMANCE, progressUpdate, progressTitle, progressDetail, validPerformance } from '../renderer/data/processing.js';
+import { DEFAULT_PERFORMANCE, progressUpdate, progressTitle, progressDetail, validPerformance,
+  processorChoices, processorNote, describeProcessor, processorTitle } from '../renderer/data/processing.js';
 import { createBatchDriver } from '../renderer/data/batch.js';
-const { postForm, normalizePerformance } = createRequire(import.meta.url)('../backend-client.cjs');
+const { postForm, normalizePerformance, normalizeProcessors } = createRequire(import.meta.url)('../backend-client.cjs');
 
 const current = { requestId: 'current', mode: 'low-memory', stage: 'search', message: 'Searching',
   completed: 3, total: 85, elapsed_seconds: 4 };
@@ -21,8 +22,8 @@ test('resource defaults agree across the desktop and renderer; invalid settings 
 
 test('crop localizer defaults on for legacy preferences and persists explicit off', () => {
   const legacy = { mode: 'low-memory', cpuThreads: 1 };
-  assert.deepEqual(normalizePerformance(legacy), { ...legacy, cropLocalizer: true, toolbarRemoval: false });
-  const off = { ...legacy, cropLocalizer: false, toolbarRemoval: false };
+  assert.deepEqual(normalizePerformance(legacy), { ...legacy, cropLocalizer: true, toolbarRemoval: false, processor: 'cpu' });
+  const off = { ...legacy, cropLocalizer: false, toolbarRemoval: false, processor: 'cpu' };
   assert.deepEqual(normalizePerformance(JSON.parse(JSON.stringify(off))), off);
   assert.equal(validPerformance(off), true);
   for (const cropLocalizer of [null, 'false', 0, 1]) {
@@ -33,15 +34,83 @@ test('crop localizer defaults on for legacy preferences and persists explicit of
 
 test('toolbar removal defaults off for older preferences and saves independently of crop localizer', () => {
   const legacy = { mode: 'standard', cpuThreads: 2, cropLocalizer: false };
-  assert.deepEqual(normalizePerformance(legacy), { ...legacy, toolbarRemoval: false });
+  assert.deepEqual(normalizePerformance(legacy), { ...legacy, toolbarRemoval: false, processor: 'cpu' });
   for (const toolbarRemoval of [true, false]) {
-    const saved = { ...legacy, toolbarRemoval };
+    const saved = { ...legacy, toolbarRemoval, processor: 'cpu' };
     assert.deepEqual(normalizePerformance(JSON.parse(JSON.stringify(saved))), saved);
     assert.equal(validPerformance(saved), true);
   }
   for (const toolbarRemoval of [null, 'false', 0, 1]) {
     assert.throws(() => normalizePerformance({ ...legacy, toolbarRemoval }));
     assert.equal(validPerformance({ ...legacy, toolbarRemoval }), false);
+  }
+});
+
+test('processor defaults to the CPU for older preferences; a GPU id survives save/load and bad ids fail in both', () => {
+  const legacy = { mode: 'standard', cpuThreads: 2, cropLocalizer: true, toolbarRemoval: false };
+  assert.equal(normalizePerformance(legacy).processor, 'cpu');
+  for (const processor of ['cpu', 'gpu:10de:2520', 'gpu:10de:2520:2', 'gpu:4d4f4351:36334330']) {
+    const saved = { ...legacy, processor };
+    assert.deepEqual(normalizePerformance(JSON.parse(JSON.stringify(saved))), saved);
+    assert.equal(validPerformance(saved), true);
+  }
+  for (const processor of [null, '', 'gpu', 'GPU', 'gpu:10DE:2520', 'gpu:10de:2520:1', 'gpu:0', 'NVIDIA GeForce RTX 3060', 0]) {
+    assert.throws(() => normalizePerformance({ ...legacy, processor }));
+    assert.equal(validPerformance({ ...legacy, processor }), false);
+  }
+  assert.equal(validPerformance(legacy), false, 'the renderer always carries the field; main migrates files');
+});
+
+test('the processor list keeps the CPU first and drops anything malformed', () => {
+  assert.deepEqual(normalizeProcessors({ processors: [
+    { id: 'gpu:10de:2520', kind: 'gpu', name: '  NVIDIA GeForce RTX 3060 Laptop GPU ', memory_mb: 6144 },
+    { id: 'cpu', kind: 'cpu', name: 'Some CPU' },
+    { id: 'gpu:8086:9a49', kind: 'gpu', name: '' },
+    { id: 'NVIDIA', kind: 'gpu', name: 'Spoofed' },
+    { id: 'cpu', kind: 'gpu', name: 'Not a GPU' },
+    null,
+  ] }), [{ id: 'cpu', kind: 'cpu', name: 'CPU' },
+    { id: 'gpu:10de:2520', kind: 'gpu', name: 'NVIDIA GeForce RTX 3060 Laptop GPU' }]);
+  for (const body of [null, {}, { processors: 'none' }]) {
+    assert.deepEqual(normalizeProcessors(body), [{ id: 'cpu', kind: 'cpu', name: 'CPU' }]);
+  }
+});
+
+test('Settings lists what the backend found and never hides or invents a saved choice', () => {
+  const listed = [{ id: 'cpu', kind: 'cpu', name: 'CPU' }, { id: 'gpu:10de:2520', kind: 'gpu', name: 'NVIDIA GeForce RTX 3060' }];
+  assert.deepEqual(processorChoices(listed, 'cpu').map((c) => c.label), ['CPU', 'GPU · NVIDIA GeForce RTX 3060']);
+  assert.deepEqual(processorChoices(listed, 'gpu:10de:2520').map((c) => c.id), ['cpu', 'gpu:10de:2520']);
+  const unplugged = processorChoices(listed, 'gpu:1002:73df');
+  assert.deepEqual(unplugged.at(-1), { id: 'gpu:1002:73df', label: 'Saved GPU · not found', missing: true });
+  // Before the list arrives (or if it could not be read) the saved GPU is not called missing.
+  assert.deepEqual(processorChoices(null, 'gpu:10de:2520').at(-1), { id: 'gpu:10de:2520', label: 'Saved GPU', missing: false });
+  assert.deepEqual(processorChoices(null, 'cpu'), [{ id: 'cpu', label: 'CPU', missing: false }]);
+  assert.match(processorNote(listed, 'gpu:10de:2520'), /on NVIDIA GeForce RTX 3060 through DirectML/);
+  assert.match(processorNote(listed, 'gpu:1002:73df'), /not found/);
+  assert.match(processorNote(listed, 'cpu'), /Choose a GPU/);
+  assert.match(processorNote(listed.slice(0, 1), 'cpu'), /CPU processing is available/);
+  for (const selected of ['cpu', 'gpu:10de:2520']) assert.doesNotMatch(processorNote(null, selected), /was not found|No supported|Checking/);
+});
+
+test('a result says where its models ran only from the providers it recorded', () => {
+  const gpu = { requested: 'gpu:10de:2520', resolved: 'gpu:10de:2520', name: 'NVIDIA GeForce RTX 3060', note: null };
+  const dml = ['DmlExecutionProvider', 'CPUExecutionProvider'];
+  const cpu = ['CPUExecutionProvider'];
+  const qc = (processor, providers) => ({ processing: { processor, providers } });
+  assert.equal(describeProcessor(qc(gpu, { s1: dml, vertebra: dml })), 'GPU');
+  assert.equal(processorTitle(qc(gpu, { s1: dml, vertebra: dml })), 'The models ran on NVIDIA GeForce RTX 3060');
+  assert.equal(describeProcessor(qc(gpu, { s1: cpu, vertebra: dml })), 'GPU + CPU');
+  assert.match(processorTitle(qc(gpu, { s1: cpu, vertebra: dml })), /some fell back to the CPU/);
+  const missing = { ...gpu, resolved: 'cpu', name: 'CPU', note: 'The selected GPU was not found; running the models on the CPU' };
+  assert.equal(describeProcessor(qc(missing, { s1: cpu })), 'CPU');
+  assert.equal(processorTitle(qc(missing, { s1: cpu })), missing.note);
+  // Apple's Core ML runs the S1 detector on the CPU here; it is not a GPU.
+  assert.equal(describeProcessor(qc({ ...gpu, requested: 'cpu', resolved: 'cpu', name: 'CPU' },
+    { s1: ['CoreMLExecutionProvider', 'CPUExecutionProvider'] })), 'CPU');
+  // Records from before the setting say nothing rather than guess.
+  for (const old of [null, {}, { processing: { providers: { s1: cpu } } }, qc(gpu, {})]) {
+    assert.equal(describeProcessor(old), null);
+    assert.equal(processorTitle(old), '');
   }
 });
 

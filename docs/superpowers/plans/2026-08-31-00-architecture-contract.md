@@ -1233,3 +1233,43 @@ using the existing correction queue and saved-prediction reset workflow.
 Persistence, Parameters and single/paired exports keep global and cervical
 measurements in their own fields. Crop agreement is not an accuracy probability;
 landmark identity, anatomy and source orientation require review.
+
+
+## 2026-09-27 amendment: processor choice (CPU or DirectML GPU)
+
+User-requested after a GPU chosen in Windows graphics settings and the NVIDIA app left
+inference on the CPU: those preferences pick the GPU that renders a program's graphics,
+while inference runs in the backend process on the provider its session names. See
+`docs/gpu-processing.md`.
+
+`state.performance` adds `processor`: `'cpu'` (default, and for older `performance.json`)
+or a GPU's PCI identity `gpu:<vendor>:<device>[:<n>]` (lowercase hex, 4–8 digits; `:n`
+from 2 for identical cards). `normalizePerformance` (main) and `validPerformance`
+(renderer) share one pattern; an invalid value is rejected, never coerced. It is locked
+during a prediction/batch like the other processing settings. `state.processors` is
+session-only: `null` until listed, then `[{id, kind: 'cpu'|'gpu', name}]`, CPU first.
+Preload adds `listProcessors()` (IPC `list-processors` → backend `GET /processors`, reduced
+by `normalizeProcessors`); boot does not wait for it. `SIDEBAR_KEYS` gains `processors`.
+
+Prediction multipart adds `processor` (default `cpu`); a malformed id is a 422.
+`runtime.session` resolves it once per request (`backend/processors.py`). ONNX Runtime
+reads its device list once per process, but DirectML re-reads Windows' adapter order at
+every session creation, so a listed GPU is matched by PCI identity against a live DXGI
+enumeration (`_dxgi_adapters`) for its current index, which is never persisted. A GPU
+absent from either list runs on the CPU with a real `processor` progress event; if DXGI
+cannot be read, ONNX Runtime's startup index is used and a warning is logged. Session
+cache policy is `(threads, low_memory, adapter)`, so a changed processor or index evicts
+sessions. GPU sessions are `[('DmlExecutionProvider', {device_id}), 'CPUExecutionProvider']`
+with memory patterns off. Sessions are created with `enable_fallback=0`: any error
+creating or running an accelerated session (DirectML or the existing Core ML S1 path)
+retries that model once on the CPU with a real progress message; CPU errors propagate.
+Calibration never uses the setting.
+
+`qc.processing.processor = {requested, resolved, name, note}` joins the per-model
+`providers`. The Analysis header appends `GPU`, `GPU + CPU` or `CPU` only for results
+carrying `processor`, derived from the recorded providers (never the setting); its title
+gives the GPU name or the fallback note. No store version, CSP, runtime JS dependency or
+model change. `backend/requirements.txt` selects `onnxruntime-directml==1.24.4` on 64-bit
+Windows and `onnxruntime==1.24.4` elsewhere; the Windows bundle check requires
+`DmlExecutionProvider` and `DirectML.dll`. CI has no GPU: the GPU path is verified on a
+workstation with `--verify-models`, which exercises each listed GPU.

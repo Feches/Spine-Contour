@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Add **Settings → Processing → Processor**: run the models on the CPU (default) or on
+  a GPU listed by name. The Windows installer bundles ONNX Runtime's DirectML build, so
+  any DirectX 12 card (NVIDIA, AMD, Intel) works without CUDA. Windows and NVIDIA
+  per-program GPU preferences never affected processing and still do not.
+- A model the GPU cannot run, or a saved GPU that is missing, falls back to the CPU and
+  says so. Each result records where its models ran, and its Analysis header shows
+  GPU, GPU + CPU or CPU. See [GPU processing](docs/gpu-processing.md).
+
 ## 1.0.10
 
 - Automatically select cervical, lumbar or standing/full-spine processing for new

@@ -41,7 +41,9 @@ let state = {
 
   // Which model reads which structure on the next run; see renderer/data/models.js.
   models: { vertebrae: 'unet', femoral: 'unet', s1: 'keypointrcnn' },
-  performance: { mode: 'standard', cpuThreads: 2, cropLocalizer: true, toolbarRemoval: false },
+  performance: { mode: 'standard', cpuThreads: 2, cropLocalizer: true, toolbarRemoval: false, processor: 'cpu' },
+  // [{id, kind, name}] from the backend's GET /processors, CPU first; null until listed. Session only.
+  processors: null,
 
   editing: false,
   selection: null,

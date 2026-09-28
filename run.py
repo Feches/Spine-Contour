@@ -39,6 +39,10 @@ def ensure_python_environment() -> Path:
     if installed_hash != requirements_hash:
         print("Installing backend dependencies…", flush=True)
         run([str(python), "-m", "pip", "install", "--upgrade", "pip"])
+        if os.name == "nt":
+            # onnxruntime and onnxruntime-directml install into the same package
+            # directory, so pip cannot swap one for the other in place.
+            run([str(python), "-m", "pip", "uninstall", "--yes", "onnxruntime", "onnxruntime-directml"])
         run([str(python), "-m", "pip", "install", "-r", str(REQUIREMENTS)])
         MARKER.write_text(requirements_hash + "\n")
     return python

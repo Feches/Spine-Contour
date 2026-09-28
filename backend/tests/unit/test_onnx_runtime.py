@@ -23,8 +23,8 @@ def test_runtime_landmark_order_matches_training_checkpoint_contract():
 
 
 def test_onnx_session_policy_limits_threads_and_disables_idle_spinning():
-    low = models.session_options((1, True))
-    standard = models.session_options((4, False))
+    low = models.session_options((1, True, None))
+    standard = models.session_options((4, False, None))
     assert low.intra_op_num_threads == 1 and standard.intra_op_num_threads == 4
     assert low.inter_op_num_threads == standard.inter_op_num_threads == 1
     assert low.execution_mode == ort.ExecutionMode.ORT_SEQUENTIAL
@@ -37,7 +37,7 @@ def test_missing_converted_model_fails_with_actionable_message(monkeypatch, tmp_
     models.release_models()
     monkeypatch.setattr(models, 'ONNX_DIRECTORY', tmp_path)
     with pytest.raises(FileNotFoundError, match='tools/export_onnx.py'):
-        models._load_model('s1', (1, True))
+        models._load_model('s1', (1, True, None))
 
 
 def test_sessions_are_reused_with_same_policy_and_replaced_when_settings_change(monkeypatch):
@@ -54,7 +54,7 @@ def test_sessions_are_reused_with_same_policy_and_replaced_when_settings_change(
         with runtime.session(runtime.parse_options(mode, threads)):
             models._infer('s1', lambda model: None, None)
     assert len(loaded) == 3
-    assert loaded[-2:] == [('s1', (1, True)), ('s1', (2, True))]
+    assert loaded[-2:] == [('s1', (1, True, None)), ('s1', (2, True, None))]
     models.release_models()
 
 
@@ -81,7 +81,7 @@ def test_apple_failure_falls_back_once_and_records_actual_cpu_provider(monkeypat
             if len(self.providers) > 1: raise ort.capi.onnxruntime_pybind11_state.Fail('Unsupported partition')
             return [np.zeros((0,)), np.zeros((0, 2, 3))]
     monkeypatch.setattr(ort, 'InferenceSession', Session)
-    model = models.InferenceModel(tmp_path / 's1.onnx', (4, False),
+    model = models.InferenceModel(tmp_path / 's1.onnx', (4, False, None),
                                  ['CoreMLExecutionProvider', 'CPUExecutionProvider'])
     for _ in range(2):
         assert model.run(None, {})[1].shape == (0, 2, 3)
@@ -103,8 +103,8 @@ def test_apple_cache_is_bound_to_graph_hash_and_disabled_for_low_memory(monkeypa
     for digest in ['firsthash', 'changedhash']:
         path.with_suffix('.json').write_text(json.dumps({'onnx_sha256': digest}))
         models.release_models()
-        models._load_model('s1', (4, False))
-    models._load_model('s1', (2, True))
+        models._load_model('s1', (4, False, None))
+    models._load_model('s1', (2, True, None))
     for digest, providers in zip(['firsthash', 'changedhash'], observed):
         name, options = providers[0]
         assert name == 'CoreMLExecutionProvider'

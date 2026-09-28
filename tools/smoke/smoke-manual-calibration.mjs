@@ -40,7 +40,7 @@ async function scales() {
 try {
   await c.evaluate("window.manualCalibrationEvents=0;document.addEventListener('calibrationchange',e=>{if(e.detail.calibration)window.manualCalibrationEvents++},true)");
   await c.send('Emulation.setDeviceMetricsOverride', { width: 1500, height: 1200, deviceScaleFactor: 1, mobile: false });
-  await c.setState('{ack:true,screen:"studies",performance:{mode:"standard",cpuThreads:2,cropLocalizer:false,toolbarRemoval:true}}');
+  await c.setState('{ack:true,screen:"studies",performance:{mode:"standard",cpuThreads:2,cropLocalizer:false,toolbarRemoval:true,processor:"cpu"}}');
   if (phase === 'save') {
     await c.setState('{studies:[]}');
     // Supply a source-bound failed-detection result to the real viewer. The image

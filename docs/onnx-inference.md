@@ -31,7 +31,9 @@ normalization, output coordinate restoration and geometry calculations are prese
 
 ONNX Runtime uses sequential graph execution, optimized graphs, no idle thread
 spinning, and one image per detector call. Standard mode caches models and uses up
-to four ONNX CPU threads. On macOS, the S1 detector additionally uses CoreML's CPU
+to four ONNX CPU threads. **Settings → Processing → Processor** can instead run the
+models on a DirectX 12 GPU through DirectML on Windows, with per-model CPU fallback;
+see [GPU processing](gpu-processing.md). The paragraphs below describe the CPU default. On macOS, the S1 detector additionally uses CoreML's CPU
 implementation for static graph partitions. Dynamic/empty detections remain on
 the ONNX CPU provider. CoreML manages its own CPU threads; it does not use reduced
 precision GPU/Neural Engine execution here. If Apple compilation or execution fails,
