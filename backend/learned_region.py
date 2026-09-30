@@ -12,7 +12,11 @@ import os
 import numpy as np
 import onnxruntime as ort
 
-from . import region_detector, runtime
+try:
+    from . import region_detector, runtime
+except ImportError:  # Support running modules directly from backend/.
+    import region_detector
+    import runtime
 
 
 @lru_cache(maxsize=1)
@@ -40,7 +44,10 @@ def proposals(raw: np.ndarray) -> list[dict]:
         raise ValueError("Learned region localizer requires ONNX and metadata paths")
     runtime.checkpoint()
     session, contract = _load(graph, metadata, runtime.options().inference_threads)
-    from .models import models  # use the same real-image intensity preparation
+    try:
+        from .models import models  # use the same real-image intensity preparation
+    except ImportError:
+        from models import models
     image = raw if raw.dtype == np.uint8 else models._robust_rescale(raw)
     runtime.report("framing", "Finding research region proposals")
     try:

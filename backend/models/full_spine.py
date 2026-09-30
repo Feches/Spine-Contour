@@ -176,10 +176,11 @@ def _cervical_candidates(raw, _legacy=False):
                                    "points": points, "window": proposal["source_crop"],
                                    "score": proposal["score"]})
         models._infer("cervical_hrnet", predict, "Locating C7 with HRNET")
-    if learned_box is not None and len(candidates) < MIN_SUPPORT:
+    learned_qc = select_consensus(candidates)[1] if learned_box is not None else None
+    if learned_box is not None and learned_qc["status"] != "accepted":
         candidates, search = _cervical_candidates(raw, _legacy=True)
         return candidates, {**search, "learned_proposal": list(learned_box),
-                            "learned_fallback": "insufficient_landmark_evidence"}
+                            "learned_fallback": learned_qc["status"]}
     return candidates, {"windows": len(windows), "detections": len(proposals),
                         "hrnet_crops": len(selected), "invalid_outputs": invalid_outputs,
                         "learned_proposal": None if learned_box is None else list(learned_box)}
@@ -249,10 +250,11 @@ def _lumbar_candidates(raw, _legacy=False):
                                    "window": window, "score": float(score),
                                    "detector_disagreement_widths": discrepancy})
         models._infer("hrnet", predict, "Locating the S1 endplate with HRNET")
-    if learned_box is not None and len(candidates) < MIN_SUPPORT:
+    learned_qc = select_consensus(candidates)[1] if learned_box is not None else None
+    if learned_box is not None and learned_qc["status"] != "accepted":
         candidates, search = _lumbar_candidates(raw, _legacy=True)
         return candidates, {**search, "learned_proposal": list(learned_box),
-                            "learned_fallback": "insufficient_landmark_evidence"}
+                            "learned_fallback": learned_qc["status"]}
     return candidates, {"windows": len(windows), "hrnet_crops": len(proposals),
                         "localizer": located,
                         "learned_proposal": None if learned_box is None else list(learned_box)}
