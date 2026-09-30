@@ -1,5 +1,18 @@
 # Spine Contour
 
+**2026-09-30 release 1.0.12 (CSV keep-column lift):** branch `claude/csv-keep-column-name` (worktree
+`.claude/worktrees/csv-keep-column`) off `fork/main` @ `16088cd` (v1.0.11, PR #43). It carries exactly one feature
+commit cherry-picked from the held similar-cases branch `claude/image-similarity-visualization-400922` (Plan B Task 5,
+`e8eb247`): `Keep column name` and `Keep N unmapped columns` on the Workspace mapping card (`KEEP_NAME`,
+`keepColumnName`, `keepUnmapped`, `keepableCount` in `renderer/data/csv.js`; the card in
+`renderer/screens/workspace.js`; `.workspace-keep-row` in `styles/screens/workspace.css`; two tests). The cherry-pick
+applied cleanly: main's changes to those files since `efe1df6` all lie outside the mapping card. Unit 582/582. Not
+run: a source launch of this tree (the card was walked by hand on 2026-09-14 on the branch it came from). Everything
+else from the similar-cases work (embeddings, Find similar, comparison mode, `Export dataset`, the three outcome
+fields) stays held on its branch for the owner's offline testing; when that branch later merges `fork/main`, git sees
+this commit's content as already applied and only the release files conflict. The 1.0.12 release commit is on this
+branch; merging it to `fork/main` with a merge commit publishes v1.0.12.
+
 **2026-09-28 release 1.0.11:** branch `claude/happy-faraday-vjiqgk` off `fork/main` @ `03d42a4` (PR #41), with
 `fork/main` @ `110ff47` (PR #42, segmental lordosis and angulation) merged in. The merges of PR #37, #41 and #42
 built both installers but published nothing: `tools/packaging/publish_release.py`
