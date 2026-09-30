@@ -135,8 +135,9 @@ Each with what it costs if it is wrong. Where a stage-1 decision is superseded, 
 8. **The tab gains a `REGION` control — `Lumbar | Cervical | Whole spine` — and it is an axis of the weight table.**
    *(new, the user's question of 2026-09-30)* The region switches families on and off and narrows the candidates to
    films that have that anatomy (§7.5); `Rank by` switches kinds. Default: the open film's `studyRegion` (`full_spine`
-   → Whole spine); the user's pick is a session key like the other two, reset to the default when the open film
-   changes region. *Cost if wrong:* three store values and three rows in a table.
+   → Whole spine); the user's pick is a session key like the other two, held for the film it was made on and back to
+   the default when another film is opened (the key stores the pick with the open study's id, so no store write is
+   needed inside a subscriber). *Cost if wrong:* three store values and three rows in a table.
 9. **Appearance follows anatomy; the film-type proxy is gone.** *(replaces stage-1 decision 5)* The embedding record
    carries three vectors — `lumbar` (the lumbar window), `cervical` (the cervical window) and `whole` — each null
    where the film has no such window, and the film's `region` from the result, not a guess from the framing. Block
