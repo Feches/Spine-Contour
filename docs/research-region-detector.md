@@ -22,7 +22,10 @@ missing proposal falls through to the existing sliding localizer; a proposed
 crop still needs the established regional landmark and consensus checks. If
 those checks yield insufficient evidence on a full-spine image, the standard
 search runs. In local lumbar prediction, a learned crop lacking S1 triggers
-the standard search, followed by the existing visible-film fallback.
+the standard search, followed by the existing visible-film fallback. The local
+lumbar route also rejects learned crops with S1 confidence below the existing
+0.5 detector gate or without a visible lumbar level, and records the fallback
+reason in its framing output.
 
 The detector's boxes are crop proposals in source-image pixels. They are not
 vertebral annotations or evidence that a landmark identity is correct.

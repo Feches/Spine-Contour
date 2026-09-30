@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from backend import framing, learned_region, runtime
 from backend import server
 from backend.models import full_spine, models
+from backend.tests.unit.test_partial_prediction import frame
 
 
 def test_default_off_and_boolean_validation():
@@ -78,6 +79,32 @@ def test_local_lumbar_learned_proposal_bypasses_search_but_off_does_not(monkeypa
                                                learned_region_localizer=True)):
         with pytest.raises(RuntimeError, match="reached selected crop"):
             models.spinopelvic_prediction(raw)
+
+
+@pytest.mark.parametrize("score,reason", [(.19, "s1_low_confidence"),
+                                         (.95, "no_lumbar_levels")])
+def test_local_lumbar_weak_s1_and_missing_levels_fall_back_to_search(monkeypatch, score, reason):
+    raw = np.ones((768, 768), np.uint8)
+    monkeypatch.setattr(learned_region, "proposals", lambda _: [
+        {"class": "lumbar", "score": .9, "bbox": [0, 0, 768, 768]}])
+    searched = {"window": (100, 100, 700, 700), "searched": True,
+                "whole_film_won": False, "whole_film_cost": 1.,
+                "confidence": .9, "cost": 1., "candidates": 1}
+    calls = []
+    monkeypatch.setattr(framing, "locate", lambda *_: calls.append("search") or searched)
+    monkeypatch.setattr(framing, "reframe", lambda *_: None)
+    first = frame([], np.array([[400., 620.], [440., 620.]]))
+    first["s1_confidence"] = score
+    second = frame(["L1"], np.array([[400., 620.], [440., 620.]]))
+    outputs = iter((first, second))
+    monkeypatch.setattr(models, "_read_frame", lambda *_: next(outputs))
+    with runtime.session(runtime.parse_options(learned_region_localizer=True)):
+        result = models.spinopelvic_prediction(raw)
+    assert calls == ["search"]
+    assert result["framing"]["window"] == list(searched["window"])
+    assert result["framing"]["learned_proposal"] == [0, 0, 768, 768]
+    assert result["framing"]["learned_fallback"] == reason
+    assert "L1" in result["landmarks"]["vertebrae"]
 
 
 def test_full_spine_lumbar_proposal_retains_s1_gate_and_legacy_fallback(monkeypatch):

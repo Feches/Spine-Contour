@@ -510,10 +510,13 @@ def spinopelvic_prediction(
     image = _robust_rescale(raw)
 
     localizer = runtime.options().crop_localizer
+    learned_box = None
+    learned_fallback = None
     if localizer:
-        learned_box = None
         if runtime.options().learned_region_localizer:
             learned_box = learned_region.top_box(learned_region.proposals(raw), "lumbar", raw.shape)
+            if learned_box is None:
+                learned_fallback = "no_proposal"
         if learned_box is not None:
             located = {"window": learned_box, "searched": True, "whole_film_won": False,
                        "whole_film_cost": None, "confidence": None, "cost": None,
@@ -535,11 +538,35 @@ def spinopelvic_prediction(
     window = located["window"]
     canvas, transform = framing.prepare_crop(raw, window)
     frame = _read_frame(canvas, choice, raw[window[1]:window[3], window[0]:window[2]])
-    if located.get("source") == "learned_region_detector" and _source_s1(frame, transform) is None:
-        runtime.report("framing", "Learned lumbar crop lacked S1; checking the standard search")
-        searched = framing.locate(raw, _score_s1)
-        if searched is not None:
-            located, window = searched, searched["window"]
+    if located.get("source") == "learned_region_detector":
+        # A box is only a proposal. On full films it may span nearly the whole
+        # image, yielding an S1 point but losing every lumbar level. Require
+        # strong S1 and at least one U-Net-confirmed level before accepting it.
+        s1 = _source_s1(frame, transform)
+        visible = {}
+        if s1 is not None and frame["s1_confidence"] >= .5:
+            inner = transform.inner
+            visible_labels = np.zeros_like(frame["vertebra_labels"])
+            region = np.s_[inner.top:inner.top + inner.resized_height,
+                           inner.left:inner.left + inner.resized_width]
+            visible_labels[region] = frame["vertebra_labels"][region]
+            model_values = {level: index for index, level in enumerate(LUMBAR_LEVELS, start=1)}
+            visible = landmarks.corners_from_label_map(visible_labels, model_values,
+                                                       frame["s1"][0]-frame["s1"][1])
+        if s1 is None or frame["s1_confidence"] < .5 or not visible:
+            learned_fallback = ("s1_missing" if s1 is None else
+                                "s1_low_confidence" if frame["s1_confidence"] < .5 else
+                                "no_lumbar_levels")
+            runtime.report("framing", "Learned lumbar crop lacked reliable S1 and lumbar levels; checking the standard search")
+            searched = framing.locate(raw, _score_s1)
+            if searched is None:
+                fallback = True
+                located = {"window": framing.fallback_window(raw), "searched": True,
+                           "whole_film_won": True, "whole_film_cost": None,
+                           "confidence": None, "cost": None, "candidates": 0}
+            else:
+                located = searched
+            window = located["window"]
             canvas, transform = framing.prepare_crop(raw, window)
             frame = _read_frame(canvas, choice, raw[window[1]:window[3], window[0]:window[2]])
     if _source_s1(frame, transform) is None and not located.get("whole_film_won"):
@@ -626,6 +653,9 @@ def spinopelvic_prediction(
             "search_cost": located["cost"],
             "candidates": located["candidates"],
             "s1_confidence": round(float(frame["s1_confidence"]), 4),
+            **({"learned_proposal": None if learned_box is None else list(learned_box),
+                "learned_fallback": learned_fallback}
+               if runtime.options().learned_region_localizer and localizer else {}),
         },
     }
 
