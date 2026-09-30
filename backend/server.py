@@ -7,6 +7,7 @@ import io
 import json
 import hashlib
 import logging
+import os
 
 import numpy as np
 import onnxruntime as ort
@@ -164,6 +165,7 @@ async def prediction_request(
     s1_model: str | None = Form(None), calibration: str | None = Form(None),
     processing_mode: str = Form("standard"), cpu_threads: int = Form(2),
     crop_localizer: bool = Form(True),
+    learned_region_localizer: bool = Form(False),
     toolbar_removal: bool = Form(False),
     processor: str = Form("cpu"),
     anterior_side: str | None = Form(None),
@@ -174,7 +176,11 @@ async def prediction_request(
     if len(payload) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="The uploaded file exceeds 50 MB")
     try:
-        settings = runtime.parse_options(processing_mode, cpu_threads, crop_localizer, toolbar_removal, processor)
+        settings = runtime.parse_options(processing_mode, cpu_threads, crop_localizer,
+                                         toolbar_removal, processor, learned_region_localizer)
+        if learned_region_localizer and (not os.environ.get("SPINE_REGION_DETECTOR_ONNX") or
+                                         not os.environ.get("SPINE_REGION_DETECTOR_METADATA")):
+            raise ValueError("Learned region localizer requires configured ONNX and metadata paths")
         if body_part.strip().lower() == "cervical":
             _validate_cervical_request(modality, view, laterality, vertebra_model,
                                       femoral_model, s1_model, anterior_side)
@@ -341,6 +347,7 @@ def _analyze(payload, modality, body_part, view, laterality,
                          "providers": runtime.providers(),
                          "processor": runtime.processor_record(),
                          "crop_localizer": True if landmark_only else runtime.options().crop_localizer,
+                         "learned_region_localizer": runtime.options().learned_region_localizer,
                          "toolbar_removal": False if landmark_only else runtime.options().toolbar_removal,
                          "search_batch": runtime.options().search_batch}}
     if landmark_only:

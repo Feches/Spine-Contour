@@ -11,10 +11,11 @@ import numpy as np
 
 from . import cervical, models
 try:
-    from .. import framing, runtime
+    from .. import framing, runtime, learned_region
 except ImportError:
     import framing
     import runtime
+    import learned_region
 
 MODEL_NAME = "dual_hrnet"
 MAX_CERVICAL_CROPS = 12
@@ -112,9 +113,23 @@ def unique_cervical_crops(proposals):
     return list(chosen.values())
 
 
-def _cervical_candidates(raw):
+def _cervical_candidates(raw, _legacy=False):
     height, width = raw.shape
     windows = cervical_windows(height, width)
+    learned_box = None
+    if runtime.options().learned_region_localizer and not _legacy:
+        learned_box = learned_region.top_box(learned_region.proposals(raw), "cervical", raw.shape)
+        if learned_box is not None:
+            left, top, right, bottom = learned_box
+            w, h = right-left, bottom-top
+            cx, cy = (left+right)/2, (top+bottom)/2
+            # Several distinct contextual crops retain the existing DETR,
+            # HRNET and multi-crop landmark agreement checks.
+            windows = sorted({framing.clip_window(cx+dx*w, cy+dy*h, w*scale, h*scale,
+                                                  height, width)
+                              for dx, dy, scale in ((0, 0, 1.35), (-.12, 0, 1.35),
+                                                    (.12, 0, 1.35), (0, -.12, 1.35),
+                                                    (0, .12, 1.35), (0, 0, 1.55))})
     proposals = []
     # Group calls by graph to keep low-memory mode from swapping on every crop.
     def detect(session):
@@ -161,7 +176,13 @@ def _cervical_candidates(raw):
                                    "points": points, "window": proposal["source_crop"],
                                    "score": proposal["score"]})
         models._infer("cervical_hrnet", predict, "Locating C7 with HRNET")
-    return candidates, {"windows": len(windows), "detections": len(proposals), "hrnet_crops": len(selected), "invalid_outputs": invalid_outputs}
+    if learned_box is not None and len(candidates) < MIN_SUPPORT:
+        candidates, search = _cervical_candidates(raw, _legacy=True)
+        return candidates, {**search, "learned_proposal": list(learned_box),
+                            "learned_fallback": "insufficient_landmark_evidence"}
+    return candidates, {"windows": len(windows), "detections": len(proposals),
+                        "hrnet_crops": len(selected), "invalid_outputs": invalid_outputs,
+                        "learned_proposal": None if learned_box is None else list(learned_box)}
 
 
 def lumbar_windows(window, shape):
@@ -176,9 +197,15 @@ def lumbar_windows(window, shape):
                    for dx, dy, scale in variants})
 
 
-def _lumbar_candidates(raw):
+def _lumbar_candidates(raw, _legacy=False):
     # Existing image-only sliding detector establishes a lumbosacral crop.
-    located = framing.locate(raw, models._score_s1)
+    learned_box = None
+    if runtime.options().learned_region_localizer and not _legacy:
+        learned_box = learned_region.top_box(learned_region.proposals(raw), "lumbar", raw.shape)
+    if learned_box is not None:
+        located = {"window": learned_box, "source": "learned_region_detector"}
+    else:
+        located = framing.locate(raw, models._score_s1)
     if located is None:
         return [], {"windows": 0, "hrnet_crops": 0, "localizer": None}
     windows = lumbar_windows(located["window"], raw.shape)
@@ -222,7 +249,13 @@ def _lumbar_candidates(raw):
                                    "window": window, "score": float(score),
                                    "detector_disagreement_widths": discrepancy})
         models._infer("hrnet", predict, "Locating the S1 endplate with HRNET")
-    return candidates, {"windows": len(windows), "hrnet_crops": len(proposals), "localizer": located}
+    if learned_box is not None and len(candidates) < MIN_SUPPORT:
+        candidates, search = _lumbar_candidates(raw, _legacy=True)
+        return candidates, {**search, "learned_proposal": list(learned_box),
+                            "learned_fallback": "insufficient_landmark_evidence"}
+    return candidates, {"windows": len(windows), "hrnet_crops": len(proposals),
+                        "localizer": located,
+                        "learned_proposal": None if learned_box is None else list(learned_box)}
 
 
 def _source_points(points, width, mirrored):

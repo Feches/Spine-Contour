@@ -21,10 +21,11 @@ import onnxruntime as ort
 ort.disable_telemetry_events()
 
 try:
-    from .. import processors, runtime
+    from .. import processors, runtime, learned_region
 except ImportError:
     import processors
     import runtime
+    import learned_region
 
 # The training checkpoint's fixed landmark slot order; no Torch import at runtime.
 HRNET_LANDMARKS = tuple((level, corner) for level in ("L1", "L2", "L3", "L4", "L5")
@@ -510,7 +511,15 @@ def spinopelvic_prediction(
 
     localizer = runtime.options().crop_localizer
     if localizer:
-        located = framing.locate(raw, _score_s1)
+        learned_box = None
+        if runtime.options().learned_region_localizer:
+            learned_box = learned_region.top_box(learned_region.proposals(raw), "lumbar", raw.shape)
+        if learned_box is not None:
+            located = {"window": learned_box, "searched": True, "whole_film_won": False,
+                       "whole_film_cost": None, "confidence": None, "cost": None,
+                       "candidates": 1, "source": "learned_region_detector"}
+        else:
+            located = framing.locate(raw, _score_s1)
     else:
         runtime.report("framing", "Crop localizer off; processing the supplied lumbar image")
         located = {"window": framing.fallback_window(raw), "searched": False,
@@ -526,6 +535,13 @@ def spinopelvic_prediction(
     window = located["window"]
     canvas, transform = framing.prepare_crop(raw, window)
     frame = _read_frame(canvas, choice, raw[window[1]:window[3], window[0]:window[2]])
+    if located.get("source") == "learned_region_detector" and _source_s1(frame, transform) is None:
+        runtime.report("framing", "Learned lumbar crop lacked S1; checking the standard search")
+        searched = framing.locate(raw, _score_s1)
+        if searched is not None:
+            located, window = searched, searched["window"]
+            canvas, transform = framing.prepare_crop(raw, window)
+            frame = _read_frame(canvas, choice, raw[window[1]:window[3], window[0]:window[2]])
     if _source_s1(frame, transform) is None and not located.get("whole_film_won"):
         runtime.report("framing", "Checking the visible film after an incomplete crop")
         # A search crop without its anchor must not hide other visible levels.

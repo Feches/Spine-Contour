@@ -32,6 +32,7 @@ class Options:
     crop_localizer: bool = True
     toolbar_removal: bool = False
     processor: str = "cpu"
+    learned_region_localizer: bool = False
 
     @property
     def low_memory(self):
@@ -51,7 +52,8 @@ class Options:
         return 60 if self.low_memory else 8
 
 
-def parse_options(mode="standard", cpu_threads=2, crop_localizer=True, toolbar_removal=False, processor="cpu"):
+def parse_options(mode="standard", cpu_threads=2, crop_localizer=True, toolbar_removal=False,
+                  processor="cpu", learned_region_localizer=False):
     if mode not in ("standard", "low-memory"):
         raise ValueError("Processing mode must be standard or low-memory")
     if isinstance(cpu_threads, bool) or not isinstance(cpu_threads, int) or not 1 <= cpu_threads <= 4:
@@ -62,7 +64,10 @@ def parse_options(mode="standard", cpu_threads=2, crop_localizer=True, toolbar_r
         raise ValueError("Toolbar removal must be on or off")
     if not processors.valid(processor):
         raise ValueError("Processor must be cpu or a GPU id")
-    return Options(mode, min(cpu_threads, os.cpu_count() or 1), crop_localizer, toolbar_removal, processor)
+    if not isinstance(learned_region_localizer, bool):
+        raise ValueError("Learned region localizer must be on or off")
+    return Options(mode, min(cpu_threads, os.cpu_count() or 1), crop_localizer,
+                   toolbar_removal, processor, learned_region_localizer)
 
 
 _options = ContextVar("processing_options", default=Options())
