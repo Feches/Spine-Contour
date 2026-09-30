@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.12
+
+- On the Workspace's column-mapping card, an unknown CSV column can be imported under its
+  own name: each chip's dropdown offers **Keep column name**, and **Keep N unmapped
+  columns** keeps every remaining unmapped column at once. A kept column is a custom
+  clinical field like any mapped one: Load workspace attaches its values, the Parameters
+  table lists it after the known fields and both CSV exports carry it. The `study_id` join
+  key and the four study-detail columns are never kept; an empty or already-used name is
+  left unmapped; a header that names a free known field maps to that field instead. The
+  row's **Set all…** dropdown offers **Unmapped** to clear every mapping. No model,
+  measurement or processing change; the weights are unchanged from 1.0.11.
+
+[Release notes](docs/releases/1.0.12.md)
+
 ## 1.0.11
 
 - Add segmental lordosis and disc angulation at every adjacent level, C2–C3 through C6–C7

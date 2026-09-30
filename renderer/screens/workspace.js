@@ -15,6 +15,7 @@ import { chooseFolder, scanFolder, chooseCsv, readCsv } from '../api.js';
 import {
   parse, autoMap, KNOWN_FIELDS, findJoinHeader, joinClinical, clinicalFieldNames,
   findStructuralHeaders, structuralFromRow, structuralField, STRUCTURAL_LABELS,
+  KEEP_NAME, keepColumnName, keepUnmapped, keepableCount,
 } from '../data/csv.js';
 import { folderRows, folderKey, seedFields, STUDY_FIELDS } from '../data/seeding.js';
 import { DEFAULT_VIEW, TIMEPOINT_SUGGESTIONS, VIEW_SUGGESTIONS } from '../data/timepoints.js';
@@ -462,7 +463,8 @@ export function render(state) {
         'aria-label': `Map ${m.src}`,
         'data-ws-key': `map:${m.src}`,
         onChange: (event) => {
-          const dest = event.target.value === '' ? null : event.target.value;
+          const picked = event.target.value;
+          const dest = picked === '' ? null : (picked === KEEP_NAME ? keepColumnName(m.src) : picked);
           setState((s) => ({
             wsMapping: s.wsMapping.map((row, i) => (i === index ? { ...row, dest } : row)),
           }));
@@ -479,7 +481,15 @@ export function render(state) {
         if (takenElsewhere && m.dest !== field) continue;
         select.append(el('option', { value: field }, field));
       }
-      select.value = m.dest ?? '';
+      // Keep column name (spec 9.5): the header itself as the destination. Offered only when the
+      // name is not a known field (those are offered above) and not another column's destination.
+      const own = keepColumnName(m.src);
+      const ownTaken = mapping.some((other, i) => i !== index && other.dest === own);
+      const keeping = m.dest !== null && m.dest === own && !KNOWN_FIELDS.includes(own);
+      if (own !== '' && !KNOWN_FIELDS.includes(own) && (!ownTaken || keeping)) {
+        select.append(el('option', { value: KEEP_NAME }, `Keep column name (${own})`));
+      }
+      select.value = keeping ? KEEP_NAME : (m.dest ?? '');
       return el('div', { class: `workspace-chip ${m.dest ? 'workspace-chip-mapped' : 'workspace-chip-unmapped'}` },
         el('span', { class: 'workspace-chip-src' }, m.src),
         el('span', { class: 'workspace-chip-arrow' }, '→'),
@@ -498,9 +508,34 @@ export function render(state) {
         + (join.ambiguous ? ` · ${join.ambiguous} ambiguous filename` : '')
         + '. Rows that match no film are counted when the workspace loads and are not attached to any study.';
 
+    // The bulk action (spec 9.5): every remaining unmapped column under its own name, by the
+    // user's hand, with the reminder that an unknown column can be an identifier. Absent at zero.
+    const keepable = keepableCount(mapping, live.wsCsvHeaders);
+    const bulk = el('div', { class: 'workspace-keep-row' },
+      keepable > 0 ? el('button', {
+        type: 'button', class: 'btn btn-small', 'data-ws-key': 'keep-all',
+        onClick: () => {
+          setState((s) => ({ wsMapping: keepUnmapped(s.wsMapping, s.wsCsvHeaders) }));
+          refresh();
+        },
+      }, `Keep ${keepable} unmapped ${keepable === 1 ? 'column' : 'columns'}`) : null,
+      keepable > 0 ? el('span', { class: 'workspace-keep-help' },
+        'Imports every remaining column under its own name \u2014 check that none is an identifier.') : null,
+      setAllSelect({
+        key: 'map-all', label: 'Set every column', choices: [], none: 'Unmapped',
+        onChange: () => {
+          // Clears every destination, kept and known alike; the fixed columns have no select and are untouched.
+          setState((s) => {
+            const fixed = new Set([findJoinHeader(s.wsCsvHeaders), ...Object.values(findStructuralHeaders(s.wsCsvHeaders))].filter((h) => h !== null));
+            return { wsMapping: s.wsMapping.map((row) => (fixed.has(row.src) ? row : { ...row, dest: null })) };
+          });
+          refresh();
+        },
+      }));
+
     return el('div', { class: 'card workspace-card workspace-card-stack' },
       el('div', { class: 'eyebrow' }, '03 — COLUMN MAPPING'),
-      el('div', { class: 'workspace-chip-row' }, ...chips),
+      el('div', { class: 'workspace-chip-row' }, bulk, ...chips),
       el('div', { class: 'workspace-card-note' },
         'Rows are matched to films by ',
         el('span', { class: 'workspace-card-code' }, 'study_id'),

@@ -147,6 +147,10 @@
   outline-offset: 2px;
 }
 
+/* The mapping card's bulk row (similar-cases spec, 2026-09-12, section 9.5). */
+.workspace-keep-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 8px; }
+.workspace-keep-help { font: 400 12px 'Source Sans 3', sans-serif; color: var(--muted); }
+
 .workspace-card-note {
   margin-top: 14px;
   padding-top: 14px;
