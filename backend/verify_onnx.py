@@ -6,7 +6,7 @@ import sys
 import numpy as np
 import onnxruntime as ort
 
-from . import processors, runtime
+from . import learned_region, processors, runtime
 from .models import models
 
 
@@ -42,6 +42,13 @@ def verify(gpu=None, parity_films=None):
                 assert output[0].shape == expected
             results[kind] = [list(value.shape) for value in output]
         models.release_models()
+        session, contract = learned_region._load(1)
+        assert session.get_inputs()[0].shape == [1, 3, 960, 960]
+        output = session.run([contract.output_name], {
+            contract.input_name: np.zeros((1, 3, 960, 960), np.float32)})[0]
+        assert output.shape[0:2] == (1, 6) and np.isfinite(output).all()
+        results['crop_detector'] = [list(output.shape)]
+        learned_region._load.cache_clear()
     # Exercise the production Apple provider configuration as well as CPU-only
     # low memory. Fallback remains valid and its actual providers are reported.
     if sys.platform == 'darwin':

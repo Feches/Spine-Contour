@@ -13,7 +13,7 @@ report = json.loads(result.stdout.strip().splitlines()[-1])
 assert report['gpu_parity']['tolerance']['rtol'] == 2e-3
 assert report['gpu_parity']['tolerance']['atol'] == 2e-3
 assert report['gpu_parity']['passed'], 'GPU parity verification failed'
-assert {'s1', 'vertebra', 'femoral', 'hrnet', 'cervical_detr', 'cervical_hrnet'} <= set(report['verified'])
+assert {'s1', 'vertebra', 'femoral', 'hrnet', 'cervical_detr', 'cervical_hrnet', 'crop_detector'} <= set(report['verified'])
 assert not list(bundle.rglob('*.pt')), 'Training checkpoints must not ship alongside ONNX models'
 assert not list(bundle.rglob('*.safetensors')), 'Detector training weights must not ship alongside ONNX models'
 assert not (bundle / '_internal' / 'torch').exists(), 'PyTorch must not ship in the runtime bundle'
@@ -23,4 +23,4 @@ if sys.platform == 'win32':
     assert 'DmlExecutionProvider' in report['available_providers'], 'The Windows bundle must use onnxruntime-directml'
     assert list(bundle.rglob('DirectML.dll')), 'DirectML.dll must ship beside ONNX Runtime'
     print('Bundled DirectML; GPUs on this machine:', report['gpus'])
-print('Verified all six bundled ONNX models:', report['verified'])
+print('Verified all bundled ONNX models:', report['verified'])

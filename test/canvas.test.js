@@ -12,6 +12,20 @@ test('buildLabelColorMap maps L1..L5 backend label ids to the fixed RGB ramp', (
   assert.equal(map[0], undefined);
 });
 
+test('full-spine and cervical vertebral outlines use the lumbar level palette', () => {
+  const strokes = [];
+  const ctx = new Proxy({ stroke() { strokes.push(this.strokeStyle); } }, {
+    get(target, prop) { return prop in target ? target[prop] : () => {}; },
+    set(target, prop, value) { target[prop] = value; return true; },
+  });
+  const body = { quadrilateral: [[1, 1], [4, 1], [4, 4], [1, 4]] };
+  drawDynamicLayer(ctx, { width: 200, height: 200 },
+    { region: 'full_spine', vertebrae: { C3: body, L1: body } },
+    { selectedLevel: null, editing: false, measurements: null });
+  assert.deepEqual(strokes.slice(0, 2), ['rgb(255,99,132)', 'rgb(255,99,132)']);
+  assert.notDeepEqual(LEVEL_RGB.C2, LEVEL_RGB.C3);
+});
+
 test('buildOverlayPixels colours a labelled mask pixel and leaves background transparent', () => {
   // Two RGBA pixels: pixel 0 has mask value 20 (L1), pixel 1 has mask value 0 (background).
   const maskPixels = new Uint8ClampedArray([20, 20, 20, 255, 0, 0, 0, 255]);

@@ -21,10 +21,11 @@ import onnxruntime as ort
 ort.disable_telemetry_events()
 
 try:
-    from .. import processors, runtime
+    from .. import processors, runtime, learned_region
 except ImportError:
     import processors
     import runtime
+    import learned_region
 
 # The training checkpoint's fixed landmark slot order; no Torch import at runtime.
 HRNET_LANDMARKS = tuple((level, corner) for level in ("L1", "L2", "L3", "L4", "L5")
@@ -509,8 +510,26 @@ def spinopelvic_prediction(
     image = _robust_rescale(raw)
 
     localizer = runtime.options().crop_localizer
+    learned_box = None
+    model_status = None
+    method_used = "supplied_image"
     if localizer:
-        located = framing.locate(raw, _score_s1)
+        if runtime.options().crop_method == "model":
+            learned_box = learned_region.top_box(learned_region.proposals(raw), "lumbar", raw.shape)
+            if learned_box is None:
+                model_status = "no_proposal"
+        if learned_box is not None:
+            method_used = "model"
+            located = {"window": learned_box, "searched": True, "whole_film_won": False,
+                       "whole_film_cost": None, "confidence": None, "cost": None,
+                       "candidates": 1, "source": "crop_detector"}
+        elif runtime.options().crop_method == "model":
+            runtime.report("framing", "Model found no lumbar crop; trying crop search")
+            located = framing.locate(raw, _score_s1)
+            method_used = "search_fallback"
+        else:
+            located = framing.locate(raw, _score_s1)
+            method_used = "search"
     else:
         runtime.report("framing", "Crop localizer off; processing the supplied lumbar image")
         located = {"window": framing.fallback_window(raw), "searched": False,
@@ -526,6 +545,36 @@ def spinopelvic_prediction(
     window = located["window"]
     canvas, transform = framing.prepare_crop(raw, window)
     frame = _read_frame(canvas, choice, raw[window[1]:window[3], window[0]:window[2]])
+    if located.get("source") == "crop_detector":
+        # A box is only a proposal. On full films it may span nearly the whole
+        # image, yielding an S1 point but losing every lumbar level. Require
+        # strong S1 and at least one U-Net-confirmed level before accepting it.
+        s1 = _source_s1(frame, transform)
+        visible = {}
+        if s1 is not None and frame["s1_confidence"] >= .5:
+            inner = transform.inner
+            visible_labels = np.zeros_like(frame["vertebra_labels"])
+            region = np.s_[inner.top:inner.top + inner.resized_height,
+                           inner.left:inner.left + inner.resized_width]
+            visible_labels[region] = frame["vertebra_labels"][region]
+            model_values = {level: index for index, level in enumerate(LUMBAR_LEVELS, start=1)}
+            visible = landmarks.corners_from_label_map(visible_labels, model_values,
+                                                       frame["s1"][0]-frame["s1"][1])
+        if s1 is None or frame["s1_confidence"] < .5 or not visible:
+            model_status = ("s1_missing" if s1 is None else
+                            "s1_low_confidence" if frame["s1_confidence"] < .5 else
+                            "no_lumbar_levels")
+            runtime.report("framing", "Model crop was incomplete; trying crop search")
+            located = framing.locate(raw, _score_s1)
+            method_used = "search_fallback"
+            fallback = located is None
+            if fallback:
+                located = {"window": framing.fallback_window(raw), "searched": True,
+                           "whole_film_won": True, "whole_film_cost": None,
+                           "confidence": None, "cost": None, "candidates": 0}
+            window = located["window"]
+            canvas, transform = framing.prepare_crop(raw, window)
+            frame = _read_frame(canvas, choice, raw[window[1]:window[3], window[0]:window[2]])
     if _source_s1(frame, transform) is None and not located.get("whole_film_won"):
         runtime.report("framing", "Checking the visible film after an incomplete crop")
         # A search crop without its anchor must not hide other visible levels.
@@ -597,6 +646,7 @@ def spinopelvic_prediction(
         "models": choice,
         "framing": {
             "crop_localizer": localizer,
+            "method_used": method_used,
             "toolbar_removal": toolbar_info,
             "window": [int(v) for v in window],
             "reframed": reframed,
@@ -610,6 +660,9 @@ def spinopelvic_prediction(
             "search_cost": located["cost"],
             "candidates": located["candidates"],
             "s1_confidence": round(float(frame["s1_confidence"]), 4),
+            **({"model_proposal": None if learned_box is None else list(learned_box),
+                "model_status": model_status}
+               if runtime.options().crop_method == "model" and localizer else {}),
         },
     }
 

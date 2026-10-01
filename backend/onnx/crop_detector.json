@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "input_name": "images",
+  "output_name": "output0",
+  "input_size": [960, 960],
+  "channels": 3,
+  "pixel_normalization": "uint8_div_255",
+  "letterbox_value": 114,
+  "output_layout": "cxcywh_class_scores_channels",
+  "box_units": "input_pixels",
+  "classes": ["cervical", "lumbar"],
+  "score_threshold": 0.05,
+  "nms_iou_threshold": 0.5
+}

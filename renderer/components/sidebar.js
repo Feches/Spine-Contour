@@ -83,7 +83,16 @@ function performanceBlock(state) {
         onClick: () => changePerformance({ cropLocalizer }),
       }, label))),
     el('p', { class: 'processing-note' },
-      'Needed for full-spine images to find the lumbar region. Turn off for lumbar-only images to skip the crop search and process faster.'),
+      'Needed for full-spine images to find the lumbar region. Turn off for lumbar-only images to process the supplied image.'),
+    el('div', { class: 'sidebar-models-label' }, 'CROP METHOD'),
+    el('div', { class: 'model-choice', role: 'group', 'aria-label': 'Crop method' },
+      ...[['search', 'Crop search'], ['model', 'Trained model']].map(([cropMethod, label]) => el('button', {
+        type: 'button', class: 'model-choice-btn', disabled: busy,
+        'aria-pressed': settings.cropMethod === cropMethod ? 'true' : 'false',
+        onClick: () => changePerformance({ cropMethod }),
+      }, label))),
+    el('p', { class: 'processing-note' },
+      'Choose how full-spine crops are proposed. Trained model falls back to Crop search if a crop fails landmark checks. For lumbar-only runs, Crop localizer must be On.'),
     el('div', { class: 'sidebar-models-label' }, 'TOOLBAR REMOVAL'),
     el('div', { class: 'model-choice', role: 'group', 'aria-label': 'Toolbar removal' },
       ...[[true, 'On'], [false, 'Off']].map(([toolbarRemoval, label]) => el('button', {

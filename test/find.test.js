@@ -71,16 +71,18 @@ test('by view, workspace and folder: the cell labels, em dash and blank last', (
   assert.deepEqual(ids(sortFindRows([hand, a, b], { key: 'view', dir: 'desc' })), ['SP-1000', 'SP-1001', 'SP-1002']);
 });
 
-test('by status: Processing, Needs review, Segmented, Reviewed; the running study reads Processing', () => {
+test('by status: Failed, Processing, Needs review, Segmented, Reviewed; running reads Processing', () => {
   const rows = [
     study('SP-1000', SEG), study('SP-1001', REV), study('SP-1002'),
     study('SP-1003', { ...SEG, reviewedAt: '2026-09-10T12:00:00.000Z' }),
+    study('SP-1004', { processingError: 'Orientation uncertain' }),
   ];
-  assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'asc' })), ['SP-1002', 'SP-1001', 'SP-1000', 'SP-1003']);
-  assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'desc' })), ['SP-1003', 'SP-1000', 'SP-1001', 'SP-1002']);
-  assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'asc' }, 'SP-1003')), ['SP-1002', 'SP-1003', 'SP-1001', 'SP-1000']);
-  assert.equal(statusRank('proc'), 0);
-  assert.equal(statusRank('ok'), 3);
+  assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'asc' })), ['SP-1004', 'SP-1002', 'SP-1001', 'SP-1000', 'SP-1003']);
+  assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'desc' })), ['SP-1003', 'SP-1000', 'SP-1001', 'SP-1002', 'SP-1004']);
+  assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'asc' }, 'SP-1003')), ['SP-1004', 'SP-1002', 'SP-1003', 'SP-1001', 'SP-1000']);
+  assert.equal(statusRank('fail'), 0);
+  assert.equal(statusRank('proc'), 1);
+  assert.equal(statusRank('ok'), 4);
   assert.equal(statusRank('nonsense'), null);
 });
 

@@ -88,6 +88,15 @@ let runRevision = 0;
 // and leave the card reading LOADING.
 const runsByStudy = new Map();
 
+function withProcessingFailure(studies, studyId, addedAt, reason) {
+  return studies.map((item) => item.id === studyId && item.addedAt === addedAt
+    ? { ...item, processingError: String(reason || 'Segmentation failed.') } : item);
+}
+
+function markProcessingFailure(studyId, addedAt, reason) {
+  setState((state) => ({ studies: withProcessingFailure(state.studies, studyId, addedAt, reason) }));
+}
+
 // True while a relocate picker is open for a run that has not started. It refuses a second run
 // (and so a second native dialog) WITHOUT claiming a segmentation is running -- the card must
 // not say RUNNING while the app is waiting on a file dialog (no fabricated status).
@@ -187,11 +196,13 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
   if (!study) return { ok: false, reason: 'The study is no longer in the library.' };
   if (!inferenceView(study.view)) {
     const reason = unsupportedViewReason(study.view);
+    markProcessingFailure(studyId, study.addedAt, reason);
     if (!batch) showToast(reason);
     return { ok: false, reason };
   }
   if (regionRunReason(study)) {
     const reason = regionRunReason(study);
+    markProcessingFailure(studyId, study.addedAt, reason);
     if (!batch) showToast(reason);
     return { ok: false, reason };
   }
@@ -213,12 +224,16 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
   }
   if (readError) {
     const reason = `Could not read ${study.fileName}: ${readError.message}`;
+    markProcessingFailure(studyId, addedAt, reason);
     if (!batch) showToast(reason);
     return { ok: false, reason };
   }
-  // Spec 10: in a batch a missing film is a named failure; the record is untouched and the user
-  // relocates it from this screen, where the picker still opens.
-  if (!data) return { ok: false, reason: 'file not found' };
+  // Spec 10: in a batch a missing film is a named failure. Keep any previous
+  // measurements, mark the failed attempt, and let the user relocate the film.
+  if (!data) {
+    if (batch) markProcessingFailure(studyId, addedAt, 'file not found');
+    return { ok: false, reason: 'file not found' };
+  }
   // The picker is modeless and `locating` is this module's own, so a batch can have started while
   // it was open (batch spec 8.3). Running now would set `running` over the batch's id and put a
   // second /predict in flight. The record and the payload map already carry the relocated film;
@@ -262,11 +277,13 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
   const view = inferenceView(current.view);
   if (!view) {
     const reason = unsupportedViewReason(current.view);
+    markProcessingFailure(studyId, addedAt, reason);
     if (!batch) showToast(reason);
     return { ok: false, reason };
   }
   if (regionRunReason(current)) {
     const reason = regionRunReason(current);
+    markProcessingFailure(studyId, addedAt, reason);
     if (!batch) showToast(reason);
     return { ok: false, reason };
   }
@@ -375,17 +392,19 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
         ? { ...s, predictionId: requestId, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
           calibration: preferReviewedCalibration(response.calibration, calibrationForStudy(s)), thumbnail,
           // A re-run replaces every number a review was made over (studies-table spec 2026-09-10, section 8.4, site 1).
-          reviewedAt: null }
+          reviewedAt: null, processingError: null }
         : s)),
     }));
     return warning ? { ok: true, warning } : { ok: true };
   } catch (error) {
     if (revision === runRevision) {
-      setState({ running: null, runStage: null });
       if (error.message === 'Processing cancelled.') {
+        setState({ running: null, runStage: null });
         if (!batch) showToast('Processing cancelled. Previous results were kept.');
         return { skipped: true, cancelled: true };
       }
+      setState((state) => ({ running: null, runStage: null,
+        studies: withProcessingFailure(state.studies, studyId, addedAt, error.message) }));
       if (!batch) showToast(`Could not segment: ${error.message}`);
       return { ok: false, reason: error.message };
     }
@@ -640,7 +659,8 @@ export function render(state) {
     if (outgoing) disposeStudyImages(outgoing.images);
     setState({ editing: false, selection: null, selectedLevel: null,
       studies: live.studies.map(s => s.id === open.id ? { ...s, ...patch,
-        geometry: null, measurements: null, qc: null, reviewedAt: null, predictionId: null } : s) });
+        geometry: null, measurements: null, qc: null, reviewedAt: null, predictionId: null,
+        processingError: null } : s) });
     mounted?.viewer.setFilmStatus(null);
     previewOriginal(open.id);
   }
@@ -804,10 +824,11 @@ export function render(state) {
     // The list's badge, on the list's rule (screens/studies.js buildRow): Unsupported view for an
     // unsegmented film no model reads, else displayStatus with state.running.
     const unsupported = open.source === 'real' && open.measurements == null && live.running !== open.id && !inferenceView(open.view);
-    const badgeKey = unsupported ? `unsupported:${open.view}` : displayStatus(open, live.running);
+    const badgeStatus = displayStatus(open, live.running);
+    const badgeKey = unsupported ? `unsupported:${open.view}` : `${badgeStatus}:${open.processingError ?? ''}`;
     if (badgeKey !== lastBadgeKey) {
       lastBadgeKey = badgeKey;
-      mount(statusHost, unsupported ? unsupportedViewBadge(open.view) : statusBadge(badgeKey));
+      mount(statusHost, unsupported ? unsupportedViewBadge(open.view) : statusBadge(badgeStatus, open.processingError));
     }
 
     tabMeas.classList.toggle('is-active', live.tab === 'meas');

@@ -4,6 +4,12 @@ import { LEVELS, landmarkAt, femoralCircle, FEMORAL_SIDES, landmarkHandles } fro
 import { sameHandle } from './interactions.js';
 
 export const LEVEL_RGB = {
+  C2: [183, 139, 244],
+  C3: [255, 99, 132],
+  C4: [255, 159, 64],
+  C5: [255, 205, 86],
+  C6: [75, 192, 192],
+  C7: [54, 162, 235],
   L1: [255, 99, 132],
   L2: [255, 159, 64],
   L3: [255, 205, 86],
@@ -476,7 +482,8 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
     const body = geometry.vertebrae?.[level];
     if (!body) continue;
     const selected = level === selectedLevel;
-    ctx.strokeStyle = selected ? STAGE_SELECTED_COLOR : STAGE_LINE_COLOR;
+    ctx.strokeStyle = selected ? STAGE_SELECTED_COLOR
+      : LEVEL_RGB[level] ? `rgb(${LEVEL_RGB[level].join(',')})` : STAGE_LINE_COLOR;
     ctx.lineWidth = selected ? lineWidth * 1.6 : lineWidth;
     ctx.beginPath();
     const outline = body.quadrilateral ?? body.inferior;
@@ -499,7 +506,7 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
   if (geometry.region === 'full_spine' && geometry.c7_centroid) {
     const [x, y] = geometry.c7_centroid;
     const arm = Math.max(4, canvas.width / 150);
-    ctx.strokeStyle = STAGE_LINE_COLOR;
+    ctx.strokeStyle = `rgb(${LEVEL_RGB.C7.join(',')})`;
     ctx.beginPath(); ctx.moveTo(x - arm, y); ctx.lineTo(x + arm, y);
     ctx.moveTo(x, y - arm); ctx.lineTo(x, y + arm); ctx.stroke();
     drawSelectedStageLabel(ctx, 'C7', geometry.c7_centroid, selectedLevel === 'GLOBAL_SVA', canvas.width);

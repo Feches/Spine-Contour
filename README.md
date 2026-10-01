@@ -32,7 +32,7 @@ the film on the CPU and says so. See [GPU processing](docs/gpu-processing.md).
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.0.12 release notes](docs/releases/1.0.12.md) and
+[changelog](CHANGELOG.md), [v1.0.13 release notes](docs/releases/1.0.13.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
@@ -196,6 +196,11 @@ borders. It does not search for or reframe the lumbar anatomy.
 The choice is saved and applies to the next individual run or batch. Changing this
 setting changes the model input and may change detected anatomy; review the result.
 The runtime, localizer setting and selected frame are recorded with each result.
+**Crop method** offers **Crop search** (the default) and **Trained model**.
+The chosen method proposes cervical and lumbar regions on full-spine films;
+for lumbar requests it applies when Crop localizer is On. Trained model tries
+Crop search for a region when its proposal is absent or fails landmark checks.
+A region can still remain unconfirmed; review the crop and measurements before use.
 See [inference implementation and validation](docs/onnx-inference.md).
 
 ## Partial segmentation
