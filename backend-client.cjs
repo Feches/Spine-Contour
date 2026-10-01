@@ -8,14 +8,16 @@ function normalizePerformance(value) {
   const mode = value?.mode ?? 'standard';
   const cpuThreads = value?.cpuThreads ?? 2;
   const cropLocalizer = value?.cropLocalizer === undefined ? true : value.cropLocalizer;
+  const cropMethod = value?.cropMethod === undefined ? 'search' : value.cropMethod;
   const toolbarRemoval = value?.toolbarRemoval === undefined ? false : value.toolbarRemoval;
   const processor = value?.processor === undefined ? 'cpu' : value.processor;
   if (!['standard', 'low-memory'].includes(mode) || !Number.isInteger(cpuThreads) || cpuThreads < 1 || cpuThreads > 4
-    || typeof cropLocalizer !== 'boolean' || typeof toolbarRemoval !== 'boolean'
+    || typeof cropLocalizer !== 'boolean' || !['search', 'model'].includes(cropMethod)
+    || typeof toolbarRemoval !== 'boolean'
     || typeof processor !== 'string' || !PROCESSOR_ID.test(processor)) {
     throw new Error('Invalid processing settings.');
   }
-  return { mode, cpuThreads, cropLocalizer, toolbarRemoval, processor };
+  return { mode, cpuThreads, cropLocalizer, cropMethod, toolbarRemoval, processor };
 }
 
 // The backend's GET /processors body, reduced to what Settings shows. Anything malformed is

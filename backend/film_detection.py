@@ -161,6 +161,10 @@ def detect_film(pixel_array, anterior_side=None):
         whole_qc = {**searched, **consensus}
     _, top, _, bottom = framing.fallback_window(raw)
     body_part, reason = _region_decision(searches, whole_neck, bottom-top)
+    if (runtime.options().crop_method == "model" and body_part == "lumbar" and whole_neck is None
+            and any(value.get("neck_search", {}).get("model_proposals") for value in searches.values())):
+        # A full film with an unconfirmed neck must not be routed as lumbar-only.
+        body_part, reason = None, "cervical_region_unconfirmed"
     if explicit_side:
         side, orientation = explicit_side, {"status": "user_selected", "anterior_side": explicit_side}
     elif body_part in ("full_spine", "lumbar"):

@@ -8,13 +8,15 @@ proof of vertebral identity. Every result requires anatomical review.
 from __future__ import annotations
 
 import numpy as np
+from PIL import Image
 
 from . import cervical, models
 try:
-    from .. import framing, runtime
+    from .. import framing, runtime, learned_region
 except ImportError:
     import framing
     import runtime
+    import learned_region
 
 MODEL_NAME = "dual_hrnet"
 MAX_CERVICAL_CROPS = 12
@@ -112,7 +114,57 @@ def unique_cervical_crops(proposals):
     return list(chosen.values())
 
 
-def _cervical_candidates(raw):
+def _model_cervical_candidates(raw, found):
+    """Evaluate bounded detector-guided crops with the cervical landmark model."""
+    height, width = raw.shape
+    boxes = learned_region.boxes(found, "cervical", raw.shape, limit=3)
+    windows = set()
+    for box in boxes:
+        left, top, right, bottom = box
+        side = min(max(right-left, bottom-top)*1.05, width, height)
+        cx, cy = (left+right)/2, (top+bottom)/2
+        for dx, dy, scale in ((0, 0, 1), (-.04, 0, 1.04), (.04, 0, 1.04)):
+            size = max(32, min(round(side*scale), width, height))
+            x0 = round(np.clip(cx+dx*side-size/2, 0, width-size))
+            y0 = round(np.clip(cy+dy*side-size/2, 0, height-size))
+            window = (x0, y0, x0+size, y0+size)
+            windows.add(window)
+    candidates = []
+    invalid = 0
+    def predict(session):
+        nonlocal invalid
+        for index, window in enumerate(sorted(windows)):
+            runtime.report("landmarks", "Checking model-selected cervical crops", index, len(windows))
+            left, top, right, bottom = window
+            crop = raw[top:bottom, left:right]
+            crop = crop if crop.dtype == np.uint8 else models._robust_rescale(crop)
+            resized = np.asarray(Image.fromarray(crop).resize((384, 384), Image.Resampling.BILINEAR))
+            heat = session.run(None, {"image": cervical._rgb_tensor(resized)})[0]
+            try:
+                points = cervical.decode_heatmaps(heat) * ((right-left)/96, (bottom-top)/96) + (left, top)
+            except ValueError:
+                invalid += 1
+                continue
+            if not _inside(points, window):
+                continue
+            body_scale = _body_chain(points[3:])
+            if body_scale is None or points[2, 1] >= points[3:7, 1].mean():
+                continue
+            body = points[19:23]
+            c7_scale = float((np.linalg.norm(body[1]-body[0])+np.linalg.norm(body[3]-body[2]))/2)
+            candidates.append({"anchor": body.mean(0), "scale": c7_scale,
+                               "points": points, "window": window, "score": 1.})
+    if windows:
+        models._infer("cervical_hrnet", predict, "Locating C7 with HRNET")
+    return candidates, {"windows": len(windows), "hrnet_crops": len(windows),
+                        "invalid_outputs": invalid,
+                        "model_proposals": [list(box) for box in boxes]}
+
+
+def _cervical_candidates(raw, _found=None, *, force_search=False):
+    if runtime.options().crop_method == "model" and not force_search:
+        return _model_cervical_candidates(
+            raw, learned_region.proposals(raw) if _found is None else _found)
     height, width = raw.shape
     windows = cervical_windows(height, width)
     proposals = []
@@ -161,7 +213,8 @@ def _cervical_candidates(raw):
                                    "points": points, "window": proposal["source_crop"],
                                    "score": proposal["score"]})
         models._infer("cervical_hrnet", predict, "Locating C7 with HRNET")
-    return candidates, {"windows": len(windows), "detections": len(proposals), "hrnet_crops": len(selected), "invalid_outputs": invalid_outputs}
+    return candidates, {"windows": len(windows), "detections": len(proposals),
+                        "hrnet_crops": len(selected), "invalid_outputs": invalid_outputs}
 
 
 def lumbar_windows(window, shape):
@@ -176,12 +229,23 @@ def lumbar_windows(window, shape):
                    for dx, dy, scale in variants})
 
 
-def _lumbar_candidates(raw):
+def _lumbar_candidates(raw, _found=None, *, force_search=False):
     # Existing image-only sliding detector establishes a lumbosacral crop.
-    located = framing.locate(raw, models._score_s1)
+    learned_boxes = []
+    if runtime.options().crop_method == "model" and not force_search:
+        learned_boxes = learned_region.boxes(
+            learned_region.proposals(raw) if _found is None else _found, "lumbar", raw.shape, limit=3)
+    if learned_boxes:
+        located = {"window": learned_boxes[0], "source": "crop_detector"}
+    elif runtime.options().crop_method == "model" and not force_search:
+        located = None
+    else:
+        located = framing.locate(raw, models._score_s1)
     if located is None:
-        return [], {"windows": 0, "hrnet_crops": 0, "localizer": None}
-    windows = lumbar_windows(located["window"], raw.shape)
+        return [], {"windows": 0, "hrnet_crops": 0, "localizer": None,
+                    "model_proposal": None}
+    windows = sorted({window for box in (learned_boxes or [located["window"]])
+                      for window in lumbar_windows(box, raw.shape)})
     prepared = [framing.prepare_crop(raw, window) for window in windows]
     detections = models._score_s1([canvas for canvas, _ in prepared])
     proposals = []
@@ -222,7 +286,9 @@ def _lumbar_candidates(raw):
                                    "window": window, "score": float(score),
                                    "detector_disagreement_widths": discrepancy})
         models._infer("hrnet", predict, "Locating the S1 endplate with HRNET")
-    return candidates, {"windows": len(windows), "hrnet_crops": len(proposals), "localizer": located}
+    return candidates, {"windows": len(windows), "hrnet_crops": len(proposals),
+                        "localizer": located,
+                        "model_proposals": [list(box) for box in learned_boxes]}
 
 
 def _source_points(points, width, mirrored):
@@ -241,10 +307,41 @@ def search_orientation(raw, anterior_side):
     if anterior_side not in ("left", "right"):
         raise ValueError("An orientation hypothesis must be left or right")
     canonical = np.ascontiguousarray(raw[:, ::-1]) if anterior_side == "right" else raw
-    neck_candidates, neck_search = _cervical_candidates(canonical)
-    pelvis_candidates, pelvis_search = _lumbar_candidates(canonical)
+    if runtime.options().crop_method == "model":
+        found = learned_region.proposals(canonical)
+        neck_candidates, neck_search = _cervical_candidates(canonical, found)
+        pelvis_candidates, pelvis_search = _lumbar_candidates(canonical, found)
+    else:
+        neck_candidates, neck_search = _cervical_candidates(canonical)
+        pelvis_candidates, pelvis_search = _lumbar_candidates(canonical)
     neck, neck_qc = select_consensus(neck_candidates)
     pelvis, pelvis_qc = select_consensus(pelvis_candidates)
+    if runtime.options().crop_method == "model":
+        if neck is None:
+            runtime.report("search", "Model cervical crop was inconclusive; searching upper spine")
+            model_search = neck_search
+            model_status = neck_qc["status"]
+            neck_candidates, neck_search = _cervical_candidates(canonical, force_search=True)
+            neck, neck_qc = select_consensus(neck_candidates)
+            neck_search = {**neck_search, "method_used": "search_fallback",
+                           "model_fallback_reason": model_status,
+                           "model_proposals": model_search.get("model_proposals", [])}
+        else:
+            neck_search = {**neck_search, "method_used": "model"}
+        if pelvis is None:
+            runtime.report("search", "Model lumbar crop was inconclusive; searching lower spine")
+            model_search = pelvis_search
+            model_status = pelvis_qc["status"]
+            pelvis_candidates, pelvis_search = _lumbar_candidates(canonical, force_search=True)
+            pelvis, pelvis_qc = select_consensus(pelvis_candidates)
+            pelvis_search = {**pelvis_search, "method_used": "search_fallback",
+                             "model_fallback_reason": model_status,
+                             "model_proposals": model_search.get("model_proposals", [])}
+        else:
+            pelvis_search = {**pelvis_search, "method_used": "model"}
+    else:
+        neck_search = {**neck_search, "method_used": "search"}
+        pelvis_search = {**pelvis_search, "method_used": "search"}
     return {"anterior_side": anterior_side, "neck": neck, "pelvis": pelvis,
             "neck_qc": neck_qc, "pelvis_qc": pelvis_qc,
             "neck_search": neck_search, "pelvis_search": pelvis_search,
@@ -261,7 +358,7 @@ def _mirror_cervical_candidate(candidate, width):
             "window": (width-right, top, width-left, bottom)}
 
 
-def reconcile_cervical_searches(raw, searches):
+def reconcile_cervical_searches(raw, searches, *, _allow_model_fallback=True):
     """Share one cervical identity across mirror hypotheses in source space.
 
     Image-sided cervical landmarks cannot vote on anterior direction. A local
@@ -329,6 +426,33 @@ def reconcile_cervical_searches(raw, searches):
                 neck = None
                 regional_qc["status"] = "incompatible_region_order"
         reconciled[side] = {**evidence, "neck": neck, "neck_qc": regional_qc}
+    if (_allow_model_fallback and runtime.options().crop_method == "model"
+            and any(value["neck"] is None and
+                    value.get("neck_search", {}).get("method_used") == "model"
+                    for value in reconciled.values())):
+        runtime.report("search", "Model cervical crops did not agree; trying crop search")
+        fallback_searches = dict(reconciled)
+        for side in ("left", "right"):
+            evidence = fallback_searches.get(side)
+            if evidence is not None and evidence.get("neck_search", {}).get("method_used") == "search_fallback":
+                continue
+            canonical = raw if side == "left" else np.ascontiguousarray(raw[:, ::-1])
+            candidates, search_info = _cervical_candidates(canonical, force_search=True)
+            selected, search_qc = select_consensus(candidates)
+            previous = {} if evidence is None else evidence.get("neck_search", {})
+            fallback_searches[side] = {**(evidence or {}), "anterior_side": side,
+                                       "neck": selected, "neck_qc": search_qc,
+                                       "neck_candidates": candidates,
+                                       "neck_search": {**search_info,
+                                                       "method_used": "search_fallback",
+                                                       "model_fallback_reason": (
+                                                           evidence.get("neck_qc", {}).get("status")
+                                                           if evidence is not None else
+                                                           next(iter(reconciled.values()))["neck_qc"]["status"]),
+                                                       "model_proposals": previous.get("model_proposals", [])}}
+        reviewed = reconcile_cervical_searches(
+            raw, fallback_searches, _allow_model_fallback=False)
+        return {side: reviewed[side] for side in searches}
     return reconciled
 
 
@@ -500,7 +624,8 @@ def full_spine_prediction(pixel_array, anterior_side=None, model=MODEL_NAME, *, 
             "mask": np.zeros(raw.shape, np.uint8), "femoral_mask": femoral_mask,
             "landmarks": geometry,
             "models": {"vertebrae": MODEL_NAME, "cervical": "cervical_hrnet", "lumbar": "hrnet",
-                       "detector": "cervical_detr+s1", "femoral": "unet"},
+                       "detector": "crop_detector+s1" if runtime.options().crop_method == "model"
+                                   else "cervical_detr+s1", "femoral": "unet"},
             "framing": {"coordinate_space": "original_image", "canonical_mirror": mirrored,
                         "cervical_window": source_window(neck), "lumbar_window": source_window(pelvis),
                         "cervical": {**neck_search, **neck_qc}, "lumbar": {**pelvis_search, **pelvis_qc},
