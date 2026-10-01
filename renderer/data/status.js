@@ -1,10 +1,11 @@
 /**
  * Status derivation (spec 13.1, architecture contract "renderer/data/status.js").
- * Status is never stored on a Study — it is computed from measurements and qc
+ * Status is never stored on a Study — it is computed from measurements, qc and
+ * the latest processing error
  * every time it is needed. Pure. The residual threshold is measurements.js's,
  * re-exported, so the panel's consistency warning and the list's status can never
  * disagree. (2026-09-10) The review mark IS stored -- `reviewedAt` -- and the derivation reads
- * it: a marked study is `ok` whatever its qc says.
+ * it: a marked study is `ok` whatever its qc says unless a later run failed.
  */
 
 import { piResidual, RESIDUAL_LIMIT } from './measurements.js';
@@ -74,16 +75,18 @@ export function reviewReasons(study) {
   return reasons;
 }
 
-/** @returns {'seg'|'rev'|'proc'|'ok'} */
+/** @returns {'seg'|'rev'|'proc'|'ok'|'fail'} */
 export function deriveStatus(study) {
-  if (!study || study.measurements == null) return 'proc';
+  if (!study) return 'proc';
+  if (study.processingError) return 'fail';
+  if (study.measurements == null) return 'proc';
   if (isReviewed(study)) return 'ok';
   return reviewReasons(study).length ? 'rev' : 'seg';
 }
 
 // The review mark (studies-table spec 2026-09-10, section 8.1): a non-blank string on the record. It is an
 // ISO timestamp -- validateStudy drops anything that is not a date -- but the status asks only
-// whether a person set it. It outranks every qc reason (spec 8.2); the reasons themselves stay, and
+// whether a person set it. It outranks every qc reason (spec 8.2), but not a failed rerun; the reasons themselves stay, and
 // the Measurements panel keeps showing them after the review.
 export function isReviewed(study) {
   return typeof study?.reviewedAt === 'string' && study.reviewedAt.trim() !== '';
@@ -98,6 +101,7 @@ export function displayStatus(study, runningId = null) {
 }
 
 export function statusLabel(status) {
+  if (status === 'fail') return 'Failed';
   if (status === 'seg') return 'Segmented';
   if (status === 'rev') return 'Needs review';
   if (status === 'ok') return 'Reviewed';
@@ -118,6 +122,7 @@ export const REVIEW_DEMO = 'Demo studies are not saved';
 export const REVIEW_NOTHING = 'Nothing to review yet';
 export const REVIEW_RUNNING = 'Wait for the segmentation to finish';
 export const REVIEW_PENDING = 'Wait for measurements to finish updating';
+export const REVIEW_FAILED = 'Rerun segmentation after the failed attempt';
 
 // Why the Mark reviewed button is disabled, or null when it is enabled (spec 8.3). In the order the
 // screen would otherwise contradict itself: a demo is never saved whatever else is true; a study
@@ -128,6 +133,7 @@ export function reviewBlockedReason({ study, running = null, pending = false }) 
   if (!study) return REVIEW_NOTHING;
   if (study.source === 'demo') return REVIEW_DEMO;
   if (running !== null && running === study.id) return REVIEW_RUNNING;
+  if (study.processingError) return REVIEW_FAILED;
   if (study.measurements == null) return REVIEW_NOTHING;
   if (pending) return REVIEW_PENDING;
   return null;

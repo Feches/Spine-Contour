@@ -8,8 +8,10 @@ import { el } from '../dom.js';
 import { statusLabel } from '../data/status.js';
 import { unsupportedViewReason } from '../data/inference-view.js';
 
-export function statusBadge(status) {
-  return el('span', { class: `badge badge-${status}` }, el('span', { class: 'dot' }), statusLabel(status));
+export function statusBadge(status, reason = null) {
+  return el('span', { class: `badge badge-${status}`,
+    ...(status === 'fail' && reason ? { title: reason } : {}) },
+  el('span', { class: 'dot' }), statusLabel(status));
 }
 
 export function unsupportedViewBadge(view) {

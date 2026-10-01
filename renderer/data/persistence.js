@@ -219,6 +219,7 @@ function validateStudy(entry, index) {
     anteriorSide: validAnteriorSide(entry.anteriorSide) ? entry.anteriorSide
       : entry.anteriorSide === null ? null : geometry?.anterior_side ?? null,
     predictionId: optionalText(entry.predictionId),
+    processingError: optionalText(entry.processingError),
     // Both are optional and default to null, so no STORE_VERSION bump: a record written before
     // they existed loads fine and simply reads as its SP-nnnn id with no workspace. They must
     // be listed HERE or they are written to disk and then dropped on the next load, which looks

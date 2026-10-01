@@ -88,6 +88,7 @@ export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
     addedAt: new Date().toISOString(), view: DEFAULT_VIEW, thumbnail: null,
     region: 'auto', anteriorSide: null,
     measurements: null, geometry: null, qc: null, clinical: {},
+    processingError: null,
   };
 }
 
@@ -321,7 +322,7 @@ function buildRow(study, runningId, selected) {
     confirming ? null : el('div', { class: 'studies-cell-workspace' }, workspaceLabel(study)),
     confirming ? null : el('div', { class: 'studies-cell-folder', ...(pathTitle(study) ? { title: pathTitle(study) } : {}) }, folderLabel(study)),
     confirming ? null : el('div', { class: 'studies-cell-date' }, formatDate(study.addedAt)),
-    confirming ? null : el('div', {}, unsupported ? unsupportedViewBadge(study.view) : statusBadge(status)),
+    confirming ? null : el('div', {}, unsupported ? unsupportedViewBadge(study.view) : statusBadge(status, study.processingError)),
     actionCell(study, confirming));
   return row;
 }
@@ -843,7 +844,7 @@ export function render(state) {
     // TO REVIEW is every film shown as Needs review (studies-table spec 10). The line keeps its
     // existing separator glyph and adds the new one as an escape (HANDOFF's glyph trap).
     const shown = (study) => displayStatus(study, live.running);
-    const unsegmented = studies.filter((study) => shown(study) === 'proc').length;
+    const unsegmented = studies.filter((study) => ['proc', 'fail'].includes(shown(study))).length;
     const toReview = studies.filter((study) => shown(study) === 'rev').length;
     summary.textContent = `${studies.length} STUDIES · ${unsegmented} UNSEGMENTED \u00B7 ${toReview} TO REVIEW`;
 

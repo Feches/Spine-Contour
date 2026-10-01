@@ -31,6 +31,12 @@ test('planBatch with nothing ticked and every visible real film segmented is dis
   assert.deepEqual(plan, { ids: [], label: 'Segment 0 unsegmented', note: 'All visible studies are segmented', enabled: false });
 });
 
+test('planBatch offers failed attempts again, including a failed rerun with prior measurements', () => {
+  const rows = [film('SP-1', { processingError: 'Orientation uncertain' }),
+    segmented('SP-2', { processingError: 'Detector failed' })];
+  assert.deepEqual(planBatch({ visible: rows, selected: [], running: null }).ids, ['SP-1', 'SP-2']);
+});
+
 test('planBatch with no visible real row is disabled with Nothing to segment', () => {
   assert.deepEqual(planBatch({ visible: [demo('SP-0042')], selected: [], running: null }),
     { ids: [], label: 'Segment 0 unsegmented', note: 'Nothing to segment', enabled: false });
