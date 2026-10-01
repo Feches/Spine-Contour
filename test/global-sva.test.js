@@ -4,6 +4,7 @@ import { globalSvaMeasurements, globalSvaRows, globalSvaMeasureGeometry, GLOBAL_
 import { studyRegion, regionRunReason, cervicalMeasurements } from '../renderer/data/cervical.js';
 import { modelLabel } from '../renderer/data/models.js';
 import { deriveStatus, landmarkReviewReasons } from '../renderer/data/status.js';
+import { measurementWarnings } from '../renderer/components/measurements.js';
 import { landmarkAt, setLandmarkAt, nearestLandmark } from '../renderer/viewer/geometry.js';
 import { nextSelection, nudge } from '../renderer/viewer/interactions.js';
 import { constructionLabel, drawDynamicLayer } from '../renderer/viewer/canvas.js';
@@ -274,4 +275,19 @@ test('standing cervical and lumbar landmarks and femoral heads remain editable w
   assert.deepEqual(g.c7_centroid, [170, 280], 'independent centroid correction is retained');
   setLandmarkAt(g, 'L1', 'SA', [138, 620]);
   assert.deepEqual(g.l1_center, [162, 632.5], 'L1PA uses the edited L1 body centroid');
+});
+
+test('CVA hides the requested extra text without changing review decisions or other warnings', () => {
+  const qc = { models: { vertebrae: 'dual_hrnet' }, manual_edits: { landmarks: true },
+    film_detection: { warnings: ['Review the automatically detected film region and orientation before accepting measurements.'] },
+    warnings: [
+      'Review C7 identity, the S1 posterior corner, image orientation and calibration before accepting global SVA.',
+      'Anterior orientation was selected automatically from regional crop agreement; confirm it before accepting measurements.',
+      'C7 centroid was not established consistently across crops; global SVA is unavailable.',
+    ] };
+  const review = landmarkReviewReasons(qc);
+  const visible = measurementWarnings(qc, 'full_spine');
+  assert.ok(review.length > visible.length);
+  assert.deepEqual(visible, ['C7 centroid was not established consistently across crops; global SVA is unavailable.']);
+  assert.deepEqual(measurementWarnings(qc, 'lumbar'), review);
 });

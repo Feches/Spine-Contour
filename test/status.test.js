@@ -5,7 +5,7 @@ import { isConsistent } from '../renderer/data/measurements.js';
 import { reviewReasons, S1_CONFIDENCE_LIMIT } from '../renderer/data/status.js';
 import {
   isReviewed, displayStatus, reviewedLabel, reviewBlockedReason,
-  REVIEW_DEMO, REVIEW_NOTHING, REVIEW_RUNNING, REVIEW_PENDING,
+  REVIEW_DEMO, REVIEW_NOTHING, REVIEW_RUNNING, REVIEW_PENDING, REVIEW_FAILED,
 } from '../renderer/data/status.js';
 
 test('weak S1 and weak spine location require review despite a good femoral fit and consistent angles', () => {
@@ -45,6 +45,17 @@ test('deriveStatus returns proc when the study itself is null or undefined', () 
 test('deriveStatus returns proc when measurements is null', () => {
   const study = { measurements: null, qc: null };
   assert.equal(deriveStatus(study), 'proc');
+});
+
+test('a failed attempt is Failed even without measurements or when a prior result remains', () => {
+  const study = { id: 'SP-1000', measurements: null, processingError: 'Orientation is uncertain.' };
+  assert.equal(deriveStatus(study), 'fail');
+  assert.equal(statusLabel('fail'), 'Failed');
+  assert.equal(displayStatus(study, 'SP-1000'), 'proc');
+  study.measurements = { PI: 50, PT: 20, SS: 30 };
+  assert.equal(deriveStatus(study), 'fail');
+  study.processingError = null;
+  assert.equal(deriveStatus(study), 'seg');
 });
 
 test('deriveStatus returns seg when residual and confidence both pass', () => {
@@ -160,6 +171,8 @@ test('reviewedLabel carries the date and never invents one', () => {
 test('reviewBlockedReason: demo, then running, then nothing to review, then pending, then enabled', () => {
   assert.equal(reviewBlockedReason({ study: { id: 'SP-0042', source: 'demo', ...CLEAN } }), REVIEW_DEMO);
   assert.equal(reviewBlockedReason({ study: { id: 'SP-1000', source: 'real', ...CLEAN }, running: 'SP-1000' }), REVIEW_RUNNING);
+  assert.equal(reviewBlockedReason({ study: { id: 'SP-1000', source: 'real', ...CLEAN,
+    processingError: 'Orientation uncertain' } }), REVIEW_FAILED);
   assert.equal(reviewBlockedReason({ study: { id: 'SP-1000', source: 'real', measurements: null }, running: null }), REVIEW_NOTHING);
   assert.equal(reviewBlockedReason({ study: { id: 'SP-1000', source: 'real', ...CLEAN }, pending: true }), REVIEW_PENDING);
   assert.equal(reviewBlockedReason({ study: { id: 'SP-1000', source: 'real', ...CLEAN }, running: 'SP-1001' }), null);

@@ -10,6 +10,19 @@ import { sagittalRows, lordosisRows, discRows, alignmentRows, isConsistent } fro
 
 const INCONSISTENCY_WARNING = 'Parameters inconsistent \u2014 check S1 and femoral landmarks.';
 const NOT_COMPUTED_NOTE = 'Not computed in this build.';
+const CVA_EXTRA_WARNINGS = new Set([
+  'Review the automatically detected film region and orientation before accepting measurements.',
+  'Manually edited landmarks — verify the corrected positions.',
+  'Verify the C7 centroid, S1 endplate and selected anterior image side.',
+  'Review C7 identity, the S1 posterior corner, image orientation and calibration before accepting global SVA.',
+  'Anterior orientation was selected automatically from regional crop agreement; confirm it before accepting measurements.',
+]);
+
+export function measurementWarnings(qc, region) {
+  const warnings = landmarkReviewReasons(qc);
+  return region === 'cervical' || region === 'full_spine'
+    ? warnings.filter((warning) => !CVA_EXTRA_WARNINGS.has(warning)) : warnings;
+}
 
 function formatRowValue(row) {
   return row.absent ? '\u2014' : `${row.value.toFixed(1)}${row.unit}`;
@@ -179,7 +192,7 @@ export function mountMeasurements(container) {
     }
 
     if (pending) section1.append(el('div', { class: 'meas-note', role: 'status' }, 'Updating measurements…'));
-    else for (const reason of study.measurements ? landmarkReviewReasons(study.qc) : []) {
+    else for (const reason of study.measurements ? measurementWarnings(study.qc, studyRegion(study)) : []) {
       section1.append(el('div', { class: 'meas-warning' }, reason));
     }
 

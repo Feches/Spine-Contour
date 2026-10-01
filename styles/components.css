@@ -104,6 +104,10 @@
   background: color-mix(in srgb, var(--muted) 14%, transparent);
   color: var(--muted);
 }
+.badge-fail {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
 
 /* Reviewed (studies-table spec 2026-09-10, section 8.2): the completed state. A stronger sage ground than
    Segmented's with ink text and a sage dot, so it reads in both themes; a filled sage ground with

@@ -23,13 +23,13 @@ export const UNSAVED_BATCH = 'Studies are not being saved this session; batch re
 
 // What the segment button runs and says (spec 7.3). `visible` is the Find tab's rows after the
 // search and the two filters, in table order; `selected` is state.paramSelected; `running` is
-// state.running. Only real, unsegmented, visible rows are ever run; "ticked" means ticked AND
+// state.running. Real, visible rows without results or with a failed attempt can be run; "ticked" means ticked AND
 // visible (HANDOFF decision 38). A single run in flight disables the button whatever the rows say.
 export function planBatch({ visible, selected, running }) {
   const real = (visible ?? []).filter((study) => study.source === 'real');
   const chosen = selectedVisible(real, selected);
   const pool = chosen.length > 0 ? chosen : real;
-  const unsegmented = pool.filter((study) => !isSegmented(study));
+  const unsegmented = pool.filter((study) => !isSegmented(study) || study.processingError);
   const supported = unsegmented.filter((study) => inferenceView(study.view) && !regionRunReason(study));
   const unconfirmed = unsegmented.filter(study => inferenceView(study.view) && regionRunReason(study)).length;
   const unsupported = unsegmented.length - supported.length - unconfirmed;

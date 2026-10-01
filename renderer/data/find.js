@@ -17,7 +17,7 @@ export const DEFAULT_FIND_SORT = Object.freeze({ key: 'date', dir: 'desc' });
 export const FIND_SORT_KEYS = Object.freeze(['study', 'subject', 'view', 'workspace', 'folder', 'date', 'status']);
 
 // Workflow order: what still needs doing sorts first.
-const STATUS_RANK = Object.freeze({ proc: 0, rev: 1, seg: 2, ok: 3 });
+const STATUS_RANK = Object.freeze({ fail: 0, proc: 1, rev: 2, seg: 3, ok: 4 });
 
 export function statusRank(status) {
   return STATUS_RANK[status] ?? null;

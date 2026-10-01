@@ -35,6 +35,10 @@ test('auto requests use the requested mode after a detection and omit regional m
     setState({ studies: [s], running: null, batch: null, deletingStudies: false });
     setFilePayload(s.id, new Uint8Array([1]));
     assert.equal((await segmentStudy(s.id, { batch: true })).ok, false);
+    assert.equal(deriveStatus(getState().studies[0]), 'fail');
+    assert.equal(getState().studies[0].processingError, 'intentional transport stop');
+    assert.equal(validate({ version: STORE_VERSION, studies: getState().studies })[0].processingError,
+      'intentional transport stop');
     assert.equal(request.bodyPart, 'auto'); assert.equal(request.anteriorSide, 'right');
     assert.equal(Object.hasOwn(request, 'models'), false);
   } finally { globalThis.window = oldWindow; setState(saved); }
