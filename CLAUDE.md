@@ -1,5 +1,17 @@
 # Spine Contour
 
+**2026-10-01 release 1.0.13:** branch `ccr-b0ba7894-fm5spq` off `fork/main` @ `7ce278f` (v1.0.12, PR #48), with
+Michael's two single-commit PRs merged in unchanged by merge commits: PR #50 (`8264de8`; a stored
+`processingError` gives a `fail` status, Failed, sorted first, retried by batch, blocking Mark reviewed until a run
+succeeds; `LEVEL_RGB` gains C2–C7 and every outline, lumbar included, draws in the level colour; `measurementWarnings`
+hides the five lines named in #46 for cervical and full-spine studies only, while status still counts them) and PR #49
+(`4a7f491`; `performance.cropMethod` `search` (default) or `model`, `backend/learned_region.py` and
+`backend/region_detector.py`, Crop search fallback per region). The two touch no file in common. Merged as is at the
+owner's request: `backend/onnx/crop_detector.onnx` (10.7 MB) is a plain git blob force-added inside the ignored
+`backend/onnx/`, not LFS like `backend/weights/`, so a retrained graph adds another blob to history; moving it to LFS
+is open. Unit 587/587; backend tests not run locally (each PR's Windows/macOS workflow ran them and the bundled-model
+check). Not run: a source launch. Merging the release PR to `fork/main` with a merge commit publishes v1.0.13.
+
 **2026-09-30 release 1.0.12 (CSV keep-column lift):** branch `claude/csv-keep-column-name` (worktree
 `.claude/worktrees/csv-keep-column`) off `fork/main` @ `16088cd` (v1.0.11, PR #43). It carries exactly one feature
 commit cherry-picked from the held similar-cases branch `claude/image-similarity-visualization-400922` (Plan B Task 5,

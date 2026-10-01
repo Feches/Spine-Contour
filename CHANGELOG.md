@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.0.13
+
+- A segmentation attempt that fails, including one stopped because automatic film
+  detection or orientation could not be established, now leaves a **Failed** status
+  instead of Processing; the error is on the badge's tooltip, and batch runs record it
+  too. Failed studies sort first on the Find tab, count as unsegmented, are offered again
+  by batch segmentation and cannot be marked reviewed until a run succeeds. A failed
+  re-run keeps the earlier results on screen but shows Failed until the next successful
+  run. Retrying shows Processing and a successful run clears the failure.
+- Vertebral outlines are drawn in the level colour palette on every film, so full-spine
+  and cervical outlines match lumbar ones (C2 has its own colour; C3–C7 reuse the L1–L5
+  colours).
+- Under CVA, the five advisory lines named in issue #46 are no longer shown; the review
+  status they feed and every other warning are unchanged.
+- **Settings → Processing → Crop method** chooses **Crop search** (the default and the
+  previous behaviour) or **Trained model**, a bundled ONNX region detector that proposes
+  the cervical and lumbar crops on full-spine films, and the lumbar crop when Crop
+  localizer is On. A region whose proposal is missing or fails the landmark checks falls
+  back to Crop search. Each result records the method that supplied the crop and why any
+  fallback ran.
+
+[Release notes](docs/releases/1.0.13.md)
+
 ## 1.0.12
 
 - On the Workspace's column-mapping card, an unknown CSV column can be imported under its
