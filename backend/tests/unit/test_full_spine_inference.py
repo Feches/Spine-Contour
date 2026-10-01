@@ -339,6 +339,29 @@ def test_explicit_orientation_still_checks_cervical_identity_in_opposite_mirror(
     assert len(seen) == 1 and result['left']['neck'] is not None
 
 
+def test_model_cervical_failure_across_mirrors_tries_crop_search(monkeypatch):
+    neck, _ = synthetic_regions()
+    raw = np.tile(np.arange(500, dtype=np.uint16), (1000, 1))
+    calls = []
+    def cervical(image, _found=None, *, force_search=False):
+        right = image[0, 0] > image[0, -1]
+        calls.append((right, force_search))
+        if right and not force_search:
+            return [], {'model_proposals': []}
+        values = [full._mirror_cervical_candidate(item, 500) for item in neck] if right else neck
+        return values, {'windows': 3}
+    monkeypatch.setattr(full, '_cervical_candidates', cervical)
+    evidence = {'left': {**orientation_evidence('left', []),
+                         'neck_candidates': neck,
+                         'neck_search': {'method_used': 'model', 'model_proposals': [[1, 2, 3, 4]]}}}
+    with runtime.session(runtime.parse_options(crop_method='model')):
+        result = full.reconcile_cervical_searches(raw, evidence)
+    assert result['left']['neck'] is not None
+    assert result['left']['neck_search']['method_used'] == 'search_fallback'
+    assert result['left']['neck_search']['model_fallback_reason'] == 'unconfirmed_across_mirrors'
+    assert calls == [(True, False), (False, True), (True, True)]
+
+
 def test_reversed_anatomical_s1_labels_cannot_be_sorted_into_orientation_agreement(monkeypatch):
     from types import SimpleNamespace
     plate = np.array([[90, 270], [110, 270]], float)

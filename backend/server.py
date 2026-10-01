@@ -164,6 +164,7 @@ async def prediction_request(
     s1_model: str | None = Form(None), calibration: str | None = Form(None),
     processing_mode: str = Form("standard"), cpu_threads: int = Form(2),
     crop_localizer: bool = Form(True),
+    crop_method: str = Form("search"),
     toolbar_removal: bool = Form(False),
     processor: str = Form("cpu"),
     anterior_side: str | None = Form(None),
@@ -174,7 +175,8 @@ async def prediction_request(
     if len(payload) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="The uploaded file exceeds 50 MB")
     try:
-        settings = runtime.parse_options(processing_mode, cpu_threads, crop_localizer, toolbar_removal, processor)
+        settings = runtime.parse_options(processing_mode, cpu_threads, crop_localizer,
+                                         toolbar_removal, processor, crop_method)
         if body_part.strip().lower() == "cervical":
             _validate_cervical_request(modality, view, laterality, vertebra_model,
                                       femoral_model, s1_model, anterior_side)
@@ -341,6 +343,7 @@ def _analyze(payload, modality, body_part, view, laterality,
                          "providers": runtime.providers(),
                          "processor": runtime.processor_record(),
                          "crop_localizer": True if landmark_only else runtime.options().crop_localizer,
+                         "crop_method": "not_applicable" if is_cervical else runtime.options().crop_method,
                          "toolbar_removal": False if landmark_only else runtime.options().toolbar_removal,
                          "search_batch": runtime.options().search_batch}}
     if landmark_only:
@@ -348,6 +351,8 @@ def _analyze(payload, modality, body_part, view, laterality,
         # image. Retain user preferences separately from
         # the processing actually applied by this model.
         qc["processing"]["requested_crop_localizer"] = runtime.options().crop_localizer
+        if is_cervical:
+            qc["processing"]["requested_crop_method"] = runtime.options().crop_method
         qc["processing"]["requested_toolbar_removal"] = runtime.options().toolbar_removal
     for field in ("provenance", "warnings"):
         if field in prediction:
