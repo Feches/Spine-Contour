@@ -1,5 +1,16 @@
 # Spine Contour
 
+**2026-10-01 release 1.0.14 (landing page):** branch `claude/landing-page-logo-flash-5782c3` (worktree
+`.claude/worktrees/design-system-extraction-eaac17`, moved off upstream `92c8e87` onto `fork/main` @ `9992b99`, v1.0.13,
+with `checkout -B`). The landing panel drops the CREATED BY card (the owner's ruling: no author names) for the contact
+paragraph and the methods-paper title with a `(METHODS PAPER · FORTHCOMING)` tag; both CSV exports drop the authors'
+`#` line outright (the owner turned down a paper-title replacement), so the block is TWO comment lines and the header is
+line 3 — every test/smoke read by position moved up one (`slice(2)`, header `[2]`, first row `[3]`). The logo flash: `ack` was in router.js `SCREEN_KEYS`, so
+every tick remounted the landing page and the new `.landing-hero` replayed `riseIn` (opacity 0.07 at 40 ms); `ack` is
+out of `SCREEN_KEYS` and landing.js updates its checkbox and Enter from a module-scope subscription. Unit 587/587;
+`tools/smoke/smoke-landing.mjs` 16/16 (9/16 before). Still naming the authors, left on purpose: README's copyright line,
+`package.json` `author`, `design-reference/template.html`.
+
 **2026-10-01 release 1.0.13:** branch `ccr-b0ba7894-fm5spq` off `fork/main` @ `7ce278f` (v1.0.12, PR #48), with
 Michael's two single-commit PRs merged in unchanged by merge commits: PR #50 (`8264de8`; a stored
 `processingError` gives a `fail` status, Failed, sorted first, retried by batch, blocking Mark reviewed until a run

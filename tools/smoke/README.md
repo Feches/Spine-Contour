@@ -371,6 +371,23 @@ after the other suites on one instance, but never between `smoke-persist.mjs --p
 `--phase restart`. Not driveable: the native pickers, the datalist and date-picker popups, and
 the save dialog. A silent run has thrown — re-run it bare. Baseline: 36/36.
 
+## Running the landing suite
+
+`smoke-landing.mjs` drives the landing gate: the panel's copy (no author names, the contact line,
+the methods-paper title and its status tag), then the acknowledgement ticked and unticked by real
+clicks, with the page and its hero logo checked to be the same nodes afterwards and the logo's
+riseIn not running again (a remount replays it: the logo blinks out and fades back in). It ends
+by entering the app, so it needs a FRESH launch still on the gate, and runs first or alone.
+DOM-only, a few seconds.
+
+```
+node tools/smoke/launch.mjs
+node tools/smoke/smoke-landing.mjs
+node tools/smoke/cdp.mjs --quit
+```
+
+Baseline: 16/16 (2026-10-01; 9/16 before the fix, the logo at opacity 0.07 40 ms after the click).
+
 ## Library
 
 `cdp-lib.mjs` exports `connect()`, whose returned object provides trusted-input helpers

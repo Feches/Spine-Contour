@@ -35,7 +35,7 @@ function study() {
   s.measurements = cervicalMeasurements(s);
   return s;
 }
-const table = csv => parse(csv.split('\r\n').slice(3).join('\r\n'));
+const table = csv => parse(csv.split('\r\n').slice(2).join('\r\n'));
 
 test('Cobb uses physical anisotropic directions; SVA is signed anterior-positive and uses only column spacing', () => {
   const s = study(), m = cervicalMeasurements(s);

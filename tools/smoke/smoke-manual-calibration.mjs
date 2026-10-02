@@ -86,7 +86,7 @@ try {
     check('actual disc heights and CSV use the manual scale', await c.evaluate(`(async()=>{
       const {getState}=await import('./renderer/store.js'),{discRows}=await import('./renderer/data/disc-heights.js');
       const {toCsv,parse}=await import('./renderer/data/csv.js');let measured=0;const newline=String.fromCharCode(13,10);
-      for(const s of getState().studies){const exported=parse(toCsv([s]).split(newline).slice(3).join(newline)).rows[0];
+      for(const s of getState().studies){const exported=parse(toCsv([s]).split(newline).slice(2).join(newline)).rows[0];
         for(const r of discRows(s)){if(r.middle==null)continue;
           const [a,b]=r.key.split('-'),top=s.geometry.vertebrae[a].inferior;
           const bottom=b==='S1'?s.geometry.s1_superior:s.geometry.vertebrae[b].superior;

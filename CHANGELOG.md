@@ -14,6 +14,19 @@
   processing backend reads "The processing backend stopped. Restart Spine Contour, then
   segment again." instead of the raw socket error. Toasts are unchanged.
 
+## 1.0.14
+
+- The welcome screen no longer lists the authors. In place of the CREATED BY card it
+  shows the contact paragraph and the title of the forthcoming methods paper.
+- Ticking the acknowledgement on the welcome screen no longer makes the logo blink out
+  and fade back in.
+- Both CSV exports drop the comment line that named the authors, so the file now opens
+  with two `#` lines before the header instead of three. A script that skips a fixed
+  number of lines before the header must skip two. No model, measurement or processing
+  change; the weights are unchanged from 1.0.13.
+
+[Release notes](docs/releases/1.0.14.md)
+
 ## 1.0.13
 
 - A segmentation attempt that fails, including one stopped because automatic film

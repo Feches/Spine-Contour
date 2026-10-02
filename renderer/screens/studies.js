@@ -3,7 +3,7 @@
  * dropzone (click, drop, Choose radiograph), the Find tab's filter bar with Delete and the segment button
  * (batch spec 7), and the table with row ticks, derived status pills and the DEMO pill.
  * render(state) builds the shell; the summary, the bar and the table update in place from a
- * module-scope subscription, because router.js remounts this host only on screen/ack.
+ * module-scope subscription, because router.js remounts this host only on screen/calibrationRequest.
  * (2026-09-10, studies-table spec) Sortable headers, the SUBJECT column with its in-place editor, Delete over the ticked visible rows, and the summary's TO REVIEW count.
  */
 

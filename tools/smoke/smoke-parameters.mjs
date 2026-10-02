@@ -367,9 +367,9 @@ try {
     const p = pr.pairStudies(rows, { post: pr.postFromFilters(f) });
     return { lines: csvm.toPairedCsv(p).split('\\r\\n'), message: pr.pairedExportMessage(p, 'X') };
   })`);
-  check('the paired file\'s header is layout B over the one visit present, Post-op', paired.lines[3] === PAIRED_HEADER, paired.lines[3]);
-  check('its one row is S001 with both films, the deltas over the written values, and empty cells where a value is absent', paired.lines[4] === PAIRED_ROW, paired.lines[4]);
-  check('the file ends after that row', paired.lines.length === 6 && paired.lines[5] === '', paired.lines.length);
+  check('the paired file\'s header is layout B over the one visit present, Post-op', paired.lines[2] === PAIRED_HEADER, paired.lines[2]);
+  check('its one row is S001 with both films, the deltas over the written values, and empty cells where a value is absent', paired.lines[3] === PAIRED_ROW, paired.lines[3]);
+  check('the file ends after that row', paired.lines.length === 5 && paired.lines[4] === '', paired.lines.length);
   check('the toast names the one subject written and the one unpaired', paired.message === 'Exported 1 subject to X \u00B7 1 unpaired (S002)', paired.message);
   // Back to the sort section 12 left, so section 10 sees exactly what it saw before this section.
   await cdp.setState('{ paramSort: { key: "PI", dir: "desc" } }');

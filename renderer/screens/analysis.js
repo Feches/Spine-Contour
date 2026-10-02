@@ -878,7 +878,7 @@ export function render(state) {
   }
 
   // mounted.studyId is refreshed ONLY here, and render() runs only when the router sees a
-  // SCREEN_KEYS ('screen', 'ack') change. Every writer that changes state.openId today also
+  // SCREEN_KEYS ('screen', 'calibrationRequest') change. Every writer that changes state.openId today also
   // sets screen, so the two stay in step. A future writer that changes openId WITHOUT screen
   // would leave a stale studyId behind and mis-gate all three of its readers -- the
   // setImages guard (~l.203), live() (~l.230) and needsRestore -- drawing one study's

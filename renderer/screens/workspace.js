@@ -3,7 +3,7 @@ import { validAnteriorSide, requiresAnteriorSide } from '../data/cervical.js';
  * Workspace screen (spec 9.3). Three step cards -- image folder, optional clinical CSV, column
  * mapping -- and one Load workspace button that turns every scanned film into an unsegmented
  * real Study in a single setState. render(state) returns the screen's root; because
- * router.js remounts this host only on screen/ack, every handler refreshes the screen itself
+ * router.js remounts this host only on screen/calibrationRequest, every handler refreshes the screen itself
  * after its setState. Persistence is the store subscriber in renderer/main.js: nothing here
  * calls saveStudies.
  */
