@@ -141,6 +141,13 @@ test('a review mark makes a study Reviewed whether or not its qc would ask for r
   assert.equal(reviewReasons({ ...SUSPECT, reviewedAt: MARK }).length, 1);
 });
 
+test('a failed attempt outranks the review mark (port spec 3 and 7)', () => {
+  const study = { id: 'SP-1000', ...CLEAN, reviewedAt: MARK, processingError: 'boom', processingErrorAt: MARK };
+  assert.equal(deriveStatus(study), 'fail');
+  assert.equal(displayStatus(study, null, null), 'fail');
+  assert.equal(displayStatus(study, 'SP-1000'), 'proc');
+});
+
 test('a review mark over no measurements is Unsegmented; a blank or non-string mark is no mark', () => {
   assert.equal(deriveStatus({ measurements: null, reviewedAt: MARK }), 'unseg');
   assert.equal(deriveStatus({ ...SUSPECT, reviewedAt: '' }), 'rev');
