@@ -1,5 +1,18 @@
 # Spine Contour
 
+**2026-10-02 release 1.0.15 (issue #39 Failed-status follow-up):** branch `claude/issue-39-failed-status-port` (the main
+checkout, no worktree) off `main` @ `9992b99` (v1.0.13), merged with `origin/main` @ `e7ae5a3` (v1.0.14, PR #52) as
+`0b92fbd` (a CHANGELOG conflict only). Five additions on 1.0.13's Failed status: films with no result read Unsegmented,
+and Processing is the running film and every film waiting in the batch (`displayStatus(study, runningId, batch)`);
+Failed is the new `--danger` red; `processingErrorAt` beside `processingError` gives the dated tooltip `failureTitle`;
+the Analysis screen's red `failedRunNote` and the FAILED card in `describeCard`; stored reasons pass through
+`renderer/data/failure.js` `failureReason`. Spec `docs/superpowers/specs/2026-10-01-failed-status-port-design.md`; plan
+`docs/superpowers/plans/2026-10-01-failed-status-port.md` (counts and rulings in its `## Ledger`). Unit 614/614.
+Merged-tree smoke: landing 16/16, studies 151/151, workspace 100/100, parameters 58/58, persist 41/41 then 53/53. Real
+films (ten copies, RTX 4070) checked by DOM reads, no screenshots. Stale smoke expectations fixed: `97b7478` (1.0.12's
+Keep column name) and `e980f64` (1.0.11's segmental columns in the paired export). Pushed only on the owner's say-so;
+merging the PR to `main` publishes v1.0.15.
+
 **2026-10-01 release 1.0.14 (landing page):** branch `claude/landing-page-logo-flash-5782c3` (worktree
 `.claude/worktrees/design-system-extraction-eaac17`, moved off upstream `92c8e87` onto `fork/main` @ `9992b99`, v1.0.13,
 with `checkout -B`). The landing panel drops the CREATED BY card (the owner's ruling: no author names) for the contact

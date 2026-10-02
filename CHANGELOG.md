@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.15
 
 - A film that has not been segmented reads **Unsegmented** instead of Processing.
   **Processing** now means the film is running or waiting in the running batch: a click
@@ -13,6 +13,8 @@
 - The reason kept for a failed attempt is a plain sentence: a lost connection to the
   processing backend reads "The processing backend stopped. Restart Spine Contour, then
   segment again." instead of the raw socket error. Toasts are unchanged.
+
+[Release notes](docs/releases/1.0.15.md)
 
 ## 1.0.14
 
