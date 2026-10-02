@@ -8,7 +8,7 @@
 //
 // Four records are injected straight into the store -- SP-9100 unsegmented, SP-9101, SP-9102 and
 // SP-9103 segmented under one workspace root (S001 Pre-op and Post-op, a pair, and S002 Pre-op,
-// unpaired) -- and removed in `finally`, so a later suite never meets a stray Processing row.
+// unpaired) -- and removed in `finally`, so a later suite never meets a stray Unsegmented row.
 // Each segmented record has measurements but no geometry, which is fine in-session (status is
 // derived from measurements alone) but would be nulled by validate() on a restart; that is one
 // more reason the cleanup runs unconditionally.

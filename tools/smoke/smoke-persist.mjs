@@ -17,6 +17,9 @@
 // that back and asserts the record, the film and the prediction snapshot all survived the
 // restart. Phase 3 would cover the one thing phases 1-2 cannot -- what a FAILED /measure restores
 // -- but see PARKED below. The scratch profile is SPINE_CONTOUR_USER_DATA, as launch.mjs defaults.
+// (2026-10-01, issue #39 port) Phase 1 also seeds a failure -- processingError and processingErrorAt --
+// on a second, unsegmented film, FAILED_ID, which phase 2 expects to read Failed, dated, after the
+// restart; phase 2 seeds one on SP-9000 before its re-run, which must clear both fields.
 //
 // WHY PHASE 3 IS ITS OWN APP SESSION. recordPrediction's third argument reaches nothing but the
 // measure queue's `measured` map (via replaceMeasured), and that map is read in exactly one
@@ -72,6 +75,11 @@ const OUT_DIR = path.join(HERE, 'out');
 const STATE_FILE = path.join(OUT_DIR, 'persist-state.json');
 const USER_DATA = process.env.SPINE_CONTOUR_USER_DATA || path.join(os.tmpdir(), 'spine-contour-smoke');
 const STUDY_ID = 'SP-9000';
+// (2026-10-01, issue #39 port) A real, unsegmented film carrying a stored failure, reserved for this
+// suite (no other suite injects SP-9010), and the failure seeded on it in the two fields the record
+// keeps (port spec 4): a real backend sentence (backend/film_detection.py) at a fixed time.
+const FAILED_ID = 'SP-9010';
+const SEEDED_FAILURE = { processingError: 'Automatic film detection was inconclusive. Choose cervical, lumbar or standing / full spine manually.', processingErrorAt: '2026-09-29T12:00:00.000Z' };
 const SIDECAR = path.join(USER_DATA, 'predictions', `${STUDY_ID}.json`);
 const JPEG_PREFIX = 'data:image/jpeg;base64,';
 
@@ -115,6 +123,15 @@ const storedStudy = () => cdp.evaluate(`import('./renderer/store.js').then((m) =
 const sidecarFromApp = () => cdp.evaluate(`window.spineContour.loadPrediction(${JSON.stringify(STUDY_ID)})`);
 const text = (selector) => cdp.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); return e ? e.textContent : null; })()`);
 const l1sa = (geometry) => (geometry && geometry.vertebrae && geometry.vertebrae.L1 ? geometry.vertebrae.L1.superior[0] : null);
+// (2026-10-01, issue #39 port) A status pill as the page shows it: classes, label and title (null when
+// it has none). A Failed pill's title is `Segmentation failed`, a middle dot and the date of
+// processingErrorAt in reviewedLabel's format, a newline, then the reason (port spec 5). The date is
+// formatted here, in Node, on the same machine and time zone as the app.
+const statusPill = (selector) => cdp.evaluate(`(() => { const b = document.querySelector(${JSON.stringify(selector)}); return b ? { cls: b.className, text: b.textContent.trim(), title: b.getAttribute('title') } : null; })()`);
+const FAILED_DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+const SEEDED_TITLE = `Segmentation failed \u00B7 ${FAILED_DATE.format(new Date(SEEDED_FAILURE.processingErrorAt))}\n${SEEDED_FAILURE.processingError}`;
+const isSeededFailedPill = (pill) => Boolean(pill) && pill.cls === 'badge badge-fail' && pill.text === 'Failed' && pill.title === SEEDED_TITLE;
+const regionNote = () => cdp.evaluate(`(() => { const e = document.querySelector('.analysis-region-bar .meas-note'); return e ? { text: e.textContent, failed: e.classList.contains('is-failed') } : null; })()`);
 
 // The card as it reads on screen, plus the two toolbar buttons the film's state gates.
 const stageState = () => cdp.evaluate(`(() => {
@@ -458,6 +475,25 @@ try {
     await cdp.settle(150);
     check('the subject is on the record', (await storedStudy())?.subjectId === 'PERSIST-01', null);
 
+    // 11c. (2026-10-01, issue #39 port, port spec 4) A real unsegmented film carrying a failure and its
+    // time, seeded through the store beside SP-9000: this suite tests that both fields survive a
+    // restart; smoke-studies.mjs drives the real failure path. newStudy gives it the app's own record
+    // shape; lumbar, so opening it after the restart starts no original-preview read, and no file, so
+    // nothing can run it. Phase 2 expects it Failed, dated, on the list and on the Analysis header.
+    await cdp.evaluate(`(async () => {
+      const { newStudy } = await import('./renderer/screens/studies.js');
+      const store = await import('./renderer/store.js');
+      const record = { ...newStudy({ id: ${JSON.stringify(FAILED_ID)}, fileName: 'persist-failed.png', filePath: null }), region: 'lumbar', ...${JSON.stringify(SEEDED_FAILURE)} };
+      store.setState((st) => ({ studies: [record, ...st.studies.filter((x) => x.id !== record.id)] }));
+      return true;
+    })()`);
+    const failedSaved = await waitFor(async () => {
+      const raw = await cdp.evaluate(`window.spineContour.loadStudies().then((r) => (r.studies || []).find((x) => x.id === ${JSON.stringify(FAILED_ID)}) ?? null)`);
+      return raw && raw.measurements === null && raw.processingError === SEEDED_FAILURE.processingError && raw.processingErrorAt === SEEDED_FAILURE.processingErrorAt ? raw : null;
+    }, 5000);
+    check(`studies.json holds ${FAILED_ID} unsegmented, with its seeded processingError and processingErrorAt`, Boolean(failedSaved),
+      failedSaved ? { processingError: failedSaved.processingError, processingErrorAt: failedSaved.processingErrorAt } : null);
+
     // 12. Hand phase 2 the CORRECTED study, once studies.json has actually caught up with it.
     const final = await openStudy();
     check('the study is still open at the end of the phase', Boolean(final), null);
@@ -496,6 +532,31 @@ try {
     check('the sidecar reads back through the bridge after the restart', Boolean(sidecarAtStart && sidecarAtStart.geometry), sidecarAtStart ? Object.keys(sidecarAtStart) : null);
     check('the restored geometry is the CORRECTION, not the prediction', Boolean(restored && sidecarAtStart) && !same(restored.geometry, sidecarAtStart.geometry), null);
     check('the sidecar still holds the model\'s own geometry', Boolean(sidecarAtStart && before) && !same(sidecarAtStart.geometry, before.geometry), null);
+
+    // A2. (2026-10-01, issue #39 port, port spec 4) The failure phase 1 seeded on FAILED_ID came back
+    // through validateStudy with its time, and the film reads Failed on the list and on the Analysis
+    // header, the dated reason one hover away. Before section B on purpose: this film has no result,
+    // so opening it reads no sidecar and leaves the film cache empty, as section B needs (the ORDER
+    // NOTE at the top).
+    const failedRestored = await cdp.evaluate(`import('./renderer/store.js').then((m) => m.getState().studies.find((x) => x.id === ${JSON.stringify(FAILED_ID)}) ?? null)`);
+    check(`${FAILED_ID} kept processingError and processingErrorAt through the restart and is still unsegmented`,
+      Boolean(failedRestored) && failedRestored.measurements === null
+      && failedRestored.processingError === SEEDED_FAILURE.processingError && failedRestored.processingErrorAt === SEEDED_FAILURE.processingErrorAt,
+      failedRestored ? { processingError: failedRestored.processingError, processingErrorAt: failedRestored.processingErrorAt } : null);
+    await cdp.setState('{ ack: true, screen: "studies", query: "" }');
+    await cdp.settle(120);
+    const failedRowPill = await statusPill(`.studies-row[data-study-id="${FAILED_ID}"] .badge`);
+    check('its row reads Failed, titled with the dated line and the reason', isSeededFailedPill(failedRowPill), failedRowPill);
+    const failedRow = await cdp.rect(`.studies-row[data-study-id="${FAILED_ID}"]`);
+    if (failedRow) {
+      await cdp.click(failedRow.cx, failedRow.cy);
+      await cdp.settle(150);
+    }
+    const failedOpenId = (await cdp.state()).openId;
+    const failedHeaderPill = await statusPill('.analysis-status .badge');
+    check('opening it, the Analysis header pill is badge badge-fail, Failed, with the same title',
+      failedOpenId === FAILED_ID && isSeededFailedPill(failedHeaderPill), { failedOpenId, failedHeaderPill });
+    check('back button returns to Studies from the failed film', await backToStudies(), null);
 
     // B. Missing sidecar FIRST (see the ORDER NOTE at the top): the film cache is still empty,
     // so this open really does read the sidecar, and a failed read leaves the cache empty.
@@ -628,6 +689,20 @@ try {
         const stageBefore = await stageState();
         check('the toolbar Re-run segmentation button is enabled before the re-run', stageBefore.rerunDisabled === false, stageBefore);
 
+        // (2026-10-01, issue #39 port, P6 and port spec 4) A successful run writes processingError: null
+        // and processingErrorAt: null beside reviewedAt: null. Seeded through the store on this
+        // MEASURED study, which then reads Failed -- 1.0.13's rule: a failure outranks measurements --
+        // with the red region note; only the re-run below can clear it.
+        await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((st) => ({ studies: st.studies.map((x) => (x.id === ${JSON.stringify(STUDY_ID)} ? { ...x, ...${JSON.stringify(SEEDED_FAILURE)} } : x)) })))`);
+        await cdp.settle(150);
+        const seeded = await storedStudy();
+        const seededPill = await statusPill('.analysis-status .badge');
+        const seededNote = await regionNote();
+        check('a failure seeded on the measured study reads Failed in the header, dated, over a red Last run failed note',
+          Boolean(seeded) && seeded.processingError === SEEDED_FAILURE.processingError && seeded.processingErrorAt === SEEDED_FAILURE.processingErrorAt
+          && isSeededFailedPill(seededPill) && Boolean(seededNote) && seededNote.text === `Last run failed: ${SEEDED_FAILURE.processingError}` && seededNote.failed === true,
+          { seeded: seeded ? [seeded.processingError, seeded.processingErrorAt] : null, seededPill, seededNote });
+
         // Arm the completion watcher BEFORE the click, the way run-and-wait.js does: `running`
         // goes to the study id and back to null inside the run, and a poll could miss both edges.
         // Bounded IN THE PAGE at 400 s, the cap run-and-wait.js uses for this film, so a run that
@@ -679,6 +754,9 @@ try {
         const afterRerun = await openStudy();
         check('the study still carries measurements and geometry after the re-run', Boolean(afterRerun && afterRerun.measurements && afterRerun.geometry), null);
         check('the re-run cleared the review mark (studies-table spec 8.4, site 1)', Boolean(afterRerun) && afterRerun.reviewedAt === null, afterRerun ? afterRerun.reviewedAt : null);
+        check('the re-run cleared the seeded processingError and processingErrorAt (port spec 4, the success commit)',
+          Boolean(afterRerun) && afterRerun.processingError === null && afterRerun.processingErrorAt === null,
+          afterRerun ? [afterRerun.processingError, afterRerun.processingErrorAt] : null);
 
         const recreated = fs.existsSync(SIDECAR);
         check('the re-run recreated the prediction sidecar on disk', recreated, SIDECAR);
