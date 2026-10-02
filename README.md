@@ -110,7 +110,7 @@ clinical-data CSV.
   its own name as a custom field (**Keep column name** on the chip, or **Keep N unmapped
   columns** for every remaining one at once — check that none is an identifier first), or left
   unmapped. `study_id` itself is the join key, not a field.
-- **Load workspace** adds each new film to Studies as `Processing` and attaches its CSV
+- **Load workspace** adds each new film to Studies as `Unsegmented` and attaches its CSV
   values. Films already in the library (same path) are not added again; the CSV only **fills
   in** clinical fields they are missing and never overwrites a value that is already there
   (use **Import from CSV** on the study's Analysis screen to replace values deliberately).

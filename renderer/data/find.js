@@ -70,3 +70,19 @@ export function sortFindRows(studies, sort, runningId = null, batch = null) {
   });
   return indexed.map((entry) => entry.study);
 }
+
+// The Studies summary line's counts (2026-10-01, issue #39; port spec 3), over the list given, which
+// is the whole library. They follow the pills the rows show: UNSEGMENTED is every film shown as
+// Unsegmented, Processing or Failed, TO REVIEW every film shown as Needs review; Segmented and
+// Reviewed films count in the total only. A film showing the Unsupported view pill derives
+// Unsegmented or Failed, so it is UNSEGMENTED too. `runningId` is state.running, `batch` state.batch.
+export function summaryCounts(studies, runningId = null, batch = null) {
+  const list = studies ?? [];
+  const counts = { total: list.length, unsegmented: 0, toReview: 0 };
+  for (const study of list) {
+    const status = displayStatus(study, runningId, batch);
+    if (status === 'unseg' || status === 'proc' || status === 'fail') counts.unsegmented += 1;
+    else if (status === 'rev') counts.toReview += 1;
+  }
+  return counts;
+}

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_FIND_SORT, FIND_SORT_KEYS, statusRank, toggleFindSort, sortFindRows } from '../renderer/data/find.js';
+import { DEFAULT_FIND_SORT, FIND_SORT_KEYS, statusRank, toggleFindSort, sortFindRows, summaryCounts } from '../renderer/data/find.js';
 import { newBatch, withStopping } from '../renderer/data/batch.js';
 
 // A real study under a workspace root. Every override is a record field.
@@ -98,6 +98,21 @@ test('by status: films waiting in a running batch sort as Processing until the b
   const batch = newBatch(['SP-1001', 'SP-1002']);
   assert.deepEqual(ids(sortFindRows(rows, asc, null, batch)), ['SP-1003', 'SP-1001', 'SP-1002', 'SP-1000']);
   assert.deepEqual(ids(sortFindRows(rows, asc, null, withStopping(batch))), ['SP-1003', 'SP-1000', 'SP-1001', 'SP-1002']);
+});
+
+// (2026-10-01, issue #39; port spec 3) the summary line counts the pills the rows show.
+test('summaryCounts: UNSEGMENTED counts Unsegmented, Processing and Failed; TO REVIEW counts Needs review', () => {
+  const rows = [
+    study('SP-1000'), study('SP-1001', SEG), study('SP-1002', REV), study('SP-1003', { processingError: 'boom' }),
+    study('SP-1004', { ...SEG, reviewedAt: '2026-09-10T12:00:00.000Z' }), study('SP-1005', { ...REV, processingError: 'boom' }),
+  ];
+  assert.deepEqual(summaryCounts(rows), { total: 6, unsegmented: 3, toReview: 1 });
+  // A re-run of the Needs review film: it reads Processing, so it moves to UNSEGMENTED while it runs.
+  assert.deepEqual(summaryCounts(rows, 'SP-1002'), { total: 6, unsegmented: 4, toReview: 0 });
+  // A batch over the Unsegmented and Failed films: Processing while they wait, counted once, as before.
+  assert.deepEqual(summaryCounts(rows, 'SP-1000', newBatch(['SP-1000', 'SP-1003', 'SP-1005'])), { total: 6, unsegmented: 3, toReview: 1 });
+  assert.deepEqual(summaryCounts([]), { total: 0, unsegmented: 0, toReview: 0 });
+  assert.deepEqual(summaryCounts(null), { total: 0, unsegmented: 0, toReview: 0 });
 });
 
 test('an unknown key keeps the input order', () => {

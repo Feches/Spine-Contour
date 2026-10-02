@@ -17,7 +17,7 @@ import { inferenceView, unsupportedViewReason } from '../data/inference-view.js'
 import { studyName, defaultName } from '../data/labels.js';
 import { displayStatus, isReviewed, reviewedLabel, reviewBlockedReason } from '../data/status.js';
 import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
-import { failureReason } from '../data/failure.js';
+import { failureReason, failureTitle } from '../data/failure.js';
 import { mountMeasurements } from '../components/measurements.js';
 import { mountClinicalData } from '../components/clinical-data.js';
 import { calibrationForStudy } from '../calibration.js';
@@ -831,7 +831,8 @@ export function render(state) {
     const badgeKey = unsupported ? `unsupported:${open.view}` : `${badgeStatus}:${open.processingError ?? ''}`;
     if (badgeKey !== lastBadgeKey) {
       lastBadgeKey = badgeKey;
-      mount(statusHost, unsupported ? unsupportedViewBadge(open.view) : statusBadge(badgeStatus, open.processingError));
+      mount(statusHost, unsupported ? unsupportedViewBadge(open.view)
+        : statusBadge(badgeStatus, badgeStatus === 'fail' ? failureTitle(open.processingError, open.processingErrorAt) : undefined));
     }
 
     tabMeas.classList.toggle('is-active', live.tab === 'meas');

@@ -566,7 +566,7 @@ export function render(state) {
         el('div', { class: 'workspace-load-hint' },
           loadDisabled
             ? 'Choose an image folder to continue.'
-            : 'New films are added to Studies as Processing. Open one and run segmentation from its Analysis screen.')),
+            : 'New films are added to Studies as Unsegmented. Open one and run segmentation from its Analysis screen.')),
     );
     return fragment;
   }
