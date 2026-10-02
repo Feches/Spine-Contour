@@ -323,8 +323,11 @@ checks (the header pills in sections 5, 7 and 12; the Failed pill with its dated
 summary after section 11; the pills after the first batch turn and around Stop; section 14b's four
 and section 18's four) and several are reworded; `smoke-persist.mjs` gains one check in phase 1 and
 six in phase 2; `smoke-workspace.mjs` keeps its 100 checks, two of them updated (the hint and the
-badges after Load). The suites were never run against 1.0.13 itself, and the counts above predate
-the port; they are replaced with what the suites print once they have run against the real app on it.
+badges after Load). Measured 2026-10-02 against the real app on this branch, each suite on a fresh
+scratch profile (unit 614/614): `smoke-studies.mjs` 151/151; `smoke-workspace.mjs` 100/100 (its first
+run read 98/100: the two mapping-select checks still expected the option lists from before 1.0.12's
+`Keep column name (<header>)` option, fixed in `97b7478`); `smoke-persist.mjs` 41/41 then 53/53. These
+supersede the counts in the known baseline above, which predate 1.0.13.
 
 ## Running the Parameters suite
 
