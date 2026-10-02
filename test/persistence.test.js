@@ -344,6 +344,41 @@ test('validate nulls a blank or non-string study field silently, and a malformed
   assert.match(warn.mock.calls[0].arguments[0], /SP-1001/);
 });
 
+// (2026-10-01, issue #39; port spec 4) the failure's time: kept only as a date and only beside the
+// error it dates; a 1.0.13 record, which has none, loads without a warning.
+test('validate round-trips processingErrorAt, loads a 1.0.13 failure without one, and drops a malformed time with one warning', (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const AT = '2026-10-01T12:00:00.000Z';
+  const [bare] = validate({ version: STORE_VERSION, studies: [identity('SP-1000')] });
+  assert.equal(bare.processingError, null);
+  assert.equal(bare.processingErrorAt, null);
+  // Listed on the returned object, or the saver writes it and the next load drops it.
+  assert.ok('processingErrorAt' in bare);
+  const [dated] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1001'), processingError: 'boom', processingErrorAt: AT }] });
+  assert.equal(dated.processingError, 'boom');
+  assert.equal(dated.processingErrorAt, AT);
+  const [legacy] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1002'), processingError: 'boom' }] });
+  assert.equal(legacy.processingError, 'boom');
+  assert.equal(legacy.processingErrorAt, null);
+  const [nulled] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1003'), processingError: null, processingErrorAt: null }] });
+  assert.equal(nulled.processingErrorAt, null);
+  assert.equal(warn.mock.callCount(), 0);
+  const malformed = [
+    { ...identity('SP-1004'), processingError: 'boom', processingErrorAt: 'yesterday' },
+    { ...identity('SP-1005'), processingError: 'boom', processingErrorAt: 12 },
+    { ...identity('SP-1006'), processingError: 'boom', processingErrorAt: '' },
+    { ...identity('SP-1007'), processingErrorAt: AT },
+    { ...identity('SP-1008'), processingError: '   ', processingErrorAt: AT },
+  ];
+  const loaded = validate({ version: STORE_VERSION, studies: malformed });
+  for (const study of loaded) assert.equal(study.processingErrorAt, null, study.id);
+  assert.equal(loaded[0].processingError, 'boom', 'a dropped time keeps the error it dated');
+  assert.equal(warn.mock.callCount(), malformed.length);
+  malformed.forEach((entry, index) => {
+    assert.equal(warn.mock.calls[index].arguments[0], `persistence: ${entry.id} has a malformed processing-error time; it is dropped.`);
+  });
+});
+
 test('validate round-trips the review mark, defaults it to null, and drops a non-date with one warning (studies-table spec 8.1)', (t) => {
   const warn = t.mock.method(console, 'warn', () => {});
   const [bare] = validate({ version: STORE_VERSION, studies: [identity('SP-1000')] });

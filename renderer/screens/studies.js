@@ -88,7 +88,8 @@ export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
     addedAt: new Date().toISOString(), view: DEFAULT_VIEW, thumbnail: null,
     region: 'auto', anteriorSide: null,
     measurements: null, geometry: null, qc: null, clinical: {},
-    processingError: null,
+    // (1.0.13) the last failed attempt's reason; (2026-10-01, issue #39) and when it failed.
+    processingError: null, processingErrorAt: null,
   };
 }
 

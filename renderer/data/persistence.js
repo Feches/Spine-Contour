@@ -210,6 +210,17 @@ function validateStudy(entry, index) {
   if (reviewedText !== null && reviewedAt === null) {
     console.warn(`persistence: ${entry.id} has a review mark that is not a date ("${reviewedText}"); it is dropped.`);
   }
+  // (2026-10-01, issue #39; port spec 4) when the last attempt failed, beside 1.0.13's
+  // processingError, on the review mark's optional-null terms. It is kept only as a date and only
+  // with the error it dates; any other value that is present is dropped with a warning rather than
+  // failing the record. A record written before it existed has none and loads without a warning.
+  const processingError = optionalText(entry.processingError);
+  const errorAtValue = entry.processingErrorAt;
+  const processingErrorAt = typeof errorAtValue === 'string' && !Number.isNaN(Date.parse(errorAtValue))
+    && processingError !== null ? errorAtValue : null;
+  if (errorAtValue !== undefined && errorAtValue !== null && processingErrorAt === null) {
+    console.warn(`persistence: ${entry.id} has a malformed processing-error time; it is dropped.`);
+  }
   return {
     id: entry.id, source: 'real',
     filePath: typeof entry.filePath === 'string' ? entry.filePath : null,
@@ -219,7 +230,8 @@ function validateStudy(entry, index) {
     anteriorSide: validAnteriorSide(entry.anteriorSide) ? entry.anteriorSide
       : entry.anteriorSide === null ? null : geometry?.anterior_side ?? null,
     predictionId: optionalText(entry.predictionId),
-    processingError: optionalText(entry.processingError),
+    processingError,
+    processingErrorAt,
     // Both are optional and default to null, so no STORE_VERSION bump: a record written before
     // they existed loads fine and simply reads as its SP-nnnn id with no workspace. They must
     // be listed HERE or they are written to disk and then dropped on the next load, which looks

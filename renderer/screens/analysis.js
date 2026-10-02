@@ -17,6 +17,7 @@ import { inferenceView, unsupportedViewReason } from '../data/inference-view.js'
 import { studyName, defaultName } from '../data/labels.js';
 import { displayStatus, isReviewed, reviewedLabel, reviewBlockedReason } from '../data/status.js';
 import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
+import { failureReason } from '../data/failure.js';
 import { mountMeasurements } from '../components/measurements.js';
 import { mountClinicalData } from '../components/clinical-data.js';
 import { calibrationForStudy } from '../calibration.js';
@@ -88,9 +89,11 @@ let runRevision = 0;
 // and leave the card reading LOADING.
 const runsByStudy = new Map();
 
+// (2026-10-01, issue #39; port spec 4-5) The record keeps the plain sentence failureReason gives and
+// the time, in one update; the toast and the batch outcome keep the raw message.
 function withProcessingFailure(studies, studyId, addedAt, reason) {
   return studies.map((item) => item.id === studyId && item.addedAt === addedAt
-    ? { ...item, processingError: String(reason || 'Segmentation failed.') } : item);
+    ? { ...item, processingError: failureReason(reason), processingErrorAt: new Date().toISOString() } : item);
 }
 
 function markProcessingFailure(studyId, addedAt, reason) {
@@ -392,7 +395,7 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
         ? { ...s, predictionId: requestId, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
           calibration: preferReviewedCalibration(response.calibration, calibrationForStudy(s)), thumbnail,
           // A re-run replaces every number a review was made over (studies-table spec 2026-09-10, section 8.4, site 1).
-          reviewedAt: null, processingError: null }
+          reviewedAt: null, processingError: null, processingErrorAt: null }
         : s)),
     }));
     return warning ? { ok: true, warning } : { ok: true };
@@ -660,7 +663,7 @@ export function render(state) {
     setState({ editing: false, selection: null, selectedLevel: null,
       studies: live.studies.map(s => s.id === open.id ? { ...s, ...patch,
         geometry: null, measurements: null, qc: null, reviewedAt: null, predictionId: null,
-        processingError: null } : s) });
+        processingError: null, processingErrorAt: null } : s) });
     mounted?.viewer.setFilmStatus(null);
     previewOriginal(open.id);
   }
