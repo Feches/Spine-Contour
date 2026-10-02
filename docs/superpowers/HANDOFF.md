@@ -68,7 +68,9 @@ shows the reason (red note, FAILED card); stored reasons are plain sentences.
   the contract (`1bd4419`) and Task 8's expectations and the smoke README (`027054b`); all fixed and re-reviewed clean.
 - Two stale smoke expectations from earlier releases, fixed here as test-only commits: `97b7478` (smoke-workspace,
   1.0.12's Keep column name option) and `e980f64` (smoke-parameters, 1.0.11's ten segmental columns in the paired
-  export). Either commit can be dropped without touching this work.
+  export). No product code depends on them, but the release notes' Checks section counts their suites (100/100, 58/58):
+  dropping either now means reverting it and editing `docs/releases/1.0.15.md`, CLAUDE.md and the plan Ledger, and that
+  suite is red again.
 - Task 8 on the pre-merge branch: unit 614/614; `smoke-studies.mjs` 151/151; `smoke-workspace.mjs` 98/100, then 100/100
   after `97b7478`; `smoke-persist.mjs` 41/41 then 53/53. Real films: ten copies on the RTX 4070, DOM reads only, no
   screenshots. A batch turned all ten to Processing at once and Stop returned the waiting films at once; a film whose
@@ -86,14 +88,17 @@ shows the reason (red note, FAILED card); stored reasons are plain sentences.
   rulings R1–R12 and the task log.
 - `claude/issue-39-failed-status` is a reference only — never merged, rebased onto or cherry-picked.
 
-**Next.** The owner opens the PR to `main` from the pushed branch and merges it with **Create a merge commit**; the push
-to `main` publishes v1.0.15 (`docs/release-main.md`). The PR body says it follows up Feches/Spine-Contour#39.
+**Next.** The branch is pushed to `origin` (`github.com/Feches/Spine-Contour`, the only remote in this checkout;
+CLAUDE.md's Git section describes another workstation's `fork`/`origin` layout) at the owner's choice on 2026-10-02. The
+owner opens the PR to `main` and merges it with **Create a merge commit**; the push to `main` publishes v1.0.15
+(`docs/release-main.md`). The PR body says it follows up Feches/Spine-Contour#39.
 
 **Follow-ups (deferred; each needs the owner's call):**
 
 1. Stop pressed while a turn's film file is still being read: that film reads its own status briefly, then Processing
    (spec §3's formula vs P1; changing it needs the owner's ruling).
-2. Failures recorded by 1.0.13 keep their raw, uncapped text until the next attempt (the spec rewrites on write only).
+2. Failures recorded before 1.0.15 (by 1.0.13 or 1.0.14) keep their raw, uncapped text until the next attempt (the spec
+   rewrites on write only).
 3. Pre-existing 1.0.13 bug: `planBatch` (`renderer/data/batch.js:32`) offers a measured Failed film but the batch
    driver skips it (`batch.js:145`) and the closing toast says "segmented meanwhile" — a separate issue.
 4. Contrast: the Unsegmented/Processing grey is about 3.3:1 (pre-existing `--muted`); the dark Failed pill is 4.28:1 on

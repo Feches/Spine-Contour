@@ -7,9 +7,9 @@
   on Segment turns every film in the batch to Processing at once, and each changes to its
   result as its turn ends. Stop returns the films still waiting to their own status.
 - **Failed** has its own red. Its tooltip gives the date of the failed attempt (failures
-  recorded by 1.0.13 show none) and the reason, and the Analysis screen shows the reason
-  under the Region and Orientation controls and, for a film with no results, on the film
-  card.
+  recorded before 1.0.15 show none) and the reason, and the Analysis screen shows the
+  reason under the Region and Orientation controls and, for a film with no results whose
+  Region is Lumbar or whose original image cannot be shown, on the film card.
 - The reason kept for a failed attempt is a plain sentence: a lost connection to the
   processing backend reads "The processing backend stopped. Restart Spine Contour, then
   segment again." instead of the raw socket error. Toasts are unchanged.
