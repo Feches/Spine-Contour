@@ -37,7 +37,7 @@ function study() {
   s.measurements = globalSvaMeasurements(s);
   return s;
 }
-const table = csv => parse(csv.split('\r\n').slice(3).join('\r\n'));
+const table = csv => parse(csv.split('\r\n').slice(2).join('\r\n'));
 
 test('global SVA uses C7 centroid and posterior S1 corner, is anterior-positive and mirror-invariant', () => {
   const s = study();

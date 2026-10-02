@@ -18,7 +18,7 @@ function calibratedStudy(scale = .5) {
 }
 const values = row => [row.anterior, row.middle, row.posterior];
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
-const csvData = csv => parse(csv.split('\r\n').slice(3).join('\r\n'));
+const csvData = csv => parse(csv.split('\r\n').slice(2).join('\r\n'));
 
 test('all five disc levels use the facing endplates, including S1, in anatomical A/M/P order', () => {
   const rows = discRows(calibratedStudy());

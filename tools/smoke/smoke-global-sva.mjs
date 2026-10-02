@@ -147,7 +147,7 @@ try {
   check('explicit synthetic calibration updates visible SVA to 14 mm', await cdp.evaluate("document.querySelector('[data-row-key=\"GLOBAL_SVA\"] .meas-value').textContent==='14.0mm'"));
   check('CSV includes calibrated global values with full-spine identity', await cdp.evaluate(`(async()=>{
     const s=(await import('./renderer/store.js')).getState().studies[0];const {toCsv,parse}=await import('./renderer/data/csv.js');
-    const row=parse(toCsv([s]).split('\\r\\n').slice(3).join('\\r\\n')).rows[0];
+    const row=parse(toCsv([s]).split('\\r\\n').slice(2).join('\\r\\n')).rows[0];
     return row['C7-S1 SVA (mm)']==='14'&&row['C7-S1 SVA (px)']==='70'&&row['Spine region']==='full_spine';
   })()`));
   await cdp.evaluate("[...document.querySelectorAll('.viewer-editbar button')].find(b=>b.textContent.trim()==='RESET TO PREDICTION').click()");
