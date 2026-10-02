@@ -150,7 +150,8 @@ renderer/                         (new)
                                   then 40 ms per character, capped at 8 s, for every toast
   components/checkbox.js          (2026-09-08) checkbox({key, keyAttr, label, checked, note, ariaLabel, indeterminate, onChange, onClick})
                                   — the tick box both Studies tabs build; keyAttr is data-param-key (grid) or data-find-key (list)
-  components/status-badge.js      (2026-09-10) statusBadge(status), unsupportedViewBadge(view) — the one badge both screens show
+  components/status-badge.js      (2026-09-10) statusBadge(status, title), unsupportedViewBadge(view) — the one badge both screens
+                                  show; (2026-10-01) `title`, when a non-empty string, is the pill's tooltip (failureTitle for Failed)
 
   viewer/canvas.js                layered rendering
   viewer/interactions.js          pure interaction logic: zoom steps, hit tests, Tab order, nudge, debounce (no DOM)
@@ -164,6 +165,8 @@ renderer/                         (new)
   data/measurements.js            API response → display rows
   data/similarity.js              weighted distance
   data/status.js                  status derivation
+  data/failure.js                 (2026-10-01, issue #39) failureReason(message), failureTitle(reason, at), capReason — the stored
+                                  text of a failed segmentation attempt and the Failed pill's tooltip; pure
   data/csv.js                     parse, auto-map, export; toPairedCsv and delta1 (2026-09-08); (2026-09-12) toCsv's
                                   Study ID is studyName (the stem) and the record id is not written; fileStem now
                                   lives in data/labels.js and is re-exported here, so labels.js imports nothing from csv.js
@@ -192,7 +195,8 @@ renderer/                         (new)
                                   newBatch, advance, withStopping, isQueued, progressText, sidebarText, batchMessage;
                                   createBatchDriver({segment, getState, setState, showToast, persistenceDisabledReason})
   data/find.js                    (2026-09-10, studies-table spec §6) DEFAULT_FIND_SORT, FIND_SORT_KEYS, statusRank, toggleFindSort,
-                                  sortFindRows(studies, sort, runningId) — the Find list's sort; pure
+                                  sortFindRows(studies, sort, runningId, batch), (2026-10-01) summaryCounts(studies, runningId,
+                                  batch) — the Find list's sort and the Studies summary's counts; pure
   data/demo-visibility.js         (2026-09-10, §9) demoStudiesShown(state), demoVisibilityPatch(state, shown) — pure
 
 test/                             (new) mirrors renderer/ — node --test
@@ -234,6 +238,11 @@ The single record type. Demo and real studies share it exactly.
  * @property {string|null} reviewedAt  (2026-09-10, studies-table spec §8.1) ISO timestamp of the human review, set on the
  *                                     Analysis screen; null until marked; cleared by every write that replaces
  *                                     measurements, geometry or calibration (§8.4)
+ * @property {string|null} processingError    (1.0.13) the reason the last segmentation attempt failed; (2026-10-01) the
+ *                                            plain sentence data/failure.js failureReason gives; null when no attempt
+ *                                            failed; cleared by a successful run and by a Region/Orientation change
+ * @property {string|null} processingErrorAt  (2026-10-01, issue #39) ISO time of that failure, written and cleared with
+ *                                            it; null on a failure 1.0.13 recorded
  * @property {string}  addedAt     ISO 8601
  * @property {string}  view        'Standing lateral' by default; seeded per folder by a workspace load and editable in the drawer (2026-09-07); '' when cleared
  * @property {string|null} thumbnail  data URI, max 128px long edge; null if none
@@ -254,7 +263,10 @@ saver writes them and the next load silently drops them. `id` remains the record
 it names the sidecar, keys the delete, and is the CSV's `Study ID` — so a rename is cosmetic by
 construction and can never orphan a file. The folder shown beside the workspace is **derived
 from `filePath`**, never stored, so it stays correct when a moved film is relocated. `filmDate`
-must match `/^\d{4}-\d{2}-\d{2}$/` or `validateStudy` nulls it with a warning.
+must match `/^\d{4}-\d{2}-\d{2}$/` or `validateStudy` nulls it with a warning. (2026-10-01, issue #39) `processingError`
+(1.0.13) and `processingErrorAt` are optional-null on the same terms, with no `STORE_VERSION` bump, and are listed in
+`validateStudy` too; `processingErrorAt` is kept only when it parses as a date and `processingError` is set, and any
+other value that is present is nulled with a warning.
 
 Demo studies additionally carry `dx`, `plan`, `hx`, `outcome`, `pt`, `sex`, `age`,
 `bmi`, `odi`, `conf` for display. Real studies leave these absent; the UI renders `—`.
@@ -595,12 +607,13 @@ export const S1_CONFIDENCE_LIMIT = 0.6   // review threshold, not accuracy proba
 
 export function reviewReasons(study)    // → string[]; shared by status and Analysis warnings
 
-export function deriveStatus(study)      // → 'seg'|'rev'|'proc'|'ok'
-export function statusLabel(status)      // → 'Segmented'|'Needs review'|'Processing'|'Reviewed'
+export function deriveStatus(study)      // → 'fail'|'unseg'|'ok'|'rev'|'seg'  (2026-10-01; see the amendment below)
+export function statusLabel(status)      // → 'Processing'|'Unsegmented'|'Failed'|'Segmented'|'Needs review'|'Reviewed'; '—' otherwise
 export function isReviewed(study)                // → boolean  (2026-09-10) a non-blank reviewedAt
-export function displayStatus(study, runningId)  // → the status a row or header SHOWS: 'proc' while runningId === study.id, else deriveStatus
+export function displayStatus(study, runningId, batch)  // → the status a row or header SHOWS: 'proc' while runningId === study.id
+                                                        //   or (2026-10-01) the film waits in a running batch, else deriveStatus
 export function reviewedLabel(reviewedAt)        // → 'Reviewed · Sep 10, 2026' | 'Reviewed'
-export function reviewBlockedReason({ study, running, pending })   // → string|null: REVIEW_DEMO | REVIEW_RUNNING | REVIEW_NOTHING | REVIEW_PENDING
+export function reviewBlockedReason({ study, running, pending })   // → string|null: REVIEW_DEMO | REVIEW_RUNNING | REVIEW_FAILED (1.0.13) | REVIEW_NOTHING | REVIEW_PENDING
 ```
 
 Rules, in order:
@@ -622,6 +635,18 @@ queued films are 'proc' by rule 1 and are badged Processing like any unsegmented
 summary counts them as UNSEGMENTED and the batch's own progress is the filter bar's and the
 sidebar's (2026-09-08, batch spec decisions 7–8).
 
+**2026-10-01 amendment (issue #39; release 1.0.13 and
+`docs/superpowers/specs/2026-10-01-failed-status-port-design.md`).** The rules are now, first match wins: no study →
+`'unseg'`; a non-blank `processingError` → `'fail'` (1.0.13; it outranks measurements and the review mark);
+`measurements == null` → `'unseg'`; then rules 1b–4. `'proc'` is no longer derived: `displayStatus` returns it for the
+running study and, given `state.batch`, for every film still waiting in a running batch that is not stopping
+(`data/batch.js isQueued`), and every caller passes `state.batch`. A batch's waiting films therefore read Processing by
+that rule, not by rule 1; a stopping batch's waiting films read their own status. The Studies summary keeps its three
+clauses and its UNSEGMENTED counts Unsegmented, Processing and Failed (`data/find.js summaryCounts`). The Find sort
+ranks fail 0 · proc 1 · unseg 2 · rev 3 · seg 4 · ok 5. `statusLabel` names all six keys and returns `—` for any
+other. A failed attempt stores `processingError` as `failureReason(message)` and `processingErrorAt` in the same
+update; the Failed pill's tooltip is `failureTitle(processingError, processingErrorAt)`.
+
 **There is exactly one rule, and demo studies are not exempt from it.** All nine demo
 studies have internally consistent parameters (residual ≈ 0) and confidence 0.82–0.97,
 so all nine derive to `Segmented`. The source mockup labelled two rows `Needs review`
@@ -630,7 +655,8 @@ formula; reproducing them would mean storing a status that contradicts the data 
 it, or inventing a lower confidence than the design specifies.
 
 The other two states are still reachable — and reachable *honestly*: `Processing` is
-what plan 06's workspace load produces for scanned films that have no measurements yet,
+what plan 06's workspace load produces for scanned films that have no measurements yet
+(2026-10-01: that is `Unsegmented` now; `Processing` is a running film or one waiting in a running batch),
 and `Needs review` is what a genuinely poor femoral fit produces. Neither needs faking
 in the demo set.
 
