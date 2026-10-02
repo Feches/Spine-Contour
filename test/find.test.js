@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_FIND_SORT, FIND_SORT_KEYS, statusRank, toggleFindSort, sortFindRows } from '../renderer/data/find.js';
+import { newBatch, withStopping } from '../renderer/data/batch.js';
 
 // A real study under a workspace root. Every override is a record field.
 function study(id, overrides = {}) {
@@ -71,7 +72,7 @@ test('by view, workspace and folder: the cell labels, em dash and blank last', (
   assert.deepEqual(ids(sortFindRows([hand, a, b], { key: 'view', dir: 'desc' })), ['SP-1000', 'SP-1001', 'SP-1002']);
 });
 
-test('by status: Failed, Processing, Needs review, Segmented, Reviewed; running reads Processing', () => {
+test('by status: Failed, Processing, Unsegmented, Needs review, Segmented, Reviewed; running reads Processing', () => {
   const rows = [
     study('SP-1000', SEG), study('SP-1001', REV), study('SP-1002'),
     study('SP-1003', { ...SEG, reviewedAt: '2026-09-10T12:00:00.000Z' }),
@@ -79,11 +80,24 @@ test('by status: Failed, Processing, Needs review, Segmented, Reviewed; running 
   ];
   assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'asc' })), ['SP-1004', 'SP-1002', 'SP-1001', 'SP-1000', 'SP-1003']);
   assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'desc' })), ['SP-1003', 'SP-1000', 'SP-1001', 'SP-1002', 'SP-1004']);
-  assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'asc' }, 'SP-1003')), ['SP-1004', 'SP-1002', 'SP-1003', 'SP-1001', 'SP-1000']);
+  assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'asc' }, 'SP-1003')), ['SP-1004', 'SP-1003', 'SP-1002', 'SP-1001', 'SP-1000']);
   assert.equal(statusRank('fail'), 0);
   assert.equal(statusRank('proc'), 1);
-  assert.equal(statusRank('ok'), 4);
+  assert.equal(statusRank('unseg'), 2);
+  assert.equal(statusRank('rev'), 3);
+  assert.equal(statusRank('seg'), 4);
+  assert.equal(statusRank('ok'), 5);
   assert.equal(statusRank('nonsense'), null);
+});
+
+// (2026-10-01, issue #39; port spec 3) the sort compares the status the row shows, batch included.
+test('by status: films waiting in a running batch sort as Processing until the batch is stopping', () => {
+  const rows = [study('SP-1000'), study('SP-1001'), study('SP-1002', SEG), study('SP-1003', { processingError: 'boom' })];
+  const asc = { key: 'status', dir: 'asc' };
+  assert.deepEqual(ids(sortFindRows(rows, asc)), ['SP-1003', 'SP-1000', 'SP-1001', 'SP-1002']);
+  const batch = newBatch(['SP-1001', 'SP-1002']);
+  assert.deepEqual(ids(sortFindRows(rows, asc, null, batch)), ['SP-1003', 'SP-1001', 'SP-1002', 'SP-1000']);
+  assert.deepEqual(ids(sortFindRows(rows, asc, null, withStopping(batch))), ['SP-1003', 'SP-1000', 'SP-1001', 'SP-1002']);
 });
 
 test('an unknown key keeps the input order', () => {

@@ -5,11 +5,15 @@
  * every time it is needed. Pure. The residual threshold is measurements.js's,
  * re-exported, so the panel's consistency warning and the list's status can never
  * disagree. (2026-09-10) The review mark IS stored -- `reviewedAt` -- and the derivation reads
- * it: a marked study is `ok` whatever its qc says unless a later run failed.
+ * it: a marked study is `ok` whatever its qc says unless a later run failed. (2026-10-01, issue #39)
+ * A study with no result and no failure is `unseg`; `proc` is displayStatus's alone, for the running
+ * study and the films waiting in the running batch
+ * (docs/superpowers/specs/2026-10-01-failed-status-port-design.md section 3).
  */
 
 import { piResidual, RESIDUAL_LIMIT } from './measurements.js';
 import { studyRegion } from './cervical.js';
+import { isQueued } from './batch.js';
 
 export { RESIDUAL_LIMIT };
 export const CONFIDENCE_LIMIT = 0.6;
@@ -75,11 +79,13 @@ export function reviewReasons(study) {
   return reasons;
 }
 
-/** @returns {'seg'|'rev'|'proc'|'ok'|'fail'} */
+// First match wins (port spec 3). A failure outranks measurements and the review mark (1.0.13's
+// rule); no result and no failure is Unsegmented, never Processing.
+/** @returns {'fail'|'unseg'|'ok'|'rev'|'seg'} */
 export function deriveStatus(study) {
-  if (!study) return 'proc';
+  if (!study) return 'unseg';
   if (study.processingError) return 'fail';
-  if (study.measurements == null) return 'proc';
+  if (study.measurements == null) return 'unseg';
   if (isReviewed(study)) return 'ok';
   return reviewReasons(study).length ? 'rev' : 'seg';
 }
@@ -95,17 +101,27 @@ export function isReviewed(study) {
 // The status a row or a header SHOWS: spec 13.1's "or currently running" half, which is a property
 // of state.running and not of the record. deriveStatus stays a pure function of the record; every
 // surface that badges a study calls this with state.running, so the list, the summary, the sort
-// and the Analysis header cannot disagree.
-export function displayStatus(study, runningId = null) {
-  return study && runningId !== null && runningId === study.id ? 'proc' : deriveStatus(study);
+// and the Analysis header cannot disagree. (2026-10-01, issue #39; port spec 3) `batch` is
+// state.batch: every film still waiting in a running batch reads Processing too, from the click that
+// starts it until its own turn ends; once the batch is stopping, the films that will not run read
+// their own status again. This is the only source of 'proc'.
+/** @returns {'proc'|'fail'|'unseg'|'ok'|'rev'|'seg'} */
+export function displayStatus(study, runningId = null, batch = null) {
+  if (study && runningId !== null && runningId === study.id) return 'proc';
+  if (study && batch && !batch.stopping && isQueued(batch, study.id)) return 'proc';
+  return deriveStatus(study);
 }
 
+// (2026-10-01, issue #39) Every key is named; anything else is an absent value, the em dash. An
+// unrecognised key must never claim a run.
 export function statusLabel(status) {
+  if (status === 'proc') return 'Processing';
+  if (status === 'unseg') return 'Unsegmented';
   if (status === 'fail') return 'Failed';
   if (status === 'seg') return 'Segmented';
   if (status === 'rev') return 'Needs review';
   if (status === 'ok') return 'Reviewed';
-  return 'Processing';
+  return '\u2014';
 }
 
 const reviewedDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
