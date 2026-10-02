@@ -1,5 +1,5 @@
 import { el } from '../dom.js';
-import { setState } from '../store.js';
+import { setState, subscribe } from '../store.js';
 import { openExternal } from '../api.js';
 import { showToast } from '../components/toast.js';
 import { VERSION_LABEL } from '../data/version.js';
@@ -19,6 +19,19 @@ const HERO_SVG = `<svg width="118" height="226" viewBox="0 0 100 192" fill="none
 const CHECK_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 L10 17.5 L19 6.5"></path></svg>';
 
 const ARROW_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12 H18"></path><path d="M12.5 6 L18.5 12 L12.5 18"></path></svg>';
+
+// The two controls `ack` drives. router.js does not remount this page when `ack` changes: a
+// remount builds a new .landing-hero, whose riseIn entrance replays, so the logo blinks out and
+// fades back in on every tick. The checkbox and Enter are updated in place here instead.
+let controls = null;
+
+subscribe((state) => {
+  // Shell mode in router.js: this page is gone, and a return to it builds a fresh one.
+  if (state.ack && state.screen !== 'landing') { controls = null; return; }
+  if (!controls) return;
+  controls.checkbox.checked = state.ack;
+  controls.enter.disabled = !state.ack;
+});
 
 export function render(state) {
   const checkboxInput = el('input', {
@@ -41,6 +54,8 @@ export function render(state) {
     onClick: () => setState({ screen: 'studies' }),
   }, 'Enter SpineContour', el('span', { class: 'btn-icon', innerHTML: ARROW_SVG }));
 
+  controls = { checkbox: checkboxInput, enter: enterButton };
+
   const pill = el('div', { class: 'pill' },
     el('span', { class: 'dot' }),
     el('span', { class: 'label' }, 'RESEARCH USE ONLY'),
@@ -62,27 +77,14 @@ export function render(state) {
             'SpineContour is an investigational research tool. Its measurements, segmentations, and derived metrics have not been cleared or approved by any regulatory body. All output requires independent verification by a qualified reviewer.'),
           el('p', { class: 'landing-body' },
             'The model weights, training and evaluation code, and annotation tool are released openly. We invite other centers to test the platform, use it in their own research, and contribute annotations so that accuracy can be established across sites.'),
-        ),
-        el('div', { class: 'citation-card card' },
-          el('div', { class: 'citation-eyebrow' }, 'CREATED BY'),
-          el('div', { class: 'citation-names' },
-            el('div', { class: 'citation-author' },
-              el('div', { class: 'citation-author-name' }, 'Cody Woodhouse, MD'),
-              el('div', { class: 'citation-author-affil' }, 'Allegheny Health Network'),
-            ),
-            el('div', { class: 'citation-author' },
-              el('div', { class: 'citation-author-name' }, 'Michael Jayasuriya, BS'),
-              el('div', { class: 'citation-author-affil' }, 'Allegheny Health Network; Drexel University College of Medicine'),
-            ),
-          ),
-          el('div', { class: 'citation-note' },
+          el('p', { class: 'landing-body' },
             'We’re committed to keeping SpineContour open source and free to use. Please contact ',
             // A real button, not a link: renderer/ has no navigation, and main.js opens the address
             // in the user’s own mail client. It stays selectable text visually so the address can
             // still be copied by anyone whose machine has no mail client configured.
             el('button', {
               type: 'button',
-              class: 'citation-contact',
+              class: 'landing-contact',
               title: `Email ${CONTACT_EMAIL}`,
               onClick: async () => {
                 try {
@@ -93,6 +95,9 @@ export function render(state) {
               },
             }, CONTACT_EMAIL),
             ' with questions or if you’d like to collaborate.'),
+          el('p', { class: 'landing-body' },
+            'spine-contour: An Open Source Platform for Automated Spine Segmentation and Spinopelvic Parameter Measurement ',
+            el('span', { class: 'landing-paper-status' }, '(METHODS PAPER · FORTHCOMING)')),
         ),
         checkbox,
         el('div', { class: 'landing-actions' }, enterButton),

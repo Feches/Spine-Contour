@@ -66,8 +66,8 @@ test('single and paired CSV export both regional segmental measurements and delt
     const pair = region === 'lumbar' ? 'L4-L5' : 'C3-C4';
     const column = `Segmental lordosis ${pair} (deg)`;
     const csv = toCsv([pre]).split('\r\n');
-    assert.equal(csv[4].split(',')[csv[3].split(',').indexOf(column)], '45');
-    const paired = parse(toPairedCsv(pairStudies([pre, post])).split('\r\n').slice(3).join('\r\n'));
+    assert.equal(csv[3].split(',')[csv[2].split(',').indexOf(column)], '45');
+    const paired = parse(toPairedCsv(pairStudies([pre, post])).split('\r\n').slice(2).join('\r\n'));
     assert.equal(paired.rows[0][`Delta ${column} Post-op`], '-45');
   }
 });

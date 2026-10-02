@@ -32,7 +32,7 @@ the film on the CPU and says so. See [GPU processing](docs/gpu-processing.md).
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.0.13 release notes](docs/releases/1.0.13.md) and
+[changelog](CHANGELOG.md), [v1.0.14 release notes](docs/releases/1.0.14.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
@@ -153,7 +153,7 @@ workspace and folder each film came from.
 - Click a study name to open it. Tick rows to choose a subset: the button reads **Export N selected**
   and writes the ticked rows that are visible; with nothing ticked, **Export CSV** writes every
   visible row. Hidden picks stay ticked and return with the filter.
-- The file has three `#` comment lines, then the header
+- The file has two `#` comment lines, then the header
   `Study ID,View,Subject,Timepoint,Film date,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1`
   followed by 15 calibrated disc-height columns, every clinical field present on the exported studies,
   and calibration metadata when present. Absent values are empty cells. Demo

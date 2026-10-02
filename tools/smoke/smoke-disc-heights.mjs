@@ -64,7 +64,7 @@ try {
   check('single and paired CSV match the panel', await cdp.evaluate(`(async()=>{
     const {toCsv,toPairedCsv,parse}=await import('./renderer/data/csv.js');
     const study=(await import('./renderer/store.js')).getState().studies[0];
-    const read=text=>parse(text.split(String.fromCharCode(13,10)).slice(3).join(String.fromCharCode(13,10))).rows[0];
+    const read=text=>parse(text.split(String.fromCharCode(13,10)).slice(2).join(String.fromCharCode(13,10))).rows[0];
     const single=read(toCsv([study]));
     const later={...study,id:'SP-8902',calibration:{...study.calibration,spacing:{...study.calibration.spacing,row_mm:.6,column_mm:.6}}};
     const paired=read(toPairedCsv({visits:['Post-op'],subjects:[{subject:'SYNTHETIC-01',films:new Map([['Pre-op',study],['Post-op',later]])}]}));
@@ -116,7 +116,7 @@ try {
   check('clearing calibration displays em dashes instead of pixel distances', (await heights()).flat().every(v=>v==='—'));
   check('uncalibrated export leaves every height empty', await cdp.evaluate(`(async()=>{
     const m=await import('./renderer/data/csv.js');const s=(await import('./renderer/store.js')).getState().studies[0];
-    const data=m.parse(m.toCsv([s]).split(String.fromCharCode(13,10)).slice(3).join(String.fromCharCode(13,10)));
+    const data=m.parse(m.toCsv([s]).split(String.fromCharCode(13,10)).slice(2).join(String.fromCharCode(13,10)));
     return data.headers.filter(h=>h.startsWith('Disc height ')).every(h=>data.rows[0][h]==='');
   })()`));
   await cdp.evaluate(`import('./renderer/calibration.js').then(m=>m.rememberCalibration('/synthetic/disc-heights.png',window.discOriginal.calibration))`);

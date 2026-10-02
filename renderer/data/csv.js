@@ -126,7 +126,6 @@ export function toCsv(studies) {
 
   const citation = [
     '# Spine Contour export',
-    '# Created by Cody Woodhouse, MD; Michael Jayasuriya, BS.',
     '# Investigational software. NOT FOR CLINICAL USE.',
   ];
   // Study ID is the study's NAME -- its film's stem, what every screen shows and what the workspace
@@ -193,7 +192,6 @@ export function toPairedCsv(pairing) {
 
   const citation = [
     '# Spine Contour export',
-    '# Created by Cody Woodhouse, MD; Michael Jayasuriya, BS.',
     '# Investigational software. NOT FOR CLINICAL USE.',
   ];
   const header = [
