@@ -76,10 +76,11 @@ export const SIDEBAR_KEYS = [
   'wsCsvRows',
 ];
 
-// `screen` selects which screen module is mounted. `ack` is here only
-// because landing.js's render() reads it (checkbox `checked`, "Enter
-// SpineContour" `disabled`) and landing.js is one of the modules this host
-// mounts. If a screen starts reading an ordinary state key -- one that
+// `screen` selects which screen module is mounted. `ack` is deliberately
+// absent: landing.js updates its checkbox and "Enter SpineContour" in place
+// from its own subscription, because remounting the landing page replays the
+// hero logo's riseIn entrance on every tick of the box (the logo blinks out
+// and fades back in). If a screen starts reading an ordinary state key -- one that
 // changes at user-click rate, not interaction rate -- add that key here too,
 // or the host will silently stop updating for it (no error, just a UI that
 // stops responding). EXCEPTION: a screen that needs to re-render at
@@ -91,7 +92,7 @@ export const SIDEBAR_KEYS = [
 // true. When in doubt, ask whether the key can change many times per second
 // under a held-down pointer; if so, it belongs in a module-scope
 // subscription inside the screen, never in this array.
-export const SCREEN_KEYS = ['screen', 'ack', 'calibrationRequest'];
+export const SCREEN_KEYS = ['screen', 'calibrationRequest'];
 
 export const TOAST_KEYS = ['toast'];
 
@@ -114,11 +115,10 @@ function keysChanged(prevState, nextState, keys) {
 // router.js has no virtual DOM and does not diff old vs. new trees -- per
 // the architecture contract, a host whose keys changed is rebuilt from
 // scratch -- so the previously-focused element is genuinely a different
-// object afterward. Left alone, that would mean remounting the Landing
-// screen host in response to the acknowledgement checkbox's own onChange
-// drops focus to <body> (the bug this file exists to fix), and the same
-// would happen to the sidebar's collapse button when it toggles
-// `navCollapsed`. We snapshot which descendant of `oldNode` had focus (by
+// object afterward. Left alone, that would mean remounting the sidebar in
+// response to its own collapse button toggling `navCollapsed` drops focus to
+// <body> (the landing checkbox had the same bug while `ack` was a screen
+// key). We snapshot which descendant of `oldNode` had focus (by
 // tag name and its ordinal position among same-tag descendants) before the
 // swap, then refocus the equivalent element in `freshNode` synchronously
 // afterward, so there is no rendered frame in which focus visibly rests on
@@ -241,7 +241,7 @@ export function renderRoute(root, state) {
       if (keysChanged(prevState, state, SCREEN_KEYS)) {
         const renderScreen = SCREENS[state.screen] || renderStudies;
         // Only restore focus when the mounted screen module is unchanged
-        // (i.e. this swap was driven by `ack`, not by `screen`). When
+        // (i.e. this swap was driven by `calibrationRequest`, not by `screen`). When
         // `screen` itself changed, the outgoing and incoming trees are
         // different components entirely, and swap()'s tag+ordinal matching
         // would happily focus an unrelated control in the new screen.
