@@ -1,8 +1,13 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-09-13
-**Branch:** `claude/spine-contour-filename-parse-b6c1bb` (filename grammar, note, paired visits, names; release 1.0.8 awaiting the PR — first section under "Where things stand")
-**Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-segmentation-failures-82e370`
+**Last updated:** 2026-10-02
+**Branch:** `claude/issue-39-failed-status-port` (the Failed-status additions on 1.0.13, issue #39 follow-up; PLANNED,
+not started — first section under "Where things stand"; `docs/superpowers/NEXT-SESSION.md` is the prompt)
+**Checkout:** `C:\Users\codyj\Spine Contour Desktop\Spine-Contour`, the main checkout on this workstation (no
+worktree). The `C:\Users\codyj\spine contour\…` worktree paths below are the 2026-09 layout of another workstation
+and do not exist here.
+**2026-09-13 branch (historical):** `claude/spine-contour-filename-parse-b6c1bb`, worktree
+`C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-segmentation-failures-82e370`.
 **Earlier copies (historical):** `claude/studies-ui-updates-bb040d` in worktree `studies-ui-updates-bb040d`, and
 `claude/upstream-reconcile-2026-09-08` — the UI branch (batch segmentation included) with the
 backend developer's trunk `origin/ui-redesign-cw` @ `5078b1c` merged in (2026-09-08); the studies branch was
@@ -41,6 +46,26 @@ the newest architecture amendment for controls and null rules. No model or calib
 algorithm changed; no screenshots were added.
 
 ## Where things stand
+
+### Failed-status additions on 1.0.13 (issue #39 follow-up) — PLANNED, not started (branch `claude/issue-39-failed-status-port`, off `main` @ `9992b99`, v1.0.13)
+
+2026-10-01 → 02, main checkout. Issue Feches/Spine-Contour#39 (a batch film that failed orientation or automatic
+detection stayed "Processing") was closed by Michael's 1.0.13 Failed status (PR #50, `8264de8`). The user compared it
+with the design they had approved on the local branch `claude/issue-39-failed-status` (spec
+`2026-09-29-failed-status-design.md`; tested end to end; never pushed) and chose to keep 1.0.13's model and add five
+decisions on top: films with no result read Unsegmented, and Processing is the running film and every film waiting
+in the running batch; Failed is its own red; the tooltip carries the date (`processingErrorAt`); the Analysis screen
+shows the reason (red note, FAILED card); stored reasons are plain sentences.
+
+- Spec: `docs/superpowers/specs/2026-10-01-failed-status-port-design.md` (`85b9d54`).
+- Plan: `docs/superpowers/plans/2026-10-01-failed-status-port.md` (`c98be25`), 8 tasks. Tasks 1–6 were replayed on a
+  clean worktree (unit 587 → 613); Task 7's smoke patch was applied from the plan's own extraction command. Task 8
+  (smoke suites, real films by DOM reads only, the human gate) is run by the controller.
+- Ledger: `.superpowers/sdd/2026-10-01-failed-status-port/progress.md` (gitignored, local to this checkout): the
+  pre-flight scan and rulings R1–R4 are done; no task has run; resume at Task 1.
+- Prompt for the implementing session: `docs/superpowers/NEXT-SESSION.md`.
+- `claude/issue-39-failed-status` is a reference only — never merged, rebased onto or cherry-picked; what to do with
+  it is a question for the user at the gate.
 
 ### Filename grammar, note, paired visits, names — DONE; release 1.0.8 awaiting the PR (branch `claude/spine-contour-filename-parse-b6c1bb`, off `fork/main` @ `6704586`, v1.0.7)
 

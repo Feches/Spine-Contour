@@ -1,83 +1,84 @@
 # Next session — prompt
 
-Written at the wrap of 2026-09-13 (the filename-grammar / note / paired-visits / names branch done and released as
-1.0.8 on the branch, the PR to `fork/main` still the user's to open and merge). Paste everything below the line as
-the first message of the next session. Where it says "the docs commit above `51ecba2`", the wrap's own docs commit is
-the branch tip.
+Written 2026-10-02 at the end of the planning session for the Failed-status additions on 1.0.13 (issue #39
+follow-up). Paste everything below the line as the first message of the next session, or tell the session "Read
+`docs/superpowers/NEXT-SESSION.md` and follow the prompt in it." Start the session in the main checkout,
+`C:\Users\codyj\Spine Contour Desktop\Spine-Contour`, not in a new worktree.
 
 ---
 
-Work on Spine Contour, an Electron + Python/FastAPI app that measures spinopelvic parameters from lateral lumbar
-radiographs.
+Work on Spine Contour, an Electron + Python/FastAPI app that measures spinal parameters from lateral radiographs.
 
-Working directory (absolute): `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-segmentation-failures-82e370`
-This is a git worktree, not the primary checkout; its directory name predates this work and means nothing. Run
-everything from here; do not `cd` to `C:\Users\codyj\spine contour` (branch `my-changes`, old code) and never launch
-the app from `.claude\worktrees\studies-ui-updates-bb040d` (branch `claude/wrap-2026-09-11`, v1.0.7 code) — both
-worktrees read the same `%APPDATA%\spine-contour` library, and a 2026-09-13 "bug" was exactly that.
-Branch: `claude/spine-contour-filename-parse-b6c1bb`, at the wrap's docs commit above `51ecba2` (`chore: release
-1.0.8`), on `fork/main` @ `6704586` (v1.0.7). Pushed to `fork`.
+**The job:** implement `docs/superpowers/plans/2026-10-01-failed-status-port.md` with
+superpowers:subagent-driven-development, through Task 8's human gate. The plan is approved: I asked for it to be
+run in a new session. Execution method: subagent-driven (my choice, already made — do not ask again).
 
-Read in this order before doing anything:
+**Where.**
+- Working directory: `C:\Users\codyj\Spine Contour Desktop\Spine-Contour`, the main checkout, no worktree (ledger
+  ruling R2: `node_modules`, `.venv` and the gitignored `backend/onnx/` graphs live only here, and Task 8 needs them).
+- Branch: `claude/issue-39-failed-status-port`, at the docs commit above `c98be25` (the plan), on `main` @ `9992b99`
+  (v1.0.13). Not pushed.
+- Check first: `git rev-parse --show-toplevel` prints that path, `git branch --show-current` prints that branch, and
+  `git status --short` is empty. If this session was started somewhere else (the desktop app can create a worktree
+  off `main`), stop and ask me to restart it in the main checkout. Do not copy the environment into a worktree.
 
-1. `CLAUDE.md` — the first paragraph (this branch), non-negotiables, commands, the `## Git` rules
-2. `docs/superpowers/HANDOFF.md` — the FIRST section under "Where things stand" (what was built, the ten rulings, what
-   was not run, what is next) and the 2026-09-11/12/13 entries at the top of "Known traps"
-3. `docs/releases/1.0.8.md` and `docs/naming-films.md` — the user-facing account of the release and the naming guide
-4. `docs/superpowers/specs/2026-09-06-preop-postop-organisation-design.md` §8.1, §11.2, §11.3 — the amended rules
-5. `docs/ROADMAP.md` item 2 (identity decided) and item 1 (the comment block, still open)
+**Read, in this order, before dispatching anything.**
+1. `docs/superpowers/specs/2026-10-01-failed-status-port-design.md` — the spec, the binding authority (189 lines).
+2. The plan: header, Global Constraints, Execution Notes, Review Focus, "Decisions this plan makes", File Map. Read
+   each task when you dispatch it; the skill's `task-brief` script extracts it.
+3. The ledger `.superpowers/sdd/2026-10-01-failed-status-port/progress.md` (gitignored, local). Its first line names
+   this plan. The pre-flight scan is done and ruled (R1–R4); no task has run; resume at Task 1. After any
+   compaction, trust the ledger and `git log` over memory, and never re-dispatch a task the ledger marks complete.
+4. `CLAUDE.md`: the non-negotiables and the commands. Its opening paragraphs, the older sections of
+   `docs/superpowers/HANDOFF.md`, and any `C:\Users\codyj\spine contour\…` path describe another workstation's
+   2026-09 layout; ignore those paths. HANDOFF's first section under "Where things stand" is this work.
 
-No plan file: the work was four bounded brainstorms settled in chat; the rulings live in HANDOFF's first section and
-below. There is no ledger.
+**How to run it.**
+- A fresh implementer subagent per task, then a task review (spec compliance and quality), per the skill. Models
+  per ledger R3: Tasks 1 and 6 on haiku; Tasks 2–5 and 7 on sonnet; task reviewers on sonnet; the final
+  whole-branch review on opus, after Task 7 and before Task 8.
+- An implementer sees only its brief, so every dispatch also carries the plan's Global Constraints, and for Tasks
+  1, 2 and 7 the glyph-trap note: the Edit and Write tools decode a six-character backslash-u escape into its
+  glyph, so the plan has them type `@@u` and run its fixer (Task 7 extracts its patch with a script instead).
+- Task 8 is run by you, the controller, not dispatched (R1). It launches the app on copies of my real films.
+- Do not stop between tasks to check in. Decide ambiguities yourself and record each as
+  `Ruling: <what> — <why> — <cost if wrong>` in the ledger. Stop only for: the human gate (Task 8 Step 7 — wait for
+  my explicit "gate passed"), anything destructive or security-sensitive, any push, PR or merge, or a plan so broken
+  that every path forward is a guess.
 
-Resume point. **Nothing is mid-flight.** State on `51ecba2`: unit 542/542 (`node --test test/*.test.js`);
-`smoke-studies.mjs` 136/136; `smoke-seeding.mjs` 36/36; `smoke-parameters.mjs` 58/58; `smoke-workspace.mjs` 100/100,
-each on a fresh scratch launch on 2026-09-13. Not run: `smoke-persist.mjs`, the backend pytest, `smoke-femoral-confidence.mjs`,
-the packaged-build checks. The next work is whichever of these the user asks for:
+**Rules that are not negotiable.**
+- Nothing is pushed and no PR is opened without my explicit say-so. The only remote is `origin`
+  (`github.com/Feches/Spine-Contour`); never push `main`. `gh` is not installed; a PR is opened in the web UI from a
+  body file.
+- Never view (Read) or send (SendUserFile) a screenshot that shows a real radiograph: viewing it sends it to Claude.
+  Check the app through DOM and store reads. Task 8 takes no screenshots at all.
+- Every app launch uses a scratch profile, `SPINE_CONTOUR_USER_DATA=$TEMP/spine-contour-<name>`, behind Task 8's
+  launch guard; never my real `%APPDATA%\spine-contour`. `tools/smoke/launch.mjs` deletes the folder that variable
+  points to unless `SMOKE_KEEP_PROFILE=1`. Never `npm run dev`, `run.bat` or `run.py` (they open the real library).
+- My films in `C:\Users\codyj\OneDrive\Desktop\OLIF studies\` are copied, never moved, renamed or deleted.
+- Do not delete scratch folders or files; list them for me (Task 8 Step 9). Never `git clean`; never delete
+  `.claude/` or `.superpowers/`.
+- The local branch `claude/issue-39-failed-status` is an earlier, superseded design: a reference only. Never merge
+  it, rebase onto it or cherry-pick from it.
 
-- **If v1.0.8 has been published** (`https://api.github.com/repos/Feches/Spine-Contour/releases`, unauthenticated,
-  60/h): the packaged-build checks on the installed 1.0.8 — no DEMO STUDIES row, no `library-preferences.json`,
-  automatic calibration with the bundled OCR, the nine OLIF films' names on Find and Parameters, `Export paired CSV`
-  writing two subjects with the merged pre-op visit, the note surviving a restart. Record them in HANDOFF.
-- **If the PR is not yet open**: the body is in the wrap message of 2026-09-13; the user opens it at
-  `https://github.com/Feches/Spine-Contour/compare/main...claude/spine-contour-filename-parse-b6c1bb?expand=1` and
-  merges with **Create a merge commit**. Do not open or merge it yourself. Check `git fetch fork` first: if `main`
-  moved, merge it into the branch, re-run the four suites, and only then hand the PR back.
-- Otherwise: brainstorm the next feature (superpowers:brainstorming; bounded changes get a short design in chat,
-  larger ones a spec and plan), or ROADMAP item 1 (skip `#` comment lines on import so the app's own export round-trips).
+**State at hand-off (2026-10-02).** Unit 587/587 on `85b9d54`. The plan's code was replayed in order on a clean
+worktree; the unit totals after Tasks 1–6 were 597, 599, 609, 610, 613, 613, and Task 7's patch applied cleanly from
+the plan's own command (5 files, +339 −34). The environment in this checkout was verified on 2026-10-01: Electron in
+`node_modules`; `.venv` with onnxruntime 1.24.4 and `DmlExecutionProvider`; six ONNX graphs in `backend/onnx/` copied
+from the installed app (their weights are unchanged since 1.0.11), plus 1.0.13's tracked `crop_detector.onnx`. The
+smoke suites have never been run against 1.0.13 or this branch; Task 8 is their first run.
 
-Decisions already made — do not relitigate (HANDOFF "Rulings made in chat (2026-09-11 → 13)" 1–10; in one line each):
+**At the end.** Give me the outcome in plain words, the Task 8 reads and counts, and a "Rulings I made" list. The
+open items to raise at the gate are in Task 8 Step 7. Then use superpowers:finishing-a-development-branch; push or
+open a PR only when I say so. A PR body says it follows up Feches/Spine-Contour#39.
 
-* underscore is the only field separator in a film's stem; spaces and hyphens inside a field are content
-* `note` is a top-level record field (drawer NOTE, CSV `Note`, searchable), read from the stem's plain trailing fields
-* a load never rewrites a stored subject; pre-1.0.8 films with the whole stem as subject are deleted and re-added
-* paired export by VISIT (subject + label + film date); `<label> N` only when a subject has two or more; the unnoted
-  film is primary and a noted film fills its gaps; disagreements flagged in the toast and a per-visit column; two
-  unnoted or two noted same-day films, or two Pre-op dates, are ambiguous and named
-* a merged visit's PI-LL mismatch is derived from the merged PI and LL and flagged as derived across films
-* one `.study-name` rule (280px cap, wrap anywhere, no ellipsis) for Find and Parameters; Find scrolls sideways when
-  too narrow; the collapsed sidebar card is an icon-only button
-* both exports name films by `studyName` (the stem) under `Study ID`; the SP-nnnn id appears nowhere a person looks
-  (no tooltips, no export column) — memory `no-record-ids-user-facing`
-* `fileStem` lives in `data/labels.js`, re-exported by `data/csv.js`
-* Find's DATE column stays the date added
-* 1.0.8 is a PATCH increment; every release goes through the user's own gate and click
-
-Manual gates the human owns: opening and merging the release PR; the packaged-build checks on the installed build;
-any change to a collaborator's design (route it, do not rewrite it).
-
-Remote rules: push to `fork` (`github.com/Feches/Spine-Contour`) only, feature branches only — a feature-branch push
-publishes nothing; never push `main` or `ui-redesign-cw`; never merge to `main`; `origin` (`mjayasur/Spine-Contour`)
-is read-only and its `main` is never a base. `gh` is not installed; PRs are opened in the web UI from a body file.
-
-Live traps and commands:
-
-* unit: `node --test test/*.test.js` (the glob; the directory form fails on Node 24)
-* source launch on the user's real library (close the installed app first; do not run two at once):
-  `Set-Location "C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-segmentation-failures-82e370"; $env:SPINE_CONTOUR_PYTHON = "C:\Users\codyj\spine contour\.venv\Scripts\python.exe"; npm.cmd run dev`
-* smoke launch on a scratch profile: `SPINE_CONTOUR_PYTHON=... node tools/smoke/launch.mjs`, suites in the foreground
-  with output to `tools/smoke/out/`, `node tools/smoke/cdp.mjs --quit`; `smoke-workspace.mjs` runs once per instance;
-  CDP screenshots need `ack: true` with the screen
-* `backend/onnx/` is gitignored — copy from a sibling worktree if missing; plain `python` is the Store alias, use the venv's;
-  after `npm ci`, run `node node_modules/electron/install.js` if `node_modules/electron/dist/electron.exe` is missing
-* the Bash tool's console is cp1252: set `PYTHONIOENCODING=utf-8` before a Python script that prints non-ASCII
+**Live traps.**
+- Unit tests: `node --test test/*.test.js` (the directory form fails on Node 24).
+- The working tree is CRLF (`core.autocrlf=true`); the Edit tool copes, multi-line scripts must not assume LF.
+- The Bash console is cp1252: set `PYTHONIOENCODING=utf-8` before a Python script that prints non-ASCII.
+- Some sandboxes refuse heredocs and compound commands: write the script or message to a file and run it.
+- Inside a double-quoted bash argument, backticks are command substitution; use `chr(96)` in Python one-liners.
+- `launch.mjs` may print `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` as it exits; the app stays up. If
+  the Bash tool kills the detached app, launch from PowerShell (Task 8 Step 3 has the command).
+- The Find table overflows horizontally at the default 1180×900 window and clips the STATUS column (pre-existing;
+  the smoke suite's `clickAt` scrolls its target into view).
