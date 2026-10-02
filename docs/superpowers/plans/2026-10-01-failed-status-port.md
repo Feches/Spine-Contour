@@ -3071,7 +3071,7 @@ the click turns every film in the batch to Processing at once.
 
 Now Stop, and read every row against the running id:
 ```bash
-CDP_PORT=9223 node tools/smoke/cdp.mjs "import('./renderer/store.js').then(async (m) => { document.querySelector('[data-find-key=stop]')?.click(); await new Promise((r) => setTimeout(r, 300)); const s = m.getState(); const rows = [...document.querySelectorAll('.studies-row')].map((r) => ({ id: r.dataset.studyId, cls: r.querySelector('.badge')?.className })); return { stopping: s.batch?.stopping, running: s.running, progress: document.querySelector('.studies-progress-text')?.textContent.trim(), wrong: rows.filter((r) => (r.id === s.running) !== r.cls.includes('badge-proc')) }; })"
+CDP_PORT=9223 node tools/smoke/cdp.mjs "import('./renderer/store.js').then(async (m) => { document.querySelector('[data-find-key=stop]')?.click(); await new Promise((r) => setTimeout(r, 300)); const s = m.getState(); const rows = [...document.querySelectorAll('.studies-row')].map((r) => ({ id: r.dataset.studyId, cls: r.querySelector('.badge')?.className })); return { stopping: s.batch?.stopping, running: s.running, progress: (() => { const e = document.querySelector('.studies-progress-text'); if (!e) return null; const c = e.cloneNode(true); c.querySelectorAll('.study-processing-detail').forEach((n) => n.remove()); return c.textContent.trim(); })(), wrong: rows.filter((r) => (r.id === s.running) !== r.cls.includes('badge-proc')) }; })"
 ```
 Expected: `stopping: true`; the progress reads `Stopping after this film…`; `wrong: []`. That is: the film in flight
 (if any) reads Processing and every other row reads its own status (P1). Then wait for the batch to end
@@ -3095,7 +3095,9 @@ CDP_PORT=9223 node tools/smoke/cdp.mjs "import('./renderer/store.js').then((m) =
 Expected:
 - The moved film reads **Failed**; its title is `Segmentation failed · <today>`, a newline, then
   `The film was not found at its saved location. Run segmentation from its Analysis screen to choose its new location.`;
-  its `processingErrorAt` is today's ISO time.
+  its `processingErrorAt` is an ISO instant (UTC) within the last hour of this run, and the tooltip's `<today>` is that
+  instant's LOCAL calendar date in the `Oct 2, 2026` format (after 8 pm EDT the ISO date prefix is already the next day;
+  that is correct).
 - Any model failure (2026-09-29 candidates: `sub225_pre-op_10-23-2023_femoral heads.jpg`, `sub226_pre-op_1-2-2024.jpg`)
   reads Failed with the backend's own sentence. If they segment this time, record that plainly; never fabricate a
   failure.
@@ -3106,16 +3108,24 @@ Expected:
 6i. **Sort.** `CDP_PORT=9223 node tools/smoke/cdp.mjs "(() => { document.querySelector('[data-find-key=sort-status]').click(); return true; })()"`,
 then read the rows' classes in order: Failed rows first, then Needs review, Segmented, Reviewed (spec §3 rank).
 
-6j. **Each Failed film on the Analysis screen.** Open it with
-`m.setState({ openId: '<id>', screen: 'analysis' })` (through `import('./renderer/store.js')`), wait 500 ms, then:
+6j. **Each Failed film on the Analysis screen.** Open each one from the Studies screen:
+`m.setState({ screen: 'studies' })`, then `m.setState({ openId: '<id>', screen: 'analysis' })` (both through
+`import('./renderer/store.js')`; openId is not a SCREEN_KEYS key, so setting it while already on Analysis would not
+remount the screen or start the new film's preview), wait 500 ms, then:
 ```bash
 CDP_PORT=9223 node tools/smoke/cdp.mjs "(() => { const pill = document.querySelector('.analysis-status .badge'); const note = document.querySelector('.analysis-region-bar .meas-note'); const q = (s) => document.querySelector(s)?.textContent.trim() ?? null; return { pill: pill?.className, pillText: pill?.textContent.trim(), pillTitle: pill?.getAttribute('title'), note: note?.textContent, noteFailed: note?.classList.contains('is-failed'), noteColor: note ? getComputedStyle(note).color : null, cardHidden: document.querySelector('.run-card')?.classList.contains('is-hidden'), eyebrow: q('.run-eyebrow'), title: q('.run-title'), body: q('.run-body'), button: q('.run-button') }; })()"
 ```
-Expected: pill `badge badge-fail`, text `Failed`, the same title as its row; note `Last run failed: <reason>`,
-`noteFailed: true`, `noteColor: "rgb(180, 35, 24)"`. For the moved film (no preview can load) `cardHidden: false`
-and the card reads `FAILED` / `Segmentation failed` / `<reason>` / `Run segmentation`. For an Auto film whose
-original preview has loaded the card is hidden by the existing rule (spec §6) and the note carries the reason;
-record which. No screenshot: this screen shows the film.
+Expected: pill `badge badge-fail`, text `Failed`, the same title as its row; a note that starts with
+`Last run failed: <reason>`. For the moved film the note is exactly
+`Last run failed: <reason> Original preview unavailable: The source film could not be found.` (workspace films are Auto,
+so the alignment-setup preview message follows after a space, spec §6). For a model-failed film, repeat the read every
+1 s for up to 60 s until the note no longer ends in `Loading original radiograph…`. Then expect either exactly
+`Last run failed: <reason>` with `cardHidden: true` (the preview loaded), or
+`Last run failed: <reason> Original preview unavailable: <message>` with the FAILED card visible; record which.
+`noteFailed: true`, `noteColor: "rgb(180, 35, 24)"`. For the moved film (no preview can load) `cardHidden: false` and
+the card reads `FAILED` / `Segmentation failed` / `<reason>` / `Run segmentation`. For an Auto film whose original
+preview has loaded the card is hidden by the existing rule (spec §6) and the note carries the reason; record which. No
+screenshot: this screen shows the film.
 
 6k. **Restart.** Quit, relaunch keeping the profile, then read the failures back:
 ```bash
@@ -3136,7 +3146,12 @@ CDP_PORT=9223 node tools/smoke/cdp.mjs "(() => { const b = document.querySelecto
 Expected: `Segment N unsegmented`, N the number of Failed films. Click it, read that those N rows read Processing at
 once (as in 6f), and wait as in 6f. The moved film fails again with the same sentence and a later `processingErrorAt`.
 
-6m. **Fix one.** Open a model-failed film if there is one, else the moved film, and change Region to Lumbar:
+6m. **Dark theme.** Run it right after 6l's batch ends, while the moved film is Failed again. Begin with
+`m.setState({ screen: 'studies' })`, then `m.setState({ theme: 'dark' })`, then read
+`getComputedStyle(document.querySelector('.badge-fail')).color` (expected `rgb(240, 113, 103)`). Switch back with
+`theme: 'light'`.
+
+6n. **Fix one.** Open a model-failed film if there is one, else the moved film, and change Region to Lumbar:
 ```bash
 CDP_PORT=9223 node tools/smoke/cdp.mjs "(() => { const sel = document.querySelector('.analysis-region-bar select'); sel.value = 'lumbar'; sel.dispatchEvent(new Event('change')); return sel.value; })()"
 ```
@@ -3144,9 +3159,6 @@ Expected: the header reads **Unsegmented** (`badge-unseg`, no title); the record
 `processingErrorAt` are both `null`; the region note is ordinary text without `is-failed`; the card reads
 `UNSEGMENTED`. For a model-failed film, click `Run segmentation` and record whether it now segments. For the moved
 film, do **not** click Run segmentation: it opens a native file picker CDP cannot close; the user does that at the gate.
-
-6n. **Dark theme.** `m.setState({ theme: 'dark' })`, then read `getComputedStyle(document.querySelector('.badge-fail')).color`
-on the Studies screen: expected `rgb(240, 113, 103)`. Switch back with `theme: 'light'`.
 
 Leave the app running on this profile for Step 7.
 
