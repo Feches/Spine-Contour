@@ -140,8 +140,10 @@ renderer/                         (new)
                                   mountViewer returns gains setFilmStatus('loading'|'missing'|null) (plan 05).
                                   Exports forgetPrediction(studyId) (plan 06). The run card's eyebrow is UNSEGMENTED
                                   for a real study without a result, QUEUED only for a film in the running batch,
-                                  RUNNING for the film in flight (2026-09-08); the Run and re-run buttons are disabled
-                                  while a batch is up.
+                                  RUNNING for the film in flight (2026-09-08); (2026-10-01, issue #39) FAILED, with
+                                  the stored reason and the Run segmentation button, for a real study without a result
+                                  whose last attempt failed and that is neither running nor queued; the Run and re-run
+                                  buttons are disabled while a batch is up.
   components/measurements.js      right panel, Measurements tab
   components/similar.js           right panel, Find similar tab
   components/clinical-data.js     drawer; exports mountClinicalData(host) → {update} (plan 06) — rows from
@@ -239,8 +241,10 @@ The single record type. Demo and real studies share it exactly.
  *                                     Analysis screen; null until marked; cleared by every write that replaces
  *                                     measurements, geometry or calibration (§8.4)
  * @property {string|null} processingError    (1.0.13) the reason the last segmentation attempt failed; (2026-10-01) the
- *                                            plain sentence data/failure.js failureReason gives; null when no attempt
- *                                            failed; cleared by a successful run and by a Region/Orientation change
+ *                                            plain sentence data/failure.js failureReason gives (a failure 1.0.13
+ *                                            recorded loads with its stored, possibly raw, text until the next attempt);
+ *                                            null when no attempt failed; cleared by a successful run and by a
+ *                                            Region/Orientation change
  * @property {string|null} processingErrorAt  (2026-10-01, issue #39) ISO time of that failure, written and cleared with
  *                                            it; null on a failure 1.0.13 recorded
  * @property {string}  addedAt     ISO 8601
@@ -617,7 +621,7 @@ export function reviewBlockedReason({ study, running, pending })   // → string
 ```
 
 Rules, in order:
-1. `measurements == null` → `'proc'`
+1. `measurements == null` → `'proc'` (superseded 2026-10-01: `'unseg'`, after a `processingError` → `'fail'` rule; see the amendment below)
 1b. `reviewedAt` a non-blank string → `'ok'` (2026-09-10, studies-table spec §8.2). The reasons stay: `reviewReasons` is unchanged and the Measurements panel keeps showing them.
 2. `piResidual > RESIDUAL_LIMIT` **or** `qc.femoral.confidence < CONFIDENCE_LIMIT` → `'rev'`
 3. A `qc.framing` record with missing/invalid S1 score or `s1_confidence < 0.6` → `'rev'`;
@@ -630,10 +634,10 @@ both yield `'seg'`. Missing `qc` does not by itself force `'rev'`. `RESIDUAL_LIM
 so the list's status and the panel's consistency warning cannot disagree. Spec 13.1's second
 `proc` condition — "currently running" — is a property of `state.running`, not of the record:
 `displayStatus` (2026-09-10) is the one place that rule is written (`state.running === study.id` overrides
-`deriveStatus`'s `'ok'`/`'rev'`/`'seg'` while a run is in flight); `deriveStatus` itself does not. A batch's
-queued films are 'proc' by rule 1 and are badged Processing like any unsegmented film; the Studies
-summary counts them as UNSEGMENTED and the batch's own progress is the filter bar's and the
-sidebar's (2026-09-08, batch spec decisions 7–8).
+`deriveStatus`'s `'ok'`/`'rev'`/`'seg'` (2026-10-01: any status) while a run is in flight); `deriveStatus`
+itself does not. (Superseded 2026-10-01 by the amendment below.) A batch's queued films are 'proc' by
+rule 1 and are badged Processing like any unsegmented film; the Studies summary counts them as UNSEGMENTED
+and the batch's own progress is the filter bar's and the sidebar's (2026-09-08, batch spec decisions 7–8).
 
 **2026-10-01 amendment (issue #39; release 1.0.13 and
 `docs/superpowers/specs/2026-10-01-failed-status-port-design.md`).** The rules are now, first match wins: no study →
@@ -835,7 +839,8 @@ to disk.
 `version !== STORE_VERSION`, and when a record's identity is wrong (`id` not a non-empty
 string, `source !== 'real'`, `fileName`/`addedAt`/`view` not strings). It does **not** throw
 on a malformed payload: when `measurements` or `geometry` fails its shape check, **both** are
-set to `null` with one `console.warn` naming the study (its status derives to `Processing`;
+set to `null` with one `console.warn` naming the study (its status derives to `Unsegmented`
+(2026-10-01; `Processing` before), or `Failed` when a failure is stored;
 a re-run restores it). The validator accepts the partial shapes above: supplied bodies have
 finite endplate pairs and four quadrilateral points; missing S1 and centers are null;
 femoral circles are empty or exactly two finite positive-radius circles. Numeric measurements
@@ -931,17 +936,23 @@ near-black in dark mode. `--shadow` is likewise theme-invariant. Both exist so t
 "nothing else defines colours" stays literally true — without them, primary buttons
 and toasts have to hardcode.
 
+(2026-10-01, issue #39; port spec P2 and 6) `--danger` is the Failed pill (`.badge-fail`:
+its own 14% tint behind `var(--danger)` text) and the failed-run region note
+(`.meas-note.is-failed`); it is never a button fill. Each theme's value is at least 4.5:1
+on its own 14% tint over `--bg` (5.12:1 light, 5.30:1 dark), so, unlike `--on-accent`, it
+is redefined under `body[data-dark]`.
+
 ```css
 :root {
   --bg:#FEFDFC; --card:#FFFFFF; --well:#F4EEE4; --border:#E5DDD1;
   --ink:#201814; --body:#4A4038; --muted:#8A7E72;
-  --accent:#C1502B; --sage:#6E8577;
+  --accent:#C1502B; --sage:#6E8577; --danger:#B42318;
   --on-accent:#FFFFFF; --shadow:rgba(0,0,0,.18);
 }
 body[data-dark] {
   --bg:#151312; --card:#181614; --well:#282522; --border:#38342F;
   --ink:#FAF7F2; --body:#C9C2B8; --muted:#9A9188;
-  --accent:#D45A32; --sage:#8AA894;
+  --accent:#D45A32; --sage:#8AA894; --danger:#F07167;
 }
 ```
 
