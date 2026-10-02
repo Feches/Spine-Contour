@@ -757,7 +757,7 @@ export function mountViewer(container) {
     // button's `disabled` looks at any run at all, because only one run is allowed at a time,
     // and at a batch (batch spec 9): while one is up no single run starts. `queued` is this
     // study's place in the running batch -- QUEUED means that and nothing else; a film in no
-    // batch reads UNSEGMENTED (spec decision 7).
+    // batch reads UNSEGMENTED (spec decision 7), or FAILED when its last attempt failed (below).
     const busy = state.running === study.id;
     const otherRunning = Boolean(state.running) && !busy;
     const batch = state.batch ?? null;
@@ -772,6 +772,16 @@ export function mountViewer(container) {
       return {
         eyebrow: 'UNSUPPORTED VIEW', title: 'Choose a lateral view',
         body: unsupportedViewReason(study.view), spinner: false, button: null,
+      };
+    }
+    // (2026-10-01, issue #39; port spec 6) The last attempt failed: the stored reason, and
+    // UNSEGMENTED's Run segmentation button under the same disabled rules and title. RUNNING and
+    // QUEUED win -- a Failed film in a batch waits like any other. A film with results shows them;
+    // the header pill and the region note carry its failure.
+    if (!hasResult && !busy && !queued && study.processingError) {
+      return {
+        eyebrow: 'FAILED', title: 'Segmentation failed', body: study.processingError, spinner: false,
+        button: { text: 'Run segmentation', disabled: Boolean(state.running) || Boolean(batch), title: waitTitle },
       };
     }
     if (!hasResult || busy) {

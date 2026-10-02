@@ -29,6 +29,28 @@ export function formatConfidence(qc) {
   return scorePercent(qc?.femoral?.confidence);
 }
 
+// (2026-10-01, issue #39; port spec 6) The Analysis header pill, on the list's rule
+// (screens/studies.js buildRow): Unsupported view for a real, unmeasured film no model reads that is
+// not running, else displayStatus with state.running and state.batch. `status` is what the pill shows
+// and `badgeKey` is what update() rebuilds it on: the key carries the failure and its time, so a new
+// failure under the same status rebuilds the pill and its tooltip. statusBadge never receives the key.
+export function headerBadge(open, runningId = null, batch = null) {
+  const unsupported = open.source === 'real' && open.measurements == null && runningId !== open.id && !inferenceView(open.view);
+  const status = displayStatus(open, runningId, batch);
+  const badgeKey = unsupported ? `unsupported:${open.view}` : `${status}|${open.processingErrorAt ?? ''}|${open.processingError ?? ''}`;
+  return { unsupported, status, badgeKey };
+}
+
+// (2026-10-01, issue #39; port spec 6) The region note of a film whose header pill reads Failed, or
+// null for every other film, whose note stays exactly what it was. `previewNote` is the preview
+// message update() would otherwise show, already gated on its own rule; it follows the reason after
+// a space.
+export function failedRunNote(open, { unsupported, status }, previewNote = '') {
+  if (unsupported || status !== 'fail') return null;
+  const note = `Last run failed: ${open.processingError}`;
+  return previewNote ? `${note} ${previewNote}` : note;
+}
+
 // ---------------------------------------------------------------------------
 // Transient per-study binary state. None of this belongs on the Study record --
 // plan 05 persists state.studies to disk and validates its shape, so anything
@@ -763,7 +785,16 @@ export function render(state) {
     previewButton.hidden = alignmentRunButton.hidden = !alignmentSetup;
     previewButton.disabled = Boolean(live.running || live.batch);
     alignmentRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view));
-    regionNote.textContent = mounted?.previewMessage && alignmentSetup ? mounted.previewMessage : open.measurements
+    // The preview message shows only during alignment setup: it is not cleared when a preview is
+    // abandoned, so its being set is not enough.
+    const previewNote = mounted?.previewMessage && alignmentSetup ? mounted.previewMessage : '';
+    // (2026-10-01, issue #39) Read here for the region note as well as for the header pill below. A
+    // film whose pill reads Failed says why here, in --danger, next to the controls that fix most
+    // failures, ahead of the ordinary guidance (port spec 6).
+    const { unsupported, status: badgeStatus, badgeKey } = headerBadge(open, live.running, live.batch);
+    const failedNote = failedRunNote(open, { unsupported, status: badgeStatus }, previewNote);
+    regionNote.classList.toggle('is-failed', failedNote !== null);
+    regionNote.textContent = failedNote !== null ? failedNote : previewNote ? previewNote : open.measurements
       ? `${requestedRegion(open) === 'auto' ? `Detected ${studyRegionLabel(open)}. ` : ''}${open.geometry?.anterior_side ? `Anterior: image ${open.geometry.anterior_side}. ` : ''}Changing region or orientation clears measurements; run again.`
       : requestedRegion(open) === 'auto' ? 'Detect cervical, lumbar or full spine from the film. Choose a region or orientation to override.'
       : studyRegion(open) === 'full_spine' ? 'Use a lateral full-spine film. Orientation is detected automatically; left/right overrides it.'
@@ -824,11 +855,9 @@ export function render(state) {
     reviewNote.textContent = reason ?? '';
     reviewNote.hidden = reason === null;
 
-    // The list's badge, on the list's rule (screens/studies.js buildRow): Unsupported view for an
-    // unsegmented film no model reads, else displayStatus with state.running.
-    const unsupported = open.source === 'real' && open.measurements == null && live.running !== open.id && !inferenceView(open.view);
-    const badgeStatus = displayStatus(open, live.running);
-    const badgeKey = unsupported ? `unsupported:${open.view}` : `${badgeStatus}:${open.processingError ?? ''}`;
+    // The list's badge, on the list's rule (screens/studies.js buildRow): headerBadge's `unsupported`,
+    // `status` and `badgeKey`, read above for the region note. A Failed pill carries the dated reason
+    // as its tooltip (2026-10-01, issue #39).
     if (badgeKey !== lastBadgeKey) {
       lastBadgeKey = badgeKey;
       mount(statusHost, unsupported ? unsupportedViewBadge(open.view)
