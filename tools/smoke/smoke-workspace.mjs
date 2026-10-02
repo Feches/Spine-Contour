@@ -301,10 +301,11 @@ try {
     chips[0]?.fixed && chips[0]?.dest === 'Join key' && chips[0]?.value === null && !chips[0]?.mapped && !chips[0]?.unmapped
     && chips[3]?.unmapped && !chips[3]?.fixed && chips[3]?.value === '', [chips[0], chips[3]]);
   check('each mapping select is labelled Map <src>', chips.filter((c) => !c.fixed).every((c) => c.label === `Map ${c.src}`), chips.map((c) => [c.src, c.label]));
-  check('the tx_plan select offers Unmapped plus every known field not claimed elsewhere (no Age, no Sex)',
-    same(chips[3]?.options, ['Unmapped', ...KNOWN_FIELDS.filter((f) => f !== 'Age' && f !== 'Sex')]), chips[3]?.options);
-  check('the age_yrs select keeps its own Age and omits the Sex claimed by another chip',
-    same(chips[1]?.options, ['Unmapped', ...KNOWN_FIELDS.filter((f) => f !== 'Sex')]), chips[1]?.options);
+  // (2026-10-02) Since 1.0.12 (5f317bc) a header that is not a known field is also offered as Keep column name (<header>).
+  check('the tx_plan select offers Unmapped plus every known field not claimed elsewhere (no Age, no Sex), then Keep column name (tx_plan)',
+    same(chips[3]?.options, ['Unmapped', ...KNOWN_FIELDS.filter((f) => f !== 'Age' && f !== 'Sex'), 'Keep column name (tx_plan)']), chips[3]?.options);
+  check('the age_yrs select keeps its own Age, omits the Sex claimed by another chip, and offers Keep column name (age_yrs)',
+    same(chips[1]?.options, ['Unmapped', ...KNOWN_FIELDS.filter((f) => f !== 'Sex'), 'Keep column name (age_yrs)']), chips[1]?.options);
 
   // The override, dispatched as the DOM would: set the value, fire `change`.
   await cdp.evaluate(`(() => {
