@@ -740,8 +740,14 @@ export function findSimilar(open, all, {scope = 'all', region = null, mode = 'al
                                          //   another graph than the open film's, under all/appearance; `region` is the region
                                          //   used, `weights` the table; sorted by d, ties by id; `n` defaults to TEN (decision 15)
 export function openReason(open, region, mode, embeddings)
-                                         // → 'unsegmented' | 'no-region' | 'no-embedding' | 'no-alignment' | null   why the OPEN
-                                         //   film has no cards
+                                         // → 'unsegmented' | 'no-region' | 'no-embedding' | 'no-alignment' | 'no-blocks' | null
+                                         //   why the OPEN film has no cards; 'no-blocks' after the others: compared against
+                                         //   ITSELF (pairDistances(b, b, weightsFor(region, mode))) the film has no present block
+                                         //   *(amended 2026-10-03, final review, ruling R21)*
+export function heldRegion(similarRegion, open)
+                                         // → 'lumbar' | 'cervical' | 'full_spine'   the held pick when similarRegion.openId is the
+                                         //   open film and hasRegion(open, pick), else defaultRegion(open) — the one rule the tab
+                                         //   and the compare chip read *(new 2026-10-03, final review)*
 export function angleLine(open, candidate, region = 'lumbar')
                                          // → string   the card's line 3: 'PI · LL · PT · SS' differences (lumbar, whole spine) or
                                          //   'Cobb · SVA' (cervical), whole units with a sign, a dash where either side is absent
@@ -1676,7 +1682,8 @@ HANDOFF decision 78).
 **4. State key.** `similarRegion: null | {openId, region}` in `store.js`: the Find similar tab's region pick, held for the
 film it was made on. The tab reads `state.similarRegion.region` when `openId` is the open film, else `defaultRegion(open)`,
 so opening another film falls back to that film's own region with no `setState` inside a subscriber. It joins the tab's
-redraw key and the compare chip's memo key.
+redraw key and the compare chip's memo key. *(Amended 2026-10-03, final review: both read `heldRegion(similarRegion,
+open)`, which also falls back when the film lacks the picked region's anatomy.)*
 
 **5. Backend API.** `embedding` on `/predict` and `/predict-stream` — and the value under `POST /embed`'s `embedding` key
 — is `{model, lumbar, cervical, whole, region} | null` (was `{model, crop, whole, film_type}`); `film_type` is gone.
@@ -1742,7 +1749,11 @@ and the match percentage, and the absent switched-on blocks follow on their own 
 (`.similar-line.similar-missing`, from `BLOCKS[].label`: `· no hip`, `· no disc heights`, `· no cervical balance` …) so a
 long list never squeezes the name out; line 3 is `angleLine` for the region. Empty states from `openReason`: `unsegmented`;
 `no-region` (`This study has no {region} anatomy to rank on — choose another region.`); `no-embedding`; `no-alignment`
-(`Alignment needs at least one measured {region} angle on this study.`). `styles/components.css`: `.model-choice-btn:disabled`
+(`Alignment needs at least one measured {region} angle on this study.`). *(Amended 2026-10-03, final review: `no-region`
+reads `This study has no anatomy to rank on yet.` when `hasRegion` fails for all three regions; `no-blocks` reads `This
+study has no {region} {shape|alignment|appearance|shape, alignment or appearance} to rank on — rank by another kind or
+choose another region.`; the no-candidates sentence is `No other eligible {lumbar|cervical|whole-spine} studies in this
+workspace.` / `… in the library.`)* `styles/components.css`: `.model-choice-btn:disabled`
 (opacity .5, `not-allowed`, the same on hover; a pressed disabled button keeps a dimmed accent, so the sidebar's pickers
 still show their setting while a run disables them) (R16). Comparison mode's chip (`renderer/screens/analysis.js`) calls
 `findSimilar` with the same held region as the tab and lists `similarRegion` in its memo key, so the chip's percentage is

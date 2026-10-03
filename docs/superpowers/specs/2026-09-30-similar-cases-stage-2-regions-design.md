@@ -152,7 +152,9 @@ Each with what it costs if it is wrong. Where a stage-1 decision is superseded, 
    films that have that anatomy (§7.5); `Rank by` switches kinds. Default: the open film's `studyRegion` (`full_spine`
    → Whole spine); the user's pick is a session key like the other two, held for the film it was made on and back to
    the default when another film is opened (the key stores the pick with the open study's id, so no store write is
-   needed inside a subscriber). *Cost if wrong:* three store values and three rows in a table.
+   needed inside a subscriber), and back to the default as well when the film lacks the picked region's anatomy
+   *(amended 2026-10-03, final review: `heldRegion(similarRegion, open)`, read by the tab and the compare chip alike)*.
+   *Cost if wrong:* three store values and three rows in a table.
 9. **Appearance follows anatomy; the film-type proxy is gone.** *(replaces stage-1 decision 5)* The embedding record
    carries three vectors — `lumbar` (the lumbar window), `cervical` (the cervical window) and `whole` — each null
    where the film has no such window, and the film's `region` from the result, not a guess from the framing. Block
@@ -318,9 +320,13 @@ segmental`, `· no disc heights`, `· no cervical shape`, `· no cervical lordos
 cervical segmental`, `· no global balance`, `· no lumbar crop`, `· no cervical crop`, `· no whole film`; `· no shape`
 for `V`. **Line 3** per decision 12.
 
-**Empty states:** unsegmented (unchanged); `This study has no {region} anatomy to rank on — choose another region.`;
+**Empty states:** unsegmented (unchanged); `This study has no {region} anatomy to rank on — choose another region.`, or
+`This study has no anatomy to rank on yet.` when the film has none of the three regions' anatomy;
 `No appearance embedding for this study yet — …` (unchanged); `Alignment needs at least one measured {region} angle on
-this study.`; no candidates (unchanged).
+this study.`; `This study has no {region} {shape|alignment|appearance|shape, alignment or appearance} to rank on — rank
+by another kind or choose another region.` when the open film has none of the mode's blocks against itself; no
+candidates, `No other eligible {region} studies in this workspace.` / `… in the library.` *(amended 2026-10-03, final
+review, ruling R21: the no-anatomy and no-blocks sentences are new, and the no-candidates sentence names the region)*.
 
 ## 11. `Embed`
 

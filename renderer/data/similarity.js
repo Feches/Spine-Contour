@@ -238,7 +238,10 @@ export function findSimilar(open, all, { scope = 'all', region = null, mode = 'a
   return { matches: ranked.slice(0, n), total: ranked.length, stale, region: r, weights };
 }
 
-// Why the tab shows no cards for the open study, or null (spec section 10).
+// Why the tab shows no cards for the open study, or null (spec section 10). 'no-blocks' (ruling R21):
+// the open film itself has none of the switched-on blocks -- compared against itself, no block is
+// present -- so no candidate could share one (no S1 under Shape, a record without the region's crop
+// under Appearance); the film's own gap, never the library's.
 export function openReason(open, region, mode, embeddings) {
   if (!open || open.measurements == null || open.geometry == null) return 'unsegmented';
   if (!hasRegion(open, region)) return 'no-region';
@@ -248,7 +251,17 @@ export function openReason(open, region, mode, embeddings) {
     const keys = BLOCKS.filter((block) => block.kind === 'alignment' && block.regions.includes(region)).map((block) => block.key);
     if (!keys.some((key) => b.entries[key].some(finite))) return 'no-alignment';
   }
+  const b = studyBlocks(open, embeddingOf(embeddings, open.id));
+  if (!Object.values(pairDistances(b, b, weightsFor(region, mode))).some(finite)) return 'no-blocks';
   return null;
+}
+
+// The tab's region for the open film: the held pick when it was made on this film and the film has that
+// region's anatomy, else the film's own region (spec decision 8). The Find similar tab and the compare
+// chip both read it, so they never rank under two different regions.
+export function heldRegion(similarRegion, open) {
+  const pick = similarRegion && open && similarRegion.openId === open.id ? similarRegion.region : null;
+  return REGIONS.includes(pick) && hasRegion(open, pick) ? pick : defaultRegion(open);
 }
 
 function signed(diff) {

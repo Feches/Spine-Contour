@@ -9,7 +9,7 @@
  */
 import { el, clear } from '../dom.js';
 import { getState, setState } from '../store.js';
-import { findSimilar, openReason, angleLine, subjectFilms, hasRegion, defaultRegion, BLOCKS } from '../data/similarity.js';
+import { findSimilar, openReason, angleLine, subjectFilms, hasRegion, heldRegion, REGIONS, BLOCKS } from '../data/similarity.js';
 import { resolveOutcomes, outcomeLine, footerLine, primaryOutcome } from '../data/outcomes.js';
 import { studyName, subjectLabel } from '../data/labels.js';
 import { ensureEmbeddings, embeddingsMap } from '../embeddings.js';
@@ -22,14 +22,19 @@ const RANK_OPTIONS = [['all', 'All'], ['shape', 'Shape'], ['alignment', 'Alignme
 const REGION_WORD = { lumbar: 'LUMBAR', cervical: 'CERVICAL', full_spine: 'WHOLE-SPINE' };
 const REGION_TEXT = { lumbar: 'lumbar', cervical: 'cervical', full_spine: 'whole-spine' };
 const KIND_WORDS = { all: 'SHAPE, ALIGNMENT AND APPEARANCE', shape: 'SHAPE', alignment: 'ALIGNMENT', appearance: 'APPEARANCE' };
+const KIND_TEXT = { all: 'shape, alignment or appearance', shape: 'shape', alignment: 'alignment', appearance: 'appearance' };
 const MISSING = Object.fromEntries(BLOCKS.map((block) => [block.key, `\u00B7 ${block.label}`]));
 
-function emptyText(reason, region) {
+function emptyText(reason, region, mode, open) {
   switch (reason) {
     case 'unsegmented': return 'Segment this study to find similar cases.';
-    case 'no-region': return `This study has no ${REGION_TEXT[region]} anatomy to rank on \u2014 choose another region.`;
+    // No region to offer instead when the film has none of the three's anatomy.
+    case 'no-region': return REGIONS.some((r) => hasRegion(open, r))
+      ? `This study has no ${REGION_TEXT[region]} anatomy to rank on \u2014 choose another region.`
+      : 'This study has no anatomy to rank on yet.';
     case 'no-embedding': return 'No appearance embedding for this study yet \u2014 run Embed on the Find tab, turn on Appearance embeddings in Settings, or rank by shape or alignment.';
     case 'no-alignment': return `Alignment needs at least one measured ${REGION_TEXT[region]} angle on this study.`;
+    case 'no-blocks': return `This study has no ${REGION_TEXT[region]} ${KIND_TEXT[mode]} to rank on \u2014 rank by another kind or choose another region.`;
     default: return '';
   }
 }
@@ -115,7 +120,9 @@ export function mountSimilar(host) {
     clear(root);
     const scope = state.similarScope;
     const mode = state.similarRank;
-    const region = state.similarRegion?.openId === open.id ? state.similarRegion.region : defaultRegion(open);
+    // The held pick, unless this film lacks that region's anatomy (a stale or programmatic pick):
+    // then the film's own region, the same rule the compare chip reads.
+    const region = heldRegion(state.similarRegion, open);
     const regionReason = (value) => (hasRegion(open, value) ? null : `This study has no ${REGION_TEXT[value]} anatomy`);
     root.append(
       segmented('SCOPE', 'scope', SCOPE_OPTIONS, scope, (value) => setState({ similarScope: value })),
@@ -126,14 +133,14 @@ export function mountSimilar(host) {
     const embeddings = embeddingsMap();
     const reason = openReason(open, region, mode, embeddings);
     if (reason) {
-      root.append(el('div', { class: 'similar-empty', 'data-similar-key': 'empty' }, emptyText(reason, region)));
+      root.append(el('div', { class: 'similar-empty', 'data-similar-key': 'empty' }, emptyText(reason, region, mode, open)));
       restore(focusKey);
       return;
     }
     const { matches, total, stale } = findSimilar(open, state.studies, { scope, region, mode, embeddings, n: 10 });
     if (matches.length === 0) {
       root.append(el('div', { class: 'similar-empty', 'data-similar-key': 'empty' },
-        scope === 'workspace' ? 'No other eligible studies in this workspace.' : 'No other eligible studies in the library.'));
+        `No other eligible ${REGION_TEXT[region]} studies ${scope === 'workspace' ? 'in this workspace' : 'in the library'}.`));
     } else {
       root.append(el('div', { class: 'similar-cards' }, ...matches.map((match) => card(match, open, state, region))));
       const statuses = matches.map((match) => resolveOutcomes(subjectFilms(match.study, state.studies))[primaryOutcome().key].status);

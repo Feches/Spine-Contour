@@ -21,7 +21,8 @@
 // SP-9208 shares SP-9200's subject (so it can never contaminate SP-9200's own candidate pool) but
 // carries its own unique workspace root and no LL measurement, for the two no-candidate empty
 // states. The transient records are injected and removed again within one section: SP-9209 (no
-// anatomy at all) and SP-9223 (S1 only) and SP-9222 (one cervical body) for the empty sentences,
+// anatomy at all), SP-9223 (S1 only), SP-9222 (one cervical body), SP-9226 (a lumbar film carrying only
+// a cervical body) and SP-9227 (L1-L5, no S1) for the empty sentences,
 // SP-9210..SP-9215 to push one ranking past ten candidates for the "more" tail, SP-9220/SP-9221 (a
 // cervical pair) and SP-9224/SP-9225 (a full-spine pair) for the Region control. Every fixture's
 // file name is "sim-NNNN", never its record id: the id must read nowhere on the tab.
@@ -194,6 +195,19 @@ const NECK_ONE = study('SP-9222', {
   region: 'cervical', subjectId: 'SIM-S022', timepoint: 'Pre-op', filmDate: '2025-03-07', fileName: 'sim-9222.png',
   measurements: { region: 'cervical' }, geometry: cervicalGeom(0, 0, 1, { levels: ['C3'] }), qc: FULL_QC,
 });
+// A film resolved as lumbar that carries only cervical landmarks: its own region has no anatomy but
+// another region does, the one way the no-region sentence still reads "choose another region" now that
+// a held pick the film lacks falls back to the film's own region (final review M1).
+const LUMBAR_NECK = study('SP-9226', {
+  region: 'lumbar', subjectId: 'SIM-S026', timepoint: 'Pre-op', filmDate: '2025-03-08', fileName: 'sim-9226.png',
+  measurements: MEAS_NULL, geometry: { ...cervicalGeom(0, 0, 1, { levels: ['C3'] }), region: 'lumbar', femoral_circles: [] }, qc: FULL_QC,
+});
+// L1-L5 and no S1, uncalibrated: V needs S1 and D a scale, so it has nothing to rank on by shape
+// ('no-blocks', ruling R21).
+const NO_S1 = study('SP-9227', {
+  subjectId: 'SIM-S027', timepoint: 'Pre-op', filmDate: '2025-03-09', fileName: 'sim-9227.png',
+  measurements: MEAS_NULL, geometry: { ...geom(0, 0, 1), s1_superior: null }, qc: FULL_QC,
+});
 const CERVICAL = [0, 1].map((i) => study(`SP-922${i}`, {
   workspaceFolder: ROOT, region: 'cervical', subjectId: `SIM-S02${i}`, timepoint: 'Pre-op', filmDate: `2025-05-0${i + 1}`,
   fileName: `sim-922${i}.png`, measurements: { region: 'cervical' }, geometry: cervicalGeom(10 * i, 0, 1), qc: FULL_QC,
@@ -202,7 +216,7 @@ const FULL_SPINE = [0, 1].map((i) => study(`SP-922${4 + i}`, {
   workspaceFolder: ROOT, region: 'full_spine', subjectId: `SIM-S02${4 + i}`, timepoint: 'Pre-op', filmDate: `2025-06-0${i + 1}`,
   fileName: `sim-922${4 + i}.png`, measurements: { ...MEAS(50 + 8 * i), region: 'full_spine' }, geometry: fullSpineGeom(8 * i, 8 * i, 1 + 0.03 * i), qc: FULL_QC,
 }));
-const TRANSIENT_IDS = [EMPTY_FILM, S1_ONLY, NECK_ONE, ...EXTRA, ...CERVICAL, ...FULL_SPINE].map((r) => r.id);
+const TRANSIENT_IDS = [EMPTY_FILM, S1_ONLY, NECK_ONE, LUMBAR_NECK, NO_S1, ...EXTRA, ...CERVICAL, ...FULL_SPINE].map((r) => r.id);
 const EXTRA_IDS = EXTRA.map((r) => r.id);
 const ALL_IDS = [...MAIN_IDS, ...TRANSIENT_IDS];
 
@@ -450,19 +464,35 @@ try {
   await cdp.setState(`{ openId: 'SP-9205', similarRank: 'shape' }`);
   await cdp.settle(400);
   check('the partial study has no sentence of its own any more: under Shape it ranks like any other film', (await count('.similar-card')) > 0 && !(await has('[data-similar-key="empty"]')), await count('.similar-card'));
-  await addStudies([EMPTY_FILM, S1_ONLY, NECK_ONE]);
+  await addStudies([EMPTY_FILM, S1_ONLY, NECK_ONE, LUMBAR_NECK, NO_S1]);
   await cdp.setState(`{ openId: 'SP-9209', similarRank: 'all', similarRegion: null }`);
   await cdp.settle(400);
-  check('a study with no geometry at all reads the no-region sentence with the lumbar word', (await text('[data-similar-key="empty"]')) === `This study has no lumbar anatomy to rank on ${DASH} choose another region.`, await text('[data-similar-key="empty"]'));
-  // The buttons would refuse the other two regions on this film; a store write is how a stale or
-  // programmatic pick could still arrive, and the sentence must name the region it was asked for.
+  check('a study with no anatomy in any region reads the no-anatomy sentence, offering no other region', (await text('[data-similar-key="empty"]')) === 'This study has no anatomy to rank on yet.', await text('[data-similar-key="empty"]'));
+  await cdp.setState(`{ openId: 'SP-9226' }`);
+  await cdp.settle(400);
+  check("a study whose own region has no anatomy, another region's having some, reads the no-region sentence with the lumbar word", (await text('[data-similar-key="empty"]')) === `This study has no lumbar anatomy to rank on ${DASH} choose another region.`, await text('[data-similar-key="empty"]'));
+  // The buttons would refuse the other two regions on a lumbar film; a store write is how a stale or
+  // programmatic pick could still arrive, and the tab falls back to the film's own region (M1).
   await cdp.setState(`{ openId: 'SP-9200', similarRegion: { openId: 'SP-9200', region: 'cervical' } }`);
   await cdp.settle(400);
-  check('a cervical pick on a lumbar film reads the no-region sentence with the cervical word', (await text('[data-similar-key="empty"]')) === `This study has no cervical anatomy to rank on ${DASH} choose another region.`, await text('[data-similar-key="empty"]'));
+  check('a cervical pick on a lumbar film falls back to Lumbar: Lumbar pressed, cards, no sentence',
+    (await attr('[data-similar-key="region-lumbar"]', 'aria-pressed')) === 'true' && (await count('.similar-card')) > 0 && !(await has('[data-similar-key="empty"]')),
+    { lumbar: await attr('[data-similar-key="region-lumbar"]', 'aria-pressed'), cards: await count('.similar-card'), empty: await text('[data-similar-key="empty"]') });
   await cdp.setState(`{ similarRegion: { openId: 'SP-9200', region: 'full_spine' } }`);
   await cdp.settle(400);
-  check('a whole-spine pick on a lumbar film reads the no-region sentence with the whole-spine word', (await text('[data-similar-key="empty"]')) === `This study has no whole-spine anatomy to rank on ${DASH} choose another region.`, await text('[data-similar-key="empty"]'));
+  check('a whole-spine pick on a lumbar film falls back to Lumbar the same way',
+    (await attr('[data-similar-key="region-lumbar"]', 'aria-pressed')) === 'true' && (await count('.similar-card')) > 0 && !(await has('[data-similar-key="empty"]')),
+    { lumbar: await attr('[data-similar-key="region-lumbar"]', 'aria-pressed'), cards: await count('.similar-card'), empty: await text('[data-similar-key="empty"]') });
+  check('the eyebrow names the region actually ranked, not the stale pick', (await text('.similar-eyebrow')) === 'RANKED BY LUMBAR SHAPE, ALIGNMENT AND APPEARANCE', await text('.similar-eyebrow'));
   await cdp.setState(`{ similarRegion: null }`);
+
+  // A film with no block of the mode: L1-L5 and no S1 under Shape (ruling R21).
+  await cdp.setState(`{ openId: 'SP-9227', similarRank: 'shape' }`);
+  await cdp.settle(400);
+  check('a lumbar film without S1 under Shape reads the no-blocks sentence, not the no-candidates one', (await text('[data-similar-key="empty"]')) === `This study has no lumbar shape to rank on ${DASH} rank by another kind or choose another region.`, await text('[data-similar-key="empty"]'));
+  await cdp.setState(`{ similarRank: 'alignment' }`);
+  await cdp.settle(400);
+  check('the same film under Alignment ranks on its segmental angles: cards, no sentence', (await count('.similar-card')) > 0 && !(await has('[data-similar-key="empty"]')), { cards: await count('.similar-card'), empty: await text('[data-similar-key="empty"]') });
 
   await cdp.setState(`{ openId: 'SP-9206', similarRank: 'all' }`);
   await cdp.settle(400);
@@ -486,18 +516,18 @@ try {
   await cdp.setState(`{ openId: 'SP-9222' }`);
   await cdp.settle(400);
   check('a cervical study with no measured angle reads the no-alignment sentence with the cervical word', (await text('[data-similar-key="empty"]')) === 'Alignment needs at least one measured cervical angle on this study.', await text('[data-similar-key="empty"]'));
-  await dropStudies(['SP-9209', 'SP-9222', 'SP-9223']);
+  await dropStudies(['SP-9209', 'SP-9222', 'SP-9223', 'SP-9226', 'SP-9227']);
 
   await cdp.setState(`{ openId: 'SP-9208', similarRank: 'shape', similarScope: 'workspace' }`);
   await cdp.settle(400);
-  check('a study alone in its workspace reads the workspace no-candidate sentence', (await text('[data-similar-key="empty"]')) === 'No other eligible studies in this workspace.', await text('[data-similar-key="empty"]'));
+  check('a study alone in its workspace reads the workspace no-candidate sentence, naming the region', (await text('[data-similar-key="empty"]')) === 'No other eligible lumbar studies in this workspace.', await text('[data-similar-key="empty"]'));
 
   // The library-wide no-candidate sentence needs every OTHER real study gone -- candidates() only
   // ever looks at source: 'real' studies, so the demo library alone can never produce it.
   await cdp.setState(`(s) => ({ studies: s.studies.filter((x) => x.source !== 'real' || x.id === 'SP-9208') })`);
   await cdp.setState(`{ similarScope: 'all' }`);
   await cdp.settle(400);
-  check('with no other real study in the library, the library no-candidate sentence shows', (await text('[data-similar-key="empty"]')) === 'No other eligible studies in the library.', await text('[data-similar-key="empty"]'));
+  check('with no other real study in the library, the library no-candidate sentence shows, naming the region', (await text('[data-similar-key="empty"]')) === 'No other eligible lumbar studies in the library.', await text('[data-similar-key="empty"]'));
 
   await resetStudies();
   await cdp.setState(`{ openId: 'SP-9200', similarScope: 'all', similarRank: 'all', compareId: null }`);
@@ -599,7 +629,7 @@ try {
   check('region-lumbar is disabled for a cervical film', await cdp.evaluate("document.querySelector('[data-similar-key=\"region-lumbar\"]').disabled"), null);
   check('region-full_spine is disabled for a cervical film', await cdp.evaluate("document.querySelector('[data-similar-key=\"region-full_spine\"]').disabled"), null);
   check('the eyebrow names the cervical region', (await text('.similar-eyebrow')) === 'RANKED BY CERVICAL SHAPE, ALIGNMENT AND APPEARANCE', await text('.similar-eyebrow'));
-  check('with no other cervical film the library no-candidate sentence shows', (await text('[data-similar-key="empty"]')) === 'No other eligible studies in the library.', await text('[data-similar-key="empty"]'));
+  check('with no other cervical film the library no-candidate sentence shows, with the cervical word', (await text('[data-similar-key="empty"]')) === 'No other eligible cervical studies in the library.', await text('[data-similar-key="empty"]'));
 
   await addStudies([CERVICAL[1]]);
   await embedRecord('SP-9221', CURRENT_SHA, null, { region: 'cervical', cervical: [0.9, 0.4, 0] });

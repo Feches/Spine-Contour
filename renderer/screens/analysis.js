@@ -25,7 +25,7 @@ import { calibrationForStudy } from '../calibration.js';
 import { preferReviewedCalibration } from '../data/calibration.js';
 import { storeEmbedding, embeddingsMap } from '../embeddings.js';
 import { embeddingRecord } from '../data/embeddings.js';
-import { findSimilar } from '../data/similarity.js';
+import { findSimilar, heldRegion } from '../data/similarity.js';
 
 const BACK_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12 H5"></path><path d="M11 6 L5 12 L11 18"></path></svg>';
 
@@ -1061,7 +1061,8 @@ export function render(state) {
       if (sameMatchKey(matchKey, lastMatchKey)) {
         match = lastMatch;
       } else {
-        const region = live.similarRegion?.openId === open.id ? live.similarRegion.region : null;
+        // The tab's own region rule (a pick the film lacks the anatomy for falls back to its own region).
+        const region = heldRegion(live.similarRegion, open);
         match = findSimilar(open, live.studies, { scope: live.similarScope, region, mode: live.similarRank, embeddings: embeddingsMap(), n: Infinity })
           .matches.find((m) => m.study.id === other.id)?.match ?? null;
         lastMatchKey = matchKey;

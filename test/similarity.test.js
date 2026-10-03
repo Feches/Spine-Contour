@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   LANDMARK_ORDER, CERVICAL_ORDER, BLOCK_KEYS, MODES, SCOPES, LUMBAR_SHAPE, CERVICAL_SHAPE, vector, cervicalVector,
   shapePair, hipUnder, entryDistance, appearanceDistance, pairDistances, medianScale, fuse, matchScore, candidates,
-  findSimilar, openReason, angleLine, subjectFilms, needsEmbedding, weightsFor, studyBlocks,
+  findSimilar, openReason, angleLine, subjectFilms, needsEmbedding, weightsFor, studyBlocks, heldRegion,
 } from '../renderer/data/similarity.js';
 import { lumbarPoints, cervicalPoints, globalBalance } from '../renderer/data/similarity-blocks.js';
 import { HAND_ADDED } from '../renderer/data/parameters.js';
@@ -284,7 +284,32 @@ test('openReason names why the open study has no cards', () => {
   // segmental readers refusing endplates outside a 10 px image.
   assert.equal(openReason(study('a', { measurements: { PI: null, PT: null, SS: null, L1PA: null, LL: {} }, geometry: { ...lumbarGeometry(), image_width: 10, image_height: 10 } }), 'lumbar', 'alignment', embeddings), 'no-alignment');
   assert.equal(openReason(study('a'), 'lumbar', 'all', embeddings), null);
-  assert.equal(openReason(study('a', { geometry: lumbarGeometry({ levels: ['L5'], hip: false }), qc: { coverage: { partial: true, unoriented: [] } } }), 'lumbar', 'shape', embeddings), null, 'partial is not a reason any more');
+  // Three levels and S1 are the fourteen points V needs; one level and S1 (six points) leave Shape nothing.
+  assert.equal(openReason(study('a', { geometry: lumbarGeometry({ levels: ['L3', 'L4', 'L5'], hip: false }), qc: { coverage: { partial: true, unoriented: [] } } }), 'lumbar', 'shape', embeddings), null, 'partial is not a reason any more');
+  assert.equal(openReason(study('a', { geometry: lumbarGeometry({ levels: ['L5'], hip: false }), qc: { coverage: { partial: true, unoriented: [] } } }), 'lumbar', 'shape', embeddings), 'no-blocks', 'below the shape floor, by its points, not its flag');
+});
+
+test("openReason is 'no-blocks' when the open film has none of the mode's blocks for the region against itself (ruling R21)", () => {
+  // L1-L5 and no S1, uncalibrated: V needs S1, H follows V, D needs a scale -- nothing to rank on by shape.
+  const noS1 = study('n', { geometry: lumbarGeometry({ s1: false }) });
+  assert.equal(openReason(noS1, 'lumbar', 'shape', {}), 'no-blocks');
+  assert.equal(openReason(noS1, 'lumbar', 'alignment', {}), null, 'its angles rank under Alignment');
+  // A record without the region's crop has nothing for Appearance to compare.
+  const neckOnly = { n: record('n', { cervical: [0, 1] }) };
+  assert.equal(openReason(noS1, 'lumbar', 'appearance', neckOnly), 'no-blocks');
+  assert.equal(openReason(study('a'), 'lumbar', 'shape', {}), null);
+});
+
+test('heldRegion keeps the pick made on the open film while the film has that anatomy, else the film’s own region', () => {
+  const lumbar = study('a');
+  const full = fullSpine('f');
+  assert.equal(heldRegion(null, lumbar), 'lumbar');
+  assert.equal(heldRegion({ openId: 'f', region: 'lumbar' }, full), 'lumbar');
+  assert.equal(heldRegion({ openId: 'f', region: 'cervical' }, full), 'cervical');
+  assert.equal(heldRegion({ openId: 'other', region: 'lumbar' }, full), 'full_spine', 'a pick made on another film is not this one’s');
+  assert.equal(heldRegion({ openId: 'a', region: 'cervical' }, lumbar), 'lumbar', 'a pick the film has no anatomy for falls back');
+  assert.equal(heldRegion({ openId: 'a', region: 'full_spine' }, lumbar), 'lumbar');
+  assert.equal(heldRegion({ openId: 'a', region: 'sideways' }, lumbar), 'lumbar');
 });
 
 test('angleLine follows the region: lumbar angles, or the cervical Cobb and SVA', () => {
