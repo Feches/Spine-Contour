@@ -25,14 +25,21 @@ export function processorChoices(processors, selected) {
   return choices;
 }
 
+// The kinds that always run on the CPU by design (Ruling R7; mirrors backend/models/models.py's
+// CPU_ONLY_KINDS): their CPU provider is not a fallback, so they never decide where a run's
+// models ran. The crop detector is not one of them here.
+const CPU_ONLY_KINDS = ['embed'];
+
 // Where a stored result's models ran, from the per-model providers the backend recorded
-// (`qc.processing.providers`): 'GPU' when every model used DirectML, 'CPU' when none did, and
-// 'GPU + CPU' when some fell back. Records from before the processor setting carry no
-// `processor` and read null: absent, never a guess.
+// (`qc.processing.providers`), CPU_ONLY_KINDS left out: 'GPU' when every model used DirectML,
+// 'CPU' when none did, and 'GPU + CPU' when some fell back. Records from before the processor
+// setting carry no `processor` and read null: absent, never a guess.
 export function describeProcessor(qc) {
   const processing = qc?.processing;
   if (!processing?.processor) return null;
-  const lists = Object.values(processing.providers ?? {}).filter(Array.isArray);
+  const lists = Object.entries(processing.providers ?? {})
+    .filter(([kind, providers]) => !CPU_ONLY_KINDS.includes(kind) && Array.isArray(providers))
+    .map(([, providers]) => providers);
   if (lists.length === 0) return null;
   const onGpu = lists.filter((providers) => providers.includes('DmlExecutionProvider')).length;
   return onGpu === 0 ? 'CPU' : onGpu === lists.length ? 'GPU' : 'GPU + CPU';

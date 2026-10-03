@@ -141,6 +141,21 @@ test('a result says where its models ran only from the providers it recorded', (
   }
 });
 
+// (merge fix, 2026-10-03; Ruling R7) The appearance encoder always runs on the CPU, by design: its
+// CPU provider is not a fallback, so it never turns a GPU run into GPU + CPU.
+test('the CPU-only appearance encoder does not change where a result says its models ran', () => {
+  const gpu = { requested: 'gpu:10de:2520', resolved: 'gpu:10de:2520', name: 'NVIDIA GeForce RTX 3060', note: null };
+  const dml = ['DmlExecutionProvider', 'CPUExecutionProvider'];
+  const cpu = ['CPUExecutionProvider'];
+  const qc = (providers) => ({ processing: { processor: gpu, providers } });
+  const allOnGpu = { s1: dml, vertebra: dml, femoral: dml, hrnet: dml, embed: cpu };
+  assert.equal(describeProcessor(qc(allOnGpu)), 'GPU');
+  assert.equal(processorTitle(qc(allOnGpu)), 'The models ran on NVIDIA GeForce RTX 3060');
+  const oneFellBack = { ...allOnGpu, femoral: cpu };
+  assert.equal(describeProcessor(qc(oneFellBack)), 'GPU + CPU');
+  assert.equal(processorTitle(qc(oneFellBack)), 'The models ran on NVIDIA GeForce RTX 3060; some fell back to the CPU');
+});
+
 test('progress belongs to one request; stale, malformed and cancelled updates do not overwrite it', () => {
   assert.equal(progressUpdate(current, { requestId: 'old', type: 'progress', message: 'Wrong film' }), current);
   assert.equal(progressUpdate(current, { requestId: 'current', type: 'progress', message: null }), current);
