@@ -151,9 +151,11 @@ test('vectors.json version 2 carries every block by key with null where a film l
   // The families come from the registry, so the file cannot drift from it (ruling R24).
   assert.deepEqual(vectors.families, Object.fromEntries(FAMILIES.map((family) => [family, BLOCKS.filter((block) => block.family === family).map((block) => block.key)])));
   assert.deepEqual(Object.keys(vectors.blocks), [...BLOCK_KEYS, 'embedding']);
-  assert.deepEqual(vectors.blocks.C, { vector: 'lumbar', unit: 'embedding' });
-  assert.deepEqual(vectors.blocks.CC, { vector: 'cervical', unit: 'embedding' });
-  assert.deepEqual(vectors.blocks.W, { vector: 'whole', unit: 'embedding' });
+  assert.deepEqual(vectors.blocks.C, { vector: 'lumbar', unit: 'embedding', scale: 0.1 });
+  assert.deepEqual(vectors.blocks.CC, { vector: 'cervical', unit: 'embedding', scale: 0.1 });
+  assert.deepEqual(vectors.blocks.W, { vector: 'whole', unit: 'embedding', scale: 0.1 });
+  // Every block carries the registry's nominal scale (ruling R26), the divisor the app uses below three candidate pairs.
+  for (const block of BLOCKS) assert.equal(vectors.blocks[block.key].scale, block.scale, `${block.key} scale`);
   // Every key a family names is a film entry's key, or a block whose `vector` is one.
   const filmKeys = Object.keys(vectors.films[0]);
   for (const key of Object.values(vectors.families).flat()) {
@@ -276,6 +278,7 @@ test('README.md maps the appearance blocks to the film keys, states the shape-nu
   assert.ok(readme.includes('even though the app ranks two films over the landmarks they share'), 'and why it differs from the app');
   assert.ok(readme.includes('keeps a `null` in each slot the film lacks'), 'entry blocks keep per-slot nulls');
   assert.ok(readme.includes('from before version 2 or from another encoder are not exported') && readme.includes('`Embed`'), 'why a folder can have no embeddings');
+  assert.ok(readme.includes('when at least three candidate pairs share the block') && readme.includes("else by the block's nominal scale") && readme.includes('`scale`'), 'the scaling rule (ruling R26)');
 });
 
 test('datasetMessage counts what was written and left out, each clause only when nonzero', () => {

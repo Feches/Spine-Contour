@@ -11,8 +11,8 @@ and do not exist here.
 `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-segmentation-failures-82e370`.
 **Similar-cases branch (held):** `claude/image-similarity-visualization-400922`, worktree
 `C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`, last updated on its own line 2026-10-03:
-merged with `fork/main` @ `c53e91d` (v1.0.15) and stage 2 (regions) built, the human gate not yet run; releases as 1.0.16 or
-later (the first section under "Where things stand").
+merged with `fork/main` @ `c53e91d` (v1.0.15) and stage 2 (regions) built, finally reviewed and fixed (HEAD `a65d2fc`), the human
+gate not yet run; releases as 1.0.16 or later (the first section under "Where things stand").
 **Earlier copies (historical):** `claude/studies-ui-updates-bb040d` in worktree `studies-ui-updates-bb040d`, and
 `claude/upstream-reconcile-2026-09-08` — the UI branch (batch segmentation included) with the
 backend developer's trunk `origin/ui-redesign-cw` @ `5078b1c` merged in (2026-09-08); the studies branch was
@@ -65,8 +65,8 @@ test files); unit 663/663 and backend 744 passed, 4 skipped on it. An Opus revie
 all ten points asked) found five Important points (one moot) and three Minor ones, fixed or ruled (below); the fixes are a
 two-commit wave: `87b7a5d` (a film an Embed batch is running keeps
 its derived status instead of Processing, so `summaryCounts` stops counting it Unsegmented; the appearance encoder is a CPU
-model, `CPU_ONLY_KINDS` in `backend/models/models.py`, outside GPU qualification; the Analysis comparison header reads
-"06 — COMPARISON MODE") and `4164673` (the processor badge ignores the encoder's CPU provider). Unit 666/666 after the
+model, `CPU_ONLY_KINDS` in `backend/models/models.py`, outside GPU qualification; a cosmetic fix to the `analysis.css` section
+comment for comparison mode) and `4164673` (the processor badge ignores the encoder's CPU provider). Unit 666/666 after the
 wave.
 
 **2. Stage 2.** Spec `docs/superpowers/specs/2026-09-30-similar-cases-stage-2-regions-design.md`; plan
@@ -96,22 +96,53 @@ review per task, all clean or fixed in a round). What it builds, by commit:
   region` in `paired.csv`, per-region counts and a `notice` in the manifest).
 - **Smoke** (`fceb3ac`). `smoke-similar.mjs` grows to the Region control, version-2 records, the partial film as a
   candidate, a cervical film, ten cards and a tail of one.
-- **The records** (this task). The contract amendment `## 2026-09-30 amendment: similar cases stage 2`, the stage-1 and
-  stage-2 spec status lines, decision 78 below, ROADMAP §8, `docs/appearance-embeddings.md`, CLAUDE.md, the plan's Ledger.
+- **The records** (Task 10, `3694373`; brought to HEAD by the docs follow-up after the final review). The contract amendment
+  `## 2026-09-30 amendment: similar cases stage 2`, the stage-1 and stage-2 spec status lines, decision 78 below, ROADMAP §8,
+  `docs/appearance-embeddings.md`, CLAUDE.md, the plan's Ledger.
 
-**Counts at the close (2026-10-03).** Unit `node --test test/*.test.js` 678/678 (`tools/smoke/out/task10-unit.txt`);
+**Counts at the close of Task 10 (2026-10-03, `fceb3ac`'s tree).** Unit `node --test test/*.test.js` 678/678 (`tools/smoke/out/task10-unit.txt`);
 backend pytest 744 passed, 4 skipped, full suite with all eight ONNX graphs present
 (`tools/smoke/out/task10-backend.txt`); on the same tree at Task 9, each on a fresh scratch launch,
 `smoke-similar.mjs` 125/125 (was 69), `smoke-parameters.mjs` 58/58, `smoke-studies.mjs` 151/151, `smoke-persist.mjs` 41/41
 then 54/54 (the version-2 record check, ruling R12, ran: SP-9000's record is version 2 with a 384-vector). No app defect
 surfaced.
 
-**Rulings made while building (the plan's `## Ledger` has each with its cost if wrong).**
+**Final review and fix wave (2026-10-03).** The final whole-branch review (Opus, over `afa6164..HEAD`; ruling R18: it ran
+before the gate, decision 74's order, not after it as the plan's Task 11 first said) found the integration coherent — the
+record, region and Embed paths agree end to end and the contract matches the code — and returned **"with fixes"**: five
+Important findings and four lesser ones (M1–M4).
+- I1 `medianScale` returned 1 below three present values, so a lone calibrated pair's raw millimetres and degrees entered
+  unscaled and calibrated films sank behind 15°-off uncalibrated ones (R20; superseded by R26 below).
+- I2 The open film's own missing blocks read as "No other eligible studies": `openReason` gains `'no-blocks'`, the
+  all-regions-disabled case says "no anatomy to rank on yet", the no-candidates sentence names the region (R21; M3).
+- I3 Spec decision 5 against §7.5's inherited "a record under all": under All no embedding record is needed, under
+  Appearance one is, and `needsEmbedding(mode)` is Appearance only (R22).
+- I4 The comparison column's Δ: a pixel row shows `—`, a millimetre SVA row uses a 10 mm threshold (provisional, the user may
+  change it at the gate), degrees 5°, disc heights 2 mm (R23).
+- I5 `vectors.json` `blocks` lacked `C`/`CC`/`W` and `families` was a literal: `blocks` gains them with their vector keys,
+  `families` is derived from the registry, and the README states the mapping, the shape-null rule and why a folder may
+  have no embeddings (R24).
+- M1 A held region pick was not checked against the film (`heldRegion()` in the tab and the chip's memo); M2 a record
+  whose `region` differs from the film's now needs re-embedding (`needsEmbedding(study)`; an unresolved `auto` film is
+  skipped); M4 CLAUDE.md's not-run list completed (this docs commit).
+- The wave is eight commits: `809052b` (I1), `fabe790` (I2, M1, M3), `b17ea46` (I3), `904cc92` (I4), `99fed8c` (I5),
+  `35b453e` (M2), `e789003` (R25: a median at or below `1e-9` is no spread, so three exact copies read 100%, not
+  100/37/3) and `a65d2fc` (R26, with three re-review minors). Both scoped re-reviews (Opus) were clean; the second found
+  R20's own consequence — with one candidate every block scaled to 1, so a near and a far lone candidate both read 49% —
+  and R26 (every block's nominal scale; R27 allowed the second fix commit) fixed it: lone near 94%, lone far 11%, the I1
+  fixture's calibrated films now rank first.
+- **Counts at HEAD (`a65d2fc`).** Unit 687/687 (`tools/smoke/out/final-r26-unit.txt`); `smoke-similar.mjs` 131/131 and
+  `smoke-parameters.mjs` 58/58 on one launch; `smoke-studies.mjs` 151/151 at `35b453e`; backend 744 passed, 4 skipped at
+  `3694373`, untouched since. The docs commit after `a65d2fc` changed `dataset.js`'s README string and `vectors.json`
+  `blocks` (each block's `scale`); `test/dataset.test.js` 18/18 and the unit suite were re-run on it.
+
+**Rulings made while building, R1–R27 (the plan's `## Ledger` has each with its cost if wrong).**
 - R1 The tree is not launchable between Tasks 3 and 7 (`studies.js` imported `cannotEmbed`); narrowed by R11, then moot.
 - R2 Briefs are cut with `sed -n` ranges and review packages built by plain appends: the harness refuses the skill's
   bash scripts (worktree-isolation classifier).
-- R3 The merged tree's graphs (s1, vertebra, femoral, hrnet, cervical DETR and HRNet, crop detector) are the installed
-  v1.0.15 app's, copied into `backend/onnx/`; `embed.onnx` stays ours (eight kinds in all).
+- R3 Six of the merged tree's graph pairs (s1, vertebra, femoral, hrnet, cervical DETR and HRNet) are the installed
+  v1.0.15 app's, copied into `backend/onnx/` (digests match their metadata); the crop detector was already checked in;
+  `embed.onnx` stays ours (eight kinds in all).
 - R4 The dataset folder names no author: manifest `citation` became `notice` (main's 1.0.14 rule), pinned by a test.
 - R5 The branch releases as 1.0.16 or later (main is 1.0.15). Task 10 rewrote CLAUDE.md's forward-looking "release as
   1.0.11" and marked "The trunk moved: v1.0.10 …" below superseded; `docs/superpowers/NEXT-SESSION.md` (its step 3 still
@@ -142,23 +173,56 @@ surfaced.
   percentage is the card's under every region and mode.
 - R16 A disabled Region button gets a `.model-choice-btn:disabled` rule (opacity .5, not-allowed); it also dims the
   sidebar's six model and processing pickers while a run disables them, a pressed-and-disabled one keeping a dimmed accent.
-- R17 The study-rename control's `title` carries the study name and file name, not the `SP-nnnn` id (decision 76's rule
-  reaches tooltips).
+- R17 The study-rename control's `title` carries the study name and file name, not the `SP-nnnn` id (the 2026-09-12 user
+  rule — no record id where a person looks — reaches tooltips; decision 76 is the viewer strip).
+- R18 The final whole-branch review runs before the human gate (decision 74; the SDD process), over `afa6164..HEAD` — the
+  merge fix wave and stage 2; stage 1 was reviewed in September. The plan's Task 11 said after; it is amended.
+- R19 Task 10's review findings and minors (R3's crop detector, R17's credit, the CSS-comment misquote, ROADMAP §8's
+  "done" line, the contract's item 3) are fixed in one docs commit after the final review, with its verdict, so the
+  ledger is written once.
+- R20 (superseded by R26) `medianScale` scales a block by the median of whatever is present (one value → itself, two →
+  their mean); stage 1's `[1,2] → 1` test became 1.5. Why: below three values it returned 1, so a lone calibrated pair's
+  raw units entered unscaled and sank calibrated films (3%/0% behind 15°-off uncalibrated ones).
+- R21 `openReason` gains `'no-blocks'` (the open film against itself has no finite switched-on block) with its own
+  sentence; the all-regions-disabled case says "no anatomy to rank on yet"; the no-candidates sentence names the region.
+  Why: a film's own missing blocks read as "No other eligible studies".
+- R22 Under All no embedding record is needed (candidate or open film; the card says `· no lumbar crop`); under Appearance
+  one is; `needsEmbedding(mode)` is Appearance only. Why: decision 5 against §7.5's inherited "a record under all", and
+  every user upgrading from v1.0.15 has zero records and would meet an empty tab on every film. Cost if wrong:
+  record-less films rank beside embedded ones under All, the label saying so.
+- R23 A pixel row's Δ in the comparison column is `—`; millimetre SVA rows use a 10 mm threshold (provisional, the user may
+  change it at the gate); degrees 5°, disc heights 2 mm. (The merge review's deferred item.)
+- R24 `vectors.json` `blocks` gains `C`/`CC`/`W` with their vector keys and `families` is derived from the registry; the
+  README states the mapping, the shape-null rule and why a folder may have no embeddings.
+- R25 `medianScale` treats a median at or below `NO_SPREAD = 1e-9` as no spread and returns 1, so a block where every
+  candidate matches the open film at float noise contributes nothing instead of a full 1 per candidate. Why: the three-value
+  rule had the same hole.
+- R26 (supersedes R20) Every block carries a nominal scale on the registry (`BLOCKS[].scale`: V 0.1, H 0.05, A 8°, SL 5°,
+  D 2 mm, VC 0.1, AC 8°, BC 10 mm, SC 5°, B 25 mm, W/C/CC 0.1 cosine — priors the notebook may replace, like the family
+  budgets), and `medianScale(values, nominal)` uses the median only with at least three present values above `NO_SPREAD`,
+  else the nominal. Why: a lone or paired candidate needs an absolute basis, and raw units are not one. Cost if wrong:
+  thirteen constants chosen by judgement until outcomes exist, and a block's scale jumps from its nominal to the pool's
+  median when a third candidate gains it. `vectors.json` `blocks` and the README carry the scales.
+- R27 (process) A second fix commit (`a65d2fc`) was allowed after the scoped re-review, against the SDD skill's "no second
+  fix wave", because the finding was a consequence of the controller's own R20 and the user would meet it at the first
+  lone candidate; scope: R26 and three minors, one commit, one scoped re-review of that commit only.
 - Merge-review adjudications: the `status.js` and `gpu_parity.py` fixes (above), R4, R8, R9; moot: `film_type` is gone, so
-  `W` keys on `studyRegion`, never on `framing.searched`; fixed: the "06 —" header; deferred: the comparison column's Δ
-  threshold is 5 for every selectable row, including the millimetre and pixel SVA rows (a per-unit threshold, and no
-  highlight for pixels, for the final review).
+  `W` keys on `studyRegion`, never on `framing.searched`; fixed: a cosmetic `analysis.css` section comment; deferred to the
+  final review: the comparison column's Δ threshold was 5 for every selectable row, including the millimetre and pixel SVA
+  rows (a per-unit threshold, and no highlight for pixels) — fixed there, R23.
 - Spec text amended by the build (marked *(amended 2026-10-03)* in the spec): `shapePair(a, b, shape, signA, signB) → {d,
   a, b}`; §7.5's "an embedding record" (a stale one ranks on the other blocks and is counted); §7.6's return gains `region`
-  and `weights`; §11's `planEmbed` has no `excluded`. Decision 78 supersedes decision 75.
+  and `weights`; §11's `planEmbed` has no `excluded`. The final review marked more, *(amended 2026-10-03, final review)*:
+  §6's `Scale` column and §7.4's median rule (R25, R26), §7.5's embedding clause (R22), §10's empty states (R21), §11's
+  region clause (M2), decision 13 and §12's `blocks` (R24, R26). Decision 78 supersedes decision 75.
 
 **NOT run.**
 - **The human gate** (plan Task 11): none of its six checks has been answered. They are in the plan: a real lumbar film
   (Lumbar default, the other two disabled with titles, `· no disc heights` on uncalibrated candidates); a real full-spine
   film (Whole spine default, every absent cervical or whole-spine block named, Lumbar ranks against lumbar films); a real
   cervical film (`Cobb … · SVA …`); `Embed` counting the whole library once and then zero; `Export dataset`'s
-  version-2 `vectors.json` and `Region` column; the console clean throughout. The final whole-branch review (Opus) has not
-  run either: the plan's Task 11 orders it after the gate, decision 74 before it (the controller's call).
+  version-2 `vectors.json` and `Region` column; the console clean throughout. The final whole-branch review (Opus) ran
+  before it, R18 (see the paragraph above), so no fix wave lands after the gate.
 - A packaged build (the installer's eight graphs and its size; `check_bundled_inference.py`'s assertions); `/embed` over a
   real uvicorn socket (in-process only); a GPU machine for the CPU-only-encoder rule (R7: CI has no GPU, so
   `--verify-models` on a workstation is the check); a persistence-disabled `Embed`; the three-button export row at a narrow
@@ -166,19 +230,25 @@ surfaced.
   (stage 1's list, unchanged — ROADMAP §4).
 - On the real library only one film is segmented, so the ranking's cards were hand-checked on a scratch profile with twelve
   seeded full-spine films, not on real neighbours.
+- The smoke suites after R25 and R26, except `smoke-similar.mjs` and `smoke-parameters.mjs` (they ran on `a65d2fc`'s
+  tree): `smoke-studies.mjs` last ran at `35b453e` and `smoke-persist.mjs` at Task 9 (`fceb3ac`). `e789003` touched only
+  `medianScale` (by ruling), `a65d2fc` the registry's scales and `medianScale`, and the docs commit only `dataset.js`'s
+  README string and `vectors.json`'s `blocks`.
+- On real films: a mixed calibrated/uncalibrated full-spine pool under Whole spine, and a missing-S1 film under Shape —
+  both are gate checks. The nominal scales (R26) are untested priors until a notebook has outcomes to fit them against.
 
 **Deferred minors worth a second look** (the plan's `## Ledger` lists every one): `renderer/data/confidence.js:38` throws
 without `geometry.femoral_circles` (main's; the backend always sends it); the clinical-data drawer's STUDY cell overlaps
-SUBJECT on long stems; a held region pick is never cleared on delete (a new film that reuses the id inherits it); the
-dataset README does not state the shape-null rule, the `families`-to-film-key mapping or why a stage-1 record exports as
-null; `reviewBlockedReason` says "Wait for the segmentation to finish" while a film is being embedded; the embed signal in
-`status.js` is batch-wide.
+SUBJECT on long stems (ROADMAP §8); a held region pick is never cleared on delete (a new film that reuses the id inherits
+it); `reviewBlockedReason` says "Wait for the segmentation to finish" while a film is being embedded; the embed signal in
+`status.js` is batch-wide. Fixed by the final review, no longer open: the dataset README's mapping, shape-null rule and
+no-embeddings reason (R24), the comparison column's Δ threshold (R23).
 
-**Next.** The human gate and the final whole-branch review (their order: see above), then the owner's offline testing. The release is a separate,
+**Next.** The human gate (the final whole-branch review already ran, R18), then the owner's offline testing. The release is a separate,
 later commit numbered 1.0.16 or later (main is 1.0.15; check other open PRs for a version claim); the PR to `fork/main` is
 the user's to open and merge with Create a merge commit, which publishes. Nothing from this branch is pushed to `fork`;
-that is the user's call. The held region pick, the Δ threshold and the dataset README minors are the first things a
-reviewer might ask about.
+that is the user's call. The 10 mm Δ threshold (R23) and the nominal scales (R26) are provisional and the first things
+the gate may change; `docs/superpowers/NEXT-SESSION.md` is stale (it still says 1.0.11) until the session wrap rewrites it.
 
 ### Failed-status additions on 1.0.13 (issue #39 follow-up) — DONE; release 1.0.15 awaiting the PR (branch `claude/issue-39-failed-status-port`, off `main` @ `9992b99`, v1.0.13, merged with `origin/main` @ `e7ae5a3`, v1.0.14)
 
@@ -1922,9 +1992,10 @@ that every measured parameter counts and a film without complete parameters stil
     `planEmbed` has no `excluded`. `qc.coverage.partial` and `unoriented` gate nothing in the ranking: a film missing
     levels, a hip, a calibration or an embedding loses only that block for the pair, never its place, and each card names
     the switched-on blocks that did not enter. Decision 75's edge (a complete column with no femoral heads excluded) no
-    longer exists. *Cost if wrong:* a film with little in common ranks on the little it has; the card names every absent
-    block, so the reader sees a thin match for what it is, and the table is data. (Commits `cafab47`, `948f487`,
-    `b1f93d5`, `780d4c8`.)
+    longer exists. *(Amended 2026-10-03, final review: a record cut for another region than the film's own counts as stale
+    too, M2; and under All no record is needed at all, R22.)* *Cost if wrong:* a film with little in common ranks on the
+    little it has; the card names every absent block, so the reader sees a thin match for what it is, and the table is
+    data. (Commits `cafab47`, `948f487`, `b1f93d5`, `780d4c8`; `35b453e`, `b17ea46`.)
 
 ## Release prerequisites — v1.0.0 main promotion
 

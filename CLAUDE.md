@@ -5,7 +5,7 @@
 then a two-commit fix wave (`87b7a5d`, `4164673`): a film an Embed batch is running keeps its status, and the appearance
 encoder is a CPU model outside GPU qualification (`CPU_ONLY_KINDS` in `backend/models/models.py`,
 `gpu_parity.qualified_kinds()`), which the processor badge ignores. Stage 2 is then built by plan
-`docs/superpowers/plans/2026-09-30-similar-cases-stage-2-regions.md` (Tasks 1–10; its `## Ledger` holds rulings R1–R17 and
+`docs/superpowers/plans/2026-09-30-similar-cases-stage-2-regions.md` (Tasks 1–10; its `## Ledger` holds rulings R1–R27 and
 the deferred minors) from spec `docs/superpowers/specs/2026-09-30-similar-cases-stage-2-regions-design.md`. The Find similar
 tab ranks on thirteen blocks in four families: lumbar `V` shape, `H` hip, `A` alignment (L1PA added), `SL` lumbar
 segmental, `D` disc heights; cervical `VC` shape, `AC` C2–C7 Cobb, `BC` C2–C7 SVA, `SC` cervical segmental; whole spine
@@ -16,12 +16,23 @@ full-spine films rank; a `Region` control (`Lumbar | Cervical | Whole spine`, `s
 and defaults to the open film's region; ten cards, each naming the blocks it lacks. The embedding record is version 2
 (`lumbar`, `cervical`, `whole`, `region`; `/embed` takes a `region` form field): version-1 records read as stale, so the
 whole library re-embeds once through `Embed`. `Export dataset`'s `vectors.json` is version 2, with a `Region` column in
-`parameters.csv`. Counts: unit 678/678; backend 744 passed, 4 skipped (eight ONNX graphs present); `smoke-similar.mjs`
-125/125; `smoke-parameters.mjs` 58/58; `smoke-studies.mjs` 151/151; `smoke-persist.mjs` 41/41 then 54/54. Held on the
-branch, nothing pushed; the release is a separate, later commit numbered **1.0.16 or later** (main is 1.0.15). **Not run:**
-the human gate (plan Task 11), a packaged build, `/embed` over a real uvicorn socket, a GPU machine for the CPU-only-encoder
-rule. See the architecture contract's `## 2026-09-30 amendment: similar cases stage 2`, HANDOFF's first "Where things
-stand" section and `docs/ROADMAP.md` §8; `docs/superpowers/NEXT-SESSION.md` is the prompt.
+`parameters.csv`. The final whole-branch review (Opus, over `afa6164..HEAD`, before the gate: R18) said "with fixes" and an
+eight-commit fix wave (`809052b`..`a65d2fc`, rulings R20–R27) answered it: a block shared by fewer than three candidates
+scales by its nominal scale, not by 1 or a lone pair (R26, superseding R20; R25 the noise floor), the open film's own gaps
+get their own empty state (R21), under All no embedding record is needed (R22), the comparison column's Δ is per unit and
+`—` for pixels (R23), `vectors.json` names its appearance blocks and carries every block's scale (R24, R26), a record cut
+for another region needs re-embedding (M2); both scoped re-reviews were clean. Counts at HEAD (`a65d2fc`): unit 687/687;
+`smoke-similar.mjs` 131/131; `smoke-parameters.mjs` 58/58; `smoke-studies.mjs` 151/151 (at `35b453e`); backend 744 passed,
+4 skipped (eight ONNX graphs present; at `3694373`, untouched since); `smoke-persist.mjs` 41/41 then 54/54 (Task 9). Held on
+the branch, nothing pushed; the release is a separate, later commit numbered **1.0.16 or later** (main is 1.0.15).
+**Not run:** the human gate (plan Task 11); the packaged build (the seven graphs plus the encoder, and the installer's
+growth); `/embed` over a real uvicorn socket; a GPU machine for the CPU-only-encoder rule; a persistence-disabled `Embed`;
+the three-button export row at a narrow window; the release workflows' hub download and `export_embed`'s mean/std and
+licence guards on the pinned export pair; the smoke suites after R25 and R26 other than `smoke-similar.mjs` and
+`smoke-parameters.mjs` (`smoke-studies.mjs` last ran at `35b453e`, `smoke-persist.mjs` at Task 9). See the architecture
+contract's `## 2026-09-30 amendment: similar cases stage 2`, HANDOFF's first "Where things stand" section and
+`docs/ROADMAP.md` §8. `docs/superpowers/NEXT-SESSION.md` is stale (it still says release 1.0.11 and the v1.0.10 merge)
+until the session wrap rewrites it.
 
 **2026-10-02 release 1.0.15 (issue #39 Failed-status follow-up):** branch `claude/issue-39-failed-status-port` (the main
 checkout, no worktree) off `main` @ `9992b99` (v1.0.13), merged with `origin/main` @ `e7ae5a3` (v1.0.14, PR #52) as
@@ -293,7 +304,7 @@ author" is rewritten for him.
 | `docs/superpowers/plans/2026-09-12-a-embeddings-backend.md` | Similar cases, Plan A: the backend appearance-embedding endpoints |
 | `docs/superpowers/plans/2026-09-12-b-similar-cases-renderer.md` | Similar cases, Plan B: the Find similar tab, outcomes, comparison mode, `Export dataset` |
 | `docs/superpowers/specs/2026-09-30-similar-cases-stage-2-regions-design.md` | Similar cases, stage 2: every measured parameter, every region (implemented 2026-10-03, gate not run) |
-| `docs/superpowers/plans/2026-09-30-similar-cases-stage-2-regions.md` | Similar cases, stage 2 plan: the block registry, the region axis, the Region control, version-2 records (Tasks 1–10; Ledger holds R1–R17) |
+| `docs/superpowers/plans/2026-09-30-similar-cases-stage-2-regions.md` | Similar cases, stage 2 plan: the block registry, the region axis, the Region control, version-2 records (Tasks 1–10; Ledger holds R1–R27) |
 
 The architecture contract wins over any individual plan. If a plan contradicts it,
 raise the discrepancy rather than guessing.

@@ -1666,7 +1666,9 @@ lumbar column, four cervical bodies for the neck; the cervical mirror is the rec
 corner means; the hip follows the lumbar pair's transform); an entry block is the weighted RMS over the entries both
 have (floor 2 for `A` and `D`, 3 for `SL` and `SC`, 1 for `AC`, `BC`, `B`); an appearance block is present when both
 films carry the vector under the same `model.onnx_sha256` (`W` only when both are `full_spine`). Every block's
-distance is divided by its median over the candidates; `weightsFor(region, mode)` gives each family present a budget of
+distance is divided by its median over the candidates when at least three candidate pairs share the block (and that
+median is above `NO_SPREAD = 1e-9`), else by the block's nominal scale, a prior on the registry (`BLOCKS[].scale`;
+rulings R25, R26); `weightsFor(region, mode)` gives each family present a budget of
 one shared equally among its switched-on blocks; the fused distance is the stage-1 weighted RMS. A film is never
 excluded for what it lacks: `qc.coverage.partial` and `unoriented` gate nothing in the ranking, and each card names the
 switched-on blocks the pair lacked. Ruling R14: block `D` follows `discRows`'s own calibration rule — the values the
@@ -1691,8 +1693,9 @@ current record — segmented before the build, the setting off, a failed stage, 
 *(amended 2026-10-03, final review: or a current record whose `region` is not `studyRegion(study)`, when that is one of
 the three regions — a film re-segmented under another region; an unresolved `auto` film is not compared, since `Embed`
 posts no region for it)*.
-`vector(study)` no longer gates anything. Nothing is ineligible; a film ranks on the blocks it has (spec decision 5,
-HANDOFF decision 78).
+`needsEmbedding(study)` no longer calls `vector(study)` (stage 1's all-lumbar-landmarks gate); a version-2 record whose
+`region` differs from the film's counts as not current there (M2, above). Nothing is ineligible; a film ranks on the
+blocks it has (spec decision 5, HANDOFF decision 78).
 
 **4. State key.** `similarRegion: null | {openId, region}` in `store.js`: the Find similar tab's region pick, held for the
 film it was made on. The tab reads `state.similarRegion.region` when `openId` is the open film, else `defaultRegion(open)`,
@@ -1728,7 +1731,8 @@ BC, SC, B, lumbar, cervical, whole}]}` *(amended 2026-10-03, final review, rulin
 `similarity-blocks.js`'s `BLOCKS` and `FAMILIES`, and `blocks` carries the three appearance blocks by their film key —
 `W: {vector: 'whole', unit: 'embedding'}`, `C: {vector: 'lumbar', …}`, `CC: {vector: 'cervical', …}` — so every key a
 family names is a film key or a block's `vector`; the README states that mapping, the shape-null rule and why a folder
-can have no embeddings)*, one entry per `parameters.csv` row in that order, `null` for an absent block (an all-null
+can have no embeddings; and, ruling R26, every `blocks` entry carries its registry `scale`, the nominal difference the
+app divides by when fewer than three candidate pairs share the block, which the README also states)*, one entry per `parameters.csv` row in that order, `null` for an absent block (an all-null
 entry block exports as `null`, not an array of nulls); `V`/`VC` are the COMPLETE 22-point vectors (null where the column
 is incomplete), `H` follows `V`, the three appearance vectors come from a current embedding record only (a stored
 version-1 record is lifted by `readEmbedding` but never current, so it exports as `null`). `parameters.csv`'s first

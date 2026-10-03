@@ -457,16 +457,17 @@ uvicorn socket). Stage 2 begins only after a notebook has trained the first mode
 and the human gate has judged the stage-1 neighbours' quality; the stage-2/3/4 items below are
 unchanged by stage 1 shipping.
 
-**Regions built (2026-10-03; not released, human gate not run).** A second piece of work on the same branch. Its spec
+**Regions built (2026-10-03; finally reviewed and fixed, not released, human gate not run).** A second piece of work on the same branch. Its spec
 is titled "stage 2" (the second build of the Find similar tab), which is **not** the Stage 2 below (pairs, the map, the
 model registry, the risk panel): that one still waits for outcomes. Spec `docs/superpowers/specs/2026-09-30-similar-cases-stage-2-regions-design.md`,
 plan `docs/superpowers/plans/2026-09-30-similar-cases-stage-2-regions.md`: every measured parameter enters the ranking in
 thirteen blocks in four families (the ten lumbar and ten cervical segmental angles, disc heights, C2–C7 Cobb and SVA,
 C7–S1 SVA, L1PA in the alignment block, a cervical appearance block and a whole-film block for full-spine pairs); a
 `Lumbar | Cervical | Whole spine` region control beside `Rank by`, defaulting to the open film's region; cervical and
-full-spine films rank; a film ranks on the blocks it has (HANDOFF decision 78); ten cards. Done from the lists below:
-the segmental item, the cervical appearance block and the region presets. **Stays deferred:** the family sliders (below),
-which wait behind outcomes. See HANDOFF's first "Where things stand" section.
+full-spine films rank; a film ranks on the blocks it has (HANDOFF decision 78); ten cards. Done from the list below: the
+segmental item. The cervical appearance block and the Lumbar / Cervical / Whole spine region presets were built by stage 2
+as well (spec decisions 8–10), but neither was a list item. **Stays deferred:** the family sliders (below), which wait
+behind outcomes. See HANDOFF's first "Where things stand" section.
 
 **Deferred 2026-09-12 (user ruling at the similar-cases brainstorm).** Stage 1 is
 `docs/superpowers/specs/2026-09-12-similar-cases-outcomes-design.md`: the fused shape-and-appearance
@@ -540,6 +541,8 @@ into the app once its recipe is stable. The later stages, in order:
   one candidate at a time; build the registry when a bake-off of several is actually planned.
 - `Compare with…` for the same subject (pp §12) — the next entry into comparison mode, its own small
   plan.
+- The clinical-data drawer's STUDY cell overlaps SUBJECT on long stems — seen by hand at Task 6 of the regions
+  build (2026-10-03), outside stage 2 and not stage 1's: a layout fix of its own.
 
 ### Rough size
 

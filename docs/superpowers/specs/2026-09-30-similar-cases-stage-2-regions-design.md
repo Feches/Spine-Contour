@@ -11,14 +11,20 @@ v1.0.8 base, because every new input comes from the trunk's 1.0.9–1.0.12 work.
 **Implemented 2026-10-03** on `claude/image-similarity-visualization-400922`, after the merge of `fork/main` @ `c53e91d`
 (v1.0.15) as `afa6164` and its two-commit fix wave (`87b7a5d`, `4164673`), by plan Tasks 1–9 (`e288b88`, `fcb02a1`,
 `cafab47`+`948f487`, `335808d`, `6da2963`+`780d4c8`, `80effa6`+`a1f87d6`+`a564e1b`, `b1f93d5`, `3ef69c4`, `fceb3ac`; the
-plan's `## Ledger` holds every ruling, R1–R17) and Task 10 (the records). Counts at the close: unit 678/678; backend
-744 passed, 4 skipped; `smoke-similar.mjs` 125/125, `smoke-parameters.mjs` 58/58, `smoke-studies.mjs` 151/151,
-`smoke-persist.mjs` 41/41 then 54/54. **Not run:** the human gate (plan Task 11), a packaged build, `/embed` over a real
-uvicorn socket, a GPU machine for the CPU-only-encoder rule. Where the built interfaces differ from this document's
+plan's `## Ledger` holds every ruling, R1–R27) and Task 10 (the records). Counts at the close of Task 10: unit 678/678;
+backend 744 passed, 4 skipped; `smoke-similar.mjs` 125/125, `smoke-parameters.mjs` 58/58, `smoke-studies.mjs` 151/151,
+`smoke-persist.mjs` 41/41 then 54/54. The final whole-branch review (Opus, over `afa6164..HEAD`, ruling R18: before the
+gate) said "with fixes"; an eight-commit fix wave (`809052b`..`a65d2fc`, rulings R20–R27) answered it, and both scoped
+re-reviews were clean. Counts at HEAD (`a65d2fc`): unit 687/687; `smoke-similar.mjs` 131/131 and `smoke-parameters.mjs`
+58/58 (one launch), `smoke-studies.mjs` 151/151 (at `35b453e`); backend 744 passed, 4 skipped (at `3694373`, untouched
+since). **Not run:** the human gate (plan Task 11), a packaged build, `/embed` over a real uvicorn socket, a GPU machine
+for the CPU-only-encoder rule. Where the built interfaces differ from this document's
 text, the architecture contract's `## 2026-09-30 amendment: similar cases stage 2` and the two `similarity` module
 sections win; the corrections are applied in place below and marked *(amended 2026-10-03)*: §6's `D` row and §7.2 (ruling
 R14: `D` follows `discRows`'s own calibration rule), §7.1's `shapePair` signature and return, §7.5's embedding
-requirement, §7.6's return shape and §11's `planEmbed`.
+requirement, §7.6's return shape and §11's `planEmbed` — and, from the final review, *(amended 2026-10-03, final review)*:
+§6's `Scale` column and §7.4's median rule (R25, R26), §7.5's embedding clause (R22), §10's empty states (R21), §11's
+region clause (M2), decision 8's held pick (M1) and §12's `blocks` (R24, R26).
 
 ## 1. Problem
 
@@ -40,7 +46,8 @@ pelvic angles and apart from global balance.
 ## 2. Goals
 
 1. Every parameter the app measures enters the ranking, each in a block whose entries share a unit, each block scaled
-   by its own median (stage 1 §7.4) so no family drowns another by count or by unit.
+   by its own median (stage 1 §7.4) so no family drowns another by count or by unit *(amended 2026-10-03, final review:
+   by its own median when at least three candidates share it, else by its nominal scale — §6, §7.4, rulings R25, R26)*.
 2. A film ranks on the blocks it has. Missing hips, a missing level, no calibration, no embedding: each removes that
    block from the pair, never the film from the ranking.
 3. Cervical and full-spine films rank: on the cervical family for cervical questions, on the lumbar family for lumbar
@@ -140,7 +147,8 @@ Each with what it costs if it is wrong. Where a stage-1 decision is superseded, 
    The hip block `H` stays a single point under the lumbar shape's transform and is absent without a hip midpoint on
    both films — but it is now the *shared-point* transform's centroid and scale, so `H` moves consistently with `V`.
    *Cost if wrong:* a pair sharing few entries gets a noisy distance; the floors bound that, and the median scaling is
-   over the present pairs only, as before.
+   over the present pairs only, as before *(amended 2026-10-03, final review: and only from three of them; below that the
+   block's nominal scale stands, §7.4)*.
 7. **Family budgets: each family present for a pair has the same total weight, and each block within a family
    shares its family's budget equally (the user, 2026-09-30).** The nominal weight table is `w_block = 1 / (blocks in
    the family that the region and the mode switch on)`; the fusion's denominator `Σ_present w_i` does the rest when a
@@ -176,7 +184,12 @@ Each with what it costs if it is wrong. Where a stage-1 decision is superseded, 
     region.** Lumbar and Whole spine keep `PI · LL · PT · SS` differences; Cervical shows `Cobb · SVA` differences
     (SVA in mm, or `—` when either film is uncalibrated). *Cost if wrong:* labels.
 13. **`vectors.json` is version 2 and carries every block by its key; a stage-1 reader is told by the version.** The
-    README describes the families. *Cost if wrong:* the manifest's version says which layout a folder has.
+    README describes the families. *(amended 2026-10-03, final review, ruling R24: the appearance blocks `W`, `C` and `CC`
+    sit in `blocks` by their block keys, each naming the film key that holds its vector — `whole`, `lumbar`, `cervical`
+    — so every key a family lists is a film key or a block's `vector`; `families` is derived from the registry; the README
+    states that mapping, the shape-null rule and why a folder can lack embeddings. Ruling R26: every `blocks` entry also
+    carries its nominal `scale`, and the README says how the app uses it.)* *Cost if wrong:* the manifest's version says
+    which layout a folder has.
 14. **The two Region presets are enough; no per-family sliders.** ROADMAP §8's slider idea stays deferred behind
     outcomes. *Cost if wrong:* the table is data; sliders are a later stage's UI over it.
 15. **Ten cards, not five (the user, 2026-10-03).** *(replaces the card count in stage-1 decision 7 and §8.1)* The
@@ -353,7 +366,8 @@ The run core posts `region: studyRegion(study)` with the sidecar image and frami
 A: {order, weights}, SL: {order}, D: {order}, VC: {dim: 44, order, normalisation: 'mirror-by-anterior-side, …'}, AC,
 BC, SC, B, embedding: {model}}, films: [{name, region, V, H, A, SL, D, VC, AC, BC, SC, B, lumbar, cervical, whole}]}`
 *(amended 2026-10-03, final review, ruling R24: `blocks` also carries `W`, `C` and `CC` as `{vector, unit: 'embedding'}`,
-`vector` naming the film key `whole`, `lumbar` or `cervical`, and `families` is derived from the registry)*,
+`vector` naming the film key `whole`, `lumbar` or `cervical`, `families` is derived from the registry, and, ruling R26,
+every `blocks` entry carries its nominal `scale`)*,
 null per absent block; the full lumbar and cervical shape vectors (not shared-point ones, which are pairwise) with
 null where the column is incomplete. `parameters.csv` replaces the `Film type` column with `Region`, and `paired.csv`'s
 per-visit `<header> film type` columns become `<header> region`. `manifest.json` counts films per region. The README's block paragraph is rewritten from the table. Stage 1's rule stands: no image,

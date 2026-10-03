@@ -19,7 +19,9 @@ following the pair's transform), decision 5 (the film-type proxy and the whole-f
 follows anatomy, `W` only for full-spine pairs) and decision 7 (partial and unoriented films excluded, five cards — a
 film ranks on the blocks it has; ten cards); and the gate's **decision 75** (the Embed count's eligibility rule and the
 `{k} partial — not embeddable` note — HANDOFF decision 78: every segmented film is embeddable). §7, §8.1, §8.2, §8.4,
-§10.2, §10.4, §11, §12 and §13 are amended by reference to the stage-2 spec. Everything not named stands.
+§10.2, §10.4, §11, §12 and §13 are amended by reference to the stage-2 spec. Everything not named stands. The
+stage-2 plan's `## Ledger` holds the rulings, R1–R27; the final review's fix wave (R20–R27) changed §7.4's median
+rule, marked in place below.
 
 **Builds on:** the approved spec `2026-08-31-spine-contour-ui-redesign-design.md` ("spec §" below;
 §10.5 and §10.6 in particular), the pre-op/post-op spec `2026-09-06-preop-postop-organisation-design.md`

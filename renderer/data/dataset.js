@@ -35,6 +35,9 @@ const PROVENANCE_COLUMNS = ['Region', 'Coverage', 'Reviewed', 'Embedding', 'Crop
 // The appearance blocks are keyed in the registry by block (C, CC, W) but carried on each film entry by
 // the record's vector name (ruling R24): vectors.json's `blocks` and the README both read this map.
 const APPEARANCE_VECTORS = Object.freeze({ C: 'lumbar', CC: 'cervical', W: 'whole' });
+// Each block's nominal scale, from the registry (ruling R26): the divisor the app uses for a block that fewer
+// than three candidate pairs share, so a notebook can reproduce the ranking's units.
+const SCALE = Object.freeze(Object.fromEntries(BLOCKS.map((block) => [block.key, block.scale])));
 // The families, from the registry rather than typed here, so the file cannot drift from it.
 const VECTOR_FAMILIES = Object.fromEntries(FAMILIES.map((family) => [family, BLOCKS.filter((block) => block.family === family).map((block) => block.key)]));
 
@@ -156,7 +159,7 @@ export function datasetReadme({ counts, version, exportedAt, embeddingRecord }) 
     '',
     `- \`parameters.csv\` - one row per film: the Export CSV file (the measurements, disc heights, calibration and clinical fields) plus the provenance columns ${provenance}, then the outcome columns resolved per subject: ${resolved}. \`Region\` is the film's own spine region: lumbar, cervical or full_spine, or auto for a film not yet segmented.`,
     `- \`paired.csv\` - one row per subject with a pre-op film and at least one later visit: the Export paired CSV file plus the same resolved outcome columns (${resolved}) and a \`<visit> region\` column per written visit (for example \`Pre-op region\`, \`Post-op region\`), each the visit's primary film's region.`,
-    `- \`vectors.json\` (version 2) - one entry per row of parameters.csv, in the same order, named by study name, with the film's region. Blocks by key, \`null\` where a film lacks one: lumbar family \`V\` (44 numbers, the 22 lumbar landmarks ${LANDMARK_ORDER.join(', ')} after mirroring anterior to +x, centring and scaling to unit centroid size, never rotated), \`H\` (the hip midpoint under the same transform), \`A\` (${ALIGNMENT_ORDER.join(', ')} in degrees, weighted ${ALIGNMENT_WEIGHTS.join(', ')}), \`SL\` (the ten lumbar segmental lordosis and angulation values, degrees), \`D\` (fifteen disc heights in mm, calibrated films only); cervical family \`VC\` (44 numbers, ${CERVICAL_ORDER.join(', ')} mirrored by the recorded anterior side), \`AC\` (C2-C7 Cobb, degrees), \`BC\` (C2-C7 SVA, mm, calibrated only), \`SC\` (the ten cervical segmental values); whole-spine family \`B\` (C7-S1 SVA, mm, full-spine calibrated films only); and the appearance vectors \`lumbar\`, \`cervical\` and \`whole\` from ${encoder}, unit length, never carried from an encoder other than the one manifest.json names. In \`blocks\` and \`families\` the appearance vectors go by their block keys: \`C\` is \`${APPEARANCE_VECTORS.C}\`, \`CC\` is \`${APPEARANCE_VECTORS.CC}\` and \`W\` is \`${APPEARANCE_VECTORS.W}\` (each block's \`vector\` names the film key). In the app every block is scaled by its median over the candidates and the four families share equal budgets.`,
+    `- \`vectors.json\` (version 2) - one entry per row of parameters.csv, in the same order, named by study name, with the film's region. Blocks by key, \`null\` where a film lacks one: lumbar family \`V\` (44 numbers, the 22 lumbar landmarks ${LANDMARK_ORDER.join(', ')} after mirroring anterior to +x, centring and scaling to unit centroid size, never rotated), \`H\` (the hip midpoint under the same transform), \`A\` (${ALIGNMENT_ORDER.join(', ')} in degrees, weighted ${ALIGNMENT_WEIGHTS.join(', ')}), \`SL\` (the ten lumbar segmental lordosis and angulation values, degrees), \`D\` (fifteen disc heights in mm, calibrated films only); cervical family \`VC\` (44 numbers, ${CERVICAL_ORDER.join(', ')} mirrored by the recorded anterior side), \`AC\` (C2-C7 Cobb, degrees), \`BC\` (C2-C7 SVA, mm, calibrated only), \`SC\` (the ten cervical segmental values); whole-spine family \`B\` (C7-S1 SVA, mm, full-spine calibrated films only); and the appearance vectors \`lumbar\`, \`cervical\` and \`whole\` from ${encoder}, unit length, never carried from an encoder other than the one manifest.json names. In \`blocks\` and \`families\` the appearance vectors go by their block keys: \`C\` is \`${APPEARANCE_VECTORS.C}\`, \`CC\` is \`${APPEARANCE_VECTORS.CC}\` and \`W\` is \`${APPEARANCE_VECTORS.W}\` (each block's \`vector\` names the film key). In the app every block is scaled by its median over the candidates when at least three candidate pairs share the block (and that median is above float noise), else by the block's nominal scale, a prior listed as \`scale\` in \`vectors.json\`'s \`blocks\`; the four families share equal budgets.`,
     '- `manifest.json` - the counts (with the films of each region), the models seen, the encoder record, the identity line, the notice, the disclaimer.',
     '- `README.md` - this file.',
     '',
@@ -262,19 +265,19 @@ export function buildDataset({ rows, post, embeddings, bundledSha, bundledModel 
     exportedAt: now.toISOString(),
     families: VECTOR_FAMILIES,
     blocks: {
-      V: { dim: 44, order: [...LANDMARK_ORDER], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation' },
-      H: { dim: 2, normalisation: 'the V transform' },
-      A: { order: [...ALIGNMENT_ORDER], weights: [...ALIGNMENT_WEIGHTS], unit: 'deg' },
-      SL: { order: [...LUMBAR_SEGMENTAL_ORDER], unit: 'deg' },
-      D: { order: [...DISC_ORDER], unit: 'mm' },
-      VC: { dim: 44, order: [...CERVICAL_ORDER], normalisation: 'mirror-by-anterior-side, centroid, unit-centroid-size, no-rotation' },
-      AC: { order: ['C2-C7 Cobb'], unit: 'deg' },
-      BC: { order: ['C2-C7 SVA'], unit: 'mm' },
-      SC: { order: [...CERVICAL_SEGMENTAL_ORDER], unit: 'deg' },
-      B: { order: ['C7-S1 SVA'], unit: 'mm' },
-      W: { vector: APPEARANCE_VECTORS.W, unit: 'embedding' },
-      C: { vector: APPEARANCE_VECTORS.C, unit: 'embedding' },
-      CC: { vector: APPEARANCE_VECTORS.CC, unit: 'embedding' },
+      V: { dim: 44, order: [...LANDMARK_ORDER], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation', scale: SCALE.V },
+      H: { dim: 2, normalisation: 'the V transform', scale: SCALE.H },
+      A: { order: [...ALIGNMENT_ORDER], weights: [...ALIGNMENT_WEIGHTS], unit: 'deg', scale: SCALE.A },
+      SL: { order: [...LUMBAR_SEGMENTAL_ORDER], unit: 'deg', scale: SCALE.SL },
+      D: { order: [...DISC_ORDER], unit: 'mm', scale: SCALE.D },
+      VC: { dim: 44, order: [...CERVICAL_ORDER], normalisation: 'mirror-by-anterior-side, centroid, unit-centroid-size, no-rotation', scale: SCALE.VC },
+      AC: { order: ['C2-C7 Cobb'], unit: 'deg', scale: SCALE.AC },
+      BC: { order: ['C2-C7 SVA'], unit: 'mm', scale: SCALE.BC },
+      SC: { order: [...CERVICAL_SEGMENTAL_ORDER], unit: 'deg', scale: SCALE.SC },
+      B: { order: ['C7-S1 SVA'], unit: 'mm', scale: SCALE.B },
+      W: { vector: APPEARANCE_VECTORS.W, unit: 'embedding', scale: SCALE.W },
+      C: { vector: APPEARANCE_VECTORS.C, unit: 'embedding', scale: SCALE.C },
+      CC: { vector: APPEARANCE_VECTORS.CC, unit: 'embedding', scale: SCALE.CC },
       embedding: embeddingRecord,
     },
     films,
