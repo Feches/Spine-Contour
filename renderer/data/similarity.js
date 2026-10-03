@@ -154,10 +154,13 @@ export function pairDistances(open, candidate, weights) {
   return d;
 }
 
-// The median of the present values when there are at least three and it is positive, else 1.
+// The median of whatever values are present -- one value is itself, two their mean -- when it is
+// positive, else 1 (none present, or a non-positive median). Ruling R20: a block only one or two
+// candidates share (the millimetre blocks between calibrated films) is scaled like every other, so its
+// raw millimetres or degrees never sit unscaled beside median-scaled blocks.
 export function medianScale(values) {
   const present = (values ?? []).filter(finite);
-  if (present.length < 3) return 1;
+  if (present.length === 0) return 1;
   const sorted = [...present].sort((a, b) => a - b);
   const mid = sorted.length >> 1;
   const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;

@@ -5,7 +5,7 @@ import {
   shapePair, hipUnder, entryDistance, appearanceDistance, pairDistances, medianScale, fuse, matchScore, candidates,
   findSimilar, openReason, angleLine, subjectFilms, needsEmbedding, weightsFor, studyBlocks,
 } from '../renderer/data/similarity.js';
-import { lumbarPoints, cervicalPoints } from '../renderer/data/similarity-blocks.js';
+import { lumbarPoints, cervicalPoints, globalBalance } from '../renderer/data/similarity-blocks.js';
 import { HAND_ADDED } from '../renderer/data/parameters.js';
 import { lumbarGeometry, cervicalGeometry, CALIBRATION, study } from './fixtures/similarity-fixtures.js';
 
@@ -136,9 +136,13 @@ test('pairDistances between two full-spine films fills the cervical and whole-sp
   assert.equal(mixed.VC, null);
 });
 
-test('medianScale, fuse and matchScore are stage 1 (fuse over thirteen keys)', () => {
+test('medianScale is the median of whatever is present (one value is itself, two their mean), 1 with none or a non-positive median; fuse and matchScore are stage 1', () => {
   assert.equal(medianScale([1, 2, 3]), 2);
-  assert.equal(medianScale([1, 2]), 1);
+  assert.equal(medianScale([1, 2]), 1.5, 'two present values scale by their mean (ruling R20)');
+  assert.equal(medianScale([4, null]), 4, 'a lone value scales its pair to 1');
+  assert.equal(medianScale([]), 1);
+  assert.equal(medianScale([null, null]), 1);
+  assert.equal(medianScale([0]), 1);
   assert.equal(medianScale([0, 0, 0]), 1);
   const distances = Object.fromEntries(BLOCK_KEYS.map((k) => [k, null]));
   distances.V = 2; distances.A = 4;
@@ -223,6 +227,52 @@ test('findSimilar under full_spine lists the absent cervical blocks for a film w
   assert.equal(matches.length, 1);
   assert.deepEqual(matches[0].absent, ['VC', 'AC', 'BC', 'SC', 'B', 'CC']);
   assert.ok(matches[0].blocks.includes('W') && matches[0].blocks.includes('V'));
+});
+
+test('the whole-spine balance: globalBalance is finite on a calibrated full-spine film, B is present for a calibrated pair, and B and BC are absent when one film is uncalibrated', () => {
+  const a = fullSpine('a', { study: { calibration: CALIBRATION } });
+  const b = fullSpine('b', { study: { calibration: CALIBRATION } });
+  b.geometry.c7_centroid = [40, 370]; // 20 px further back at 0.5 mm/px: 10 mm more C7-S1 SVA
+  assert.ok(Math.abs(globalBalance(a)[0] - 25) < 1e-9, 'C7 50 px behind S1 posterior at 0.5 mm/px');
+  const d = pairDistances(studyBlocks(a, null), studyBlocks(b, null), weightsFor('full_spine', 'all'));
+  assert.ok(Math.abs(d.B - 10) < 1e-9, `B is the SVA difference in millimetres: ${d.B}`);
+  assert.ok(Number.isFinite(d.BC), 'both calibrated: the cervical balance compares');
+  const e = pairDistances(studyBlocks(a, null), studyBlocks(fullSpine('u'), null), weightsFor('full_spine', 'all'));
+  assert.equal(e.B, null, 'one film uncalibrated: no global balance');
+  assert.equal(e.BC, null, 'one film uncalibrated: no cervical balance');
+  assert.ok(Number.isFinite(e.AC), 'the angles still compare');
+});
+
+test('a block only two candidates share is scaled by their mean, so a calibrated pair is not buried under raw millimetres (ruling R20)', () => {
+  // A calibrated open full-spine film; two calibrated candidates with the same shape and angles whose
+  // C7-S1 SVA is 10 and 15 mm off (C7 20 and 30 px further back at 0.5 mm/px); uncalibrated candidates
+  // (no D, BC or B) off in PI and LL. Every film carries the same embedding, so the appearance blocks
+  // are present and exactly 0 (axis vectors: a normalised [1, 1] would leave 2e-16 of float noise for
+  // the median to scale up). Under the old rule (scale 1 below three values) B entered as raw 10 and 15
+  // and the calibrated pair scored 3% and 0%, below every uncalibrated film.
+  const calibrated = (id, c7x) => {
+    const s = fullSpine(id, { study: { calibration: CALIBRATION } });
+    s.geometry.c7_centroid = [c7x, 370];
+    return s;
+  };
+  const uncalibrated = (id, deg) => fullSpine(id, { study: {
+    measurements: { PI: 50 + deg, PT: 12, SS: 38, L1PA: 8, LL: { 'L1-S1': 49 + deg }, region: 'full_spine', GLOBAL_SVA_MM: null, GLOBAL_SVA_PX: null },
+  } });
+  const rank = (pool) => {
+    const embeddings = Object.fromEntries(pool.map((s) => [s.id, record(s.id, { lumbar: [1, 0], cervical: [0, 1], whole: [1, 0], region: 'full_spine' })]));
+    return findSimilar(pool[0], pool, { scope: 'all', mode: 'all', embeddings }).matches;
+  };
+  // The probe's own spread, 10-20 degrees: the calibrated films interleave by how far off they are.
+  const spread = rank([calibrated('open', 60), calibrated('mm10', 40), calibrated('mm15', 30),
+    uncalibrated('deg10', 10), uncalibrated('deg15', 15), uncalibrated('deg20', 20)]);
+  assert.deepEqual(spread.map((m) => m.study.id), ['deg10', 'mm10', 'deg15', 'mm15', 'deg20']);
+  assert.ok(spread.filter((m) => m.study.id.startsWith('mm')).every((m) => m.blocks.includes('B') && m.match >= 60),
+    spread.map((m) => `${m.study.id} ${m.match}%`).join(', '));
+  // Three uncalibrated films all 15 degrees off: the pair still scores like its neighbours, not 3% and 0%.
+  const level = rank([calibrated('open', 60), calibrated('mm10', 40), calibrated('mm15', 30),
+    uncalibrated('degA', 15), uncalibrated('degB', 15), uncalibrated('degC', 15)]);
+  assert.ok(level.filter((m) => m.study.id.startsWith('mm')).every((m) => m.match >= 60),
+    level.map((m) => `${m.study.id} ${m.match}%`).join(', '));
 });
 
 test('openReason names why the open study has no cards', () => {
