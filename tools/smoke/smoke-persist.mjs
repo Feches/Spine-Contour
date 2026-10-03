@@ -543,10 +543,13 @@ try {
         const m = await import('./renderer/embeddings.js');
         await m.ensureEmbeddings();
         const record = m.embeddingFor(${JSON.stringify(STUDY_ID)});
-        return record ? { id: record.id, cropLength: Array.isArray(record.crop) ? record.crop.length : null, model: (record.model && record.model.onnx_sha256) || null } : null;
+        // The record is version 2 since stage 2: three vectors by region (lumbar, cervical, whole), any of
+        // them null; this sample film is lumbar, so its lumbar crop is the vector, the whole film the fallback.
+        const vector = record ? (record.lumbar ?? record.whole) : null;
+        return record ? { id: record.id, version: record.version, vectorLength: Array.isArray(vector) ? vector.length : null, model: (record.model && record.model.onnx_sha256) || null } : null;
       })()`);
       check(EMBEDDING_SECTION,
-        Boolean(loadedEmbedding) && loadedEmbedding.id === STUDY_ID && Number.isInteger(loadedEmbedding.cropLength) && loadedEmbedding.cropLength > 0 && typeof loadedEmbedding.model === 'string' && loadedEmbedding.model.length > 0,
+        Boolean(loadedEmbedding) && loadedEmbedding.id === STUDY_ID && loadedEmbedding.version === 2 && Number.isInteger(loadedEmbedding.vectorLength) && loadedEmbedding.vectorLength > 0 && typeof loadedEmbedding.model === 'string' && loadedEmbedding.model.length > 0,
         loadedEmbedding);
     }
 

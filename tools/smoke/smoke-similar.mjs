@@ -1,24 +1,30 @@
-// Find similar tab smoke (similar-cases spec, 2026-09-12; Plan B task 10): the tab's controls, the
-// four ranking modes, the workspace/library scope, outcome and angle lines, comparison mode, the
-// tab's empty states, the Studies screen's Embed count and the Export dataset button, all driven
-// straight through the store the way smoke-parameters.mjs drives the Parameters tab. DOM-only: the
-// backend need not carry the appearance-embedding graph -- every embeddings/<id>.json record this
-// suite ranks by is injected through renderer/embeddings.js's own storeEmbedding, never computed.
+// Find similar tab smoke (similar-cases spec, 2026-09-12; Plan B task 10; regions: spec 2026-09-30,
+// stage 2 task 9): the tab's controls including the Region control, the four ranking modes, the
+// workspace/library scope, outcome and angle lines, comparison mode, the tab's empty states, a
+// cervical film and a full-spine film, the Studies screen's Embed count and the Export dataset
+// button, all driven straight through the store the way smoke-parameters.mjs drives the Parameters
+// tab. DOM-only: the backend need not carry the appearance-embedding graph -- every
+// embeddings/<id>.json record this suite ranks by is injected (as a version-2 record) through
+// renderer/embeddings.js's own storeEmbedding, never computed.
 // Precondition: the app is running from source on a scratch profile, any screen, run BEFORE the
 // suites that add real segmented films (smoke-studies.mjs, smoke-workspace.mjs, smoke-persist.mjs)
 // -- the same precondition smoke-parameters.mjs documents for the same reason. Section 10's Embed
-// count assumes the only real, fully-covered studies in the library are this suite's own; a real
+// count assumes the only real, segmented studies in the library are this suite's own; a real
 // segmented study left behind by an earlier suite on the same instance would inflate it.
 //
-// Nine records under SP-9200..SP-9208 carry the fixture (a synthetic "SIM-S0xx" cohort so no
-// injected id collides with the demo library's SP-00xx or another suite's SP-9000/SP-91xx/SP-92xx
+// Nine baseline records under SP-9200..SP-9208 carry the fixture (a synthetic "SIM-S0xx" cohort so
+// no injected id collides with the demo library's SP-00xx or another suite's SP-9000/SP-91xx/SP-92xx
 // range): SP-9200 is the open study; SP-9201 shares its subject and must never appear; SP-9202,
-// SP-9203, SP-9204 and SP-9206 are the eligible candidates under Shape (SP-9202/9203/9204 share
-// SP-9200's workspace root, SP-9206 is hand-added); SP-9205 is partial coverage; SP-9207 is
-// unsegmented; SP-9208 shares SP-9200's subject (so it can never contaminate SP-9200's own
-// candidate pool) but carries its own unique workspace root and no LL measurement, for the
-// no-alignment and the two no-candidate empty states. SP-9210/SP-9211 are injected and removed
-// again, transiently, only to push one ranking past five candidates for the "more" tail.
+// SP-9203, SP-9204, SP-9205 and SP-9206 are the eligible candidates under Shape (SP-9202..9205 share
+// SP-9200's workspace root, SP-9206 is hand-added); SP-9205 is partial coverage, and since stage 2 a
+// partial film is a candidate like any other (no coverage flag is read); SP-9207 is unsegmented;
+// SP-9208 shares SP-9200's subject (so it can never contaminate SP-9200's own candidate pool) but
+// carries its own unique workspace root and no LL measurement, for the two no-candidate empty
+// states. The transient records are injected and removed again within one section: SP-9209 (no
+// anatomy at all) and SP-9223 (S1 only) and SP-9222 (one cervical body) for the empty sentences,
+// SP-9210..SP-9215 to push one ranking past ten candidates for the "more" tail, SP-9220/SP-9221 (a
+// cervical pair) and SP-9224/SP-9225 (a full-spine pair) for the Region control. Every fixture's
+// file name is "sim-NNNN", never its record id: the id must read nowhere on the tab.
 //
 // Every selector is a data-similar-key, data-find-key, data-param-key or data-study-id. Never key
 // on a visible label or the spec's literal plural wording (the tails are pluralised by the
@@ -32,6 +38,7 @@ function check(name, ok, detail) {
 
 const DASH = '\u2014';
 const SEP = ' \u00B7 ';
+const DOT = SEP.trim();
 const ROOT = 'C:\\smoke-similar\\FusionA';
 const ISOLATED_ROOT = 'C:\\smoke-similar\\Isolated';
 const TINY_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
@@ -59,6 +66,33 @@ function geom(dx, dy, scale, { hip = true } = {}) {
   };
 }
 
+// C2 (inferior only) over C3-C7, 60 px apart, anterior on the image LEFT: the unit tests' own
+// cervicalGeometry (test/fixtures/similarity-fixtures.js). `levels` trims it to fewer bodies.
+function cervicalGeom(dx, dy, scale, { levels = ['C2', 'C3', 'C4', 'C5', 'C6', 'C7'] } = {}) {
+  const px = (x, y) => [x * scale + dx, y * scale + dy];
+  const vertebrae = {};
+  levels.forEach((level) => {
+    const i = ['C2', 'C3', 'C4', 'C5', 'C6', 'C7'].indexOf(level);
+    const top = 50 + i * 60;
+    vertebrae[level] = level === 'C2'
+      ? { superior: null, inferior: [px(40, top + 40), px(80, top + 40)], quadrilateral: null }
+      : { superior: [px(40, top), px(80, top)], inferior: [px(40, top + 40), px(80, top + 40)],
+        quadrilateral: [px(40, top), px(80, top), px(80, top + 40), px(40, top + 40)] };
+  });
+  return { region: 'cervical', vertebrae, anterior_side: 'left', c2_centroid: px(60, 70), image_width: 1000, image_height: 1000 };
+}
+
+// The cervical bodies over the lumbar ones (450 px lower), one geometry carrying both and the
+// full-spine fields: region, anterior side, C2 and C7 centroids.
+function fullSpineGeom(dx, dy, scale) {
+  const lumbar = geom(dx, dy + 450, scale);
+  const neck = cervicalGeom(dx, dy, scale);
+  return {
+    ...lumbar, ...neck, vertebrae: { ...neck.vertebrae, ...lumbar.vertebrae }, region: 'full_spine',
+    c7_centroid: [60 * scale + dx, 370 * scale + dy], image_width: 1000, image_height: 1500,
+  };
+}
+
 const FULL_QC = { coverage: { partial: false, unoriented: [] } };
 const PARTIAL_QC = { coverage: { partial: true, unoriented: [] } };
 
@@ -77,6 +111,7 @@ function study(id, o) {
     reviewedAt: null,
     addedAt: o.addedAt ?? '2026-09-13T00:00:00.000Z',
     view: 'Standing lateral',
+    ...(o.region ? { region: o.region, anteriorSide: 'left' } : {}),
     thumbnail: o.thumbnail ?? null,
     measurements: o.measurements === undefined ? null : o.measurements,
     geometry: o.geometry === undefined ? null : o.geometry,
@@ -114,7 +149,7 @@ const RECORDS = [
     workspaceFolder: ROOT, subjectId: 'SIM-S004', timepoint: 'Pre-op', filmDate: null,
     fileName: 'sim-9204.png', measurements: MEAS(75), geometry: geom(40, 40, 1.3), qc: FULL_QC,
   }),
-  study('SP-9205', { // partial coverage -- excluded from every ranking mode
+  study('SP-9205', { // partial coverage -- a candidate like any other since stage 2 (no embedding, so Shape and Alignment only)
     workspaceFolder: ROOT, subjectId: 'SIM-S005', timepoint: 'Pre-op', filmDate: '2025-01-25',
     fileName: 'sim-9205.png', measurements: MEAS(58), geometry: geom(8, 8, 1.02), qc: PARTIAL_QC,
   }),
@@ -133,14 +168,43 @@ const RECORDS = [
 ];
 const MAIN_IDS = RECORDS.map((r) => r.id);
 
-// Transient extras for the "more than five" tail (section 4 / Task 6 review note): full shape,
-// no embedding, SP-9200's own workspace root, distinct subjects. Injected and removed within one
-// sub-step; never part of the baseline the other eleven sections assume.
-const EXTRA = [
-  study('SP-9210', { workspaceFolder: ROOT, subjectId: 'SIM-S010', timepoint: 'Pre-op', filmDate: '2025-04-01', fileName: 'sim-9210.png', measurements: MEAS(58), geometry: geom(15, 15, 1.1), qc: FULL_QC }),
-  study('SP-9211', { workspaceFolder: ROOT, subjectId: 'SIM-S011', timepoint: 'Pre-op', filmDate: '2025-04-02', fileName: 'sim-9211.png', measurements: MEAS(65), geometry: geom(20, 20, 1.15), qc: FULL_QC }),
-];
-const ALL_IDS = [...MAIN_IDS, 'SP-9210', 'SP-9211'];
+// Transient extras for the "more than ten" tail (section 4): six copies of the open study's shape
+// at slightly different offsets, no embedding, SP-9200's own workspace root, distinct subjects, so
+// the five baseline Shape candidates plus these make eleven. Injected and removed within one
+// sub-step; never part of the baseline the other sections assume.
+const EXTRA = [0, 1, 2, 3, 4, 5].map((i) => study(`SP-921${i}`, {
+  workspaceFolder: ROOT, subjectId: `SIM-S01${i}`, timepoint: 'Pre-op', filmDate: `2025-04-0${i + 1}`,
+  fileName: `sim-921${i}.png`, measurements: MEAS(56 + i), geometry: geom(12 + 3 * i, 12 + 3 * i, 1.05 + 0.02 * i), qc: FULL_QC,
+}));
+const MEAS_NULL = { PI: null, PT: null, SS: null, L1PA: null, LL: { 'L1-S1': null } };
+// Segmented, but with no anatomy at all: the Region control has nothing to offer it. The geometry
+// keeps `femoral_circles: []` the way every stored result does: the Analysis header's confidence
+// badge reads its length, so a geometry without it throws in the store's subscriber.
+const EMPTY_FILM = study('SP-9209', {
+  subjectId: 'SIM-S009', timepoint: 'Pre-op', filmDate: '2025-03-05', fileName: 'sim-9209.png',
+  measurements: MEAS_NULL, geometry: { vertebrae: {}, s1_superior: null, femoral_circles: [] }, qc: FULL_QC,
+});
+// S1 only (lumbar anatomy, but not one measured angle) and one cervical body only (cervical anatomy,
+// but no Cobb, no SVA, no segmental angle): the no-alignment sentences, one per region word.
+const S1_ONLY = study('SP-9223', {
+  subjectId: 'SIM-S023', timepoint: 'Pre-op', filmDate: '2025-03-06', fileName: 'sim-9223.png',
+  measurements: MEAS_NULL, geometry: { vertebrae: {}, s1_superior: [[170, 610], [110, 620]], femoral_circles: [] }, qc: FULL_QC,
+});
+const NECK_ONE = study('SP-9222', {
+  region: 'cervical', subjectId: 'SIM-S022', timepoint: 'Pre-op', filmDate: '2025-03-07', fileName: 'sim-9222.png',
+  measurements: { region: 'cervical' }, geometry: cervicalGeom(0, 0, 1, { levels: ['C3'] }), qc: FULL_QC,
+});
+const CERVICAL = [0, 1].map((i) => study(`SP-922${i}`, {
+  workspaceFolder: ROOT, region: 'cervical', subjectId: `SIM-S02${i}`, timepoint: 'Pre-op', filmDate: `2025-05-0${i + 1}`,
+  fileName: `sim-922${i}.png`, measurements: { region: 'cervical' }, geometry: cervicalGeom(10 * i, 0, 1), qc: FULL_QC,
+}));
+const FULL_SPINE = [0, 1].map((i) => study(`SP-922${4 + i}`, {
+  workspaceFolder: ROOT, region: 'full_spine', subjectId: `SIM-S02${4 + i}`, timepoint: 'Pre-op', filmDate: `2025-06-0${i + 1}`,
+  fileName: `sim-922${4 + i}.png`, measurements: { ...MEAS(50 + 8 * i), region: 'full_spine' }, geometry: fullSpineGeom(8 * i, 8 * i, 1 + 0.03 * i), qc: FULL_QC,
+}));
+const TRANSIENT_IDS = [EMPTY_FILM, S1_ONLY, NECK_ONE, ...EXTRA, ...CERVICAL, ...FULL_SPINE].map((r) => r.id);
+const EXTRA_IDS = EXTRA.map((r) => r.id);
+const ALL_IDS = [...MAIN_IDS, ...TRANSIENT_IDS];
 
 const DEFAULT_PARAM_FILTERS = { workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: '__any__' };
 
@@ -203,12 +267,28 @@ function isCurrentSim(storedSha, bundled) {
   return bundled === null || storedSha === bundled;
 }
 
-async function embedRecord(id, model, crop) {
-  await cdp.evaluate(`import('./renderer/embeddings.js').then((m) => m.storeEmbedding({
-    version: 1, id: ${JSON.stringify(id)}, computedAt: new Date().toISOString(), sourceSha256: null,
-    model: { onnx_sha256: ${JSON.stringify(model)} }, filmType: null, crop: ${JSON.stringify(crop)}, whole: null,
-  }))`);
+// A version-2 record (data/embeddings.js): `crop` is the lumbar vector; `more` overrides the region and the
+// other two vectors (a cervical film's, a full-spine film's).
+async function embedRecord(id, model, crop, more = {}) {
+  const record = {
+    version: 2, id, computedAt: '2026-10-01T00:00:00.000Z', sourceSha256: null,
+    model: { onnx_sha256: model }, region: 'lumbar', lumbar: crop, cervical: null, whole: null, ...more,
+  };
+  await cdp.evaluate(`import('./renderer/embeddings.js').then((m) => m.storeEmbedding(${JSON.stringify(record)}))`);
 }
+
+// Adds records to the front of the library / removes records by id, for the transient fixtures.
+async function addStudies(records) {
+  await cdp.setState(`(s) => ({ studies: [${records.map((r) => JSON.stringify(r)).join(',')}, ...s.studies] })`);
+  await cdp.settle(200);
+}
+async function dropStudies(ids) {
+  await cdp.setState(`(s) => ({ studies: s.studies.filter((x) => !${JSON.stringify(ids)}.includes(x.id)) })`);
+  await cdp.settle(200);
+}
+// Every SP-nnnn the tab would show a person: its text and every tooltip under it (HANDOFF decision 76).
+const tabIdLeaks = `(() => { const t = document.querySelector('.analysis-similar'); return [t.innerText, ...[...t.querySelectorAll('[title]')].map((e) => e.getAttribute('title'))].filter((x) => /SP-\\d{4}/.test(x)); })()`;
+const forget = (ids) => cdp.evaluate(`import('./renderer/embeddings.js').then((m) => { ${ids.map((id) => `m.forgetEmbedding(${JSON.stringify(id)});`).join(' ')} })`);
 
 try {
   // ---- 1. Injection --------------------------------------------------------------------
@@ -216,7 +296,7 @@ try {
   // "alive is not ready" trap); injecting into that empty store lets the load replace the fixture a
   // moment later. Wait for the library, as the other suites do.
   for (let i = 0; i < 60 && (await store('s.studies.length')) === 0; i += 1) await cdp.settle(500);
-  await cdp.setState(`{ ack: true, screen: 'studies', studiesTab: 'find', query: '', tab: 'meas', openId: null, compareId: null, similarScope: 'all', similarRank: 'all' }`);
+  await cdp.setState(`{ ack: true, screen: 'studies', studiesTab: 'find', query: '', tab: 'meas', openId: null, compareId: null, similarScope: 'all', similarRank: 'all', similarRegion: null }`);
   await resetStudies();
   await cdp.setState(`{ openId: 'SP-9200', screen: 'analysis' }`);
   await cdp.settle(500);
@@ -232,10 +312,10 @@ try {
   await cdp.setState(`{ tab: 'sim' }`);
   await cdp.settle(700);
 
-  let s = await store('{ openId: s.openId, tab: s.tab, similarScope: s.similarScope, similarRank: s.similarRank }');
+  let s = await store('{ openId: s.openId, tab: s.tab, similarScope: s.similarScope, similarRank: s.similarRank, similarRegion: s.similarRegion }');
   check('the nine injected records are in the store', await store(`${JSON.stringify(MAIN_IDS)}.every((id) => s.studies.some((x) => x.id === id))`), null);
   check('SP-9200 is open with the Find similar tab up', s.openId === 'SP-9200' && s.tab === 'sim', s);
-  check('scope and rank reset to all/all', s.similarScope === 'all' && s.similarRank === 'all', s);
+  check('scope and rank reset to all/all, and no region pick is remembered', s.similarScope === 'all' && s.similarRank === 'all' && s.similarRegion === null, s);
   check('the tab mounted (a scope/rank control is on screen)', await has('[data-similar-key="scope-all"]'), null);
 
   // ---- 2. Controls -----------------------------------------------------------------------
@@ -243,15 +323,35 @@ try {
   check('scope-workspace is not pressed', (await attr('[data-similar-key="scope-workspace"]', 'aria-pressed')) === 'false', null);
   check('rank-all is pressed', (await attr('[data-similar-key="rank-all"]', 'aria-pressed')) === 'true', null);
   check('rank-shape is not pressed', (await attr('[data-similar-key="rank-shape"]', 'aria-pressed')) === 'false', null);
-  check('the eyebrow reads the All-mode wording', (await text('.similar-eyebrow')) === 'RANKED BY SHAPE, ALIGNMENT AND APPEARANCE', await text('.similar-eyebrow'));
+  check('region-lumbar is pressed for a lumbar film', (await attr('[data-similar-key="region-lumbar"]', 'aria-pressed')) === 'true', null);
+  check('region-cervical is disabled for a lumbar film', await cdp.evaluate("document.querySelector('[data-similar-key=\"region-cervical\"]').disabled"), null);
+  check('region-full_spine is disabled for a lumbar film', await cdp.evaluate("document.querySelector('[data-similar-key=\"region-full_spine\"]').disabled"), null);
+  check('region-lumbar is enabled for a lumbar film', (await cdp.evaluate("document.querySelector('[data-similar-key=\"region-lumbar\"]').disabled")) === false, null);
+  const controlLabels = await cdp.evaluate("[...document.querySelectorAll('.similar-control .sidebar-models-label')].map((e) => e.textContent.trim())");
+  check('the controls read SCOPE, REGION, RANK BY in that order (REGION between the two)', JSON.stringify(controlLabels) === JSON.stringify(['SCOPE', 'REGION', 'RANK BY']), controlLabels);
+  const regionKeys = await cdp.evaluate("[...document.querySelectorAll('.similar-control [data-similar-key]')].map((e) => e.getAttribute('data-similar-key'))");
+  check('the Region control offers Lumbar, Cervical and Whole spine, between the scope and rank buttons',
+    JSON.stringify(regionKeys) === JSON.stringify(['scope-workspace', 'scope-all', 'region-lumbar', 'region-cervical', 'region-full_spine', 'rank-all', 'rank-shape', 'rank-alignment', 'rank-appearance']), regionKeys);
+  const regionTitles = [await attr('[data-similar-key="region-cervical"]', 'title'), await attr('[data-similar-key="region-full_spine"]', 'title'), await attr('[data-similar-key="region-lumbar"]', 'title')];
+  check('a disabled Region button says why in its title, an enabled one carries none',
+    regionTitles[0] === 'This study has no cervical anatomy' && regionTitles[1] === 'This study has no whole-spine anatomy' && regionTitles[2] === '', regionTitles);
+  const regionOpacity = await cdp.evaluate("getComputedStyle(document.querySelector('[data-similar-key=\"region-cervical\"]')).opacity");
+  check('a disabled Region button computes to opacity 0.5 (it reads as disabled)', Number(regionOpacity) === 0.5, regionOpacity);
+  check('the eyebrow reads the All-mode wording under the lumbar region', (await text('.similar-eyebrow')) === 'RANKED BY LUMBAR SHAPE, ALIGNMENT AND APPEARANCE', await text('.similar-eyebrow'));
 
   // ---- 3. Cards under All ------------------------------------------------------------------
   let ids = await cardIds();
-  check('cards exclude the same-subject study and the partial study, at most five', ids.length <= 5 && !ids.includes('SP-9201') && !ids.includes('SP-9205'), ids);
-  check('the All-mode candidate set is exactly the three current-model embedded studies', sameSet(ids, ['SP-9202', 'SP-9203', 'SP-9204']), ids);
+  check('cards exclude the same-subject study, at most ten', ids.length <= 10 && !ids.includes('SP-9201'), ids);
+  check('the All-mode candidate set is exactly the three embedded studies (the partial one has no embedding, not a coverage flag, to thank)', sameSet(ids, ['SP-9202', 'SP-9203', 'SP-9204']), ids);
   check('the footer counts 1 of 3 with a fusion extension, 1 not recorded', (await text('[data-similar-key="footer"]')) === `1 OF 3 WITH A FUSION EXTENSION${SEP}1 NOT RECORDED`, await text('[data-similar-key="footer"]'));
   check('the stale tail names the one study under another model', (await text('[data-similar-key="stale"]')) === '1 STUDY NEEDS RE-EMBEDDING', await text('[data-similar-key="stale"]'));
-  check("SP-9204's card carries the no-appearance missing marker", ((await cardText('SP-9204', '.similar-missing')) ?? '').includes('\u00B7 no appearance'), await cardText('SP-9204', '.similar-missing'));
+  check("SP-9204's card carries the no-lumbar-crop missing marker (its embedding came from another graph)", ((await cardText('SP-9204', '.similar-missing')) ?? '').includes(`${DOT} no lumbar crop`), await cardText('SP-9204', '.similar-missing'));
+  check('no card carries the retired no-appearance marker', !((await cardText('SP-9204', '.similar-missing')) ?? '').includes('no appearance'), await cardText('SP-9204', '.similar-missing'));
+  check("SP-9202's card carries the no-disc-heights missing marker (the fixtures are uncalibrated)", ((await cardText('SP-9202', '.similar-missing')) ?? '').includes(`${DOT} no disc heights`), await cardText('SP-9202', '.similar-missing'));
+  check("a card's absent blocks sit on their own line, so the film's name stays readable (every name over 80 px wide)",
+    (await count('.similar-card .similar-missing')) > 0 && (await cdp.evaluate("[...document.querySelectorAll('.similar-name')].every((e) => e.clientWidth > 80)")), await cdp.evaluate("[...document.querySelectorAll('.similar-name')].map((e) => e.clientWidth)"));
+  check('the tab does not scroll sideways under the cards', await cdp.evaluate("(() => { const t = document.querySelector('.analysis-similar'); return t.scrollWidth <= t.clientWidth; })()"), await cdp.evaluate("(() => { const t = document.querySelector('.analysis-similar'); return [t.scrollWidth, t.clientWidth]; })()"));
+  check('the record id reads nowhere on the tab: not in its text, not in any tooltip', (await cdp.evaluate(tabIdLeaks)).length === 0, await cdp.evaluate(tabIdLeaks));
   check("SP-9204's absent film date renders as a dash", ((await cardText('SP-9204', '.similar-meta')) ?? '').includes(DASH), await cardText('SP-9204', '.similar-meta'));
   check('SP-9202 renders its thumbnail as an img', await has('.similar-card[data-study-id="SP-9202"] img.similar-thumb'), null);
   check('SP-9203 with no thumbnail renders the empty placeholder, not an img', (await has('.similar-card[data-study-id="SP-9203"] .similar-thumb-empty')) && !(await has('.similar-card[data-study-id="SP-9203"] img.similar-thumb')), null);
@@ -260,22 +360,23 @@ try {
   // ---- 4. Rank by Shape / Alignment / Appearance -------------------------------------------
   await clickSimilar('rank-shape');
   ids = await cardIds();
-  check('Shape ranks every study with a shape vector, including the stale-model and hand-added ones', sameSet(ids, ['SP-9202', 'SP-9203', 'SP-9204', 'SP-9206']), ids);
+  check('Shape ranks every study with a shape vector, including the stale-model, hand-added and partial ones', sameSet(ids, ['SP-9202', 'SP-9203', 'SP-9204', 'SP-9205', 'SP-9206']), ids);
+  check('the eyebrow switches to the Shape wording', (await text('.similar-eyebrow')) === 'RANKED BY LUMBAR SHAPE', await text('.similar-eyebrow'));
   check('Shape needs no embeddings, so there is no stale tail', !(await has('[data-similar-key="stale"]')), null);
   check("SP-9206's absent subject renders as a dash", ((await cardText('SP-9206', '.similar-meta')) ?? '').startsWith(DASH), await cardText('SP-9206', '.similar-meta'));
   check("SP-9206's card carries the no-hip missing marker", ((await cardText('SP-9206', '.similar-missing')) ?? '').includes('\u00B7 no hip'), await cardText('SP-9206', '.similar-missing'));
   check('the rank-shape control keeps keyboard focus after the click that rebuilt the list', (await cdp.evaluate("document.activeElement?.getAttribute('data-similar-key')")) === 'rank-shape', null);
 
   await clickSimilar('rank-alignment');
-  check('the eyebrow switches to the Alignment wording', (await text('.similar-eyebrow')) === 'RANKED BY SPINOPELVIC ALIGNMENT', await text('.similar-eyebrow'));
+  check('the eyebrow switches to the Alignment wording', (await text('.similar-eyebrow')) === 'RANKED BY LUMBAR ALIGNMENT', await text('.similar-eyebrow'));
   ids = await cardIds();
   check('the PI 75 study (the largest PI difference) ranks last under Alignment', ids[ids.length - 1] === 'SP-9204', ids);
 
   await clickSimilar('rank-appearance');
-  check('the eyebrow switches to the Appearance wording', (await text('.similar-eyebrow')) === 'RANKED BY APPEARANCE', await text('.similar-eyebrow'));
+  check('the eyebrow switches to the Appearance wording', (await text('.similar-eyebrow')) === 'RANKED BY LUMBAR APPEARANCE', await text('.similar-eyebrow'));
   ids = await cardIds();
   check('only the two other current-model embedded studies rank under Appearance', sameSet(ids, ['SP-9202', 'SP-9203']), ids);
-  check("a card carries the no-whole-film missing marker under Appearance (no study here has a whole-film vector)", ((await cardText('SP-9202', '.similar-missing')) ?? '').includes('\u00B7 no whole film'), await cardText('SP-9202', '.similar-missing'));
+  check("no card carries the whole-film marker under the lumbar region", !((await cardText('SP-9202', '.similar-missing')) ?? '').includes('no whole film'), await cardText('SP-9202', '.similar-missing'));
 
   // Focus a card that is about to drop out of the ranking, then change rank WITHOUT a click (a
   // direct store write, the way a keyboard-driven or programmatic change would arrive) -- the
@@ -287,28 +388,30 @@ try {
   await cdp.setState('{ similarRank: "appearance" }');
   await cdp.settle(200);
   check('changing rank while a about-to-vanish card is focused raises no exception', cdp.errors.length === errorsBeforeFocusDrop, cdp.errors.slice(errorsBeforeFocusDrop));
-  check('the mode change still took effect', (await text('.similar-eyebrow')) === 'RANKED BY APPEARANCE', await text('.similar-eyebrow'));
+  check('the mode change still took effect', (await text('.similar-eyebrow')) === 'RANKED BY LUMBAR APPEARANCE', await text('.similar-eyebrow'));
   await cdp.setState('{ similarRank: "shape" }');
   await cdp.settle(200);
 
-  // The "more than five" tail (Task 6 review note): six eligible candidates under Shape, only
-  // five cards, the sixth counted in the tail. Injected and removed within this one sub-step.
-  await cdp.setState(`(s) => ({ studies: [${EXTRA.map((r) => JSON.stringify(r)).join(',')}, ...s.studies] })`);
-  await cdp.settle(200);
-  check('six eligible candidates render at most five cards', (await count('.similar-card')) === 5, await count('.similar-card'));
-  check('the sixth is named in the more tail (pluralisation not asserted, per the Task 6 review note)', ((await text('[data-similar-key="more"]')) ?? '').includes('MORE STUD'), await text('[data-similar-key="more"]'));
-  await cdp.setState(`(s) => ({ studies: s.studies.filter((x) => x.id !== 'SP-9210' && x.id !== 'SP-9211') })`);
-  await cdp.settle(200);
+  // The "more than ten" tail (spec decision 15): the five baseline Shape candidates plus six extras
+  // are eleven eligible, ten cards, the eleventh counted in the tail. Injected and removed within
+  // this one sub-step.
+  await addStudies(EXTRA);
+  check('eleven eligible candidates render at most ten cards', (await count('.similar-card')) === 10, await count('.similar-card'));
+  check('the eleventh is named in the more tail', (await text('[data-similar-key="more"]')) === '1 MORE STUDY BELOW', await text('[data-similar-key="more"]'));
+  const footerOfTen = await text('[data-similar-key="footer"]');
+  check('the footer counts the ten cards on screen', /^\d+ OF 10 WITH A FUSION EXTENSION/.test(footerOfTen ?? ''), footerOfTen);
+  await dropStudies(EXTRA_IDS);
   ids = await cardIds();
-  check('removing the extras restores the four-candidate Shape set', sameSet(ids, ['SP-9202', 'SP-9203', 'SP-9204', 'SP-9206']), ids);
+  check('removing the extras restores the five-candidate Shape set', sameSet(ids, ['SP-9202', 'SP-9203', 'SP-9204', 'SP-9205', 'SP-9206']), ids);
+  check('with five candidates there is no more tail', !(await has('[data-similar-key="more"]')), null);
 
   // ---- 5. Scope --------------------------------------------------------------------------
   await clickSimilar('scope-workspace');
   ids = await cardIds();
-  check('scope-workspace drops the hand-added study', sameSet(ids, ['SP-9202', 'SP-9203', 'SP-9204']), ids);
+  check('scope-workspace drops the hand-added study', sameSet(ids, ['SP-9202', 'SP-9203', 'SP-9204', 'SP-9205']), ids);
   await clickSimilar('scope-all');
   ids = await cardIds();
-  check('scope-all brings it back', sameSet(ids, ['SP-9202', 'SP-9203', 'SP-9204', 'SP-9206']), ids);
+  check('scope-all brings it back', sameSet(ids, ['SP-9202', 'SP-9203', 'SP-9204', 'SP-9205', 'SP-9206']), ids);
 
   // ---- 6. Outcome lines --------------------------------------------------------------------
   await clickSimilar('rank-all');
@@ -330,6 +433,8 @@ try {
   // that fields are parsed (similar-cases gate ruling).
   check('the comparing badge names the study by its parsed fields, not the record id', (await text('[data-similar-key="comparing"]')) === `COMPARING${SEP}SIM-S002${SEP}Pre-op${SEP}2025-01-15`, await text('[data-similar-key="comparing"]'));
   check('the panel carries is-comparing', (await count('.analysis-panel.is-comparing')) === 1, null);
+  const chipMatchDefault = await text('.viewer-chip-match');
+  check("the compare chip's percentage is the card's own", chipMatchDefault !== null && /^\d+%$/.test(chipMatchDefault) && chipMatchDefault === (await cardText('SP-9202', '.similar-match')), { chip: chipMatchDefault, card: await cardText('SP-9202', '.similar-match') });
   check('the measurements panel shows delta cells', (await count('.meas-delta')) > 0, await count('.meas-delta'));
   check('the clinical drawer shows exactly two data rows beyond the group and head rows', (await count('.clinical-grid-row:not(.clinical-grid-group):not(.clinical-grid-head)')) === 2, await count('.clinical-grid-row:not(.clinical-grid-group):not(.clinical-grid-head)'));
   check("the compared card reads IN VIEWER, CLICK TO REMOVE", (await cardText('SP-9202', '.similar-state')) === `IN VIEWER${SEP}CLICK TO REMOVE`, await cardText('SP-9202', '.similar-state'));
@@ -342,9 +447,22 @@ try {
   check('the comparing badge is hidden again', await prop('[data-similar-key="comparing"]', 'hidden'), null);
 
   // ---- 9. Empty states ---------------------------------------------------------------------
-  await cdp.setState(`{ openId: 'SP-9205' }`);
+  await cdp.setState(`{ openId: 'SP-9205', similarRank: 'shape' }`);
   await cdp.settle(400);
-  check('the partial study reads the partial sentence, with a typographic apostrophe', (await text('[data-similar-key="empty"]')) === 'Similar cases need all five lumbar levels and S1; this study\u2019s coverage is partial.', await text('[data-similar-key="empty"]'));
+  check('the partial study has no sentence of its own any more: under Shape it ranks like any other film', (await count('.similar-card')) > 0 && !(await has('[data-similar-key="empty"]')), await count('.similar-card'));
+  await addStudies([EMPTY_FILM, S1_ONLY, NECK_ONE]);
+  await cdp.setState(`{ openId: 'SP-9209', similarRank: 'all', similarRegion: null }`);
+  await cdp.settle(400);
+  check('a study with no geometry at all reads the no-region sentence with the lumbar word', (await text('[data-similar-key="empty"]')) === `This study has no lumbar anatomy to rank on ${DASH} choose another region.`, await text('[data-similar-key="empty"]'));
+  // The buttons would refuse the other two regions on this film; a store write is how a stale or
+  // programmatic pick could still arrive, and the sentence must name the region it was asked for.
+  await cdp.setState(`{ openId: 'SP-9200', similarRegion: { openId: 'SP-9200', region: 'cervical' } }`);
+  await cdp.settle(400);
+  check('a cervical pick on a lumbar film reads the no-region sentence with the cervical word', (await text('[data-similar-key="empty"]')) === `This study has no cervical anatomy to rank on ${DASH} choose another region.`, await text('[data-similar-key="empty"]'));
+  await cdp.setState(`{ similarRegion: { openId: 'SP-9200', region: 'full_spine' } }`);
+  await cdp.settle(400);
+  check('a whole-spine pick on a lumbar film reads the no-region sentence with the whole-spine word', (await text('[data-similar-key="empty"]')) === `This study has no whole-spine anatomy to rank on ${DASH} choose another region.`, await text('[data-similar-key="empty"]'));
+  await cdp.setState(`{ similarRegion: null }`);
 
   await cdp.setState(`{ openId: 'SP-9206', similarRank: 'all' }`);
   await cdp.settle(400);
@@ -360,9 +478,17 @@ try {
 
   await cdp.setState(`{ openId: 'SP-9208', similarRank: 'alignment' }`);
   await cdp.settle(400);
-  check('a study missing an alignment angle reads the no-alignment sentence', (await text('[data-similar-key="empty"]')) === 'Alignment needs PI, PT, SS and LL; this study is missing one \u2014 rank by shape instead.', await text('[data-similar-key="empty"]'));
+  check('a study missing one alignment angle (no LL) still ranks on the angles it has: cards, no sentence', (await count('.similar-card')) > 0 && !(await has('[data-similar-key="empty"]')), await count('.similar-card'));
 
-  await cdp.setState(`{ similarRank: 'shape', similarScope: 'workspace' }`);
+  await cdp.setState(`{ openId: 'SP-9223' }`);
+  await cdp.settle(400);
+  check('a lumbar study with no measured angle reads the no-alignment sentence with the lumbar word', (await text('[data-similar-key="empty"]')) === 'Alignment needs at least one measured lumbar angle on this study.', await text('[data-similar-key="empty"]'));
+  await cdp.setState(`{ openId: 'SP-9222' }`);
+  await cdp.settle(400);
+  check('a cervical study with no measured angle reads the no-alignment sentence with the cervical word', (await text('[data-similar-key="empty"]')) === 'Alignment needs at least one measured cervical angle on this study.', await text('[data-similar-key="empty"]'));
+  await dropStudies(['SP-9209', 'SP-9222', 'SP-9223']);
+
+  await cdp.setState(`{ openId: 'SP-9208', similarRank: 'shape', similarScope: 'workspace' }`);
   await cdp.settle(400);
   check('a study alone in its workspace reads the workspace no-candidate sentence', (await text('[data-similar-key="empty"]')) === 'No other eligible studies in this workspace.', await text('[data-similar-key="empty"]'));
 
@@ -380,28 +506,31 @@ try {
   // ---- 10. Embed count --------------------------------------------------------------------
   await cdp.setState(`{ screen: 'studies', studiesTab: 'find', query: '', openId: null }`);
   await cdp.settle(300);
-  const storedShaFor = { 'SP-9201': null, 'SP-9204': STALE_SHA, 'SP-9206': null, 'SP-9208': null };
+  // Every segmented real study without a current record counts, the partial SP-9205 included
+  // (stage 2: a film ranks on the blocks it has, so Embed no longer skips it).
+  const storedShaFor = { 'SP-9201': null, 'SP-9204': STALE_SHA, 'SP-9205': null, 'SP-9206': null, 'SP-9208': null };
   const expectedNeeded = Object.keys(storedShaFor).filter((id) => !isCurrentSim(storedShaFor[id], bundledSha));
   const embedTextBefore = await text('[data-find-key="embed"]');
-  check(`the Embed button counts the fully-covered studies without a current record (the partial one excluded)`,
+  check('the Embed button counts every segmented study without a current record, the partial one too',
     embedTextBefore === `Embed ${expectedNeeded.length}`, { embedTextBefore, expectedNeeded, bundledSha });
+  check('there is no partial note any more', !(await has('[data-find-key="embed-note"]')), null);
 
-  // The gate ruling (2026-09-12): SP-9205 (partial coverage) is the one segmented-but-unrankable
-  // study in the baseline, so the note beside the Embed button reads "1 partial -- not embeddable".
-  const embedNoteText = await text('[data-find-key="embed-note"]');
-  check('the Embed note counts the one partial study the count leaves out', embedNoteText === `1 partial ${DASH} not embeddable`, embedNoteText);
-  const embedNoteTitle = await attr('[data-find-key="embed-note"]', 'title');
-  check('the Embed note explains why in its title',
-    embedNoteTitle === 'Find similar needs all five lumbar levels and S1; a partial segmentation cannot be ranked, so it is not embedded.', embedNoteTitle);
+  // A version-1 record (one crop, a film-type proxy) reads as not current, so Embed recomputes it once.
+  await cdp.evaluate(`import('./renderer/embeddings.js').then((m) => m.storeEmbedding(${JSON.stringify({
+    version: 1, id: 'SP-9205', computedAt: '2026-09-13T00:00:00.000Z', sourceSha256: null,
+    model: { onnx_sha256: CURRENT_SHA }, filmType: null, crop: [0.5, 0.5, 0], whole: null,
+  })}))`);
+  await cdp.settle(300);
+  check('a version-1 record is not current: the Embed count still includes its film', (await text('[data-find-key="embed"]')) === `Embed ${expectedNeeded.length}`, await text('[data-find-key="embed"]'));
 
   await embedRecord('SP-9201', CURRENT_SHA, [0.5, 0.5, 0]);
   await embedRecord('SP-9204', CURRENT_SHA, [0.5, 0.5, 0]);
+  await embedRecord('SP-9205', CURRENT_SHA, [0.5, 0.5, 0]);
   await embedRecord('SP-9206', CURRENT_SHA, [0.5, 0.5, 0]);
   await embedRecord('SP-9208', CURRENT_SHA, [0.5, 0.5, 0]);
   await cdp.settle(300);
-  check('with every fully-covered study current, the Embed button is absent', !(await has('[data-find-key="embed"]')), await text('[data-find-key="embed"]'));
-  check('the Embed note still shows the one partial study even with the Embed button hidden',
-    (await text('[data-find-key="embed-note"]')) === `1 partial ${DASH} not embeddable`, await text('[data-find-key="embed-note"]'));
+  check('with every segmented study current, the Embed button is absent', !(await has('[data-find-key="embed"]')), await text('[data-find-key="embed"]'));
+  check('there is still no partial note with the Embed button hidden', !(await has('[data-find-key="embed-note"]')), null);
 
   // ---- 11. Export dataset ------------------------------------------------------------------
   await clickParam('tab-parameters');
@@ -427,6 +556,12 @@ try {
       vectorsIsSingleLine: !built.files['vectors.json'].includes('\\n'),
       manifestIsMultiLine: built.files['manifest.json'].includes('\\n'),
       filmsCsv: built.files['parameters.csv'],
+      pairedCsv: built.files['paired.csv'],
+      pairs: built.counts.pairs,
+      vectorsVersion: JSON.parse(built.files['vectors.json']).version,
+      vectorsRegions: JSON.parse(built.files['vectors.json']).films.map((film) => film.region),
+      vectorsBlocks: Object.keys(JSON.parse(built.files['vectors.json']).films[0] ?? {}).sort(),
+      manifestKeys: Object.keys(JSON.parse(built.files['manifest.json'])).sort(),
     };
   })`);
   check('buildDataset writes exactly the five files', JSON.stringify(dataset.keys) === JSON.stringify(['README.md', 'manifest.json', 'paired.csv', 'parameters.csv', 'vectors.json']), dataset.keys);
@@ -440,6 +575,99 @@ try {
     firstFields);
   check("SP-9202's own row is named by its study name", firstFields.includes('sim-9202'), firstFields);
 
+  // Stage 2 (spec 2026-09-30, section 13): the film's region rides every table, the vectors file is
+  // version 2 with every block by key, and the manifest's citation is now a notice.
+  const headerCells = (csv) => (csv.split('\r\n').find((line) => line !== '' && !line.startsWith('#')) ?? '').split(',');
+  const filmsHeader = headerCells(dataset.filmsCsv);
+  check('parameters.csv has a Region column and no Film type column', filmsHeader.includes('Region') && !filmsHeader.includes('Film type'), filmsHeader.filter((h) => /region|film type/i.test(h)));
+  const pairedHeader = headerCells(dataset.pairedCsv);
+  check('paired.csv names the region of every written visit (a "<visit> region" column)', dataset.pairs > 0 && pairedHeader.includes('Pre-op region'), { pairs: dataset.pairs, region: pairedHeader.filter((h) => /region/i.test(h)) });
+  check('vectors.json is version 2 and every film carries its region', dataset.vectorsVersion === 2 && dataset.vectorsRegions.length === dataset.realCount && dataset.vectorsRegions.every((region) => region === 'lumbar'), { version: dataset.vectorsVersion, regions: dataset.vectorsRegions });
+  check('a vectors.json film carries every block by key (null where the film lacks one)',
+    ['name', 'region', 'V', 'H', 'A', 'SL', 'D', 'VC', 'AC', 'BC', 'SC', 'B', 'lumbar', 'cervical', 'whole'].every((key) => dataset.vectorsBlocks.includes(key)), dataset.vectorsBlocks);
+  check('manifest.json names a notice and no citation', dataset.manifestKeys.includes('notice') && !dataset.manifestKeys.includes('citation'), dataset.manifestKeys);
+
+  // ---- 12. A cervical film -------------------------------------------------------------------
+  // Opened through the store like SP-9200. Under All it needs its own embedding (a cervical vector
+  // only, region 'cervical'); with no other cervical film the pool is empty, and a second one makes
+  // one card whose angle line is the cervical one.
+  await addStudies([CERVICAL[0]]);
+  await embedRecord('SP-9220', CURRENT_SHA, null, { region: 'cervical', cervical: [0, 1, 0] });
+  await cdp.setState(`{ screen: 'analysis', openId: 'SP-9220', tab: 'sim', similarScope: 'all', similarRank: 'all', similarRegion: null, compareId: null }`);
+  await cdp.settle(600);
+  check('region-cervical is pressed for a cervical film', (await attr('[data-similar-key="region-cervical"]', 'aria-pressed')) === 'true', null);
+  check('region-lumbar is disabled for a cervical film', await cdp.evaluate("document.querySelector('[data-similar-key=\"region-lumbar\"]').disabled"), null);
+  check('region-full_spine is disabled for a cervical film', await cdp.evaluate("document.querySelector('[data-similar-key=\"region-full_spine\"]').disabled"), null);
+  check('the eyebrow names the cervical region', (await text('.similar-eyebrow')) === 'RANKED BY CERVICAL SHAPE, ALIGNMENT AND APPEARANCE', await text('.similar-eyebrow'));
+  check('with no other cervical film the library no-candidate sentence shows', (await text('[data-similar-key="empty"]')) === 'No other eligible studies in the library.', await text('[data-similar-key="empty"]'));
+
+  await addStudies([CERVICAL[1]]);
+  await embedRecord('SP-9221', CURRENT_SHA, null, { region: 'cervical', cervical: [0.9, 0.4, 0] });
+  await cdp.settle(400);
+  ids = await cardIds();
+  check('a second cervical film is the one card (no lumbar film is a cervical candidate)', JSON.stringify(ids) === JSON.stringify(['SP-9221']), ids);
+  check("the cervical card's angle line opens with Cobb", ((await cardText('SP-9221', '.similar-angles')) ?? '').startsWith('Cobb '), await cardText('SP-9221', '.similar-angles'));
+  check('the cervical card names the block the uncalibrated pair lacks', ((await cardText('SP-9221', '.similar-missing')) ?? '').includes(`${DOT} no cervical balance`), await cardText('SP-9221', '.similar-missing'));
+  await dropStudies(['SP-9221']);
+  await forget(['SP-9221']);
+
+  // ---- 13. A full-spine film -----------------------------------------------------------------
+  // SP-9224 (open) and SP-9225 (a stale-model embedding, so only its shapes and angles rank): the
+  // default region is Whole spine, a card there names every block the pair lacks on its own line,
+  // and a click on Lumbar moves the pick, the eyebrow and the focus.
+  await addStudies(FULL_SPINE);
+  await embedRecord('SP-9224', CURRENT_SHA, [1, 0, 0], { region: 'full_spine', cervical: [0, 1, 0], whole: [0, 0, 1] });
+  await embedRecord('SP-9225', STALE_SHA, [0.9, 0.4, 0], { region: 'full_spine', cervical: [0.9, 0.4, 0], whole: [0.9, 0.4, 0] });
+  await cdp.setState(`{ openId: 'SP-9224', similarRegion: null, compareId: null }`);
+  await cdp.settle(600);
+  check('region-full_spine is pressed for a full-spine film', (await attr('[data-similar-key="region-full_spine"]', 'aria-pressed')) === 'true', null);
+  check('a full-spine film can choose Lumbar and Cervical too', (await cdp.evaluate("['region-lumbar', 'region-cervical'].every((k) => document.querySelector('[data-similar-key=\"' + k + '\"]').disabled === false)")), null);
+  check('the eyebrow names the whole spine', (await text('.similar-eyebrow')) === 'RANKED BY WHOLE-SPINE SHAPE, ALIGNMENT AND APPEARANCE', await text('.similar-eyebrow'));
+  ids = await cardIds();
+  check('under Whole spine only the other full-spine film is a candidate', JSON.stringify(ids) === JSON.stringify(['SP-9225']), ids);
+  const wholeMissing = await cardText('SP-9225', '.similar-missing');
+  check('a whole-spine card names every block it lacks, on its own line',
+    ['no disc heights', 'no cervical balance', 'no global balance', 'no whole film', 'no lumbar crop', 'no cervical crop'].every((label) => (wholeMissing ?? '').includes(`${DOT} ${label}`)), wholeMissing);
+  check('the card with six labels keeps its film name wider than 80 px', (await cdp.evaluate("document.querySelector('.similar-card[data-study-id=\"SP-9225\"] .similar-name').clientWidth")) > 80, await cdp.evaluate("document.querySelector('.similar-card[data-study-id=\"SP-9225\"] .similar-name').clientWidth"));
+  check('the tab does not scroll sideways under a card with six labels', await cdp.evaluate("(() => { const t = document.querySelector('.analysis-similar'); return t.scrollWidth <= t.clientWidth; })()"), await cdp.evaluate("(() => { const t = document.querySelector('.analysis-similar'); return [t.scrollWidth, t.clientWidth]; })()"));
+  check('the record id reads nowhere on the whole-spine tab', (await cdp.evaluate(tabIdLeaks)).length === 0, await cdp.evaluate(tabIdLeaks));
+  check('the stale tail counts the one full-spine film under another graph', (await text('[data-similar-key="stale"]')) === '1 STUDY NEEDS RE-EMBEDDING', await text('[data-similar-key="stale"]'));
+
+  const errorsBeforeRegionClick = cdp.errors.length;
+  await clickSimilar('region-lumbar');
+  check('a Region click moves the pressed button', (await attr('[data-similar-key="region-lumbar"]', 'aria-pressed')) === 'true' && (await attr('[data-similar-key="region-full_spine"]', 'aria-pressed')) === 'false', null);
+  check('the eyebrow follows the Region click', (await text('.similar-eyebrow')) === 'RANKED BY LUMBAR SHAPE, ALIGNMENT AND APPEARANCE', await text('.similar-eyebrow'));
+  check('the Region button keeps keyboard focus after the click that rebuilt the tab', (await cdp.evaluate("document.activeElement?.getAttribute('data-similar-key')")) === 'region-lumbar', await cdp.evaluate("document.activeElement?.getAttribute('data-similar-key')"));
+  check('the pick is remembered against the open film', JSON.stringify(await store('s.similarRegion')) === JSON.stringify({ openId: 'SP-9224', region: 'lumbar' }), await store('s.similarRegion'));
+  ids = await cardIds();
+  check('under Lumbar the pool is every embedded film with lumbar anatomy, the other full-spine film included', ['SP-9202', 'SP-9203', 'SP-9225'].every((id) => ids.includes(id)) && !ids.includes('SP-9207'), ids);
+  check('under Lumbar no card names a cervical, global or whole-film block', !/cervical|global|whole film/.test(await cdp.evaluate("[...document.querySelectorAll('.similar-missing')].map((e) => e.textContent).join(' ')")), await cdp.evaluate("[...document.querySelectorAll('.similar-missing')].map((e) => e.textContent).join(' ')"));
+
+  // The compare chip's percentage under a non-default region: the chip recomputes with the pick.
+  await clickSimilar('card-SP-9202');
+  await cdp.settle(600);
+  const chipMatchLumbar = await text('.viewer-chip-match');
+  check("under a non-default region the compare chip's percentage is still the card's own", chipMatchLumbar !== null && /^\d+%$/.test(chipMatchLumbar) && chipMatchLumbar === (await cardText('SP-9202', '.similar-match')), { chip: chipMatchLumbar, card: await cardText('SP-9202', '.similar-match') });
+  await clickSimilar('card-SP-9202');
+  await cdp.settle(300);
+  check('the comparison ended again', (await store('s.compareId')) === null, await store('s.compareId'));
+
+  // Another film resets the control to ITS default; reopening the first film restores its own pick.
+  await cdp.setState(`{ openId: 'SP-9220' }`);
+  await cdp.settle(500);
+  check('opening a cervical film resets the Region control to its default, not the last pick', (await attr('[data-similar-key="region-cervical"]', 'aria-pressed')) === 'true' && (await attr('[data-similar-key="region-lumbar"]', 'aria-pressed')) === 'false', null);
+  await cdp.setState(`{ openId: 'SP-9200' }`);
+  await cdp.settle(500);
+  check('opening a lumbar film shows Lumbar pressed (its default)', (await attr('[data-similar-key="region-lumbar"]', 'aria-pressed')) === 'true', null);
+  await cdp.setState(`{ openId: 'SP-9224' }`);
+  await cdp.settle(500);
+  check('reopening the full-spine film restores its Lumbar pick, not its Whole spine default', (await attr('[data-similar-key="region-lumbar"]', 'aria-pressed')) === 'true' && (await attr('[data-similar-key="region-full_spine"]', 'aria-pressed')) === 'false', null);
+  check('no console error across the Region clicks', cdp.errors.length === errorsBeforeRegionClick, cdp.errors.slice(errorsBeforeRegionClick));
+
+  await cdp.setState(`{ openId: null, screen: 'studies', studiesTab: 'find', tab: 'meas', similarRegion: null, compareId: null }`);
+  await dropStudies(TRANSIENT_IDS);
+  await forget(TRANSIENT_IDS);
+
   // ---- Console health ----------------------------------------------------------------------
   check('no console errors or exceptions during the run', cdp.errors.length === 0, cdp.errors);
 } finally {
@@ -448,7 +676,7 @@ try {
   await cdp.setState(`(s) => ({
     studies: s.studies.filter((x) => !${JSON.stringify(ALL_IDS)}.includes(x.id)),
     openId: null, screen: 'studies', studiesTab: 'find', query: '',
-    tab: 'meas', compareId: null, similarScope: 'all', similarRank: 'all',
+    tab: 'meas', compareId: null, similarScope: 'all', similarRank: 'all', similarRegion: null,
     paramFilters: ${JSON.stringify(DEFAULT_PARAM_FILTERS)}, paramSort: { key: 'study', dir: 'asc' }, paramSelected: [],
   })`).catch(() => {});
   await cdp.evaluate(`import('./renderer/embeddings.js').then((m) => { ${ALL_IDS.map((id) => `m.forgetEmbedding(${JSON.stringify(id)});`).join(' ')} })`).catch(() => {});

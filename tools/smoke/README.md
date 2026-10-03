@@ -286,12 +286,12 @@ module scope only when its own folder handler ran the scan, so a state-seeded sc
 **Known baseline** (fresh scratch profile, this branch tip): unit 583/583 (measured directly, 2026-09-13; the
 505 this paragraph previously carried and the 542 the similar-cases plan's Global Constraints cite on fork PR
 #21's authority were both stale — neither is trusted, the number actually measured here is the one written)
-(`node --test test/*.test.js`); `smoke-similar.mjs` 66/66 (2026-09-13, Plan B task 10) — DOM-only, no backend
+(`node --test test/*.test.js`); `smoke-similar.mjs` 125/125 (2026-10-03, stage 2 task 9: the Region control, version-2 records, a cervical film and a full-spine film; 66/66 at 2026-09-13, Plan B task 10) — DOM-only, no backend
 graph needed: every `embeddings/<id>.json` record the Find similar tab ranks by is injected straight through
 `renderer/embeddings.js`'s own `storeEmbedding` and forgotten again in `finally`, never computed by a real
 `/embed` call. Run it on a fresh launch, before the suites that add real segmented films, for the same reason
 `smoke-parameters.mjs` below needs that ordering: its Embed-count check assumes the library's only real,
-fully-covered studies are its own; `smoke-studies.mjs` 136/136 — section 16 gained two groups on 2026-09-10. The
+segmented studies are its own (since stage 2 a partial film counts too); `smoke-studies.mjs` 136/136 — section 16 gained two groups on 2026-09-10. The
 first is spec 7.3, a rebuild mid-edit (forced through another row's tick, so nothing about the edited row
 changes): the rebuild re-creates the editor with the draft, the focus and the caret, and the DESTROYED input's
 deferred `blur` commit no longer fires one microtask later to write the half-typed draft to the record and close
