@@ -150,7 +150,6 @@ test('vectors.json version 2 carries every block by key with null where a film l
   assert.equal(vectors.version, 2);
   // The families come from the registry, so the file cannot drift from it (ruling R24).
   assert.deepEqual(vectors.families, Object.fromEntries(FAMILIES.map((family) => [family, BLOCKS.filter((block) => block.family === family).map((block) => block.key)])));
-  assert.deepEqual(vectors.families, { lumbar: ['V', 'H', 'A', 'SL', 'D'], cervical: ['VC', 'AC', 'BC', 'SC'], whole: ['B', 'W'], appearance: ['C', 'CC'] });
   assert.deepEqual(Object.keys(vectors.blocks), [...BLOCK_KEYS, 'embedding']);
   assert.deepEqual(vectors.blocks.C, { vector: 'lumbar', unit: 'embedding' });
   assert.deepEqual(vectors.blocks.CC, { vector: 'cervical', unit: 'embedding' });

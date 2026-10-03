@@ -34,7 +34,10 @@ function emptyText(reason, region, mode, open) {
       : 'This study has no anatomy to rank on yet.';
     case 'no-embedding': return 'No appearance embedding for this study yet \u2014 run Embed on the Find tab, turn on Appearance embeddings in Settings, or rank by shape or alignment.';
     case 'no-alignment': return `Alignment needs at least one measured ${REGION_TEXT[region]} angle on this study.`;
-    case 'no-blocks': return `This study has no ${REGION_TEXT[region]} ${KIND_TEXT[mode]} to rank on \u2014 rank by another kind or choose another region.`;
+    // "choose another region" only when the film has another region's anatomy to offer.
+    case 'no-blocks': return REGIONS.some((r) => r !== region && hasRegion(open, r))
+      ? `This study has no ${REGION_TEXT[region]} ${KIND_TEXT[mode]} to rank on \u2014 choose another region.`
+      : `This study has no ${REGION_TEXT[region]} ${KIND_TEXT[mode]} to rank on.`;
     default: return '';
   }
 }

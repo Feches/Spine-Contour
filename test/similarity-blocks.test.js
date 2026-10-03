@@ -14,8 +14,11 @@ test('the registry: thirteen blocks in four families, each with a kind and a reg
   assert.deepEqual(BLOCK_KEYS, ['V', 'H', 'A', 'SL', 'D', 'VC', 'AC', 'BC', 'SC', 'B', 'W', 'C', 'CC']);
   assert.deepEqual(ENTRY_KEYS, ['A', 'SL', 'D', 'AC', 'BC', 'SC', 'B']);
   assert.equal(BLOCKS.length, 13);
-  assert.deepEqual(blockOf('A'), { key: 'A', family: 'lumbar', kind: 'alignment', regions: ['lumbar', 'full_spine'], label: 'no alignment', weights: ALIGNMENT_WEIGHTS, floor: 2 });
+  assert.deepEqual(blockOf('A'), { key: 'A', family: 'lumbar', kind: 'alignment', regions: ['lumbar', 'full_spine'], label: 'no alignment', scale: 8, weights: ALIGNMENT_WEIGHTS, floor: 2 });
   assert.deepEqual(blockOf('W').regions, ['full_spine']);
+  // Each block's nominal scale, the difference that counts as typical (ruling R26).
+  assert.deepEqual(Object.fromEntries(BLOCKS.map((block) => [block.key, block.scale])),
+    { V: 0.1, H: 0.05, A: 8, SL: 5, D: 2, VC: 0.1, AC: 8, BC: 10, SC: 5, B: 25, W: 0.1, C: 0.1, CC: 0.1 });
   assert.equal(blockOf('CC').family, 'appearance');
   assert.deepEqual(ALIGNMENT_ORDER, ['PI', 'PT', 'SS', 'LL L1-S1', 'PI-LL', 'L1PA']);
   assert.deepEqual(ALIGNMENT_WEIGHTS, [1, 0.8, 0.8, 0.6, 1, 0.8]);

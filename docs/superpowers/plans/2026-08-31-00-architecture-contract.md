@@ -725,10 +725,11 @@ export function pairDistances(open, candidate, weights)
                                          //   are studyBlocks() results, not Study records; a block is null when `weights[key]`
                                          //   is 0 or the pair lacks it (spec §6's last column); appearance blocks need the
                                          //   same `model.onnx_sha256` on both, and W both films `full_spine`
-export function medianScale(values)      // → number   the median of whatever values are present (one → itself, two → their
-                                         //   mean) when above 1e-9 (NO_SPREAD); 1 with none present or a median at or
-                                         //   below it — float noise is no spread, so the block stays at noise
-                                         //   *(amended 2026-10-03, final review, rulings R20: was "over ≥ 3", and R25)*
+export function medianScale(values, nominal = 1)
+                                         // → number   the median of the present values when at least three are present and
+                                         //   it is above 1e-9 (NO_SPREAD), else `nominal`; findSimilar passes blockOf(key).scale
+                                         //   *(amended 2026-10-03, final review: ruling R26 supersedes R20's "median of whatever
+                                         //   is present", which scaled a lone candidate's every block to 1; R25 is the noise floor)*
 export function fuse(distances, scales, weights)
                                          // → {d, blocks: string[]} | null   sqrt(Σ w (d/m)² / Σ w) over the present, weighted blocks
 export function matchScore(d)            // → integer 0..100   round(100 · exp(−d))
@@ -784,8 +785,10 @@ export const ALIGNMENT_WEIGHTS  // [1, 0.8, 0.8, 0.6, 1, 0.8]
 export const LUMBAR_SEGMENTAL_ORDER, CERVICAL_SEGMENTAL_ORDER
                           // the ten SEG_* keys of segmentalColumns('lumbar') / ('cervical'), in column order
 export const DISC_ORDER   // 'L1-L2 anterior' … 'L5-S1 posterior' (15), level-major, then anterior, middle, posterior
-export const BLOCKS       // frozen list of 13 frozen {key, family, kind, regions, label, weights?, floor?} — `label` is the card's
-                          //   absent marker ('no hip', 'no disc heights' …), `floor` the least shared entries an entry block needs
+export const BLOCKS       // frozen list of 13 frozen {key, family, kind, regions, label, scale, weights?, floor?} — `label` is the card's
+                          //   absent marker ('no hip', 'no disc heights' …), `floor` the least shared entries an entry block needs,
+                          //   `scale` the block's nominal difference, a prior the notebook may replace: V 0.1, H 0.05, A 8, SL 5,
+                          //   D 2, VC 0.1, AC 8, BC 10, SC 5, B 25, W 0.1, C 0.1, CC 0.1 *(amended 2026-10-03, final review, R26)*
 export const BLOCK_KEYS   // ['V', 'H', 'A', 'SL', 'D', 'VC', 'AC', 'BC', 'SC', 'B', 'W', 'C', 'CC']
 export const ENTRY_KEYS   // ['A', 'SL', 'D', 'AC', 'BC', 'SC', 'B']   the blocks compared as entry arrays
 
@@ -1767,8 +1770,8 @@ long list never squeezes the name out; line 3 is `angleLine` for the region. Emp
 `no-region` (`This study has no {region} anatomy to rank on — choose another region.`); `no-embedding`; `no-alignment`
 (`Alignment needs at least one measured {region} angle on this study.`). *(Amended 2026-10-03, final review: `no-region`
 reads `This study has no anatomy to rank on yet.` when `hasRegion` fails for all three regions; `no-blocks` reads `This
-study has no {region} {shape|alignment|appearance|shape, alignment or appearance} to rank on — rank by another kind or
-choose another region.`; the no-candidates sentence is `No other eligible {lumbar|cervical|whole-spine} studies in this
+study has no {region} {shape|alignment|appearance|shape, alignment or appearance} to rank on.`, with ` — choose another
+region.` appended only when `hasRegion` is true for another region; the no-candidates sentence is `No other eligible {lumbar|cervical|whole-spine} studies in this
 workspace.` / `… in the library.`)* `styles/components.css`: `.model-choice-btn:disabled`
 (opacity .5, `not-allowed`, the same on hover; a pressed disabled button keeps a dimmed accent, so the sidebar's pickers
 still show their setting while a run disables them) (R16). Comparison mode's chip (`renderer/screens/analysis.js`) calls

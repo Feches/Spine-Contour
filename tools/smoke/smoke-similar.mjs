@@ -491,7 +491,7 @@ try {
   // A film with no block of the mode: L1-L5 and no S1 under Shape (ruling R21).
   await cdp.setState(`{ openId: 'SP-9227', similarRank: 'shape' }`);
   await cdp.settle(400);
-  check('a lumbar film without S1 under Shape reads the no-blocks sentence, not the no-candidates one', (await text('[data-similar-key="empty"]')) === `This study has no lumbar shape to rank on ${DASH} rank by another kind or choose another region.`, await text('[data-similar-key="empty"]'));
+  check('a lumbar film without S1 under Shape reads the no-blocks sentence, offering no other region it lacks', (await text('[data-similar-key="empty"]')) === 'This study has no lumbar shape to rank on.', await text('[data-similar-key="empty"]'));
   await cdp.setState(`{ similarRank: 'alignment' }`);
   await cdp.settle(400);
   check('the same film under Alignment ranks on its segmental angles: cards, no sentence', (await count('.similar-card')) > 0 && !(await has('[data-similar-key="empty"]')), { cards: await count('.similar-card'), empty: await text('[data-similar-key="empty"]') });
@@ -675,7 +675,7 @@ try {
   check('the Region button keeps keyboard focus after the click that rebuilt the tab', (await cdp.evaluate("document.activeElement?.getAttribute('data-similar-key')")) === 'region-lumbar', await cdp.evaluate("document.activeElement?.getAttribute('data-similar-key')"));
   check('the pick is remembered against the open film', JSON.stringify(await store('s.similarRegion')) === JSON.stringify({ openId: 'SP-9224', region: 'lumbar' }), await store('s.similarRegion'));
   ids = await cardIds();
-  check('under Lumbar the pool is every embedded film with lumbar anatomy, the other full-spine film included', ['SP-9202', 'SP-9203', 'SP-9225'].every((id) => ids.includes(id)) && !ids.includes('SP-9207'), ids);
+  check('under Lumbar the pool is every segmented film with lumbar anatomy (SP-9205 and SP-9206 too), the other full-spine film included', ['SP-9202', 'SP-9203', 'SP-9205', 'SP-9206', 'SP-9225'].every((id) => ids.includes(id)) && !ids.includes('SP-9207'), ids);
   check('under Lumbar no card names a cervical, global or whole-film block', !/cervical|global|whole film/.test(await cdp.evaluate("[...document.querySelectorAll('.similar-missing')].map((e) => e.textContent).join(' ')")), await cdp.evaluate("[...document.querySelectorAll('.similar-missing')].map((e) => e.textContent).join(' ')"));
 
   // The compare chip's percentage under a non-default region: the chip recomputes with the pick.

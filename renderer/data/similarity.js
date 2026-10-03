@@ -4,7 +4,8 @@
  * shape blocks compare over the landmarks both films share (mirror, centre, scale over the shared
  * points -- never rotate); entry blocks are a weighted RMS over the entries both films have; the
  * appearance blocks are cosine distances over unit vectors from the same encoder. Each block's
- * distance is divided by its median over the candidates; the region and the mode pick the weight
+ * distance is divided by its median over the candidates, or by the block's nominal scale when fewer
+ * than three share it (R26); the region and the mode pick the weight
  * table (equal family budgets); the fused distance is a weighted root-mean-square. No DOM.
  */
 import { HAND_ADDED, matchesLocation, subjectKey } from './parameters.js';
@@ -157,20 +158,23 @@ export function pairDistances(open, candidate, weights) {
   return d;
 }
 
-// A median at or below this is float noise, not spread: such a block scales by 1 and stays at noise (R25).
+// A median at or below this is float noise, not spread: such a block takes its nominal scale and
+// stays at noise (R25).
 const NO_SPREAD = 1e-9;
 
-// The median of whatever values are present -- one value is itself, two their mean -- when it is
-// above NO_SPREAD, else 1 (none present, or no spread). Ruling R20: a block only one or two
-// candidates share (the millimetre blocks between calibrated films) is scaled like every other, so its
-// raw millimetres or degrees never sit unscaled beside median-scaled blocks.
-export function medianScale(values) {
+// The median of the present values when at least three give it a basis and it is above NO_SPREAD,
+// else `nominal`, the block's typical difference (BLOCKS[].scale). Ruling R26 (superseding R20's median
+// of whatever is present): a block one or two candidates share -- the millimetre blocks between
+// calibrated films, every block of a lone candidate -- is scaled against what counts as typical, so
+// its raw millimetres never sit unscaled beside median-scaled blocks and a lone candidate's score
+// still depends on how similar it is.
+export function medianScale(values, nominal = 1) {
   const present = (values ?? []).filter(finite);
-  if (present.length === 0) return 1;
+  if (present.length < 3) return nominal;
   const sorted = [...present].sort((a, b) => a - b);
   const mid = sorted.length >> 1;
   const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-  return median > NO_SPREAD ? median : 1;
+  return median > NO_SPREAD ? median : nominal;
 }
 
 // sqrt(sum w_i (d_i / m_i)^2 / sum w_i) over the present, weighted blocks; null with none.
@@ -232,7 +236,7 @@ export function findSimilar(open, all, { scope = 'all', region = null, mode = 'a
     return { study, b, distances: pairDistances(openBlocks, b, weights) };
   });
   const scales = {};
-  for (const key of BLOCK_KEYS) scales[key] = medianScale(entries.map((e) => e.distances[key]));
+  for (const key of BLOCK_KEYS) scales[key] = medianScale(entries.map((e) => e.distances[key]), blockOf(key).scale);
   const ranked = [];
   let stale = 0;
   for (const entry of entries) {

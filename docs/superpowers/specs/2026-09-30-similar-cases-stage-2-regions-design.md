@@ -186,21 +186,26 @@ Each with what it costs if it is wrong. Where a stage-1 decision is superseded, 
 
 ## 6. The blocks
 
-| Family | Key | Block | Entries | Unit | Present for a pair when |
-|---|---|---|---|---|---|
-| lumbar | `V` | lumbar shape | L1–L5 SA, SP, IA, IP; S1 SA, SP (22 points), over the shared points | shape | S1 and ≥ 3 levels shared, no shared body unoriented |
-| lumbar | `H` | hip | `hip_midpoint` under `V`'s shared-point transform | shape | `V` present and a hip midpoint on both |
-| lumbar | `A` | spinopelvic alignment | PI, PT, SS, LL L1–S1, PI−LL, L1PA; weights 1, 0.8, 0.8, 0.6, 1, 0.8 | degrees | ≥ 2 entries shared |
-| lumbar | `SL` | lumbar segmental | segmental lordosis and angulation, L1–L2 … L5–S1 (10) | degrees | ≥ 3 entries shared |
-| lumbar | `D` | disc heights | anterior, middle, posterior at L1–L2 … L5–S1 (15) | mm | both films have `discRows` values (§7.2) and ≥ 2 entries shared *(amended 2026-10-03)* |
-| cervical | `VC` | cervical shape | C2 IA, IP; C3–C7 SA, SP, IA, IP (22 points), over the shared points, mirrored by `anterior_side` | shape | ≥ 4 bodies shared, an anterior side on both |
-| cervical | `AC` | cervical lordosis | C2–C7 Cobb | degrees | on both |
-| cervical | `BC` | cervical balance | C2–C7 SVA | mm | both calibrated |
-| cervical | `SC` | cervical segmental | segmental lordosis and angulation, C2–C3 … C6–C7 (10; C2–C3 lordosis is never available) | degrees | ≥ 3 entries shared |
-| whole spine | `B` | global balance | C7–S1 SVA | mm | both full spine and calibrated |
-| whole spine | `W` | whole film | the whole-film embedding | picture | both full spine, same model |
-| appearance | `C` | lumbar crop | the lumbar-window embedding | picture | on both, same model |
-| appearance | `CC` | cervical crop | the cervical-window embedding | picture | on both, same model |
+| Family | Key | Block | Entries | Unit | Present for a pair when | Scale |
+|---|---|---|---|---|---|---|
+| lumbar | `V` | lumbar shape | L1–L5 SA, SP, IA, IP; S1 SA, SP (22 points), over the shared points | shape | S1 and ≥ 3 levels shared, no shared body unoriented | 0.1 |
+| lumbar | `H` | hip | `hip_midpoint` under `V`'s shared-point transform | shape | `V` present and a hip midpoint on both | 0.05 |
+| lumbar | `A` | spinopelvic alignment | PI, PT, SS, LL L1–S1, PI−LL, L1PA; weights 1, 0.8, 0.8, 0.6, 1, 0.8 | degrees | ≥ 2 entries shared | 8 |
+| lumbar | `SL` | lumbar segmental | segmental lordosis and angulation, L1–L2 … L5–S1 (10) | degrees | ≥ 3 entries shared | 5 |
+| lumbar | `D` | disc heights | anterior, middle, posterior at L1–L2 … L5–S1 (15) | mm | both films have `discRows` values (§7.2) and ≥ 2 entries shared *(amended 2026-10-03)* | 2 |
+| cervical | `VC` | cervical shape | C2 IA, IP; C3–C7 SA, SP, IA, IP (22 points), over the shared points, mirrored by `anterior_side` | shape | ≥ 4 bodies shared, an anterior side on both | 0.1 |
+| cervical | `AC` | cervical lordosis | C2–C7 Cobb | degrees | on both | 8 |
+| cervical | `BC` | cervical balance | C2–C7 SVA | mm | both calibrated | 10 |
+| cervical | `SC` | cervical segmental | segmental lordosis and angulation, C2–C3 … C6–C7 (10; C2–C3 lordosis is never available) | degrees | ≥ 3 entries shared | 5 |
+| whole spine | `B` | global balance | C7–S1 SVA | mm | both full spine and calibrated | 25 |
+| whole spine | `W` | whole film | the whole-film embedding | picture | both full spine, same model | 0.1 |
+| appearance | `C` | lumbar crop | the lumbar-window embedding | picture | on both, same model | 0.1 |
+| appearance | `CC` | cervical crop | the cervical-window embedding | picture | on both, same model | 0.1 |
+
+*(Amended 2026-10-03, final review, ruling R26: `Scale` is each block's nominal difference — what counts as typical in
+its own unit (normalised shape, degrees as a weighted RMS, millimetres, cosine distance) — which §7.4 divides by when
+fewer than three candidates share the block. These are priors, like the family budgets, which the notebook may replace;
+they live on the registry as `BLOCKS[].scale`.)*
 
 `W` sits in the whole-spine family rather than appearance because it exists only for full-spine pairs; putting it
 under appearance would make the appearance family's budget depend on the pair's regions. The three appearance
@@ -260,12 +265,12 @@ over `record.cervical`, `W` over `record.whole` with both films `full_spine`.
 
 `weightsFor(region, mode)` → `{V, H, A, SL, D, VC, AC, BC, SC, B, W, C, CC}` per §6's rule, computed, not hand-written,
 so the families and kinds are the only tables. `fuse(distances, scales, weights)` is stage 1's, unchanged; `matchScore`
-unchanged. `medianScale`: `m_i` is the median of `d_i` over every candidate for which the block is present — one
-candidate's value is itself, two candidates' their mean — when at least one is present and the median is above `1e-9`,
-else `1` *(amended 2026-10-03, final review, ruling R20: stage 1 §7.4's "when at least three such candidates exist" let a
-millimetre block shared by one or two calibrated candidates enter the fusion as raw millimetres beside median-scaled
-blocks and bury those films; ruling R25: a median at or below `1e-9` is float noise, not spread, and scaling by it would
-give every candidate a full 1 on a block they all share exactly)*.
+unchanged. `medianScale(values, nominal)`: `m_i` is the median of `d_i` over every candidate for which the block is
+present when at least three are present and the median is above `1e-9`, else the block's nominal scale — §6's `Scale`
+column, the difference that counts as typical *(amended 2026-10-03, final review. Ruling R26, superseding R20: stage 1's
+`1` below three let a millimetre block shared by one or two calibrated candidates enter the fusion as raw millimetres and
+bury those films, and R20's median of whatever is present scaled a lone candidate's every block to exactly 1, so its
+score no longer depended on how similar it was. Ruling R25: a median at or below `1e-9` is float noise, not spread)*.
 
 ### 7.5 Candidates
 
@@ -328,10 +333,11 @@ for `V`. **Line 3** per decision 12.
 `This study has no anatomy to rank on yet.` when the film has none of the three regions' anatomy;
 `No appearance embedding for this study yet — …` (unchanged in its words; under `appearance` only *(amended 2026-10-03,
 final review, ruling R22)*); `Alignment needs at least one measured {region} angle on
-this study.`; `This study has no {region} {shape|alignment|appearance|shape, alignment or appearance} to rank on — rank
-by another kind or choose another region.` when the open film has none of the mode's blocks against itself; no
-candidates, `No other eligible {region} studies in this workspace.` / `… in the library.` *(amended 2026-10-03, final
-review, ruling R21: the no-anatomy and no-blocks sentences are new, and the no-candidates sentence names the region)*.
+this study.`; `This study has no {region} {shape|alignment|appearance|shape, alignment or appearance} to rank on.` when
+the open film has none of the mode's blocks against itself, followed by ` — choose another region.` only when the film
+has another region's anatomy; no candidates, `No other eligible {region} studies in this workspace.` / `… in the
+library.` *(amended 2026-10-03, final review, ruling R21: the no-anatomy and no-blocks sentences are new, and the
+no-candidates sentence names the region)*.
 
 ## 11. `Embed`
 

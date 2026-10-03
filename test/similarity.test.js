@@ -138,16 +138,18 @@ test('pairDistances between two full-spine films fills the cervical and whole-sp
   assert.equal(mixed.VC, null);
 });
 
-test('medianScale is the median of whatever is present (one value is itself, two their mean), 1 with none or a non-positive median; fuse and matchScore are stage 1', () => {
+test('medianScale is the median over three or more present values with spread, else the block’s nominal scale; fuse and matchScore are stage 1', () => {
+  assert.equal(medianScale([1, 2, 3], 7), 2, 'three present values give the median a basis');
+  assert.equal(medianScale([1, 2], 7), 7, 'two do not: the nominal scale (ruling R26)');
+  assert.equal(medianScale([0.5], 7), 7, 'nor does a lone pair, which would otherwise always scale to 1');
+  assert.equal(medianScale([2e-16, 3e-16, 1e-16], 7), 7, 'float noise is no spread (ruling R25)');
+  assert.equal(medianScale([], 7), 7);
+  assert.equal(medianScale([0, 0, 0], 7), 7);
+  // The nominal defaults to 1.
   assert.equal(medianScale([1, 2, 3]), 2);
-  assert.equal(medianScale([1, 2]), 1.5, 'two present values scale by their mean (ruling R20)');
-  assert.equal(medianScale([4, null]), 4, 'a lone value scales its pair to 1');
-  assert.equal(medianScale([]), 1);
+  assert.equal(medianScale([1, 2]), 1);
   assert.equal(medianScale([null, null]), 1);
-  assert.equal(medianScale([0]), 1);
-  assert.equal(medianScale([0, 0, 0]), 1);
-  assert.equal(medianScale([2e-16, 3e-16, 1e-16]), 1, 'float noise is no spread: it scales to nothing (ruling R25)');
-  assert.equal(medianScale([0.5]), 0.5);
+  assert.equal(medianScale([2e-16, 3e-16, 1e-16]), 1);
   const distances = Object.fromEntries(BLOCK_KEYS.map((k) => [k, null]));
   distances.V = 2; distances.A = 4;
   const fused = fuse(distances, { V: 2, A: 2 }, weightsFor('lumbar', 'all'));
@@ -248,6 +250,16 @@ test('candidates sharing the open film’s exact lumbar geometry stay at d ≈ 0
   assert.ok(matches.every((m) => m.blocks.includes('V') && m.d < 1e-6 && m.match === 100), matches.map((m) => `${m.study.id} d=${m.d} ${m.match}%`).join(', '));
 });
 
+test('a lone candidate scores by how similar it is: every block below three pairs takes its nominal scale (ruling R26)', () => {
+  const open = study('open');
+  const near = study('near', { measurements: { PI: 51, PT: 12, SS: 39, L1PA: 8, LL: { 'L1-S1': 49 } } });
+  const far = study('far', { measurements: { PI: 75, PT: 30, SS: 38, L1PA: 8, LL: { 'L1-S1': 30 } } });
+  const alone = (candidate) => findSimilar(open, [open, candidate], { scope: 'all', mode: 'alignment' }).matches[0];
+  // Under R20 both read 49%: a lone pair's every block scaled to exactly 1.
+  assert.ok(alone(near).match > 80, `near: ${alone(near).match}%`);
+  assert.ok(alone(far).match < 20, `far: ${alone(far).match}%`);
+});
+
 test('the whole-spine balance: globalBalance is finite on a calibrated full-spine film, B is present for a calibrated pair, and B and BC are absent when one film is uncalibrated', () => {
   const a = fullSpine('a', { study: { calibration: CALIBRATION } });
   const b = fullSpine('b', { study: { calibration: CALIBRATION } });
@@ -262,12 +274,14 @@ test('the whole-spine balance: globalBalance is finite on a calibrated full-spin
   assert.ok(Number.isFinite(e.AC), 'the angles still compare');
 });
 
-test('a block only two candidates share is scaled by their mean, so a calibrated pair is not buried under raw millimetres (ruling R20)', () => {
+test('a block only two candidates share is scaled by its nominal difference, so a calibrated pair is not buried under raw millimetres (rulings R20, R26)', () => {
   // A calibrated open full-spine film; two calibrated candidates with the same shape and angles whose
   // C7-S1 SVA is 10 and 15 mm off (C7 20 and 30 px further back at 0.5 mm/px); uncalibrated candidates
   // (no D, BC or B) off in PI and LL. Every film carries the same embedding, so the appearance blocks
-  // are present and exactly 0 (axis vectors). Under the old rule (scale 1 below three values) B entered as raw 10 and 15
-  // and the calibrated pair scored 3% and 0%, below every uncalibrated film.
+  // are present and exactly 0 (axis vectors). Stage 1 (scale 1 below three values) let B enter as raw 10
+  // and 15 and the calibrated pair scored 3% and 0%, below every uncalibrated film; R20 (the pair's mean)
+  // scored them 75% and 65%, still below three films all 15 degrees off. Against B's nominal 25 mm they
+  // are 0.4 and 0.6 of a typical difference, while A, shared by three films, is median-scaled.
   const calibrated = (id, c7x) => {
     const s = fullSpine(id, { study: { calibration: CALIBRATION } });
     s.geometry.c7_centroid = [c7x, 370];
@@ -280,17 +294,16 @@ test('a block only two candidates share is scaled by their mean, so a calibrated
     const embeddings = Object.fromEntries(pool.map((s) => [s.id, record(s.id, { lumbar: [1, 0], cervical: [0, 1], whole: [1, 0], region: 'full_spine' })]));
     return findSimilar(pool[0], pool, { scope: 'all', mode: 'all', embeddings }).matches;
   };
-  // The probe's own spread, 10-20 degrees: the calibrated films interleave by how far off they are.
-  const spread = rank([calibrated('open', 60), calibrated('mm10', 40), calibrated('mm15', 30),
-    uncalibrated('deg10', 10), uncalibrated('deg15', 15), uncalibrated('deg20', 20)]);
-  assert.deepEqual(spread.map((m) => m.study.id), ['deg10', 'mm10', 'deg15', 'mm15', 'deg20']);
-  assert.ok(spread.filter((m) => m.study.id.startsWith('mm')).every((m) => m.blocks.includes('B') && m.match >= 60),
-    spread.map((m) => `${m.study.id} ${m.match}%`).join(', '));
-  // Three uncalibrated films all 15 degrees off: the pair still scores like its neighbours, not 3% and 0%.
+  // Three uncalibrated films all 15 degrees off: the calibrated pair ranks above them, in SVA order.
   const level = rank([calibrated('open', 60), calibrated('mm10', 40), calibrated('mm15', 30),
     uncalibrated('degA', 15), uncalibrated('degB', 15), uncalibrated('degC', 15)]);
-  assert.ok(level.filter((m) => m.study.id.startsWith('mm')).every((m) => m.match >= 60),
-    level.map((m) => `${m.study.id} ${m.match}%`).join(', '));
+  const show = (matches) => matches.map((m) => `${m.study.id} ${m.match}%`).join(', ');
+  assert.deepEqual(level.map((m) => m.study.id), ['mm10', 'mm15', 'degA', 'degB', 'degC'], show(level));
+  assert.ok(level.filter((m) => m.study.id.startsWith('mm')).every((m) => m.blocks.includes('B') && m.match >= 80), show(level));
+  // The probe's 10-20 degree spread: each group in the order of its own differences.
+  const spread = rank([calibrated('open', 60), calibrated('mm10', 40), calibrated('mm15', 30),
+    uncalibrated('deg10', 10), uncalibrated('deg15', 15), uncalibrated('deg20', 20)]);
+  assert.deepEqual(spread.map((m) => m.study.id), ['mm10', 'mm15', 'deg10', 'deg15', 'deg20'], show(spread));
 });
 
 test('openReason names why the open study has no cards', () => {

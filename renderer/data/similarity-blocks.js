@@ -33,21 +33,25 @@ const CERVICAL_REGIONS = Object.freeze(['cervical', 'full_spine']);
 const FULL_SPINE = Object.freeze(['full_spine']);
 
 // `label` is the card's absent marker (spec section 10). `floor` is the least shared entries an entry
-// block needs; `weights` an entry block's per-entry weights (else 1 each).
+// block needs; `weights` an entry block's per-entry weights (else 1 each). `scale` is the block's
+// nominal difference -- what counts as a typical difference in its own unit (normalised shape,
+// degrees as a weighted RMS, millimetres, cosine distance) -- which the ranking divides by when fewer
+// than three candidates share the block (ruling R26). Priors, like the family budgets: the notebook
+// may replace them once outcomes exist.
 export const BLOCKS = Object.freeze([
-  { key: 'V', family: 'lumbar', kind: 'shape', regions: LUMBAR_REGIONS, label: 'no shape' },
-  { key: 'H', family: 'lumbar', kind: 'shape', regions: LUMBAR_REGIONS, label: 'no hip' },
-  { key: 'A', family: 'lumbar', kind: 'alignment', regions: LUMBAR_REGIONS, label: 'no alignment', weights: ALIGNMENT_WEIGHTS, floor: 2 },
-  { key: 'SL', family: 'lumbar', kind: 'alignment', regions: LUMBAR_REGIONS, label: 'no segmental', floor: 3 },
-  { key: 'D', family: 'lumbar', kind: 'shape', regions: LUMBAR_REGIONS, label: 'no disc heights', floor: 2 },
-  { key: 'VC', family: 'cervical', kind: 'shape', regions: CERVICAL_REGIONS, label: 'no cervical shape' },
-  { key: 'AC', family: 'cervical', kind: 'alignment', regions: CERVICAL_REGIONS, label: 'no cervical lordosis', floor: 1 },
-  { key: 'BC', family: 'cervical', kind: 'alignment', regions: CERVICAL_REGIONS, label: 'no cervical balance', floor: 1 },
-  { key: 'SC', family: 'cervical', kind: 'alignment', regions: CERVICAL_REGIONS, label: 'no cervical segmental', floor: 3 },
-  { key: 'B', family: 'whole', kind: 'alignment', regions: FULL_SPINE, label: 'no global balance', floor: 1 },
-  { key: 'W', family: 'whole', kind: 'appearance', regions: FULL_SPINE, label: 'no whole film' },
-  { key: 'C', family: 'appearance', kind: 'appearance', regions: LUMBAR_REGIONS, label: 'no lumbar crop' },
-  { key: 'CC', family: 'appearance', kind: 'appearance', regions: CERVICAL_REGIONS, label: 'no cervical crop' },
+  { key: 'V', family: 'lumbar', kind: 'shape', regions: LUMBAR_REGIONS, label: 'no shape', scale: 0.1 },
+  { key: 'H', family: 'lumbar', kind: 'shape', regions: LUMBAR_REGIONS, label: 'no hip', scale: 0.05 },
+  { key: 'A', family: 'lumbar', kind: 'alignment', regions: LUMBAR_REGIONS, label: 'no alignment', scale: 8, weights: ALIGNMENT_WEIGHTS, floor: 2 },
+  { key: 'SL', family: 'lumbar', kind: 'alignment', regions: LUMBAR_REGIONS, label: 'no segmental', scale: 5, floor: 3 },
+  { key: 'D', family: 'lumbar', kind: 'shape', regions: LUMBAR_REGIONS, label: 'no disc heights', scale: 2, floor: 2 },
+  { key: 'VC', family: 'cervical', kind: 'shape', regions: CERVICAL_REGIONS, label: 'no cervical shape', scale: 0.1 },
+  { key: 'AC', family: 'cervical', kind: 'alignment', regions: CERVICAL_REGIONS, label: 'no cervical lordosis', scale: 8, floor: 1 },
+  { key: 'BC', family: 'cervical', kind: 'alignment', regions: CERVICAL_REGIONS, label: 'no cervical balance', scale: 10, floor: 1 },
+  { key: 'SC', family: 'cervical', kind: 'alignment', regions: CERVICAL_REGIONS, label: 'no cervical segmental', scale: 5, floor: 3 },
+  { key: 'B', family: 'whole', kind: 'alignment', regions: FULL_SPINE, label: 'no global balance', scale: 25, floor: 1 },
+  { key: 'W', family: 'whole', kind: 'appearance', regions: FULL_SPINE, label: 'no whole film', scale: 0.1 },
+  { key: 'C', family: 'appearance', kind: 'appearance', regions: LUMBAR_REGIONS, label: 'no lumbar crop', scale: 0.1 },
+  { key: 'CC', family: 'appearance', kind: 'appearance', regions: CERVICAL_REGIONS, label: 'no cervical crop', scale: 0.1 },
 ].map((block) => Object.freeze({ ...block, regions: Object.freeze([...block.regions]) })));
 export const BLOCK_KEYS = Object.freeze(BLOCKS.map((block) => block.key));
 export const ENTRY_KEYS = Object.freeze(['A', 'SL', 'D', 'AC', 'BC', 'SC', 'B']);

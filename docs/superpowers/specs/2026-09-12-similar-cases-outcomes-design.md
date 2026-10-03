@@ -306,8 +306,8 @@ For an open study `o`, a candidate set `K` (§7.5) and a mode:
 
 For each block present for the pair `(o, c)`: `d_i(c)` is that block's distance; `m_i` is the median of
 `d_i` over every candidate in `K` for which the block is present, when at least three such candidates
-exist and the median is positive, else `1` *(amended 2026-10-03, final review: when at least one is present — stage 2
-§7.4, ruling R20)*. Then
+exist and the median is positive, else `1` *(amended 2026-10-03, final review: else the block's nominal scale, and a
+median above `1e-9` — stage 2 §7.4, rulings R25 and R26)*. Then
 
 ```
 d(c) = sqrt( Σ_present w_i · (d_i(c) / m_i)²  /  Σ_present w_i )
