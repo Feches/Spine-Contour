@@ -9,6 +9,9 @@
 import { setState } from './store.js';
 import { loadEmbeddings, saveEmbedding, embeddingModel } from './api.js';
 import { readEmbedding, isCurrent } from './data/embeddings.js';
+import { studyRegion } from './data/cervical.js';
+
+const REGIONS = ['lumbar', 'cervical', 'full_spine'];
 
 const records = new Map();
 let loading = null;
@@ -77,8 +80,14 @@ export function forgetEmbedding(id) {
 
 // The Embed button's rule (spec 2026-09-30, section 11): a real, segmented study without a current
 // record -- segmented before this build, with the setting off, after a failed stage, under an older
-// graph, or with a version-1 record. Coverage gates nothing: a film ranks on the blocks it has.
+// graph, or with a version-1 record -- or whose record was cut for another region than the film's
+// own (a film re-segmented under another region keeps a record with the wrong windows). An
+// unresolved 'auto' film is not compared: Embed would post no region and get a lumbar record back,
+// so it would read as needing one forever. Coverage gates nothing: a film ranks on the blocks it has.
 export function needsEmbedding(study) {
   if (!study || study.source !== 'real' || study.measurements == null || study.geometry == null) return false;
-  return !isCurrent(records.get(study.id), bundledModelSha());
+  const record = records.get(study.id);
+  if (!isCurrent(record, bundledModelSha())) return true;
+  const region = studyRegion(study);
+  return REGIONS.includes(region) && record.region !== region;
 }

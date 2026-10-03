@@ -334,7 +334,8 @@ review, ruling R21: the no-anatomy and no-blocks sentences are new, and the no-c
 
 ## 11. `Embed`
 
-`needsEmbedding(study)`: real, segmented, no current record — `vector(study)` no longer gates. `cannotEmbed` and the
+`needsEmbedding(study)`: real, segmented, no current record — `vector(study)` no longer gates *(amended 2026-10-03,
+final review: a current record whose `region` differs from the film's resolved `studyRegion` needs recomputing too)*. `cannotEmbed` and the
 `partial — not embeddable` note are removed; `planEmbed` loses the `excluded` count and the `ineligible` predicate
 altogether *(amended 2026-10-03: the draft said `excluded` stays at 0)*.
 The run core posts `region: studyRegion(study)` with the sidecar image and framing.

@@ -1683,7 +1683,10 @@ unchanged.
 **3. `renderer/embeddings.js` — `cannotEmbed` removed.** The module loads every stored record through `readEmbedding`
 (the map holds lifted records), so every reader sees the version-2 field set. `cannotEmbed(study)` is deleted and
 `needsEmbedding(study)` loses its shape gate: true for a real study with `measurements` and `geometry` that has no
-current record — segmented before the build, the setting off, a failed stage, an older graph, or a version-1 record.
+current record — segmented before the build, the setting off, a failed stage, an older graph, or a version-1 record
+*(amended 2026-10-03, final review: or a current record whose `region` is not `studyRegion(study)`, when that is one of
+the three regions — a film re-segmented under another region; an unresolved `auto` film is not compared, since `Embed`
+posts no region for it)*.
 `vector(study)` no longer gates anything. Nothing is ineligible; a film ranks on the blocks it has (spec decision 5,
 HANDOFF decision 78).
 
