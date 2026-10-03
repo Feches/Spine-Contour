@@ -343,7 +343,9 @@ The run core posts `region: studyRegion(study)` with the sidecar image and frami
 
 `vectors.json` version 2: `{version: 2, exportedAt, families: {...}, blocks: {V: {dim: 44, order, normalisation}, H,
 A: {order, weights}, SL: {order}, D: {order}, VC: {dim: 44, order, normalisation: 'mirror-by-anterior-side, …'}, AC,
-BC, SC, B, embedding: {model}}, films: [{name, region, V, H, A, SL, D, VC, AC, BC, SC, B, lumbar, cervical, whole}]}`,
+BC, SC, B, embedding: {model}}, films: [{name, region, V, H, A, SL, D, VC, AC, BC, SC, B, lumbar, cervical, whole}]}`
+*(amended 2026-10-03, final review, ruling R24: `blocks` also carries `W`, `C` and `CC` as `{vector, unit: 'embedding'}`,
+`vector` naming the film key `whole`, `lumbar` or `cervical`, and `families` is derived from the registry)*,
 null per absent block; the full lumbar and cervical shape vectors (not shared-point ones, which are pairwise) with
 null where the column is incomplete. `parameters.csv` replaces the `Film type` column with `Region`, and `paired.csv`'s
 per-visit `<header> film type` columns become `<header> region`. `manifest.json` counts films per region. The README's block paragraph is rewritten from the table. Stage 1's rule stands: no image,

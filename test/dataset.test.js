@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildDataset, datasetMessage, appendColumns, RESOLVED_COLUMNS, datasetReadme } from '../renderer/data/dataset.js';
 import { lumbarGeometry, cervicalGeometry, CALIBRATION } from './fixtures/similarity-fixtures.js';
+import { BLOCKS, BLOCK_KEYS, FAMILIES } from '../renderer/data/similarity-blocks.js';
 
 function geometry() {
   const body = (top) => ({ superior: [[160, top], [100, top]], inferior: [[160, top + 80], [100, top + 80]], quadrilateral: [[160, top], [100, top], [100, top + 80], [160, top + 80]] });
@@ -147,8 +148,18 @@ test('vectors.json version 2 carries every block by key with null where a film l
   const { files } = buildDataset({ rows, post: 'Post-op', embeddings, bundledSha: 'abc', version: '1.0.13' });
   const vectors = JSON.parse(files['vectors.json']);
   assert.equal(vectors.version, 2);
+  // The families come from the registry, so the file cannot drift from it (ruling R24).
+  assert.deepEqual(vectors.families, Object.fromEntries(FAMILIES.map((family) => [family, BLOCKS.filter((block) => block.family === family).map((block) => block.key)])));
   assert.deepEqual(vectors.families, { lumbar: ['V', 'H', 'A', 'SL', 'D'], cervical: ['VC', 'AC', 'BC', 'SC'], whole: ['B', 'W'], appearance: ['C', 'CC'] });
-  assert.deepEqual(Object.keys(vectors.blocks), ['V', 'H', 'A', 'SL', 'D', 'VC', 'AC', 'BC', 'SC', 'B', 'embedding']);
+  assert.deepEqual(Object.keys(vectors.blocks), [...BLOCK_KEYS, 'embedding']);
+  assert.deepEqual(vectors.blocks.C, { vector: 'lumbar', unit: 'embedding' });
+  assert.deepEqual(vectors.blocks.CC, { vector: 'cervical', unit: 'embedding' });
+  assert.deepEqual(vectors.blocks.W, { vector: 'whole', unit: 'embedding' });
+  // Every key a family names is a film entry's key, or a block whose `vector` is one.
+  const filmKeys = Object.keys(vectors.films[0]);
+  for (const key of Object.values(vectors.families).flat()) {
+    assert.ok(filmKeys.includes(key) || filmKeys.includes(vectors.blocks[key]?.vector), `${key} names no film entry`);
+  }
   assert.equal(vectors.blocks.A.order.length, 6);
   assert.equal(vectors.blocks.SL.order.length, 10);
   assert.equal(vectors.blocks.D.order.length, 15);
@@ -257,6 +268,15 @@ test('README.md describes vectors.json version 2: the region, every block key, t
   assert.ok(readme.includes('1, 0.8, 0.8, 0.6, 1, 0.8'), 'and their weights');
   assert.ok(readme.includes("A film lacking a block's inputs has `null` for that block."), 'the blank-value line');
   assert.ok(!readme.includes('film type') && !readme.includes('`shape`') && !readme.includes('`crop`'), 'no stage-1 names left');
+});
+
+test('README.md maps the appearance blocks to the film keys, states the shape-null rule and why a folder can lack embeddings (ruling R24)', () => {
+  const readme = built().files['README.md'];
+  assert.ok(readme.includes('`C` is `lumbar`, `CC` is `cervical` and `W` is `whole`'), 'the appearance block to film key mapping');
+  assert.ok(readme.includes('`V` and `VC` are `null` unless the film has the complete column'), 'the shape-null rule');
+  assert.ok(readme.includes('even though the app ranks two films over the landmarks they share'), 'and why it differs from the app');
+  assert.ok(readme.includes('keeps a `null` in each slot the film lacks'), 'entry blocks keep per-slot nulls');
+  assert.ok(readme.includes('from before version 2 or from another encoder are not exported') && readme.includes('`Embed`'), 'why a folder can have no embeddings');
 });
 
 test('datasetMessage counts what was written and left out, each clause only when nonzero', () => {

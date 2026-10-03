@@ -1716,8 +1716,12 @@ reads `studyRegion(live)` before its `await` and posts it as `region` with the s
 **7. `Export dataset` — `vectors.json` version 2 and the `Region` columns.** `vectors.json` is
 `{version: 2, exportedAt, families: {lumbar: [V, H, A, SL, D], cervical: [VC, AC, BC, SC], whole: [B, W], appearance: [C,
 CC]}, blocks: {V: {dim: 44, order, normalisation}, H, A: {order, weights, unit}, SL, D, VC: {dim: 44, order,
-normalisation}, AC, BC, SC, B, embedding: <the model record>}, films: [{name, region, V, H, A, SL, D, VC, AC, BC, SC, B,
-lumbar, cervical, whole}]}`, one entry per `parameters.csv` row in that order, `null` for an absent block (an all-null
+normalisation}, AC, BC, SC, B, W, C, CC, embedding: <the model record>}, films: [{name, region, V, H, A, SL, D, VC, AC,
+BC, SC, B, lumbar, cervical, whole}]}` *(amended 2026-10-03, final review, ruling R24: `families` is derived from
+`similarity-blocks.js`'s `BLOCKS` and `FAMILIES`, and `blocks` carries the three appearance blocks by their film key —
+`W: {vector: 'whole', unit: 'embedding'}`, `C: {vector: 'lumbar', …}`, `CC: {vector: 'cervical', …}` — so every key a
+family names is a film key or a block's `vector`; the README states that mapping, the shape-null rule and why a folder
+can have no embeddings)*, one entry per `parameters.csv` row in that order, `null` for an absent block (an all-null
 entry block exports as `null`, not an array of nulls); `V`/`VC` are the COMPLETE 22-point vectors (null where the column
 is incomplete), `H` follows `V`, the three appearance vectors come from a current embedding record only (a stored
 version-1 record is lifted by `readEmbedding` but never current, so it exports as `null`). `parameters.csv`'s first

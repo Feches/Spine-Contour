@@ -14,7 +14,7 @@ import { OUTCOMES, FOLLOW_UP_FIELD, resolveOutcomes, primaryOutcome } from './ou
 import {
   vector, cervicalVector, studyBlocks, subjectFilms, LANDMARK_ORDER, CERVICAL_ORDER, ALIGNMENT_ORDER, ALIGNMENT_WEIGHTS,
 } from './similarity.js';
-import { LUMBAR_SEGMENTAL_ORDER, CERVICAL_SEGMENTAL_ORDER, DISC_ORDER } from './similarity-blocks.js';
+import { LUMBAR_SEGMENTAL_ORDER, CERVICAL_SEGMENTAL_ORDER, DISC_ORDER, BLOCKS, FAMILIES, ENTRY_KEYS } from './similarity-blocks.js';
 import { readEmbedding, isCurrent } from './embeddings.js';
 import { studyRegion } from './cervical.js';
 import { lastSegment, studyName } from './labels.js';
@@ -32,6 +32,11 @@ export const RESOLVED_COLUMNS = Object.freeze([
   `Subject ${FOLLOW_UP_FIELD.toLowerCase()}`,
 ]);
 const PROVENANCE_COLUMNS = ['Region', 'Coverage', 'Reviewed', 'Embedding', 'Crop localizer', 'Vertebra model', 'Femoral model', 'S1 model', 'Source SHA-256'];
+// The appearance blocks are keyed in the registry by block (C, CC, W) but carried on each film entry by
+// the record's vector name (ruling R24): vectors.json's `blocks` and the README both read this map.
+const APPEARANCE_VECTORS = Object.freeze({ C: 'lumbar', CC: 'cervical', W: 'whole' });
+// The families, from the registry rather than typed here, so the file cannot drift from it.
+const VECTOR_FAMILIES = Object.fromEntries(FAMILIES.map((family) => [family, BLOCKS.filter((block) => block.family === family).map((block) => block.key)]));
 
 function escapeField(value) {
   const text = value == null ? '' : String(value);
@@ -151,7 +156,7 @@ export function datasetReadme({ counts, version, exportedAt, embeddingRecord }) 
     '',
     `- \`parameters.csv\` - one row per film: the Export CSV file (the measurements, disc heights, calibration and clinical fields) plus the provenance columns ${provenance}, then the outcome columns resolved per subject: ${resolved}. \`Region\` is the film's own spine region: lumbar, cervical or full_spine, or auto for a film not yet segmented.`,
     `- \`paired.csv\` - one row per subject with a pre-op film and at least one later visit: the Export paired CSV file plus the same resolved outcome columns (${resolved}) and a \`<visit> region\` column per written visit (for example \`Pre-op region\`, \`Post-op region\`), each the visit's primary film's region.`,
-    `- \`vectors.json\` (version 2) - one entry per row of parameters.csv, in the same order, named by study name, with the film's region. Blocks by key, \`null\` where a film lacks one: lumbar family \`V\` (44 numbers, the 22 lumbar landmarks ${LANDMARK_ORDER.join(', ')} after mirroring anterior to +x, centring and scaling to unit centroid size, never rotated), \`H\` (the hip midpoint under the same transform), \`A\` (${ALIGNMENT_ORDER.join(', ')} in degrees, weighted ${ALIGNMENT_WEIGHTS.join(', ')}), \`SL\` (the ten lumbar segmental lordosis and angulation values, degrees), \`D\` (fifteen disc heights in mm, calibrated films only); cervical family \`VC\` (44 numbers, ${CERVICAL_ORDER.join(', ')} mirrored by the recorded anterior side), \`AC\` (C2-C7 Cobb, degrees), \`BC\` (C2-C7 SVA, mm, calibrated only), \`SC\` (the ten cervical segmental values); whole-spine family \`B\` (C7-S1 SVA, mm, full-spine calibrated films only); and the appearance vectors \`lumbar\`, \`cervical\` and \`whole\` from ${encoder}, unit length, never carried from an encoder other than the one manifest.json names. In the app every block is scaled by its median over the candidates and the four families share equal budgets.`,
+    `- \`vectors.json\` (version 2) - one entry per row of parameters.csv, in the same order, named by study name, with the film's region. Blocks by key, \`null\` where a film lacks one: lumbar family \`V\` (44 numbers, the 22 lumbar landmarks ${LANDMARK_ORDER.join(', ')} after mirroring anterior to +x, centring and scaling to unit centroid size, never rotated), \`H\` (the hip midpoint under the same transform), \`A\` (${ALIGNMENT_ORDER.join(', ')} in degrees, weighted ${ALIGNMENT_WEIGHTS.join(', ')}), \`SL\` (the ten lumbar segmental lordosis and angulation values, degrees), \`D\` (fifteen disc heights in mm, calibrated films only); cervical family \`VC\` (44 numbers, ${CERVICAL_ORDER.join(', ')} mirrored by the recorded anterior side), \`AC\` (C2-C7 Cobb, degrees), \`BC\` (C2-C7 SVA, mm, calibrated only), \`SC\` (the ten cervical segmental values); whole-spine family \`B\` (C7-S1 SVA, mm, full-spine calibrated films only); and the appearance vectors \`lumbar\`, \`cervical\` and \`whole\` from ${encoder}, unit length, never carried from an encoder other than the one manifest.json names. In \`blocks\` and \`families\` the appearance vectors go by their block keys: \`C\` is \`${APPEARANCE_VECTORS.C}\`, \`CC\` is \`${APPEARANCE_VECTORS.CC}\` and \`W\` is \`${APPEARANCE_VECTORS.W}\` (each block's \`vector\` names the film key). In the app every block is scaled by its median over the candidates and the four families share equal budgets.`,
     '- `manifest.json` - the counts (with the films of each region), the models seen, the encoder record, the identity line, the notice, the disclaimer.',
     '- `README.md` - this file.',
     '',
@@ -162,6 +167,8 @@ export function datasetReadme({ counts, version, exportedAt, embeddingRecord }) 
     '## Blanks',
     '',
     "A blank cell is unknown, never zero. A film lacking a block's inputs has `null` for that block. `not-recorded` and `conflicting` outcomes are unknown, not a result.",
+    '',
+    `\`V\` and \`VC\` are \`null\` unless the film has the complete column (all 22 landmarks), even though the app ranks two films over the landmarks they share; an entry block (${ENTRY_KEYS.map((key) => `\`${key}\``).join(', ')}) keeps a \`null\` in each slot the film lacks and is \`null\` only when every slot is. A folder can carry no appearance vectors at all: embedding records from before version 2 or from another encoder are not exported, and \`Embed\` on the Find tab recomputes them.`,
     '',
     '## Before training',
     '',
@@ -253,7 +260,7 @@ export function buildDataset({ rows, post, embeddings, bundledSha, bundledModel 
   const vectors = {
     version: 2,
     exportedAt: now.toISOString(),
-    families: { lumbar: ['V', 'H', 'A', 'SL', 'D'], cervical: ['VC', 'AC', 'BC', 'SC'], whole: ['B', 'W'], appearance: ['C', 'CC'] },
+    families: VECTOR_FAMILIES,
     blocks: {
       V: { dim: 44, order: [...LANDMARK_ORDER], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation' },
       H: { dim: 2, normalisation: 'the V transform' },
@@ -265,6 +272,9 @@ export function buildDataset({ rows, post, embeddings, bundledSha, bundledModel 
       BC: { order: ['C2-C7 SVA'], unit: 'mm' },
       SC: { order: [...CERVICAL_SEGMENTAL_ORDER], unit: 'deg' },
       B: { order: ['C7-S1 SVA'], unit: 'mm' },
+      W: { vector: APPEARANCE_VECTORS.W, unit: 'embedding' },
+      C: { vector: APPEARANCE_VECTORS.C, unit: 'embedding' },
+      CC: { vector: APPEARANCE_VECTORS.CC, unit: 'embedding' },
       embedding: embeddingRecord,
     },
     films,
