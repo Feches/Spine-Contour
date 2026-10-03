@@ -3,7 +3,7 @@
  * dropzone (click, drop, Choose radiograph), the Find tab's filter bar with Delete and the segment button
  * (batch spec 7), and the table with row ticks, derived status pills and the DEMO pill.
  * render(state) builds the shell; the summary, the bar and the table update in place from a
- * module-scope subscription, because router.js remounts this host only on screen/ack.
+ * module-scope subscription, because router.js remounts this host only on screen/calibrationRequest.
  * (2026-09-10, studies-table spec) Sortable headers, the SUBJECT column with its in-place editor, Delete over the ticked visible rows, and the summary's TO REVIEW count.
  */
 
@@ -13,6 +13,7 @@ import { getState, setState, subscribe } from '../store.js';
 import { selectFile, pathForFile, deletePrediction, persistenceDisabledReason } from '../api.js';
 import { showToast } from '../components/toast.js';
 import { displayStatus } from '../data/status.js';
+import { failureTitle } from '../data/failure.js';
 import { inferenceView } from '../data/inference-view.js';
 import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle, subjectLabel } from '../data/labels.js';
 import { nextId } from '../data/persistence.js';
@@ -22,7 +23,7 @@ import {
   withIds, toggleId, selectedVisible, workspaceOptions, folderOptions, normaliseFilters, patchFilters, matchesLocation, HAND_ADDED,
 } from '../data/parameters.js';
 import { planBatch, planEmbed, progressText, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
-import { sortFindRows, toggleFindSort } from '../data/find.js';
+import { sortFindRows, toggleFindSort, summaryCounts } from '../data/find.js';
 import { progressTitle, progressDetail } from '../data/processing.js';
 import { checkbox } from '../components/checkbox.js';
 import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
@@ -87,7 +88,10 @@ export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
     // (2026-09-10, studies-table spec 8.1) the review mark; set on the Analysis screen, cleared by every write that changes the numbers.
     reviewedAt: null,
     addedAt: new Date().toISOString(), view: DEFAULT_VIEW, thumbnail: null,
+    region: 'auto', anteriorSide: null,
     measurements: null, geometry: null, qc: null, clinical: {},
+    // (1.0.13) the last failed attempt's reason; (2026-10-01, issue #39) and when it failed.
+    processingError: null, processingErrorAt: null,
   };
 }
 
@@ -278,10 +282,11 @@ function subjectCell(study) {
   }, label);
 }
 
-// `runningId` is state.running. displayStatus (data/status.js) applies spec 13.1's "or currently
-// running" rule, so deriveStatus stays a pure function of the record.
-function buildRow(study, runningId, selected) {
-  const status = displayStatus(study, runningId);
+// `runningId` is state.running and `batch` is state.batch. displayStatus (data/status.js) applies
+// spec 13.1's "or currently running" rule and (2026-10-01, issue #39) the batch's waiting films, so
+// deriveStatus stays a pure function of the record.
+function buildRow(study, runningId, selected, batch) {
+  const status = displayStatus(study, runningId, batch);
   const unsupported = study.source === 'real' && study.measurements == null
     && runningId !== study.id && !inferenceView(study.view);
   // While this row is confirming a delete, the prompt takes every cell from WORKSPACE rightwards
@@ -326,7 +331,8 @@ function buildRow(study, runningId, selected) {
     confirming ? null : el('div', { class: 'studies-cell-workspace' }, workspaceLabel(study)),
     confirming ? null : el('div', { class: 'studies-cell-folder', ...(pathTitle(study) ? { title: pathTitle(study) } : {}) }, folderLabel(study)),
     confirming ? null : el('div', { class: 'studies-cell-date' }, formatDate(study.addedAt)),
-    confirming ? null : el('div', {}, unsupported ? unsupportedViewBadge(study.view) : statusBadge(status)),
+    confirming ? null : el('div', {}, unsupported ? unsupportedViewBadge(study.view)
+      : statusBadge(status, status === 'fail' ? failureTitle(study.processingError, study.processingErrorAt) : undefined)),
     actionCell(study, confirming));
   return row;
 }
@@ -362,13 +368,13 @@ function sortableHeader(key, label, sort, lead) {
 }
 
 // `emptyKind` is null (the library is empty), 'search' or 'filters'. `selected` is paramSelected.
-// `sort` is state.findSort; the rows arrive already sorted by it.
-function buildTable(studies, runningId, emptyKind, selected, sort) {
+// `sort` is state.findSort; the rows arrive already sorted by it. `batch` is state.batch.
+function buildTable(studies, runningId, emptyKind, selected, sort, batch) {
   // An explicit arrow, not `studies.map(buildRow)`: map passes the index as the second
   // argument, so every row would receive its own position as `runningId` and the running
   // study would silently never be badged Processing. The arrow is load-bearing.
   const body = studies.length > 0
-    ? studies.map((study) => buildRow(study, runningId, selected))
+    ? studies.map((study) => buildRow(study, runningId, selected, batch))
     : [el('div', { class: 'studies-empty' }, EMPTY_COPY[emptyKind ?? 'none'])];
   // Select-all (batch spec 7.2) is about the VISIBLE real rows only, so it never ticks a film the
   // filter is hiding, and it is built only when there is one: the fresh dev library of demo
@@ -838,7 +844,7 @@ export function render(state) {
     const filters = normaliseFilters(live.paramFilters, studies);
     // Filtered, then sorted (studies-table spec 2026-09-10, section 6): the rows in the order the table
     // shows them, which is the order the Segment and Delete buttons act in.
-    const visible = sortFindRows(queried.filter((study) => matchesLocation(study, filters)), live.findSort, live.running);
+    const visible = sortFindRows(queried.filter((study) => matchesLocation(study, filters)), live.findSort, live.running, live.batch);
     const selected = live.paramSelected ?? [];
     const targets = selectedVisible(visible.filter((study) => study.source === 'real'), selected).map((study) => study.id);
     // Module-scope UI state the store cannot see, reconciled BEFORE the key so it never sits on a
@@ -862,13 +868,12 @@ export function render(state) {
     if (sameKey(key, lastKey)) return;
     lastKey = key;
     // The summary always describes the whole library, not the filtered view, and counts with
-    // exactly the rule buildRow badges: UNSEGMENTED is every film shown as Processing (the running
-    // one included, never "in queue" -- the batch's queue is the bar's business, spec decision 7);
-    // TO REVIEW is every film shown as Needs review (studies-table spec 10). The line keeps its
-    // existing separator glyph and adds the new one as an escape (HANDOFF's glyph trap).
-    const shown = (study) => displayStatus(study, live.running);
-    const unsegmented = studies.filter((study) => shown(study) === 'proc').length;
-    const toReview = studies.filter((study) => shown(study) === 'rev').length;
+    // exactly the rule buildRow badges (data/find.js summaryCounts): UNSEGMENTED is every film shown
+    // as Unsegmented, Processing (the running film and, 2026-10-01, the films waiting in the batch)
+    // or Failed (1.0.13; port spec 3); TO REVIEW is every film shown as Needs review (studies-table
+    // spec 10). The line keeps its existing separator glyph and adds the new one as an escape
+    // (HANDOFF's glyph trap).
+    const { unsegmented, toReview } = summaryCounts(studies, live.running, live.batch);
     summary.textContent = `${studies.length} STUDIES · ${unsegmented} UNSEGMENTED \u00B7 ${toReview} TO REVIEW`;
 
     const emptyKind = filters.workspace !== null || filters.folder !== null ? 'filters' : (query !== '' ? 'search' : null);
@@ -884,7 +889,7 @@ export function render(state) {
     const caret = focusKey !== null && focusKey.startsWith('subject-input-') && typeof active.selectionStart === 'number'
       ? [active.selectionStart, active.selectionEnd] : null;
     mount(barHost, buildFilterBar(live, filters, visible));
-    mount(tableHost, buildTable(visible, live.running, emptyKind, selected, live.findSort));
+    mount(tableHost, buildTable(visible, live.running, emptyKind, selected, live.findSort, live.batch));
     if (focusKey !== null) {
       // The control that was focused may be gone: clicking Segment replaces the button with the
       // progress group, and the batch's end replaces the group with the button. Land on the other.

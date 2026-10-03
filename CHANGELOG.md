@@ -1,5 +1,135 @@
 # Changelog
 
+## 1.0.15
+
+- A film that has not been segmented reads **Unsegmented** instead of Processing.
+  **Processing** now means the film is running or waiting in the running batch: a click
+  on Segment turns every film in the batch to Processing at once, and each changes to its
+  result as its turn ends. Stop returns the films still waiting to their own status.
+- **Failed** has its own red. Its tooltip gives the date of the failed attempt (failures
+  recorded before 1.0.15 show none) and the reason, and the Analysis screen shows the
+  reason under the Region and Orientation controls and, for a film with no results whose
+  Region is Lumbar or whose original image cannot be shown, on the film card.
+- The reason kept for a failed attempt is a plain sentence: a lost connection to the
+  processing backend reads "The processing backend stopped. Restart Spine Contour, then
+  segment again." instead of the raw socket error. Toasts are unchanged.
+
+[Release notes](docs/releases/1.0.15.md)
+
+## 1.0.14
+
+- The welcome screen no longer lists the authors. In place of the CREATED BY card it
+  shows the contact paragraph and the title of the forthcoming methods paper.
+- Ticking the acknowledgement on the welcome screen no longer makes the logo blink out
+  and fade back in.
+- Both CSV exports drop the comment line that named the authors, so the file now opens
+  with two `#` lines before the header instead of three. A script that skips a fixed
+  number of lines before the header must skip two. No model, measurement or processing
+  change; the weights are unchanged from 1.0.13.
+
+[Release notes](docs/releases/1.0.14.md)
+
+## 1.0.13
+
+- A segmentation attempt that fails, including one stopped because automatic film
+  detection or orientation could not be established, now leaves a **Failed** status
+  instead of Processing; the error is on the badge's tooltip, and batch runs record it
+  too. Failed studies sort first on the Find tab, count as unsegmented, are offered again
+  by batch segmentation and cannot be marked reviewed until a run succeeds. A failed
+  re-run keeps the earlier results on screen but shows Failed until the next successful
+  run. Retrying shows Processing and a successful run clears the failure.
+- Vertebral outlines are drawn in the level colour palette on every film, so full-spine
+  and cervical outlines match lumbar ones (C2 has its own colour; C3–C7 reuse the L1–L5
+  colours).
+- Under CVA, the five advisory lines named in issue #46 are no longer shown; the review
+  status they feed and every other warning are unchanged.
+- **Settings → Processing → Crop method** chooses **Crop search** (the default and the
+  previous behaviour) or **Trained model**, a bundled ONNX region detector that proposes
+  the cervical and lumbar crops on full-spine films, and the lumbar crop when Crop
+  localizer is On. A region whose proposal is missing or fails the landmark checks falls
+  back to Crop search. Each result records the method that supplied the crop and why any
+  fallback ran.
+
+[Release notes](docs/releases/1.0.13.md)
+
+## 1.0.12
+
+- On the Workspace's column-mapping card, an unknown CSV column can be imported under its
+  own name: each chip's dropdown offers **Keep column name**, and **Keep N unmapped
+  columns** keeps every remaining unmapped column at once. A kept column is a custom
+  clinical field like any mapped one: Load workspace attaches its values, the Parameters
+  table lists it after the known fields and both CSV exports carry it. The `study_id` join
+  key and the four study-detail columns are never kept; an empty or already-used name is
+  left unmapped; a header that names a free known field maps to that field instead. The
+  row's **Set all…** dropdown offers **Unmapped** to clear every mapping. No model,
+  measurement or processing change; the weights are unchanged from 1.0.11.
+
+[Release notes](docs/releases/1.0.12.md)
+
+## 1.0.11
+
+- Add segmental lordosis and disc angulation at every adjacent level, C2–C3 through C6–C7
+  and L1–L2 through L5–S1, to Measurements, the image constructions, Parameters and both
+  CSV exports, with follow-up deltas in the paired file. Lordosis is superior endplate to
+  superior endplate; angulation is the upper inferior endplate to the lower superior
+  endplate. Both are unsigned acute angles, use the current image calibration and stay
+  empty when either endplate is missing; the cervical model has no C2 superior endplate,
+  so C2–C3 lordosis is unavailable. See [segmental angles](docs/segmental-angles.md).
+- Add **Settings → Processing → Processor**: run the models on the CPU (default) or on
+  a GPU listed by name. The Windows installer bundles ONNX Runtime's DirectML build, so
+  any DirectX 12 card (NVIDIA, AMD, Intel) works without CUDA. Windows and NVIDIA
+  per-program GPU preferences never affected processing and still do not. macOS keeps
+  the CPU path.
+- Before a GPU processes a film, all six models must pass a local parity check against
+  the CPU reference; a failed check keeps the film on the CPU. DirectML vendor
+  metacommands are off, because the review on issue #40 found them moving a landmark on
+  an Intel UHD 770.
+- A GPU error discards the whole GPU attempt and processes the film again on the CPU,
+  with a toast; the result records the requested and resolved processor, the reason and
+  where its models ran, and its Analysis header shows GPU, GPU + CPU or CPU. See
+  [GPU processing](docs/gpu-processing.md).
+- `spine-contour-backend.exe --verify-models` takes `--gpu` and `--parity-films` to check
+  a workstation's GPU against the CPU, model by model and on real films.
+- On standing films, expand the femoral crop toward a head the lumbar crop cut through,
+  by at most two extra passes within the source image, and record the crop. A mask still
+  reaching the crop edge caps the femoral confidence at 0.5 and asks for review instead
+  of scoring a truncated head as a good fit. See
+  [femoral real-image validation](docs/femoral-real-validation.md).
+
+[Release notes](docs/releases/1.0.11.md)
+
+## 1.0.10
+
+- Automatically select cervical, lumbar or standing/full-spine processing for new
+  imports, with manual region and anterior-side overrides and reviewable provenance.
+- Detect standing-film anterior orientation using lumbar/S1 evidence from both
+  image directions; ask for a manual side when evidence is ambiguous.
+- Return cervical, lumbar and available pelvic measurements alongside global
+  C7–S1 SVA on standing films. Preserve regional landmarks through editing,
+  source-bound calibration, persistence and ordinary/paired CSV exports.
+- Compare cervical landmark chains across mirrored searches in the source frame
+  to withhold inconsistent regional identities before measuring them.
+- Add a separate full-spine workflow combining cervical and lumbar HRNET crop
+  searches for global C7–S1 SVA, with explicit orientation and crop-agreement checks.
+- Add its measurement construction, editable C7/S1 anchors, source-bound
+  calibration, persistence and CSV export. Keep cervical measurements separate.
+- Add cervical HRNET and its paired spine detector,
+  with offline ONNX inference and explicit anterior-side selection.
+- Add C2–C7 inferior-endplate Cobb angle and C2–C7 sagittal vertical axis,
+  construction overlays, editable landmarks, persistence and CSV export.
+- Keep uncalibrated SVA in pixels; use the current image calibration for
+  millimetres and for angles when row and column pixel spacing differ.
+- License the source under the GNU AGPL, version 3 or later: the complete text in `LICENSE`,
+  the notice in the README and the `license` field in `package.json`.
+
+[Release notes](docs/releases/1.0.10.md)
+
+## 1.0.9
+
+- Update the femoral-head U-Net using the expanded rim-annotation dataset.
+- Preserve the validated native-image contrast enhancement, 640px input, flipped-view averaging, and 0.35 threshold in the desktop ONNX pipeline.
+- Retain support for zero, one, or two visible heads and existing manual corrections.
+
 ## 1.0.8
 
 - Read the subject, timepoint, film date and a note from a film's name on load: underscores

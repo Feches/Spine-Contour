@@ -1,11 +1,38 @@
-# Spine Contour v1.0.8
+# Spine Contour
 
-Automated measurements from lateral lumbar radiographs, running locally.
+Automated measurements from lateral lumbar, cervical and full-spine radiographs, running locally.
+
+New studies default to **Auto detect**, which checks image landmarks to select
+cervical, lumbar or full-spine processing. Region and orientation can be overridden
+on the study or workspace folder. Inconclusive detection asks for a manual choice.
+See [automatic film detection](docs/automatic-film-detection.md).
+
+For cervical films, select the
+image's **anterior side** before processing. Review the C2–C7 Cobb and SVA
+construction lines, correct the landmarks if needed, and calibrate the image for
+SVA in millimetres. See [cervical alignment](docs/cervical-alignment.md) for the
+model provenance, measurement definitions and development checks.
+
+Standing/full-spine processing returns global C7–S1 SVA and the available cervical,
+lumbar and pelvic parameters together. Its **Auto detect** orientation compares
+both horizontal orientations; explicit left/right selections override it.
+Review the regional landmarks, C7 centroid and S1 posterior corner, and calibrate the image for
+millimetres. See [global SVA](docs/global-sva.md) for the construction, crop
+search and review requirements.
+
+Every adjacent level also reports segmental lordosis and disc angulation, drawn on the
+film and carried into the Parameters table and both CSV exports. See
+[segmental angles](docs/segmental-angles.md) for the definitions.
+
+**Settings → Processing → Processor** runs the models on the CPU (the default) or, on
+Windows, on a DirectX 12 graphics card through ONNX Runtime's DirectML build. A card is
+used only after its outputs pass a parity check against the CPU, and any GPU error reruns
+the film on the CPU and says so. See [GPU processing](docs/gpu-processing.md).
 
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.0.8 release notes](docs/releases/1.0.8.md) and
+[changelog](CHANGELOG.md), [v1.0.15 release notes](docs/releases/1.0.15.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
@@ -43,6 +70,16 @@ operations; a model call or OCR pass already executing must finish first.
 
 See [processing modes and validation](docs/low-memory-processing.md).
 
+## GPU processing
+
+**Settings → Processing → Processor** runs the models on a GPU instead of the CPU.
+On Windows it lists each DirectX 12 graphics card — NVIDIA, AMD or Intel — by name;
+nothing else needs installing. A GPU chosen for the app in Windows graphics settings
+or the NVIDIA app does not affect processing; only this setting does. The CPU stays
+the default. A model the GPU cannot run falls back to the CPU, and each result's
+Analysis header says whether it ran on the **GPU**, the **CPU** or both. macOS runs on
+the CPU. See [GPU processing](docs/gpu-processing.md).
+
 ## Workspace
 
 It loads a folder of radiographs into the Studies library in one step, with an optional
@@ -69,9 +106,11 @@ clinical-data CSV.
   what the folder names say.
 - Only the nine known clinical fields auto-map — Age, Sex, BMI, Diagnosis, ODI, Treatment plan,
   Surgical history, Follow-up, Notes — by prefix on the column name (`age_yrs` → Age,
-  `odi_base` → ODI). Any other column can be mapped from the dropdown on its chip or left
+  `odi_base` → ODI). Any other column can be mapped from the dropdown on its chip, kept under
+  its own name as a custom field (**Keep column name** on the chip, or **Keep N unmapped
+  columns** for every remaining one at once — check that none is an identifier first), or left
   unmapped. `study_id` itself is the join key, not a field.
-- **Load workspace** adds each new film to Studies as `Processing` and attaches its CSV
+- **Load workspace** adds each new film to Studies as `Unsegmented` and attaches its CSV
   values. Films already in the library (same path) are not added again; the CSV only **fills
   in** clinical fields they are missing and never overwrites a value that is already there
   (use **Import from CSV** on the study's Analysis screen to replace values deliberately).
@@ -114,7 +153,7 @@ workspace and folder each film came from.
 - Click a study name to open it. Tick rows to choose a subset: the button reads **Export N selected**
   and writes the ticked rows that are visible; with nothing ticked, **Export CSV** writes every
   visible row. Hidden picks stay ticked and return with the filter.
-- The file has three `#` comment lines, then the header
+- The file has two `#` comment lines, then the header
   `Study ID,View,Subject,Timepoint,Film date,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1`
   followed by 15 calibrated disc-height columns, every clinical field present on the exported studies,
   and calibration metadata when present. Absent values are empty cells. Demo
@@ -157,6 +196,11 @@ borders. It does not search for or reframe the lumbar anatomy.
 The choice is saved and applies to the next individual run or batch. Changing this
 setting changes the model input and may change detected anatomy; review the result.
 The runtime, localizer setting and selected frame are recorded with each result.
+**Crop method** offers **Crop search** (the default) and **Trained model**.
+The chosen method proposes cervical and lumbar regions on full-spine films;
+for lumbar requests it applies when Crop localizer is On. Trained model tries
+Crop search for a region when its proposal is absent or fails landmark checks.
+A region can still remain unconfirmed; review the crop and measurements before use.
 See [inference implementation and validation](docs/onnx-inference.md).
 
 ## Partial segmentation
@@ -208,3 +252,20 @@ DICOM `PixelSpacing` preserves row and column spacing; detector-plane spacing is
 ## Clear the study library
 
 On **Studies**, select **Delete all studies**, then confirm the displayed count. This clears every study, including entries hidden by search, plus saved segmentation results; in a development build that includes the demo studies (a packaged build has none). Original radiograph files are kept. Demo studies remain hidden after restarting. The action is unavailable during segmentation or when the saved library cannot safely be written. If a saved result cannot be deleted, its study remains in the library and the app reports the failure.
+
+## License
+
+Copyright (C) 2026 Cody Woodhouse and Michael Jayasuriya
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.

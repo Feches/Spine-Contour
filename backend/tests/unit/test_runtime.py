@@ -141,8 +141,8 @@ def test_stream_completes_with_one_result_and_errors_do_not_claim_success():
 
 def test_embeddings_option_defaults_on_and_rejects_non_booleans():
     assert runtime.parse_options().embeddings is True
-    assert runtime.parse_options('standard', 2, True, False, False).embeddings is False
+    assert runtime.parse_options('standard', 2, True, False, embeddings=False).embeddings is False
     assert runtime.parse_options('low-memory', 1, embeddings=True).embeddings is True
     for bad in ('no', 0, 1, None):
         with pytest.raises(ValueError, match='Appearance embeddings must be on or off'):
-            runtime.parse_options('standard', 2, True, False, bad)
+            runtime.parse_options('standard', 2, True, False, embeddings=bad)

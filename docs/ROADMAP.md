@@ -28,7 +28,6 @@ and `Film date` came with spec task 2):
 
 ```
 # Spine Contour export
-# Created by Cody Woodhouse, MD; Michael Jayasuriya, BS.
 # Investigational software. NOT FOR CLINICAL USE.
 Study ID,View,Subject,Timepoint,Film date,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,...,<clinical fields present>
 SP-1000,Standing lateral,S001,Pre-op,2025-03-02,49.0,48.6,12.1,36.5,-0.4,...,58,F,Fusion

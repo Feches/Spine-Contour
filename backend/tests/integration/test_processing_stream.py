@@ -40,6 +40,7 @@ def test_stream_matches_legacy_prediction_for_partial_anatomy_in_both_modes(monk
         assert result['qc']['processing']['mode'] == mode
         assert result['qc']['processing']['crop_localizer'] == localizer
         assert result['qc']['processing']['runtime'] == 'onnxruntime'
+        assert result['qc']['processing']['processor'] == {'requested': 'cpu', 'resolved': 'cpu', 'name': 'CPU', 'note': None}
         assert result['qc']['framing']['searched'] == localizer
         assert result['qc']['coverage']['partial']
         assert result['geometry']['femoral_circles'] == []

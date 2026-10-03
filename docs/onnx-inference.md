@@ -3,8 +3,17 @@
 ## Choosing the image extent
 
 **Crop localizer On** is the default, including for old saved preferences. Full-spine
-images need this search to locate the lumbar region at the scale used during training.
+images need localization to find the lumbar region at the expected model scale.
 Every candidate region and existing crop acceptance safeguard is retained.
+
+**Crop method** selects Crop search or Trained model for full-spine inference
+and for lumbar inference when Crop localizer is On.
+Crop search retains the existing behavior and remains the default. The model
+proposes bounded regional crops; downstream landmark and agreement checks
+still decide whether cervical and lumbar anatomy is established. If a model
+proposal is missing or fails these checks, Crop search runs for that region.
+The result records which method supplied the crop and why fallback ran. A region
+that remains uncertain should be selected or reviewed manually.
 
 **Crop localizer Off** skips model-based search and S1-based reframing.
 It removes broad near-black screenshot borders with the existing fast pixel-based
@@ -32,7 +41,9 @@ normalization, output coordinate restoration and geometry calculations are prese
 
 ONNX Runtime uses sequential graph execution, optimized graphs, no idle thread
 spinning, and one image per detector call. Standard mode caches models and uses up
-to four ONNX CPU threads. On macOS, the S1 detector additionally uses CoreML's CPU
+to four ONNX CPU threads. **Settings → Processing → Processor** can instead run the
+models on a DirectX 12 GPU through DirectML on Windows, with per-model CPU fallback;
+see [GPU processing](gpu-processing.md). The paragraphs below describe the CPU default. On macOS, the S1 detector additionally uses CoreML's CPU
 implementation for static graph partitions. Dynamic/empty detections remain on
 the ONNX CPU provider. CoreML manages its own CPU threads; it does not use reduced
 precision GPU/Neural Engine execution here. If Apple compilation or execution fails,

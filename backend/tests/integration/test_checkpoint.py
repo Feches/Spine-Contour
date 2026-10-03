@@ -32,8 +32,8 @@ def test_authoritative_femoral_checkpoint_loads_and_runs():
     with torch.inference_mode():
         output = model(torch.zeros((1, 1, 64, 64), dtype=torch.float32))
     assert output.shape == (1, 1, 64, 64)
-    assert checkpoint["epoch"] == 275
-    assert checkpoint["val_dice"] == pytest.approx(0.9298734)
+    assert checkpoint["epoch"] == 48
+    assert checkpoint["val_dice"] == pytest.approx(0.8968485326880422)
 
 
 def test_authoritative_s1_checkpoint_loads_with_two_keypoints():

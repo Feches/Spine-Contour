@@ -10,7 +10,10 @@
 // DOM-only sections and needs the Python backend up. Both runs are deliberate: `state.running`
 // is an id, and the only way to prove the list badges the RIGHT study is to watch a real run.
 // Sections 10–14 (2026-09-08) add three batches over injected copies of the same film — two
-// films, one unreadable film, and two films with a Stop — about three more real runs.
+// films, one unreadable film, and two films with a Stop — about three more real runs. Since
+// 2026-10-01 (issue #39, the Failed-status port on 1.0.13) section 11 leaves the unreadable film
+// Failed, section 14b reads that failure on its Analysis screen, and section 18 clears it through
+// its Region select.
 //
 // Two consequences for whoever sequences the suites:
 //   * NEVER run this between `smoke-persist.mjs --phase run` and `--phase restart`. Section 5
@@ -34,6 +37,23 @@ function check(name, ok, detail) {
 const rowCount = (cdp) => cdp.evaluate("document.querySelectorAll('.studies-row').length");
 const text = (cdp, selector) => cdp.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); return e ? e.textContent : null; })()`);
 const clearSearch = (cdp) => cdp.evaluate("(() => { const el = document.querySelector('.studies-search'); el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); })()");
+// (2026-10-01, issue #39 port) A status pill as the page shows it: its classes, its label and its
+// title, which only a Failed pill carries (getAttribute reads null when there is none). null with no
+// pill.
+const statusPill = (cdp, selector) => cdp.evaluate(`(() => { const b = document.querySelector(${JSON.stringify(selector)}); return b ? { cls: b.className, text: b.textContent.trim(), title: b.getAttribute('title') } : null; })()`);
+// What section 11's batch `file not found` stores on SP-9001 (port spec 5, renderer/data/failure.js).
+// The closing toast keeps the raw `file not found`.
+const FILE_NOT_FOUND_REASON = 'The film was not found at its saved location. Run segmentation from its Analysis screen to choose its new location.';
+// The Failed pill's title as failure.js failureTitle builds it (port spec 5): `Segmentation failed`,
+// a middle dot and the date in reviewedLabel's format, a newline, then the reason; no date when `at`
+// does not parse. The date is formatted here, in Node, from the record's own processingErrorAt, on
+// the same machine and time zone as the app, so the check pins the format without guessing the
+// moment.
+const FAILED_DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+const failedTitle = (reason, at) => {
+  const time = Date.parse(at ?? '');
+  return `${Number.isNaN(time) ? 'Segmentation failed' : `Segmentation failed \u00B7 ${FAILED_DATE.format(new Date(time))}`}\n${reason}`;
+};
 
 const cdp = await connect();
 
@@ -211,6 +231,11 @@ try {
   check('SP-9000 is unsegmented (measurements === null)', Boolean(sp9000) && sp9000.measurements === null, sp9000);
   const runCard = await cdp.evaluate("(() => { const card = document.querySelector('.run-card'); const btn = document.querySelector('.run-button'); return { visible: Boolean(card) && !card.classList.contains('is-hidden'), label: btn ? btn.textContent : null, eyebrow: document.querySelector('.run-eyebrow')?.textContent }; })()");
   check('the run card is visible, UNSEGMENTED, with a Run segmentation button', runCard.visible === true && runCard.label === 'Run segmentation' && runCard.eyebrow === 'UNSEGMENTED', runCard);
+  // (2026-10-01, issue #39 port, P1) An idle film with no result reads Unsegmented -- Processing is
+  // only the running film and the films waiting in a batch -- and its pill carries no title; only a
+  // Failed pill does.
+  const header5 = await statusPill(cdp, '.analysis-status .badge');
+  check('the header pill of the idle unsegmented study reads Unsegmented, with no title', Boolean(header5) && header5.cls === 'badge badge-unseg' && header5.text === 'Unsegmented' && header5.title === null, header5);
 
   const backRect2 = await cdp.rect('.icon-btn[aria-label="Back to studies"]');
   await cdp.click(backRect2.cx, backRect2.cy);
@@ -221,8 +246,9 @@ try {
     if (!row) return null;
     return {
       id: row.dataset.studyId,
-      badgeProc: Boolean(row.querySelector('.badge-proc')),
-      badgeText: row.querySelector('.badge-proc')?.textContent,
+      badgeUnseg: Boolean(row.querySelector('.badge-unseg')),
+      badgeText: row.querySelector('.badge-unseg')?.textContent,
+      badgeTitle: row.querySelector('.badge')?.getAttribute('title') ?? null,
       subject: row.querySelector('.studies-cell-subject')?.textContent.trim(),
       name: row.querySelector('.studies-cell-id')?.textContent,
       workspace: row.querySelector('.studies-cell-workspace')?.textContent,
@@ -230,7 +256,8 @@ try {
       demoPill: Boolean(row.querySelector('.pill-demo')),
     };
   })()`);
-  check('the new study is the first row, Processing, no DEMO pill', newRow && newRow.id === 'SP-9000' && newRow.badgeProc && newRow.badgeText === 'Processing' && newRow.subject === '—' && newRow.demoPill === false, newRow);
+  // (2026-10-01, issue #39 port, P1) Unsegmented, not Processing: nothing is running it.
+  check('the new study is the first row, Unsegmented with no title, no DEMO pill', newRow && newRow.id === 'SP-9000' && newRow.badgeUnseg && newRow.badgeText === 'Unsegmented' && newRow.badgeTitle === null && newRow.subject === '—' && newRow.demoPill === false, newRow);
   check('the injected study is named after its file, not its id',
     newRow && newRow.name === '13462cd9-a59f-4aab-9256-cbd723fb978c', newRow && newRow.name);
   // Added by hand: no workspace, but the folder is still derived from the film's own path.
@@ -282,11 +309,15 @@ try {
     buttonDisabled: document.querySelector('.run-button')?.disabled,
   }))()`);
   check("the running study's own card reads RUNNING with a spinner", cardWhileRunning.eyebrow === 'RUNNING' && cardWhileRunning.spinnerHidden === false && cardWhileRunning.buttonLabel === 'Working…' && cardWhileRunning.buttonDisabled === true, cardWhileRunning);
+  // (2026-10-01, issue #39 port, P1) Processing is the running film's pill, and it carries no title.
+  const headerWhileRunning = await statusPill(cdp, '.analysis-status .badge');
+  check("the running study's header pill reads Processing, with no title", Boolean(headerWhileRunning) && headerWhileRunning.cls === 'badge badge-proc' && headerWhileRunning.text === 'Processing' && headerWhileRunning.title === null, headerWhileRunning);
 
-  // Back to Studies mid-run, the way a user would. NOTE: SP-9000 is unsegmented here, so
-  // deriveStatus already returns 'proc' for it -- this pass proves the badge and the summary
-  // agree during a run, and section 8 below is what actually proves the "or currently running"
-  // rule, against a study deriveStatus calls 'seg'.
+  // Back to Studies mid-run, the way a user would. SP-9000 is unsegmented here; since the port
+  // (2026-10-01, issue #39) an idle unsegmented film derives 'unseg', so its Processing pill is
+  // already the "or currently running" rule at work, and this pass also proves the badges and the
+  // summary agree during a run. Section 8 below proves the same rule against a study deriveStatus
+  // calls 'seg'.
   const backRect4 = await cdp.rect('.icon-btn[aria-label="Back to studies"]');
   await cdp.click(backRect4.cx, backRect4.cy);
   await cdp.settle(200);
@@ -297,12 +328,15 @@ try {
     return {
       badgeProc: Boolean(row && row.querySelector('.badge-proc')),
       badgeText: row ? row.querySelector('.badge')?.textContent : null,
+      badgeTitle: row?.querySelector('.badge')?.getAttribute('title') ?? null,
       queued: m ? Number(m[2]) : null,
-      procRows: document.querySelectorAll('.studies-row .badge-proc').length,
+      // (2026-10-01, issue #39 port) UNSEGMENTED counts every film shown as Processing, Unsegmented
+      // or Failed (port spec 3), so those are the badges it is compared with.
+      unsegRows: document.querySelectorAll('.studies-row .badge-proc, .studies-row .badge-unseg, .studies-row .badge-fail').length,
     };
   })()`);
-  check('the running study is badged Processing in the list', listWhileRunning.badgeProc === true && listWhileRunning.badgeText === 'Processing', listWhileRunning);
-  check('the summary UNSEGMENTED count matches the Processing badges', listWhileRunning.queued !== null && listWhileRunning.queued === listWhileRunning.procRows && listWhileRunning.queued >= 1, listWhileRunning);
+  check('the running study is badged Processing in the list, with no title', listWhileRunning.badgeProc === true && listWhileRunning.badgeText === 'Processing' && listWhileRunning.badgeTitle === null, listWhileRunning);
+  check('the summary UNSEGMENTED count matches the Processing, Unsegmented and Failed badges', listWhileRunning.queued !== null && listWhileRunning.queued === listWhileRunning.unsegRows && listWhileRunning.queued >= 1, listWhileRunning);
 
   // The lie the id change exists to prevent: opening a DIFFERENT study mid-run must not make
   // that study's card read RUNNING. The `running` re-read is part of the assertion, not
@@ -333,10 +367,10 @@ try {
   check('the run leaves SP-9000 with measurements and geometry', Boolean(ran && ran.measurements && ran.geometry), ran ? { hasMeas: Boolean(ran.measurements), hasGeom: Boolean(ran.geometry) } : null);
 
   // 8. The "or currently running" badge rule itself (studies.js buildRow), against a study
-  // deriveStatus does NOT call 'proc'. Section 7's pass cannot fail if that rule is deleted --
-  // an unsegmented study derives 'proc' anyway -- so the rule is only actually under test here,
-  // on the SP-9000 section 7 just segmented. Deterministic for the same reason: its bytes are
-  // still in this session's payload map, so the re-run starts.
+  // deriveStatus calls 'seg' or 'rev': the SP-9000 section 7 just segmented. (Since the port,
+  // 2026-10-01, issue #39, section 7 exercises the rule too -- an idle unsegmented study derives
+  // 'unseg', not 'proc' -- but only on an unsegmented film.) Deterministic: its bytes are still in
+  // this session's payload map, so the re-run starts.
   await cdp.setState('{ screen: "studies" }');
   await cdp.settle(200);
   const badgeAtRest = await cdp.evaluate(`(() => {
@@ -371,11 +405,12 @@ try {
       proc: Boolean(row && row.querySelector('.badge-proc')),
       text: row ? row.querySelector('.badge')?.textContent : null,
       queued: m ? Number(m[2]) : null,
-      procRows: document.querySelectorAll('.studies-row .badge-proc').length,
+      // (2026-10-01, issue #39 port) As in section 7: Processing, Unsegmented and Failed all count.
+      unsegRows: document.querySelectorAll('.studies-row .badge-proc, .studies-row .badge-unseg, .studies-row .badge-fail').length,
     };
   })()`);
   check('a SEGMENTED study reads Processing while it is the running study', badgeWhileRerunning.proc === true && badgeWhileRerunning.text === 'Processing', badgeWhileRerunning);
-  check('the summary counts the re-running study as unsegmented', badgeWhileRerunning.queued === badgeWhileRerunning.procRows && badgeWhileRerunning.queued >= 1, badgeWhileRerunning);
+  check('the summary counts the re-running study as unsegmented', badgeWhileRerunning.queued === badgeWhileRerunning.unsegRows && badgeWhileRerunning.queued >= 1, badgeWhileRerunning);
 
   const rerunFinished = await waitForState('s.running === null', 400000);
   s = await cdp.state();
@@ -440,7 +475,12 @@ try {
   };
   // A missing element is a FAIL in the results, never a throw: the suite prints its results only at
   // the end, and a throw here would print nothing (HANDOFF's silent-suite trap).
-  const clickAt = async (selector) => { const r = await cdp.rect(selector); if (r) await cdp.click(r.cx, r.cy); return Boolean(r); };
+  // (2026-09-29, issue #39) Scroll first: at the default window the Find table scrolls sideways and the STATUS header sits at its clipped edge.
+  const clickAt = async (selector) => {
+    await cdp.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (e) e.scrollIntoView({ block: 'nearest', inline: 'nearest' }); })()`);
+    await cdp.settle(50);
+    const r = await cdp.rect(selector); if (r) await cdp.click(r.cx, r.cy); return Boolean(r);
+  };
   const FILTERS_RESET = '{ workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: "", pairedOnly: false, pairedWith: "__any__" }';
 
   // 10. The filter bar and the ticks. SP-9001 sits under a workspace root, with no bytes and no
@@ -514,16 +554,33 @@ try {
   check('a checked select-all clears every visible real row', s.paramSelected.length === 0, s.paramSelected);
 
   // 11. A batch over a film that is not on disk ends in seconds with the failure named (spec 10).
+  // (2026-10-01, issue #39 port) The toast keeps the raw `file not found` (port spec P5); the record
+  // keeps the failure as port spec 5's sentence with the time it was written, so from here SP-9001
+  // reads Failed, dated, and still counts under UNSEGMENTED (port spec 3).
   await cdp.setState('{ paramSelected: ["SP-9001"] }');
   await cdp.settle(150);
   const bar11 = await readBar();
   check('with the unreadable film ticked the button offers it', bar11.label === 'Segment 1 selected' && bar11.disabled === false, bar11);
+  const summaryBefore11 = await summaryParts();
   await clickAt('[data-find-key="segment"]');
   const failed11 = await waitForState('s.toast.startsWith("Segmented 0 of 1")', 15000);
   s = await cdp.state();
   const sp9001 = s.studies.find((x) => x.id === 'SP-9001');
   check('the batch ends with the film counted as failed and named in the toast', failed11 === true && s.toast === 'Segmented 0 of 1 film. · 1 could not be segmented: S001 (file not found)', s.toast);
-  check('the unreadable film is untouched and the batch is cleared', s.batch === null && s.running === null && sp9001 && sp9001.measurements === null, { batch: s.batch, running: s.running });
+  check('the unreadable film records the failure and its time, with no result, and the batch is cleared',
+    s.batch === null && s.running === null && Boolean(sp9001) && sp9001.measurements === null
+    && sp9001.processingError === FILE_NOT_FOUND_REASON && typeof sp9001.processingErrorAt === 'string' && !Number.isNaN(Date.parse(sp9001.processingErrorAt))
+    && Math.abs(Date.now() - Date.parse(sp9001.processingErrorAt)) < 120000,
+    { batch: s.batch, running: s.running, processingError: sp9001 ? sp9001.processingError : null, processingErrorAt: sp9001 ? sp9001.processingErrorAt : null });
+  const pill11 = await statusPill(cdp, '.studies-row[data-study-id="SP-9001"] .badge');
+  check('after its turn the unreadable film reads Failed, its tooltip the dated line and the stored reason',
+    Boolean(pill11) && Boolean(sp9001) && pill11.cls === 'badge badge-fail' && pill11.text === 'Failed'
+    && pill11.title === failedTitle(FILE_NOT_FOUND_REASON, sp9001.processingErrorAt) && /^Segmentation failed \u00B7 [A-Z][a-z]{2} \d{1,2}, \d{4}\n/.test(pill11.title),
+    { pill11, processingErrorAt: sp9001 ? sp9001.processingErrorAt : null });
+  const summary11 = await summaryParts();
+  check('the summary keeps its three clauses and counts the Failed film under UNSEGMENTED',
+    summaryBefore11 !== null && summary11 !== null && summary11.studies === summaryBefore11.studies && summary11.unsegmented === summaryBefore11.unsegmented,
+    { summaryBefore11, summary11 });
 
   // 12. A real two-film batch (spec 9's worked example at fixture scale): the count, the badges,
   // the sidebar, the cards mid-batch, the toast, the ticks afterwards.
@@ -532,7 +589,9 @@ try {
   await cdp.setState('{ paramSelected: [] }');
   await cdp.settle(200);
   const bar12Plain = await readBar();
-  check('with nothing ticked the button counts every visible unsegmented film', bar12Plain.label === 'Segment 3 unsegmented' && bar12Plain.disabled === false, bar12Plain);
+  // (2026-10-01, issue #39 port, P6) SP-9001 is Failed since section 11 and a batch offers a Failed
+  // film again, so the three are SP-9001, SP-9002 and SP-9003.
+  check('with nothing ticked the button counts every visible unsegmented film, the Failed one included', bar12Plain.label === 'Segment 3 unsegmented' && bar12Plain.disabled === false, bar12Plain);
   await cdp.setState('{ paramSelected: ["SP-9002", "SP-9003"] }');
   await cdp.settle(150);
   const bar12 = await readBar();
@@ -545,7 +604,22 @@ try {
   const progress12a = await readProgress();
   check('the bar shows 0 of 2 done, an enabled Stop and no segment button', progress12a.text === '0 of 2 done' && progress12a.stopDisabled === false && progress12a.segmentButton === false, progress12a);
   check('the sidebar Studies row reads 0 OF 2 DONE', progress12a.sidebar === '0 OF 2 DONE', progress12a.sidebar);
-  check('the running, the queued and the unreadable film all read Processing', progress12a.procRows === 3, progress12a.procRows);
+  // (2026-10-01, issue #39 port, P1) This check used to pin all three at Processing. Now the film in
+  // flight and the film waiting its turn read Processing from the click, and the film the earlier
+  // batch could not find reads Failed, its dated reason one hover away.
+  const pills12 = {
+    running: await statusPill(cdp, '.studies-row[data-study-id="SP-9003"] .badge'),
+    queued: await statusPill(cdp, '.studies-row[data-study-id="SP-9002"] .badge'),
+    failed: await statusPill(cdp, '.studies-row[data-study-id="SP-9001"] .badge'),
+  };
+  const sp9001at12 = s.studies.find((x) => x.id === 'SP-9001');
+  check('the running and the queued film read Processing and the unreadable film reads Failed with its dated reason',
+    progress12a.procRows === 2
+    && pills12.running?.cls === 'badge badge-proc' && pills12.running.text === 'Processing' && pills12.running.title === null
+    && pills12.queued?.cls === 'badge badge-proc' && pills12.queued.text === 'Processing' && pills12.queued.title === null
+    && pills12.failed?.cls === 'badge badge-fail' && pills12.failed.text === 'Failed'
+    && Boolean(sp9001at12) && pills12.failed.title === failedTitle(FILE_NOT_FOUND_REASON, sp9001at12.processingErrorAt),
+    { procRows: progress12a.procRows, ...pills12 });
 
   // The cards mid-batch. The injected film segments in roughly 9 s; two openings take about 1 s.
   await clickAt('.studies-row[data-study-id="SP-9002"]');
@@ -555,12 +629,30 @@ try {
     disabled: document.querySelector('.run-button')?.disabled, buttonTitle: document.querySelector('.run-button')?.title,
   }))()`);
   check('a queued film opened mid-batch reads QUEUED, waiting for its turn, its run button disabled', queuedCard.eyebrow === 'QUEUED' && queuedCard.title === 'Waiting for its turn in the batch' && queuedCard.disabled === true && queuedCard.buttonTitle === 'Wait for the batch to finish', queuedCard);
+  // (2026-10-01, issue #39 port, P1 and port spec 3) The card keeps its QUEUED wording; the header
+  // pill passes state.batch to displayStatus as the list does, so it reads Processing (and still
+  // would once the film's turn starts).
+  const queuedHeader = await statusPill(cdp, '.analysis-status .badge');
+  check("a queued film's Analysis header pill reads Processing, with no title", Boolean(queuedHeader) && queuedHeader.cls === 'badge badge-proc' && queuedHeader.text === 'Processing' && queuedHeader.title === null, queuedHeader);
   await clickAt('.icon-btn[aria-label="Back to studies"]');
   await cdp.settle(150);
   await clickAt('.studies-row[data-study-id="SP-9001"]');
   await cdp.settle(200);
-  const outsideCard = await cdp.evaluate(`(() => ({ eyebrow: document.querySelector('.run-eyebrow')?.textContent, title: document.querySelector('.run-title')?.textContent, disabled: document.querySelector('.run-button')?.disabled, buttonTitle: document.querySelector('.run-button')?.title }))()`);
-  check('an unsegmented film outside the batch reads UNSEGMENTED with its run button disabled for the batch', outsideCard.eyebrow === 'UNSEGMENTED' && outsideCard.title === 'No segmentation yet' && outsideCard.disabled === true && outsideCard.buttonTitle === 'Wait for the batch to finish', outsideCard);
+  // (2026-10-01, issue #39 port, P4) SP-9001 is Failed since section 11: outside the batch its card
+  // reads FAILED with the stored reason, and the same Run segmentation button is disabled for the
+  // batch, by UNSEGMENTED's rules.
+  const outsideCard = await cdp.evaluate(`(() => {
+    const card = document.querySelector('.run-card');
+    return {
+      visible: Boolean(card) && !card.classList.contains('is-hidden'),
+      eyebrow: document.querySelector('.run-eyebrow')?.textContent, title: document.querySelector('.run-title')?.textContent,
+      body: document.querySelector('.run-body')?.textContent, label: document.querySelector('.run-button')?.textContent,
+      disabled: document.querySelector('.run-button')?.disabled, buttonTitle: document.querySelector('.run-button')?.title,
+    };
+  })()`);
+  check('a Failed film outside the batch reads FAILED with its stored reason, its run button disabled for the batch',
+    outsideCard.visible === true && outsideCard.eyebrow === 'FAILED' && outsideCard.title === 'Segmentation failed' && outsideCard.body === FILE_NOT_FOUND_REASON
+    && outsideCard.label === 'Run segmentation' && outsideCard.disabled === true && outsideCard.buttonTitle === 'Wait for the batch to finish', outsideCard);
   await clickAt('.icon-btn[aria-label="Back to studies"]');
   await cdp.settle(150);
 
@@ -568,6 +660,16 @@ try {
   const oneDone12 = await waitForState('s.batch !== null && s.batch.done === 1', 120000);
   const progress12b = await readProgress();
   check('after the first film the bar reads 1 of 2 done and the sidebar 1 OF 2 DONE', oneDone12 === true && progress12b.text === '1 of 2 done' && progress12b.sidebar === '1 OF 2 DONE', progress12b);
+  // (2026-10-01, issue #39 port, P1) Each film changes to its result as its turn ends: the first has
+  // left Processing for its own status, and the second, waiting or by now in flight, still reads
+  // Processing.
+  const pills12b = {
+    first: await statusPill(cdp, '.studies-row[data-study-id="SP-9003"] .badge'),
+    second: await statusPill(cdp, '.studies-row[data-study-id="SP-9002"] .badge'),
+  };
+  check('after the first turn the film it ran reads its result and the other still reads Processing',
+    oneDone12 === true && Boolean(pills12b.first) && ['badge badge-seg', 'badge badge-rev'].includes(pills12b.first.cls)
+    && pills12b.second?.cls === 'badge badge-proc' && pills12b.second.text === 'Processing', pills12b);
   const finished12 = await waitForState('s.batch === null', 400000);
   s = await cdp.state();
   const a12 = s.studies.find((x) => x.id === 'SP-9002');
@@ -590,23 +692,81 @@ try {
   const started13 = await waitForState('s.batch !== null && s.running !== null', 5000);
   const running13 = (await cdp.state()).running;
   check('the second batch starts with SP-9005 in flight', started13 === true && running13 === 'SP-9005', running13);
+  // (2026-10-01, issue #39 port, P1) Both films read Processing from the click. On Stop the film still
+  // waiting goes straight back to its own status (it will not run); the film in flight stays
+  // Processing until it finishes. The pills are read BEFORE the state below, so `running` still
+  // naming SP-9005 there proves it was in flight when they were read.
+  const readPills13 = async () => ({
+    inFlight: await statusPill(cdp, '.studies-row[data-study-id="SP-9005"] .badge'),
+    waiting: await statusPill(cdp, '.studies-row[data-study-id="SP-9004"] .badge'),
+  });
+  const pills13a = await readPills13();
   await clickAt('[data-find-key="stop"]');
   await cdp.settle(150);
   const stopping13 = await readProgress();
+  const pills13b = await readPills13();
   s = await cdp.state();
   check('Stop marks the batch stopping: the text, the disabled Stop and the sidebar say so', stopping13.text === 'Stopping after this film…' && stopping13.stopDisabled === true && stopping13.sidebar === 'STOPPING', stopping13);
   check('the film in flight keeps running after Stop', s.running === 'SP-9005' && s.batch && s.batch.stopping === true, { running: s.running, batch: s.batch });
+  check('both films read Processing before Stop; after it the film left waiting reads Unsegmented and the film in flight still Processing',
+    pills13a.inFlight?.cls === 'badge badge-proc' && pills13a.waiting?.cls === 'badge badge-proc'
+    && s.running === 'SP-9005' && pills13b.inFlight?.cls === 'badge badge-proc' && pills13b.inFlight.text === 'Processing'
+    && pills13b.waiting?.cls === 'badge badge-unseg' && pills13b.waiting.text === 'Unsegmented' && pills13b.waiting.title === null,
+    { before: pills13a, after: pills13b, running: s.running });
   const finished13 = await waitForState('s.batch === null', 400000);
   s = await cdp.state();
   const c13 = s.studies.find((x) => x.id === 'SP-9004');
   const d13 = s.studies.find((x) => x.id === 'SP-9005');
-  check('the batch ends after the film in flight, the other left unsegmented', finished13 === true && Boolean(d13 && d13.measurements) && c13 && c13.measurements === null, { c: Boolean(c13 && c13.measurements), d: Boolean(d13 && d13.measurements) });
+  // (2026-10-01, issue #39 port) Stop is never a failure: the film it left behind is not Failed.
+  check('the batch ends after the film in flight, the other left unsegmented and not Failed',
+    finished13 === true && Boolean(d13 && d13.measurements) && Boolean(c13) && c13.measurements === null && (c13.processingError ?? null) === null && (c13.processingErrorAt ?? null) === null,
+    { c: Boolean(c13 && c13.measurements), d: Boolean(d13 && d13.measurements), cError: c13 ? (c13.processingError ?? null) : null });
   check('the toast says the batch stopped', s.toast === 'Segmented 1 of 2 films, then stopped.', s.toast);
   const bar13 = await readBar();
   check('the bar offers the film Stop left behind and notes the one it segmented', bar13.label === 'Segment 1 selected' && bar13.disabled === false && bar13.note === '1 already segmented', bar13);
 
   // 14. No new console errors or exceptions across the batch sections.
   check('no console errors or exceptions during the batch sections', cdp.errors.length === errorsAfter9, cdp.errors.slice(errorsAfter9));
+
+  // 14b (2026-10-01, issue #39 port, P3 and P4). The Failed film on its Analysis screen with no run and
+  // no batch up: the header pill with its dated tooltip, the red region note and the FAILED card,
+  // whose Run segmentation button is enabled now, by UNSEGMENTED's rules. Nothing on it is clicked:
+  // SP-9001 has no bytes and no file, so a run would open the native relocate picker and wedge the
+  // suite. SP-9001 is lumbar (injectFilm writes no region), so no original preview loads and nothing
+  // follows the reason in the note. It stays Failed through sections 15-17, so section 15's sort meets
+  // a Failed row; section 18 clears it.
+  const errorsBefore14b = cdp.errors.length;
+  const regionNote = () => cdp.evaluate(`(() => { const e = document.querySelector('.analysis-region-bar .meas-note'); return e ? { text: e.textContent, failed: e.classList.contains('is-failed') } : null; })()`);
+  const runCardState = () => cdp.evaluate(`(() => {
+    const card = document.querySelector('.run-card');
+    return {
+      visible: Boolean(card) && !card.classList.contains('is-hidden'),
+      eyebrow: document.querySelector('.run-eyebrow')?.textContent ?? null, title: document.querySelector('.run-title')?.textContent ?? null,
+      body: document.querySelector('.run-body')?.textContent ?? null, label: document.querySelector('.run-button')?.textContent ?? null,
+      disabled: document.querySelector('.run-button')?.disabled ?? null,
+    };
+  })()`);
+  await cdp.setState(`{ screen: "studies", query: "", paramFilters: ${FILTERS_RESET}, paramSelected: [] }`);
+  await cdp.settle(200);
+  await clickAt('.studies-row[data-study-id="SP-9001"]');
+  await cdp.settle(200);
+  s = await cdp.state();
+  const sp9001at14b = s.studies.find((x) => x.id === 'SP-9001');
+  const header14b = await statusPill(cdp, '.analysis-status .badge');
+  check('SP-9001 opens with a Failed header pill titled with the dated line and its stored reason',
+    s.screen === 'analysis' && s.openId === 'SP-9001' && Boolean(sp9001at14b) && Boolean(header14b) && header14b.cls === 'badge badge-fail' && header14b.text === 'Failed'
+    && header14b.title === failedTitle(FILE_NOT_FOUND_REASON, sp9001at14b.processingErrorAt),
+    { screen: s.screen, openId: s.openId, header14b });
+  const note14b = await regionNote();
+  check('the region note reads "Last run failed: " and the stored reason, in the failed colour',
+    Boolean(note14b) && note14b.text === `Last run failed: ${FILE_NOT_FOUND_REASON}` && note14b.failed === true, note14b);
+  const card14b = await runCardState();
+  check('the stage card reads FAILED, Segmentation failed and the stored reason, with an enabled Run segmentation button',
+    card14b.visible === true && card14b.eyebrow === 'FAILED' && card14b.title === 'Segmentation failed' && card14b.body === FILE_NOT_FOUND_REASON
+    && card14b.label === 'Run segmentation' && card14b.disabled === false, card14b);
+  await clickAt('.icon-btn[aria-label="Back to studies"]');
+  await cdp.settle(200);
+  check('no console errors or exceptions during section 14b', cdp.errors.length === errorsBefore14b, cdp.errors.slice(errorsBefore14b));
   // ---------------------------------------------------------------------------------------------
   // 15-17 (2026-09-10, studies-table spec): sortable headers, the SUBJECT editor, Delete selected.
   // ---------------------------------------------------------------------------------------------
@@ -614,10 +774,13 @@ try {
   await cdp.setState(`{ screen: "studies", query: "", paramFilters: ${FILTERS_RESET}, paramSelected: [], findSort: { key: "date", dir: "desc" } }`);
   await cdp.settle(200);
   const badgeOrder = () => cdp.evaluate(`[...document.querySelectorAll('.studies-row')].map((r) => (r.querySelector('.badge') || {}).className || '')`);
-  const rank = (c) => (c.includes('badge-proc') ? 0 : c.includes('badge-rev') ? 1 : c.includes('badge-seg') ? 2 : c.includes('badge-ok') ? 3 : 9);
+  // (2026-10-01, issue #39 port) find.js STATUS_RANK, port spec 3: fail 0, proc 1, unseg 2, rev 3,
+  // seg 4, ok 5.
+  const rank = (c) => (c.includes('badge-fail') ? 0 : c.includes('badge-proc') ? 1 : c.includes('badge-unseg') ? 2 : c.includes('badge-rev') ? 3 : c.includes('badge-seg') ? 4 : c.includes('badge-ok') ? 5 : 9);
   const activeKey = () => cdp.evaluate(`document.activeElement ? document.activeElement.getAttribute('data-find-key') : null`);
 
-  // 15. Sort (spec 6). SP-9000 is segmented, SP-9001 unsegmented (section 10), the demos segmented.
+  // 15. Sort (spec 6). SP-9000 is segmented, SP-9001 Failed (section 11), SP-9004 Unsegmented (section
+  // 13), the demos segmented: an ascending sort puts the Failed row first (port spec 3).
   const dateMark = await cdp.evaluate(`document.querySelector('[data-find-key="sort-date"]')?.textContent ?? null`);
   check('DATE carries the descending mark by default', typeof dateMark === 'string' && dateMark.includes('\u25BE'), dateMark);
   await clickAt('[data-find-key="sort-status"]');
@@ -789,6 +952,41 @@ try {
   const summary17 = ((await text(cdp, '.studies-summary')) || '').trim();
   check('the summary carries the TO REVIEW clause after the delete', /^\d+ STUDIES \u00B7 \d+ UNSEGMENTED \u00B7 \d+ TO REVIEW$/.test(summary17), summary17);
   check('no console errors or exceptions during sections 15-17', cdp.errors.length === errorsAfter14, cdp.errors.slice(errorsAfter14));
+
+  // 18 (2026-10-01, issue #39 port, P6). A Region or Orientation change clears the stored failure and
+  // its time on the write, as it clears reviewedAt (1.0.13's changeRegion; port spec 4). It runs last
+  // so that sections 15-17 met SP-9001 Failed, and after the batches because changeRegion refuses
+  // while a batch or a run is up. SP-9001 is lumbar, which hides its Orientation select, so the Region
+  // select is the one changed -- to Auto detect, its value set and `change` dispatched the way
+  // smoke-cervical.mjs drives it. Auto detect then asks for the original preview, which this film
+  // cannot give (no bytes, no file), so the note reads that message instead of the failure.
+  const errorsBefore18 = cdp.errors.length;
+  await cdp.setState(`{ screen: "studies", query: "", paramFilters: ${FILTERS_RESET}, paramSelected: [] }`);
+  await cdp.settle(200);
+  await clickAt('.studies-row[data-study-id="SP-9001"]');
+  await cdp.settle(200);
+  s = await cdp.state();
+  const before18 = s.studies.find((x) => x.id === 'SP-9001');
+  const region18 = await cdp.evaluate(`(() => { const e = document.querySelector('[aria-label="Spine region"]'); if (!e) return null; e.value = 'auto'; e.dispatchEvent(new Event('change', { bubbles: true })); return e.value; })()`);
+  await cdp.settle(200);
+  const after18 = (await cdp.state()).studies.find((x) => x.id === 'SP-9001');
+  check('on the Failed SP-9001, changing the Region clears processingError and processingErrorAt and leaves the film unsegmented',
+    s.openId === 'SP-9001' && Boolean(before18) && before18.processingError === FILE_NOT_FOUND_REASON && typeof before18.processingErrorAt === 'string'
+    && region18 === 'auto' && Boolean(after18) && after18.region === 'auto' && after18.processingError === null && after18.processingErrorAt === null && after18.measurements === null,
+    { openId: s.openId, before: before18 ? [before18.processingError, before18.processingErrorAt] : null, region18, after: after18 ? [after18.region, after18.processingError, after18.processingErrorAt] : null });
+  const header18 = await statusPill(cdp, '.analysis-status .badge');
+  const note18 = await regionNote();
+  const card18 = await runCardState();
+  check('the header pill reads Unsegmented with no title, and neither the region note nor the card carries the failure',
+    Boolean(header18) && header18.cls === 'badge badge-unseg' && header18.text === 'Unsegmented' && header18.title === null
+    && Boolean(note18) && !note18.text.startsWith('Last run failed') && note18.failed === false
+    && card18.visible === true && card18.eyebrow === 'UNSEGMENTED',
+    { header18, note18, card18 });
+  await clickAt('.icon-btn[aria-label="Back to studies"]');
+  await cdp.settle(200);
+  const row18 = await statusPill(cdp, '.studies-row[data-study-id="SP-9001"] .badge');
+  check('back on the list SP-9001 reads Unsegmented with no title', Boolean(row18) && row18.cls === 'badge badge-unseg' && row18.text === 'Unsegmented' && row18.title === null, row18);
+  check('no console errors or exceptions during section 18', cdp.errors.length === errorsBefore18, cdp.errors.slice(errorsBefore18));
 } finally {
   cdp.close();
 }

@@ -7,7 +7,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { readStudyStore, writeStudyStore, readJsonOrNull, writeJsonAtomic } = require('./store-io.js');
 const { scanFolder } = require('./scan-folder.js');
-const { postForm, normalizePerformance } = require('./backend-client.cjs');
+const { postForm, normalizePerformance, normalizeProcessors } = require('./backend-client.cjs');
 const { createCalibrationStore } = require('./calibration-io.js');
 
 // buildChannel is injected by electron-builder.preview.yml via extraMetadata.
@@ -81,6 +81,14 @@ ipcMain.handle('save-performance', (_event, value) => {
     writeJsonAtomic(path.join(app.getPath('userData'), 'performance.json'), settings));
   return performanceWrites.then(() => settings);
 });
+// The processors the bundled runtime can run the models on: the CPU, and on Windows each
+// DirectX 12 GPU (docs/gpu-processing.md). Listed by the backend, never guessed here.
+ipcMain.handle('list-processors', async () => {
+  if (!backendBaseUrl) throw new Error('The backend is not ready.');
+  const response = await fetch(`${backendBaseUrl}/processors`, { signal: AbortSignal.timeout(30000) });
+  if (!response.ok) throw new Error(`Could not list processors (${response.status}).`);
+  return normalizeProcessors(await response.json());
+});
 ipcMain.handle('cancel-predict', (event, requestId) => {
   const active = predictions.get(requestId);
   if (active?.sender === event.sender) active.controller.abort();
@@ -91,7 +99,9 @@ function appendPerformance(form, value) {
   form.append('processing_mode', settings.mode);
   form.append('cpu_threads', String(settings.cpuThreads));
   form.append('crop_localizer', String(settings.cropLocalizer));
+  form.append('crop_method', settings.cropMethod);
   form.append('toolbar_removal', String(settings.toolbarRemoval));
+  form.append('processor', settings.processor);
   form.append('embeddings', String(settings.embeddings));
   return settings;
 }
@@ -156,6 +166,7 @@ ipcMain.handle('predict', async (event, request) => {
   form.append('file', new Blob([bytes]), request.name);
   form.append('modality', request.modality);
   form.append('body_part', request.bodyPart);
+  if (typeof request.anteriorSide === 'string') form.append('anterior_side', request.anteriorSide);
   form.append('view', request.view);
   const calibration = await calibrationStore.forImage(bytes) ?? request.calibration;
   if (calibration) form.append('calibration', JSON.stringify(calibration));

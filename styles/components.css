@@ -104,6 +104,24 @@
   background: color-mix(in srgb, var(--muted) 14%, transparent);
   color: var(--muted);
 }
+/* Failed and Unsegmented (2026-10-01, issue #39; port spec 6). Failed is its own red, --danger, in
+   the soft-tint style of the others, so it reads apart from Needs review's terracotta; --danger is at
+   least 4.5:1 on its own 14% tint over --bg in both themes (5.12:1 light, 5.30:1 dark). Unsegmented
+   keeps Processing's colours with a hollow dot in the same 6px box, so "nothing has run yet" reads
+   apart from "running now". */
+.badge-fail {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+.badge-unseg {
+  background: color-mix(in srgb, var(--muted) 14%, transparent);
+  color: var(--muted);
+}
+.badge-unseg .dot {
+  background: transparent;
+  border: 1.5px solid currentColor;
+  box-sizing: border-box;
+}
 
 /* Reviewed (studies-table spec 2026-09-10, section 8.2): the completed state. A stronger sage ground than
    Segmented's with ink text and a sage dot, so it reads in both themes; a filled sage ground with

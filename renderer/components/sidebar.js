@@ -6,8 +6,8 @@ import { DEFAULT_MODELS, VERTEBRA_MODELS, modelLabel } from '../data/models.js';
 import { studyName } from '../data/labels.js';
 import { sidebarText } from '../data/batch.js';
 import { VERSION_LABEL } from '../data/version.js';
-import { changePerformance, cancelProcessing } from '../processing.js';
-import { progressTitle, progressDetail } from '../data/processing.js';
+import { changePerformance, cancelProcessing, refreshProcessors } from '../processing.js';
+import { progressTitle, progressDetail, processorChoices, processorNote } from '../data/processing.js';
 import { demoToggleAvailable, demoStudiesShown, setDemoStudiesShown } from '../demo-studies.js';
 
 const DOCS_URL = 'https://github.com/Feches/Spine-Contour#readme';
@@ -52,6 +52,14 @@ function performanceBlock(state) {
     onChange: (event) => changePerformance({ cpuThreads: Number(event.target.value) }) },
     ...[1, 2, 3, 4].map((n) => el('option', { value: String(n) }, `${n} CPU thread${n === 1 ? '' : 's'}`)));
   threads.value = String(settings.cpuThreads);
+  // CPU, or a GPU the backend listed (docs/gpu-processing.md). A Windows or GPU-vendor
+  // graphics preference cannot move this work; only this choice does.
+  const choices = processorChoices(state.processors, settings.processor);
+  const processor = el('select', { 'aria-label': 'Processor', disabled: busy,
+    title: choices.find((choice) => choice.id === settings.processor)?.label ?? '',
+    onChange: (event) => changePerformance({ processor: event.target.value }) },
+    ...choices.map((choice) => el('option', { value: choice.id }, choice.label)));
+  processor.value = settings.processor;
   return el('div', { class: 'sidebar-models processing-settings' },
     el('div', { class: 'eyebrow' }, 'PROCESSING'),
     el('div', { class: 'model-choice', role: 'group', 'aria-label': 'Processing mode' },
@@ -64,6 +72,9 @@ function performanceBlock(state) {
     el('p', { class: 'processing-note' }, settings.mode === 'low-memory'
       ? 'Uses less memory and allows longer processing. Keeps the same model resolution.'
       : 'Keeps models loaded for faster repeated processing.'),
+    el('div', { class: 'sidebar-models-label' }, 'PROCESSOR'),
+    processor,
+    el('p', { class: 'processing-note' }, processorNote(state.processors, settings.processor)),
     el('div', { class: 'sidebar-models-label' }, 'CROP LOCALIZER'),
     el('div', { class: 'model-choice', role: 'group', 'aria-label': 'Crop localizer' },
       ...[[true, 'On'], [false, 'Off']].map(([cropLocalizer, label]) => el('button', {
@@ -72,7 +83,16 @@ function performanceBlock(state) {
         onClick: () => changePerformance({ cropLocalizer }),
       }, label))),
     el('p', { class: 'processing-note' },
-      'Needed for full-spine images to find the lumbar region. Turn off for lumbar-only images to skip the crop search and process faster.'),
+      'Needed for full-spine images to find the lumbar region. Turn off for lumbar-only images to process the supplied image.'),
+    el('div', { class: 'sidebar-models-label' }, 'CROP METHOD'),
+    el('div', { class: 'model-choice', role: 'group', 'aria-label': 'Crop method' },
+      ...[['search', 'Crop search'], ['model', 'Trained model']].map(([cropMethod, label]) => el('button', {
+        type: 'button', class: 'model-choice-btn', disabled: busy,
+        'aria-pressed': settings.cropMethod === cropMethod ? 'true' : 'false',
+        onClick: () => changePerformance({ cropMethod }),
+      }, label))),
+    el('p', { class: 'processing-note' },
+      'Choose how full-spine crops are proposed. Trained model falls back to Crop search if a crop fails landmark checks. For lumbar-only runs, Crop localizer must be On.'),
     el('div', { class: 'sidebar-models-label' }, 'TOOLBAR REMOVAL'),
     el('div', { class: 'model-choice', role: 'group', 'aria-label': 'Toolbar removal' },
       ...[[true, 'On'], [false, 'Off']].map(([toolbarRemoval, label]) => el('button', {
@@ -250,7 +270,10 @@ export function render(state) {
       label: 'Settings',
       active: state.settingsOpen,
       collapsed,
-      onClick: () => setState((current) => ({ settingsOpen: !current.settingsOpen })),
+      onClick: () => {
+        if (!state.settingsOpen) refreshProcessors();
+        setState((current) => ({ settingsOpen: !current.settingsOpen }));
+      },
     }),
     themeRow,
     state.settingsOpen && !collapsed ? modelsBlock(state) : null,

@@ -1,3 +1,6 @@
+import { segmentalValues } from '../data/segmental.js';
+import { globalSvaMeasurements } from '../data/global-sva.js';
+import { cervicalMeasurements, studyRegion, requiresAnteriorSide, regionRunReason } from '../data/cervical.js';
 import { el } from '../dom.js';
 import { getState, setState } from '../store.js';
 import { measure } from '../api.js';
@@ -332,7 +335,9 @@ export function mountViewer(container, { role = 'primary' } = {}) {
     const study = currentStudy();
     drawDynamicLayer(dynamicCtx, dynamicCanvas, geometry, {
       selectedLevel: state.selectedLevel,
-      measurements: study && !state.measurementDrafts?.[study.id] ? study.measurements : null,
+      measurements: study && !state.measurementDrafts?.[study.id]
+        ? { ...segmentalValues(study), ...(studyRegion(study) === 'cervical' ? cervicalMeasurements(study)
+          : studyRegion(study) === 'full_spine' ? { ...study.measurements, ...cervicalMeasurements(study), ...globalSvaMeasurements(study) } : study.measurements) } : null,
       // `editing` belongs to the OPEN study. The compare pane is read-only, so it keeps its
       // plan-03 rendering throughout: no handles to grab, no trace points, no hover highlight
       // -- drawing any of them would be an affordance the pane does not honour.
@@ -356,7 +361,9 @@ export function mountViewer(container, { role = 'primary' } = {}) {
     const state = getState();
     const study = currentStudy();
     const label = constructionLabel(geometry, state.selectedLevel,
-      study && !state.measurementDrafts?.[study.id] ? study.measurements : null);
+      study && !state.measurementDrafts?.[study.id]
+        ? { ...segmentalValues(study), ...(studyRegion(study) === 'cervical' ? cervicalMeasurements(study)
+          : studyRegion(study) === 'full_spine' ? { ...study.measurements, ...cervicalMeasurements(study), ...globalSvaMeasurements(study) } : study.measurements) } : null);
     labelChip.classList.toggle('is-hidden', !label);
     if (!label) return;
     const offset = labelOffsets.get(state.selectedLevel) ?? { dx: 0, dy: 0 };
@@ -386,7 +393,7 @@ export function mountViewer(container, { role = 'primary' } = {}) {
     // the hit radius is a constant 14 CSS pixels at any zoom, as nearestLandmark's is.
     const rect = dynamicCanvas.getBoundingClientRect();
     const scale = rect.width / dynamicCanvas.width;
-    const circles = geometry.femoral_circles.map(([cx, cy, r]) => [...imageToClient([cx, cy], rect, dynamicCanvas), r * scale]);
+    const circles = (geometry.femoral_circles ?? []).map(([cx, cy, r]) => [...imageToClient([cx, cy], rect, dynamicCanvas), r * scale]);
     return hitTestFemoral(circles, event.clientX, event.clientY);
   }
 
@@ -735,8 +742,9 @@ export function mountViewer(container, { role = 'primary' } = {}) {
 
   function addCircle() {
     const study = currentStudy();
-    const count = study?.geometry?.femoral_circles.length;
-    if (count == null || count >= 2 || getState().running === study.id) return;
+    if (studyRegion(study) === 'cervical') return;
+    const count = study?.geometry?.femoral_circles?.length ?? 0;
+    if (!study?.geometry || count >= 2 || getState().running === study.id) return;
     cancelRetrace();
     retracing = true;
     clearHover();
@@ -790,16 +798,19 @@ export function mountViewer(container, { role = 'primary' } = {}) {
   // Edit-bar button states. Called from updateViewer on every notification and directly by
   // the retrace handlers; it only writes DOM, never the store.
   function updateEditBar(state, study) {
+    for (const button of [addCircleButton, deleteCircleButton, retraceButton, fitButton]) button.classList.toggle('is-hidden', studyRegion(study) === 'cervical');
     // Only a run on THIS study disables the edit bar; a run on another study leaves it alone.
     // A null study is never busy -- toggleRetrace passes currentStudy(), which may be null.
     const busy = Boolean(study) && state.running === study.id;
     const femoralSelected = Boolean(state.selection && state.selection.kind === 'femoral');
     const geometry = state.measurementDrafts?.[study?.id] ?? study?.geometry;
     const hasSelectedCircle = femoralSelected && femoralCircle(geometry, state.selection.side);
-    addCircleButton.disabled = busy || !geometry || geometry.femoral_circles.length >= 2 || retracing;
+    addCircleButton.disabled = busy || !geometry || (geometry.femoral_circles?.length ?? 0) >= 2 || retracing;
     deleteCircleButton.disabled = busy || !hasSelectedCircle;
     retraceButton.disabled = busy || !hasSelectedCircle;
-    editHelp.textContent = retracing ? 'Click at least 3 points around the head, then Fit. Escape cancels.'
+    editHelp.textContent = studyRegion(study) === 'full_spine' ? 'Drag a landmark, or use Tab and arrow keys. Review the cervical and lumbar endplates, C7 centroid, S1 and femoral heads.'
+      : studyRegion(study) === 'cervical' ? 'Drag a landmark, or use Tab and arrow keys. C2 centroid and C2/C7 endplates define these measurements.'
+      : retracing ? 'Click at least 3 points around the head, then Fit. Escape cancels.'
       : 'Drag a centre to move; drag its rim to resize. The diamond marks the hip midpoint.';
     retraceButton.setAttribute('aria-pressed', String(retracing));
     retraceButton.classList.toggle('is-active', retracing);
@@ -844,16 +855,31 @@ export function mountViewer(container, { role = 'primary' } = {}) {
     // button's `disabled` looks at any run at all, because only one run is allowed at a time,
     // and at a batch (batch spec 9): while one is up no single run starts. `queued` is this
     // study's place in the running batch -- QUEUED means that and nothing else; a film in no
-    // batch reads UNSEGMENTED (spec decision 7).
+    // batch reads UNSEGMENTED (spec decision 7), or FAILED when its last attempt failed (below).
     const busy = state.running === study.id;
     const otherRunning = Boolean(state.running) && !busy;
     const batch = state.batch ?? null;
     const queued = !busy && isQueued(batch, study.id);
     const waitTitle = batch ? WAIT_FOR_BATCH : (otherRunning ? WAIT_FOR_RUN : '');
+    if (!hasResult && !busy && requiresAnteriorSide(study) && currentImages?.preview) return null;
+    if (!hasResult && !busy && regionRunReason(study)) {
+      return { eyebrow: studyRegion(study) === 'full_spine' ? 'FULL SPINE SETUP' : 'CERVICAL SETUP', title: 'Confirm image orientation',
+        body: regionRunReason(study), spinner: false, button: null };
+    }
     if (!hasResult && !busy && !inferenceView(study.view)) {
       return {
         eyebrow: 'UNSUPPORTED VIEW', title: 'Choose a lateral view',
         body: unsupportedViewReason(study.view), spinner: false, button: null,
+      };
+    }
+    // (2026-10-01, issue #39; port spec 6) The last attempt failed: the stored reason, and
+    // UNSEGMENTED's Run segmentation button under the same disabled rules and title. RUNNING and
+    // QUEUED win -- a Failed film in a batch waits like any other. A film with results shows them;
+    // the header pill and the region note carry its failure.
+    if (!hasResult && !busy && !queued && study.processingError) {
+      return {
+        eyebrow: 'FAILED', title: 'Segmentation failed', body: study.processingError, spinner: false,
+        button: { text: 'Run segmentation', disabled: Boolean(state.running) || Boolean(batch), title: waitTitle },
       };
     }
     if (!hasResult || busy) {
@@ -1080,7 +1106,7 @@ export function mountViewer(container, { role = 'primary' } = {}) {
     if (!compare) {
       editButton.disabled = !hasResult || busy || filmStatus !== null;
       // Re-run answers to ANY run in flight and to a batch, because only one run is allowed at a time.
-      rerunButton.disabled = !hasResult || Boolean(state.running) || Boolean(state.batch) || filmStatus === 'loading' || !inferenceView(study.view);
+      rerunButton.disabled = !hasResult || Boolean(state.running) || Boolean(state.batch) || filmStatus === 'loading' || !inferenceView(study.view) || Boolean(regionRunReason(study));
       rerunButton.title = inferenceView(study.view) ? 'Re-run segmentation' : unsupportedViewReason(study.view);
       editButton.setAttribute('aria-pressed', String(state.editing));
       editButton.classList.toggle('is-active', state.editing);
@@ -1105,8 +1131,9 @@ export function mountViewer(container, { role = 'primary' } = {}) {
     // editing, follow selection, and are sized in CSS pixels so zoom changes their image-
     // space size. panX/panY are deliberately NOT here -- a pan moves the host, not the pixels.
     // The zoom is this mount's: in the compare role the store's is the PRIMARY's, so this gate
-    // would track a zoom that never reaches this stage and miss the one that does.
-    const dynamicKey = [study.geometry, state.measurementDrafts?.[study.id], state.selectedLevel, study.measurements, state.editing, state.selection, view.zoom];
+    // would track a zoom that never reaches this stage and miss the one that does. The
+    // calibration is in it because the drawn segmental and cervical values read it.
+    const dynamicKey = [study.calibration, study.geometry, state.measurementDrafts?.[study.id], state.selectedLevel, study.measurements, state.editing, state.selection, view.zoom];
     if (!sameKey(dynamicKey, lastDynamic)) {
       lastDynamic = dynamicKey;
       redrawDynamic(liveGeometry());

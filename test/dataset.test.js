@@ -46,12 +46,13 @@ test('parameters.csv is toCsv plus the provenance, then the resolved outcome col
   const text = built().files['parameters.csv'];
   const lines = text.split('\r\n').filter((l) => l !== '');
   assert.equal(lines[0], '# Spine Contour export');
-  const header = lines[3].split(',');
+  // Two comment lines since v1.0.14 (no authors line), so the header is line 3.
+  const header = lines[2].split(',');
   assert.equal(header[0], 'Study ID');
   assert.deepEqual(header.slice(-12), ['Film type', 'Coverage', 'Reviewed', 'Embedding', 'Crop localizer', 'Vertebra model', 'Femoral model', 'S1 model', 'Source SHA-256', ...RESOLVED_COLUMNS]);
   assert.deepEqual(RESOLVED_COLUMNS, ['Subject fusion extension', 'Subject fusion extension date', 'Subject last follow-up']);
-  assert.equal(lines.length - 4, 4);
-  const first = lines[4].split(',');
+  assert.equal(lines.length - 3, 4);
+  const first = lines[3].split(',');
   assert.equal(first[0], 'S001 pre');
   const at = (name) => first[header.indexOf(name)];
   assert.equal(at('Film type'), 'whole-spine');
@@ -63,9 +64,9 @@ test('parameters.csv is toCsv plus the provenance, then the resolved outcome col
   assert.equal(at('Subject fusion extension'), 'yes');
   assert.equal(at('Subject fusion extension date'), '2026-01-10');
   assert.equal(at('Subject last follow-up'), '2026-06-01');
-  const second = lines[5].split(',');
+  const second = lines[4].split(',');
   assert.equal(second[header.indexOf('Embedding')], 'no');
-  const unsegmented = lines[7].split(',');
+  const unsegmented = lines[6].split(',');
   assert.equal(unsegmented[0], 'lone film');
   assert.equal(unsegmented[header.indexOf('Coverage')], '');
   assert.equal(unsegmented[header.indexOf('Subject fusion extension')], 'not-recorded');
@@ -77,10 +78,10 @@ test('parameters.csv is toCsv plus the provenance, then the resolved outcome col
 
 test('paired.csv is the paired export by visit plus the resolved columns and the film types', () => {
   const lines = built().files['paired.csv'].split('\r\n').filter((l) => l !== '');
-  const header = lines[3].split(',');
+  const header = lines[2].split(',');
   assert.deepEqual(header.slice(-5), [...RESOLVED_COLUMNS, 'Pre-op film type', 'Post-op film type']);
-  assert.equal(lines.length - 4, 1);
-  const row = lines[4].split(',');
+  assert.equal(lines.length - 3, 1);
+  const row = lines[3].split(',');
   assert.equal(row[0], 'S001');
   assert.equal(row[header.indexOf('Pre-op study')], 'S001 pre');
   assert.equal(row[header.indexOf('Subject fusion extension')], 'yes');
@@ -101,8 +102,8 @@ test('a merged visit counts once, is flagged in the toast, and takes its primary
   assert.equal(merged.counts.pairs, 1);
   assert.equal(merged.counts.mergedVisits, 1);
   const lines = merged.files['paired.csv'].split('\r\n').filter((l) => l !== '');
-  const header = lines[3].split(',');
-  const row = lines[4].split(',');
+  const header = lines[2].split(',');
+  const row = lines[3].split(',');
   assert.equal(row[header.indexOf('Pre-op study')], 'S003 pre + S003 pre flexion');
   assert.equal(row[header.indexOf('Pre-op film type')], 'whole-spine');
   assert.equal(datasetMessage(merged, 'D'), 'Dataset written to D \u00B7 1 pair \u00B7 1 merged visit \u00B7 2 films without an embedding');

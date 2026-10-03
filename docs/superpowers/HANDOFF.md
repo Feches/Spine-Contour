@@ -1,8 +1,16 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-09-28 (the trunk moved to v1.0.10 — first section under "Where things stand")
-**Branch:** `claude/spine-contour-filename-parse-b6c1bb` (filename grammar, note, paired visits, names; release 1.0.8 awaiting the PR — first section under "Where things stand")
-**Worktree:** `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-segmentation-failures-82e370`
+**Last updated:** 2026-10-02
+**Branch:** `claude/issue-39-failed-status-port` (the Failed-status additions on 1.0.13, issue #39 follow-up; DONE,
+merged with v1.0.14, release 1.0.15 committed and awaiting the PR — first section under "Where things stand")
+**Checkout:** `C:\Users\codyj\Spine Contour Desktop\Spine-Contour`, the main checkout on this workstation (no
+worktree). The `C:\Users\codyj\spine contour\…` worktree paths below are the 2026-09 layout of another workstation
+and do not exist here.
+**2026-09-13 branch (historical):** `claude/spine-contour-filename-parse-b6c1bb`, worktree
+`C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-segmentation-failures-82e370`.
+**Similar-cases branch (held):** `claude/image-similarity-visualization-400922`, worktree
+`C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`, last updated on its own line 2026-09-28 (the
+trunk moved to v1.0.10; the stage-1 section under "Where things stand"), merging `fork/main` @ `c53e91d` (v1.0.15).
 **Earlier copies (historical):** `claude/studies-ui-updates-bb040d` in worktree `studies-ui-updates-bb040d`, and
 `claude/upstream-reconcile-2026-09-08` — the UI branch (batch segmentation included) with the
 backend developer's trunk `origin/ui-redesign-cw` @ `5078b1c` merged in (2026-09-08); the studies branch was
@@ -41,6 +49,68 @@ the newest architecture amendment for controls and null rules. No model or calib
 algorithm changed; no screenshots were added.
 
 ## Where things stand
+
+### Failed-status additions on 1.0.13 (issue #39 follow-up) — DONE; release 1.0.15 awaiting the PR (branch `claude/issue-39-failed-status-port`, off `main` @ `9992b99`, v1.0.13, merged with `origin/main` @ `e7ae5a3`, v1.0.14)
+
+2026-10-01 → 02, main checkout. Issue Feches/Spine-Contour#39 (a batch film that failed orientation or automatic
+detection stayed "Processing") was closed by Michael's 1.0.13 Failed status (PR #50, `8264de8`). The user compared it
+with the design they had approved on the local branch `claude/issue-39-failed-status` (spec
+`2026-09-29-failed-status-design.md`; tested end to end; never pushed) and chose to keep 1.0.13's model and add five
+decisions on top: films with no result read Unsegmented, and Processing is the running film and every film waiting
+in the running batch; Failed is its own red; the tooltip carries the date (`processingErrorAt`); the Analysis screen
+shows the reason (red note, FAILED card); stored reasons are plain sentences.
+
+- Spec: `docs/superpowers/specs/2026-10-01-failed-status-port-design.md` (`85b9d54`).
+- Plan: `docs/superpowers/plans/2026-10-01-failed-status-port.md` (`c98be25`), 8 tasks; its `## Ledger` holds every
+  task's commit and count, the Task 8 reads and the rulings made while executing.
+- Executed 2026-10-02 by subagent-driven development, a fresh implementer and a task review per task; every task
+  reviewed clean. Task 1 `178da6c` (unit 597), 2 `1972074` (599), 3 `a4727d3` (609), 4 `a44d1b3` (610), 5 `b84848c`
+  (613), 6 `b88ba8b` (613), 7 `d2110b3` (613).
+- The final whole-branch review (an opus workflow: five reviewers plus adversarial verification; verdict "with fixes";
+  no product-code defect) left one missing unit test, a failure outranking the review mark (`2dff03f`, unit 614), plus
+  the contract (`1bd4419`) and Task 8's expectations and the smoke README (`027054b`); all fixed and re-reviewed clean.
+- Two stale smoke expectations from earlier releases, fixed here as test-only commits: `97b7478` (smoke-workspace,
+  1.0.12's Keep column name option) and `e980f64` (smoke-parameters, 1.0.11's ten segmental columns in the paired
+  export). No product code depends on them, but the release notes' Checks section counts their suites (100/100, 58/58):
+  dropping either now means reverting it and editing `docs/releases/1.0.15.md`, CLAUDE.md and the plan Ledger, and that
+  suite is red again.
+- Task 8 on the pre-merge branch: unit 614/614; `smoke-studies.mjs` 151/151; `smoke-workspace.mjs` 98/100, then 100/100
+  after `97b7478`; `smoke-persist.mjs` 41/41 then 53/53. Real films: ten copies on the RTX 4070, DOM reads only, no
+  screenshots. A batch turned all ten to Processing at once and Stop returned the waiting films at once; a film whose
+  file had been moved away read Failed with the file-not-found sentence and a dated tooltip; three films whose
+  automatic film detection was inconclusive read Failed with the backend's sentence; the failures survived a restart;
+  setting one of them to Lumbar cleared its failure and it then segmented. Verification record `168a3c5`. Human gate
+  passed (user, 2026-10-02).
+- Merged `origin/main` @ `e7ae5a3` (v1.0.14, PR #52) as `0b92fbd`: a CHANGELOG conflict only; 1.0.14's edits to the
+  three shared screens are comment-only; unit 614/614. Smoke on the merged tree, each on a fresh scratch launch:
+  `smoke-landing.mjs` 16/16, `smoke-studies.mjs` 151/151, `smoke-workspace.mjs` 100/100, `smoke-parameters.mjs` 58/58
+  (56/58 before `e980f64`), `smoke-persist.mjs` 41/41 then 53/53.
+- Release 1.0.15 committed as `2687cf5` (package.json, version.js, CHANGELOG, the README link,
+  `docs/releases/1.0.15.md`, CLAUDE.md).
+- SDD ledger: `.superpowers/sdd/2026-10-01-failed-status-port/progress.md` (gitignored, local to this checkout):
+  rulings R1–R12 and the task log.
+- `claude/issue-39-failed-status` is a reference only — never merged, rebased onto or cherry-picked.
+
+**Next.** The branch is pushed to `origin` (`github.com/Feches/Spine-Contour`, the only remote in this checkout;
+CLAUDE.md's Git section describes another workstation's `fork`/`origin` layout) at the owner's choice on 2026-10-02. The
+owner opens the PR to `main` and merges it with **Create a merge commit**; the push to `main` publishes v1.0.15
+(`docs/release-main.md`). The PR body says it follows up Feches/Spine-Contour#39.
+
+**Follow-ups (deferred; each needs the owner's call):**
+
+1. Stop pressed while a turn's film file is still being read: that film reads its own status briefly, then Processing
+   (spec §3's formula vs P1; changing it needs the owner's ruling).
+2. Failures recorded before 1.0.15 (by 1.0.13 or 1.0.14) keep their raw, uncapped text until the next attempt (the spec
+   rewrites on write only).
+3. Pre-existing 1.0.13 bug: `planBatch` (`renderer/data/batch.js:32`) offers a measured Failed film but the batch
+   driver skips it (`batch.js:145`) and the closing toast says "segmented meanwhile" — a separate issue.
+4. Contrast: the Unsegmented/Processing grey is about 3.3:1 (pre-existing `--muted`); the dark Failed pill is 4.28:1 on
+   a hovered Find row; Failed vs Needs review in the dark theme.
+5. After Stop, the Analysis card keeps QUEUED for films that will not run (both specs mandate it today).
+6. Changing a Failed film's View does not clear its failure; no failure column in the Parameters grid or the CSV.
+7. The Find table overflows horizontally at the default 1180×900 window (pre-existing).
+8. Whether to tell Michael (PR #50's author); what to do with the superseded local branch
+   `claude/issue-39-failed-status`.
 
 ### The trunk moved: v1.0.10 released 2026-09-25 (`fork/main` @ `3ddb8bb`); this branch has not merged it
 
@@ -1888,8 +1958,9 @@ plan 06 had never been packaged, or that installed previews contain demos, are s
 - **An SVG with a double hyphen in an XML comment silently fails to decode in Chromium.** It is
   illegal XML, and the image simply never loads with no error in the app. It bit the app-icon work;
   both mark files now carry a warning.
-- **Two checks in `smoke-studies.mjs` race the backend** and can legitimately report 54/56. See
-  `tools/smoke/README.md` for the two names and why the product, not the suite, is right.
+- **Two checks in `smoke-studies.mjs` race the backend** and can legitimately fail (found when the suite had 56
+  checks; it has 151 since 2026-10-01). See `tools/smoke/README.md` for the two names and why the product, not the
+  suite, is right: a run whose only failures are one or both of them is green, anything else is a real regression.
 
 - **CI parses checked-out text files with CRLF endings.** The Windows runner's Git defaults to
   `autocrlf=true` and there is no `.gitattributes` rule for text. Any inline script that matches

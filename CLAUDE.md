@@ -1,5 +1,75 @@
 # Spine Contour
 
+**2026-10-02 release 1.0.15 (issue #39 Failed-status follow-up):** branch `claude/issue-39-failed-status-port` (the main
+checkout, no worktree) off `main` @ `9992b99` (v1.0.13), merged with `origin/main` @ `e7ae5a3` (v1.0.14, PR #52) as
+`0b92fbd` (a CHANGELOG conflict only). Five additions on 1.0.13's Failed status: films with no result read Unsegmented,
+and Processing is the running film and every film waiting in the batch (`displayStatus(study, runningId, batch)`);
+Failed is the new `--danger` red; `processingErrorAt` beside `processingError` gives the dated tooltip `failureTitle`;
+the Analysis screen's red `failedRunNote` and the FAILED card in `describeCard`; stored reasons pass through
+`renderer/data/failure.js` `failureReason`. Spec `docs/superpowers/specs/2026-10-01-failed-status-port-design.md`; plan
+`docs/superpowers/plans/2026-10-01-failed-status-port.md` (counts and rulings in its `## Ledger`). Unit 614/614.
+Merged-tree smoke: landing 16/16, studies 151/151, workspace 100/100, parameters 58/58, persist 41/41 then 53/53. Real
+films (ten copies, RTX 4070) checked by DOM reads on the pre-merge branch, no screenshots. Stale smoke expectations
+fixed: `97b7478` (1.0.12's Keep column name) and `e980f64` (1.0.11's segmental columns in the paired export). Pushed to
+`origin` (Feches, the only remote in this checkout) at the owner's choice on 2026-10-02; merging the PR to `main`
+publishes v1.0.15.
+
+**2026-10-01 release 1.0.14 (landing page):** branch `claude/landing-page-logo-flash-5782c3` (worktree
+`.claude/worktrees/design-system-extraction-eaac17`, moved off upstream `92c8e87` onto `fork/main` @ `9992b99`, v1.0.13,
+with `checkout -B`). The landing panel drops the CREATED BY card (the owner's ruling: no author names) for the contact
+paragraph and the methods-paper title with a `(METHODS PAPER · FORTHCOMING)` tag; both CSV exports drop the authors'
+`#` line outright (the owner turned down a paper-title replacement), so the block is TWO comment lines and the header is
+line 3 — every test/smoke read by position moved up one (`slice(2)`, header `[2]`, first row `[3]`). The logo flash: `ack` was in router.js `SCREEN_KEYS`, so
+every tick remounted the landing page and the new `.landing-hero` replayed `riseIn` (opacity 0.07 at 40 ms); `ack` is
+out of `SCREEN_KEYS` and landing.js updates its checkbox and Enter from a module-scope subscription. Unit 587/587;
+`tools/smoke/smoke-landing.mjs` 16/16 (9/16 before). Still naming the authors, left on purpose: README's copyright line,
+`package.json` `author`, `design-reference/template.html`.
+
+**2026-10-01 release 1.0.13:** branch `ccr-b0ba7894-fm5spq` off `fork/main` @ `7ce278f` (v1.0.12, PR #48), with
+Michael's two single-commit PRs merged in unchanged by merge commits: PR #50 (`8264de8`; a stored
+`processingError` gives a `fail` status, Failed, sorted first, retried by batch, blocking Mark reviewed until a run
+succeeds; `LEVEL_RGB` gains C2–C7 and every outline, lumbar included, draws in the level colour; `measurementWarnings`
+hides the five lines named in #46 for cervical and full-spine studies only, while status still counts them) and PR #49
+(`4a7f491`; `performance.cropMethod` `search` (default) or `model`, `backend/learned_region.py` and
+`backend/region_detector.py`, Crop search fallback per region). The two touch no file in common. Merged as is at the
+owner's request: `backend/onnx/crop_detector.onnx` (10.7 MB) is a plain git blob force-added inside the ignored
+`backend/onnx/`, not LFS like `backend/weights/`, so a retrained graph adds another blob to history; moving it to LFS
+is open. Unit 587/587; backend tests not run locally (each PR's Windows/macOS workflow ran them and the bundled-model
+check). Not run: a source launch. Merging the release PR to `fork/main` with a merge commit publishes v1.0.13.
+
+**2026-09-30 release 1.0.12 (CSV keep-column lift):** branch `claude/csv-keep-column-name` (worktree
+`.claude/worktrees/csv-keep-column`) off `fork/main` @ `16088cd` (v1.0.11, PR #43). It carries exactly one feature
+commit cherry-picked from the held similar-cases branch `claude/image-similarity-visualization-400922` (Plan B Task 5,
+`e8eb247`): `Keep column name` and `Keep N unmapped columns` on the Workspace mapping card (`KEEP_NAME`,
+`keepColumnName`, `keepUnmapped`, `keepableCount` in `renderer/data/csv.js`; the card in
+`renderer/screens/workspace.js`; `.workspace-keep-row` in `styles/screens/workspace.css`; two tests). The cherry-pick
+applied cleanly: main's changes to those files since `efe1df6` all lie outside the mapping card. Unit 582/582. Not
+run: a source launch of this tree (the card was walked by hand on 2026-09-14 on the branch it came from). Everything
+else from the similar-cases work (embeddings, Find similar, comparison mode, `Export dataset`, the three outcome
+fields) stays held on its branch for the owner's offline testing; when that branch later merges `fork/main`, git sees
+this commit's content as already applied and only the release files conflict. The 1.0.12 release commit is on this
+branch; merging it to `fork/main` with a merge commit publishes v1.0.12.
+
+**2026-09-28 release 1.0.11:** branch `claude/happy-faraday-vjiqgk` off `fork/main` @ `03d42a4` (PR #41), with
+`fork/main` @ `110ff47` (PR #42, segmental lordosis and angulation) merged in. The merges of PR #37, #41 and #42
+built both installers but published nothing: `tools/packaging/publish_release.py`
+refuses a version whose tag already belongs to another commit, and `package.json` still said 1.0.10. Every
+publication needs the bump in `docs/release-main.md` (`package.json`, `renderer/data/version.js`, `CHANGELOG.md`,
+`docs/releases/<version>.md`, the README link). The 1.0.11 release commit is on the branch; merging it to `fork/main`
+publishes v1.0.11 and moves `latest-windows`. Physical GPU qualification on a workstation is unreported for this
+revision (PR #41's "Draft pending Windows validation" note).
+
+**2026-09-27 GPU processor setting:** branch `claude/gracious-ptolemy-a4pxts` off `fork/main` @ `1c83e05` (v1.0.10 and
+PR #37). Windows and NVIDIA per-program GPU preferences never reached inference: the backend is a separate process and
+shipped CPU-only ONNX Runtime. **Settings → Processing → Processor** now chooses the CPU (default) or a GPU the backend
+lists (`GET /processors`, `backend/processors.py`); 64-bit Windows installs `onnxruntime-directml==1.24.4` by requirement
+markers (never both ONNX Runtime builds in one venv; `run.py` uninstalls first). Saved as `performance.processor`: `cpu`
+or the PCI identity `gpu:<vendor>:<device>[:n]`, never Windows' adapter index, which each run re-reads through DXGI
+(ONNX Runtime reads its list once per process). A GPU failure retries that model on the CPU (ONNX Runtime's own silent
+retry is off); `qc.processing.processor` and per-model `providers` record what ran, and the Analysis header shows GPU, GPU + CPU or
+CPU from the providers. CI has no GPU: check a workstation with `spine-contour-backend.exe --verify-models`, then one
+film. See `docs/gpu-processing.md` and the 2026-09-27 contract amendment.
+
 **2026-09-14 similar cases and outcomes (stage 1):** branch `claude/image-similarity-visualization-400922`
 (worktree `studies-ui-updates-bb040d`) off `fork/main` @ `efe1df6` (v1.0.8), built by Plan A
 (`docs/superpowers/plans/2026-09-12-a-embeddings-backend.md`, complete at `fcf94b9`) and Plan B
@@ -290,6 +360,8 @@ when none is found the backend logs `OCR: no Tesseract binary found ...` and eve
   current one (spec §11).
 - `GET /models` — `{vertebrae: [...], femoral: [...], s1: [...]}`, the offered model ids.
 - `GET /health` — `{"status": "ok"}`.
+- `GET /processors` — `{processors: [{id, kind, name, memory_mb}]}`: the CPU, then each GPU ONNX Runtime can use.
+  `/predict` and `/predict-stream` take an optional `processor` field (default `cpu`); see `docs/gpu-processing.md`.
 
 `measurements` is `{SS, PI, PT, L1PA, LL: {'L1-S1'…'L5-S1'}}` after the plan-02 rename.
 `PI–LL mismatch` is derived (`PI − LL['L1-S1']`), not returned.

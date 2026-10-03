@@ -1,8 +1,9 @@
+import { validAnteriorSide, requiresAnteriorSide } from '../data/cervical.js';
 /**
  * Workspace screen (spec 9.3). Three step cards -- image folder, optional clinical CSV, column
  * mapping -- and one Load workspace button that turns every scanned film into an unsegmented
  * real Study in a single setState. render(state) returns the screen's root; because
- * router.js remounts this host only on screen/ack, every handler refreshes the screen itself
+ * router.js remounts this host only on screen/calibrationRequest, every handler refreshes the screen itself
  * after its setState. Persistence is the store subscriber in renderer/main.js: nothing here
  * calls saveStudies.
  */
@@ -134,6 +135,9 @@ export function loadWorkspaceStudies(state) {
       // The seeded subject, timepoint, film date and view (§8.3). view is never null here: the
       // folder row always holds one, and it was on screen before Load.
       ...seeded.fields,
+      region: rowByFolder.get(folderKey(filePath, root))?.region ?? 'auto',
+      anteriorSide: validAnteriorSide(rowByFolder.get(folderKey(filePath, root))?.anteriorSide)
+        ? rowByFolder.get(folderKey(filePath, root)).anteriorSide : null,
       // Spread, never the join's own object: the store never holds a reference the join still owns.
       clinical: { ...(join?.byFile.get(filePath) ?? {}) },
     };
@@ -314,7 +318,7 @@ export function render(state) {
   function rowSelect({ key, label, value, choices, none, onChange }) {
     const select = el('select', { class: 'workspace-folder-select', 'aria-label': label, 'data-ws-key': key, onChange });
     if (none !== null) select.append(el('option', { value: '' }, none));
-    for (const choice of choices) select.append(el('option', { value: choice }, choice));
+    for (const choice of choices) select.append(el('option', { value: choice }, choice === 'full_spine' ? 'Full spine' : choice === 'auto' ? 'Auto detect' : choice));
     select.value = value ?? '';
     return select;
   }
@@ -329,7 +333,7 @@ export function render(state) {
     });
     select.append(el('option', { value: '__all__' }, 'Set all…'));
     if (none !== null) select.append(el('option', { value: '' }, none));
-    for (const choice of choices) select.append(el('option', { value: choice }, choice));
+    for (const choice of choices) select.append(el('option', { value: choice }, choice === 'full_spine' ? 'Full spine' : choice === 'auto' ? 'Auto detect' : choice));
     select.value = '__all__';
     return select;
   }
@@ -355,6 +359,13 @@ export function render(state) {
         key: 'all-view', label: 'Set the view of every folder', choices: views, none: null,
         onChange: (value) => setAllFolderRows({ view: value }),
       })));
+    head.append(el('th', { scope: 'col' }, 'REGION', setAllSelect({
+      key: 'all-region', label: 'Set the region of every folder', choices: ['auto', 'lumbar', 'cervical', 'full_spine'], none: null,
+      onChange: value => setAllFolderRows({ region: value, anteriorSide: null }),
+    })), el('th', { scope: 'col' }, 'ANTERIOR IMAGE SIDE', setAllSelect({
+      key: 'all-anterior', label: 'Set the anterior image side of every cervical and full spine folder', choices: ['left', 'right'], none: 'Auto detect',
+      onChange: value => setAllFolderRows({ anteriorSide: value || null }),
+    })));
     const body = rows.map((row) => el('tr', { 'data-ws-folder': row.folder },
       el('td', { class: 'workspace-folders-name', title: row.folder }, row.folder),
       el('td', { class: 'workspace-folders-num' }, String(row.count)),
@@ -365,7 +376,15 @@ export function render(state) {
       el('td', {}, rowSelect({
         key: `view:${row.folder}`, label: `View for ${row.folder}`, value: row.view, choices: views, none: null,
         onChange: (event) => setFolderRow(row.folder, { view: event.target.value }),
-      }))));
+      })),
+      el('td', {}, rowSelect({
+        key: `region:${row.folder}`, label: `Region for ${row.folder}`, value: row.region ?? 'auto', choices: ['auto', 'lumbar', 'cervical', 'full_spine'], none: null,
+        onChange: event => setFolderRow(row.folder, { region: event.target.value, anteriorSide: null }),
+      })),
+      el('td', {}, requiresAnteriorSide({ ...row, region: row.region ?? 'auto' }) ? rowSelect({
+        key: `anterior:${row.folder}`, label: `Anterior image side for ${row.folder}`, value: row.anteriorSide, choices: ['left', 'right'], none: row.region === 'cervical' ? 'Choose…' : 'Auto detect',
+        onChange: event => setFolderRow(row.folder, { anteriorSide: event.target.value || null }),
+      }) : '—')));
     return el('div', { class: 'workspace-folders-wrap' },
       el('div', { class: 'workspace-folders-scroll' },
         el('table', { class: 'workspace-folders', 'data-ws-key': 'folders' },
@@ -547,7 +566,7 @@ export function render(state) {
         el('div', { class: 'workspace-load-hint' },
           loadDisabled
             ? 'Choose an image folder to continue.'
-            : 'New films are added to Studies as Processing. Open one and run segmentation from its Analysis screen.')),
+            : 'New films are added to Studies as Unsegmented. Open one and run segmentation from its Analysis screen.')),
     );
     return fragment;
   }

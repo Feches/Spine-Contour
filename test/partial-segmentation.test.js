@@ -38,7 +38,7 @@ function study(names = ['L1']) {
 }
 
 const reload = entry => validate({ version: STORE_VERSION, studies: JSON.parse(JSON.stringify([entry])) })[0];
-const csvRow = text => parse(text.split('\r\n').slice(3).join('\r\n')).rows[0];
+const csvRow = text => parse(text.split('\r\n').slice(2).join('\r\n')).rows[0];
 
 test('all 127 nonempty anatomy subsets survive JSON save/reload with nulls intact', () => {
   for (let mask = 1; mask < 128; mask++) {

@@ -5,7 +5,7 @@ import { isConsistent } from '../renderer/data/measurements.js';
 import { reviewReasons, S1_CONFIDENCE_LIMIT } from '../renderer/data/status.js';
 import {
   isReviewed, displayStatus, reviewedLabel, reviewBlockedReason,
-  REVIEW_DEMO, REVIEW_NOTHING, REVIEW_RUNNING, REVIEW_PENDING,
+  REVIEW_DEMO, REVIEW_NOTHING, REVIEW_RUNNING, REVIEW_PENDING, REVIEW_FAILED,
 } from '../renderer/data/status.js';
 
 test('weak S1 and weak spine location require review despite a good femoral fit and consistent angles', () => {
@@ -37,14 +37,26 @@ test('RESIDUAL_LIMIT is 1.0 degrees and CONFIDENCE_LIMIT is 0.6', () => {
   assert.equal(CONFIDENCE_LIMIT, 0.6);
 });
 
-test('deriveStatus returns proc when the study itself is null or undefined', () => {
-  assert.equal(deriveStatus(null), 'proc');
-  assert.equal(deriveStatus(undefined), 'proc');
+test('deriveStatus returns unseg when the study itself is null or undefined', () => {
+  assert.equal(deriveStatus(null), 'unseg');
+  assert.equal(deriveStatus(undefined), 'unseg');
 });
 
-test('deriveStatus returns proc when measurements is null', () => {
-  const study = { measurements: null, qc: null };
-  assert.equal(deriveStatus(study), 'proc');
+test('deriveStatus returns unseg when measurements is null and no attempt failed', () => {
+  assert.equal(deriveStatus({ measurements: null, qc: null }), 'unseg');
+  assert.equal(deriveStatus({ measurements: null, qc: null, processingError: null }), 'unseg');
+  assert.equal(deriveStatus({ measurements: null, qc: null, processingError: '' }), 'unseg');
+});
+
+test('a failed attempt is Failed even without measurements or when a prior result remains', () => {
+  const study = { id: 'SP-1000', measurements: null, processingError: 'Orientation is uncertain.' };
+  assert.equal(deriveStatus(study), 'fail');
+  assert.equal(statusLabel('fail'), 'Failed');
+  assert.equal(displayStatus(study, 'SP-1000'), 'proc');
+  study.measurements = { PI: 50, PT: 20, SS: 30 };
+  assert.equal(deriveStatus(study), 'fail');
+  study.processingError = null;
+  assert.equal(deriveStatus(study), 'seg');
 });
 
 test('deriveStatus returns seg when residual and confidence both pass', () => {
@@ -99,10 +111,13 @@ test('missing qc.femoral does not by itself force rev', () => {
   assert.equal(deriveStatus(study), 'seg');
 });
 
-test('statusLabel maps every status to its display label', () => {
+test('statusLabel maps every status to its display label and anything else to an em dash', () => {
   assert.equal(statusLabel('seg'), 'Segmented');
   assert.equal(statusLabel('rev'), 'Needs review');
   assert.equal(statusLabel('proc'), 'Processing');
+  assert.equal(statusLabel('unseg'), 'Unsegmented');
+  assert.equal(statusLabel('fail'), 'Failed');
+  for (const key of ['nonsense', '', null, undefined]) assert.equal(statusLabel(key), '\u2014', String(key));
 });
 
 test('deriveStatus and isConsistent agree at the residual boundary (one RESIDUAL_LIMIT)', () => {
@@ -126,8 +141,15 @@ test('a review mark makes a study Reviewed whether or not its qc would ask for r
   assert.equal(reviewReasons({ ...SUSPECT, reviewedAt: MARK }).length, 1);
 });
 
-test('a review mark over no measurements is still Processing; a blank or non-string mark is no mark', () => {
-  assert.equal(deriveStatus({ measurements: null, reviewedAt: MARK }), 'proc');
+test('a failed attempt outranks the review mark (port spec 3 and 7)', () => {
+  const study = { id: 'SP-1000', ...CLEAN, reviewedAt: MARK, processingError: 'boom', processingErrorAt: MARK };
+  assert.equal(deriveStatus(study), 'fail');
+  assert.equal(displayStatus(study, null, null), 'fail');
+  assert.equal(displayStatus(study, 'SP-1000'), 'proc');
+});
+
+test('a review mark over no measurements is Unsegmented; a blank or non-string mark is no mark', () => {
+  assert.equal(deriveStatus({ measurements: null, reviewedAt: MARK }), 'unseg');
   assert.equal(deriveStatus({ ...SUSPECT, reviewedAt: '' }), 'rev');
   assert.equal(deriveStatus({ ...SUSPECT, reviewedAt: null }), 'rev');
   assert.equal(deriveStatus({ ...CLEAN, reviewedAt: 12 }), 'seg');
@@ -142,7 +164,39 @@ test('displayStatus reads Processing for the running study and deriveStatus othe
   assert.equal(displayStatus(study, 'SP-1001'), 'ok');
   assert.equal(displayStatus(study, null), 'ok');
   assert.equal(displayStatus(study), 'ok');
-  assert.equal(displayStatus(null, null), 'proc');
+  assert.equal(displayStatus(null, null), 'unseg');
+});
+
+// (2026-10-01, issue #39; port spec 3) the batch half: a film waiting in a running batch reads
+// Processing from the click until its own turn ends.
+test('displayStatus reads Processing for every film still waiting in a running batch', () => {
+  const failed = { id: 'SP-1000', measurements: null, processingError: 'Orientation is uncertain.' };
+  const idle = { id: 'SP-1001', measurements: null };
+  const done = { id: 'SP-1002', ...CLEAN };
+  const outside = { id: 'SP-1003', measurements: null };
+  const batch = { ids: ['SP-1002', 'SP-1000', 'SP-1001'], done: 1, failed: [], warnings: [], skipped: 0, stopping: false };
+  // SP-1002's turn has ended: its own status. SP-1000 and SP-1001 are waiting, Failed or not.
+  assert.equal(displayStatus(done, 'SP-1000', batch), 'seg');
+  assert.equal(displayStatus(failed, 'SP-1000', batch), 'proc');
+  assert.equal(displayStatus(idle, 'SP-1000', batch), 'proc');
+  assert.equal(displayStatus(outside, 'SP-1000', batch), 'unseg');
+  // The click that starts a batch: nothing has run yet and every film reads Processing.
+  const started = { ...batch, done: 0 };
+  assert.equal(displayStatus(done, null, started), 'proc');
+  // Stopping: the film in flight stays Processing; the films that will not run read their own status.
+  const stopping = { ...batch, stopping: true };
+  assert.equal(displayStatus(failed, 'SP-1000', stopping), 'proc');
+  assert.equal(displayStatus(idle, 'SP-1000', stopping), 'unseg');
+  assert.equal(displayStatus(failed, null, stopping), 'fail');
+  // No batch, or no study.
+  assert.equal(displayStatus(idle, null, null), 'unseg');
+  assert.equal(displayStatus(null, null, batch), 'unseg');
+  // An Embed batch never segments: its waiting films keep their own status, and only the film
+  // in flight (state.running) reads Processing.
+  const embedding = { ...batch, kind: 'embed', done: 0 };
+  assert.equal(displayStatus(done, null, embedding), 'seg');
+  assert.equal(displayStatus(done, 'SP-1002', embedding), 'proc');
+  assert.equal(displayStatus(done, null, { ...batch, kind: 'segment', done: 0 }), 'proc');
 });
 
 test('statusLabel names the fourth status', () => {
@@ -160,6 +214,8 @@ test('reviewedLabel carries the date and never invents one', () => {
 test('reviewBlockedReason: demo, then running, then nothing to review, then pending, then enabled', () => {
   assert.equal(reviewBlockedReason({ study: { id: 'SP-0042', source: 'demo', ...CLEAN } }), REVIEW_DEMO);
   assert.equal(reviewBlockedReason({ study: { id: 'SP-1000', source: 'real', ...CLEAN }, running: 'SP-1000' }), REVIEW_RUNNING);
+  assert.equal(reviewBlockedReason({ study: { id: 'SP-1000', source: 'real', ...CLEAN,
+    processingError: 'Orientation uncertain' } }), REVIEW_FAILED);
   assert.equal(reviewBlockedReason({ study: { id: 'SP-1000', source: 'real', measurements: null }, running: null }), REVIEW_NOTHING);
   assert.equal(reviewBlockedReason({ study: { id: 'SP-1000', source: 'real', ...CLEAN }, pending: true }), REVIEW_PENDING);
   assert.equal(reviewBlockedReason({ study: { id: 'SP-1000', source: 'real', ...CLEAN }, running: 'SP-1001' }), null);

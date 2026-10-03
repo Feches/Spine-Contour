@@ -1,19 +1,23 @@
+import { predictionMatchesStudy } from '../data/predictions.js';
+import { studyRegion, requestedRegion, studyRegionLabel, requiresAnteriorSide, regionRunReason, validAnteriorSide } from '../data/cervical.js';
 import { imageConfidence, scorePercent } from '../data/confidence.js';
 import { el, mount } from '../dom.js';
 import { getState, setState, subscribe } from '../store.js';
 import {
-  predict, embed, saveCsv, savePrediction, loadPrediction, persistenceDisabledReason, readFile, selectFile,
+  predict, embed, calibrate, saveCsv, savePrediction, loadPrediction, persistenceDisabledReason, readFile, selectFile,
 } from '../api.js';
 import { showToast } from '../components/toast.js';
 import { toCsv } from '../data/csv.js';
-import { loadStudyImages, disposeStudyImages, thumbnailDataUri } from '../viewer/canvas.js';
-import { mountViewer, recordPrediction } from '../components/viewer.js';
+import { loadStudyImages, disposeStudyImages, thumbnailDataUri, bitmapFromBase64 } from '../viewer/canvas.js';
+import { mountViewer, recordPrediction, forgetPrediction } from '../components/viewer.js';
 import { describeModels } from '../data/models.js';
+import { describeProcessor, processorTitle } from '../data/processing.js';
 import { WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
 import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
 import { studyName, defaultName, filmLabel } from '../data/labels.js';
 import { displayStatus, isReviewed, reviewedLabel, reviewBlockedReason } from '../data/status.js';
 import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
+import { failureReason, failureTitle } from '../data/failure.js';
 import { mountMeasurements } from '../components/measurements.js';
 import { mountClinicalData } from '../components/clinical-data.js';
 import { mountSimilar } from '../components/similar.js';
@@ -27,6 +31,28 @@ const BACK_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" st
 
 export function formatConfidence(qc) {
   return scorePercent(qc?.femoral?.confidence);
+}
+
+// (2026-10-01, issue #39; port spec 6) The Analysis header pill, on the list's rule
+// (screens/studies.js buildRow): Unsupported view for a real, unmeasured film no model reads that is
+// not running, else displayStatus with state.running and state.batch. `status` is what the pill shows
+// and `badgeKey` is what update() rebuilds it on: the key carries the failure and its time, so a new
+// failure under the same status rebuilds the pill and its tooltip. statusBadge never receives the key.
+export function headerBadge(open, runningId = null, batch = null) {
+  const unsupported = open.source === 'real' && open.measurements == null && runningId !== open.id && !inferenceView(open.view);
+  const status = displayStatus(open, runningId, batch);
+  const badgeKey = unsupported ? `unsupported:${open.view}` : `${status}|${open.processingErrorAt ?? ''}|${open.processingError ?? ''}`;
+  return { unsupported, status, badgeKey };
+}
+
+// (2026-10-01, issue #39; port spec 6) The region note of a film whose header pill reads Failed, or
+// null for every other film, whose note stays exactly what it was. `previewNote` is the preview
+// message update() would otherwise show, already gated on its own rule; it follows the reason after
+// a space.
+export function failedRunNote(open, { unsupported, status }, previewNote = '') {
+  if (unsupported || status !== 'fail') return null;
+  const note = `Last run failed: ${open.processingError}`;
+  return previewNote ? `${note} ${previewNote}` : note;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +114,17 @@ let runRevision = 0;
 // and a batch bumps it at every film's turn, which would drop every restore caught in that window
 // and leave the card reading LOADING.
 const runsByStudy = new Map();
+
+// (2026-10-01, issue #39; port spec 4-5) The record keeps the plain sentence failureReason gives and
+// the time, in one update; the toast and the batch outcome keep the raw message.
+function withProcessingFailure(studies, studyId, addedAt, reason) {
+  return studies.map((item) => item.id === studyId && item.addedAt === addedAt
+    ? { ...item, processingError: failureReason(reason), processingErrorAt: new Date().toISOString() } : item);
+}
+
+function markProcessingFailure(studyId, addedAt, reason) {
+  setState((state) => ({ studies: withProcessingFailure(state.studies, studyId, addedAt, reason) }));
+}
 
 // True while a relocate picker is open for a run that has not started. It refuses a second run
 // (and so a second native dialog) WITHOUT claiming a segmentation is running -- the card must
@@ -192,6 +229,13 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
   if (!study) return { ok: false, reason: 'The study is no longer in the library.' };
   if (!inferenceView(study.view)) {
     const reason = unsupportedViewReason(study.view);
+    markProcessingFailure(studyId, study.addedAt, reason);
+    if (!batch) showToast(reason);
+    return { ok: false, reason };
+  }
+  if (regionRunReason(study)) {
+    const reason = regionRunReason(study);
+    markProcessingFailure(studyId, study.addedAt, reason);
     if (!batch) showToast(reason);
     return { ok: false, reason };
   }
@@ -213,12 +257,16 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
   }
   if (readError) {
     const reason = `Could not read ${study.fileName}: ${readError.message}`;
+    markProcessingFailure(studyId, addedAt, reason);
     if (!batch) showToast(reason);
     return { ok: false, reason };
   }
-  // Spec 10: in a batch a missing film is a named failure; the record is untouched and the user
-  // relocates it from this screen, where the picker still opens.
-  if (!data) return { ok: false, reason: 'file not found' };
+  // Spec 10: in a batch a missing film is a named failure. Keep any previous
+  // measurements, mark the failed attempt, and let the user relocate the film.
+  if (!data) {
+    if (batch) markProcessingFailure(studyId, addedAt, 'file not found');
+    return { ok: false, reason: 'file not found' };
+  }
   // The picker is modeless and `locating` is this module's own, so a batch can have started while
   // it was open (batch spec 8.3). Running now would set `running` over the batch's id and put a
   // second /predict in flight. The record and the payload map already carry the relocated film;
@@ -262,6 +310,13 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
   const view = inferenceView(current.view);
   if (!view) {
     const reason = unsupportedViewReason(current.view);
+    markProcessingFailure(studyId, addedAt, reason);
+    if (!batch) showToast(reason);
+    return { ok: false, reason };
+  }
+  if (regionRunReason(current)) {
+    const reason = regionRunReason(current);
+    markProcessingFailure(studyId, addedAt, reason);
     if (!batch) showToast(reason);
     return { ok: false, reason };
   }
@@ -275,9 +330,12 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       name: current.fileName,
       data,
       modality: 'xray',
-      bodyPart: 'lumbar',
+      bodyPart: requestedRegion(current),
+      anteriorSide: current.anteriorSide ?? null,
       view,
-      models: getState().models,
+      ...(requestedRegion(current) === 'auto' ? {} : { models: requestedRegion(current) === 'cervical'
+        ? { vertebrae: 'cervical_hrnet' } : requestedRegion(current) === 'full_spine'
+        ? { vertebrae: 'dual_hrnet' } : getState().models }),
       calibration: calibrationForStudy(current),
     });
     if (revision !== runRevision) return { ok: false, reason: 'superseded' };
@@ -305,6 +363,7 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     }
 
     const thumbnail = thumbnailDataUri(images.image);
+    response.prediction_id = requestId;
     response.calibration = preferReviewedCalibration(response.calibration, calibrationForStudy(stillHere));
 
     // The sidecar first, then the record: a record that says "segmented" must point at a film
@@ -380,20 +439,22 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       editing: state.openId === studyId ? false : state.editing,
       selection: state.openId === studyId ? null : state.selection,
       studies: state.studies.map((s) => (s.id === studyId
-        ? { ...s, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
+        ? { ...s, predictionId: requestId, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
           calibration: preferReviewedCalibration(response.calibration, calibrationForStudy(s)), thumbnail,
           // A re-run replaces every number a review was made over (studies-table spec 2026-09-10, section 8.4, site 1).
-          reviewedAt: null }
+          reviewedAt: null, processingError: null, processingErrorAt: null }
         : s)),
     }));
     return warning ? { ok: true, warning } : { ok: true };
   } catch (error) {
     if (revision === runRevision) {
-      setState({ running: null, runStage: null });
       if (error.message === 'Processing cancelled.') {
+        setState({ running: null, runStage: null });
         if (!batch) showToast('Processing cancelled. Previous results were kept.');
         return { skipped: true, cancelled: true };
       }
+      setState((state) => ({ running: null, runStage: null,
+        studies: withProcessingFailure(state.studies, studyId, addedAt, error.message) }));
       if (!batch) showToast(`Could not segment: ${error.message}`);
       return { ok: false, reason: error.message };
     }
@@ -422,6 +483,9 @@ export async function embedStudy(studyId, { batch = false } = {}) {
   }
   const live = getState().studies.find((s) => s.id === studyId);
   if (!live || live.addedAt !== addedAt) return { ok: false, reason: 'The study is no longer in the library.' };
+  // restoreFilm's rule: a sidecar that is not this record's result (an earlier run's, or one whose
+  // write failed after a re-run) would embed another film's pixels under this record.
+  if (!predictionMatchesStudy(live, sidecar)) return { ok: false, reason: 'no stored segmentation' };
   if (getState().running || getState().deletingStudies) return { ok: false, reason: WAIT_FOR_RUN };
   const requestId = crypto.randomUUID();
   setState({ running: studyId, runStage: { requestId, mode: getState().performance.mode,
@@ -478,7 +542,7 @@ async function restoreFilm(studyId) {
     // recreates it) rather than a wrong one.
     const sidecar = persistenceDisabledReason() ? null : await loadPrediction(studyId);
     if (revision !== restoreRevision || runMoved()) return;
-    if (!sidecar) {
+    if (!predictionMatchesStudy(getState().studies.find(s => s.id === studyId), sidecar)) {
       if (live()) mounted.viewer.setFilmStatus('missing');
       return;
     }
@@ -491,7 +555,8 @@ async function restoreFilm(studyId) {
     // with RESET TO PREDICTION live over its numbers. Existence is not enough: ids are max+1,
     // so a record with this id may be the film added AFTER the delete. Identity is `addedAt`,
     // which a reused id never carries.
-    if (!study || study.addedAt !== addedAt || revision !== restoreRevision || runMoved()) {
+    if (!study || study.addedAt !== addedAt || revision !== restoreRevision || runMoved()
+        || !predictionMatchesStudy(study, sidecar)) {
       disposeStudyImages(images);
       return;
     }
@@ -506,6 +571,47 @@ async function restoreFilm(studyId) {
     if (revision !== restoreRevision) return;
     if (live()) mounted.viewer.setFilmStatus('missing');
     showToast(`Could not load the film for ${studyId}: ${error.message}`);
+  }
+}
+
+
+let previewRevision = 0;
+// A clean original-image preview (including DICOM) gives the user evidence for the
+// required anterior-side selection. This is never a prediction or a saved measurement.
+async function previewOriginal(studyId) {
+  const start = getState().studies.find(s => s.id === studyId);
+  if (!start || start.geometry || !requiresAnteriorSide(start)) return;
+  const revision = ++previewRevision;
+  const runAtStart = runsByStudy.get(studyId) ?? 0;
+  const live = () => {
+    const current = getState().studies.find(s => s.id === studyId);
+    return mounted?.studyId === studyId && getState().screen === 'analysis'
+      && revision === previewRevision && (runsByStudy.get(studyId) ?? 0) === runAtStart
+      && current?.addedAt === start.addedAt && !current.geometry
+      && requiresAnteriorSide(current) && getState().running !== studyId;
+  };
+  if (!live()) return;
+  mounted.previewMessage = 'Loading original radiograph…';
+  mounted.update();
+  try {
+    const data = await filmBytes(start);
+    if (!live()) return;
+    if (!data) throw new Error('The source film could not be found.');
+    const response = await calibrate({ name: start.fileName, data, previewOnly: true });
+    if (!live()) return;
+    const image = await bitmapFromBase64(response.image_png);
+    if (!live()) { image.close(); return; }
+    const images = { image, mask: null, overlayCanvas: null, width: image.width, height: image.height, preview: true };
+    const outgoing = imageCache?.studyId === studyId ? imageCache.images : null;
+    cacheImages(studyId, images);
+    mounted.viewer.setImages(images);
+    if (outgoing && outgoing !== images) disposeStudyImages(outgoing);
+    mounted.previewMessage = '';
+    mounted.update();
+  } catch (error) {
+    if (!live()) return;
+    mounted.previewMessage = `Original preview unavailable: ${error.message}`;
+    mounted.update();
   }
 }
 
@@ -654,7 +760,39 @@ export function render(state) {
   // client-to-image hit-testing assumes a fixed stage. Mounted for demo studies too; the
   // component disables its inputs and its Import button for them.
   const clinicalHost = el('section', { class: 'clinical-data' });
-  const root = el('main', { class: 'analysis-screen' }, header, body, clinicalHost);
+  function changeRegion(patch) {
+    const live = getState(), open = currentStudy(live);
+    if (!open || live.running || live.batch || open.source !== 'real') return;
+    // Invalidate any sidecar restoration already awaiting I/O as well as pending edits.
+    runsByStudy.set(open.id, (runsByStudy.get(open.id) ?? 0) + 1);
+    forgetPrediction(open.id);
+    const outgoing = imageCache?.studyId === open.id ? imageCache : null;
+    if (outgoing) imageCache = null;
+    mounted?.viewer.setImages(null);
+    if (outgoing) disposeStudyImages(outgoing.images);
+    setState({ editing: false, selection: null, selectedLevel: null,
+      studies: live.studies.map(s => s.id === open.id ? { ...s, ...patch,
+        geometry: null, measurements: null, qc: null, reviewedAt: null, predictionId: null,
+        processingError: null, processingErrorAt: null } : s) });
+    mounted?.viewer.setFilmStatus(null);
+    previewOriginal(open.id);
+  }
+  const regionSelect = el('select', { 'aria-label': 'Spine region', class: 'workspace-folder-select',
+    onChange: e => changeRegion({ region: e.target.value, anteriorSide: null }) },
+    el('option', { value: 'auto' }, 'Auto detect'), el('option', { value: 'lumbar' }, 'Lumbar'), el('option', { value: 'cervical' }, 'Cervical · HRNET'),
+    el('option', { value: 'full_spine' }, 'Full spine · HRNET'));
+  const anteriorSelect = el('select', { 'aria-label': 'Cervical anterior image side', class: 'workspace-folder-select',
+    onChange: e => changeRegion({ anteriorSide: validAnteriorSide(e.target.value) ? e.target.value : null }) },
+    el('option', { value: '' }, 'Auto detect'), el('option', { value: 'left' }, 'Anterior is image left'),
+    el('option', { value: 'right' }, 'Anterior is image right'));
+  const anteriorLabel = el('label', {}, 'Orientation ', anteriorSelect);
+  const regionNote = el('span', { class: 'meas-note' });
+  const previewButton = el('button', { type: 'button', class: 'btn btn-small',
+    onClick: () => previewOriginal(getState().openId) }, 'View original');
+  const alignmentRunButton = el('button', { type: 'button', class: 'btn btn-small btn-primary',
+    onClick: () => segmentStudy(getState().openId) }, 'Run segmentation');
+  const regionBar = el('div', { class: 'analysis-region-bar' }, el('label', {}, 'Region ', regionSelect), anteriorLabel, previewButton, alignmentRunButton, regionNote);
+  const root = el('main', { class: 'analysis-screen' }, header, regionBar, body, clinicalHost);
 
   const viewer = mountViewer(primaryHost);
   const compareViewer = mountViewer(compareHost, { role: 'compare' });
@@ -750,7 +888,9 @@ export function render(state) {
     try {
       const sidecar = persistenceDisabledReason() ? null : await loadPrediction(compareId);
       if (stale()) return;
-      if (!sidecar) {
+      // restoreFilm's rule (predictionMatchesStudy): a sidecar left by an earlier run, or by a run
+      // whose sidecar write failed, is not this record's film.
+      if (!predictionMatchesStudy(getState().studies.find((s) => s.id === compareId), sidecar)) {
         compareViewer.setFilmStatus('missing');
         return;
       }
@@ -799,6 +939,31 @@ export function render(state) {
     // The model that produced the numbers on screen, when the result recorded one. Older
     // records carry no provenance and show nothing extra rather than a guessed name.
     const produced = describeModels(open.qc);
+    regionSelect.value = requestedRegion(open);
+    anteriorSelect.value = open.anteriorSide ?? '';
+    anteriorLabel.hidden = requestedRegion(open) === 'lumbar';
+    anteriorSelect.options[0].textContent = requestedRegion(open) === 'cervical' ? 'Choose anterior side…' : 'Auto detect';
+    anteriorSelect.setAttribute('aria-label', requestedRegion(open) === 'auto' ? 'Anterior image side'
+      : studyRegion(open) === 'full_spine' ? 'Full spine anterior image side' : 'Cervical anterior image side');
+    regionSelect.disabled = anteriorSelect.disabled = Boolean(live.running || live.batch || open.source === 'demo');
+    const alignmentSetup = requiresAnteriorSide(open) && !open.measurements;
+    previewButton.hidden = alignmentRunButton.hidden = !alignmentSetup;
+    previewButton.disabled = Boolean(live.running || live.batch);
+    alignmentRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view));
+    // The preview message shows only during alignment setup: it is not cleared when a preview is
+    // abandoned, so its being set is not enough.
+    const previewNote = mounted?.previewMessage && alignmentSetup ? mounted.previewMessage : '';
+    // (2026-10-01, issue #39) Read here for the region note as well as for the header pill below. A
+    // film whose pill reads Failed says why here, in --danger, next to the controls that fix most
+    // failures, ahead of the ordinary guidance (port spec 6).
+    const { unsupported, status: badgeStatus, badgeKey } = headerBadge(open, live.running, live.batch);
+    const failedNote = failedRunNote(open, { unsupported, status: badgeStatus }, previewNote);
+    regionNote.classList.toggle('is-failed', failedNote !== null);
+    regionNote.textContent = failedNote !== null ? failedNote : previewNote ? previewNote : open.measurements
+      ? `${requestedRegion(open) === 'auto' ? `Detected ${studyRegionLabel(open)}. ` : ''}${open.geometry?.anterior_side ? `Anterior: image ${open.geometry.anterior_side}. ` : ''}Changing region or orientation clears measurements; run again.`
+      : requestedRegion(open) === 'auto' ? 'Detect cervical, lumbar or full spine from the film. Choose a region or orientation to override.'
+      : studyRegion(open) === 'full_spine' ? 'Use a lateral full-spine film. Orientation is detected automatically; left/right overrides it.'
+      : studyRegion(open) === 'cervical' ? 'Use a lateral cervical film. Confirm which image side is anterior.' : '';
     // Never overwrite what the user is in the middle of typing.
     if (document.activeElement !== nameField) {
       nameField.value = studyName(open);
@@ -813,8 +978,11 @@ export function render(state) {
 
     // The rest of the header line. The name leads because that is what the user recognises; the
     // SP-nnnn id stays reachable on the title rather than disappearing entirely.
-    headerMeta.textContent = `${(open.view || '—').toUpperCase()} · ${open.pt ?? '—'}`
-      + (produced ? ` · ${produced.toUpperCase()}` : '');
+    // Where the models ran, from the providers the result recorded; nothing for older records.
+    const processedOn = describeProcessor(open.qc);
+    headerMeta.textContent = `${studyRegionLabel(open).toUpperCase()} · ${(open.view || '—').toUpperCase()} · ${open.pt ?? '—'}`
+      + (produced ? ` · ${produced.toUpperCase()}` : '') + (processedOn ? ` · ${processedOn}` : '');
+    headerMeta.title = processorTitle(open.qc);
     // A run in flight counts as pending too: the numbers on the record are the PREVIOUS run's,
     // so an assessment of them would be a stale claim about a study that is being re-measured.
     const pendingForConfidence = Boolean(live.measurementDrafts?.[open.id]) || live.running === open.id;
@@ -852,13 +1020,13 @@ export function render(state) {
     reviewNote.textContent = reason ?? '';
     reviewNote.hidden = reason === null;
 
-    // The list's badge, on the list's rule (screens/studies.js buildRow): Unsupported view for an
-    // unsegmented film no model reads, else displayStatus with state.running.
-    const unsupported = open.source === 'real' && open.measurements == null && live.running !== open.id && !inferenceView(open.view);
-    const badgeKey = unsupported ? `unsupported:${open.view}` : displayStatus(open, live.running);
+    // The list's badge, on the list's rule (screens/studies.js buildRow): headerBadge's `unsupported`,
+    // `status` and `badgeKey`, read above for the region note. A Failed pill carries the dated reason
+    // as its tooltip (2026-10-01, issue #39).
     if (badgeKey !== lastBadgeKey) {
       lastBadgeKey = badgeKey;
-      mount(statusHost, unsupported ? unsupportedViewBadge(open.view) : statusBadge(badgeKey));
+      mount(statusHost, unsupported ? unsupportedViewBadge(open.view)
+        : statusBadge(badgeStatus, badgeStatus === 'fail' ? failureTitle(open.processingError, open.processingErrorAt) : undefined));
     }
 
     tabMeas.classList.toggle('is-active', live.tab === 'meas');
@@ -917,7 +1085,7 @@ export function render(state) {
   }
 
   // mounted.studyId is refreshed ONLY here, and render() runs only when the router sees a
-  // SCREEN_KEYS ('screen', 'ack') change. Every writer that changes state.openId today also
+  // SCREEN_KEYS ('screen', 'calibrationRequest') change. Every writer that changes state.openId today also
   // sets screen, so the two stay in step. A future writer that changes openId WITHOUT screen
   // would leave a stale studyId behind and mis-gate all three of its readers -- the
   // setImages guard (~l.203), live() (~l.230) and needsRestore -- drawing one study's
@@ -926,5 +1094,6 @@ export function render(state) {
   mounted = { viewer, compareViewer, releaseCompare, update, studyId: study.id };
   update();
   if (needsRestore) restoreFilm(study.id);
+  else if (!study.geometry && requiresAnteriorSide(study) && !(imageCache?.studyId === study.id && imageCache.images?.preview)) previewOriginal(study.id);
   return root;
 }

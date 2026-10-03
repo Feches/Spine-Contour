@@ -1,3 +1,6 @@
+import { segmentalRows } from '../data/segmental.js';
+import { cervicalRows, studyRegion } from '../data/cervical.js';
+import { globalSvaRows } from '../data/global-sva.js';
 import { landmarkReviewReasons } from '../data/status.js';
 import { el, clear } from '../dom.js';
 import { getState, setState } from '../store.js';
@@ -8,6 +11,19 @@ import { studyName } from '../data/labels.js';
 
 const INCONSISTENCY_WARNING = 'Parameters inconsistent \u2014 check S1 and femoral landmarks.';
 const NOT_COMPUTED_NOTE = 'Not computed in this build.';
+const CVA_EXTRA_WARNINGS = new Set([
+  'Review the automatically detected film region and orientation before accepting measurements.',
+  'Manually edited landmarks — verify the corrected positions.',
+  'Verify the C7 centroid, S1 endplate and selected anterior image side.',
+  'Review C7 identity, the S1 posterior corner, image orientation and calibration before accepting global SVA.',
+  'Anterior orientation was selected automatically from regional crop agreement; confirm it before accepting measurements.',
+]);
+
+export function measurementWarnings(qc, region) {
+  const warnings = landmarkReviewReasons(qc);
+  return region === 'cervical' || region === 'full_spine'
+    ? warnings.filter((warning) => !CVA_EXTRA_WARNINGS.has(warning)) : warnings;
+}
 
 function formatRowValue(row) {
   return row.absent ? '\u2014' : `${row.value.toFixed(1)}${row.unit}`;
@@ -27,9 +43,20 @@ function valueCell(row, extraClass = '') {
 
 // The signed difference between the two studies, the compared one minus the open one, in the
 // accent colour once it passes the threshold (similar-cases plan B Task 8, plan 07 Task 5).
+// Two values in different units -- a calibrated SVA in mm beside an uncalibrated one in px --
+// have no difference to show, so the delta is the absent dash rather than a number.
 function deltaCell(row, otherRow, threshold) {
-  const delta = deltaRow(row, otherRow, threshold);
+  const delta = deltaRow(row, row.unit === otherRow.unit ? otherRow : null, threshold);
   return el('div', { class: `meas-delta${delta.overThreshold ? ' is-over' : ''}` }, delta.text);
+}
+
+// The compared study's row for each of the open study's rows, matched by key (the regions'
+// row lists differ: a cervical study has no PI, a lumbar one no C2-C7 Cobb). A row the compared
+// study does not have is an absent value, never dropped and never borrowed from another row.
+// Without a compared study it answers null, so the rows render without the two extra cells.
+function pairRows(otherRows) {
+  if (!otherRows) return () => null;
+  return (row) => otherRows.find((candidate) => candidate.key === row.key) ?? { ...row, value: null, absent: true };
 }
 
 // A row that selects a vertebra. A real <button> so it is keyboard-reachable: these are
@@ -145,8 +172,9 @@ export function mountMeasurements(container) {
     // Compared by reference: `measurements` is replaced wholesale by /predict, never
     // mutated. Same caveat as components/viewer.js -- plan 04 must replace, not mutate.
     const discPending = Boolean(state.measurementDrafts?.[study.id]);
-    const key = [study.id, study.measurements, study.geometry, study.calibration, discPending, state.selectedLevel, state.showAllLordosis,
-      other ? other.id : null, other ? other.measurements : null, other ? other.geometry : null, other ? other.calibration : null];
+    const key = [study.region, study.id, study.measurements, study.geometry, study.calibration, discPending, state.selectedLevel, state.showAllLordosis,
+      other ? other.id : null, other ? other.region : null, other ? other.measurements : null, other ? other.geometry : null,
+      other ? other.calibration : null];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
 
@@ -169,19 +197,31 @@ export function mountMeasurements(container) {
     clear(root);
     const pending = Boolean(state.measurementDrafts?.[study.id]);
     const measurements = pending ? null : study.measurements;
-    const rows = sagittalRows(measurements, { selectedLevel: state.selectedLevel });
-    // The compared study's rows, in the same order, so each one pairs by index. Read from the
-    // record itself: a pending correction is the OPEN study's, never the compared one's.
-    const otherRows = other ? sagittalRows(other.measurements) : null;
-    const otherLordosis = other ? lordosisRows(other.measurements) : null;
-    const otherAlignment = other ? alignmentRows(other) : null;
+    const cervical = studyRegion(study) === 'cervical';
+    const fullSpine = studyRegion(study) === 'full_spine';
+    const rows = cervical ? cervicalRows(pending ? { region: 'cervical' } : study, state.selectedLevel)
+      : fullSpine ? globalSvaRows(pending ? { region: 'full_spine' } : study, state.selectedLevel)
+      : sagittalRows(measurements, { selectedLevel: state.selectedLevel });
+    // The compared study's rows, built by the same functions as the open study's and paired by
+    // key (pairRows). Read from the record itself: a pending correction is the OPEN study's,
+    // never the compared one's. Every pairing answers null without a compared study.
+    const otherSection1 = pairRows(other ? (cervical ? cervicalRows(other) : fullSpine ? globalSvaRows(other)
+      : sagittalRows(other.measurements)) : null);
+    const otherSagittal = pairRows(other ? sagittalRows(other.measurements) : null);
+    const otherCervical = pairRows(other ? cervicalRows(other) : null);
+    const otherLordosis = pairRows(other ? lordosisRows(other.measurements) : null);
+    const otherSegmental = pairRows(other ? segmentalRows(other) : null);
+    const otherAlignment = pairRows(other ? alignmentRows(other) : null);
 
-    const section1 = section('01 \u2014 SAGITTAL PARAMETERS',
+    const section1 = section(cervical ? '01 — CERVICAL ALIGNMENT' : fullSpine ? '01 — GLOBAL ALIGNMENT' : '01 \u2014 SAGITTAL PARAMETERS',
       el('div', { class: 'meas-rows' },
-        ...rows.map((row, index) => rowButton(row, () => toggleLevel(ROW_LEVELS[row.key]),
-          otherRows ? otherRows[index] : null))));
+        ...rows.map((row) => rowButton(row, () => toggleLevel(cervical || fullSpine ? row.key : ROW_LEVELS[row.key]),
+          otherSection1(row)))));
 
-    section1.append(el('button', {
+    const lumbarSection = fullSpine ? section('03 — SAGITTAL PARAMETERS',
+      el('div', { class: 'meas-rows' }, ...sagittalRows(measurements, { selectedLevel: state.selectedLevel })
+        .map(row => rowButton(row, () => toggleLevel(ROW_LEVELS[row.key]), otherSagittal(row))))) : section1;
+    if (!cervical) lumbarSection.append(el('button', {
       type: 'button',
       class: 'meas-disclosure',
       'aria-expanded': state.showAllLordosis ? 'true' : 'false',
@@ -189,20 +229,20 @@ export function mountMeasurements(container) {
       onClick: () => setState((s) => ({ showAllLordosis: !s.showAllLordosis })),
     }, state.showAllLordosis ? 'HIDE LORDOSIS LEVELS' : 'SHOW ALL LORDOSIS LEVELS'));
 
-    if (state.showAllLordosis) {
-      section1.append(el('div', { class: 'meas-rows' },
+    if (!cervical && state.showAllLordosis) {
+      lumbarSection.append(el('div', { class: 'meas-rows' },
         // lordosisRows always returns highlight: false -- the component, not the data
         // layer, owns highlighting here, because state.selectedLevel lives on the store
         // and lordosisRows' signature is fixed by the architecture contract. Map it in
         // before rendering rather than reaching into the data layer for it.
         ...lordosisRows(measurements)
           .map((row) => ({ ...row, highlight: state.selectedLevel === row.key.split('-')[0] }))
-          .map((row, index) => rowButton(
+          .map((row) => rowButton(
             row,
             // Row key 'L2-S1' uses an ASCII hyphen; the label uses an en dash. The split
             // below relies on the key form, so do not unify them.
             () => toggleLevel(row.key.split('-')[0]),
-            otherLordosis ? otherLordosis[index] : null,
+            otherLordosis(row),
           ))));
     }
 
@@ -211,11 +251,11 @@ export function mountMeasurements(container) {
     }
 
     if (pending) section1.append(el('div', { class: 'meas-note', role: 'status' }, 'Updating measurements…'));
-    else for (const reason of study.measurements ? landmarkReviewReasons(study.qc) : []) {
+    else for (const reason of study.measurements ? measurementWarnings(study.qc, studyRegion(study)) : []) {
       section1.append(el('div', { class: 'meas-warning' }, reason));
     }
 
-    const section2 = section('02 \u2014 DISC HEIGHTS \u00B7 MM',
+    const section2 = section(fullSpine ? '04 — DISC HEIGHTS · MM' : '02 — DISC HEIGHTS · MM',
       // A pending correction makes BOTH columns pending: the open study's heights are being
       // recomputed, and a table that showed only the compared study's would read as a comparison
       // against nothing.
@@ -223,12 +263,16 @@ export function mountMeasurements(container) {
       el('div', { class: 'meas-note' }, discPending ? 'Updating disc heights…'
         : 'Facing endplates: anterior to anterior, midpoint to midpoint, posterior to posterior. Requires image scale and both endplates.'));
 
+    const segmentalSection = section('SEGMENTAL ANGLES · °',
+      el('div', { class: 'meas-rows' }, ...segmentalRows(pending ? { region: studyRegion(study) } : study, state.selectedLevel)
+        .map(row => rowButton(row, () => toggleLevel(row.key), otherSegmental(row)))),
+      el('div', { class: 'meas-note' }, 'Lordosis: superior to superior endplate. Angulation: inferior to superior (disc) endplates. Unsigned acute angles; image-space angles when uncalibrated. Missing endplates are unavailable.'));
+
     const section3 = section('03 \u2014 ALIGNMENT',
-      el('div', { class: 'meas-rows' }, ...alignmentRows(study).map((row, index) => rowStatic(row,
-        otherAlignment ? otherAlignment[index] : null))),
+      el('div', { class: 'meas-rows' }, ...alignmentRows(study).map((row) => rowStatic(row, otherAlignment(row)))),
       el('div', { class: 'meas-note' }, NOT_COMPUTED_NOTE));
 
-    const calibrationSection = section('04 — IMAGE SCALE',
+    const calibrationSection = section(fullSpine ? '05 — IMAGE SCALE' : '04 — IMAGE SCALE',
       el('div', { class: 'meas-note', 'data-calibration-status': study.calibration?.status || 'unchecked' },
         calibrationSummary(study.calibration)));
     if (study.source === 'real' && study.filePath) {
@@ -251,7 +295,19 @@ export function mountMeasurements(container) {
         el('div', { class: 'meas-compare-id meas-compare-other', title: otherName }, otherName),
         el('div', { class: 'meas-compare-delta' }, '\u0394')));
     }
-    root.append(section1, section2, section3, calibrationSection);
+    if (fullSpine) {
+      section1.append(el('div', { class: 'meas-note' },
+        'C7–S1 SVA: C7 body centroid to the S1 posterosuperior corner, parallel to the image horizontal; positive anterior. Review the C7 centroid and both S1 endplate corners.'));
+      const cervicalSection = section('02 — CERVICAL ALIGNMENT',
+        el('div', { class: 'meas-rows' }, ...cervicalRows(pending ? { region: 'full_spine' } : study, state.selectedLevel)
+          .map(row => rowButton(row, () => toggleLevel(row.key), otherCervical(row)))),
+        el('div', { class: 'meas-note' }, 'Only measurements with visible, usable landmarks are shown. Review C2/C7 endplates and the C2 centroid.'));
+      root.append(section1, cervicalSection, lumbarSection, segmentalSection, section2, calibrationSection);
+    } else if (cervical) {
+      section1.append(el('div', { class: 'meas-note' },
+        'Cobb: unsigned acute angle between the C2 and C7 inferior endplates. SVA: C2 body centroid to the C7 posterosuperior corner, parallel to the image horizontal; positive anterior. Verify the editable endplates and centroid.'));
+      root.append(section1, segmentalSection, calibrationSection);
+    } else root.append(section1, segmentalSection, section2, section3, calibrationSection);
 
     // Focus restore. Find the rebuilt node carrying the same data-row-key and
     // refocus it, so there is no rendered frame in which focus visibly rests on

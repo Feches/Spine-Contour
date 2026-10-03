@@ -9,6 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 import gc
 import json
+import logging
 import os
 import sys
 import tempfile
@@ -20,9 +21,11 @@ import onnxruntime as ort
 ort.disable_telemetry_events()
 
 try:
-    from .. import runtime
+    from .. import processors, runtime, learned_region
 except ImportError:
+    import processors
     import runtime
+    import learned_region
 
 # The training checkpoint's fixed landmark slot order; no Torch import at runtime.
 HRNET_LANDMARKS = tuple((level, corner) for level in ("L1", "L2", "L3", "L4", "L5")
@@ -66,6 +69,9 @@ class VertebraLabel(IntEnum):
 VERTEBRA_LABELS = {label.name: int(label) for label in VertebraLabel}
 MODEL_IMAGE_SIZE = 768
 MODEL_THRESHOLD = 0.5
+FEMORAL_IMAGE_SIZE = 640
+FEMORAL_THRESHOLD = 0.35
+FEMORAL_MODEL_REVISION = "20260923-conservative-clahe-flip"
 WEIGHTS_DIRECTORY = Path(__file__).resolve().parent.parent / "weights"
 VERTEBRA_WEIGHTS_PATH = WEIGHTS_DIRECTORY / "vertebra_unet.pt"
 FEMORAL_WEIGHTS_PATH = WEIGHTS_DIRECTORY / "femoral_unet.pt"
@@ -163,15 +169,17 @@ def _letterbox(image: np.ndarray) -> tuple[np.ndarray, LetterboxTransform]:
 ONNX_DIRECTORY = Path(__file__).resolve().parent.parent / "onnx"
 MODEL_NAMES = {"s1": "S1 detector", "vertebra": "vertebra model",
                "femoral": "femoral-head model", "hrnet": "HRNet landmark model",
+               "cervical_detr": "cervical detector",
+               "cervical_hrnet": "cervical HRNET landmarks",
                # The appearance encoder (similar-cases spec, 2026-09-12, section 10): loaded,
-               # cached and released like the four structure models, never offered by /models.
+               # cached and released like the structure models, never offered by /models.
                "embed": "appearance embedding model"}
 _resident_key = None
 _cache_policy = None
 
 
 def session_options(policy):
-    threads, low_memory = policy
+    threads, low_memory, adapter = policy
     settings = ort.SessionOptions()
     settings.intra_op_num_threads = threads
     settings.inter_op_num_threads = 1
@@ -180,25 +188,34 @@ def session_options(policy):
     # Inactive sessions must not spin while another model or OCR is working.
     settings.add_session_config_entry("session.intra_op.allow_spinning", "0")
     settings.enable_cpu_mem_arena = not low_memory
-    settings.enable_mem_pattern = not low_memory
+    # DirectML does not support memory patterns (ONNX Runtime would turn them off).
+    settings.enable_mem_pattern = not low_memory and adapter is None
     return settings
 
 
-# Five kinds: the four structure models and the appearance encoder. Standard mode keeps all
-# five cached and never evicts one mid-run; low-memory mode releases by key change in _infer.
-@lru_cache(maxsize=5)
+# Seven kinds, every MODEL_NAMES entry: the four lumbar structure models, the two cervical
+# models and the appearance encoder (crop_detector has its own session in learned_region.py).
+# Standard mode keeps all seven cached and never evicts one mid-run; low-memory mode releases
+# by key change in _infer.
+@lru_cache(maxsize=7)
 def _load_model(kind, policy):
     if kind not in MODEL_NAMES:
         raise ValueError(f"unknown model kind: {kind}")
     path = ONNX_DIRECTORY / f"{kind}.onnx"
     if not path.is_file():
         raise FileNotFoundError(f"Missing ONNX model: {path}. Run python tools/export_onnx.py before starting the development app.")
-    runtime.report("loading", f"Loading {MODEL_NAMES[kind]}")
+    _, low_memory, adapter = policy
     providers = ["CPUExecutionProvider"]
+    if adapter is not None:
+        runtime.report("loading", f"Loading {MODEL_NAMES[kind]} on {runtime.processor().name}")
+        # DirectML takes Windows' adapter index. Nodes it cannot run stay on the CPU provider.
+        providers.insert(0, (processors.DIRECTML, {"device_id": str(adapter), "disable_metacommands": "True"}))
+        return InferenceModel(path, policy, providers)
+    runtime.report("loading", f"Loading {MODEL_NAMES[kind]}")
     # Apple's CPU implementation is faster than generic ARM kernels for this
     # detector. Static partitions leave dynamic/empty detections to ORT's CPU
     # provider, which supports them. Low memory keeps the explicit thread cap.
-    if (kind == "s1" and not policy[1] and sys.platform == "darwin"
+    if (kind == "s1" and not low_memory and sys.platform == "darwin"
             and os.environ.get("SPINE_CONTOUR_ORT_CPU_ONLY") != "1"
             and "CoreMLExecutionProvider" in ort.get_available_providers()):
         metadata = json.loads(path.with_suffix('.json').read_text())
@@ -213,21 +230,49 @@ def _load_model(kind, policy):
     return InferenceModel(path, policy, providers)
 
 
+FALLBACK_MESSAGES = {
+    "CoreMLExecutionProvider": "Apple acceleration unavailable; using ONNX CPU inference",
+    processors.DIRECTML: "The GPU could not run the {model}; using ONNX CPU inference",
+}
+
+
 class InferenceModel:
-    """Retain CPU fallback if an Apple compiler/partition cannot handle a film."""
+    """DirectML errors abort the whole request attempt; Core ML retains its
+    existing S1-only CPU fallback. ORT's implicit retry is always disabled.
+    """
     def __init__(self, path, policy, providers):
         self.path, self.policy = path, policy
+        first = providers[0]
+        self.accelerator = None if len(providers) == 1 else first[0] if isinstance(first, tuple) else first
         try:
-            self.session = ort.InferenceSession(str(path), sess_options=session_options(policy), providers=providers)
-        except Exception:
-            if len(providers) == 1:
+            self.session = self._session(providers)
+        except Exception as error:
+            if self.accelerator is None:
                 raise
-            self._cpu_fallback()
+            self._accelerator_failure(error, creating=True)
+
+    def _session(self, providers):
+        # ONNX Runtime's own retry would fall back silently, with only a banner on stdout.
+        session = ort.InferenceSession(str(self.path), sess_options=session_options(self.policy),
+                                       providers=providers, enable_fallback=0)
+        if self.accelerator == processors.DIRECTML and session.get_providers()[0] != processors.DIRECTML:
+            raise RuntimeError("DirectML session unexpectedly registered only CPU providers")
+        return session
+
+    def _accelerator_failure(self, error, creating=False):
+        runtime.checkpoint()
+        logging.getLogger(__name__).exception("%s failed for %s", self.accelerator, self.path.stem)
+        if self.accelerator == processors.DIRECTML:
+            raise runtime.GpuFailure(self.path.stem, f"{type(error).__name__}: {error}") from error
+        if not creating and not isinstance(error, ort.capi.onnxruntime_pybind11_state.Fail):
+            raise error
+        self._cpu_fallback()
 
     def _cpu_fallback(self):
-        runtime.report("loading", "Apple acceleration unavailable; using ONNX CPU inference")
-        self.session = ort.InferenceSession(str(self.path), sess_options=session_options(self.policy),
-                                           providers=["CPUExecutionProvider"])
+        model = MODEL_NAMES.get(self.path.stem, "model")
+        runtime.report("loading", FALLBACK_MESSAGES.get(self.accelerator, "Acceleration unavailable; using ONNX CPU inference")
+                       .format(model=model))
+        self.session = self._session(["CPUExecutionProvider"])
 
     def get_providers(self):
         return self.session.get_providers()
@@ -235,11 +280,10 @@ class InferenceModel:
     def run(self, output_names, inputs):
         try:
             return self.session.run(output_names, inputs)
-        except ort.capi.onnxruntime_pybind11_state.Fail:
-            if "CoreMLExecutionProvider" not in self.get_providers():
+        except Exception as error:
+            if self.get_providers() == ["CPUExecutionProvider"]:
                 raise
-            runtime.checkpoint()
-            self._cpu_fallback()
+            self._accelerator_failure(error)
             return self.session.run(output_names, inputs)
 
 
@@ -256,14 +300,15 @@ def _infer(kind, operation, message):
     runtime.checkpoint()
     previous_progress = runtime.current_progress()
     options = runtime.options()
-    policy = (options.inference_threads, options.low_memory)
+    policy = (options.inference_threads, options.low_memory, runtime.processor().adapter)
     key = (kind, policy)
-    # Session thread counts are immutable. Never reuse a different mode's session
-    # or retain duplicate copies after changing CPU settings.
-    if policy != _cache_policy or (options.low_memory and key != _resident_key):
+    # Session thread counts and providers are immutable. Never reuse a different
+    # mode's or processor's session, or retain duplicate copies after a change.
+    cache_policy = (policy, runtime.processor().id)
+    if cache_policy != _cache_policy or (options.low_memory and key != _resident_key):
         release_models()
     model = _load_model(kind, policy)
-    _resident_key, _cache_policy = key, policy
+    _resident_key, _cache_policy = key, cache_policy
     if message is not None:
         runtime.report(kind, message)
     elif previous_progress is not None:
@@ -370,14 +415,47 @@ def _score_s1(letterboxed):
     return _infer("s1", score, None)
 
 
-def _read_frame(letterboxed, choice):
+def _femoral_input(pixel_array):
+    # CLAHE is applied to native pixels BEFORE padding/resizing, matching training evaluation.
+    image = cv2.createCLAHE(clipLimit=2., tileGridSize=(8, 8)).apply(_robust_rescale(pixel_array))
+    canvas, _ = _letterbox(image)
+    resized = cv2.resize(canvas, (FEMORAL_IMAGE_SIZE, FEMORAL_IMAGE_SIZE), interpolation=cv2.INTER_AREA)
+    return _segmentation_input(resized)
+
+
+def _femoral_probabilities(pixel_array):
+    value = _femoral_input(pixel_array)
+
+    def predict(session):
+        logits = session.run(None, {"image": value})[0][0, 0]
+        probability = 1. / (1. + np.exp(-np.clip(logits, -80., 80.)))
+        runtime.checkpoint()
+        flipped = session.run(None, {"image": np.ascontiguousarray(value[..., ::-1])})[0][0, 0]
+        probability += (1. / (1. + np.exp(-np.clip(flipped, -80., 80.))))[:, ::-1]
+        probability *= .5
+        return cv2.resize(probability, (MODEL_IMAGE_SIZE, MODEL_IMAGE_SIZE), interpolation=cv2.INTER_LINEAR)
+
+    return _infer("femoral", predict, "Segmenting femoral heads")
+
+
+def _restore_femoral_mask(probability, transform, shape):
+    # Resize probabilities first: thresholding a tiny cap before restoring can erase it.
+    inner = transform.inner
+    crop = probability[inner.top:inner.top + inner.resized_height,
+                       inner.left:inner.left + inner.resized_width]
+    left, top, right, bottom = transform.window
+    restored = cv2.resize(crop.astype(np.float32), (right - left, bottom - top),
+                          interpolation=cv2.INTER_LINEAR)
+    mask = np.zeros(shape, dtype=np.uint8)
+    mask[top:bottom, left:right] = restored > FEMORAL_THRESHOLD
+    return mask
+
+
+def _read_frame(letterboxed, choice, femoral_image):
     value = _segmentation_input(letterboxed)
     s1_confidence, s1_points = _infer("s1", lambda session: _detect(session, letterboxed),
                                     "Detecting the S1 endplate")
-    # Compare logits at the sigmoid .5 decision boundary without another array.
-    femoral = _infer("femoral",
-        lambda session: (session.run(None, {"image": value})[0][0, 0] >= 0).astype(np.uint8),
-        "Segmenting femoral heads")
+    femoral = _femoral_probabilities(femoral_image)
     # Retain U-Net presence evidence even when HRNet supplies the corners.
     vertebra_labels = _infer("vertebra",
         lambda session: session.run(None, {"image": value})[0][0].argmax(0).astype(np.uint8),
@@ -439,8 +517,26 @@ def spinopelvic_prediction(
     image = _robust_rescale(raw)
 
     localizer = runtime.options().crop_localizer
+    learned_box = None
+    model_status = None
+    method_used = "supplied_image"
     if localizer:
-        located = framing.locate(raw, _score_s1)
+        if runtime.options().crop_method == "model":
+            learned_box = learned_region.top_box(learned_region.proposals(raw), "lumbar", raw.shape)
+            if learned_box is None:
+                model_status = "no_proposal"
+        if learned_box is not None:
+            method_used = "model"
+            located = {"window": learned_box, "searched": True, "whole_film_won": False,
+                       "whole_film_cost": None, "confidence": None, "cost": None,
+                       "candidates": 1, "source": "crop_detector"}
+        elif runtime.options().crop_method == "model":
+            runtime.report("framing", "Model found no lumbar crop; trying crop search")
+            located = framing.locate(raw, _score_s1)
+            method_used = "search_fallback"
+        else:
+            located = framing.locate(raw, _score_s1)
+            method_used = "search"
     else:
         runtime.report("framing", "Crop localizer off; processing the supplied lumbar image")
         located = {"window": framing.fallback_window(raw), "searched": False,
@@ -455,13 +551,43 @@ def spinopelvic_prediction(
                    "confidence": None, "cost": None, "candidates": 0}
     window = located["window"]
     canvas, transform = framing.prepare_crop(raw, window)
-    frame = _read_frame(canvas, choice)
+    frame = _read_frame(canvas, choice, raw[window[1]:window[3], window[0]:window[2]])
+    if located.get("source") == "crop_detector":
+        # A box is only a proposal. On full films it may span nearly the whole
+        # image, yielding an S1 point but losing every lumbar level. Require
+        # strong S1 and at least one U-Net-confirmed level before accepting it.
+        s1 = _source_s1(frame, transform)
+        visible = {}
+        if s1 is not None and frame["s1_confidence"] >= .5:
+            inner = transform.inner
+            visible_labels = np.zeros_like(frame["vertebra_labels"])
+            region = np.s_[inner.top:inner.top + inner.resized_height,
+                           inner.left:inner.left + inner.resized_width]
+            visible_labels[region] = frame["vertebra_labels"][region]
+            model_values = {level: index for index, level in enumerate(LUMBAR_LEVELS, start=1)}
+            visible = landmarks.corners_from_label_map(visible_labels, model_values,
+                                                       frame["s1"][0]-frame["s1"][1])
+        if s1 is None or frame["s1_confidence"] < .5 or not visible:
+            model_status = ("s1_missing" if s1 is None else
+                            "s1_low_confidence" if frame["s1_confidence"] < .5 else
+                            "no_lumbar_levels")
+            runtime.report("framing", "Model crop was incomplete; trying crop search")
+            located = framing.locate(raw, _score_s1)
+            method_used = "search_fallback"
+            fallback = located is None
+            if fallback:
+                located = {"window": framing.fallback_window(raw), "searched": True,
+                           "whole_film_won": True, "whole_film_cost": None,
+                           "confidence": None, "cost": None, "candidates": 0}
+            window = located["window"]
+            canvas, transform = framing.prepare_crop(raw, window)
+            frame = _read_frame(canvas, choice, raw[window[1]:window[3], window[0]:window[2]])
     if _source_s1(frame, transform) is None and not located.get("whole_film_won"):
         runtime.report("framing", "Checking the visible film after an incomplete crop")
         # A search crop without its anchor must not hide other visible levels.
         window = framing.fallback_window(raw)
         canvas, transform = framing.prepare_crop(raw, window)
-        frame = _read_frame(canvas, choice)
+        frame = _read_frame(canvas, choice, raw[window[1]:window[3], window[0]:window[2]])
         fallback = True
 
     # After a search, one reframe from the full-resolution detection, accepted
@@ -475,7 +601,7 @@ def spinopelvic_prediction(
     if proposed is not None and proposed != window and framing.accept_reframe(window, proposed):
         runtime.report("framing", "Refining the selected spine region")
         canvas, transform = framing.prepare_crop(raw, proposed)
-        candidate = _read_frame(canvas, choice)
+        candidate = _read_frame(canvas, choice, raw[proposed[1]:proposed[3], proposed[0]:proposed[2]])
         if _source_s1(candidate, transform) is not None:
             window, frame, reframed = proposed, candidate, True
         else:
@@ -519,7 +645,7 @@ def spinopelvic_prediction(
     return {
         "image": image,
         "mask": transform.restore_mask(common_labels, raw.shape),
-        "femoral_mask": transform.restore_mask(frame["femoral"], raw.shape),
+        "femoral_mask": _restore_femoral_mask(frame["femoral"], transform, raw.shape),
         "landmarks": {
             "S1": {"superior": None if s1_source is None else s1_source.tolist()},
             "vertebrae": contract,
@@ -527,6 +653,7 @@ def spinopelvic_prediction(
         "models": choice,
         "framing": {
             "crop_localizer": localizer,
+            "method_used": method_used,
             "toolbar_removal": toolbar_info,
             "window": [int(v) for v in window],
             "reframed": reframed,
@@ -540,6 +667,9 @@ def spinopelvic_prediction(
             "search_cost": located["cost"],
             "candidates": located["candidates"],
             "s1_confidence": round(float(frame["s1_confidence"]), 4),
+            **({"model_proposal": None if learned_box is None else list(learned_box),
+                "model_status": model_status}
+               if runtime.options().crop_method == "model" and localizer else {}),
         },
     }
 

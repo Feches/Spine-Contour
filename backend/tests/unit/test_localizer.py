@@ -21,7 +21,7 @@ def test_localizer_off_reads_full_extent_once_and_keeps_partial_anatomy(monkeypa
     if s1:
         prediction['s1'] = np.array([[320., 610.], [410., 605.]])
         prediction['s1_confidence'] = .99
-    def read(canvas, choice):
+    def read(canvas, choice, femoral_image):
         seen.append((canvas, choice))
         return prediction
     monkeypatch.setattr(models, '_read_frame', read)

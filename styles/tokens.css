@@ -8,6 +8,7 @@
   --muted: #8A7E72;
   --accent: #C1502B;
   --sage: #6E8577;
+  --danger: #B42318;
   --on-accent: #FFFFFF;
   --shadow: rgba(0,0,0,.18);
 }
@@ -22,4 +23,5 @@ body[data-dark] {
   --muted: #9A9188;
   --accent: #D45A32;
   --sage: #8AA894;
+  --danger: #F07167;
 }

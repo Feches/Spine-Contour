@@ -1,3 +1,4 @@
+import { CERVICAL_LEVELS, validAnteriorSide } from './cervical.js';
 /**
  * Study store logic: ids, shape validation, demo/real merge, and the
  * save-on-change coalescer (spec 13, 13.1; architecture contract
@@ -62,6 +63,15 @@ function points(list, n) {
 function isValidMeasurements(m) {
   if (!m || typeof m !== 'object' || Array.isArray(m)) return false;
   const nullable = value => value === null || finite(value);
+  if (m.region === 'cervical') return [m.C2C7_COBB, m.C2C7_SVA_PX, m.C2C7_SVA_MM].every(nullable);
+  if (m.region === 'full_spine') {
+    if (![m.GLOBAL_SVA_PX, m.GLOBAL_SVA_MM].every(nullable)) return false;
+    // Legacy standing results have only SVA; every additional value remains optional.
+    if (![m.C2C7_COBB, m.C2C7_SVA_PX, m.C2C7_SVA_MM, m.PI, m.PT, m.SS, m.L1PA]
+      .every(value => value == null || finite(value))) return false;
+    return m.LL == null || (typeof m.LL === 'object' && !Array.isArray(m.LL)
+      && Object.values(m.LL).every(nullable));
+  }
   if (![m.PI, m.PT, m.SS].every(nullable)) return false;
   if (!m.LL || typeof m.LL !== 'object' || Array.isArray(m.LL) || !nullable(m.LL['L1-S1'])) return false;
   if (m.L1PA != null && !finite(m.L1PA)) return false;
@@ -73,7 +83,32 @@ function isValidMeasurements(m) {
 
 function isValidGeometry(g) {
   if (!g || typeof g !== 'object') return false;
+  if (g.region === 'full_spine') {
+    if (!validAnteriorSide(g.anterior_side) || (g.c7_centroid != null && !point(g.c7_centroid))
+      || (g.c2_centroid != null && !point(g.c2_centroid))
+      || (g.s1_superior != null && !points(g.s1_superior, 2))) return false;
+    if (g.vertebrae != null && (typeof g.vertebrae !== 'object' || Array.isArray(g.vertebrae)
+      || !Object.entries(g.vertebrae).every(([level, body]) => [...CERVICAL_LEVELS, 'L1', 'L2', 'L3', 'L4', 'L5'].includes(level)
+        && body && typeof body === 'object' && !Array.isArray(body)
+        && (CERVICAL_LEVELS.includes(level)
+          ? (body.superior == null || points(body.superior, 2))
+            && (body.inferior == null || points(body.inferior, 2))
+            && (body.quadrilateral == null || points(body.quadrilateral, 4))
+          : points(body.superior, 2) && points(body.inferior, 2) && points(body.quadrilateral, 4))))) return false;
+    return (g.l1_center == null || point(g.l1_center)) && (g.hip_midpoint == null || point(g.hip_midpoint))
+      && (g.femoral_circles == null || (Array.isArray(g.femoral_circles) && g.femoral_circles.length <= 2
+        && g.femoral_circles.every(circle => Array.isArray(circle) && circle.length === 3 && circle.every(finite) && circle[2] > 0)));
+  }
   if (!g.vertebrae || typeof g.vertebrae !== 'object' || Array.isArray(g.vertebrae)) return false;
+  if (g.region === 'cervical') {
+    if (!validAnteriorSide(g.anterior_side) || (g.c2_centroid !== null && !point(g.c2_centroid))) return false;
+    if (g.s1_superior !== null || g.hip_midpoint !== null || g.l1_center !== null
+        || !Array.isArray(g.femoral_circles) || g.femoral_circles.length) return false;
+    return Object.entries(g.vertebrae).every(([level, v]) => CERVICAL_LEVELS.includes(level) && v
+      && (v.inferior === null || points(v.inferior, 2))
+      && (v.superior === null || points(v.superior, 2))
+      && (v.quadrilateral === null || points(v.quadrilateral, 4)));
+  }
   for (const [level, v] of Object.entries(g.vertebrae)) {
     if (!['L1', 'L2', 'L3', 'L4', 'L5'].includes(level)) return false;
     if (!v || typeof v !== 'object') return false;
@@ -96,6 +131,18 @@ function isValidGeometry(g) {
 
 function measurementsHaveLandmarks(m, g) {
   if (!m || !g) return false;
+  if (m.region === 'full_spine' || g.region === 'full_spine') return m.region === g.region
+    && ([m.GLOBAL_SVA_PX, m.GLOBAL_SVA_MM].every(v => v == null) || Boolean(g.c7_centroid && g.s1_superior))
+    && (m.C2C7_COBB == null || Boolean(g.vertebrae?.C2?.inferior && g.vertebrae?.C7?.inferior))
+    && ([m.C2C7_SVA_PX, m.C2C7_SVA_MM].every(v => v == null) || Boolean(g.c2_centroid && g.vertebrae?.C7?.superior))
+    && (m.SS == null || Boolean(g.s1_superior))
+    && ([m.PI, m.PT].every(v => v == null) || Boolean(g.s1_superior && g.hip_midpoint))
+    && (m.L1PA == null || Boolean(g.l1_center && g.s1_superior && g.hip_midpoint))
+    && ['L1', 'L2', 'L3', 'L4', 'L5'].every(level => m.LL?.[`${level}-S1`] == null
+      || Boolean(g.vertebrae?.[level]?.superior && g.s1_superior));
+  if (m.region === 'cervical' || g.region === 'cervical') return m.region === g.region
+    && (m.C2C7_COBB === null || Boolean(g.vertebrae.C2?.inferior && g.vertebrae.C7?.inferior))
+    && ([m.C2C7_SVA_PX, m.C2C7_SVA_MM].every(v => v === null) || Boolean(g.c2_centroid && g.vertebrae.C7?.superior));
   if (m.SS !== null && !g.s1_superior) return false;
   if ((m.PI !== null || m.PT !== null) && (!g.s1_superior || !g.hip_midpoint)) return false;
   if (m.L1PA != null && (!g.l1_center || !g.s1_superior || !g.hip_midpoint)) return false;
@@ -140,7 +187,10 @@ function validateStudy(entry, index) {
 
   const measurements = isValidMeasurements(entry.measurements) ? entry.measurements : null;
   const geometry = isValidGeometry(entry.geometry) ? entry.geometry : null;
-  const complete = measurementsHaveLandmarks(measurements, geometry);
+  const regionAgrees = !entry.region || entry.region === 'auto' || entry.region === (geometry?.region ?? 'lumbar');
+  const sideAgrees = !validAnteriorSide(entry.anteriorSide) || !['cervical', 'full_spine'].includes(geometry?.region)
+    || entry.anteriorSide === geometry.anterior_side;
+  const complete = regionAgrees && sideAgrees && measurementsHaveLandmarks(measurements, geometry);
   if (!complete && (entry.measurements != null || entry.geometry != null)) {
     console.warn(`persistence: ${entry.id} has a malformed measurements/geometry payload; it will need to be re-run.`);
   }
@@ -160,10 +210,28 @@ function validateStudy(entry, index) {
   if (reviewedText !== null && reviewedAt === null) {
     console.warn(`persistence: ${entry.id} has a review mark that is not a date ("${reviewedText}"); it is dropped.`);
   }
+  // (2026-10-01, issue #39; port spec 4) when the last attempt failed, beside 1.0.13's
+  // processingError, on the review mark's optional-null terms. It is kept only as a date and only
+  // with the error it dates; any other value that is present is dropped with a warning rather than
+  // failing the record. A record written before it existed has none and loads without a warning.
+  const processingError = optionalText(entry.processingError);
+  const errorAtValue = entry.processingErrorAt;
+  const processingErrorAt = typeof errorAtValue === 'string' && !Number.isNaN(Date.parse(errorAtValue))
+    && processingError !== null ? errorAtValue : null;
+  if (errorAtValue !== undefined && errorAtValue !== null && processingErrorAt === null) {
+    console.warn(`persistence: ${entry.id} has a malformed processing-error time; it is dropped.`);
+  }
   return {
     id: entry.id, source: 'real',
     filePath: typeof entry.filePath === 'string' ? entry.filePath : null,
     fileName: entry.fileName, addedAt: entry.addedAt, view: entry.view,
+    region: ['auto', 'lumbar', 'cervical', 'full_spine'].includes(entry.region) ? entry.region
+      : ['cervical', 'full_spine'].includes(geometry?.region) ? geometry.region : 'lumbar',
+    anteriorSide: validAnteriorSide(entry.anteriorSide) ? entry.anteriorSide
+      : entry.anteriorSide === null ? null : geometry?.anterior_side ?? null,
+    predictionId: optionalText(entry.predictionId),
+    processingError,
+    processingErrorAt,
     // Both are optional and default to null, so no STORE_VERSION bump: a record written before
     // they existed loads fine and simply reads as its SP-nnnn id with no workspace. They must
     // be listed HERE or they are written to disk and then dropped on the next load, which looks

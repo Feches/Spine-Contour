@@ -1,3 +1,6 @@
+import { segmentalColumns, segmentalRows } from './segmental.js';
+import { cervicalMeasurements, studyRegion } from './cervical.js';
+import { globalSvaMeasurements } from './global-sva.js';
 import { normaliseTimepoint, normaliseView, parseFilmDate, PRE_OP } from './timepoints.js';
 import { normalizeCalibration } from './calibration.js';
 import { fileStem, studyName } from './labels.js';
@@ -23,9 +26,20 @@ const ANGULAR_COLUMNS = [
   'LL L2-S1', 'LL L3-S1', 'LL L4-S1', 'LL L5-S1',
 ];
 // Exported for data/pairing.js, which merges a visit's films per column in this order.
-export const MEASUREMENT_COLUMNS = [...ANGULAR_COLUMNS,
+const BASE_MEASUREMENT_COLUMNS = [...ANGULAR_COLUMNS,
   ...DISC_LEVEL_PAIRS.flatMap(levels => DISC_POSITIONS.map(position =>
     `Disc height ${levels.join('-')} ${position} (mm)`))];
+
+export const MEASUREMENT_COLUMNS = [...BASE_MEASUREMENT_COLUMNS, ...segmentalColumns('lumbar').map(c => c.exportLabel)];
+
+export const CERVICAL_EXPORT_COLUMNS = ['C2-C7 Cobb (deg)', 'C2-C7 SVA (mm)', 'C2-C7 SVA (px)'];
+export const GLOBAL_SVA_EXPORT_COLUMNS = ['C7-S1 SVA (mm)', 'C7-S1 SVA (px)'];
+export function exportMeasurementColumns(studies) {
+  return [...MEASUREMENT_COLUMNS,
+    ...(studies.some(study => ['cervical', 'full_spine'].includes(studyRegion(study))) ? CERVICAL_EXPORT_COLUMNS : []),
+    ...(studies.some(study => studyRegion(study) === 'full_spine') ? GLOBAL_SVA_EXPORT_COLUMNS : []),
+    ...(studies.some(study => ['cervical', 'full_spine'].includes(studyRegion(study))) ? segmentalColumns('cervical').map(c => c.exportLabel) : [])];
+}
 
 // Measurement columns are written to one decimal, matching what the Measurements panel
 // displays, so a value read off the screen and the same value in the file agree. It also
@@ -73,9 +87,19 @@ function measurementValue(study, column) {
 
 // One value per MEASUREMENT_COLUMNS entry, rounded to one decimal, '' where absent. Exported for
 // data/pairing.js, which reads each film through it before merging a visit's films.
-export function measurementValues(study) {
-  return [...ANGULAR_COLUMNS.map(column => measurementValue(study, column)),
-    ...discRows(study).flatMap(row => DISC_POSITIONS.map(position => round1(row[position])))];
+export function measurementValues(study, columns = MEASUREMENT_COLUMNS) {
+  const lumbar = ['lumbar', 'full_spine'].includes(studyRegion(study));
+  const values = lumbar ? [...ANGULAR_COLUMNS.map(column => measurementValue(study, column)),
+    ...discRows(study).flatMap(row => DISC_POSITIONS.map(position => round1(row[position])))]
+    : BASE_MEASUREMENT_COLUMNS.map(() => '');
+  const m = study.measurements ? cervicalMeasurements(study) : null;
+  const cervical = [m?.C2C7_COBB, m?.C2C7_SVA_MM, m?.C2C7_SVA_PX].map(round1);
+  const global = study.measurements ? globalSvaMeasurements(study) : null;
+  const globalValues = [global?.GLOBAL_SVA_MM, global?.GLOBAL_SVA_PX].map(round1);
+  const all = Object.fromEntries([...BASE_MEASUREMENT_COLUMNS, ...CERVICAL_EXPORT_COLUMNS, ...GLOBAL_SVA_EXPORT_COLUMNS].map((key, index) =>
+    [key, [...values, ...cervical, ...globalValues][index]]));
+  for (const row of segmentalRows(study)) all[row.exportLabel] = round1(row.value);
+  return columns.map(column => all[column] ?? '');
 }
 
 function escapeField(value) {
@@ -98,10 +122,11 @@ export function toCsv(studies) {
   // cannot add a column.
   const fields = clinicalFieldNames(rows);
   const withCalibration = rows.some(study => normalizeCalibration(study.calibration));
+  const columns = exportMeasurementColumns(rows);
+  const withRegions = rows.some(study => studyRegion(study) !== 'lumbar');
 
   const citation = [
     '# Spine Contour export',
-    '# Created by Cody Woodhouse, MD; Michael Jayasuriya, BS.',
     '# Investigational software. NOT FOR CLINICAL USE.',
   ];
   // Study ID is the study's NAME -- its film's stem, what every screen shows and what the workspace
@@ -111,7 +136,7 @@ export function toCsv(studies) {
   // Subject, Timepoint, Film date and Note sit after View (pre-op/post-op spec §11.1, note added
   // 2026-09-11): the identity a paired analysis groups on, the acquisition date, then what tells
   // two same-day films of one subject apart. Absent values are empty, never 0 or —.
-  const header = ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date', 'Note', ...MEASUREMENT_COLUMNS, ...fields,
+  const header = ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date', 'Note', ...(withRegions ? ['Spine region', 'Anterior image side'] : []), ...columns, ...fields,
     ...(withCalibration ? CALIBRATION_COLUMNS : [])];
 
   const lines = [...citation, header.map(escapeField).join(',')];
@@ -123,7 +148,8 @@ export function toCsv(studies) {
       study.timepoint ?? '',
       study.filmDate ?? '',
       study.note ?? '',
-      ...measurementValues(study),
+      ...(withRegions ? [studyRegion(study), studyRegion(study) !== 'lumbar' ? study.geometry?.anterior_side ?? study.anteriorSide ?? '' : ''] : []),
+      ...measurementValues(study, columns),
       ...fields.map((field) => (study.clinical && study.clinical[field] != null ? study.clinical[field] : '')),
       ...(withCalibration ? calibrationCells(study) : []),
     ];
@@ -162,10 +188,11 @@ export function toPairedCsv(pairing) {
   const fields = clinicalFieldNames(written);
   const withCalibration = written.some(study => normalizeCalibration(study.calibration));
   const flagMerges = merged.length > 0;
+  const columns = pairing.measurementColumns ?? MEASUREMENT_COLUMNS;
+  const withRegions = written.some(study => studyRegion(study) !== 'lumbar');
 
   const citation = [
     '# Spine Contour export',
-    '# Created by Cody Woodhouse, MD; Michael Jayasuriya, BS.',
     '# Investigational software. NOT FOR CLINICAL USE.',
   ];
   const header = [
@@ -173,9 +200,10 @@ export function toPairedCsv(pairing) {
     ...headers.map((name) => `${name} study`),
     ...headers.map((name) => `${name} view`),
     ...headers.map((name) => `${name} film date`),
+    ...(withRegions ? headers.map(name => `${name} regions and orientation`) : []),
     ...(flagMerges ? headers.map((name) => `${name} disagreements`) : []),
     ...(flagMerges ? headers.map((name) => `${name} derived across films`) : []),
-    ...MEASUREMENT_COLUMNS.flatMap((column) => [
+    ...columns.flatMap((column) => [
       `${column} ${PRE_OP}`,
       ...visits.flatMap((name) => [`${column} ${name}`, `Delta ${column} ${name}`]),
     ]),
@@ -192,9 +220,11 @@ export function toPairedCsv(pairing) {
       ...headers.map((name) => (visit(name) ? visit(name).films.map((study) => studyName(study)).join(' + ') : '')),
       ...headers.map((name) => visit(name)?.films[0]?.view ?? ''),
       ...headers.map((name) => visit(name)?.filmDate ?? ''),
+      ...(withRegions ? headers.map(name => (visit(name)?.films ?? []).map(study =>
+        `${studyName(study)}: ${studyRegion(study)}${studyRegion(study) !== 'lumbar' ? `, anterior image ${study.geometry?.anterior_side ?? study.anteriorSide ?? 'unconfirmed'}` : ''}`).join('; ')) : []),
       ...(flagMerges ? headers.map((name) => (visit(name)?.disagreements ?? []).join('; ')) : []),
       ...(flagMerges ? headers.map((name) => (visit(name)?.derived ?? []).map((entry) => `${entry.column}: ${entry.note}`).join('; ')) : []),
-      ...MEASUREMENT_COLUMNS.flatMap((_column, index) => {
+      ...columns.flatMap((_column, index) => {
         const before = values(PRE_OP)[index] ?? '';
         return [
           before,

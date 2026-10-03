@@ -1,3 +1,5 @@
+import { cervicalMeasureGeometry } from '../data/cervical.js';
+import { globalSvaMeasureGeometry } from '../data/global-sva.js';
 import { debounce } from './interactions.js';
 
 // The /measure round-trip, extracted from components/viewer.js so its bookkeeping is testable
@@ -44,12 +46,19 @@ export function createMeasureQueue({ measure, getState, setState, showToast, deb
     const geometry = getState().measurementDrafts?.[studyId];
     if (!study || !geometry) { discardDraft(studyId); return; }
     try {
-      const result = await measure({
+      const result = await measure(geometry.region === 'cervical'
+        ? cervicalMeasureGeometry(geometry, study.calibration) : geometry.region === 'full_spine'
+        ? globalSvaMeasureGeometry(geometry, study.calibration) : {
         vertebrae: geometry.vertebrae,
         s1_superior: geometry.s1_superior,
         femoral_circles: geometry.femoral_circles,
       });
       if (revision !== revisions.get(studyId)) return;
+      // Legacy lumbar /measure responses omit region. Preserve Auto's resolved
+      // type so an edit cannot turn a measured lumbar film back into an unknown film.
+      if (geometry.region === 'lumbar' && !result.geometry.region) {
+        result.geometry = { ...result.geometry, region: 'lumbar' };
+      }
       const current = getState().studies.find((item) => item.id === studyId);
       if (!current || current.addedAt !== study.addedAt) { discardDraft(studyId); return; }
       measured.set(studyId, result.geometry);

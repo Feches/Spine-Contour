@@ -1,18 +1,37 @@
 const http = require('node:http');
 
+// 'cpu', or a GPU's PCI identity as backend/processors.py names it. The same pattern is in
+// renderer/data/processing.js, which cannot require this file.
+const PROCESSOR_ID = /^(?:cpu|gpu:[0-9a-f]{4,8}:[0-9a-f]{4,8}(?::(?:[2-9]|[1-9][0-9]))?)$/;
+
 function normalizePerformance(value) {
   const mode = value?.mode ?? 'standard';
   const cpuThreads = value?.cpuThreads ?? 2;
   const cropLocalizer = value?.cropLocalizer === undefined ? true : value.cropLocalizer;
+  const cropMethod = value?.cropMethod === undefined ? 'search' : value.cropMethod;
   const toolbarRemoval = value?.toolbarRemoval === undefined ? false : value.toolbarRemoval;
+  const processor = value?.processor === undefined ? 'cpu' : value.processor;
   // Appearance embeddings (similar-cases spec, 2026-09-12, section 10.6): on for every
   // preference file written before the switch existed.
   const embeddings = value?.embeddings === undefined ? true : value.embeddings;
   if (!['standard', 'low-memory'].includes(mode) || !Number.isInteger(cpuThreads) || cpuThreads < 1 || cpuThreads > 4
-    || typeof cropLocalizer !== 'boolean' || typeof toolbarRemoval !== 'boolean' || typeof embeddings !== 'boolean') {
+    || typeof cropLocalizer !== 'boolean' || !['search', 'model'].includes(cropMethod)
+    || typeof toolbarRemoval !== 'boolean'
+    || typeof processor !== 'string' || !PROCESSOR_ID.test(processor)
+    || typeof embeddings !== 'boolean') {
     throw new Error('Invalid processing settings.');
   }
-  return { mode, cpuThreads, cropLocalizer, toolbarRemoval, embeddings };
+  return { mode, cpuThreads, cropLocalizer, cropMethod, toolbarRemoval, processor, embeddings };
+}
+
+// The backend's GET /processors body, reduced to what Settings shows. Anything malformed is
+// dropped, and the CPU is always offered first.
+function normalizeProcessors(body) {
+  const listed = Array.isArray(body?.processors) ? body.processors : [];
+  const gpus = listed.filter((item) => item?.kind === 'gpu' && typeof item.id === 'string' && item.id !== 'cpu'
+    && PROCESSOR_ID.test(item.id) && typeof item.name === 'string' && item.name.trim());
+  return [{ id: 'cpu', kind: 'cpu', name: 'CPU' },
+    ...gpus.map((item) => ({ id: item.id, kind: 'gpu', name: item.name.trim() }))];
 }
 
 // Node's default fetch header deadline is unsuitable for long local inference.
@@ -67,4 +86,4 @@ async function postForm(url, form, { signal, onProgress, idleMs = 60000 } = {}) 
   });
 }
 
-module.exports = { postForm, normalizePerformance };
+module.exports = { postForm, normalizePerformance, normalizeProcessors };

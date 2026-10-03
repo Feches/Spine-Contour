@@ -1,4 +1,4 @@
-"""Run all five ONNX graphs using the frozen executable and its bundled DLLs."""
+"""Run all lumbar and cervical ONNX graphs and the appearance encoder in the frozen executable."""
 from pathlib import Path
 import json
 import subprocess
@@ -10,7 +10,18 @@ result = subprocess.run([str(executable.resolve()), '--verify-models'], capture_
 if result.returncode:
     raise RuntimeError(f'Bundled model verification failed:\n{result.stdout}\n{result.stderr}')
 report = json.loads(result.stdout.strip().splitlines()[-1])
-assert {'s1', 'vertebra', 'femoral', 'hrnet', 'embed'} <= set(report['verified'])
+assert report['gpu_parity']['tolerance']['rtol'] == 2e-3
+assert report['gpu_parity']['tolerance']['atol'] == 2e-3
+assert report['gpu_parity']['passed'], 'GPU parity verification failed'
+assert {'s1', 'vertebra', 'femoral', 'hrnet', 'cervical_detr', 'cervical_hrnet', 'crop_detector',
+        'embed'} <= set(report['verified'])
 assert not list(bundle.rglob('*.pt')), 'Training checkpoints must not ship alongside ONNX models'
+assert not list(bundle.rglob('*.safetensors')), 'Detector training weights must not ship alongside ONNX models'
 assert not (bundle / '_internal' / 'torch').exists(), 'PyTorch must not ship in the runtime bundle'
-print('Verified all five bundled ONNX models:', report['verified'])
+if sys.platform == 'win32':
+    # The Windows installer runs models on a GPU through DirectML (docs/gpu-processing.md).
+    # The CPU-only wheel would still pass every check above, so check the build itself.
+    assert 'DmlExecutionProvider' in report['available_providers'], 'The Windows bundle must use onnxruntime-directml'
+    assert list(bundle.rglob('DirectML.dll')), 'DirectML.dll must ship beside ONNX Runtime'
+    print('Bundled DirectML; GPUs on this machine:', report['gpus'])
+print('Verified all bundled ONNX models:', report['verified'])
