@@ -287,9 +287,11 @@ try {
     cards.c2?.eyebrow === '02 — CLINICAL DATA CSV · OPTIONAL' && cards.c2?.value === CSV_PATH && cards.c2?.meta === '4 rows · 4 columns · matched on study_id' && cards.c2?.button === 'Change…', cards.c2);
   check('card 03 is the column mapping card', cards.c3Eyebrow === '03 — COLUMN MAPPING', cards.c3Eyebrow);
   check('the note preview reads the fixture join numbers', typeof cards.note === 'string' && cards.note.includes(NOTE_PREVIEW), cards.note);
+  // (2026-10-01, issue #39 port, port spec 6) A loaded film nobody has run reads Unsegmented, and the
+  // hint says so.
   check('Load workspace is enabled (boolean disabled) and the hint describes what happens next',
     cards.loadDisabled === false && cards.loadText === 'Load workspace'
-    && cards.hint === 'New films are added to Studies as Processing. Open one and run segmentation from its Analysis screen.', cards);
+    && cards.hint === 'New films are added to Studies as Unsegmented. Open one and run segmentation from its Analysis screen.', cards);
 
   let chips = await chipsSnapshot();
   check('four chips in header order', same(chips.map((c) => c.src), EXPECTED_HEADERS), chips.map((c) => c.src));
@@ -299,10 +301,11 @@ try {
     chips[0]?.fixed && chips[0]?.dest === 'Join key' && chips[0]?.value === null && !chips[0]?.mapped && !chips[0]?.unmapped
     && chips[3]?.unmapped && !chips[3]?.fixed && chips[3]?.value === '', [chips[0], chips[3]]);
   check('each mapping select is labelled Map <src>', chips.filter((c) => !c.fixed).every((c) => c.label === `Map ${c.src}`), chips.map((c) => [c.src, c.label]));
-  check('the tx_plan select offers Unmapped plus every known field not claimed elsewhere (no Age, no Sex)',
-    same(chips[3]?.options, ['Unmapped', ...KNOWN_FIELDS.filter((f) => f !== 'Age' && f !== 'Sex')]), chips[3]?.options);
-  check('the age_yrs select keeps its own Age and omits the Sex claimed by another chip',
-    same(chips[1]?.options, ['Unmapped', ...KNOWN_FIELDS.filter((f) => f !== 'Sex')]), chips[1]?.options);
+  // (2026-10-02) Since 1.0.12 (5f317bc) a header that is not a known field is also offered as Keep column name (<header>).
+  check('the tx_plan select offers Unmapped plus every known field not claimed elsewhere (no Age, no Sex), then Keep column name (tx_plan)',
+    same(chips[3]?.options, ['Unmapped', ...KNOWN_FIELDS.filter((f) => f !== 'Age' && f !== 'Sex'), 'Keep column name (tx_plan)']), chips[3]?.options);
+  check('the age_yrs select keeps its own Age, omits the Sex claimed by another chip, and offers Keep column name (age_yrs)',
+    same(chips[1]?.options, ['Unmapped', ...KNOWN_FIELDS.filter((f) => f !== 'Sex'), 'Keep column name (age_yrs)']), chips[1]?.options);
 
   // The override, dispatched as the DOM would: set the value, fire `change`.
   await cdp.evaluate(`(() => {
@@ -342,13 +345,16 @@ try {
     const rows = [...document.querySelectorAll('.studies-row')];
     const row = (id) => document.querySelector('.studies-row[data-study-id="' + id + '"]');
     return {
-      firstThree: rows.slice(0, 3).map((r) => ({ id: r.dataset.studyId, proc: Boolean(r.querySelector('.badge-proc')), badge: r.querySelector('.badge')?.textContent ?? null })),
+      firstThree: rows.slice(0, 3).map((r) => ({ id: r.dataset.studyId, unseg: Boolean(r.querySelector('.badge-unseg')), badge: r.querySelector('.badge')?.textContent ?? null })),
       deleteA: row(${JSON.stringify(ID_A)})?.querySelector('.studies-delete')?.getAttribute('aria-label') ?? null,
       deleteDemo: Boolean(row('SP-0042')?.querySelector('.studies-delete')),
     };
   })()`);
-  check('the first three rows are the new studies, badged Processing',
-    same(listAfterLoad.firstThree.map((r) => r.id), [ID_A, ID_B, ID_C]) && listAfterLoad.firstThree.every((r) => r.proc && r.badge === 'Processing'), listAfterLoad.firstThree);
+  // (2026-10-01, issue #39 port, P1) A loaded film nobody has run reads Unsegmented; Processing is only
+  // the film that is running and the films waiting in a batch. The summary still counts all three
+  // under UNSEGMENTED.
+  check('the first three rows are the new studies, badged Unsegmented',
+    same(listAfterLoad.firstThree.map((r) => r.id), [ID_A, ID_B, ID_C]) && listAfterLoad.firstThree.every((r) => r.unseg && r.badge === 'Unsegmented'), listAfterLoad.firstThree);
   const summaryAfterLoad = await summaryParts();
   check('the summary grew by 3 studies and 3 in queue', summaryAfterLoad && summaryAfterLoad.studies === startCount + 3 && summaryAfterLoad.queued === startSummary.queued + 3, { startSummary, summaryAfterLoad });
   // The delete button names the study the way the row does -- by its NAME, which defaults to the

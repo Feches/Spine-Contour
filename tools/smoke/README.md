@@ -135,26 +135,35 @@ consequences:
 
 **Sections 10–14 (2026-09-08) segment three more injected copies of the sample film** in two
 batches and fail a third on purpose (`SP-9001` has no bytes and no file). They leave
-`SP-9002`, `SP-9003` and `SP-9005` segmented and `SP-9001`, `SP-9004` unsegmented, so the
-summary ends `n+6 STUDIES · 2 UNSEGMENTED`.
+`SP-9002`, `SP-9003` and `SP-9005` segmented, `SP-9004` unsegmented and — since the 2026-10-01
+Failed-status port (issue #39), which records the failure on the film — `SP-9001` Failed. A Failed
+film counts under UNSEGMENTED, so the summary still ends `n+6 STUDIES · 2 UNSEGMENTED`. Section 14b
+opens `SP-9001` (a Failed header pill with its dated tooltip, a red `Last run failed:` region note, a
+FAILED card) and leaves it Failed, so section 15's status sort meets a Failed row; section 17
+re-injects `SP-9002` and `SP-9003` as throwaway films and deletes them; section 18 changes `SP-9001`'s
+Region, which clears the failure. The suite ends at `n+4 STUDIES · 2 UNSEGMENTED` and a TO REVIEW
+count that depends on what the real runs produced.
 
-**Two of its checks race the backend and can legitimately read 54/56** (found 2026-09-04, on a
+**Two of its checks race the backend and can legitimately fail** (found 2026-09-04, on a
 machine warm from repeated runs; four consecutive runs on hand-cleared profiles gave 56, 54, 56,
-54). Section 9 clicks `Re-run segmentation`, waits only for `state.running !== null`, then
-navigates back to Studies and samples the row, expecting the badge to still read `Processing`:
+54) (the suite then had 56 checks; 151 since the 2026-10-01 port). Section 9 clicks
+`Re-run segmentation`, waits only for `state.running !== null`, then navigates back to Studies and
+samples the row, expecting the badge to still read `Processing`:
 
 ```
 FAIL  a SEGMENTED study reads Processing while it is the running study  -> {"proc":false,"text":"Segmented","queued":0,"procRows":0}
-FAIL  the summary counts the re-running study in the queue              -> {"proc":false,"text":"Segmented","queued":0,"procRows":0}
+FAIL  the summary counts the re-running study as unsegmented            -> {"proc":false,"text":"Segmented","queued":0,"procRows":0}
 ```
+
+The detail object now carries `unsegRows` (the Processing, Unsegmented and Failed rows) in place of `procRows`.
 
 Both details say the same thing: the run had already finished, so `running` was `null` again and
 the badge correctly read `Segmented`. **That is the product behaving correctly and the suite
 sampling a transient state it does not hold**, so do not "fix" the badge. The suite is what needs
 the fix: sample the badge while the run is provably still in flight (assert before navigating, or
 poll the row under the condition `s.running === RUNNING_ID` and fail only if that condition was
-never observed). Until then, treat 54/56 with exactly these two names as green, and anything else
-as a real regression.
+never observed). Until then, treat a run whose only failures are one or both of these two names
+as green, and anything else as a real regression.
 
 `smoke-persist.mjs` runs in three phases across two real restarts, and phases 2 and 3
 read `out/persist-state.json` written by phase 1:
@@ -175,6 +184,16 @@ start — without it `launch.mjs` deletes the scratch profile and phase 2 has no
 restore. Phase 2 briefly moves `predictions/SP-9000.json` aside to exercise the
 `FILM UNAVAILABLE` card and restores it in a `finally`; if a phase-2 run is killed
 mid-section, check for a leftover `predictions/SP-9000.json.bak` before re-running.
+
+Since the 2026-10-01 Failed-status port (issue #39) phase 1 also adds `SP-9010`, an unsegmented
+lumbar film with no file, carrying a `processingError` and a `processingErrorAt` seeded through the
+store (this suite tests that the record persists; `smoke-studies.mjs` drives the real failure path).
+Phase 2 expects both fields back and the film Failed on the list and on the Analysis header, with a
+dated `Segmentation failed` tooltip, before section B; and it seeds a failure on `SP-9000` before
+section E's re-run, which must clear both fields. `SP-9010` stays in the profile. Never run
+`smoke-studies.mjs` on the profile smoke-persist leaves behind: the Failed `SP-9010` counts under
+UNSEGMENTED and is offered by the batch button, so its summary and button counts would be off by
+one; `smoke-studies.mjs` always needs a fresh launch.
 
 ### `--phase measurefail` is parked — do not try to run it
 
@@ -298,6 +317,17 @@ per record, so the Find tab's newest-first default sort keeps scan order), 100/1
 47/47 — phase 1 marks SP-9000 reviewed and sets its subject after the last nudge; phase 2 asserts both survived
 and that the re-run cleared the mark. Every check in the suite runs
 unconditionally; there is no skip path.
+
+**2026-10-01 (issue #39, the Failed-status port on 1.0.13):** `smoke-studies.mjs` goes from 136 to 151
+checks (the header pills in sections 5, 7 and 12; the Failed pill with its dated tooltip and the
+summary after section 11; the pills after the first batch turn and around Stop; section 14b's four
+and section 18's four) and several are reworded; `smoke-persist.mjs` gains one check in phase 1 and
+six in phase 2; `smoke-workspace.mjs` keeps its 100 checks, two of them updated (the hint and the
+badges after Load). Measured 2026-10-02 against the real app on this branch, each suite on a fresh
+scratch profile (unit 614/614): `smoke-studies.mjs` 151/151; `smoke-workspace.mjs` 100/100 (its first
+run read 98/100: the two mapping-select checks still expected the option lists from before 1.0.12's
+`Keep column name (<header>)` option, fixed in `97b7478`); `smoke-persist.mjs` 41/41 then 53/53. These
+supersede the counts in the known baseline above, which predate 1.0.13.
 
 ## Running the Parameters suite
 

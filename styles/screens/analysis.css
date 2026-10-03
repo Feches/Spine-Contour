@@ -882,3 +882,6 @@
 .analysis-region-bar label { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .analysis-region-bar [hidden] { display: none; }
 .analysis-region-bar .meas-note { margin: 0; }
+/* (2026-10-01, issue #39) The region note of a film whose pill reads Failed: `Last run failed: ...`,
+   in the Failed pill's red (port spec 6). screens/analysis.js toggles the class. */
+.meas-note.is-failed { color: var(--danger); }

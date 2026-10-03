@@ -57,7 +57,7 @@ export function imageConfidence(study, pending = false) {
     explanation,
   ];
   const needsReview = reasons.length > (incomplete ? 1 : 0);
-  // No tone may equal a statusLabel string ('Segmented'/'Needs review'/'Processing'/'Reviewed'):
+  // No tone may equal a statusLabel string ('Segmented'/'Needs review'/'Processing'/'Reviewed'/'Failed'/'Unsegmented'):
   // this badge sits beside the status badge in the Analysis header and the two derive from
   // different inputs, so shared words read as the screen contradicting itself. Wording only --
   // the tones and the conditions that pick them are unchanged.

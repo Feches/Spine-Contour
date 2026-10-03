@@ -32,7 +32,7 @@ the film on the CPU and says so. See [GPU processing](docs/gpu-processing.md).
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.0.14 release notes](docs/releases/1.0.14.md) and
+[changelog](CHANGELOG.md), [v1.0.15 release notes](docs/releases/1.0.15.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
@@ -110,7 +110,7 @@ clinical-data CSV.
   its own name as a custom field (**Keep column name** on the chip, or **Keep N unmapped
   columns** for every remaining one at once — check that none is an identifier first), or left
   unmapped. `study_id` itself is the join key, not a field.
-- **Load workspace** adds each new film to Studies as `Processing` and attaches its CSV
+- **Load workspace** adds each new film to Studies as `Unsegmented` and attaches its CSV
   values. Films already in the library (same path) are not added again; the CSV only **fills
   in** clinical fields they are missing and never overwrites a value that is already there
   (use **Import from CSV** on the study's Analysis screen to replace values deliberately).

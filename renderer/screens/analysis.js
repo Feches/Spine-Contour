@@ -17,6 +17,7 @@ import { inferenceView, unsupportedViewReason } from '../data/inference-view.js'
 import { studyName, defaultName } from '../data/labels.js';
 import { displayStatus, isReviewed, reviewedLabel, reviewBlockedReason } from '../data/status.js';
 import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
+import { failureReason, failureTitle } from '../data/failure.js';
 import { mountMeasurements } from '../components/measurements.js';
 import { mountClinicalData } from '../components/clinical-data.js';
 import { calibrationForStudy } from '../calibration.js';
@@ -26,6 +27,28 @@ const BACK_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" st
 
 export function formatConfidence(qc) {
   return scorePercent(qc?.femoral?.confidence);
+}
+
+// (2026-10-01, issue #39; port spec 6) The Analysis header pill, on the list's rule
+// (screens/studies.js buildRow): Unsupported view for a real, unmeasured film no model reads that is
+// not running, else displayStatus with state.running and state.batch. `status` is what the pill shows
+// and `badgeKey` is what update() rebuilds it on: the key carries the failure and its time, so a new
+// failure under the same status rebuilds the pill and its tooltip. statusBadge never receives the key.
+export function headerBadge(open, runningId = null, batch = null) {
+  const unsupported = open.source === 'real' && open.measurements == null && runningId !== open.id && !inferenceView(open.view);
+  const status = displayStatus(open, runningId, batch);
+  const badgeKey = unsupported ? `unsupported:${open.view}` : `${status}|${open.processingErrorAt ?? ''}|${open.processingError ?? ''}`;
+  return { unsupported, status, badgeKey };
+}
+
+// (2026-10-01, issue #39; port spec 6) The region note of a film whose header pill reads Failed, or
+// null for every other film, whose note stays exactly what it was. `previewNote` is the preview
+// message update() would otherwise show, already gated on its own rule; it follows the reason after
+// a space.
+export function failedRunNote(open, { unsupported, status }, previewNote = '') {
+  if (unsupported || status !== 'fail') return null;
+  const note = `Last run failed: ${open.processingError}`;
+  return previewNote ? `${note} ${previewNote}` : note;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,9 +111,11 @@ let runRevision = 0;
 // and leave the card reading LOADING.
 const runsByStudy = new Map();
 
+// (2026-10-01, issue #39; port spec 4-5) The record keeps the plain sentence failureReason gives and
+// the time, in one update; the toast and the batch outcome keep the raw message.
 function withProcessingFailure(studies, studyId, addedAt, reason) {
   return studies.map((item) => item.id === studyId && item.addedAt === addedAt
-    ? { ...item, processingError: String(reason || 'Segmentation failed.') } : item);
+    ? { ...item, processingError: failureReason(reason), processingErrorAt: new Date().toISOString() } : item);
 }
 
 function markProcessingFailure(studyId, addedAt, reason) {
@@ -392,7 +417,7 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
         ? { ...s, predictionId: requestId, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
           calibration: preferReviewedCalibration(response.calibration, calibrationForStudy(s)), thumbnail,
           // A re-run replaces every number a review was made over (studies-table spec 2026-09-10, section 8.4, site 1).
-          reviewedAt: null, processingError: null }
+          reviewedAt: null, processingError: null, processingErrorAt: null }
         : s)),
     }));
     return warning ? { ok: true, warning } : { ok: true };
@@ -660,7 +685,7 @@ export function render(state) {
     setState({ editing: false, selection: null, selectedLevel: null,
       studies: live.studies.map(s => s.id === open.id ? { ...s, ...patch,
         geometry: null, measurements: null, qc: null, reviewedAt: null, predictionId: null,
-        processingError: null } : s) });
+        processingError: null, processingErrorAt: null } : s) });
     mounted?.viewer.setFilmStatus(null);
     previewOriginal(open.id);
   }
@@ -760,7 +785,16 @@ export function render(state) {
     previewButton.hidden = alignmentRunButton.hidden = !alignmentSetup;
     previewButton.disabled = Boolean(live.running || live.batch);
     alignmentRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view));
-    regionNote.textContent = mounted?.previewMessage && alignmentSetup ? mounted.previewMessage : open.measurements
+    // The preview message shows only during alignment setup: it is not cleared when a preview is
+    // abandoned, so its being set is not enough.
+    const previewNote = mounted?.previewMessage && alignmentSetup ? mounted.previewMessage : '';
+    // (2026-10-01, issue #39) Read here for the region note as well as for the header pill below. A
+    // film whose pill reads Failed says why here, in --danger, next to the controls that fix most
+    // failures, ahead of the ordinary guidance (port spec 6).
+    const { unsupported, status: badgeStatus, badgeKey } = headerBadge(open, live.running, live.batch);
+    const failedNote = failedRunNote(open, { unsupported, status: badgeStatus }, previewNote);
+    regionNote.classList.toggle('is-failed', failedNote !== null);
+    regionNote.textContent = failedNote !== null ? failedNote : previewNote ? previewNote : open.measurements
       ? `${requestedRegion(open) === 'auto' ? `Detected ${studyRegionLabel(open)}. ` : ''}${open.geometry?.anterior_side ? `Anterior: image ${open.geometry.anterior_side}. ` : ''}Changing region or orientation clears measurements; run again.`
       : requestedRegion(open) === 'auto' ? 'Detect cervical, lumbar or full spine from the film. Choose a region or orientation to override.'
       : studyRegion(open) === 'full_spine' ? 'Use a lateral full-spine film. Orientation is detected automatically; left/right overrides it.'
@@ -821,14 +855,13 @@ export function render(state) {
     reviewNote.textContent = reason ?? '';
     reviewNote.hidden = reason === null;
 
-    // The list's badge, on the list's rule (screens/studies.js buildRow): Unsupported view for an
-    // unsegmented film no model reads, else displayStatus with state.running.
-    const unsupported = open.source === 'real' && open.measurements == null && live.running !== open.id && !inferenceView(open.view);
-    const badgeStatus = displayStatus(open, live.running);
-    const badgeKey = unsupported ? `unsupported:${open.view}` : `${badgeStatus}:${open.processingError ?? ''}`;
+    // The list's badge, on the list's rule (screens/studies.js buildRow): headerBadge's `unsupported`,
+    // `status` and `badgeKey`, read above for the region note. A Failed pill carries the dated reason
+    // as its tooltip (2026-10-01, issue #39).
     if (badgeKey !== lastBadgeKey) {
       lastBadgeKey = badgeKey;
-      mount(statusHost, unsupported ? unsupportedViewBadge(open.view) : statusBadge(badgeStatus, open.processingError));
+      mount(statusHost, unsupported ? unsupportedViewBadge(open.view)
+        : statusBadge(badgeStatus, badgeStatus === 'fail' ? failureTitle(open.processingError, open.processingErrorAt) : undefined));
     }
 
     tabMeas.classList.toggle('is-active', live.tab === 'meas');
