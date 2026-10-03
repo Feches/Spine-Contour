@@ -1,6 +1,7 @@
 /**
  * Export dataset (similar-cases spec, 2026-09-12, section 13; amended 2026-09-13 for v1.0.8, and again
- * for the gate ruling that renamed two of the tables and added a README): the five files a notebook
+ * for the gate ruling that renamed two of the tables and added a README; and 2026-09-30 for stage 2's
+ * regions: vectors.json version 2 carries every block by key, the film's region rides each table): the five files a notebook
  * trains on, built entirely here from the rows the paired export would write. No images, no paths, no
  * record ids -- a film is named by its study name, the Study ID every export writes, and the only
  * other per-film identity is the calibration digest. Pure: the folder is written by main.js's
@@ -10,11 +11,17 @@ import { toCsv, toPairedCsv } from './csv.js';
 import { pairStudies } from './pairing.js';
 import { PRE_OP } from './timepoints.js';
 import { OUTCOMES, FOLLOW_UP_FIELD, resolveOutcomes, primaryOutcome } from './outcomes.js';
-import { vector, alignment, subjectFilms, LANDMARK_ORDER, ALIGNMENT_ORDER, ALIGNMENT_WEIGHTS } from './similarity.js';
-import { validEmbedding, isCurrent } from './embeddings.js';
+import {
+  vector, cervicalVector, studyBlocks, subjectFilms, LANDMARK_ORDER, CERVICAL_ORDER, ALIGNMENT_ORDER, ALIGNMENT_WEIGHTS,
+} from './similarity.js';
+import { LUMBAR_SEGMENTAL_ORDER, CERVICAL_SEGMENTAL_ORDER, DISC_ORDER } from './similarity-blocks.js';
+import { readEmbedding, isCurrent } from './embeddings.js';
+import { studyRegion } from './cervical.js';
 import { lastSegment, studyName } from './labels.js';
 
-const CITATION = 'Created by Cody Woodhouse, MD; Michael Jayasuriya, BS.';
+// No author names in any file of the folder (the 1.0.14 rule the CSV exports follow): the notice says
+// what the folder is, the app name and version sit in the manifest and the README's first lines.
+const NOTICE = 'Spine Contour dataset export: measurements, paired visits and vectors from the library, with no images.';
 const DISCLAIMER = 'Investigational software. NOT FOR CLINICAL USE.';
 const IDENTITY = 'Films are named by study name (the stored name, else the film stem), the Study ID of every export; the record id is not exported.';
 const SEP = ' \u00B7 ';
@@ -24,7 +31,7 @@ export const RESOLVED_COLUMNS = Object.freeze([
   ...OUTCOMES.flatMap((o) => [`Subject ${o.field.toLowerCase()}`, `Subject ${o.dateField.toLowerCase()}`]),
   `Subject ${FOLLOW_UP_FIELD.toLowerCase()}`,
 ]);
-const PROVENANCE_COLUMNS = ['Film type', 'Coverage', 'Reviewed', 'Embedding', 'Crop localizer', 'Vertebra model', 'Femoral model', 'S1 model', 'Source SHA-256'];
+const PROVENANCE_COLUMNS = ['Region', 'Coverage', 'Reviewed', 'Embedding', 'Crop localizer', 'Vertebra model', 'Femoral model', 'S1 model', 'Source SHA-256'];
 
 function escapeField(value) {
   const text = value == null ? '' : String(value);
@@ -88,18 +95,23 @@ export function appendColumns(text, headers, cells) {
   return out.join('\r\n');
 }
 
-function filmType(embedding) {
-  return embedding?.filmType ?? '';
-}
-
 function coverage(study) {
   if (study.measurements == null || study.geometry == null) return '';
   return study.qc?.coverage?.partial === true ? 'partial' : 'full';
 }
 
+// The stored record lifted to the version-2 fields, or null when it is invalid, from another graph, or
+// not the current version (a stage-1 record reads as lumbar-only and is never current: Embed recomputes it).
 function currentEmbedding(embeddings, id, bundledSha) {
-  const record = embeddings instanceof Map ? embeddings.get(id) : embeddings?.[id];
-  return validEmbedding(record) && isCurrent(record, bundledSha) ? record : null;
+  const raw = embeddings instanceof Map ? embeddings.get(id) : embeddings?.[id];
+  const record = readEmbedding(raw);
+  return record && isCurrent(record, bundledSha) ? record : null;
+}
+
+// An entry block (A, SL, D, AC, BC, SC, B) is a list with one slot per entry and null in the slots a film
+// lacks; a film with nothing in any slot lacks the block, so it is null like a missing shape.
+function entriesOrNull(values) {
+  return values.some((v) => typeof v === 'number' && Number.isFinite(v)) ? values : null;
 }
 
 function resolvedCells(study, all) {
@@ -114,7 +126,7 @@ function provenanceCells(study, embeddings, bundledSha) {
   const embedding = currentEmbedding(embeddings, study.id, bundledSha);
   const models = study.qc?.models ?? {};
   return [
-    filmType(embedding), coverage(study), study.reviewedAt ? study.reviewedAt.slice(0, 10) : '',
+    studyRegion(study), coverage(study), study.reviewedAt ? study.reviewedAt.slice(0, 10) : '',
     embedding ? 'yes' : 'no',
     study.qc?.processing?.crop_localizer === undefined ? '' : (study.qc.processing.crop_localizer ? 'on' : 'off'),
     models.vertebrae ?? '', models.femoral ?? '', models.s1 ?? '',
@@ -137,10 +149,10 @@ export function datasetReadme({ counts, version, exportedAt, embeddingRecord }) 
     '',
     '## Files',
     '',
-    `- \`parameters.csv\` - one row per film: the Export CSV file (the measurements, disc heights, calibration and clinical fields) plus the provenance columns ${provenance}, then the outcome columns resolved per subject: ${resolved}.`,
-    `- \`paired.csv\` - one row per subject with a pre-op film and at least one later visit: the Export paired CSV file plus the same resolved outcome columns (${resolved}) and a \`<visit> film type\` column per written visit (for example \`Pre-op film type\`, \`Post-op film type\`).`,
-    `- \`vectors.json\` - one entry per row of parameters.csv, in the same order, named by study name: \`shape\` is 44 numbers, the 22 landmarks (${LANDMARK_ORDER.join(', ')}) in that order after mirroring anterior to +x, centring and scaling to unit centroid size -- never rotated; \`hip\` is 2 numbers under the same transform; \`alignment\` is 5 numbers, ${ALIGNMENT_ORDER.join(', ')}, weighted ${ALIGNMENT_WEIGHTS.join(', ')}; \`crop\` and \`whole\` are the appearance embeddings from ${encoder}, unit length. A block is \`null\` where a film lacks it, and an embedding is never carried from an encoder other than the one manifest.json names.`,
-    '- `manifest.json` - the counts, the models seen, the encoder record, the identity line, the disclaimer.',
+    `- \`parameters.csv\` - one row per film: the Export CSV file (the measurements, disc heights, calibration and clinical fields) plus the provenance columns ${provenance}, then the outcome columns resolved per subject: ${resolved}. \`Region\` is the film's own spine region: lumbar, cervical or full_spine, or auto for a film not yet segmented.`,
+    `- \`paired.csv\` - one row per subject with a pre-op film and at least one later visit: the Export paired CSV file plus the same resolved outcome columns (${resolved}) and a \`<visit> region\` column per written visit (for example \`Pre-op region\`, \`Post-op region\`), each the visit's primary film's region.`,
+    `- \`vectors.json\` (version 2) - one entry per row of parameters.csv, in the same order, named by study name, with the film's region. Blocks by key, \`null\` where a film lacks one: lumbar family \`V\` (44 numbers, the 22 lumbar landmarks ${LANDMARK_ORDER.join(', ')} after mirroring anterior to +x, centring and scaling to unit centroid size, never rotated), \`H\` (the hip midpoint under the same transform), \`A\` (${ALIGNMENT_ORDER.join(', ')} in degrees, weighted ${ALIGNMENT_WEIGHTS.join(', ')}), \`SL\` (the ten lumbar segmental lordosis and angulation values, degrees), \`D\` (fifteen disc heights in mm, calibrated films only); cervical family \`VC\` (44 numbers, ${CERVICAL_ORDER.join(', ')} mirrored by the recorded anterior side), \`AC\` (C2-C7 Cobb, degrees), \`BC\` (C2-C7 SVA, mm, calibrated only), \`SC\` (the ten cervical segmental values); whole-spine family \`B\` (C7-S1 SVA, mm, full-spine calibrated films only); and the appearance vectors \`lumbar\`, \`cervical\` and \`whole\` from ${encoder}, unit length, never carried from an encoder other than the one manifest.json names. In the app every block is scaled by its median over the candidates and the four families share equal budgets.`,
+    '- `manifest.json` - the counts (with the films of each region), the models seen, the encoder record, the identity line, the notice, the disclaimer.',
     '- `README.md` - this file.',
     '',
     '## Identity',
@@ -149,7 +161,7 @@ export function datasetReadme({ counts, version, exportedAt, embeddingRecord }) 
     '',
     '## Blanks',
     '',
-    'A blank cell is unknown, never zero. A partial segmentation has no `shape`. `not-recorded` and `conflicting` outcomes are unknown, not a result.',
+    "A blank cell is unknown, never zero. A film lacking a block's inputs has `null` for that block. `not-recorded` and `conflicting` outcomes are unknown, not a result.",
     '',
     '## Before training',
     '',
@@ -164,7 +176,7 @@ export function datasetReadme({ counts, version, exportedAt, embeddingRecord }) 
     `- ${counts.conflicting} conflicting`,
     `- ${counts.withoutEmbedding} without an embedding`,
     '',
-    CITATION,
+    NOTICE,
     DISCLAIMER,
     '',
   ];
@@ -201,16 +213,16 @@ export function buildDataset({ rows, post, embeddings, bundledSha, bundledModel 
 
   // Pairing by visit (v1.0.8): a written subject's visits are a Map keyed by header, Pre-op first,
   // each visit's films primary first. The resolved outcome is the subject's, so its pre-op visit's
-  // primary film serves; a visit's film type is its primary film's.
+  // primary film serves; a visit's region is its primary film's.
   const pairing = pairStudies(real, { post });
   const headers = [PRE_OP, ...pairing.visits];
   const subjectsCsv = appendColumns(toPairedCsv(pairing),
-    [...RESOLVED_COLUMNS, ...headers.map((h) => `${h} film type`)],
+    [...RESOLVED_COLUMNS, ...headers.map((h) => `${h} region`)],
     pairing.subjects.map((row) => {
       const pre = row.visits.get(PRE_OP).films[0];
       return [
         ...resolvedCells(pre, real),
-        ...headers.map((h) => { const visit = row.visits.get(h); return visit ? filmType(currentEmbedding(embeddings, visit.films[0].id, sha)) : ''; }),
+        ...headers.map((h) => { const visit = row.visits.get(h); return visit ? studyRegion(visit.films[0]) : ''; }),
       ];
     }));
 
@@ -219,26 +231,42 @@ export function buildDataset({ rows, post, embeddings, bundledSha, bundledModel 
   const films = [];
   let withoutEmbedding = 0;
   for (const study of real) {
-    const shape = vector(study);
     const embedding = currentEmbedding(embeddings, study.id, sha);
     if (!embedding) withoutEmbedding += 1;
+    const lumbar = vector(study);
+    const cervical = cervicalVector(study);
+    // Block D follows disc-heights.js's own calibration rule: studyBlocks reads it, nothing is recomputed here.
+    const b = studyBlocks(study, null);
     films.push({
       name: studyName(study),
-      shape: shape ? shape.V : null,
-      hip: shape ? shape.H : null,
-      alignment: alignment(study),
-      crop: embedding ? embedding.crop : null,
+      region: studyRegion(study),
+      V: lumbar ? lumbar.V : null,
+      H: lumbar ? lumbar.H : null,
+      A: entriesOrNull(b.entries.A), SL: entriesOrNull(b.entries.SL), D: entriesOrNull(b.entries.D),
+      VC: cervical ? cervical.V : null,
+      AC: entriesOrNull(b.entries.AC), BC: entriesOrNull(b.entries.BC), SC: entriesOrNull(b.entries.SC), B: entriesOrNull(b.entries.B),
+      lumbar: embedding ? embedding.lumbar : null,
+      cervical: embedding ? embedding.cervical : null,
       whole: embedding ? embedding.whole : null,
-      filmType: embedding ? embedding.filmType : null,
     });
   }
   const vectors = {
-    version: 1,
+    version: 2,
     exportedAt: now.toISOString(),
-    shape: { dim: 44, order: [...LANDMARK_ORDER], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation' },
-    hip: { dim: 2, normalisation: 'the shape transform' },
-    alignment: { order: [...ALIGNMENT_ORDER], weights: [...ALIGNMENT_WEIGHTS] },
-    embedding: embeddingRecord,
+    families: { lumbar: ['V', 'H', 'A', 'SL', 'D'], cervical: ['VC', 'AC', 'BC', 'SC'], whole: ['B', 'W'], appearance: ['C', 'CC'] },
+    blocks: {
+      V: { dim: 44, order: [...LANDMARK_ORDER], normalisation: 'mirror-anterior-positive-x, centroid, unit-centroid-size, no-rotation' },
+      H: { dim: 2, normalisation: 'the V transform' },
+      A: { order: [...ALIGNMENT_ORDER], weights: [...ALIGNMENT_WEIGHTS], unit: 'deg' },
+      SL: { order: [...LUMBAR_SEGMENTAL_ORDER], unit: 'deg' },
+      D: { order: [...DISC_ORDER], unit: 'mm' },
+      VC: { dim: 44, order: [...CERVICAL_ORDER], normalisation: 'mirror-by-anterior-side, centroid, unit-centroid-size, no-rotation' },
+      AC: { order: ['C2-C7 Cobb'], unit: 'deg' },
+      BC: { order: ['C2-C7 SVA'], unit: 'mm' },
+      SC: { order: [...CERVICAL_SEGMENTAL_ORDER], unit: 'deg' },
+      B: { order: ['C7-S1 SVA'], unit: 'mm' },
+      embedding: embeddingRecord,
+    },
     films,
   };
 
@@ -255,9 +283,16 @@ export function buildDataset({ rows, post, embeddings, bundledSha, bundledModel 
   });
   const models = { vertebrae: new Set(), femoral: new Set(), s1: new Set() };
   for (const study of real) for (const slot of Object.keys(models)) if (study.qc?.models?.[slot]) models[slot].add(study.qc.models[slot]);
+  // Films per region. A film still at `auto` (not segmented, so unresolved) is tallied under `auto`, a key
+  // that exists only when such a film does -- never folded into lumbar.
+  const regions = { lumbar: 0, cervical: 0, full_spine: 0 };
+  for (const study of real) {
+    const region = studyRegion(study);
+    regions[region] = (regions[region] ?? 0) + 1;
+  }
   const counts = {
     films: real.length, pairs: pairing.subjects.length, unpaired: pairing.unpaired.length, ambiguous: pairing.ambiguous.length,
-    mergedVisits: pairing.merged.length, withOutcome, conflicting, withoutEmbedding, noSubject: pairing.noSubject,
+    mergedVisits: pairing.merged.length, withOutcome, conflicting, withoutEmbedding, noSubject: pairing.noSubject, regions,
   };
   const manifest = {
     app: { name: 'Spine Contour', version },
@@ -268,7 +303,7 @@ export function buildDataset({ rows, post, embeddings, bundledSha, bundledModel 
     outcomes: OUTCOMES.map((o) => ({ key: o.key, field: o.field, dateField: o.dateField, primary: o.primary })),
     followUpField: FOLLOW_UP_FIELD,
     identity: IDENTITY,
-    citation: CITATION,
+    notice: NOTICE,
     disclaimer: DISCLAIMER,
   };
 
