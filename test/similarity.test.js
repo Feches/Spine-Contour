@@ -146,6 +146,8 @@ test('medianScale is the median of whatever is present (one value is itself, two
   assert.equal(medianScale([null, null]), 1);
   assert.equal(medianScale([0]), 1);
   assert.equal(medianScale([0, 0, 0]), 1);
+  assert.equal(medianScale([2e-16, 3e-16, 1e-16]), 1, 'float noise is no spread: it scales to nothing (ruling R25)');
+  assert.equal(medianScale([0.5]), 0.5);
   const distances = Object.fromEntries(BLOCK_KEYS.map((k) => [k, null]));
   distances.V = 2; distances.A = 4;
   const fused = fuse(distances, { V: 2, A: 2 }, weightsFor('lumbar', 'all'));
@@ -236,6 +238,16 @@ test('findSimilar under full_spine lists the absent cervical blocks for a film w
   assert.ok(matches[0].blocks.includes('W') && matches[0].blocks.includes('V'));
 });
 
+test('candidates sharing the open film’s exact lumbar geometry stay at d ≈ 0 and 100%: float noise in V is not scaled up to one (ruling R25)', () => {
+  const open = study('open');
+  // Translated and scaled copies: the same shape, so V is float noise; same angles, so A and SL are 0.
+  const copies = [study('c1', { geometry: lumbarGeometry({ dx: 3 }) }), study('c2', { geometry: lumbarGeometry({ dx: 7, scale: 1.3 }) }),
+    study('c3', { geometry: lumbarGeometry({ dy: 11, scale: 0.7 }) })];
+  const { matches } = findSimilar(open, [open, ...copies], { scope: 'all', mode: 'shape' });
+  assert.equal(matches.length, 3);
+  assert.ok(matches.every((m) => m.blocks.includes('V') && m.d < 1e-6 && m.match === 100), matches.map((m) => `${m.study.id} d=${m.d} ${m.match}%`).join(', '));
+});
+
 test('the whole-spine balance: globalBalance is finite on a calibrated full-spine film, B is present for a calibrated pair, and B and BC are absent when one film is uncalibrated', () => {
   const a = fullSpine('a', { study: { calibration: CALIBRATION } });
   const b = fullSpine('b', { study: { calibration: CALIBRATION } });
@@ -254,8 +266,7 @@ test('a block only two candidates share is scaled by their mean, so a calibrated
   // A calibrated open full-spine film; two calibrated candidates with the same shape and angles whose
   // C7-S1 SVA is 10 and 15 mm off (C7 20 and 30 px further back at 0.5 mm/px); uncalibrated candidates
   // (no D, BC or B) off in PI and LL. Every film carries the same embedding, so the appearance blocks
-  // are present and exactly 0 (axis vectors: a normalised [1, 1] would leave 2e-16 of float noise for
-  // the median to scale up). Under the old rule (scale 1 below three values) B entered as raw 10 and 15
+  // are present and exactly 0 (axis vectors). Under the old rule (scale 1 below three values) B entered as raw 10 and 15
   // and the calibrated pair scored 3% and 0%, below every uncalibrated film.
   const calibrated = (id, c7x) => {
     const s = fullSpine(id, { study: { calibration: CALIBRATION } });

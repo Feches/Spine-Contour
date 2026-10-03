@@ -157,8 +157,11 @@ export function pairDistances(open, candidate, weights) {
   return d;
 }
 
+// A median at or below this is float noise, not spread: such a block scales by 1 and stays at noise (R25).
+const NO_SPREAD = 1e-9;
+
 // The median of whatever values are present -- one value is itself, two their mean -- when it is
-// positive, else 1 (none present, or a non-positive median). Ruling R20: a block only one or two
+// above NO_SPREAD, else 1 (none present, or no spread). Ruling R20: a block only one or two
 // candidates share (the millimetre blocks between calibrated films) is scaled like every other, so its
 // raw millimetres or degrees never sit unscaled beside median-scaled blocks.
 export function medianScale(values) {
@@ -167,7 +170,7 @@ export function medianScale(values) {
   const sorted = [...present].sort((a, b) => a - b);
   const mid = sorted.length >> 1;
   const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-  return median > 0 ? median : 1;
+  return median > NO_SPREAD ? median : 1;
 }
 
 // sqrt(sum w_i (d_i / m_i)^2 / sum w_i) over the present, weighted blocks; null with none.

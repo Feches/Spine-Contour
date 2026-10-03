@@ -726,8 +726,9 @@ export function pairDistances(open, candidate, weights)
                                          //   is 0 or the pair lacks it (spec §6's last column); appearance blocks need the
                                          //   same `model.onnx_sha256` on both, and W both films `full_spine`
 export function medianScale(values)      // → number   the median of whatever values are present (one → itself, two → their
-                                         //   mean) when positive; 1 with none present or a non-positive median
-                                         //   *(amended 2026-10-03, final review, ruling R20: was "over ≥ 3")*
+                                         //   mean) when above 1e-9 (NO_SPREAD); 1 with none present or a median at or
+                                         //   below it — float noise is no spread, so the block stays at noise
+                                         //   *(amended 2026-10-03, final review, rulings R20: was "over ≥ 3", and R25)*
 export function fuse(distances, scales, weights)
                                          // → {d, blocks: string[]} | null   sqrt(Σ w (d/m)² / Σ w) over the present, weighted blocks
 export function matchScore(d)            // → integer 0..100   round(100 · exp(−d))

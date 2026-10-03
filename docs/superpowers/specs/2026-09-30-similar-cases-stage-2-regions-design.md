@@ -261,10 +261,11 @@ over `record.cervical`, `W` over `record.whole` with both films `full_spine`.
 `weightsFor(region, mode)` → `{V, H, A, SL, D, VC, AC, BC, SC, B, W, C, CC}` per §6's rule, computed, not hand-written,
 so the families and kinds are the only tables. `fuse(distances, scales, weights)` is stage 1's, unchanged; `matchScore`
 unchanged. `medianScale`: `m_i` is the median of `d_i` over every candidate for which the block is present — one
-candidate's value is itself, two candidates' their mean — when at least one is present and the median is positive, else
-`1` *(amended 2026-10-03, final review, ruling R20: stage 1 §7.4's "when at least three such candidates exist" let a
+candidate's value is itself, two candidates' their mean — when at least one is present and the median is above `1e-9`,
+else `1` *(amended 2026-10-03, final review, ruling R20: stage 1 §7.4's "when at least three such candidates exist" let a
 millimetre block shared by one or two calibrated candidates enter the fusion as raw millimetres beside median-scaled
-blocks and bury those films)*.
+blocks and bury those films; ruling R25: a median at or below `1e-9` is float noise, not spread, and scaling by it would
+give every candidate a full 1 on a block they all share exactly)*.
 
 ### 7.5 Candidates
 
