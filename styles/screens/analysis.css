@@ -233,7 +233,9 @@
 .similar-line-1 { display: flex; align-items: baseline; gap: 8px; }
 .similar-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
 .similar-match { font-family: 'Chivo Mono', monospace; font-size: 12px; font-weight: 500; color: var(--ink); white-space: nowrap; }
-.similar-missing { color: var(--muted); font-size: 10px; letter-spacing: .08em; }
+/* The absent blocks get their own line under the name and match, wrapping as needed, so several of
+   them never squeeze the film's name off line 1 (Task 6 review). */
+.similar-missing { display: block; white-space: normal; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
 .similar-meta, .similar-angles { color: var(--muted); font-variant-numeric: tabular-nums; }
 .similar-outcome[data-outcome="yes"] { color: var(--accent); }
 .similar-outcome[data-outcome="conflicting"] { color: var(--accent); font-style: italic; }
