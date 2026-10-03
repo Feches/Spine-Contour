@@ -1,5 +1,6 @@
-"""Appearance embeddings: one general image encoder, exported to ONNX like the structure models,
-run on the whole film and on the crop the models read (similar-cases spec, 2026-09-12, section 10).
+"""Appearance embeddings: one general image encoder, exported to ONNX like the structure models.
+The record carries a lumbar crop, a cervical crop and the whole film, chosen by the film's region
+(similar-cases spec, 2026-09-12, section 10; stage 2, 2026-09-30, sections 8 and 9).
 
 Nothing about the encoder is hard-coded here. Input size, channels, mean, standard deviation,
 output dimension and pooling all come from backend/onnx/embed.json, so swapping the network is a
@@ -77,33 +78,44 @@ def preprocess(image: np.ndarray, metadata: dict) -> np.ndarray:
     return ((stacked - mean) / std).astype(np.float32)
 
 
-def crop_window(image: np.ndarray, framing: dict | None) -> np.ndarray:
-    """The film cut by the framing window the models ran on, clipped to the film. The whole film
-    when the window is absent, malformed or degenerate (spec section 10.2)."""
-    window = framing.get("window") if isinstance(framing, dict) else None
+REGIONS = ("lumbar", "cervical", "full_spine")
+
+
+def crop_window(image: np.ndarray, window, *, xywh: bool = False) -> np.ndarray | None:
+    """The film cut by `window`, clipped to the film: corners [left, top, right, bottom], or with
+    `xywh` the cervical pipeline's [x, y, width, height] (spec 2026-09-30, section 8). None -- never
+    the whole film standing in for a crop -- when the window is absent, malformed or degenerate."""
     if not isinstance(window, (list, tuple)) or len(window) != 4:
-        return image
+        return None
     try:
-        x0, y0, x1, y1 = (int(round(float(v))) for v in window)
+        values = [float(v) for v in window]
     except (TypeError, ValueError):
-        return image
+        return None
+    if xywh:
+        x0, y0, w, h = values
+        x1, y1 = x0 + w, y0 + h
+    else:
+        x0, y0, x1, y1 = values
+    x0, y0, x1, y1 = (int(round(v)) for v in (x0, y0, x1, y1))
     height, width = image.shape[:2]
     x0, x1 = max(0, min(x0, width)), max(0, min(x1, width))
     y0, y1 = max(0, min(y0, height)), max(0, min(y1, height))
     if x1 - x0 < 8 or y1 - y0 < 8:
-        return image
+        return None
     return image[y0:y1, x0:x1]
 
 
-def film_type(framing: dict | None) -> str | None:
-    """'whole-spine' when the search ran and chose a crop smaller than the film; 'lumbar' when the
-    models read the whole film (the search off, or the whole film won); None without a framing
-    record (spec section 7.3, decision 5)."""
-    if not isinstance(framing, dict) or "searched" not in framing:
-        return None
-    if framing.get("searched") and not framing.get("whole_film_won"):
-        return "whole-spine"
-    return "lumbar"
+def region_crops(image: np.ndarray, framing, region: str) -> dict:
+    """The lumbar and cervical crops a region's framing record locates (spec section 8): a lumbar
+    result's `window` is the lumbar crop; a cervical result's `window` (x, y, width, height) is the
+    cervical crop; a full-spine result names both under `lumbar_window` and `cervical_window`."""
+    framing = framing if isinstance(framing, dict) else {}
+    if region == "cervical":
+        return {"lumbar": None, "cervical": crop_window(image, framing.get("window"), xywh=True)}
+    if region == "full_spine":
+        return {"lumbar": crop_window(image, framing.get("lumbar_window")),
+                "cervical": crop_window(image, framing.get("cervical_window"))}
+    return {"lumbar": crop_window(image, framing.get("window")), "cervical": None}
 
 
 def embed(image: np.ndarray, metadata: dict | None = None) -> list[float]:
@@ -121,12 +133,16 @@ def embed(image: np.ndarray, metadata: dict | None = None) -> list[float]:
     return [round(float(v), 5) for v in vector / norm]
 
 
-def embedding_record(image: np.ndarray, framing: dict | None) -> dict:
-    """{model, crop, whole, film_type} for one film (spec section 10.2): `whole` is the film,
-    `crop` the framing window cut from it. Raises when the graph or its metadata is missing; the
-    callers decide whether that fails anything (never in /predict, a 503 on /embed)."""
+def embedding_record(image: np.ndarray, framing, region: str = "lumbar") -> dict:
+    """{model, lumbar, cervical, whole, region} for one film (spec 2026-09-30, sections 8 and 9):
+    each crop vector None where the region has no such window; `whole` always. Raises ValueError for
+    an unknown region and EmbeddingUnavailable without the graph; the callers decide what fails."""
+    if region not in REGIONS:
+        raise ValueError(f"Unknown region {region!r}; available: {', '.join(REGIONS)}")
     metadata = load_metadata()
+    crops = region_crops(image, framing, region)
     return {"model": model_record(metadata),
-            "crop": embed(crop_window(image, framing), metadata),
+            "lumbar": embed(crops["lumbar"], metadata) if crops["lumbar"] is not None else None,
+            "cervical": embed(crops["cervical"], metadata) if crops["cervical"] is not None else None,
             "whole": embed(image, metadata),
-            "film_type": film_type(framing)}
+            "region": region}
