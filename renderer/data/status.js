@@ -107,10 +107,13 @@ export function isReviewed(study) {
 // their own status again. This is the only source of 'proc'.
 /** @returns {'proc'|'fail'|'unseg'|'ok'|'rev'|'seg'} */
 export function displayStatus(study, runningId = null, batch = null) {
-  if (study && runningId !== null && runningId === study.id) return 'proc';
   // An Embed batch (similar-cases spec section 12) runs only segmented films and never segments
-  // one, so its waiting films keep their own status; only a Segment batch's films are Processing.
-  if (study && batch && batch.kind !== 'embed' && !batch.stopping && isQueued(batch, study.id)) return 'proc';
+  // one, so the film it is embedding and its waiting films keep their own status; only a
+  // segmentation run and a Segment batch's films are Processing. The Embed batch is embedStudy's
+  // only caller, so `batch.kind` is the embed signal.
+  const embedding = batch?.kind === 'embed';
+  if (study && !embedding && runningId !== null && runningId === study.id) return 'proc';
+  if (study && batch && !embedding && !batch.stopping && isQueued(batch, study.id)) return 'proc';
   return deriveStatus(study);
 }
 

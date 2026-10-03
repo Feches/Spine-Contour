@@ -174,6 +174,11 @@ MODEL_NAMES = {"s1": "S1 detector", "vertebra": "vertebra model",
                # The appearance encoder (similar-cases spec, 2026-09-12, section 10): loaded,
                # cached and released like the structure models, never offered by /models.
                "embed": "appearance embedding model"}
+# Ruling R7 (merge review, 2026-10-03): the kinds that always run on the CPU provider, whatever the
+# processor setting, and that GPU qualification (gpu_parity.py) never loads, hashes or replays. The
+# appearance encoder is one: a missing embed.onnx or a DirectML miss on it alone must never cost a
+# GPU run its GPU, and with Appearance embeddings Off nothing may load it. The one source of the rule.
+CPU_ONLY_KINDS = frozenset({"embed"})
 _resident_key = None
 _cache_policy = None
 
@@ -206,6 +211,10 @@ def _load_model(kind, policy):
         raise FileNotFoundError(f"Missing ONNX model: {path}. Run python tools/export_onnx.py before starting the development app.")
     _, low_memory, adapter = policy
     providers = ["CPUExecutionProvider"]
+    if kind in CPU_ONLY_KINDS:
+        # Never a DirectML session; the CPU's session options too (memory patterns on), so the
+        # session is the one a CPU-processor run builds.
+        policy, adapter = (policy[0], low_memory, None), None
     if adapter is not None:
         runtime.report("loading", f"Loading {MODEL_NAMES[kind]} on {runtime.processor().name}")
         # DirectML takes Windows' adapter index. Nodes it cannot run stay on the CPU provider.

@@ -30,6 +30,12 @@ TOLERANCE = {'rtol': 2e-3, 'atol': 2e-3, 'landmark_px': .25, 'measurement': .1}
 _VERDICTS = {}
 
 
+def qualified_kinds():
+    """The graphs qualification covers: every MODEL_NAMES kind except models.CPU_ONLY_KINDS (Ruling R7),
+    which always run on the CPU provider, so a GPU is never checked, hashed or replayed against them."""
+    return [kind for kind in models.MODEL_NAMES if kind not in models.CPU_ONLY_KINDS]
+
+
 def compare(reference, candidate):
     result = {'passed': False, 'elements': int(reference.size)}
     if reference.shape != candidate.shape or reference.dtype != candidate.dtype:
@@ -104,6 +110,8 @@ def tree_close(a, b, tolerance):
 def probes(kind):
     if kind == 'embed':
         # The appearance encoder's frame comes from embed.json, never from the structure models.
+        # Qualification never asks for it (qualified_kinds); tools/packaging/check_cpu_wheels.py
+        # does, because the encoder runs on the CPU provider of both wheels.
         yield from _embed_probes()
         return
     size = models.FEMORAL_IMAGE_SIZE if kind == 'femoral' else models.MODEL_IMAGE_SIZE
@@ -182,7 +190,7 @@ def _hash(path, size, mtime):
 
 def fingerprint(gpu):
     hashes = {}
-    for kind in models.MODEL_NAMES:
+    for kind in qualified_kinds():
         path = models.ONNX_DIRECTORY / f'{kind}.onnx'; stat = path.stat()
         hashes[kind] = _hash(str(path), stat.st_size, stat.st_mtime_ns)
     # Read live driver versions rather than ORT's cached device metadata. If this
@@ -205,7 +213,7 @@ def verify_gpu(gpu):
         result.update(fingerprint(gpu))
         threads = runtime.Options().inference_threads
         with tempfile.TemporaryDirectory(prefix='spine-gpu-parity-') as directory:
-            for kind in models.MODEL_NAMES:
+            for kind in qualified_kinds():
                 runtime.checkpoint()
                 runtime.report('gpu_verification', f'Checking GPU against CPU: {models.MODEL_NAMES[kind]}')
                 for low in ([False, True] if kind in ('vertebra', 's1') else [False]):
@@ -320,6 +328,8 @@ def verify_films(manifest, gpu_id):
         def recorded_run(model, names, feeds):
             result = original_run(model, names, feeds)
             kind = model.path.stem
+            if kind in models.CPU_ONLY_KINDS:
+                return result  # Ruling R7: never replayed on the GPU.
             if active[0] != kind:
                 active[:] = [None, None]; gc.collect()
                 active[:] = [kind, new_session(kind, (settings.inference_threads, settings.low_memory, gpu.adapter), True)]
@@ -351,8 +361,10 @@ def verify_films(manifest, gpu_id):
                     'framing': bool(tree_close(reference['qc'].get('framing'), candidate['qc'].get('framing'), .25)),
                     'coverage': bool(tree_close(reference['qc'].get('coverage'), candidate['qc'].get('coverage'), 0)),
                     'detection': bool(tree_close(reference['qc'].get('film_detection'), candidate['qc'].get('film_detection'), .002)),
+                    # A CPU-only kind (Ruling R7) runs on the CPU in a GPU run by design, not as a fallback.
                     'gpu': processing['processor']['resolved'] == gpu_id and processing['processor']['note'] is None and
-                           bool(processing['providers']) and all(processors.DIRECTML in p for p in processing['providers'].values()),
+                           bool(processing['providers']) and all(processors.DIRECTML in p for kind, p in processing['providers'].items()
+                                                                 if kind not in models.CPU_ONLY_KINDS),
                 })
             report['runs'] = checks
             report['passed'] = all(all(c.values()) for c in checks) and bool(report['raw_feeds']) and all(

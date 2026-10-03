@@ -63,6 +63,72 @@ def test_probe_preprocessing_shapes():
     assert detr[-1][1]['pixel_values'].shape == (1, 3, 1067, 800)
 
 
+# Ruling R7: the appearance encoder always runs on the CPU and is never GPU-qualified, so a missing
+# embed.onnx or a DirectML miss on the encoder alone can never cost a GPU run its GPU.
+def test_fingerprint_hashes_only_the_qualified_graphs(monkeypatch, tmp_path):
+    from backend.models import models
+    gpu = processors.Processor('gpu:10de:2786', 'gpu', 'test GPU', 0)
+    structure = [kind for kind in models.MODEL_NAMES if kind != 'embed']
+    for kind in structure:
+        (tmp_path / f'{kind}.onnx').write_bytes(kind.encode())
+    monkeypatch.setattr(models, 'ONNX_DIRECTORY', tmp_path)
+    def no_driver(*args, **kwargs): raise OSError('no driver query in tests')
+    monkeypatch.setattr(parity.subprocess, 'run', no_driver)
+    assert sorted(parity.fingerprint(gpu)['models']) == sorted(structure)
+
+
+def test_qualification_never_loads_the_appearance_encoder(monkeypatch, tmp_path):
+    import json
+    gpu = processors.Processor('gpu:10de:2786', 'gpu', 'test GPU', 0)
+    monkeypatch.setattr(processors, 'resolve', lambda identity: (gpu, None))
+    monkeypatch.setattr(parity, 'fingerprint', lambda g: {'driver': 'test'})
+    monkeypatch.setattr(parity.models, 'MODEL_NAMES', {'hrnet': 'HRNet', 'embed': 'appearance embedding model'})
+    monkeypatch.setattr(parity, 'probes', lambda kind: [('probe', {'image': np.zeros((1,), np.float32)})])
+    sessions = []
+    class Session:
+        def run(self, names, feeds): return [np.zeros((1, 22, 2), np.float32)]
+        def end_profiling(self):
+            path = tmp_path / 'profile.json'
+            path.write_text(json.dumps([{'args': {'provider': processors.DIRECTML}}]))
+            return str(path)
+    monkeypatch.setattr(parity, 'new_session', lambda kind, policy, gpu=False, profile=None: sessions.append(kind) or Session())
+    result = parity.verify_gpu(gpu)
+    assert sessions == ['hrnet'] * 3
+    assert set(result['models']) == {'hrnet'} and result['passed']
+
+
+def test_film_parity_never_replays_the_encoder_or_requires_it_on_the_gpu(monkeypatch, tmp_path):
+    import json
+    from pathlib import Path
+    from backend import server
+    from backend.models import models
+    gpu = processors.Processor('gpu:10de:2786', 'gpu', 'test GPU', 0)
+    monkeypatch.setattr(processors, 'resolve', lambda identity: (gpu, None))
+    (tmp_path / 'film.png').write_bytes(b'not a radiograph')
+    manifest = tmp_path / 'films.json'
+    manifest.write_text(json.dumps([{'path': 'film.png', 'region': 'lumbar'}]))
+    class Session:
+        def run(self, names, feeds): return [np.zeros((1, 22, 2), np.float32)]
+    replayed = []
+    monkeypatch.setattr(parity, 'new_session', lambda kind, policy, gpu=False, profile=None: replayed.append(kind) or Session())
+    def run_prediction(request):
+        # One structure model and the encoder, each through InferenceModel.run as production runs them.
+        for kind in ('hrnet', 'embed'):
+            model = object.__new__(models.InferenceModel)
+            model.path, model.session = Path(f'{kind}.onnx'), Session()
+            model.run(None, {'image': np.zeros((1,), np.float32)})
+        on_gpu = request['settings'].processor == gpu.id
+        return {'geometry': {}, 'measurements': {}, 'calibration': None, 'qc': {'processing': {
+            'processor': {'resolved': request['settings'].processor, 'note': None},
+            'providers': {'hrnet': [processors.DIRECTML, 'CPUExecutionProvider'] if on_gpu else ['CPUExecutionProvider'],
+                          'embed': ['CPUExecutionProvider']}}}}
+    monkeypatch.setattr(server, 'run_prediction', run_prediction)
+    [report] = parity.verify_films(manifest, gpu.id)
+    assert replayed == ['hrnet']
+    assert [feed['kind'] for feed in report['raw_feeds']] == ['hrnet']
+    assert report['passed'] and all(run['gpu'] for run in report['runs'])
+
+
 def test_decoded_landmarks_fail_even_when_relative_raw_tolerance_passes():
     a = np.full((1, 22, 2), 700, np.float32); b = a + .1
     assert parity.outputs([a], [b])['passed']

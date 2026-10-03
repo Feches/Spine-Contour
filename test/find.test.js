@@ -115,6 +115,15 @@ test('summaryCounts: UNSEGMENTED counts Unsegmented, Processing and Failed; TO R
   assert.deepEqual(summaryCounts(null), { total: 0, unsegmented: 0, toReview: 0 });
 });
 
+// (merge fix, 2026-10-03) An Embed batch runs only segmented films: the film it is embedding keeps
+// its own pill, so it stays out of UNSEGMENTED and a Needs review film stays in TO REVIEW.
+test('summaryCounts: the film a running Embed batch is embedding is not unsegmented', () => {
+  const rows = [study('SP-1000', SEG), study('SP-1001', REV)];
+  assert.deepEqual(summaryCounts(rows, 'SP-1000', newBatch(['SP-1000', 'SP-1001'], 'embed')), { total: 2, unsegmented: 0, toReview: 1 });
+  assert.deepEqual(summaryCounts(rows, 'SP-1001', newBatch(['SP-1001'], 'embed')), { total: 2, unsegmented: 0, toReview: 1 });
+  assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'asc' }, 'SP-1000', newBatch(['SP-1000'], 'embed'))), ['SP-1001', 'SP-1000']);
+});
+
 test('an unknown key keeps the input order', () => {
   const rows = [study('SP-1001'), study('SP-1000')];
   assert.deepEqual(ids(sortFindRows(rows, { key: 'lordosis', dir: 'asc' })), ['SP-1001', 'SP-1000']);

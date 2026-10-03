@@ -928,7 +928,7 @@
 .confidence-breakdown p:last-child { margin-bottom: 0; color: var(--body); }
 .viewer-edit-help { flex-basis: 100%; padding: 4px 8px; color: var(--stage-accent); font-size: 11px; text-align: right; }
 
-/* ===== 06— COMPARISON MODE (similar-cases spec 8.5; plan 07 Tasks 3-6, adapted) ========
+/* ===== 06 — COMPARISON MODE (similar-cases spec 8.5; plan 07 Tasks 3-6, adapted) ========
    The stage host holds two panes. The second is display:none until a study is compared, so a
    hidden pane contributes no flex gap and the primary keeps the whole stage. The panel widens
    by 40px to carry the {other} and delta columns. */

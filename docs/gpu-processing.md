@@ -35,6 +35,9 @@ Before a GPU processes a film, all six models must pass a local numerical check:
 - an ONNX Runtime profile showing actual DirectML node execution for each model;
 - an additional low-memory pass for vertebra and S1.
 
+The appearance encoder (`embed.onnx`) always runs on the CPU provider, whatever the
+processor setting, and is not part of qualification.
+
 The inputs are numerical probes (zero, blank/preprocessed, seeded noise and smooth
 arrays, plus both cervical detector aspect ratios). They are not evidence of
 segmentation accuracy on radiographs. Qualification can take several minutes. Its

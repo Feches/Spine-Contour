@@ -191,12 +191,29 @@ test('displayStatus reads Processing for every film still waiting in a running b
   // No batch, or no study.
   assert.equal(displayStatus(idle, null, null), 'unseg');
   assert.equal(displayStatus(null, null, batch), 'unseg');
-  // An Embed batch never segments: its waiting films keep their own status, and only the film
-  // in flight (state.running) reads Processing.
+  // An Embed batch never segments: its waiting films and the film in flight (state.running) keep
+  // their own status.
   const embedding = { ...batch, kind: 'embed', done: 0 };
   assert.equal(displayStatus(done, null, embedding), 'seg');
-  assert.equal(displayStatus(done, 'SP-1002', embedding), 'proc');
+  assert.equal(displayStatus(done, 'SP-1002', embedding), 'seg');
   assert.equal(displayStatus(done, null, { ...batch, kind: 'segment', done: 0 }), 'proc');
+});
+
+// (merge fix, 2026-10-03) The film an Embed batch is embedding is already segmented: it keeps the
+// status it derives, so the summary and the status sort do not move it. A Segment batch's running
+// film reads Processing as before.
+test('displayStatus keeps the derived status of the film an Embed batch is running', () => {
+  const embedBatch = (id) => ({ kind: 'embed', ids: [id], done: 0, failed: [], warnings: [], skipped: 0, stopping: false });
+  const segmentBatch = (id) => ({ ...embedBatch(id), kind: 'segment' });
+  const segmented = { id: 'SP-1000', ...CLEAN };
+  const reviewed = { id: 'SP-1001', ...CLEAN, reviewedAt: MARK };
+  const suspect = { id: 'SP-1002', ...SUSPECT };
+  for (const [study, derived] of [[segmented, 'seg'], [reviewed, 'ok'], [suspect, 'rev']]) {
+    assert.equal(deriveStatus(study), derived);
+    assert.equal(displayStatus(study, study.id, embedBatch(study.id)), derived, study.id);
+    assert.equal(displayStatus(study, study.id, { ...embedBatch(study.id), stopping: true }), derived, study.id);
+    assert.equal(displayStatus(study, study.id, segmentBatch(study.id)), 'proc', study.id);
+  }
 });
 
 test('statusLabel names the fourth status', () => {

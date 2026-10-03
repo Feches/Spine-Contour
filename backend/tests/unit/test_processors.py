@@ -7,6 +7,7 @@ checked by `--verify-models` on a workstation (docs/gpu-processing.md).
 import ctypes
 from functools import lru_cache
 import logging
+from pathlib import Path
 import sys
 
 import numpy as np
@@ -262,6 +263,38 @@ def test_gpu_sessions_use_directml_on_the_resolved_adapter_without_memory_patter
     assert 'Loading S1 detector on NVIDIA GeForce RTX 3060 Laptop GPU' in [e['message'] for e in events]
     assert models.session_options((2, False, None)).enable_mem_pattern
     assert not models.session_options((2, False, 1)).enable_mem_pattern
+
+
+# Ruling R7: the appearance encoder is never GPU-qualified, so it never gets a DirectML session,
+# whatever the processor; a structure model in the same run still does. Its session options are
+# the CPU's, so its vectors are the ones a CPU run computes.
+def test_the_appearance_encoder_runs_on_the_cpu_under_a_gpu_processor(monkeypatch, tmp_path, devices):
+    devices.append(gpu(0))
+    for kind in ('embed', 'hrnet'):
+        (tmp_path / f'{kind}.onnx').write_bytes(b'graph')
+    monkeypatch.setattr(models, 'ONNX_DIRECTORY', tmp_path)
+    created, events = {}, []
+    class Session:
+        def __init__(self, path, sess_options, providers, enable_fallback=1):
+            assert enable_fallback == 0
+            created[Path(path).stem] = (providers, sess_options.enable_mem_pattern)
+            self.providers = [p[0] if isinstance(p, tuple) else p for p in providers]
+        def get_providers(self): return self.providers
+        def run(self, *args): return [np.zeros((1, 384), np.float32)]
+    monkeypatch.setattr(ort, 'InferenceSession', Session)
+    models.release_models()
+    with runtime.session(runtime.parse_options('standard', 2, processor='gpu:10de:2520'), events.append):
+        models._infer('embed', lambda model: model.run(None, {}), None)
+        models._infer('hrnet', lambda model: model.run(None, {}), None)
+        assert runtime.providers() == {'embed': ['CPUExecutionProvider'],
+                                       'hrnet': ['DmlExecutionProvider', 'CPUExecutionProvider']}
+    models.release_models()
+    assert created['embed'] == (['CPUExecutionProvider'], True)
+    assert created['hrnet'][0][0] == ('DmlExecutionProvider', {'device_id': '0', 'disable_metacommands': 'True'})
+    messages = [e['message'] for e in events]
+    assert 'Loading appearance embedding model' in messages
+    assert 'Loading HRNet landmark model on NVIDIA GeForce RTX 3060 Laptop GPU' in messages
+    assert models.CPU_ONLY_KINDS == {'embed'}
 
 
 def test_changing_processor_replaces_cached_sessions(monkeypatch, devices):
