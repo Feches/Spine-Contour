@@ -8,8 +8,7 @@
  */
 import { setState } from './store.js';
 import { loadEmbeddings, saveEmbedding, embeddingModel } from './api.js';
-import { validEmbedding, isCurrent } from './data/embeddings.js';
-import { vector } from './data/similarity.js';
+import { readEmbedding, isCurrent } from './data/embeddings.js';
 
 const records = new Map();
 let loading = null;
@@ -30,7 +29,8 @@ export function ensureEmbeddings() {
       console.warn('Could not load the saved embeddings:', error.message);
     }
     for (const record of loaded) {
-      if (validEmbedding(record)) records.set(record.id, record);
+      const read = readEmbedding(record);
+      if (read) records.set(read.id, read);
       else console.warn(`embeddings: a stored record was skipped (${record?.id ?? 'unknown id'})`);
     }
     try {
@@ -75,18 +75,10 @@ export function forgetEmbedding(id) {
   if (records.delete(id)) bump();
 }
 
-// The Embed button's rule (spec section 12): a real, fully covered, segmented study without a
-// current record -- segmented before this build, with the setting off, after a failed stage, or
-// under an older graph.
+// The Embed button's rule (spec 2026-09-30, section 11): a real, segmented study without a current
+// record -- segmented before this build, with the setting off, after a failed stage, under an older
+// graph, or with a version-1 record. Coverage gates nothing: a film ranks on the blocks it has.
 export function needsEmbedding(study) {
   if (!study || study.source !== 'real' || study.measurements == null || study.geometry == null) return false;
-  if (vector(study) === null) return false;
   return !isCurrent(records.get(study.id), bundledModelSha());
-}
-
-// The Embed note's rule (the studies-table review ruling, 2026-09-12): a real, segmented study
-// that needsEmbedding will never count, because partial coverage makes it impossible to rank.
-export function cannotEmbed(study) {
-  if (!study || study.source !== 'real' || study.measurements == null || study.geometry == null) return false;
-  return vector(study) === null;
 }
