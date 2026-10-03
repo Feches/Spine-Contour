@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   sagittalRows, lordosisRows, discRows, alignmentRows,
-  piResidual, isConsistent, deltaRow,
+  piResidual, isConsistent, deltaRow, deltaThreshold,
 } from '../renderer/data/measurements.js';
 
 const MEASUREMENTS = {
@@ -181,6 +181,29 @@ test('deltaRow formats a signed one-decimal delta with the correct minus glyph',
   const negative = deltaRow({ value: 40, absent: false }, { value: 33, absent: false }, 5);
   assert.equal(negative.text, '−7.0');
   assert.equal(negative.overThreshold, true);
+});
+
+test('deltaRow has no difference to show for a pixel row: across films a pixel difference is magnification (ruling R23)', () => {
+  const px = deltaRow({ key: 'C2C7_SVA', value: 10, unit: 'px', absent: false }, { key: 'C2C7_SVA', value: 40, unit: 'px', absent: false }, 5);
+  assert.equal(px.text, '—');
+  assert.equal(px.overThreshold, false);
+  const global = deltaRow({ key: 'GLOBAL_SVA', value: 10, unit: 'px', absent: false }, { key: 'GLOBAL_SVA', value: 12, unit: 'px', absent: false }, 5);
+  assert.equal(global.text, '—');
+});
+
+test('deltaThreshold: 10 mm for an SVA row in millimetres, 2 mm for any other millimetre row, 5 for degrees', () => {
+  const sva = { key: 'C2C7_SVA', value: 20, unit: 'mm', absent: false };
+  assert.equal(deltaThreshold(sva), 10);
+  const nine = deltaRow(sva, { ...sva, value: 29 }, deltaThreshold(sva));
+  assert.equal(nine.text, '+9.0');
+  assert.equal(nine.overThreshold, false, 'a 9 mm SVA difference is not highlighted');
+  const eleven = deltaRow(sva, { ...sva, value: 9 }, deltaThreshold(sva));
+  assert.equal(eleven.text, '−11.0');
+  assert.equal(eleven.overThreshold, true, 'an 11 mm SVA difference is');
+  assert.equal(deltaThreshold({ key: 'GLOBAL_SVA', unit: 'mm' }), 10);
+  assert.equal(deltaThreshold({ key: 'SPONDY_L4_L5', unit: 'mm' }), 2);
+  assert.equal(deltaThreshold({ key: 'PI', unit: '°' }), 5);
+  assert.equal(deltaThreshold({ key: 'C2C7_COBB', unit: '°' }), 5);
 });
 
 test('deltaRow is over threshold exactly at the boundary and empty when either row is absent', () => {

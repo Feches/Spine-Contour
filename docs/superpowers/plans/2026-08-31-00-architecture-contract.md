@@ -592,7 +592,9 @@ export function discRows(study)                    // → DiscRow[]; 2026-09-09 
 export function alignmentRows(study)               // → Row[]  always absent
 export function piResidual(measurements)           // → number|null  |PI-(PT+SS)|
 export function isConsistent(measurements)         // → boolean (residual <= RESIDUAL_LIMIT)
-export function deltaRow(row, otherRow, threshold)  // → {text,overThreshold}
+export function deltaRow(row, otherRow, threshold)  // → {text,overThreshold}; '—' when either row's unit is 'px'
+export function deltaThreshold(row)                // → 10 for an SVA row in 'mm', 2 for any other 'mm' row, else 5
+                                                   //   *(amended 2026-10-03, final review, ruling R23; 10 mm provisional)*
 export const RESIDUAL_LIMIT = 1.0                  // (plan 05) the ONE residual threshold; data/status.js re-exports it
 ```
 
@@ -1489,7 +1491,9 @@ compare mount is torn down together with the primary in `teardown()`, never on i
 `updateViewer(study, {match = null} = {})` (inside `mountViewer`'s closure, not a separate export) draws the
 chip; the internal `updateMeasurements(study, other = null)` (inside `mountMeasurements`'s closure)
 draws the second column, with `deltaRow(row, otherRow, threshold)` in `data/measurements.js` computing
-`Δ` at 5° for angles and 2 mm for disc heights. `clinical-data.js`'s private `visibleStudies(state)`
+`Δ` at 5° for angles and 2 mm for disc heights *(amended 2026-10-03, final review, ruling R23: the threshold is
+`deltaThreshold(row)` — 10 mm for a C2–C7 or C7–S1 SVA row in millimetres, a provisional default — and a row in pixels
+shows `—` for its `Δ`, never highlighted, because a cross-film pixel difference is magnification, not anatomy)*. `clinical-data.js`'s private `visibleStudies(state)`
 returns `[open]` or `[open, compare]`, so the drawer shows two rows in comparison mode. **Naming, per
 the gate (decision 76):** the badge, the compare chip, the viewer strip and its tooltip, and the
 compare pane's watermark footer all read `filmLabel(study)` (`data/labels.js`) — never `study.id` —

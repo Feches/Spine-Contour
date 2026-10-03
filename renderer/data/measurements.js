@@ -92,8 +92,20 @@ export function isConsistent(measurements) {
   return residual <= RESIDUAL_LIMIT;
 }
 
+// The comparison column's highlight threshold for a row (ruling R23): 10 mm for an SVA row in
+// millimetres (a provisional default), 2 mm for any other millimetre row, 5 for degrees. A pixel row
+// never reaches a threshold: deltaRow gives it no difference at all.
+const SVA_ROWS = new Set(['C2C7_SVA', 'GLOBAL_SVA']);
+export function deltaThreshold(row) {
+  if (row?.unit === 'mm') return SVA_ROWS.has(row.key) ? 10 : 2;
+  return 5;
+}
+
+// A pixel value differs between two films by their magnification as much as by their anatomy, so a
+// pixel row's difference is the absent dash, never a number and never highlighted (ruling R23).
 export function deltaRow(row, otherRow, threshold) {
-  if (!row || !otherRow || row.absent || otherRow.absent || row.value == null || otherRow.value == null) {
+  if (!row || !otherRow || row.absent || otherRow.absent || row.value == null || otherRow.value == null
+    || row.unit === 'px' || otherRow.unit === 'px') {
     return { text: '—', overThreshold: false };
   }
   const delta = otherRow.value - row.value;

@@ -6,7 +6,7 @@ import { el, clear } from '../dom.js';
 import { getState, setState } from '../store.js';
 import { calibrationSummary } from '../data/calibration.js';
 import { DISC_POSITIONS } from '../data/disc-heights.js';
-import { sagittalRows, lordosisRows, discRows, alignmentRows, isConsistent, deltaRow } from '../data/measurements.js';
+import { sagittalRows, lordosisRows, discRows, alignmentRows, isConsistent, deltaRow, deltaThreshold } from '../data/measurements.js';
 import { studyName } from '../data/labels.js';
 
 const INCONSISTENCY_WARNING = 'Parameters inconsistent \u2014 check S1 and femoral landmarks.';
@@ -61,8 +61,9 @@ function pairRows(otherRows) {
 
 // A row that selects a vertebra. A real <button> so it is keyboard-reachable: these are
 // the only way to drive the viewer's construction lines without a mouse until plan 04.
-// With `other`, the compared study's value and the signed delta follow the value: 5 degrees
-// for the angles.
+// With `other`, the compared study's value and the signed delta follow the value, highlighted
+// past deltaThreshold(row): 5 degrees for the angles, 10 mm for a calibrated SVA, and no
+// delta at all for an uncalibrated SVA in pixels (ruling R23).
 function rowButton(row, onClick, other = null) {
   return el('button', {
     type: 'button',
@@ -75,7 +76,7 @@ function rowButton(row, onClick, other = null) {
     el('div', { class: 'meas-spacer' }),
     valueCell(row),
     other ? valueCell(other, ' meas-value-other') : null,
-    other ? deltaCell(row, other, 5) : null);
+    other ? deltaCell(row, other, deltaThreshold(row)) : null);
 }
 
 // A row with no selectable construction.
@@ -85,7 +86,7 @@ function rowStatic(row, other = null) {
     el('div', { class: 'meas-spacer' }),
     valueCell(row),
     other ? valueCell(other, ' meas-value-other') : null,
-    other ? deltaCell(row, other, 2) : null);
+    other ? deltaCell(row, other, deltaThreshold(row)) : null);
 }
 
 // The disc table: with `other`, each position cell stacks the value, the other's value and the
