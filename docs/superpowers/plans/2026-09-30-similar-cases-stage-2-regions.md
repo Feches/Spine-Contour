@@ -12,7 +12,8 @@
 
 ## Prerequisites (not tasks — the state the executor must find)
 
-- The branch `claude/image-similarity-visualization-400922` has merged `fork/main` at `7ce278f` (v1.0.12) or later
+- The branch `claude/image-similarity-visualization-400922` has merged `fork/main` at its current tip (`c53e91d`,
+  v1.0.15 on 2026-10-03) or later
   in a merge commit (`docs/superpowers/NEXT-SESSION.md`, step 1), and on the merged tree: `node --test test/*.test.js`
   and the backend pytest are green; `renderer/data/segmental.js`, `cervical.js`, `global-sva.js`, `disc-heights.js`
   exist; `backend/server.py`'s `/predict` carries both main's `body_part` resolution and the branch's `embedding`
@@ -41,6 +42,8 @@
 - **A cervical result's `framing.window` is `[x, y, width, height]`**; every other window is corners
   `[left, top, right, bottom]` (spec §4, §8).
 - **Two embeddings compare only when their `model.onnx_sha256` match** (stage 1 §11).
+- **Ten cards** (spec decision 15): `findSimilar`'s default `n` is 10 and the tab passes 10; the footer and the
+  tails already take any `n`.
 - Copy: `\u2014` for the dash, `\u00B7` for the separator, `\u2212` for minus in source; commit with the trailer
   `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; conventional prefixes `feat:`, `fix:`, `test:`, `docs:`.
 - Subagent models (the user's standing rule): Sonnet for Tasks 1, 2, 3, 7, 8, 9, 10; Opus for Tasks 4, 5, 6 and for
@@ -1166,6 +1169,11 @@ test('findSimilar ranks by region, names the absent blocks, counts stale records
   const alignment = findSimilar(open, [open, near, far, noHip], { scope: 'all', mode: 'alignment' });
   assert.equal(alignment.matches.at(-1).study.id, 'far');
   assert.ok(alignment.matches.some((m) => m.study.id === 'nohip' && m.blocks.includes('A')), 'two shared angles are enough for A');
+  // Spec decision 15: ten cards by default, the rest counted in total.
+  const many = Array.from({ length: 11 }, (_, i) => study(`m${i}`, { geometry: lumbarGeometry({ dx: i }) }));
+  const ten = findSimilar(open, [open, ...many], { scope: 'all', mode: 'shape' });
+  assert.equal(ten.matches.length, 10);
+  assert.equal(ten.total, 11);
 });
 
 test('findSimilar under full_spine lists the absent cervical blocks for a film whose neck was not found', () => {
@@ -1437,7 +1445,7 @@ export function candidates(open, all, { scope = 'all', region = 'lumbar', mode =
 // { matches: [{ study, d, match, blocks, absent }], total, stale, region, weights }. `absent` lists the
 // switched-on blocks the pair lacked, for the card; `stale` counts candidates whose record came from
 // another graph than the open study's (stage 1 section 11).
-export function findSimilar(open, all, { scope = 'all', region = null, mode = 'all', embeddings = {}, n = 5 } = {}) {
+export function findSimilar(open, all, { scope = 'all', region = null, mode = 'all', embeddings = {}, n = 10 } = {}) {
   const r = REGIONS.includes(region) ? region : defaultRegion(open);
   const weights = weightsFor(r, mode);
   const on = BLOCK_KEYS.filter((key) => weights[key] > 0);
@@ -1664,7 +1672,7 @@ and render the three controls and the eyebrow:
 
 Replace `openReason(open, mode, embeddings)` with `openReason(open, region, mode, embeddings)` and `EMPTY[reason]`
 with `emptyText(reason, region)`; pass `region` into `findSimilar(open, state.studies, { scope, region, mode,
-embeddings, n: 5 })` and into every `card(match, open, state, region)`. Everything else in `update` (the footer, the
+embeddings, n: 10 })` (ten cards, spec decision 15) and into every `card(match, open, state, region)`. Everything else in `update` (the footer, the
 tails, focus restore) stays as it is.
 
 - [ ] **Step 4: Verify by hand from source**
@@ -1930,8 +1938,10 @@ Read the suite top to bottom first (`sed -n '1,120p'`, then the sections). Then:
    `RANKED BY APPEARANCE` → `RANKED BY LUMBAR APPEARANCE`.
 4. The partial study `SP-9205` is a candidate now: change `cards exclude the same-subject study and the partial study`
    to exclude only `SP-9201`, and add `SP-9205` to the Shape set (`['SP-9202', 'SP-9203', 'SP-9204', 'SP-9205', 'SP-9206']`)
-   — then the "six eligible candidates render at most five cards" section needs one fewer injected extra; adjust the
-   count it injects.
+   — and the "six eligible candidates render at most five cards" section becomes "eleven eligible candidates render
+   at most ten cards": with five baseline Shape candidates, inject six extras (`SP-9210`–`SP-9215`, `geom(dx)` copies
+   of the open study with distinct subjects), check `(await count('.similar-card')) === 10` and that the more tail
+   reads `1 MORE STUDY BELOW`, then remove all six and check the five-candidate set is back.
 5. The missing markers: `· no appearance` → `· no lumbar crop`; `· no whole film` under Appearance for a lumbar film
    no longer appears (W is off under the lumbar region) — replace that check with
    `check("no card carries the whole-film marker under the lumbar region", !((await cardText('SP-9202', '.similar-missing')) ?? '').includes('no whole film'), await cardText('SP-9202', '.similar-missing'));`.

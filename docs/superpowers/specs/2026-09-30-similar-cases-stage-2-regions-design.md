@@ -4,7 +4,8 @@
 file, then `docs/superpowers/plans/2026-09-30-similar-cases-stage-2-regions.md`. Amends the stage-1 spec
 (`2026-09-12-similar-cases-outcomes-design.md`, "stage 1" below): decisions 1, 2, 5, 7 and 15 change as §5 says;
 everything else in stage 1 stands. Built on the branch `claude/image-similarity-visualization-400922` **after** it has
-merged `fork/main` at v1.0.12 or later (`docs/superpowers/NEXT-SESSION.md`, step 1); nothing here can be built on the
+merged `fork/main` at its current tip — v1.0.15, `c53e91d`, as of 2026-10-03 — or later (`docs/superpowers/NEXT-SESSION.md`,
+step 1); nothing here can be built on the
 v1.0.8 base, because every new input comes from the trunk's 1.0.9–1.0.12 work.
 
 ## 1. Problem
@@ -162,6 +163,10 @@ Each with what it costs if it is wrong. Where a stage-1 decision is superseded, 
     README describes the families. *Cost if wrong:* the manifest's version says which layout a folder has.
 14. **The two Region presets are enough; no per-family sliders.** ROADMAP §8's slider idea stays deferred behind
     outcomes. *Cost if wrong:* the table is data; sliders are a later stage's UI over it.
+15. **Ten cards, not five (the user, 2026-10-03).** *(replaces the card count in stage-1 decision 7 and §8.1)* The
+    tab shows up to ten candidates, the nearest first; the footer counts over the cards shown (`n ≤ 10`); the tail
+    counts the candidates beyond the ten; the panel scrolls as it already does. Nothing else about a card changes.
+    *Cost if wrong:* one number — `findSimilar`'s default `n` — since the footer and the tails already take any `n`.
 
 ## 6. The blocks
 
@@ -276,8 +281,9 @@ unchanged.
 
 Top to bottom: `SCOPE` (unchanged), **`REGION  Lumbar | Cervical | Whole spine`** (`state.similarRegion`, default per
 decision 8), `RANK BY` (unchanged), the eyebrow now `RANKED BY {REGION} {KINDS}` (`RANKED BY LUMBAR SHAPE`, `RANKED BY
-CERVICAL ALIGNMENT`, `RANKED BY WHOLE-SPINE SHAPE, ALIGNMENT AND APPEARANCE`), the cards, the footer, the tails. A
-Region button whose anatomy the open film lacks is disabled with a title saying so.
+CERVICAL ALIGNMENT`, `RANKED BY WHOLE-SPINE SHAPE, ALIGNMENT AND APPEARANCE`), up to ten cards (decision 15), the
+footer over the cards shown, the tails. A Region button whose anatomy the open film lacks is disabled with a title
+saying so.
 
 **Card line 1** names each absent switched-on block in the family's words: `· no hip`, `· no alignment`, `· no
 segmental`, `· no disc heights`, `· no cervical shape`, `· no cervical lordosis`, `· no cervical balance`, `· no
@@ -315,7 +321,8 @@ lifts and reads as not current; candidates by region. Dataset tests for the vers
 each window form; `embedding_record` per region with null vectors; `/embed` with and without `region`.
 
 Smoke (`smoke-similar.mjs`): the Region control renders and defaults to the open film's region; a cervical fixture
-ranks under Cervical and is empty under Lumbar with the named reason; the card's absent labels.
+ranks under Cervical and is empty under Lumbar with the named reason; the card's absent labels; eleven eligible
+candidates render ten cards and a tail of one.
 
 Not automatable, the human gate: a real full-spine film opened under each region; a real cervical film; `Embed` over a
 library holding stage-1 records (the count equals the library, then zero); `Export dataset`'s version-2 file opened.
