@@ -1,16 +1,18 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-10-02
+**Last updated:** 2026-10-03 (the similar-cases branch, first section under "Where things stand"; the main checkout's own
+line follows, last updated 2026-10-02)
 **Branch:** `claude/issue-39-failed-status-port` (the Failed-status additions on 1.0.13, issue #39 follow-up; DONE,
-merged with v1.0.14, release 1.0.15 committed and awaiting the PR — first section under "Where things stand")
+merged with v1.0.14, release 1.0.15 committed and awaiting the PR — the Failed-status section under "Where things stand")
 **Checkout:** `C:\Users\codyj\Spine Contour Desktop\Spine-Contour`, the main checkout on this workstation (no
 worktree). The `C:\Users\codyj\spine contour\…` worktree paths below are the 2026-09 layout of another workstation
 and do not exist here.
 **2026-09-13 branch (historical):** `claude/spine-contour-filename-parse-b6c1bb`, worktree
 `C:\Users\codyj\spine contour\.claude\worktrees\spine-contour-segmentation-failures-82e370`.
 **Similar-cases branch (held):** `claude/image-similarity-visualization-400922`, worktree
-`C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`, last updated on its own line 2026-09-28 (the
-trunk moved to v1.0.10; the stage-1 section under "Where things stand"), merging `fork/main` @ `c53e91d` (v1.0.15).
+`C:\Users\codyj\spine contour\.claude\worktrees\studies-ui-updates-bb040d`, last updated on its own line 2026-10-03:
+merged with `fork/main` @ `c53e91d` (v1.0.15) and stage 2 (regions) built, the human gate not yet run; releases as 1.0.16 or
+later (the first section under "Where things stand").
 **Earlier copies (historical):** `claude/studies-ui-updates-bb040d` in worktree `studies-ui-updates-bb040d`, and
 `claude/upstream-reconcile-2026-09-08` — the UI branch (batch segmentation included) with the
 backend developer's trunk `origin/ui-redesign-cw` @ `5078b1c` merged in (2026-09-08); the studies branch was
@@ -49,6 +51,134 @@ the newest architecture amendment for controls and null rules. No model or calib
 algorithm changed; no screenshots were added.
 
 ## Where things stand
+
+### Similar cases, stage 2 (regions and every measured parameter) — BUILT, human gate NOT run (branch `claude/image-similarity-visualization-400922`, worktree `studies-ui-updates-bb040d`, merged with `fork/main` @ `c53e91d`, v1.0.15)
+
+2026-10-03. Two pieces of work on the held similar-cases branch, in this order. For this branch this section supersedes
+"The trunk moved: v1.0.10 …" (the merge it asked for is done) and the Next paragraph of "Similar cases and outcomes, stage
+1" further down; both stay as history. The section directly below this one (Failed-status, v1.0.15) belongs to the main
+checkout and arrived with the merge.
+
+**1. The merge.** `fork/main` @ `c53e91d` (v1.0.15) merged into the branch as `afa6164`: 20 conflicts resolved keep-both by
+an Opus subagent, plus seven coherence edits (`gpu_parity` embed probes, `status.js`, `analysis.js` sidecar checks, three
+test files); unit 663/663 and backend 744 passed, 4 skipped on it. An Opus review of the resolution ("checked and sound" on
+all ten points asked) found five Important points (one moot) and three Minor ones, fixed or ruled (below); the fixes are a
+two-commit wave: `87b7a5d` (a film an Embed batch is running keeps
+its derived status instead of Processing, so `summaryCounts` stops counting it Unsegmented; the appearance encoder is a CPU
+model, `CPU_ONLY_KINDS` in `backend/models/models.py`, outside GPU qualification; the Analysis comparison header reads
+"06 — COMPARISON MODE") and `4164673` (the processor badge ignores the encoder's CPU provider). Unit 666/666 after the
+wave.
+
+**2. Stage 2.** Spec `docs/superpowers/specs/2026-09-30-similar-cases-stage-2-regions-design.md`; plan
+`docs/superpowers/plans/2026-09-30-similar-cases-stage-2-regions.md` (Tasks 1–10; Task 11 is the human gate; its `## Ledger`
+at the end holds the pre-flight table, every ruling, every task line with commits and counts, and the deferred minors).
+Executed by subagent-driven development (Sonnet for the mechanical tasks, Opus for the ranking, the tab and every review; a
+review per task, all clean or fixed in a round). What it builds, by commit:
+
+- **Backend** (`e288b88`, `fcb02a1`). `crop_window(image, window, *, xywh=False)` cuts by corners or by the cervical
+  pipeline's `[x, y, width, height]` and returns `None`, never the whole film, for an absent or degenerate window;
+  `embedding_record(image, framing, region="lumbar")` returns `{model, lumbar, cervical, whole, region}`; `/embed` takes a
+  `region` form field (422 outside `lumbar | cervical | full_spine`); `/predict` embeds by the region the run resolved.
+  `film_type` is gone.
+- **The record** (`cafab47`, `948f487`). Embedding record version 2 (`lumbar`, `cervical`, `whole`, `region`);
+  `readEmbedding` lifts a version-1 record and `isCurrent` reads it as stale, so the whole library re-embeds once;
+  `cannotEmbed` is deleted and the Find tab's `{k} partial — not embeddable` note with it.
+- **The ranking** (`335808d`, `6da2963`, `780d4c8`). `renderer/data/similarity-blocks.js` (the registry, the readers,
+  `weightsFor(region, mode)`) and a rewritten `renderer/data/similarity.js`: thirteen blocks in four families — lumbar `V`
+  `H` `A` `SL` `D`, cervical `VC` `AC` `BC` `SC`, whole spine `B` `W`, appearance `C` `CC` — shape over the landmarks both
+  films share, entry distances over the entries both films have, equal family budgets computed from the tables, a film
+  ranked on the blocks it has. `A` gains L1PA. Interfaces: the contract's two `similarity` sections.
+- **The tab** (`80effa6`, `a1f87d6`, `a564e1b`). A `REGION` control (Lumbar, Cervical, Whole spine; default the open film's
+  own, held per film in `state.similarRegion`), the eyebrow naming the region, ten cards, every absent block named on its own
+  wrapping line, `angleLine` for the region (`Cobb · SVA` under Cervical), a disabled Region button that reads as disabled.
+- **`Embed` and the export** (`b1f93d5`, `3ef69c4`). `planEmbed` without `excluded`/`ineligible`; `embedStudy` posts
+  `region: studyRegion(live)`; `vectors.json` version 2 (every block by key, a `Region` column in `parameters.csv`, `<visit>
+  region` in `paired.csv`, per-region counts and a `notice` in the manifest).
+- **Smoke** (`fceb3ac`). `smoke-similar.mjs` grows to the Region control, version-2 records, the partial film as a
+  candidate, a cervical film, ten cards and a tail of one.
+- **The records** (this task). The contract amendment `## 2026-09-30 amendment: similar cases stage 2`, the stage-1 and
+  stage-2 spec status lines, decision 78 below, ROADMAP §8, `docs/appearance-embeddings.md`, CLAUDE.md, the plan's Ledger.
+
+**Counts at the close (2026-10-03).** Unit `node --test test/*.test.js` 678/678 (`tools/smoke/out/task10-unit.txt`);
+backend pytest 744 passed, 4 skipped, full suite with all eight ONNX graphs present
+(`tools/smoke/out/task10-backend.txt`); on the same tree at Task 9, each on a fresh scratch launch,
+`smoke-similar.mjs` 125/125 (was 69), `smoke-parameters.mjs` 58/58, `smoke-studies.mjs` 151/151, `smoke-persist.mjs` 41/41
+then 54/54 (the version-2 record check, ruling R12, ran: SP-9000's record is version 2 with a 384-vector). No app defect
+surfaced.
+
+**Rulings made while building (the plan's `## Ledger` has each with its cost if wrong).**
+- R1 The tree is not launchable between Tasks 3 and 7 (`studies.js` imported `cannotEmbed`); narrowed by R11, then moot.
+- R2 Briefs are cut with `sed -n` ranges and review packages built by plain appends: the harness refuses the skill's
+  bash scripts (worktree-isolation classifier).
+- R3 The merged tree's graphs (s1, vertebra, femoral, hrnet, cervical DETR and HRNet, crop detector) are the installed
+  v1.0.15 app's, copied into `backend/onnx/`; `embed.onnx` stays ours (eight kinds in all).
+- R4 The dataset folder names no author: manifest `citation` became `notice` (main's 1.0.14 rule), pinned by a test.
+- R5 The branch releases as 1.0.16 or later (main is 1.0.15). Task 10 rewrote CLAUDE.md's forward-looking "release as
+  1.0.11" and marked "The trunk moved: v1.0.10 …" below superseded; `docs/superpowers/NEXT-SESSION.md` (its step 3 still
+  says 1.0.11) is the session wrap's to rewrite, and Plan B's ledger notes of 2026-09-28 stay as history.
+- R6 The four stage-1-shaped test sites (`test_embedding_graph.py`, `test_processing_stream.py:26,50`,
+  `test_server.py:170,237-240`) belonged to Task 2, the record's consumers.
+- R7 The encoder is a CPU model: excluded from GPU qualification (`fingerprint`, `verify_gpu`, `verify_films`), always built
+  on the CPU provider. Why: the embedding stage is optional and must never decide the GPU verdict. Cost if wrong: about a
+  second per run on a GPU machine.
+- R8 No interim gate for cervical and full-spine films flowing into stage-1 lumbar-only code between tasks: Tasks 3–7
+  replaced that code in the same session and the branch was held.
+- R9 `_load_model`'s cache stays at 7 (a lumbar run touches five kinds, a full-spine run six; smaller reloads the 236 MB S1
+  detector every film).
+- R10 The processor badge ignores the encoder's CPU provider; the crop detector's behaviour under crop method `model` is
+  main's and stays.
+- R11 Task 3 also dropped `cannotEmbed`'s import, the `ineligible:` argument and the `embed-note` span from `studies.js`,
+  so the unit suite loads between Tasks 3 and 7.
+- R12 `smoke-persist.mjs`'s embedding check is Task 9's (assert `record.version === 2` and the length of
+  `record.lumbar ?? record.whole`).
+- R13 Task 5 moved the shared fixtures to `test/fixtures/similarity-fixtures.js`; the `fullSpine` fixture's digest is
+  `CALIBRATION.source_sha256`.
+- R14 **Block `D` follows `discRows`'s own calibration rule** — the values the Measurements panel and both CSV exports show
+  — not `boundCalibration` (digest and size); the spec's §7.2 and §6 are amended to say so. Why: `D` must equal what the
+  user sees, and gating on `boundCalibration` would blank `D` on toolbar-removed films whose panel shows heights;
+  `discRows` never returns pixels. Cost if wrong: a calibration from another image of the same size could feed `D`, the
+  exposure the panel already has.
+- R15 The compare chip's match memo (`analysis.js`) passes the tab's region and keys on `similarRegion`, so the chip's
+  percentage is the card's under every region and mode.
+- R16 A disabled Region button gets a `.model-choice-btn:disabled` rule (opacity .5, not-allowed); it also dims the
+  sidebar's six model and processing pickers while a run disables them, a pressed-and-disabled one keeping a dimmed accent.
+- R17 The study-rename control's `title` carries the study name and file name, not the `SP-nnnn` id (decision 76's rule
+  reaches tooltips).
+- Merge-review adjudications: the `status.js` and `gpu_parity.py` fixes (above), R4, R8, R9; moot: `film_type` is gone, so
+  `W` keys on `studyRegion`, never on `framing.searched`; fixed: the "06 —" header; deferred: the comparison column's Δ
+  threshold is 5 for every selectable row, including the millimetre and pixel SVA rows (a per-unit threshold, and no
+  highlight for pixels, for the final review).
+- Spec text amended by the build (marked *(amended 2026-10-03)* in the spec): `shapePair(a, b, shape, signA, signB) → {d,
+  a, b}`; §7.5's "an embedding record" (a stale one ranks on the other blocks and is counted); §7.6's return gains `region`
+  and `weights`; §11's `planEmbed` has no `excluded`. Decision 78 supersedes decision 75.
+
+**NOT run.**
+- **The human gate** (plan Task 11): none of its six checks has been answered. They are in the plan: a real lumbar film
+  (Lumbar default, the other two disabled with titles, `· no disc heights` on uncalibrated candidates); a real full-spine
+  film (Whole spine default, every absent cervical or whole-spine block named, Lumbar ranks against lumbar films); a real
+  cervical film (`Cobb … · SVA …`); `Embed` counting the whole library once and then zero; `Export dataset`'s
+  version-2 `vectors.json` and `Region` column; the console clean throughout. The final whole-branch review (Opus) has not
+  run either: the plan's Task 11 orders it after the gate, decision 74 before it (the controller's call).
+- A packaged build (the installer's eight graphs and its size; `check_bundled_inference.py`'s assertions); `/embed` over a
+  real uvicorn socket (in-process only); a GPU machine for the CPU-only-encoder rule (R7: CI has no GPU, so
+  `--verify-models` on a workstation is the check); a persistence-disabled `Embed`; the three-button export row at a narrow
+  window; the release workflows' hub download and `export_embed`'s mean/std and licence guards on the pinned export pair
+  (stage 1's list, unchanged — ROADMAP §4).
+- On the real library only one film is segmented, so the ranking's cards were hand-checked on a scratch profile with twelve
+  seeded full-spine films, not on real neighbours.
+
+**Deferred minors worth a second look** (the plan's `## Ledger` lists every one): `renderer/data/confidence.js:38` throws
+without `geometry.femoral_circles` (main's; the backend always sends it); the clinical-data drawer's STUDY cell overlaps
+SUBJECT on long stems; a held region pick is never cleared on delete (a new film that reuses the id inherits it); the
+dataset README does not state the shape-null rule, the `families`-to-film-key mapping or why a stage-1 record exports as
+null; `reviewBlockedReason` says "Wait for the segmentation to finish" while a film is being embedded; the embed signal in
+`status.js` is batch-wide.
+
+**Next.** The human gate and the final whole-branch review (their order: see above), then the owner's offline testing. The release is a separate,
+later commit numbered 1.0.16 or later (main is 1.0.15; check other open PRs for a version claim); the PR to `fork/main` is
+the user's to open and merge with Create a merge commit, which publishes. Nothing from this branch is pushed to `fork`;
+that is the user's call. The held region pick, the Δ threshold and the dataset README minors are the first things a
+reviewer might ask about.
 
 ### Failed-status additions on 1.0.13 (issue #39 follow-up) — DONE; release 1.0.15 awaiting the PR (branch `claude/issue-39-failed-status-port`, off `main` @ `9992b99`, v1.0.13, merged with `origin/main` @ `e7ae5a3`, v1.0.14)
 
@@ -113,6 +243,9 @@ owner opens the PR to `main` and merges it with **Create a merge commit**; the p
    `claude/issue-39-failed-status`.
 
 ### The trunk moved: v1.0.10 released 2026-09-25 (`fork/main` @ `3ddb8bb`); this branch has not merged it
+
+**Superseded 2026-10-03:** the branch merged `fork/main` @ `c53e91d` (v1.0.15) as `afa6164` and will release as 1.0.16 or
+later; see the first section above. What follows is the 2026-09-28 record, kept as it was.
 
 Recorded 2026-09-28 by the GitHub versioning audit session, which built no feature on this branch.
 
@@ -1759,7 +1892,7 @@ The following were settled at the human gate for the similar-cases branch, **202
 (`claude/image-similarity-visualization-400922`), and are the spec's decisions 75-77 amendment
 (`docs/superpowers/specs/2026-09-12-similar-cases-outcomes-design.md`, amended 2026-09-14).
 
-75. **The Embed count's eligibility rule stays** (only films with all five lumbar levels, S1 and
+75. **(Superseded 2026-10-03 by decision 78.) The Embed count's eligibility rule stays** (only films with all five lumbar levels, S1 and
     nothing unoriented are embedded, because only they can be ranked), **and the Find tab says why the
     count is smaller**: `{k} partial — not embeddable` beside the button, with the reason in its
     tooltip, shown even when nothing is left to embed. *Cost if wrong:* one note. (Commit `dd9480b`.)
@@ -1777,6 +1910,21 @@ The following were settled at the human gate for the similar-cases branch, **202
     outcomes and per-visit film types) — **and the folder gains `README.md`** describing every file,
     the identity rule, the blank rule, the vector blocks and the subject-split warning. *Cost if
     wrong:* two file names. (Commit `61f0765`.)
+
+The following was settled building stage 2 of the similar-cases branch, **2026-10-03**
+(`claude/image-similarity-visualization-400922`; spec
+`docs/superpowers/specs/2026-09-30-similar-cases-stage-2-regions-design.md`, decision 5; the user's ruling of 2026-09-30
+that every measured parameter counts and a film without complete parameters still ranks on what it has).
+
+78. **Every segmented film is embeddable, and a film ranks on the blocks it has** — **supersedes decision 75.** The Embed
+    count is every real, segmented film without a current record (a version-1 record reads as stale, so the library
+    re-embeds once); the `{k} partial — not embeddable` note and its tooltip are gone, `cannotEmbed` is deleted and
+    `planEmbed` has no `excluded`. `qc.coverage.partial` and `unoriented` gate nothing in the ranking: a film missing
+    levels, a hip, a calibration or an embedding loses only that block for the pair, never its place, and each card names
+    the switched-on blocks that did not enter. Decision 75's edge (a complete column with no femoral heads excluded) no
+    longer exists. *Cost if wrong:* a film with little in common ranks on the little it has; the card names every absent
+    block, so the reader sees a thin match for what it is, and the table is data. (Commits `cafab47`, `948f487`,
+    `b1f93d5`, `780d4c8`.)
 
 ## Release prerequisites — v1.0.0 main promotion
 

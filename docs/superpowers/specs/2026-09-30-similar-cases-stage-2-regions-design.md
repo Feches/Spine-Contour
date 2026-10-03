@@ -8,6 +8,18 @@ merged `fork/main` at its current tip — v1.0.15, `c53e91d`, as of 2026-10-03 �
 step 1); nothing here can be built on the
 v1.0.8 base, because every new input comes from the trunk's 1.0.9–1.0.12 work.
 
+**Implemented 2026-10-03** on `claude/image-similarity-visualization-400922`, after the merge of `fork/main` @ `c53e91d`
+(v1.0.15) as `afa6164` and its two-commit fix wave (`87b7a5d`, `4164673`), by plan Tasks 1–9 (`e288b88`, `fcb02a1`,
+`cafab47`+`948f487`, `335808d`, `6da2963`+`780d4c8`, `80effa6`+`a1f87d6`+`a564e1b`, `b1f93d5`, `3ef69c4`, `fceb3ac`; the
+plan's `## Ledger` holds every ruling, R1–R17) and Task 10 (the records). Counts at the close: unit 678/678; backend
+744 passed, 4 skipped; `smoke-similar.mjs` 125/125, `smoke-parameters.mjs` 58/58, `smoke-studies.mjs` 151/151,
+`smoke-persist.mjs` 41/41 then 54/54. **Not run:** the human gate (plan Task 11), a packaged build, `/embed` over a real
+uvicorn socket, a GPU machine for the CPU-only-encoder rule. Where the built interfaces differ from this document's
+text, the architecture contract's `## 2026-09-30 amendment: similar cases stage 2` and the two `similarity` module
+sections win; the corrections are applied in place below and marked *(amended 2026-10-03)*: §6's `D` row and §7.2 (ruling
+R14: `D` follows `discRows`'s own calibration rule), §7.1's `shapePair` signature and return, §7.5's embedding
+requirement, §7.6's return shape and §11's `planEmbed`.
+
 ## 1. Problem
 
 Stage 1 ranks the library on five blocks: the 22 lumbar landmarks, the hip midpoint, five spinopelvic angles and two
@@ -67,8 +79,9 @@ Read on the merged tree, not on the branch as it stands:
   either region is missing. Cervical: over C2–C7.
 - **Derived values, each pure and null-safe:** `segmentalValues(study)` → `{SEG_lordosis_L1-L2, SEG_angulation_L1-L2,
   …}` for the film's region (ten lumbar keys, ten cervical, twenty on full spine), degrees, from the saved endplates and
-  the bound calibration; `discRows(study)` → five rows of `{anterior, middle, posterior}` in mm, null without a bound
-  calibration; `cervicalMeasurements(study)` → `{C2C7_COBB, C2C7_SVA_PX, C2C7_SVA_MM}`; `globalSvaMeasurements(study)` →
+  the bound calibration; `discRows(study)` → five rows of `{anterior, middle, posterior}` in mm, null without a usable
+  calibration *(`normalizeCalibration` plus its own width and height bounds, not `boundCalibration` — §7.2, amended
+  2026-10-03)*; `cervicalMeasurements(study)` → `{C2C7_COBB, C2C7_SVA_PX, C2C7_SVA_MM}`; `globalSvaMeasurements(study)` →
   `{GLOBAL_SVA_PX, GLOBAL_SVA_MM}` (full spine only). `_MM` values are null without a bound calibration; `_PX` values
   are never compared across films (magnification).
 - **Framing windows.** Lumbar: `qc.framing.window = [x0, y0, x1, y1]` (source pixels), `searched`, `whole_film_won`.
@@ -103,7 +116,8 @@ Each with what it costs if it is wrong. Where a stage-1 decision is superseded, 
    *Cost if wrong:* a block splits or merges in the table.
 4. **Millimetre blocks are present for a pair only when both films carry a bound calibration; pixel values are never
    compared (the user: "when they are available, only on calibrated images").** Disc heights, C7–S1 SVA and C2–C7 SVA
-   in `_MM` form only. An uncalibrated film ranks without them and its card says so. *Cost if wrong:* a magnification
+   in `_MM` form only. An uncalibrated film ranks without them and its card says so. *(Amended 2026-10-03, ruling R14:
+   "carry a bound calibration" for disc heights means the film has `discRows` values — §7.2.)* *Cost if wrong:* a magnification
    difference would read as anatomy.
 5. **A block needs only its own inputs; a film is never excluded from ranking for what it lacks.** *(replaces
    stage-1 decision 7 and gate decision 75)* The partial and unoriented flags no longer gate candidacy or the open
@@ -176,7 +190,7 @@ Each with what it costs if it is wrong. Where a stage-1 decision is superseded, 
 | lumbar | `H` | hip | `hip_midpoint` under `V`'s shared-point transform | shape | `V` present and a hip midpoint on both |
 | lumbar | `A` | spinopelvic alignment | PI, PT, SS, LL L1–S1, PI−LL, L1PA; weights 1, 0.8, 0.8, 0.6, 1, 0.8 | degrees | ≥ 2 entries shared |
 | lumbar | `SL` | lumbar segmental | segmental lordosis and angulation, L1–L2 … L5–S1 (10) | degrees | ≥ 3 entries shared |
-| lumbar | `D` | disc heights | anterior, middle, posterior at L1–L2 … L5–S1 (15) | mm | both calibrated and ≥ 2 entries shared |
+| lumbar | `D` | disc heights | anterior, middle, posterior at L1–L2 … L5–S1 (15) | mm | both films have `discRows` values (§7.2) and ≥ 2 entries shared *(amended 2026-10-03)* |
 | cervical | `VC` | cervical shape | C2 IA, IP; C3–C7 SA, SP, IA, IP (22 points), over the shared points, mirrored by `anterior_side` | shape | ≥ 4 bodies shared, an anterior side on both |
 | cervical | `AC` | cervical lordosis | C2–C7 Cobb | degrees | on both |
 | cervical | `BC` | cervical balance | C2–C7 SVA | mm | both calibrated |
@@ -204,12 +218,15 @@ corners and `anterior_confirmed !== false`; S1 needs both points), or an empty m
 over C2 (inferior only) and C3–C7, empty without a valid `anterior_side`. Both return points in original-image
 coordinates, unmirrored.
 
-`shapePair(a, b, order, floor, mirror)`: the names in `order` present in both maps; below `floor` → null. For each film
-independently: mirror (lumbar: negate x when the mean x of the shared anterior corners is below the mean x of the
-shared posterior corners; cervical: negate x when `anterior_side === 'left'`), translate the shared points' centroid to
-the origin, scale their centroid size to one, never rotate. Returns `{a: number[], b: number[], transformA,
-transformB}` where each transform is `{sign, cx, cy, size}` so the hip can follow (`H = [(sign·hx − cx)/size,
-(hy − cy)/size]`). The distance is Euclidean over the two flattened lists.
+`shapePair(a, b, shape, signA, signB)` *(amended 2026-10-03; the plan reshaped the draft's `(a, b, order, floor, mirror)`)*:
+`shape` is `{order, floor, require}` (`LUMBAR_SHAPE`: the 22-name order, floor 14, requiring `S1.SA` and `S1.SP`;
+`CERVICAL_SHAPE`: the 22-name order, floor 14, requiring nothing). The names in `shape.order` present in both maps;
+below `shape.floor`, or without a required name → null. For each film independently: mirror (`signA`/`signB` fix it when
+given — the cervical `sideSign(anterior_side)`, `-1` for `'left'`; when null, the lumbar test: negate x when the mean x of
+the shared anterior corners is below the mean x of the shared posterior corners), translate the shared points' centroid to
+the origin, scale their centroid size to one, never rotate. Returns `{d, a, b}` where `d` is the Euclidean distance over
+the two flattened lists and each of `a`/`b` carries `{list, sign, cx, cy, size}` — the film's normalised list and its
+transform, so the hip can follow (`H = [(sign·hx − cx)/size, (hy − cy)/size]`, `hipUnder(hip, transform)`).
 
 `vector(study)` (stage 1's export) stays for the dataset: the full 22-point lumbar vector when the column is complete,
 else null; `cervicalVector(study)` is its cervical twin. The ranking no longer calls `vector` for presence.
@@ -221,8 +238,12 @@ Each entry block is read into a fixed-order array with `null` for an absent entr
 - `alignment(study)` → `[PI, PT, SS, LL, PI−LL, L1PA]`, each finite or null.
 - `lumbarSegmental(study)` → the ten `SEG_*` lumbar keys of `segmentalValues`, in `segmentalColumns('lumbar')` order.
 - `cervicalSegmental(study)` → the ten cervical keys.
-- `discHeights(study)` → the fifteen `discRows` values, level-major then anterior, middle, posterior; all null when the
-  film has no bound calibration.
+- `discHeights(study)` → the fifteen `discRows` values, level-major then anterior, middle, posterior. *(Amended
+  2026-10-03, ruling R14.)* Block `D` follows `discRows`'s own calibration rule, unchanged — `normalizeCalibration` plus
+  its own width and height bounds, the same values the Measurements panel and both CSV exports show — not
+  `boundCalibration` (digest and size), which would blank `D` on a toolbar-removed film whose panel shows heights.
+  `discRows` never returns pixels, so no pixel value can enter; the value is null where `discRows` has none. Cost if
+  wrong: a calibration from another image of the same size could feed `D`, the same exposure the panel already has.
 - `cervicalLordosis(study)` → `[C2C7_COBB]`; `cervicalBalance(study)` → `[C2C7_SVA_MM]`; `globalBalance(study)` →
   `[GLOBAL_SVA_MM]`, null unless `studyRegion` is `full_spine`.
 
@@ -244,15 +265,18 @@ unchanged; `matchScore` unchanged.
 A study `c` is a candidate for `o` under `{scope, region, mode}` when: real and not `o`; segmented (`measurements` and
 `geometry` present); in scope (stage 1's rule); not the same subject; **has the region's anatomy** — Lumbar: a
 non-empty `lumbarPoints` or any finite lumbar entry; Cervical: a non-empty `cervicalPoints` or any finite cervical
-entry; Whole spine: `studyRegion(c) === 'full_spine'`; and, under `all`/`appearance`, a current embedding record. The
+entry; Whole spine: `studyRegion(c) === 'full_spine'`; and, under `all`/`appearance`, an embedding record *(amended
+2026-10-03: any record, as in stage 1 — a record from another graph still ranks the film on the other blocks and is
+counted as `stale`; the appearance blocks need the same graph on both films, §7.3)*. The
 open study passes the same anatomy test or the tab shows an empty state. A pair with no present block is dropped, as
 before.
 
 ### 7.6 `findSimilar`
 
 `findSimilar(open, all, {scope, region, mode, embeddings, n})` → `{matches: [{study, d, match, blocks, absent}],
-total, stale}`; `absent` lists the switched-on blocks that were not present for the pair, for the card. `stale` as in
-stage 1.
+total, stale, region, weights}` *(amended 2026-10-03: `region` is the region used — the open film's when none is
+passed — and `weights` the table; `n` defaults to 10)*; `absent` lists the switched-on blocks that were not present for the
+pair, for the card. `stale` as in stage 1.
 
 ## 8. Backend
 
@@ -297,7 +321,8 @@ this study.`; no candidates (unchanged).
 ## 11. `Embed`
 
 `needsEmbedding(study)`: real, segmented, no current record — `vector(study)` no longer gates. `cannotEmbed` and the
-`partial — not embeddable` note are removed; `planEmbed`'s `excluded` is always 0 and the `ineligible` predicate goes.
+`partial — not embeddable` note are removed; `planEmbed` loses the `excluded` count and the `ineligible` predicate
+altogether *(amended 2026-10-03: the draft said `excluded` stays at 0)*.
 The run core posts `region: studyRegion(study)` with the sidecar image and framing.
 
 ## 12. `Export dataset`

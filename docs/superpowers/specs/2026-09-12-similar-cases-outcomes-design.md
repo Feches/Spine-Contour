@@ -11,6 +11,16 @@ built code differs from what this document originally said; the architecture con
 `## 2026-09-12 amendment: similar cases and outcomes (stage 1)` is the binding interface record. Nothing
 pushed to `fork` yet; that is the user's call.
 
+**Superseded in part 2026-10-03 by stage 2** (`2026-09-30-similar-cases-stage-2-regions-design.md`, implemented the same
+day on this branch; the contract's `## 2026-09-30 amendment: similar cases stage 2` is the binding record): decisions 1
+and 15 (the five-block vector, and the five angles of the alignment block as the only measured angles in the ranking —
+now thirteen blocks in four families, `A` gains L1PA), decision 2 (shape over the 22 landmarks of a complete column — now over the landmarks both films share, the hip
+following the pair's transform), decision 5 (the film-type proxy and the whole-film block's gating — appearance now
+follows anatomy, `W` only for full-spine pairs) and decision 7 (partial and unoriented films excluded, five cards — a
+film ranks on the blocks it has; ten cards); and the gate's **decision 75** (the Embed count's eligibility rule and the
+`{k} partial — not embeddable` note — HANDOFF decision 78: every segmented film is embeddable). §7, §8.1, §8.2, §8.4,
+§10.2, §10.4, §11, §12 and §13 are amended by reference to the stage-2 spec. Everything not named stands.
+
 **Builds on:** the approved spec `2026-08-31-spine-contour-ui-redesign-design.md` ("spec §" below;
 §10.5 and §10.6 in particular), the pre-op/post-op spec `2026-09-06-preop-postop-organisation-design.md`
 ("pp §"), the batch spec `2026-09-08-batch-segmentation-design.md` ("batch §"), the studies-table spec

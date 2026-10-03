@@ -457,6 +457,17 @@ uvicorn socket). Stage 2 begins only after a notebook has trained the first mode
 and the human gate has judged the stage-1 neighbours' quality; the stage-2/3/4 items below are
 unchanged by stage 1 shipping.
 
+**Regions built (2026-10-03; not released, human gate not run).** A second piece of work on the same branch. Its spec
+is titled "stage 2" (the second build of the Find similar tab), which is **not** the Stage 2 below (pairs, the map, the
+model registry, the risk panel): that one still waits for outcomes. Spec `docs/superpowers/specs/2026-09-30-similar-cases-stage-2-regions-design.md`,
+plan `docs/superpowers/plans/2026-09-30-similar-cases-stage-2-regions.md`: every measured parameter enters the ranking in
+thirteen blocks in four families (the ten lumbar and ten cervical segmental angles, disc heights, C2–C7 Cobb and SVA,
+C7–S1 SVA, L1PA in the alignment block, a cervical appearance block and a whole-film block for full-spine pairs); a
+`Lumbar | Cervical | Whole spine` region control beside `Rank by`, defaulting to the open film's region; cervical and
+full-spine films rank; a film ranks on the blocks it has (HANDOFF decision 78); ten cards. Done from the lists below:
+the segmental item, the cervical appearance block and the region presets. **Stays deferred:** the family sliders (below),
+which wait behind outcomes. See HANDOFF's first "Where things stand" section.
+
 **Deferred 2026-09-12 (user ruling at the similar-cases brainstorm).** Stage 1 is
 `docs/superpowers/specs/2026-09-12-similar-cases-outcomes-design.md`: the fused shape-and-appearance
 ranking, five cards with recorded outcomes, the three outcome fields, the embeddings store, the `Embed`
@@ -483,16 +494,18 @@ into the app once its recipe is stable. The later stages, in order:
   to its post-op film, click to open. UMAP stays out until a Python dependency is justified.
 - **A subject-keyed CSV import** for outcome fields, so a one-row-per-subject spreadsheet needs no
   fill-down. Decide first how it coexists with the per-film stem join.
-- **Similarity weights as a control.** The fusion already takes any `{V, H, A, C, W}` weight table (the
-  four `Rank by` presets are tables); stage 2 may add sliders under an Advanced disclosure on the tab,
+- **Similarity weights as a control — STILL DEFERRED (2026-10-03: the family sliders).** The fusion takes any
+  thirteen-block `{V, H, A, SL, D, VC, AC, BC, SC, B, W, C, CC}` weight table; `weightsFor(region, mode)` in
+  `renderer/data/similarity-blocks.js` computes it (equal family budgets), and the `Region` and `Rank by` presets are
+  its two axes — those presets are built. What waits is per-family sliders under an Advanced disclosure on the tab,
   persisted like the processing settings, with the presets as buttons that set them. Do not build it
   before outcomes exist: without labels no weighting can be shown better than another, and once the
   dataset carries outcomes the notebook can find the weighting that predicts best and the app can
   import it with the model file.
-- **Segmental angulation and segmental lordosis** (the user's planned measurements, 2026-09-13): first a
-  measurement feature (backend, `validateStudy`'s optional keys, export columns, the panel and grid);
-  then in similarity as their own per-level block beside `A` with its own median scale, one reader and one
-  entry in the mode table (spec decision 15). A single new global angle joins `A` instead.
+- **Segmental angulation and segmental lordosis — DONE 2026-10-03** (the user's planned measurements,
+  2026-09-13; the measurement feature shipped on the trunk in 1.0.11): the lumbar and cervical segmental angles are
+  blocks `SL` and `SC` of the stage-2 ranking, each with its own median scale, one reader and its place in the
+  registry (`renderer/data/similarity-blocks.js`; stage-2 spec §6). A single new global angle joins `A` instead.
 - **More outcomes.** Any-cause reoperation, rod fracture, screw loosening, adjacent-segment disease or
   junctional kyphosis on their own: each is one registry line in `renderer/data/outcomes.js` (stage-1 spec §9.1) once the user captures it, plus an
   outcome selector on the Find similar tab so the cards and footer can show any registered outcome,

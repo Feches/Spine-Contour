@@ -1,5 +1,28 @@
 # Spine Contour
 
+**2026-10-03 similar cases stage 2 (regions and every measured parameter):** branch `claude/image-similarity-visualization-400922`
+(worktree `studies-ui-updates-bb040d`), merged with `fork/main` @ `c53e91d` (v1.0.15) as `afa6164` (20 conflicts, keep-both),
+then a two-commit fix wave (`87b7a5d`, `4164673`): a film an Embed batch is running keeps its status, and the appearance
+encoder is a CPU model outside GPU qualification (`CPU_ONLY_KINDS` in `backend/models/models.py`,
+`gpu_parity.qualified_kinds()`), which the processor badge ignores. Stage 2 is then built by plan
+`docs/superpowers/plans/2026-09-30-similar-cases-stage-2-regions.md` (Tasks 1–10; its `## Ledger` holds rulings R1–R17 and
+the deferred minors) from spec `docs/superpowers/specs/2026-09-30-similar-cases-stage-2-regions-design.md`. The Find similar
+tab ranks on thirteen blocks in four families: lumbar `V` shape, `H` hip, `A` alignment (L1PA added), `SL` lumbar
+segmental, `D` disc heights; cervical `VC` shape, `AC` C2–C7 Cobb, `BC` C2–C7 SVA, `SC` cervical segmental; whole spine
+`B` C7–S1 SVA, `W` whole film; appearance `C` lumbar crop, `CC` cervical crop — the registry and `weightsFor(region, mode)`
+in `renderer/data/similarity-blocks.js`, the shared-point shape distances, entry distances and `findSimilar` in
+`renderer/data/similarity.js`. A film ranks on the blocks it has (HANDOFF decision 78 supersedes 75); cervical and
+full-spine films rank; a `Region` control (`Lumbar | Cervical | Whole spine`, `state.similarRegion`) sits beside `Rank by`
+and defaults to the open film's region; ten cards, each naming the blocks it lacks. The embedding record is version 2
+(`lumbar`, `cervical`, `whole`, `region`; `/embed` takes a `region` form field): version-1 records read as stale, so the
+whole library re-embeds once through `Embed`. `Export dataset`'s `vectors.json` is version 2, with a `Region` column in
+`parameters.csv`. Counts: unit 678/678; backend 744 passed, 4 skipped (eight ONNX graphs present); `smoke-similar.mjs`
+125/125; `smoke-parameters.mjs` 58/58; `smoke-studies.mjs` 151/151; `smoke-persist.mjs` 41/41 then 54/54. Held on the
+branch, nothing pushed; the release is a separate, later commit numbered **1.0.16 or later** (main is 1.0.15). **Not run:**
+the human gate (plan Task 11), a packaged build, `/embed` over a real uvicorn socket, a GPU machine for the CPU-only-encoder
+rule. See the architecture contract's `## 2026-09-30 amendment: similar cases stage 2`, HANDOFF's first "Where things
+stand" section and `docs/ROADMAP.md` §8; `docs/superpowers/NEXT-SESSION.md` is the prompt.
+
 **2026-10-02 release 1.0.15 (issue #39 Failed-status follow-up):** branch `claude/issue-39-failed-status-port` (the main
 checkout, no worktree) off `main` @ `9992b99` (v1.0.13), merged with `origin/main` @ `e7ae5a3` (v1.0.14, PR #52) as
 `0b92fbd` (a CHANGELOG conflict only). Five additions on 1.0.13's Failed status: films with no result read Unsegmented,
@@ -100,9 +123,8 @@ were answered by the user as one pass, not itemised. See the architecture contra
 and outcomes (stage 1)`, HANDOFF's first "Where things stand" section and `docs/ROADMAP.md` §8. **Next:**
 the user says when to push to `fork`; then a PR to `fork/main`. A release commit is separate, later work.
 Wrapped 2026-09-14 with both suites green (unit 591/591; backend 429 passed, 2 skipped); `docs/superpowers/NEXT-SESSION.md`
-is the prompt. Since 2026-09-25 it resumes at merging `fork/main` (v1.0.10, `3ddb8bb`) into this branch, because 1.0.9
-and 1.0.10 went to the backend developer's work: ten files conflict (HANDOFF's first "Where things stand" section).
-Then the owner's offline testing, then the release as 1.0.11.
+is the prompt. *(Superseded 2026-10-03: the merge of the trunk happened — v1.0.15, `c53e91d` — and stage 2 was built on
+it; see the paragraph at the top. The branch now releases as 1.0.16 or later, after the owner's offline testing.)*
 
 **2026-09-11 filename grammar / note:** branch `claude/spine-contour-filename-parse-b6c1bb` off `fork/main` @
 `6704586` (v1.0.7). Filename stems are read as underscore-separated fields — subject, then a timepoint, view or
@@ -267,9 +289,11 @@ author" is rewritten for him.
 | `docs/superpowers/specs/2026-08-31-spine-contour-ui-redesign-design.md` | The approved spec |
 | `docs/superpowers/plans/2026-08-31-00-architecture-contract.md` | **Binding** module interfaces |
 | `docs/superpowers/plans/2026-08-31-0{1..7}-*.md` | Seven sequenced implementation plans |
-| `docs/superpowers/specs/2026-09-12-similar-cases-outcomes-design.md` | Similar cases and outcomes, stage 1 (approved; implemented 2026-09-14) |
+| `docs/superpowers/specs/2026-09-12-similar-cases-outcomes-design.md` | Similar cases and outcomes, stage 1 (approved; implemented 2026-09-14; partly superseded by stage 2) |
 | `docs/superpowers/plans/2026-09-12-a-embeddings-backend.md` | Similar cases, Plan A: the backend appearance-embedding endpoints |
 | `docs/superpowers/plans/2026-09-12-b-similar-cases-renderer.md` | Similar cases, Plan B: the Find similar tab, outcomes, comparison mode, `Export dataset` |
+| `docs/superpowers/specs/2026-09-30-similar-cases-stage-2-regions-design.md` | Similar cases, stage 2: every measured parameter, every region (implemented 2026-10-03, gate not run) |
+| `docs/superpowers/plans/2026-09-30-similar-cases-stage-2-regions.md` | Similar cases, stage 2 plan: the block registry, the region axis, the Region control, version-2 records (Tasks 1–10; Ledger holds R1–R17) |
 
 The architecture contract wins over any individual plan. If a plan contradicts it,
 raise the discrepancy rather than guessing.
@@ -351,9 +375,11 @@ when none is found the backend logs `OCR: no Tesseract binary found ...` and eve
   `embedding` stage and key; see `docs/appearance-embeddings.md`.
 - `POST /measure` — geometry only, no image. Returns `{measurements, geometry}`.
   Cheap, which is what makes live re-measurement after landmark correction practical.
-- `POST /embed` — multipart `file` (a stored sidecar `image_png`) and optional `framing` JSON.
-  Returns `{embedding: {model, crop, whole, film_type}}`, the same record `/predict` returns
-  under `embedding` when the `embeddings` form field is on (the default). About a second.
+- `POST /embed` — multipart `file` (a stored sidecar `image_png`), optional `framing` JSON and
+  optional `region` (`lumbar` by default, `cervical`, `full_spine`; anything else is a 422).
+  Returns `{embedding: {model, lumbar, cervical, whole, region}}`, the same record `/predict`
+  returns under `embedding` when the `embeddings` form field is on (the default); `/predict`
+  passes the region its run resolved. About a second.
 - `GET /embedding-model` — `{id, dim, input, onnx_sha256}` for the bundled encoder, the
   same `model` record every `/predict` and `/embed` embedding carries; 503 when no graph
   is installed. The renderer reads it once to tell a stale stored embedding from a
@@ -391,8 +417,8 @@ never carries it.
 ## Git
 
 This worktree (`.claude/worktrees/studies-ui-updates-bb040d`) is on branch
-`claude/image-similarity-visualization-400922` (2026-09-13 → 14, similar cases and outcomes stage 1),
-off `fork/main` @ `efe1df6` (v1.0.8). The sibling worktree
+`claude/image-similarity-visualization-400922` (2026-09-13 → 14 similar cases and outcomes stage 1; 2026-10-03 merged
+with `fork/main` @ `c53e91d`, v1.0.15, and stage 2 built), off `fork/main` @ `efe1df6` (v1.0.8). The sibling worktree
 `.claude/worktrees/spine-contour-segmentation-failures-82e370` is on an older branch — never launch the
 app from it while testing this branch; both worktrees read the same library. Two remotes:
 

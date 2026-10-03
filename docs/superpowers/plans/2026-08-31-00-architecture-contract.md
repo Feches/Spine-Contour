@@ -169,7 +169,9 @@ renderer/                         (new)
   data/demo-studies.js            the nine fabricated studies
   data/persistence.js             study store read/write
   data/measurements.js            API response → display rows
-  data/similarity.js              weighted distance
+  data/similarity.js              the ranking: shared-point shape, entry and appearance distances, fusion, findSimilar
+                                  (rewritten 2026-10-03, stage 2)
+  data/similarity-blocks.js       (2026-10-03, stage 2) the thirteen-block registry, the weight table and the readers
   data/status.js                  status derivation
   data/failure.js                 (2026-10-01, issue #39) failureReason(message), failureTitle(reason, at), capReason — the stored
                                   text of a failed segmentation attempt and the Failed pill's tooltip; pure
@@ -679,56 +681,122 @@ in the demo set.
 
 ### `renderer/data/similarity.js`
 
-**Replaced 2026-09-12 (similar-cases spec, stage 1) — see the `## 2026-09-12 amendment` below for the
-full picture; this is the module's current interface.**
+**Rewritten 2026-10-03 (similar-cases stage 2 — `docs/superpowers/specs/2026-09-30-similar-cases-stage-2-regions-design.md`;
+stage 1's rewrite of 2026-09-12 is below it in history) — see the `## 2026-09-30 amendment` at the end of this
+file for the full picture; this is the module's current interface.** Thirteen blocks in four families, shared-point
+shape distances, entry distances over the entries both films have, a region axis beside the mode axis. The registry
+and the readers live in `data/similarity-blocks.js` (next section); this module owns the distances, the fusion and
+`findSimilar`. Pure, no DOM; imports `data/parameters.js`, `data/cervical.js` and `data/similarity-blocks.js`.
 
 ```js
-export const LANDMARK_ORDER      // Object.freeze([...]) — the 22-point collection order, §7.1: L1..L5 SA/SP/IA/IP, then S1 SA/SP
-export const ALIGNMENT_ORDER     // Object.freeze(['PI', 'PT', 'SS', 'LL L1-S1', 'PI-LL'])
-export const ALIGNMENT_WEIGHTS   // Object.freeze([1, 0.8, 0.8, 0.6, 1])
-export const BLOCK_KEYS          // Object.freeze(['V', 'H', 'A', 'C', 'W'])
-export const MODES               // Object.freeze({all, shape, alignment, appearance}), each a {V,H,A,C,W} weight table, §7.4
-export const SCOPES              // Object.freeze(['all', 'workspace']) — an ARRAY, not an object; state.similarScope's values
+// Re-exported from similarity-blocks.js, so a caller needs one import:
+export { REGIONS, BLOCKS, BLOCK_KEYS, LANDMARK_ORDER, CERVICAL_ORDER, ALIGNMENT_ORDER, ALIGNMENT_WEIGHTS,
+         weightsFor, hasRegion, defaultRegion, alignment, studyBlocks }
 
-export function needsEmbedding(mode)     // → boolean   whether `mode` requires an embedding (all/appearance)
-export function vector(study)            // → {V: 44 numbers, H: 2 numbers|null} | null   §7.1
-export function alignment(study)         // → [PI, PT, SS, LL, PI-LL] | null              §7.2
-export function blocks(study, embedding) // → {V, H, A, C, W, filmType, model}   one study's five blocks, assembled from
-                                         //   vector/alignment and the study's stored embedding record (or null)
-export function shapeDistance(a, b)      // → number   Euclidean over V
-export function pelvicDistance(a, b)     // → number   Euclidean over H
-export function alignmentDistance(a, b)  // → number   weighted Euclidean over ALIGNMENT_WEIGHTS
-export function appearanceDistance(a, b) // → number   1 - a·b, floored at 0 for float noise, unit vectors
-export function pairDistances(open, candidate, mode)
-                                         // → {V, H, A, C, W} per-block distance or null, §7.4's presence rules —
-                                         //   `open`/`candidate` here are BLOCKS (blocks()'s return), not Study records
-export function medianScale(values)      // → number   median of positive values over ≥3 present, else 1
+export const MODES            // Object.freeze(['all', 'shape', 'alignment', 'appearance']) — an ARRAY of mode names now, no longer
+                              //   a table of weight tables; `weightsFor(region, mode)` is the only weight source
+export const SCOPES           // Object.freeze(['all', 'workspace']) — an ARRAY; state.similarScope's values
+export const LUMBAR_SHAPE     // Object.freeze({order: LANDMARK_ORDER, floor: 14, require: ['S1.SA', 'S1.SP']})
+export const CERVICAL_SHAPE   // Object.freeze({order: CERVICAL_ORDER, floor: 14, require: []})
+
+export function needsEmbedding(mode)     // → boolean   whether `mode` requires an embedding ('all' | 'appearance')
+export function sideSign(side)           // → -1 | 1    the cervical mirror: 'left' → -1, anything else 1
+export function shapePair(a, b, shape, signA, signB)
+                                         // → {d, a, b} | null   `a`/`b` are Maps name → [x, y] (lumbarPoints / cervicalPoints);
+                                         //   `shape` is LUMBAR_SHAPE or CERVICAL_SHAPE. Takes the names in shape.order present in
+                                         //   BOTH maps, null below shape.floor or without a required name; normalises each film over
+                                         //   those shared points alone (mirror by signA / signB, or by the lumbar anterior-corner
+                                         //   test when null; centre; scale the centroid size to one; never rotate) and returns the
+                                         //   Euclidean distance `d` plus each film's transform `{list, sign, cx, cy, size}`
+export function hipUnder(hip, transform)  // → [x, y]   the hip midpoint under one film's transform, so H follows V
+export function vector(study)            // → {V: 44 numbers, H: [x, y] | null} | null   the COMPLETE 22-point lumbar vector
+                                         //   (stage 1's, kept for the dataset export); null unless every level and S1 are present
+export function cervicalVector(study)    // → {V: 44 numbers} | null   its cervical twin (C2 IA/IP, C3–C7 SA/SP/IA/IP), mirrored by
+                                         //   the recorded anterior side
+export function entryDistance(a, b, weights, floor)
+                                         // → number | null   weighted RMS over the indices finite on both sides, `weights` null = 1
+                                         //   each; null below `floor` shared entries
+export function appearanceDistance(a, b) // → number   1 − a·b over unit vectors, floored at 0 for float noise
+export function pairDistances(open, candidate, weights)
+                                         // → {V, H, A, SL, D, VC, AC, BC, SC, B, W, C, CC: number | null}   `open`/`candidate`
+                                         //   are studyBlocks() results, not Study records; a block is null when `weights[key]`
+                                         //   is 0 or the pair lacks it (spec §6's last column); appearance blocks need the
+                                         //   same `model.onnx_sha256` on both, and W both films `full_spine`
+export function medianScale(values)      // → number   the median of the present values over ≥ 3, when positive, else 1
 export function fuse(distances, scales, weights)
-                                         // → {d, blocks: string[]} | null   §7.4's weighted RMS over present blocks;
-                                         //   `weights` is a {V,H,A,C,W} table (one of MODES today, a later stage's sliders)
-export function matchScore(d)            // → number 0..100 (integer)   round(100 * exp(-d))
-export function candidates(open, all, {scope = 'all', mode = 'all', embeddings = {}} = {})
-                                         // → Study[]   §7.5's five rules
-export function findSimilar(open, all, {scope = 'all', mode = 'all', embeddings = {}, n = 5} = {})
-                                         // → {matches: [{study, d, match, blocks}], total, stale}
-export function openReason(open, mode, embeddings)   // → string | null   why the OPEN study has no cards (§8.4)
-export function angleLine(open, candidate)   // → string   the card's line 3 (§8.2): 'KEY value' per angle joined
-                                         //   by ' · ', DASH per absent angle — not an object of deltas
+                                         // → {d, blocks: string[]} | null   sqrt(Σ w (d/m)² / Σ w) over the present, weighted blocks
+export function matchScore(d)            // → integer 0..100   round(100 · exp(−d))
+export function candidates(open, all, {scope = 'all', region = 'lumbar', mode = 'all', embeddings = {}} = {})
+                                         // → Study[]   real, not the open film, `hasRegion(c, region)`, in scope, not the same
+                                         //   subject, and under all/appearance an embedding record of any version/model (a stale
+                                         //   one still ranks on the other blocks). The qc.coverage.partial and unoriented flags
+                                         //   gate nothing (spec decision 5)
+export function findSimilar(open, all, {scope = 'all', region = null, mode = 'all', embeddings = {}, n = 10} = {})
+                                         // → {matches: [{study, d, match, blocks, absent}], total, stale, region, weights}
+                                         //   `region` null → defaultRegion(open); `absent` lists the switched-on blocks the pair
+                                         //   lacked (the card names them); `stale` counts candidates whose record came from
+                                         //   another graph than the open film's, under all/appearance; `region` is the region
+                                         //   used, `weights` the table; sorted by d, ties by id; `n` defaults to TEN (decision 15)
+export function openReason(open, region, mode, embeddings)
+                                         // → 'unsegmented' | 'no-region' | 'no-embedding' | 'no-alignment' | null   why the OPEN
+                                         //   film has no cards
+export function angleLine(open, candidate, region = 'lumbar')
+                                         // → string   the card's line 3: 'PI · LL · PT · SS' differences (lumbar, whole spine) or
+                                         //   'Cobb · SVA' (cervical), whole units with a sign, a dash where either side is absent
 export function subjectFilms(study, all) // → Study[]   the real films sharing study's subjectKey, or [study] alone
 ```
 
-Two names the plan's own text used loosely, recorded as they resolved: `candidates` calls
-`matchesLocation(study, {workspace, folder})` (`renderer/data/parameters.js`), not `matchesWorkspace`.
-There are two different `needsEmbedding` functions in the codebase and neither is a typo: this module's
-takes a MODE (`'all'|'shape'|'alignment'|'appearance'`) and asks whether that ranking needs an
-embedding at all; `renderer/embeddings.js`'s (root module, not `data/`) takes a STUDY and asks whether
-that particular film still needs one computed. `stale` in `findSimilar`'s result counts candidates
-whose stored embedding's `model.onnx_sha256` differs from the OPEN STUDY's, under `all`/`appearance`
-only — never under `shape`/`alignment`, which do not touch embeddings; a stale candidate is dropped
-from the ranking under `appearance` (its only weighted blocks, `C`/`W`, both become unavailable when
-the models differ) but stays ranked under `all` on whatever other blocks it shares with the open study.
-`embeddingOf` (private) accepts either a `Map` or a plain object keyed by study id: production passes
-the `Map` from `renderer/embeddings.js`'s `embeddingsMap()`, the unit tests pass plain objects.
+Two different `needsEmbedding` functions exist and neither is a typo: this module's takes a MODE and asks whether that
+ranking needs an embedding at all; `renderer/embeddings.js`'s (root module, not `data/`) takes a STUDY and asks whether
+that film still needs one computed. `embeddingOf` (private) accepts a `Map` (production: `embeddingsMap()`) or a plain
+object keyed by study id (the unit tests). `matchesLocation(study, {workspace, folder})` is `data/parameters.js`'s.
+
+### `renderer/data/similarity-blocks.js`
+
+New 2026-10-03 (stage 2). The registry of the thirteen blocks and the pure readers that turn a study record — plus its
+stored embedding record — into the points, entry arrays and vectors the ranking compares. No distances here. Pure; imports
+`data/segmental.js`, `data/disc-heights.js`, `data/cervical.js` and `data/global-sva.js`, never `similarity.js`.
+
+```js
+export const REGIONS      // Object.freeze(['lumbar', 'cervical', 'full_spine'])
+export const FAMILIES     // Object.freeze(['lumbar', 'cervical', 'whole', 'appearance'])
+export const KINDS        // Object.freeze(['shape', 'alignment', 'appearance'])
+export const LANDMARK_ORDER, CERVICAL_ORDER
+                          // the point names in collection order: L1..L5 SA/SP/IA/IP then S1.SA, S1.SP (22); C2.IA, C2.IP then
+                          //   C3..C7 SA/SP/IA/IP (22)
+export const ALIGNMENT_ORDER    // ['PI', 'PT', 'SS', 'LL L1-S1', 'PI-LL', 'L1PA']
+export const ALIGNMENT_WEIGHTS  // [1, 0.8, 0.8, 0.6, 1, 0.8]
+export const LUMBAR_SEGMENTAL_ORDER, CERVICAL_SEGMENTAL_ORDER
+                          // the ten SEG_* keys of segmentalColumns('lumbar') / ('cervical'), in column order
+export const DISC_ORDER   // 'L1-L2 anterior' … 'L5-S1 posterior' (15), level-major, then anterior, middle, posterior
+export const BLOCKS       // frozen list of 13 frozen {key, family, kind, regions, label, weights?, floor?} — `label` is the card's
+                          //   absent marker ('no hip', 'no disc heights' …), `floor` the least shared entries an entry block needs
+export const BLOCK_KEYS   // ['V', 'H', 'A', 'SL', 'D', 'VC', 'AC', 'BC', 'SC', 'B', 'W', 'C', 'CC']
+export const ENTRY_KEYS   // ['A', 'SL', 'D', 'AC', 'BC', 'SC', 'B']   the blocks compared as entry arrays
+
+export function blockOf(key)              // → the BLOCKS entry | null
+export function weightsFor(region, mode)  // → frozen {V…CC: number}   a block is on when its family is on under the region and its kind
+                                          //   under the mode ('all' = every kind); on-blocks share their family's budget of one
+                                          //   equally (1 / the family's on-blocks), off-blocks are 0 — computed, never typed
+export function lumbarPoints(study)       // → Map name → [x, y]   a level enters whole (both endplates, four finite corners) and
+                                          //   oriented (anterior_confirmed !== false); S1 needs both points; may be empty
+export function cervicalPoints(study)     // → Map   C2 (inferior only) and C3–C7 whole; EMPTY without a valid anterior_side
+export function alignment(study)          // → [PI, PT, SS, LL, PI−LL, L1PA]   each finite or null
+export function lumbarSegmental(study)    // → ten numbers, each finite or null   (segmentalValues, degrees)
+export function cervicalSegmental(study)  // → ten numbers, each finite or null
+export function discHeights(study)        // → fifteen mm values, each finite or null   discRows's own values, so D equals what the Measurements panel
+                                          //   and both CSV exports show (ruling R14: no boundCalibration gate, no pixels ever)
+export function cervicalLordosis(study)   // → [C2C7_COBB]   finite or null
+export function cervicalBalance(study)    // → [C2C7_SVA_MM]   finite or null
+export function globalBalance(study)      // → [GLOBAL_SVA_MM]   null inside unless full spine and calibrated
+export function studyBlocks(study, record)
+                                          // → {region, lumbar: Map, cervical: Map, hip, side, entries: {A, SL, D, AC, BC, SC, B},
+                                          //   vectors: {C, CC, W}, model}   one study's inputs to every block; `record` is its
+                                          //   stored embedding record (or null); `vectors.C/CC/W` = record.lumbar/cervical/whole
+export function hasRegion(study, region)  // → boolean   segmented and carrying ANY of the region's points or entries (Whole spine:
+                                          //   studyRegion(study) === 'full_spine')
+export function defaultRegion(study)      // → 'lumbar' | 'cervical' | 'full_spine'   the film's studyRegion (an unresolved 'auto' → 'lumbar')
+```
 
 ### `renderer/data/csv.js`
 
@@ -1295,6 +1363,14 @@ gate passed 2026-09-14. This section carries spec §16's eleven amendment items 
 **final** signatures, which in a few places differ from the spec's and the plans' own text — those
 differences are called out, because a reader who trusts only the plan will name the wrong function.
 
+**Superseded in part, 2026-10-03.** The stage-2 amendment at the end of this file (`## 2026-09-30 amendment:
+similar cases stage 2`) replaces: item 1's five-block `similarity.js` (it is now the thirteen-block module, with
+`similarity-blocks.js` beside it; the body above `### renderer/data/csv.js` is current), item 2's `EMBEDDING_VERSION = 1`
+and `cannotEmbed(study)`, item 3's state keys (gains `similarRegion`), item 5's `embedding: {model, crop, whole,
+film_type}` and item 2's `backend/embedding.py` list (`film_type` is gone), the dataset's `vectors.json` and film-type
+columns (version 2, `Region`), and gate decision 75 (HANDOFF decision 78). Read this section for what stage 1 did and
+that one for what is true now.
+
 **1. `renderer/data/similarity.js` replaced.** The body above (`### renderer/data/similarity.js`) now
 carries the current interface directly; it is not repeated here. The old `WEIGHTS`/`vector →
 [LL,PI,PT,SS,PI-LL]`/`distance`/`matchScore(a,b) → 58..100`/`findSimilar(study,all,n=3)` shape is gone.
@@ -1547,3 +1623,138 @@ model change. `backend/requirements.txt` selects `onnxruntime-directml==1.24.4` 
 Windows and `onnxruntime==1.24.4` elsewhere; the Windows bundle check requires
 `DmlExecutionProvider` and `DirectML.dll`. CI has no GPU: the GPU path is verified on a
 workstation with `--verify-models`, which exercises each listed GPU.
+
+## 2026-09-30 amendment: similar cases stage 2 — regions and every measured parameter
+
+Spec `docs/superpowers/specs/2026-09-30-similar-cases-stage-2-regions-design.md` ("the spec" below); plan
+`docs/superpowers/plans/2026-09-30-similar-cases-stage-2-regions.md` (Tasks 1–10; its `## Ledger` holds every ruling).
+Written 2026-09-30, built 2026-10-03 on branch `claude/image-similarity-visualization-400922` AFTER it merged `fork/main`
+@ `c53e91d` (v1.0.15) as `afa6164` and a two-commit fix wave (`87b7a5d`, `4164673`, item 9). This section carries the
+spec's §15 amendment list with the interfaces' **final** signatures; where the spec's or the plan's own text differs, this
+section and the two module sections above win (`shapePair`'s signature and return, `discHeights`'s calibration rule,
+`findSimilar`'s return and `planEmbed`'s shape are the four places they differ, and the spec carries the same
+corrections in its text since 2026-10-03).
+
+**1. The two modules.** `renderer/data/similarity.js` (rewritten) and `renderer/data/similarity-blocks.js` (new) — their
+interfaces are the two `### renderer/data/similarity…` sections above. In outline: thirteen blocks in four families — lumbar
+`V` shape, `H` hip, `A` alignment (PI, PT, SS, LL L1–S1, PI−LL, L1PA; weights 1, 0.8, 0.8, 0.6, 1, 0.8), `SL` lumbar
+segmental, `D` disc heights; cervical `VC` shape, `AC` C2–C7 Cobb, `BC` C2–C7 SVA, `SC` cervical segmental; whole spine
+`B` C7–S1 SVA, `W` whole-film appearance; appearance `C` lumbar crop, `CC` cervical crop. Units never mix inside a block;
+millimetre blocks (`D`, `BC`, `B`) compare only between two films that carry the value; pixel values are never
+compared. The shape blocks compare over the landmarks BOTH films have (floor 14 points: S1 and three levels for the
+lumbar column, four cervical bodies for the neck; the cervical mirror is the recorded `anterior_side`, never the
+corner means; the hip follows the lumbar pair's transform); an entry block is the weighted RMS over the entries both
+have (floor 2 for `A` and `D`, 3 for `SL` and `SC`, 1 for `AC`, `BC`, `B`); an appearance block is present when both
+films carry the vector under the same `model.onnx_sha256` (`W` only when both are `full_spine`). Every block's
+distance is divided by its median over the candidates; `weightsFor(region, mode)` gives each family present a budget of
+one shared equally among its switched-on blocks; the fused distance is the stage-1 weighted RMS. A film is never
+excluded for what it lacks: `qc.coverage.partial` and `unoriented` gate nothing in the ranking, and each card names the
+switched-on blocks the pair lacked. Ruling R14: block `D` follows `discRows`'s own calibration rule — the values the
+Measurements panel and both CSV exports show — not `boundCalibration`.
+
+**2. `renderer/data/embeddings.js` — record version 2, `readEmbedding`.** `EMBEDDING_VERSION = 2`. A stored record is
+`{version: 2, id, computedAt, sourceSha256, model: {id, dim, input, onnx_sha256}, region, lumbar, cervical, whole}`,
+each of the three vectors a finite list or `null`, at least one non-null, `region` one of `lumbar | cervical |
+full_spine`. `validEmbedding(record)` accepts version 1 (finite `crop`, `whole` null or a list) and version 2.
+`embeddingRecord(id, embedding, {sourceSha256, computedAt})` always writes version 2 from the backend's
+`{model, lumbar, cervical, whole, region}` (an unknown `region` reads `'lumbar'`; null when all three vectors are
+absent). `readEmbedding(record)` → `null` for an invalid record, a valid version-2 record as is, and a version-1 record
+LIFTED to the same field set (`version` stays 1, `lumbar = crop`, `cervical = null`, `region = 'lumbar'`, `whole` kept).
+`isCurrent(record, bundledSha)` is false for any record that is not version 2, so a version-1 film reads as needing
+`Embed` once; an unknown bundled sha keeps what is stored, as in stage 1. No `STORE_VERSION` bump; `studies.json` is
+unchanged.
+
+**3. `renderer/embeddings.js` — `cannotEmbed` removed.** The module loads every stored record through `readEmbedding`
+(the map holds lifted records), so every reader sees the version-2 field set. `cannotEmbed(study)` is deleted and
+`needsEmbedding(study)` loses its shape gate: true for a real study with `measurements` and `geometry` that has no
+current record — segmented before the build, the setting off, a failed stage, an older graph, or a version-1 record.
+`vector(study)` no longer gates anything. Nothing is ineligible; a film ranks on the blocks it has (spec decision 5,
+HANDOFF decision 78).
+
+**4. State key.** `similarRegion: null | {openId, region}` in `store.js`: the Find similar tab's region pick, held for the
+film it was made on. The tab reads `state.similarRegion.region` when `openId` is the open film, else `defaultRegion(open)`,
+so opening another film falls back to that film's own region with no `setState` inside a subscriber. It joins the tab's
+redraw key and the compare chip's memo key.
+
+**5. Backend API.** `embedding` on `/predict` and `/predict-stream` — and the value under `POST /embed`'s `embedding` key
+— is `{model, lumbar, cervical, whole, region} | null` (was `{model, crop, whole, film_type}`); `film_type` is gone.
+`POST /embed` gains the multipart form field `region` (`lumbar` by default for a stage-1 caller; `cervical`;
+`full_spine`; anything else is a 422). `/predict` passes the region the run resolved — `body_part` after automatic
+film detection has replaced `auto` — to the embedding stage, so a cervical or full-spine film is embedded by its own
+windows. `backend/embedding.py`: `REGIONS = ("lumbar", "cervical", "full_spine")`; `crop_window(image, window, *, xywh=False)`
+cuts the film by corners `[left, top, right, bottom]` or, with `xywh`, by the cervical pipeline's `[x, y, width, height]`,
+clipped to the film, and returns `None` — never the whole film standing in for a crop — for an absent, malformed or
+degenerate window (under 8 px); `region_crops(image, framing, region)` picks the windows (lumbar: `framing.window`;
+cervical: `framing.window` read as x/y/w/h; full spine: `framing.lumbar_window` and `framing.cervical_window`);
+`embedding_record(image, framing, region="lumbar")` returns the record above, `whole` always, a window's vector `null`
+where the region has none, and raises `ValueError` for an unknown region. All-or-nothing on a graph failure, 503 without
+`embed.json`, the `embedding` progress stage: all stage 1, unchanged. `renderer/api.js`/`main.js`: the `embed` handler
+appends `request.region` as the `region` form field when it is one of the three values.
+
+**6. `planEmbed` and the Embed run core.** `planEmbed({visible, selected, running, needs}) → {ids, label, note, enabled,
+hidden}`: no `excluded` and no `ineligible` argument; `needs` alone decides what the button embeds, and the
+`{k} partial — not embeddable` note beside it is gone with its tooltip. `embedStudy` (`renderer/screens/analysis.js`)
+reads `studyRegion(live)` before its `await` and posts it as `region` with the sidecar's image and framing.
+
+**7. `Export dataset` — `vectors.json` version 2 and the `Region` columns.** `vectors.json` is
+`{version: 2, exportedAt, families: {lumbar: [V, H, A, SL, D], cervical: [VC, AC, BC, SC], whole: [B, W], appearance: [C,
+CC]}, blocks: {V: {dim: 44, order, normalisation}, H, A: {order, weights, unit}, SL, D, VC: {dim: 44, order,
+normalisation}, AC, BC, SC, B, embedding: <the model record>}, films: [{name, region, V, H, A, SL, D, VC, AC, BC, SC, B,
+lumbar, cervical, whole}]}`, one entry per `parameters.csv` row in that order, `null` for an absent block (an all-null
+entry block exports as `null`, not an array of nulls); `V`/`VC` are the COMPLETE 22-point vectors (null where the column
+is incomplete), `H` follows `V`, the three appearance vectors come from a current embedding record only (a stored
+version-1 record is lifted by `readEmbedding` but never current, so it exports as `null`). `parameters.csv`'s first
+provenance column is `Region` (the film's own `studyRegion`, not the embedding's) in place of `Film type`; `paired.csv`'s
+per-visit film-type columns become `<visit> region`; `manifest.json` counts films per region (`counts.regions`; an
+unresolved `auto` film is tallied under its own key, never as lumbar) and its `citation` key becomes `notice` (ruling R4:
+the 1.0.14 rule — no author names anywhere in the folder). `README.md` describes the families from the table. Stage 1's
+rule stands: no image, no path, no record id.
+
+**8. Gate decision 75 superseded.** The Embed count's eligibility rule and its `{k} partial — not embeddable` note are
+replaced by HANDOFF decision 78: every segmented film is embeddable, and a film ranks on the blocks it has.
+
+**9. The merge's consequences (Rulings R7, R9, R10; `87b7a5d`, `4164673`).**
+- `backend/models/models.py`: `CPU_ONLY_KINDS = frozenset({"embed"})` — the appearance encoder is a CPU model. Its
+  session is always built on the CPU provider with the CPU session options, whatever the processor setting, and
+  `qc.processing.providers` reports CPU for it. `backend/gpu_parity.py`: `qualified_kinds()` is every `MODEL_NAMES` kind
+  except `CPU_ONLY_KINDS`; the GPU fingerprint, `verify_gpu` and `verify_films` cover those kinds only, so a missing
+  `embed.onnx` or a DirectML miss on the encoder can never cost a GPU run its GPU, and qualification never loads the
+  encoder with `Appearance embeddings` Off. `probes('embed')` stays for `tools/packaging/check_cpu_wheels.py`.
+- `_load_model`'s `lru_cache` holds **7** sessions (`maxsize=7`; the trunk's is 4, stage 1's text above says five):
+  a lumbar run touches five kinds and a full-spine run six, so anything smaller reloads the 236 MB S1
+  detector every film (R9). Low-memory mode still releases after each stage.
+- `renderer/data/processing.js`: `describeProcessor` and `processorTitle` leave the CPU-only kinds out of the provider
+  summary (`CPU_ONLY_KINDS = ['embed']`, mirroring the backend's), so a GPU run with embeddings on reads `GPU`, never a
+  false `GPU + CPU` "fell back" (R10). A structure model on the CPU still reads `GPU + CPU`; the crop detector keeps
+  main's behaviour.
+- `renderer/data/status.js`: `displayStatus(study, runningId, batch)` keeps a film an Embed batch is running (and the
+  films waiting in it) at its derived status — an Embed never segments, so it is never Processing, and
+  `summaryCounts` never counts it Unsegmented. The embed signal is `batch.kind === 'embed'`.
+
+**10. The tab, the chip and the cards.** `renderer/components/similar.js`: a `REGION` control — `Lumbar | Cervical | Whole
+spine`, buttons keyed `data-similar-key="region-lumbar" | "region-cervical" | "region-full_spine"` — between `SCOPE` and
+`RANK BY`; a button whose anatomy the open film lacks is disabled and titled `This study has no {region} anatomy`; the
+eyebrow reads `RANKED BY {LUMBAR|CERVICAL|WHOLE-SPINE} {SHAPE, ALIGNMENT AND APPEARANCE|SHAPE|ALIGNMENT|APPEARANCE}`;
+up to ten cards (spec decision 15; `findSimilar`'s default `n` and the tab's own); a card's first line is the film's name
+and the match percentage, and the absent switched-on blocks follow on their own wrapping line
+(`.similar-line.similar-missing`, from `BLOCKS[].label`: `· no hip`, `· no disc heights`, `· no cervical balance` …) so a
+long list never squeezes the name out; line 3 is `angleLine` for the region. Empty states from `openReason`: `unsegmented`;
+`no-region` (`This study has no {region} anatomy to rank on — choose another region.`); `no-embedding`; `no-alignment`
+(`Alignment needs at least one measured {region} angle on this study.`). `styles/components.css`: `.model-choice-btn:disabled`
+(opacity .5, `not-allowed`, the same on hover; a pressed disabled button keeps a dimmed accent, so the sidebar's pickers
+still show their setting while a run disables them) (R16). Comparison mode's chip (`renderer/screens/analysis.js`) calls
+`findSimilar` with the same held region as the tab and lists `similarRegion` in its memo key, so the chip's percentage is
+the card's under every region and mode (R15). The study-rename control's `title` no longer carries the `SP-nnnn` record id
+(R17).
+
+**11. Packaging and settings: unchanged.** No new root file — `similarity-blocks.js` ships under `renderer/**/*`, already
+globbed by `package.json` `build.files` and `electron-builder.preview.yml`. `test/fixtures/similarity-fixtures.js` is test
+support, never matched by the `test/*.test.js` glob. No CSP, dependency or setting change. Released with the first version
+after 1.0.15 that this branch's release commit names (1.0.16 or later); that commit is separate from this amendment.
+
+**Not carried forward from the spec's own text** (recorded so a reader does not go looking for them): spec §7.1's
+`shapePair(a, b, order, floor, mirror) → {a, b, transformA, transformB}` is `shapePair(a, b, shape, signA, signB) →
+{d, a, b}` with `a`/`b` each `{list, sign, cx, cy, size}`; §7.2's "all null when the film has no bound calibration" for
+`discHeights` is `discRows`'s own rule (R14); §7.5's "a current embedding record" is "an embedding record" (a record from
+another graph still ranks the film on the other blocks and is counted as `stale`); §7.6's `{matches, total, stale}` also
+carries `region` and `weights`; §11's "`planEmbed`'s `excluded` is always 0" is no `excluded` at all.
