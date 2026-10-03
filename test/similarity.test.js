@@ -37,8 +37,10 @@ test('the module re-exports the registry and names the modes and scopes', () => 
   assert.equal(CERVICAL_ORDER.length, 22);
   assert.deepEqual(LUMBAR_SHAPE, { order: LANDMARK_ORDER, floor: 14, require: ['S1.SA', 'S1.SP'] });
   assert.deepEqual(CERVICAL_SHAPE, { order: CERVICAL_ORDER, floor: 14, require: [] });
-  assert.equal(needsEmbedding('all'), true);
+  assert.equal(needsEmbedding('appearance'), true);
+  assert.equal(needsEmbedding('all'), false, 'under All a film ranks on its other blocks without a record (ruling R22)');
   assert.equal(needsEmbedding('shape'), false);
+  assert.equal(needsEmbedding('alignment'), false);
 });
 
 test('vector gives the complete 44-number lumbar shape or null; cervicalVector its twin', () => {
@@ -172,7 +174,9 @@ test('candidates filter by region anatomy, scope, subject and embedding need —
   assert.deepEqual(ids(candidates(open, pool, { scope: 'all', region: 'cervical', mode: 'shape' })), ['neck']);
   assert.deepEqual(ids(candidates(open, pool, { scope: 'all', region: 'full_spine', mode: 'shape' })), []);
   const embeddings = { partial: record('partial', { lumbar: [1, 0] }) };
-  assert.deepEqual(ids(candidates(open, pool, { scope: 'all', region: 'lumbar', mode: 'all', embeddings })), ['partial']);
+  assert.deepEqual(ids(candidates(open, pool, { scope: 'all', region: 'lumbar', mode: 'appearance', embeddings })), ['partial'], 'Appearance has nothing else to rank on');
+  assert.deepEqual(ids(candidates(open, pool, { scope: 'all', region: 'lumbar', mode: 'all', embeddings })), ['partial', 'angles-only', 'hand'], 'All needs no record (ruling R22)');
+  assert.deepEqual(ids(candidates(open, pool, { scope: 'all', region: 'lumbar', mode: 'all' })), ['partial', 'angles-only', 'hand'], 'not even with no records at all');
 });
 
 test('findSimilar ranks by region, names the absent blocks, counts stale records, and defaults the region to the open film', () => {
@@ -187,15 +191,18 @@ test('findSimilar ranks by region, names the absent blocks, counts stale records
   };
   const all = findSimilar(open, [open, near, far, noHip, stale], { scope: 'all', mode: 'all', embeddings });
   assert.equal(all.region, 'lumbar');
-  // near and stale both sit at distance 0 on every block they share with the open film (stale is the
-  // same geometry; its differing model only removes C), so they tie and sort by id; far's angles differ.
-  assert.deepEqual(all.matches.map((m) => m.study.id), ['near', 'stale', 'far']);
-  assert.equal(all.stale, 1);
-  assert.equal(all.total, 3);
-  assert.deepEqual(all.matches[0].blocks, ['V', 'H', 'A', 'SL', 'D', 'C']);
-  assert.deepEqual(all.matches[0].absent, []);
-  assert.deepEqual(all.matches[1].absent, ['D', 'C'], 'stale has another model and no calibration');
-  assert.deepEqual(all.matches[2].absent, ['D'], 'far is uncalibrated');
+  // near, nohip and stale all sit at distance 0 on every block they share with the open film (stale is the
+  // same geometry, its differing model only removes C; nohip has no record at all), so they tie and sort by
+  // id; far's angles differ.
+  assert.deepEqual(all.matches.map((m) => m.study.id), ['near', 'nohip', 'stale', 'far']);
+  assert.equal(all.stale, 1, 'a record from another graph is stale; no record is not');
+  assert.equal(all.total, 4);
+  const byId = Object.fromEntries(all.matches.map((m) => [m.study.id, m]));
+  assert.deepEqual(byId.near.blocks, ['V', 'H', 'A', 'SL', 'D', 'C']);
+  assert.deepEqual(byId.near.absent, []);
+  assert.deepEqual(byId.stale.absent, ['D', 'C'], 'stale has another model and no calibration');
+  assert.deepEqual(byId.far.absent, ['D'], 'far is uncalibrated');
+  assert.deepEqual(byId.nohip.absent, ['H', 'D', 'C'], 'a film without a record ranks under All, its card naming the lumbar crop (ruling R22)');
   const shape = findSimilar(open, [open, near, far, noHip, stale], { scope: 'all', mode: 'shape' });
   // Under Shape only V, H and D count, and every candidate is a translated or scaled copy of the open film's
   // shape: near, nohip (on V alone) and stale sit at exactly 0 and tie by id; far, whose angles differ, is a
@@ -279,7 +286,8 @@ test('openReason names why the open study has no cards', () => {
   const embeddings = { a: record('a', { lumbar: [1, 0] }) };
   assert.equal(openReason(study('a', { measurements: null, geometry: null }), 'lumbar', 'all', embeddings), 'unsegmented');
   assert.equal(openReason(study('a'), 'cervical', 'shape', embeddings), 'no-region');
-  assert.equal(openReason(study('b'), 'lumbar', 'all', embeddings), 'no-embedding');
+  assert.equal(openReason(study('b'), 'lumbar', 'appearance', embeddings), 'no-embedding');
+  assert.equal(openReason(study('b'), 'lumbar', 'all', embeddings), null, 'under All the open film ranks without a record (ruling R22)');
   // Landmarks present (so the film has lumbar anatomy) but no angle: the measured ones null and the
   // segmental readers refusing endplates outside a 10 px image.
   assert.equal(openReason(study('a', { measurements: { PI: null, PT: null, SS: null, L1PA: null, LL: {} }, geometry: { ...lumbarGeometry(), image_width: 10, image_height: 10 } }), 'lumbar', 'alignment', embeddings), 'no-alignment');

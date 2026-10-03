@@ -150,7 +150,7 @@ const RECORDS = [
     workspaceFolder: ROOT, subjectId: 'SIM-S004', timepoint: 'Pre-op', filmDate: null,
     fileName: 'sim-9204.png', measurements: MEAS(75), geometry: geom(40, 40, 1.3), qc: FULL_QC,
   }),
-  study('SP-9205', { // partial coverage -- a candidate like any other since stage 2 (no embedding, so Shape and Alignment only)
+  study('SP-9205', { // partial coverage -- a candidate like any other since stage 2 (no embedding: under All it ranks without the lumbar crop, never under Appearance)
     workspaceFolder: ROOT, subjectId: 'SIM-S005', timepoint: 'Pre-op', filmDate: '2025-01-25',
     fileName: 'sim-9205.png', measurements: MEAS(58), geometry: geom(8, 8, 1.02), qc: PARTIAL_QC,
   }),
@@ -356,10 +356,12 @@ try {
   // ---- 3. Cards under All ------------------------------------------------------------------
   let ids = await cardIds();
   check('cards exclude the same-subject study, at most ten', ids.length <= 10 && !ids.includes('SP-9201'), ids);
-  check('the All-mode candidate set is exactly the three embedded studies (the partial one has no embedding, not a coverage flag, to thank)', sameSet(ids, ['SP-9202', 'SP-9203', 'SP-9204']), ids);
-  check('the footer counts 1 of 3 with a fusion extension, 1 not recorded', (await text('[data-similar-key="footer"]')) === `1 OF 3 WITH A FUSION EXTENSION${SEP}1 NOT RECORDED`, await text('[data-similar-key="footer"]'));
-  check('the stale tail names the one study under another model', (await text('[data-similar-key="stale"]')) === '1 STUDY NEEDS RE-EMBEDDING', await text('[data-similar-key="stale"]'));
+  check('the All-mode candidate set is every lumbar candidate, the record-less, partial and hand-added ones included (ruling R22)', sameSet(ids, ['SP-9202', 'SP-9203', 'SP-9204', 'SP-9205', 'SP-9206']), ids);
+  check('the footer counts 1 of 5 with a fusion extension, 3 not recorded', (await text('[data-similar-key="footer"]')) === `1 OF 5 WITH A FUSION EXTENSION${SEP}3 NOT RECORDED`, await text('[data-similar-key="footer"]'));
+  check('the stale tail names the one study under another model (a film with no record is not stale)', (await text('[data-similar-key="stale"]')) === '1 STUDY NEEDS RE-EMBEDDING', await text('[data-similar-key="stale"]'));
   check("SP-9204's card carries the no-lumbar-crop missing marker (its embedding came from another graph)", ((await cardText('SP-9204', '.similar-missing')) ?? '').includes(`${DOT} no lumbar crop`), await cardText('SP-9204', '.similar-missing'));
+  const recordless = [await cardText('SP-9205', '.similar-missing'), await cardText('SP-9206', '.similar-missing')];
+  check('the record-less SP-9205 and SP-9206 rank under All and their cards carry the no-lumbar-crop marker', recordless.every((line) => (line ?? '').includes(`${DOT} no lumbar crop`)), recordless);
   check('no card carries the retired no-appearance marker', !((await cardText('SP-9204', '.similar-missing')) ?? '').includes('no appearance'), await cardText('SP-9204', '.similar-missing'));
   check("SP-9202's card carries the no-disc-heights missing marker (the fixtures are uncalibrated)", ((await cardText('SP-9202', '.similar-missing')) ?? '').includes(`${DOT} no disc heights`), await cardText('SP-9202', '.similar-missing'));
   check("a card's absent blocks sit on their own line, so the film's name stays readable (every name over 80 px wide)",
@@ -430,7 +432,7 @@ try {
   // ---- 6. Outcome lines --------------------------------------------------------------------
   await clickSimilar('rank-all');
   ids = await cardIds();
-  check('back under All mode the three-study set is unchanged', sameSet(ids, ['SP-9202', 'SP-9203', 'SP-9204']), ids);
+  check('back under All mode the five-study set is unchanged', sameSet(ids, ['SP-9202', 'SP-9203', 'SP-9204', 'SP-9205', 'SP-9206']), ids);
   check("SP-9202's outcome line reads Fusion extended with its date", (await cardText('SP-9202', '.similar-outcome')) === `Fusion extended${SEP}2025-05-01`, await cardText('SP-9202', '.similar-outcome'));
   check("SP-9203's outcome line reads Fusion not extended with the last follow-up", (await cardText('SP-9203', '.similar-outcome')) === `Fusion not extended${SEP}last follow-up 2025-06-15`, await cardText('SP-9203', '.similar-outcome'));
   check("SP-9204's outcome line reads Outcome not recorded", (await cardText('SP-9204', '.similar-outcome')) === 'Outcome not recorded', await cardText('SP-9204', '.similar-outcome'));
@@ -496,7 +498,10 @@ try {
 
   await cdp.setState(`{ openId: 'SP-9206', similarRank: 'all' }`);
   await cdp.settle(400);
-  check('a study with no embedding under All reads the no-embedding sentence', (await text('[data-similar-key="empty"]')) === 'No appearance embedding for this study yet \u2014 run Embed on the Find tab, turn on Appearance embeddings in Settings, or rank by shape or alignment.', await text('[data-similar-key="empty"]'));
+  check('a study with no embedding under All ranks without one: cards, no sentence (ruling R22)', (await count('.similar-card')) > 0 && !(await has('[data-similar-key="empty"]')), { cards: await count('.similar-card'), empty: await text('[data-similar-key="empty"]') });
+  await cdp.setState(`{ similarRank: 'appearance' }`);
+  await cdp.settle(400);
+  check('the same study under Appearance reads the no-embedding sentence', (await text('[data-similar-key="empty"]')) === 'No appearance embedding for this study yet \u2014 run Embed on the Find tab, turn on Appearance embeddings in Settings, or rank by shape or alignment.', await text('[data-similar-key="empty"]'));
 
   await cdp.setState(`{ similarRank: 'shape' }`);
   await cdp.settle(400);
@@ -618,9 +623,9 @@ try {
   check('manifest.json names a notice and no citation', dataset.manifestKeys.includes('notice') && !dataset.manifestKeys.includes('citation'), dataset.manifestKeys);
 
   // ---- 12. A cervical film -------------------------------------------------------------------
-  // Opened through the store like SP-9200. Under All it needs its own embedding (a cervical vector
-  // only, region 'cervical'); with no other cervical film the pool is empty, and a second one makes
-  // one card whose angle line is the cervical one.
+  // Opened through the store like SP-9200, with its own embedding (a cervical vector only, region
+  // 'cervical'); with no other cervical film the pool is empty, and a second one makes one card whose
+  // angle line is the cervical one.
   await addStudies([CERVICAL[0]]);
   await embedRecord('SP-9220', CURRENT_SHA, null, { region: 'cervical', cervical: [0, 1, 0] });
   await cdp.setState(`{ screen: 'analysis', openId: 'SP-9220', tab: 'sim', similarScope: 'all', similarRank: 'all', similarRegion: null, compareId: null }`);

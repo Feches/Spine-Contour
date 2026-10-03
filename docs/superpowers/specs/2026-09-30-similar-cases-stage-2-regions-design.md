@@ -271,9 +271,12 @@ blocks and bury those films)*.
 A study `c` is a candidate for `o` under `{scope, region, mode}` when: real and not `o`; segmented (`measurements` and
 `geometry` present); in scope (stage 1's rule); not the same subject; **has the region's anatomy** — Lumbar: a
 non-empty `lumbarPoints` or any finite lumbar entry; Cervical: a non-empty `cervicalPoints` or any finite cervical
-entry; Whole spine: `studyRegion(c) === 'full_spine'`; and, under `all`/`appearance`, an embedding record *(amended
+entry; Whole spine: `studyRegion(c) === 'full_spine'`; and, under `appearance` only, an embedding record *(amended
 2026-10-03: any record, as in stage 1 — a record from another graph still ranks the film on the other blocks and is
-counted as `stale`; the appearance blocks need the same graph on both films, §7.3)*. The
+counted as `stale`; the appearance blocks need the same graph on both films, §7.3)* *(amended 2026-10-03, final review,
+ruling R22: decision 5 wins over the inherited "under `all`/`appearance`" — under `all` a film needs no record, ranks
+on its other blocks and its card names the missing crop; the open film likewise; `stale` still counts, under `all` and
+`appearance`, the candidates that have a record from another graph)*. The
 open study passes the same anatomy test or the tab shows an empty state. A pair with no present block is dropped, as
 before.
 
@@ -322,7 +325,8 @@ for `V`. **Line 3** per decision 12.
 
 **Empty states:** unsegmented (unchanged); `This study has no {region} anatomy to rank on — choose another region.`, or
 `This study has no anatomy to rank on yet.` when the film has none of the three regions' anatomy;
-`No appearance embedding for this study yet — …` (unchanged); `Alignment needs at least one measured {region} angle on
+`No appearance embedding for this study yet — …` (unchanged in its words; under `appearance` only *(amended 2026-10-03,
+final review, ruling R22)*); `Alignment needs at least one measured {region} angle on
 this study.`; `This study has no {region} {shape|alignment|appearance|shape, alignment or appearance} to rank on — rank
 by another kind or choose another region.` when the open film has none of the mode's blocks against itself; no
 candidates, `No other eligible {region} studies in this workspace.` / `… in the library.` *(amended 2026-10-03, final

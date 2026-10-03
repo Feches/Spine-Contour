@@ -699,7 +699,8 @@ export const SCOPES           // Object.freeze(['all', 'workspace']) — an ARRA
 export const LUMBAR_SHAPE     // Object.freeze({order: LANDMARK_ORDER, floor: 14, require: ['S1.SA', 'S1.SP']})
 export const CERVICAL_SHAPE   // Object.freeze({order: CERVICAL_ORDER, floor: 14, require: []})
 
-export function needsEmbedding(mode)     // → boolean   whether `mode` requires an embedding ('all' | 'appearance')
+export function needsEmbedding(mode)     // → boolean   whether `mode` requires an embedding: 'appearance' only
+                                         //   *(amended 2026-10-03, final review, ruling R22: was 'all' | 'appearance')*
 export function sideSign(side)           // → -1 | 1    the cervical mirror: 'left' → -1, anything else 1
 export function shapePair(a, b, shape, signA, signB)
                                          // → {d, a, b} | null   `a`/`b` are Maps name → [x, y] (lumbarPoints / cervicalPoints);
@@ -730,14 +731,17 @@ export function fuse(distances, scales, weights)
 export function matchScore(d)            // → integer 0..100   round(100 · exp(−d))
 export function candidates(open, all, {scope = 'all', region = 'lumbar', mode = 'all', embeddings = {}} = {})
                                          // → Study[]   real, not the open film, `hasRegion(c, region)`, in scope, not the same
-                                         //   subject, and under all/appearance an embedding record of any version/model (a stale
+                                         //   subject, and under appearance an embedding record of any version/model (a stale
                                          //   one still ranks on the other blocks). The qc.coverage.partial and unoriented flags
-                                         //   gate nothing (spec decision 5)
+                                         //   gate nothing (spec decision 5) *(amended 2026-10-03, final review, ruling R22: under
+                                         //   all no record is needed — the film ranks on its other blocks, the card names the
+                                         //   crop; openReason's 'no-embedding' is likewise appearance-only)*
 export function findSimilar(open, all, {scope = 'all', region = null, mode = 'all', embeddings = {}, n = 10} = {})
                                          // → {matches: [{study, d, match, blocks, absent}], total, stale, region, weights}
                                          //   `region` null → defaultRegion(open); `absent` lists the switched-on blocks the pair
                                          //   lacked (the card names them); `stale` counts candidates whose record came from
-                                         //   another graph than the open film's, under all/appearance; `region` is the region
+                                         //   another graph than the open film's, under all/appearance (a candidate with no record
+                                         //   is not stale); `region` is the region
                                          //   used, `weights` the table; sorted by d, ties by id; `n` defaults to TEN (decision 15)
 export function openReason(open, region, mode, embeddings)
                                          // → 'unsegmented' | 'no-region' | 'no-embedding' | 'no-alignment' | 'no-blocks' | null

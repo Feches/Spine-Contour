@@ -41,8 +41,11 @@ function euclid(a, b) {
   return Math.sqrt(sum);
 }
 
+// Whether a ranking under `mode` needs an embedding record at all: only Appearance, which has nothing
+// else to rank on. Under All a film without one ranks on its other blocks and its card names the
+// missing crop (ruling R22: spec decision 5, a film is never excluded for what it lacks).
 export function needsEmbedding(mode) {
-  return mode === 'all' || mode === 'appearance';
+  return mode === 'appearance';
 }
 
 // Mirror by `sign`, translate the centroid to the origin, scale the centroid size to one (spec 7.1).
@@ -199,7 +202,7 @@ function embeddingOf(embeddings, id) {
 }
 
 // Spec 7.5: real, not self, segmented, with the region's anatomy, in scope, not the same subject, and
-// with an embedding record when the mode needs one. Coverage flags are never read.
+// with an embedding record under Appearance only (needsEmbedding). Coverage flags are never read.
 export function candidates(open, all, { scope = 'all', region = 'lumbar', mode = 'all', embeddings = {} } = {}) {
   const openKey = subjectKey(open);
   const filters = { workspace: rootOf(open), folder: null };
@@ -212,11 +215,13 @@ export function candidates(open, all, { scope = 'all', region = 'lumbar', mode =
 
 // { matches: [{ study, d, match, blocks, absent }], total, stale, region, weights }. `absent` lists the
 // switched-on blocks the pair lacked, for the card; `stale` counts candidates whose record came from
-// another graph than the open study's (stage 1 section 11).
+// another graph than the open study's (stage 1 section 11), whenever an appearance block is switched on
+// (All and Appearance) -- a candidate with no record at all is not stale.
 export function findSimilar(open, all, { scope = 'all', region = null, mode = 'all', embeddings = {}, n = 10 } = {}) {
   const r = REGIONS.includes(region) ? region : defaultRegion(open);
   const weights = weightsFor(r, mode);
   const on = BLOCK_KEYS.filter((key) => weights[key] > 0);
+  const appearanceOn = BLOCKS.some((block) => block.kind === 'appearance' && weights[block.key] > 0);
   const openBlocks = studyBlocks(open, embeddingOf(embeddings, open.id));
   const pool = candidates(open, all, { scope, region: r, mode, embeddings });
   const entries = pool.map((study) => {
@@ -228,7 +233,7 @@ export function findSimilar(open, all, { scope = 'all', region = null, mode = 'a
   const ranked = [];
   let stale = 0;
   for (const entry of entries) {
-    if (needsEmbedding(mode) && entry.b.model !== null && openBlocks.model !== null && entry.b.model !== openBlocks.model) stale += 1;
+    if (appearanceOn && entry.b.model !== null && openBlocks.model !== null && entry.b.model !== openBlocks.model) stale += 1;
     const fused = fuse(entry.distances, scales, weights);
     if (!fused) continue;
     ranked.push({ study: entry.study, d: fused.d, match: matchScore(fused.d), blocks: fused.blocks,
