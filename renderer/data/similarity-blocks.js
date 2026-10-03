@@ -48,7 +48,7 @@ export const BLOCKS = Object.freeze([
   { key: 'W', family: 'whole', kind: 'appearance', regions: FULL_SPINE, label: 'no whole film' },
   { key: 'C', family: 'appearance', kind: 'appearance', regions: LUMBAR_REGIONS, label: 'no lumbar crop' },
   { key: 'CC', family: 'appearance', kind: 'appearance', regions: CERVICAL_REGIONS, label: 'no cervical crop' },
-].map((block) => Object.freeze({ ...block, regions: [...block.regions] })));
+].map((block) => Object.freeze({ ...block, regions: Object.freeze([...block.regions]) })));
 export const BLOCK_KEYS = Object.freeze(BLOCKS.map((block) => block.key));
 export const ENTRY_KEYS = Object.freeze(['A', 'SL', 'D', 'AC', 'BC', 'SC', 'B']);
 

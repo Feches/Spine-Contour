@@ -1,268 +1,257 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  LANDMARK_ORDER, ALIGNMENT_ORDER, ALIGNMENT_WEIGHTS, MODES, BLOCK_KEYS, vector, alignment, blocks,
-  shapeDistance, pelvicDistance, alignmentDistance, appearanceDistance, pairDistances, medianScale, fuse,
-  matchScore, candidates, findSimilar, openReason, angleLine, subjectFilms, needsEmbedding,
+  LANDMARK_ORDER, CERVICAL_ORDER, BLOCK_KEYS, MODES, SCOPES, LUMBAR_SHAPE, CERVICAL_SHAPE, vector, cervicalVector,
+  shapePair, hipUnder, entryDistance, appearanceDistance, pairDistances, medianScale, fuse, matchScore, candidates,
+  findSimilar, openReason, angleLine, subjectFilms, needsEmbedding, weightsFor, studyBlocks,
 } from '../renderer/data/similarity.js';
+import { lumbarPoints, cervicalPoints } from '../renderer/data/similarity-blocks.js';
 import { HAND_ADDED } from '../renderer/data/parameters.js';
-
-// A synthetic column: five bodies stacked 100 px apart, anterior on the RIGHT (x = 160/140), S1 under
-// them, the hip well below and in front. `dx`, `dy`, `scale` place a copy elsewhere; `flip` mirrors it.
-function geometry({ dx = 0, dy = 0, scale = 1, flip = false, levels = ['L1', 'L2', 'L3', 'L4', 'L5'], hip = true, s1 = true } = {}) {
-  const px = (x, y) => [flip ? -(x * scale + dx) : x * scale + dx, y * scale + dy];
-  const vertebrae = {};
-  levels.forEach((level) => {
-    const i = ['L1', 'L2', 'L3', 'L4', 'L5'].indexOf(level);
-    const top = 100 + i * 100;
-    vertebrae[level] = {
-      superior: [px(160, top), px(100, top)],
-      inferior: [px(160, top + 80), px(100, top + 80)],
-      quadrilateral: [px(160, top), px(100, top), px(100, top + 80), px(160, top + 80)],
-    };
-  });
-  return {
-    vertebrae,
-    s1_superior: s1 ? [px(170, 610), px(110, 620)] : null,
-    l1_center: levels.includes('L1') ? px(130, 140) : null,
-    hip_midpoint: hip ? px(260, 760) : null,
-    femoral_circles: hip ? [[...px(250, 760), 30], [...px(270, 760), 30]] : [],
-  };
-}
-
-function study(id, overrides = {}) {
-  return {
-    id, source: 'real', filePath: `C:\\films\\${id}.png`, fileName: `${id}.png`, name: null, workspaceFolder: 'C:\\films',
-    subjectId: null, timepoint: null, filmDate: null, reviewedAt: null, addedAt: '2026-09-12T00:00:00.000Z',
-    view: 'Standing lateral', thumbnail: null,
-    measurements: { PI: 50, PT: 12, SS: 38, L1PA: 8, LL: { 'L1-S1': 49 } },
-    geometry: geometry(), qc: { coverage: { partial: false, unoriented: [] } }, clinical: {}, ...overrides,
-  };
-}
+import { lumbarGeometry, cervicalGeometry, CALIBRATION, study } from './fixtures/similarity-fixtures.js';
 
 const unit = (values) => { const n = Math.hypot(...values); return values.map((v) => v / n); };
-function embedding(id, crop, whole = null, filmType = 'lumbar', sha = 'abc') {
-  return { version: 1, id, computedAt: 'x', sourceSha256: null, model: { onnx_sha256: sha }, filmType, crop: unit(crop), whole: whole ? unit(whole) : null };
+function record(id, { lumbar = null, cervical = null, whole = null, region = 'lumbar', sha = 'abc' } = {}) {
+  return { version: 2, id, computedAt: 'x', sourceSha256: null, model: { onnx_sha256: sha }, region,
+    lumbar: lumbar ? unit(lumbar) : null, cervical: cervical ? unit(cervical) : null, whole: whole ? unit(whole) : null };
+}
+function fullSpine(id, overrides = {}) {
+  const lumbar = lumbarGeometry(overrides.lumbar ?? {});
+  const cervical = cervicalGeometry(overrides.cervical ?? {});
+  return study(id, {
+    region: 'full_spine',
+    geometry: { ...lumbar, vertebrae: { ...lumbar.vertebrae, ...cervical.vertebrae }, anterior_side: 'left',
+      c2_centroid: [60, 70], c7_centroid: [60, 370], region: 'full_spine', source_sha256: CALIBRATION.source_sha256 },
+    measurements: { PI: 50, PT: 12, SS: 38, L1PA: 8, LL: { 'L1-S1': 49 }, region: 'full_spine', GLOBAL_SVA_MM: null, GLOBAL_SVA_PX: null },
+    ...overrides.study,
+  });
+}
+function cervicalStudy(id, overrides = {}) {
+  return study(id, { region: 'cervical', geometry: cervicalGeometry(overrides.geometry ?? {}), measurements: { region: 'cervical' }, ...overrides.study });
 }
 
-test('the landmark order is the 22 corners then S1, and the alignment order carries its weights', () => {
+test('the module re-exports the registry and names the modes and scopes', () => {
+  assert.deepEqual(MODES, ['all', 'shape', 'alignment', 'appearance']);
+  assert.deepEqual(SCOPES, ['all', 'workspace']);
+  assert.equal(BLOCK_KEYS.length, 13);
   assert.equal(LANDMARK_ORDER.length, 22);
-  assert.deepEqual(LANDMARK_ORDER.slice(0, 4), ['L1.SA', 'L1.SP', 'L1.IA', 'L1.IP']);
-  assert.deepEqual(LANDMARK_ORDER.slice(20), ['S1.SA', 'S1.SP']);
-  assert.deepEqual(ALIGNMENT_ORDER, ['PI', 'PT', 'SS', 'LL L1-S1', 'PI-LL']);
-  assert.deepEqual(ALIGNMENT_WEIGHTS, [1, 0.8, 0.8, 0.6, 1]);
-  assert.deepEqual(BLOCK_KEYS, ['V', 'H', 'A', 'C', 'W']);
-  assert.deepEqual(MODES.all, { V: 1, H: 1, A: 1, C: 1, W: 1 });
-  assert.deepEqual(MODES.shape, { V: 1, H: 1, A: 0, C: 0, W: 0 });
-  assert.deepEqual(MODES.alignment, { V: 0, H: 0, A: 1, C: 0, W: 0 });
-  assert.deepEqual(MODES.appearance, { V: 0, H: 0, A: 0, C: 1, W: 1 });
-});
-
-test('vector centres the 22 points, scales them to unit centroid size and carries the hip through the same transform', () => {
-  const v = vector(study('SP-1'));
-  assert.equal(v.V.length, 44);
-  const xs = v.V.filter((_, i) => i % 2 === 0);
-  const ys = v.V.filter((_, i) => i % 2 === 1);
-  const mean = (list) => list.reduce((s, x) => s + x, 0) / list.length;
-  assert.ok(Math.abs(mean(xs)) < 1e-12 && Math.abs(mean(ys)) < 1e-12);
-  assert.ok(Math.abs(Math.hypot(...v.V) - 1) < 1e-12);
-  // The hip is below and in front of the column: positive x (anterior), positive y (down).
-  assert.ok(v.H[0] > 0 && v.H[1] > 0.5);
-});
-
-test('a translated, scaled or mirrored copy has the same vector, and orientation is never removed', () => {
-  const base = vector(study('SP-1'));
-  const moved = vector(study('SP-2', { geometry: geometry({ dx: 500, dy: -40, scale: 2.5 }) }));
-  const flipped = vector(study('SP-3', { geometry: geometry({ flip: true }) }));
-  assert.ok(shapeDistance(base.V, moved.V) < 1e-9);
-  assert.ok(shapeDistance(base.V, flipped.V) < 1e-9);
-  assert.ok(pelvicDistance(base.H, flipped.H) < 1e-9);
-  // A column tilted 15 degrees is a different shape: no rotation normalisation.
-  const c = Math.cos(Math.PI / 12), s = Math.sin(Math.PI / 12);
-  const rotated = structuredClone(study('SP-4').geometry);
-  const rotate = ([x, y]) => [c * x - s * y, s * x + c * y];
-  for (const body of Object.values(rotated.vertebrae)) {
-    body.superior = body.superior.map(rotate); body.inferior = body.inferior.map(rotate); body.quadrilateral = body.quadrilateral.map(rotate);
-  }
-  rotated.s1_superior = rotated.s1_superior.map(rotate);
-  rotated.hip_midpoint = rotate(rotated.hip_midpoint);
-  assert.ok(shapeDistance(base.V, vector(study('SP-4', { geometry: rotated })).V) > 0.05);
-});
-
-test('vector is null for a missing level, a missing S1, partial or unoriented coverage, a demo, or an unsegmented study', () => {
-  assert.equal(vector(study('SP-1', { geometry: geometry({ levels: ['L1', 'L2', 'L3', 'L4'] }) })), null);
-  assert.equal(vector(study('SP-1', { geometry: geometry({ s1: false }) })), null);
-  assert.equal(vector(study('SP-1', { qc: { coverage: { partial: true, unoriented: [] } } })), null);
-  assert.equal(vector(study('SP-1', { qc: { coverage: { partial: false, unoriented: ['L3'] } } })), null);
-  const unconfirmed = geometry(); unconfirmed.vertebrae.L2.anterior_confirmed = false;
-  assert.equal(vector(study('SP-1', { geometry: unconfirmed })), null);
-  assert.equal(vector({ id: 'SP-0042', source: 'demo', measurements: { PI: 50 }, geometry: null, qc: null }), null);
-  assert.equal(vector(study('SP-1', { measurements: null, geometry: null })), null);
-  assert.equal(vector(study('SP-1', { geometry: geometry({ hip: false }) })).H, null);
-});
-
-test('alignment is the five angles with PI-LL derived, or null with one missing', () => {
-  assert.deepEqual(alignment(study('SP-1')), [50, 12, 38, 49, 1]);
-  assert.equal(alignment(study('SP-1', { measurements: { PI: null, PT: 12, SS: 38, LL: { 'L1-S1': 49 } } })), null);
-  assert.equal(alignment(study('SP-1', { measurements: { PI: 50, PT: 12, SS: 38, LL: { 'L1-S1': null } } })), null);
-  assert.equal(alignment({ measurements: null }), null);
-  assert.equal(alignment(null), null);
-});
-
-test('the four distances: zero for a copy, symmetric, weighted for alignment, cosine for appearance', () => {
-  const a = vector(study('SP-1'));
-  assert.equal(shapeDistance(a.V, a.V), 0);
-  assert.equal(pelvicDistance(a.H, a.H), 0);
-  assert.equal(alignmentDistance([50, 12, 38, 49, 1], [50, 12, 38, 49, 1]), 0);
-  assert.ok(Math.abs(alignmentDistance([50, 12, 38, 49, 1], [60, 12, 38, 49, 11]) - Math.sqrt(1 * 100 + 1 * 100)) < 1e-9);
-  assert.ok(Math.abs(alignmentDistance([50, 12, 38, 49, 1], [50, 22, 38, 49, 1]) - Math.sqrt(0.8 * 100)) < 1e-9);
-  assert.equal(alignmentDistance([1, 2, 3, 4, 5], [2, 3, 4, 5, 6]), alignmentDistance([2, 3, 4, 5, 6], [1, 2, 3, 4, 5]));
-  assert.ok(Math.abs(appearanceDistance(unit([1, 0]), unit([1, 0]))) < 1e-12);
-  assert.ok(Math.abs(appearanceDistance(unit([1, 0]), unit([0, 1])) - 1) < 1e-12);
-  assert.ok(Math.abs(appearanceDistance(unit([1, 0]), unit([-1, 0])) - 2) < 1e-12);
-});
-
-test('blocks and pairDistances: every block only when both have it, the same model, and W only between two whole-spine films', () => {
-  const open = blocks(study('SP-1'), embedding('SP-1', [1, 0], [1, 0], 'whole-spine'));
-  const same = blocks(study('SP-2'), embedding('SP-2', [1, 0], [0, 1], 'whole-spine'));
-  const lumbar = blocks(study('SP-3'), embedding('SP-3', [0, 1], [0, 1], 'lumbar'));
-  const otherModel = blocks(study('SP-4'), embedding('SP-4', [1, 0], [1, 0], 'whole-spine', 'zzz'));
-  const noHip = blocks(study('SP-5', { geometry: geometry({ hip: false }), measurements: { PI: null, PT: null, SS: 38, LL: { 'L1-S1': 49 } } }), null);
-  const all = pairDistances(open, same, 'all');
-  assert.equal(all.V, 0); assert.equal(all.H, 0); assert.equal(all.A, 0); assert.equal(all.C, 0);
-  assert.ok(Math.abs(all.W - 1) < 1e-12);
-  const withLumbar = pairDistances(open, lumbar, 'all');
-  assert.ok(Math.abs(withLumbar.C - 1) < 1e-12);
-  assert.equal(withLumbar.W, null);
-  const across = pairDistances(open, otherModel, 'all');
-  assert.equal(across.C, null); assert.equal(across.W, null); assert.equal(across.V, 0);
-  const sparse = pairDistances(open, noHip, 'all');
-  assert.equal(sparse.H, null); assert.equal(sparse.A, null); assert.equal(sparse.C, null); assert.equal(sparse.V, 0);
-  assert.deepEqual(pairDistances(open, same, 'shape'), { V: 0, H: 0, A: null, C: null, W: null });
-  assert.deepEqual(pairDistances(open, same, 'alignment'), { V: null, H: null, A: 0, C: null, W: null });
-  const appearance = pairDistances(open, same, 'appearance');
-  assert.equal(appearance.V, null); assert.equal(appearance.C, 0); assert.ok(Math.abs(appearance.W - 1) < 1e-12);
-});
-
-test('medianScale needs three present values and a positive median, else 1', () => {
-  assert.equal(medianScale([]), 1);
-  assert.equal(medianScale([2, 4]), 1);
-  assert.equal(medianScale([null, 2, 4]), 1);
-  assert.equal(medianScale([2, 4, 9]), 4);
-  assert.equal(medianScale([2, 4, 9, 20]), 6.5);
-  assert.equal(medianScale([0, 0, 0]), 1);
-  assert.equal(medianScale([null, 1, 3, 5, undefined]), 3);
-});
-
-test('fuse is the weighted root-mean-square of the present scaled blocks and names them; nothing present is null', () => {
-  const scales = { V: 2, H: 1, A: 10, C: 0.5, W: 0.5 };
-  const one = fuse({ V: 2, H: null, A: null, C: null, W: null }, scales, MODES.all);
-  assert.deepEqual(one, { d: 1, blocks: ['V'] });
-  const two = fuse({ V: 2, H: 3, A: null, C: null, W: null }, scales, MODES.all);
-  assert.ok(Math.abs(two.d - Math.sqrt((1 + 9) / 2)) < 1e-12);
-  assert.deepEqual(two.blocks, ['V', 'H']);
-  assert.deepEqual(fuse({ V: 2, H: 3, A: 20, C: 1, W: 1 }, scales, MODES.alignment), { d: 2, blocks: ['A'] });
-  assert.equal(fuse({ V: null, H: null, A: null, C: null, W: null }, scales, MODES.all), null);
-  assert.equal(fuse({ V: 2, H: 3, A: null, C: null, W: null }, scales, MODES.appearance), null);
-  // Any weight table works, not only the four presets: a later stage's sliders pass their own.
-  const custom = fuse({ V: 2, H: 3, A: null, C: null, W: null }, scales, { V: 3, H: 1, A: 0, C: 0, W: 0 });
-  assert.ok(Math.abs(custom.d - Math.sqrt((3 * 1 + 1 * 9) / 4)) < 1e-12);
-});
-
-test('matchScore is 100 at zero distance, falls with it, and is clamped to 0..100', () => {
-  assert.equal(matchScore(0), 100);
-  assert.equal(matchScore(0.5), 61);
-  assert.equal(matchScore(1), 37);
-  assert.equal(matchScore(10), 0);
-  assert.equal(matchScore(-1), 100);
-});
-
-test('candidates: real, not self, full coverage, in scope, not the same subject, with an embedding when the mode needs one', () => {
-  const open = study('SP-1', { subjectId: 'S001', workspaceFolder: 'C:\\A' });
-  const all = [
-    open,
-    study('SP-2', { workspaceFolder: 'C:\\A' }),
-    study('SP-3', { workspaceFolder: 'C:\\B' }),
-    study('SP-4', { workspaceFolder: null }),
-    study('SP-5', { workspaceFolder: 'C:\\A', subjectId: ' s001 ' }),
-    study('SP-6', { workspaceFolder: 'C:\\A', qc: { coverage: { partial: true, unoriented: [] } } }),
-    { ...study('SP-0042'), source: 'demo', geometry: null },
-  ];
-  const embeddings = { 'SP-2': embedding('SP-2', [1, 0]), 'SP-3': embedding('SP-3', [1, 0]) };
-  const ids = (list) => list.map((s) => s.id);
-  assert.deepEqual(ids(candidates(open, all, { scope: 'all', mode: 'shape', embeddings })), ['SP-2', 'SP-3', 'SP-4']);
-  assert.deepEqual(ids(candidates(open, all, { scope: 'workspace', mode: 'shape', embeddings })), ['SP-2']);
-  assert.deepEqual(ids(candidates(open, all, { scope: 'all', mode: 'all', embeddings })), ['SP-2', 'SP-3']);
-  assert.deepEqual(ids(candidates(open, all, { scope: 'all', mode: 'appearance', embeddings })), ['SP-2', 'SP-3']);
-  assert.deepEqual(ids(candidates(open, all, { scope: 'all', mode: 'alignment', embeddings: {} })), ['SP-2', 'SP-3', 'SP-4']);
-  // A hand-added open study's workspace is the other hand-added films.
-  const hand = study('SP-9', { workspaceFolder: null });
-  assert.deepEqual(ids(candidates(hand, [hand, ...all], { scope: 'workspace', mode: 'shape', embeddings: {} })), ['SP-4']);
-  assert.equal(HAND_ADDED, '__hand__');
-});
-
-test('findSimilar ranks ascending, breaks ties by id, returns n, and counts the stale-model candidates', () => {
-  const open = study('SP-1');
-  const near = study('SP-2', { geometry: geometry({ dx: 3, dy: 1 }), measurements: { PI: 52, PT: 12, SS: 40, LL: { 'L1-S1': 49 } } });
-  const far = study('SP-3', { measurements: { PI: 75, PT: 30, SS: 45, LL: { 'L1-S1': 30 } } });
-  const twin = study('SP-4');
-  const twinToo = study('SP-5');
-  const stale = study('SP-6');
-  const embeddings = {
-    'SP-1': embedding('SP-1', [1, 0]), 'SP-2': embedding('SP-2', [0.9, 0.1]), 'SP-3': embedding('SP-3', [0, 1]),
-    'SP-4': embedding('SP-4', [1, 0]), 'SP-5': embedding('SP-5', [1, 0]), 'SP-6': embedding('SP-6', [1, 0], null, 'lumbar', 'old'),
-  };
-  const all = [open, far, twinToo, near, twin, stale];
-  const result = findSimilar(open, all, { scope: 'all', mode: 'all', embeddings, n: 5 });
-  // SP-6 shares the open study's geometry and angles: it ties at zero on V, H and A (its embedding
-  // is from another graph, so C never enters), and the tie breaks by id.
-  assert.deepEqual(result.matches.map((m) => m.study.id), ['SP-4', 'SP-5', 'SP-6', 'SP-2', 'SP-3']);
-  assert.equal(result.matches[0].d, 0);
-  assert.equal(result.matches[0].match, 100);
-  assert.deepEqual(result.matches[0].blocks, ['V', 'H', 'A', 'C']);
-  assert.deepEqual(result.matches[2].blocks, ['V', 'H', 'A']);
-  assert.equal(result.total, 5);
-  assert.equal(result.stale, 1);
-  assert.equal(findSimilar(open, all, { scope: 'all', mode: 'all', embeddings, n: 2 }).matches.length, 2);
-  // Under appearance the stale candidate has no block at all and is dropped from the ranking.
-  const appearance = findSimilar(open, all, { scope: 'all', mode: 'appearance', embeddings });
-  assert.deepEqual(appearance.matches.map((m) => m.study.id), ['SP-4', 'SP-5', 'SP-2', 'SP-3']);
-  assert.equal(appearance.total, 4);
-  assert.equal(appearance.stale, 1);
-  assert.deepEqual(findSimilar(open, [open], { embeddings }), { matches: [], total: 0, stale: 0 });
-});
-
-test('openReason names why the tab shows no cards', () => {
-  const e = { 'SP-1': embedding('SP-1', [1, 0]) };
-  assert.equal(openReason(study('SP-1', { measurements: null, geometry: null }), 'all', e), 'unsegmented');
-  assert.equal(openReason(study('SP-1', { qc: { coverage: { partial: true, unoriented: [] } } }), 'all', e), 'partial');
-  assert.equal(openReason(study('SP-1'), 'all', {}), 'no-embedding');
-  assert.equal(openReason(study('SP-1'), 'appearance', {}), 'no-embedding');
-  assert.equal(openReason(study('SP-1'), 'shape', {}), null);
-  assert.equal(openReason(study('SP-1', { measurements: { PI: null, PT: 12, SS: 38, LL: { 'L1-S1': 49 } } }), 'alignment', e), 'no-alignment');
-  assert.equal(openReason(study('SP-1', { measurements: { PI: null, PT: 12, SS: 38, LL: { 'L1-S1': 49 } } }), 'all', e), null);
-  assert.equal(openReason(study('SP-1'), 'all', e), null);
+  assert.equal(CERVICAL_ORDER.length, 22);
+  assert.deepEqual(LUMBAR_SHAPE, { order: LANDMARK_ORDER, floor: 14, require: ['S1.SA', 'S1.SP'] });
+  assert.deepEqual(CERVICAL_SHAPE, { order: CERVICAL_ORDER, floor: 14, require: [] });
   assert.equal(needsEmbedding('all'), true);
-  assert.equal(needsEmbedding('appearance'), true);
   assert.equal(needsEmbedding('shape'), false);
-  assert.equal(needsEmbedding('alignment'), false);
 });
 
-test('angleLine is the candidate minus the open study in whole signed degrees, with a dash per absent angle', () => {
-  const open = study('SP-1');
-  const other = study('SP-2', { measurements: { PI: 52.4, PT: 11.6, SS: 40.5, LL: { 'L1-S1': 43 } } });
-  assert.equal(angleLine(open, other), 'PI +2 \u00B7 LL \u22126 \u00B7 PT 0 \u00B7 SS +3');
-  const missing = study('SP-3', { measurements: { PI: null, PT: 12, SS: null, LL: { 'L1-S1': 49 } } });
-  assert.equal(angleLine(open, missing), 'PI \u2014 \u00B7 LL 0 \u00B7 PT 0 \u00B7 SS \u2014');
-  assert.equal(angleLine(open, { measurements: null }), 'PI \u2014 \u00B7 LL \u2014 \u00B7 PT \u2014 \u00B7 SS \u2014');
+test('vector gives the complete 44-number lumbar shape or null; cervicalVector its twin', () => {
+  const v = vector(study('a'));
+  assert.equal(v.V.length, 44);
+  assert.equal(v.H.length, 2);
+  assert.ok(Math.abs(Math.hypot(...v.V) - 1) < 1e-12);
+  assert.equal(vector(study('b', { geometry: lumbarGeometry({ levels: ['L2', 'L3', 'L4', 'L5'] }) })), null);
+  assert.equal(vector(study('c', { geometry: lumbarGeometry({ hip: false }) })).H, null);
+  const c = cervicalVector(cervicalStudy('d'));
+  assert.equal(c.V.length, 44);
+  assert.equal(cervicalVector(study('e')), null);
 });
 
-test('subjectFilms is the real films sharing the subject key, or the study alone', () => {
-  const a = study('SP-1', { subjectId: 'S001' });
-  const b = study('SP-2', { subjectId: ' s001' });
-  const c = study('SP-3', { subjectId: 'S002' });
-  const d = study('SP-4');
-  const demo = { ...study('SP-0042', { subjectId: 'S001' }), source: 'demo' };
-  assert.deepEqual(subjectFilms(a, [a, b, c, d, demo]).map((s) => s.id), ['SP-1', 'SP-2']);
-  assert.deepEqual(subjectFilms(d, [a, b, c, d]).map((s) => s.id), ['SP-4']);
+test('shapePair over shared points equals the complete distance when both films are complete, is invariant to translation and scale, mirrors, and drops below the floor', () => {
+  const a = lumbarPoints(study('a'));
+  const b = lumbarPoints(study('b', { geometry: lumbarGeometry({ dx: 300, dy: -50, scale: 2 }) }));
+  const pair = shapePair(a, b, LUMBAR_SHAPE, null, null);
+  assert.ok(pair.d < 1e-9, `translated and scaled copy: ${pair.d}`);
+  const va = vector(study('a')).V;
+  const vb = vector(study('b', { geometry: lumbarGeometry({ dx: 300, dy: -50, scale: 2 }) })).V;
+  assert.ok(Math.abs(pair.d - Math.hypot(...va.map((x, i) => x - vb[i]))) < 1e-9, 'the shared-point distance is the complete distance');
+  const flipped = lumbarPoints(study('c', { geometry: { ...lumbarGeometry(), vertebrae: Object.fromEntries(Object.entries(lumbarGeometry().vertebrae).map(([k, body]) => [k, { ...body, superior: body.superior.map(([x, y]) => [-x, y]), inferior: body.inferior.map(([x, y]) => [-x, y]) }])), s1_superior: [[-170, 610], [-110, 620]] } }));
+  assert.ok(shapePair(a, flipped, LUMBAR_SHAPE, null, null).d < 1e-9, 'a mirrored film reads as the same shape');
+  const four = lumbarPoints(study('d', { geometry: lumbarGeometry({ levels: ['L2', 'L3', 'L4', 'L5'] }) }));
+  const shared = shapePair(a, four, LUMBAR_SHAPE, null, null);
+  assert.ok(shared && shared.d < 1e-9, 'four shared levels plus S1 rank on the shared points');
+  const two = lumbarPoints(study('e', { geometry: lumbarGeometry({ levels: ['L4', 'L5'] }) }));
+  assert.equal(shapePair(a, two, LUMBAR_SHAPE, null, null), null, 'two levels are below the floor');
+  const noS1 = lumbarPoints(study('f', { geometry: lumbarGeometry({ s1: false }) }));
+  assert.equal(shapePair(a, noS1, LUMBAR_SHAPE, null, null), null, 'the lumbar shape needs S1');
+  // The transforms travel with the pair so the hip can follow them.
+  assert.deepEqual(Object.keys(pair.a).sort(), ['cx', 'cy', 'list', 'sign', 'size']);
+  const hipA = hipUnder([260, 760], pair.a);
+  const hipB = hipUnder([300 + 520, -50 + 1520], pair.b);
+  assert.ok(Math.hypot(hipA[0] - hipB[0], hipA[1] - hipB[1]) < 1e-9);
+});
+
+test('the cervical shape mirrors by the recorded side and needs four bodies', () => {
+  const left = cervicalPoints(cervicalStudy('a'));
+  const right = cervicalPoints(cervicalStudy('b', { geometry: { side: 'right' } }));
+  const mirrored = new Map([...right].map(([name, [x, y]]) => [name, [-x, y]]));
+  assert.ok(shapePair(left, mirrored, CERVICAL_SHAPE, -1, 1).d < 1e-9, 'a right-facing copy mirrored in x is the same shape');
+  assert.ok(shapePair(left, right, CERVICAL_SHAPE, -1, 1).d > 0.1, 'without the mirror they differ');
+  const three = cervicalPoints(cervicalStudy('c', { geometry: { levels: ['C5', 'C6', 'C7'] } }));
+  assert.equal(shapePair(left, three, CERVICAL_SHAPE, -1, -1), null);
+  const four = cervicalPoints(cervicalStudy('d', { geometry: { levels: ['C2', 'C5', 'C6', 'C7'] } }));
+  assert.ok(shapePair(left, four, CERVICAL_SHAPE, -1, -1) !== null, 'C2 plus three bodies is fourteen points');
+});
+
+test('entryDistance is a weighted RMS over the entries both have, null below the floor', () => {
+  assert.ok(Math.abs(entryDistance([1, 2, 3], [1, 2, 3], null, 1)) < 1e-12);
+  assert.ok(Math.abs(entryDistance([0, 0], [3, 4], null, 1) - Math.sqrt(12.5)) < 1e-12);
+  assert.ok(Math.abs(entryDistance([0, 0, 10], [3, 4, null], null, 2) - Math.sqrt(12.5)) < 1e-12, 'a null on either side leaves the entry out');
+  assert.equal(entryDistance([0, null, 10], [3, 4, null], null, 2), null, 'one shared entry is below a floor of two');
+  assert.ok(Math.abs(entryDistance([0, 0], [1, 1], [1, 3], 1) - 1) < 1e-12, 'weights divide out');
+  assert.equal(entryDistance([null], [null], null, 1), null);
+});
+
+test('pairDistances fills every switched-on block or null, follows the weights, and keeps millimetre blocks off an uncalibrated pair', () => {
+  const open = studyBlocks(study('a', { calibration: CALIBRATION }), record('a', { lumbar: [1, 0, 0], whole: [0, 1, 0] }));
+  const same = studyBlocks(study('b', { calibration: CALIBRATION, geometry: lumbarGeometry({ dx: 10 }) }), record('b', { lumbar: [1, 0, 0], whole: [0, 1, 0] }));
+  const d = pairDistances(open, same, weightsFor('lumbar', 'all'));
+  assert.deepEqual(Object.keys(d), BLOCK_KEYS);
+  assert.ok(d.V < 1e-9 && d.H < 1e-9 && d.A < 1e-9 && d.C < 1e-9);
+  assert.equal(d.D !== null, true, 'both calibrated: disc heights present');
+  assert.equal(d.W, null, 'W is off under lumbar');
+  assert.equal(d.VC, null);
+  const uncalibrated = studyBlocks(study('c', { geometry: lumbarGeometry({ dx: 10 }) }), record('c', { lumbar: [1, 0, 0] }));
+  const e = pairDistances(open, uncalibrated, weightsFor('lumbar', 'all'));
+  assert.equal(e.D, null, 'one film uncalibrated: no disc heights');
+  assert.ok(e.V < 1e-9);
+  const noHip = studyBlocks(study('d', { geometry: lumbarGeometry({ hip: false }) }), null);
+  const f = pairDistances(open, noHip, weightsFor('lumbar', 'all'));
+  assert.equal(f.H, null);
+  assert.equal(f.C, null, 'no embedding on one side');
+  const other = studyBlocks(study('e'), record('e', { lumbar: [1, 0, 0], sha: 'zzz' }));
+  assert.equal(pairDistances(open, other, weightsFor('lumbar', 'all')).C, null, 'different models never compare');
+  const shapeOnly = pairDistances(open, same, weightsFor('lumbar', 'shape'));
+  assert.equal(shapeOnly.A, null, 'a block with weight 0 is not computed');
+  assert.ok(shapeOnly.V < 1e-9);
+});
+
+test('pairDistances between two full-spine films fills the cervical and whole-spine blocks, and W only when both are full spine', () => {
+  const a = studyBlocks(fullSpine('a', { study: { calibration: CALIBRATION } }), record('a', { lumbar: [1, 0], cervical: [0, 1], whole: [1, 1], region: 'full_spine' }));
+  const b = studyBlocks(fullSpine('b', { lumbar: { dx: 5 }, cervical: { dx: 5 }, study: { calibration: CALIBRATION } }), record('b', { lumbar: [1, 0], cervical: [0, 1], whole: [1, 1], region: 'full_spine' }));
+  const d = pairDistances(a, b, weightsFor('full_spine', 'all'));
+  assert.ok(d.VC < 1e-9 && d.CC < 1e-9 && d.W < 1e-9);
+  assert.equal(d.AC !== null, true);
+  assert.equal(d.SC !== null, true);
+  const lumbar = studyBlocks(study('c', { calibration: CALIBRATION }), record('c', { lumbar: [1, 0], whole: [1, 1] }));
+  const mixed = pairDistances(a, lumbar, weightsFor('full_spine', 'all'));
+  assert.equal(mixed.W, null, 'a lumbar film has no whole-film block against a full-spine one');
+  assert.ok(mixed.V < 1e-9, 'but the lumbar shape compares');
+  assert.equal(mixed.VC, null);
+});
+
+test('medianScale, fuse and matchScore are stage 1 (fuse over thirteen keys)', () => {
+  assert.equal(medianScale([1, 2, 3]), 2);
+  assert.equal(medianScale([1, 2]), 1);
+  assert.equal(medianScale([0, 0, 0]), 1);
+  const distances = Object.fromEntries(BLOCK_KEYS.map((k) => [k, null]));
+  distances.V = 2; distances.A = 4;
+  const fused = fuse(distances, { V: 2, A: 2 }, weightsFor('lumbar', 'all'));
+  assert.deepEqual(fused.blocks, ['V', 'A']);
+  assert.ok(Math.abs(fused.d - Math.sqrt((0.2 * 1 + 0.2 * 4) / 0.4)) < 1e-12);
+  assert.equal(fuse(Object.fromEntries(BLOCK_KEYS.map((k) => [k, null])), {}, weightsFor('lumbar', 'all')), null);
+  assert.equal(matchScore(0), 100);
+  assert.equal(matchScore(1), 37);
+});
+
+test('candidates filter by region anatomy, scope, subject and embedding need — never by coverage', () => {
+  const open = study('open', { subjectId: 'S1' });
+  const pool = [
+    open,
+    study('same-subject', { subjectId: 's1' }),
+    study('partial', { geometry: lumbarGeometry({ levels: ['L3', 'L4', 'L5'], hip: false }), qc: { coverage: { partial: true, unoriented: [] } } }),
+    study('angles-only', { geometry: { vertebrae: {}, s1_superior: null } }),
+    cervicalStudy('neck'),
+    study('hand', { workspaceFolder: '' }),
+    study('unsegmented', { measurements: null, geometry: null }),
+    study('demo', { source: 'demo' }),
+  ];
+  const ids = (list) => list.map((s) => s.id);
+  assert.deepEqual(ids(candidates(open, pool, { scope: 'all', region: 'lumbar', mode: 'shape' })), ['partial', 'angles-only', 'hand']);
+  assert.deepEqual(ids(candidates(open, pool, { scope: 'workspace', region: 'lumbar', mode: 'shape' })), ['partial', 'angles-only']);
+  assert.deepEqual(ids(candidates(open, pool, { scope: 'all', region: 'cervical', mode: 'shape' })), ['neck']);
+  assert.deepEqual(ids(candidates(open, pool, { scope: 'all', region: 'full_spine', mode: 'shape' })), []);
+  const embeddings = { partial: record('partial', { lumbar: [1, 0] }) };
+  assert.deepEqual(ids(candidates(open, pool, { scope: 'all', region: 'lumbar', mode: 'all', embeddings })), ['partial']);
+});
+
+test('findSimilar ranks by region, names the absent blocks, counts stale records, and defaults the region to the open film', () => {
+  const open = study('open', { calibration: CALIBRATION });
+  const near = study('near', { geometry: lumbarGeometry({ dx: 3 }), calibration: CALIBRATION });
+  const far = study('far', { measurements: { PI: 75, PT: 30, SS: 45, L1PA: 20, LL: { 'L1-S1': 30 } }, geometry: lumbarGeometry({ scale: 1.3, dy: 40 }) });
+  const noHip = study('nohip', { geometry: lumbarGeometry({ hip: false }), measurements: { PI: null, PT: null, SS: 38, L1PA: null, LL: { 'L1-S1': 49 } } });
+  const stale = study('stale');
+  const embeddings = {
+    open: record('open', { lumbar: [1, 0, 0] }), near: record('near', { lumbar: [1, 0, 0] }),
+    far: record('far', { lumbar: [0, 1, 0] }), stale: record('stale', { lumbar: [1, 0, 0], sha: 'old' }),
+  };
+  const all = findSimilar(open, [open, near, far, noHip, stale], { scope: 'all', mode: 'all', embeddings });
+  assert.equal(all.region, 'lumbar');
+  // near and stale both sit at distance 0 on every block they share with the open film (stale is the
+  // same geometry; its differing model only removes C), so they tie and sort by id; far's angles differ.
+  assert.deepEqual(all.matches.map((m) => m.study.id), ['near', 'stale', 'far']);
+  assert.equal(all.stale, 1);
+  assert.equal(all.total, 3);
+  assert.deepEqual(all.matches[0].blocks, ['V', 'H', 'A', 'SL', 'D', 'C']);
+  assert.deepEqual(all.matches[0].absent, []);
+  assert.deepEqual(all.matches[1].absent, ['D', 'C'], 'stale has another model and no calibration');
+  assert.deepEqual(all.matches[2].absent, ['D'], 'far is uncalibrated');
+  const shape = findSimilar(open, [open, near, far, noHip, stale], { scope: 'all', mode: 'shape' });
+  // Under Shape only V, H and D count, and every candidate is a translated or scaled copy of the open film's
+  // shape: near, nohip (on V alone) and stale sit at exactly 0 and tie by id; far, whose angles differ, is a
+  // shape match too (within float noise), so its place is not asserted.
+  assert.deepEqual(shape.matches.map((m) => m.study.id).filter((id) => id !== 'far'), ['near', 'nohip', 'stale']);
+  assert.ok(shape.matches.every((m) => m.d < 1e-9), 'angles do not enter the Shape ranking');
+  assert.ok(shape.matches.some((m) => m.study.id === 'nohip' && m.absent.includes('H') && m.absent.includes('D')));
+  assert.equal(shape.stale, 0);
+  const alignment = findSimilar(open, [open, near, far, noHip], { scope: 'all', mode: 'alignment' });
+  assert.equal(alignment.matches.at(-1).study.id, 'far');
+  assert.ok(alignment.matches.some((m) => m.study.id === 'nohip' && m.blocks.includes('A')), 'two shared angles are enough for A');
+  // Spec decision 15: ten cards by default, the rest counted in total.
+  const many = Array.from({ length: 11 }, (_, i) => study(`m${i}`, { geometry: lumbarGeometry({ dx: i }) }));
+  const ten = findSimilar(open, [open, ...many], { scope: 'all', mode: 'shape' });
+  assert.equal(ten.matches.length, 10);
+  assert.equal(ten.total, 11);
+});
+
+test('findSimilar under full_spine lists the absent cervical blocks for a film whose neck was not found', () => {
+  const open = fullSpine('open', { study: { calibration: CALIBRATION } });
+  const neckless = fullSpine('neckless', { study: { calibration: CALIBRATION } });
+  for (const level of ['C2', 'C3', 'C4', 'C5', 'C6', 'C7']) delete neckless.geometry.vertebrae[level];
+  neckless.geometry.c2_centroid = null;
+  neckless.geometry.c7_centroid = null; // no C7, no global SVA either
+  const embeddings = { open: record('open', { lumbar: [1, 0], cervical: [0, 1], whole: [1, 1], region: 'full_spine' }),
+    neckless: record('neckless', { lumbar: [1, 0], whole: [1, 1], region: 'full_spine' }) };
+  const { matches, region } = findSimilar(open, [open, neckless], { scope: 'all', mode: 'all', embeddings });
+  assert.equal(region, 'full_spine');
+  assert.equal(matches.length, 1);
+  assert.deepEqual(matches[0].absent, ['VC', 'AC', 'BC', 'SC', 'B', 'CC']);
+  assert.ok(matches[0].blocks.includes('W') && matches[0].blocks.includes('V'));
+});
+
+test('openReason names why the open study has no cards', () => {
+  const embeddings = { a: record('a', { lumbar: [1, 0] }) };
+  assert.equal(openReason(study('a', { measurements: null, geometry: null }), 'lumbar', 'all', embeddings), 'unsegmented');
+  assert.equal(openReason(study('a'), 'cervical', 'shape', embeddings), 'no-region');
+  assert.equal(openReason(study('b'), 'lumbar', 'all', embeddings), 'no-embedding');
+  // Landmarks present (so the film has lumbar anatomy) but no angle: the measured ones null and the
+  // segmental readers refusing endplates outside a 10 px image.
+  assert.equal(openReason(study('a', { measurements: { PI: null, PT: null, SS: null, L1PA: null, LL: {} }, geometry: { ...lumbarGeometry(), image_width: 10, image_height: 10 } }), 'lumbar', 'alignment', embeddings), 'no-alignment');
+  assert.equal(openReason(study('a'), 'lumbar', 'all', embeddings), null);
+  assert.equal(openReason(study('a', { geometry: lumbarGeometry({ levels: ['L5'], hip: false }), qc: { coverage: { partial: true, unoriented: [] } } }), 'lumbar', 'shape', embeddings), null, 'partial is not a reason any more');
+});
+
+test('angleLine follows the region: lumbar angles, or the cervical Cobb and SVA', () => {
+  const open = study('a', { calibration: CALIBRATION });
+  const other = study('b', { measurements: { PI: 60, PT: 15, SS: 45, L1PA: 8, LL: { 'L1-S1': 44 } } });
+  assert.equal(angleLine(open, other, 'lumbar'), 'PI +10 \u00B7 LL \u22125 \u00B7 PT +3 \u00B7 SS +7');
+  assert.equal(angleLine(open, other, 'full_spine'), 'PI +10 \u00B7 LL \u22125 \u00B7 PT +3 \u00B7 SS +7');
+  const neckA = cervicalStudy('c', { study: { calibration: CALIBRATION } });
+  const neckB = cervicalStudy('d', { geometry: { dx: 20 }, study: { calibration: CALIBRATION } });
+  assert.match(angleLine(neckA, neckB, 'cervical'), /^Cobb [+\u2212]?\d+ \u00B7 SVA [+\u2212]?\d+$/);
+  const uncalibrated = cervicalStudy('e', { geometry: { dx: 20 } });
+  assert.match(angleLine(neckA, uncalibrated, 'cervical'), /SVA \u2014$/);
+});
+
+test('subjectFilms is stage 1', () => {
+  const a = study('a', { subjectId: 'S1' });
+  const b = study('b', { subjectId: 's1' });
+  assert.deepEqual(subjectFilms(a, [a, b, study('c')]).map((s) => s.id), ['a', 'b']);
+  assert.deepEqual(subjectFilms(study('d'), [a]).map((s) => s.id), ['d']);
 });
