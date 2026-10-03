@@ -30,7 +30,7 @@ import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js
 import { startBatch, startEmbedBatch, stopBatch } from '../batch.js';
 import { setFilePayload, releaseStudy } from './analysis.js';
 import { forgetPrediction } from '../components/viewer.js';
-import { forgetEmbedding, ensureEmbeddings, needsEmbedding, cannotEmbed } from '../embeddings.js';
+import { forgetEmbedding, ensureEmbeddings, needsEmbedding } from '../embeddings.js';
 import { mountParameters } from './parameters.js';
 
 const DASH = '\u2014';
@@ -790,7 +790,7 @@ export function render(state) {
     } else {
       const plan = planBatch({ visible, selected: live.paramSelected, running: live.running });
       const embedPlan = planEmbed({
-        visible, selected: live.paramSelected, running: live.running, needs: needsEmbedding, ineligible: cannotEmbed,
+        visible, selected: live.paramSelected, running: live.running, needs: needsEmbedding,
       });
       action = el('div', { class: 'param-export-group' },
         el('button', {
@@ -805,11 +805,7 @@ export function render(state) {
           disabled: !embedPlan.enabled,
           title: embedPlan.enabled ? 'Compute the appearance embeddings the Find similar tab ranks by' : (embedPlan.note ?? ''),
           onClick: () => startEmbedBatch(embedPlan.ids),
-        }, embedPlan.label),
-        embedPlan.excluded > 0 ? el('span', {
-          class: 'param-export-note', 'data-find-key': 'embed-note',
-          title: 'Find similar needs all five lumbar levels and S1; a partial segmentation cannot be ranked, so it is not embedded.',
-        }, `${embedPlan.excluded} partial \u2014 not embeddable`) : null);
+        }, embedPlan.label));
     }
     return el('div', { class: 'studies-filters' },
       workspaceSelect, folderSelect, deleteButton, el('div', { class: 'studies-header-spacer' }), action);
