@@ -1054,11 +1054,12 @@ export function render(state) {
     // above), while findSimilar rebuilds a 22-point vector for every study in the library.
     let match = null;
     if (other) {
-      const matchKey = [live.studies, live.openId, live.compareId, live.similarRank, live.similarScope, live.embeddingsVersion];
+      const matchKey = [live.studies, live.openId, live.compareId, live.similarRank, live.similarScope, live.similarRegion, live.embeddingsVersion];
       if (sameMatchKey(matchKey, lastMatchKey)) {
         match = lastMatch;
       } else {
-        match = findSimilar(open, live.studies, { scope: live.similarScope, mode: live.similarRank, embeddings: embeddingsMap(), n: Infinity })
+        const region = live.similarRegion?.openId === open.id ? live.similarRegion.region : null;
+        match = findSimilar(open, live.studies, { scope: live.similarScope, region, mode: live.similarRank, embeddings: embeddingsMap(), n: Infinity })
           .matches.find((m) => m.study.id === other.id)?.match ?? null;
         lastMatchKey = matchKey;
         lastMatch = match;

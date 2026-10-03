@@ -38,6 +38,9 @@ let state = {
   // the candidates and what the ranking weighs. Session-only, replaced wholesale, never persisted.
   similarScope: 'all',
   similarRank: 'all',
+  // (similar-cases spec 2026-09-30, decision 8) the Find similar tab's region pick, held for the film
+  // it was made on: null, or { openId, region }. The tab reads the open film's own region otherwise.
+  similarRegion: null,
   selectedLevel: null,
   overlays: true,
   overlayOpacity: 50,
