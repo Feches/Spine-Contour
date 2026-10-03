@@ -167,20 +167,21 @@ def _fake_run(monkeypatch):
 
 
 RECORD = {"model": {"id": "fixture", "dim": 2, "input": [8, 8], "onnx_sha256": "h"},
-          "crop": [0.6, 0.8], "whole": [1.0, 0.0], "film_type": "whole-spine"}
+          "lumbar": [0.6, 0.8], "cervical": None, "whole": [1.0, 0.0], "region": "lumbar"}
 
 
 def test_predict_carries_the_embedding_and_records_that_it_computed_one(monkeypatch):
     post = _fake_run(monkeypatch)
     seen = {}
-    def fake_record(image, framing):
-        seen["shape"], seen["framing"], seen["image"] = image.shape, framing, image.copy()
-        return dict(RECORD)
+    def fake_record(image, framing, region="lumbar"):
+        seen["shape"], seen["framing"], seen["image"], seen["region"] = image.shape, framing, image.copy(), region
+        return {**RECORD, "region": region}
     monkeypatch.setattr(server, "embedding_record", fake_record)
     body = post().json()
     assert body["embedding"] == RECORD
     assert body["qc"]["processing"]["embeddings"] is True
     assert seen["shape"] == (24, 16) and seen["framing"]["window"] == [0, 0, 16, 24]
+    assert seen["region"] == "lumbar"
     # /predict must embed exactly the bytes it stores as image_png, not the raw upload: a future
     # refactor that passed the pre-rescale pixel array instead of prediction["image"] would silently
     # produce a second, incompatible embedding population under an unchanged model.onnx_sha256.
@@ -192,7 +193,7 @@ def test_predict_carries_the_embedding_and_records_that_it_computed_one(monkeypa
 def test_predict_skips_the_embedding_when_the_setting_is_off(monkeypatch):
     post = _fake_run(monkeypatch)
     called = []
-    monkeypatch.setattr(server, "embedding_record", lambda image, framing: called.append(1) or dict(RECORD))
+    monkeypatch.setattr(server, "embedding_record", lambda image, framing, region="lumbar": called.append(1) or dict(RECORD))
     body = post(embeddings="false").json()
     assert body["embedding"] is None
     assert body["qc"]["processing"]["embeddings"] is False
@@ -200,9 +201,37 @@ def test_predict_skips_the_embedding_when_the_setting_is_off(monkeypatch):
     assert body["measurements"]["PI"] == 42.0
 
 
+def test_predict_embeds_by_the_region_that_automatic_detection_resolved(monkeypatch):
+    # `body_part=auto` is not a region; the embedding must be cut for the film the detector found.
+    post = _fake_run(monkeypatch)
+    monkeypatch.setattr(server, "detect_film",
+                        lambda pixel_array, anterior_side=None: {"body_part": "cervical", "anterior_side": "left"})
+
+    def fake_cervical(pixel_array, anterior_side, model=None):
+        mask = np.zeros(pixel_array.shape, dtype=np.uint8)
+        # A cervical window is [x, y, width, height].
+        return {"image": pixel_array, "mask": mask, "femoral_mask": np.zeros_like(mask), "landmarks": {},
+                "models": {"vertebrae": "cervical_hrnet"}, "framing": {"window": [2, 3, 8, 9], "reframed": False}}
+    monkeypatch.setattr(server, "cervical_prediction", fake_cervical)
+    monkeypatch.setattr(server, "cervical_measurements_from_geometry",
+                        lambda geometry: {"measurements": {}, "geometry": dict(geometry)})
+    monkeypatch.setattr(server, "calibration_from_payload",
+                        lambda *args, **kwargs: {"status": "unavailable", "source_sha256": "h", "spacing": None})
+    seen = {}
+
+    def fake_record(image, framing, region="lumbar"):
+        seen["region"], seen["framing"] = region, framing
+        return {**RECORD, "lumbar": None, "cervical": [1.0, 0.0], "region": region}
+    monkeypatch.setattr(server, "embedding_record", fake_record)
+    response = post(body_part="auto")
+    assert response.status_code == 200
+    assert seen["region"] == "cervical" and seen["framing"]["window"] == [2, 3, 8, 9]
+    assert response.json()["embedding"]["region"] == "cervical"
+
+
 def test_predict_survives_an_embedding_failure(monkeypatch):
     post = _fake_run(monkeypatch)
-    def boom(image, framing):
+    def boom(image, framing, region="lumbar"):
         raise FileNotFoundError("Missing embedding metadata")
     monkeypatch.setattr(server, "embedding_record", boom)
     response = post()
@@ -221,9 +250,9 @@ def _png(height=24, width=16):
 
 def test_embed_endpoint_returns_the_record_from_the_stored_image_and_framing(monkeypatch):
     seen = {}
-    def fake_record(image, framing):
+    def fake_record(image, framing, region="lumbar"):
         seen["shape"], seen["framing"] = image.shape, framing
-        return dict(RECORD)
+        return {**RECORD, "region": region}
     monkeypatch.setattr(server, "embedding_record", fake_record)
     framing = {"window": [0, 0, 8, 8], "searched": True, "whole_film_won": False}
     response = TestClient(server.app).post(
@@ -233,11 +262,37 @@ def test_embed_endpoint_returns_the_record_from_the_stored_image_and_framing(mon
     assert seen["shape"] == (24, 16) and seen["framing"] == framing
 
 
+def test_embed_endpoint_passes_the_region_and_rejects_an_unknown_one(monkeypatch):
+    seen = {}
+
+    def fake_record(image, framing, region="lumbar"):
+        seen["region"] = region
+        return {"model": {"id": "m", "dim": 2, "input": [8, 8], "onnx_sha256": "abc"},
+                "lumbar": None, "cervical": [1.0, 0.0], "whole": [0.0, 1.0], "region": region}
+
+    monkeypatch.setattr(server, "embedding_record", fake_record)
+    client = TestClient(server.app)
+    response = client.post("/embed", files={"file": ("s.png", _png(), "image/png")},
+                           data={"region": "cervical", "framing": json.dumps({"window": [1, 2, 30, 40]})})
+    assert response.status_code == 200 and seen["region"] == "cervical"
+    assert response.json()["embedding"]["region"] == "cervical"
+    response = client.post("/embed", files={"file": ("s.png", _png(), "image/png")})
+    assert response.status_code == 200 and seen["region"] == "lumbar"
+    response = client.post("/embed", files={"file": ("s.png", _png(), "image/png")}, data={"region": "thoracic"})
+    assert response.status_code == 422 and "region" in response.json()["detail"]
+
+
 def test_embed_endpoint_without_framing_and_with_bad_inputs(monkeypatch):
-    monkeypatch.setattr(server, "embedding_record", lambda image, framing: {**RECORD, "film_type": None if framing is None else "x"})
+    seen = {}
+
+    def fake_record(image, framing, region="lumbar"):
+        seen["framing"] = framing
+        return {**RECORD, "region": region}
+    monkeypatch.setattr(server, "embedding_record", fake_record)
     client = TestClient(server.app)
     ok = client.post("/embed", files={"file": ("SP-1000.png", _png(), "image/png")})
-    assert ok.status_code == 200 and ok.json()["embedding"]["film_type"] is None
+    assert ok.status_code == 200 and ok.json()["embedding"] == RECORD
+    assert seen["framing"] is None
     assert client.post("/embed", files={"file": ("x.png", b"not an image", "image/png")}).status_code == 422
     assert client.post("/embed", data={"framing": "[1, 2]"}, files={"file": ("SP-1000.png", _png(), "image/png")}).status_code == 422
     assert client.post("/embed", data={"framing": "{not json"}, files={"file": ("SP-1000.png", _png(), "image/png")}).status_code == 422
@@ -245,7 +300,7 @@ def test_embed_endpoint_without_framing_and_with_bad_inputs(monkeypatch):
 
 
 def test_embed_endpoint_reports_a_missing_graph_as_unavailable(monkeypatch):
-    def missing(image, framing):
+    def missing(image, framing, region="lumbar"):
         raise FileNotFoundError("Missing embedding metadata: embed.json. Run python tools/export_onnx.py --kind embed.")
     monkeypatch.setattr(server, "embedding_record", missing)
     response = TestClient(server.app).post("/embed", files={"file": ("SP-1000.png", _png(), "image/png")})
@@ -263,7 +318,7 @@ def test_embedding_model_endpoint_reports_the_bundled_graph_or_its_absence(monke
 
 
 def test_embed_and_embedding_model_report_a_broken_install_as_unavailable(monkeypatch):
-    def broken_record(image, framing):
+    def broken_record(image, framing, region="lumbar"):
         raise embedding.EmbeddingUnavailable("embed.json is missing 'input'")
     monkeypatch.setattr(server, "embedding_record", broken_record)
     response = TestClient(server.app).post("/embed", files={"file": ("SP-1000.png", _png(), "image/png")})

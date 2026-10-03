@@ -22,7 +22,7 @@ try:
     from .progress import stream_job
     from .models.models import release_models
     from .calibration import calibration_from_payload, learn_profile, validate_profile
-    from .embedding import EmbeddingUnavailable, embedding_record, load_metadata, model_record
+    from .embedding import EmbeddingUnavailable, REGIONS, embedding_record, load_metadata, model_record
     from .cervical_measurements import cervical_measurements_from_geometry
     from .global_sva_measurements import global_sva_measurements_from_geometry
     from .models import MODEL_CHOICES, VERTEBRA_LABELS, spinopelvic_prediction
@@ -36,7 +36,7 @@ except ImportError:  # Support `uvicorn server:app` from backend/.
     from progress import stream_job
     from models.models import release_models
     from calibration import calibration_from_payload, learn_profile, validate_profile
-    from embedding import EmbeddingUnavailable, embedding_record, load_metadata, model_record
+    from embedding import EmbeddingUnavailable, REGIONS, embedding_record, load_metadata, model_record
     from cervical_measurements import cervical_measurements_from_geometry
     from global_sva_measurements import global_sva_measurements_from_geometry
     from models import MODEL_CHOICES, VERTEBRA_LABELS, spinopelvic_prediction
@@ -298,13 +298,14 @@ def _analyze(payload, modality, body_part, view, laterality,
         encoded[f"{name}_png"] = base64.b64encode(output.getvalue()).decode("ascii")
     # Appearance embeddings (similar-cases spec, 2026-09-12, section 10.3): one more stage inside
     # the run the user already waits for, and never able to fail it. Off in Settings skips it
-    # entirely -- the graph is never loaded. `image` is the whole film; the crop is cut by the
-    # framing window inside embedding_record.
+    # entirely -- the graph is never loaded. `image` is the whole film; the windows are cut and
+    # chosen by the film's region inside embedding_record (spec 2026-09-30, section 8), and
+    # `body_part` is that region by now: automatic detection has already replaced "auto".
     embedding = None
     if runtime.options().embeddings:
         runtime.report("embedding", "Computing appearance embeddings")
         try:
-            embedding = embedding_record(prediction["image"], prediction["framing"])
+            embedding = embedding_record(prediction["image"], prediction["framing"], body_part)
         # A DirectML failure aborts the whole GPU attempt like any other model's
         # (run_prediction restarts the film on the CPU); it is not an embedding failure.
         except (runtime.Cancelled, runtime.GpuFailure):
@@ -421,9 +422,11 @@ async def measure(geometry: dict[str, object]) -> dict[str, object]:
 
 
 async def embed_request(file: UploadFile = File(...), framing: str | None = Form(None),
+                        region: str = Form("lumbar"),
                         processing_mode: str = Form("standard"), cpu_threads: int = Form(2)):
-    """The stored sidecar image and its framing record (similar-cases spec, 2026-09-12, section
-    10.4). The film file is never needed: the sidecar's image is the whole film."""
+    """The stored sidecar image, its framing record and the film's region (similar-cases spec,
+    2026-09-12, section 10.4; regions, 2026-09-30, section 8). The film file is never needed: the
+    sidecar's image is the whole film. `region` defaults to lumbar, the stage-1 behaviour."""
     payload = await file.read(MAX_UPLOAD_BYTES + 1)
     if not payload:
         raise HTTPException(status_code=400, detail="The uploaded file is empty")
@@ -436,7 +439,9 @@ async def embed_request(file: UploadFile = File(...), framing: str | None = Form
         raise HTTPException(status_code=422, detail=str(error)) from error
     if parsed is not None and not isinstance(parsed, dict):
         raise HTTPException(status_code=422, detail="framing must be a JSON object")
-    return {"payload": payload, "framing": parsed, "settings": settings}
+    if region not in REGIONS:
+        raise HTTPException(status_code=422, detail=f"Unknown region {region!r}; available: {', '.join(REGIONS)}")
+    return {"payload": payload, "framing": parsed, "region": region, "settings": settings}
 
 
 def run_embedding(request, reporter=None, cancelled=None):
@@ -447,7 +452,7 @@ def run_embedding(request, reporter=None, cancelled=None):
             runtime.report("decoding", "Reading the stored film")
             image = _decode_grayscale(request["payload"])
             runtime.report("embedding", "Computing appearance embeddings")
-            result = embedding_record(image, request["framing"])
+            result = embedding_record(image, request["framing"], request["region"])
             runtime.checkpoint()
             return {"embedding": result}
         except runtime.Cancelled:
