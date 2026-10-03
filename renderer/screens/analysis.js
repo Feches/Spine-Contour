@@ -488,10 +488,13 @@ export async function embedStudy(studyId, { batch = false } = {}) {
   if (!predictionMatchesStudy(live, sidecar)) return { ok: false, reason: 'no stored segmentation' };
   if (getState().running || getState().deletingStudies) return { ok: false, reason: WAIT_FOR_RUN };
   const requestId = crypto.randomUUID();
+  // The film's region, read before the await: the backend embeds the lumbar and cervical windows
+  // the region names, and /embed takes it as a form field (similar-cases stage 2).
+  const region = studyRegion(live);
   setState({ running: studyId, runStage: { requestId, mode: getState().performance.mode,
     stage: 'embedding', message: 'Computing appearance embedding\u2026', elapsed_seconds: 0, kind: 'embed' } });
   try {
-    const response = await embed({ id: studyId, imagePng: sidecar.image_png, framing: sidecar.qc?.framing ?? null });
+    const response = await embed({ id: studyId, imagePng: sidecar.image_png, framing: sidecar.qc?.framing ?? null, region });
     const after = getState().studies.find((s) => s.id === studyId);
     if (!after || after.addedAt !== addedAt) {
       setState({ running: null, runStage: null });
@@ -974,10 +977,10 @@ export function render(state) {
     nameField.disabled = open.source === 'demo';
     nameField.title = open.source === 'demo'
       ? 'Demo studies are not saved'
-      : `Rename this study · ${open.id}${open.fileName ? ` · ${open.fileName}` : ''}`;
+      : `Rename this study${open.fileName ? ` · ${open.fileName}` : ''}`;
 
     // The rest of the header line. The name leads because that is what the user recognises; the
-    // SP-nnnn id stays reachable on the title rather than disappearing entirely.
+    // SP-nnnn id appears nowhere a person looks, tooltips included (HANDOFF decision 76).
     // Where the models ran, from the providers the result recorded; nothing for older records.
     const processedOn = describeProcessor(open.qc);
     headerMeta.textContent = `${studyRegionLabel(open).toUpperCase()} · ${(open.view || '—').toUpperCase()} · ${open.pt ?? '—'}`

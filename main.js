@@ -415,6 +415,7 @@ ipcMain.handle('embed', async (_event, request) => {
   const form = new FormData();
   form.append('file', new Blob([bytes]), `${typeof request.id === 'string' ? request.id : 'study'}.png`);
   if (request.framing && typeof request.framing === 'object') form.append('framing', JSON.stringify(request.framing));
+  if (typeof request.region === 'string' && ['lumbar', 'cervical', 'full_spine'].includes(request.region)) form.append('region', request.region);
   const settings = normalizePerformance(request.performance);
   form.append('processing_mode', settings.mode);
   form.append('cpu_threads', String(settings.cpuThreads));
