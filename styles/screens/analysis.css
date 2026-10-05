@@ -882,6 +882,44 @@
 .analysis-region-bar label { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .analysis-region-bar [hidden] { display: none; }
 .analysis-region-bar .meas-note { margin: 0; }
+
+/* Side-by-side, read-only full-spine crop demonstration. */
+.crop-comparison-dialog {
+  width: min(96vw, 1480px);
+  max-height: 94vh;
+  padding: 20px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--ink);
+}
+.crop-comparison-dialog::backdrop { background: rgba(0, 0, 0, .72); }
+.crop-comparison-heading { display: flex; align-items: start; justify-content: space-between; gap: 20px; }
+.crop-comparison-heading h2 { margin: 0 0 5px; font-size: 18px; }
+.crop-comparison-heading p, .crop-comparison-status { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+.crop-comparison-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.crop-comparison-card, .crop-comparison-pending {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--well);
+}
+.crop-comparison-card h3 { margin: 0 0 10px; font-size: 15px; }
+.crop-comparison-film { display: block; max-width: 100%; width: auto; max-height: 42vh; margin: auto; object-fit: contain; }
+.crop-comparison-crops { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.crop-comparison-crops figure { margin: 0; min-width: 0; }
+.crop-comparison-crops figcaption { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; font-size: 12px; }
+.crop-comparison-crop-label { margin: 6px 0 3px; color: var(--muted); font-size: 11px; }
+.crop-comparison-crops canvas { display: block; max-width: 100%; max-height: 250px; object-fit: contain; }
+.crop-comparison-swatch { width: 10px; height: 10px; flex: 0 0 10px; border-radius: 2px; }
+.crop-comparison-measures { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 12px 0 0; font-size: 11px; }
+.crop-comparison-measures div { display: flex; gap: 5px; }
+.crop-comparison-measures dt { color: var(--muted); }
+.crop-comparison-measures dd { margin: 0; font-weight: 600; }
+.crop-comparison-warning { color: var(--danger); font-size: 12px; }
+@media (max-width: 800px) { .crop-comparison-columns { grid-template-columns: 1fr; } }
 /* (2026-10-01, issue #39) The region note of a film whose pill reads Failed: `Last run failed: ...`,
    in the Failed pill's red (port spec 6). screens/analysis.js toggles the class. */
 .meas-note.is-failed { color: var(--danger); }

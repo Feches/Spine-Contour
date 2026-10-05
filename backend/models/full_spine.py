@@ -229,6 +229,44 @@ def lumbar_windows(window, shape):
                    for dx, dy, scale in variants})
 
 
+def _refined_lumbar_windows(proposals, shape):
+    """Try a smaller model crop around corroborated S1, keeping pelvic clearance."""
+    if not proposals:
+        return []
+    window, _, _, _, s1, _ = max(proposals, key=lambda p: p[3])
+    # L1 can lie 6.42 S1 widths above its midpoint in the training corpus;
+    # retain 7 widths above and the original 5.3 below for femoral heads.
+    refined = framing.reframe(s1, shape, above=7.0, below=framing.CROP_BELOW_L)
+    if refined is None:
+        return []
+    original_area = (window[2]-window[0]) * (window[3]-window[1])
+    refined_area = (refined[2]-refined[0]) * (refined[3]-refined[1])
+    if refined_area >= .9 * original_area:
+        return []
+    left, top, right, bottom = refined
+    width, height = right-left, bottom-top
+    cx, cy = (left+right)/2, (top+bottom)/2
+    return sorted({framing.clip_window(cx+dx*width, cy, width, height, *shape)
+                   for dx in (-.06, 0, .06)})
+
+
+def _prefer_refined_lumbar(candidates):
+    """Use the smaller crop only when both crop scales independently agree."""
+    broad, broad_qc = select_consensus([c for c in candidates if not c.get("refined")])
+    if broad is None or not any(c.get("refined") for c in candidates):
+        return broad, broad_qc
+    refined, refined_qc = select_consensus([c for c in candidates if c.get("refined")])
+    if refined is None:
+        return broad, broad_qc
+    distance = np.linalg.norm(broad["points"]-refined["points"], axis=1).max()
+    if distance > .25 * min(broad["scale"], refined["scale"]):
+        return broad, broad_qc
+    return refined, {**broad_qc, "refined_crop": True,
+                     "broad_support": broad_qc["support"],
+                     "refined_support": refined_qc["support"],
+                     "broad_refined_max_difference_px": round(float(distance), 2)}
+
+
 def _lumbar_candidates(raw, _found=None, *, force_search=False):
     # Existing image-only sliding detector establishes a lumbosacral crop.
     learned_boxes = []
@@ -254,11 +292,22 @@ def _lumbar_candidates(raw, _found=None, *, force_search=False):
             continue
         detected_source = transform.restore_points(detected)
         if _inside(detected_source, window):
-            proposals.append((window, canvas, transform, score, detected_source))
+            proposals.append((window, canvas, transform, score, detected_source, False))
+    refined_windows = (_refined_lumbar_windows(proposals, raw.shape)
+                       if learned_boxes else [])
+    refined_prepared = [framing.prepare_crop(raw, window) for window in refined_windows]
+    refined_detections = models._score_s1([canvas for canvas, _ in refined_prepared]) if refined_prepared else []
+    for window, (canvas, transform), (score, detected) in zip(
+            refined_windows, refined_prepared, refined_detections):
+        if detected is None or score < .5:
+            continue
+        detected_source = transform.restore_points(detected)
+        if _inside(detected_source, window):
+            proposals.append((window, canvas, transform, score, detected_source, True))
     candidates = []
     if proposals:
         def predict(session):
-            for index, (window, canvas, transform, score, detected) in enumerate(proposals):
+            for index, (window, canvas, transform, score, detected, refined) in enumerate(proposals):
                 runtime.report("landmarks", "Comparing lumbar HRNET crops", index, len(proposals))
                 points = session.run(None, {"image": models._segmentation_input(canvas)})[0][0]
                 if points.shape != (22, 2) or not np.isfinite(points).all():
@@ -283,10 +332,12 @@ def _lumbar_candidates(raw, _found=None, *, force_search=False):
                     continue
                 candidates.append({"anchor": endplate[1], "scale": scale,
                                    "points": points, "endplate": endplate,
-                                   "window": window, "score": float(score),
+                                   "window": window, "score": float(score), "refined": refined,
                                    "detector_disagreement_widths": discrepancy})
         models._infer("hrnet", predict, "Locating the S1 endplate with HRNET")
-    return candidates, {"windows": len(windows), "hrnet_crops": len(proposals),
+    return candidates, {"windows": len(windows) + len(refined_windows),
+                        "hrnet_crops": len(proposals),
+                        "refined_windows": [list(window) for window in refined_windows],
                         "localizer": located,
                         "model_proposals": [list(box) for box in learned_boxes]}
 
@@ -315,7 +366,10 @@ def search_orientation(raw, anterior_side):
         neck_candidates, neck_search = _cervical_candidates(canonical)
         pelvis_candidates, pelvis_search = _lumbar_candidates(canonical)
     neck, neck_qc = select_consensus(neck_candidates)
-    pelvis, pelvis_qc = select_consensus(pelvis_candidates)
+    if runtime.options().crop_method == "model":
+        pelvis, pelvis_qc = _prefer_refined_lumbar(pelvis_candidates)
+    else:
+        pelvis, pelvis_qc = select_consensus(pelvis_candidates)
     if runtime.options().crop_method == "model":
         if neck is None:
             runtime.report("search", "Model cervical crop was inconclusive; searching upper spine")

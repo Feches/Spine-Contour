@@ -104,3 +104,33 @@ def test_rejected_regional_model_crop_tries_search(monkeypatch):
         with pytest.raises(RuntimeError, match="search crop reached"):
             models.spinopelvic_prediction(raw)
     assert calls == ["search"]
+
+
+def test_model_lumbar_refinement_keeps_s1_and_pelvis_clearance():
+    s1 = np.array([[400., 1000.], [500., 1000.]])
+    broad = (0, 200, 1000, 1900)
+    proposals = [(broad, None, None, .95, s1, False)]
+    refined = full_spine._refined_lumbar_windows(proposals, (2000, 1000))
+    assert len(refined) >= 2
+    assert all(window[1] < 1000 - 6.42 * 100 for window in refined)
+    assert all(window[3] > 1000 + 4.45 * 100 for window in refined)
+    assert all((window[2]-window[0])*(window[3]-window[1])
+               < (broad[2]-broad[0])*(broad[3]-broad[1]) for window in refined)
+
+
+def test_refined_lumbar_requires_consensus_at_both_scales():
+    def candidate(offset, refined):
+        points = np.zeros((22, 2), dtype=float)
+        points[:, 0] = offset
+        return {"points": points, "anchor": np.array([offset, 0.]),
+                "scale": 100., "score": .9, "refined": refined,
+                "window": (100, 300, 400, 700) if refined else (0, 200, 500, 900)}
+    broad = [candidate(0, False), candidate(1, False)]
+    tight = [candidate(2, True), candidate(3, True)]
+    preferred, info = full_spine._prefer_refined_lumbar(broad + tight)
+    assert preferred["refined"] is True
+    assert info["refined_crop"] is True
+    incompatible = [candidate(35, True), candidate(36, True)]
+    preferred, info = full_spine._prefer_refined_lumbar(broad + incompatible)
+    assert preferred in broad
+    assert not info.get("refined_crop")
