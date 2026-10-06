@@ -66,8 +66,9 @@ def parse_options(mode="standard", cpu_threads=2, crop_localizer=True, toolbar_r
         raise ValueError("Processor must be cpu or a GPU id")
     if crop_method not in ("search", "model"):
         raise ValueError("Crop method must be search or model")
+    # Accept older clients, but route the retired trained-crop method through search.
     return Options(mode, min(cpu_threads, os.cpu_count() or 1), crop_localizer, toolbar_removal,
-                   processor, crop_method)
+                   processor, "search")
 
 
 _options = ContextVar("processing_options", default=Options())

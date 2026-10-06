@@ -17,7 +17,8 @@ function normalizePerformance(value) {
     || typeof processor !== 'string' || !PROCESSOR_ID.test(processor)) {
     throw new Error('Invalid processing settings.');
   }
-  return { mode, cpuThreads, cropLocalizer, cropMethod, toolbarRemoval, processor };
+  // Migrate the retired trained-crop preference for saved settings and all requests.
+  return { mode, cpuThreads, cropLocalizer, cropMethod: 'search', toolbarRemoval, processor };
 }
 
 // The backend's GET /processors body, reduced to what Settings shows. Anything malformed is

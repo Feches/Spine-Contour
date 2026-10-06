@@ -1,4 +1,4 @@
-"""The two user-selected crop methods remain separate through the backend."""
+"""Public requests use search; retained model internals remain testable."""
 import numpy as np
 import pytest
 
@@ -8,7 +8,7 @@ from backend.models import full_spine, models
 
 def test_crop_method_defaults_to_search_and_rejects_unknown_values():
     assert runtime.parse_options().crop_method == "search"
-    assert runtime.parse_options(crop_method="model").crop_method == "model"
+    assert runtime.parse_options(crop_method="model").crop_method == "search"
     for value in (None, "auto", True, 0):
         with pytest.raises(ValueError):
             runtime.parse_options(crop_method=value)
@@ -26,7 +26,7 @@ def test_model_miss_falls_back_to_each_full_spine_crop_search(monkeypatch):
         return [], {"model_proposals": []} if not force_search else {"windows": 1}
     monkeypatch.setattr(full_spine, "_cervical_candidates", neck)
     monkeypatch.setattr(full_spine, "_lumbar_candidates", pelvis)
-    with runtime.session(runtime.parse_options(crop_method="model")):
+    with runtime.session(runtime.Options(crop_method="model")):
         result = full_spine.search_orientation(raw, "left")
     assert seen == [("cervical", False), ("lumbar", False),
                     ("cervical", True), ("lumbar", True)]
@@ -45,7 +45,7 @@ def test_accepted_model_regions_do_not_run_search(monkeypatch):
         return accepted, {"model_proposals": [[1, 2, 3, 4]]}
     monkeypatch.setattr(full_spine, "_cervical_candidates", candidates)
     monkeypatch.setattr(full_spine, "_lumbar_candidates", candidates)
-    with runtime.session(runtime.parse_options(crop_method="model")):
+    with runtime.session(runtime.Options(crop_method="model")):
         result = full_spine.search_orientation(raw, "left")
     assert result["neck_search"]["method_used"] == "model"
     assert result["pelvis_search"]["method_used"] == "model"
@@ -60,7 +60,7 @@ def test_model_lumbar_proposal_reaches_selected_crop(monkeypatch):
     def reached(*_):
         raise RuntimeError("selected model crop")
     monkeypatch.setattr(models, "_read_frame", reached)
-    with runtime.session(runtime.parse_options(crop_method="model")):
+    with runtime.session(runtime.Options(crop_method="model")):
         with pytest.raises(RuntimeError, match="selected model crop"):
             models.spinopelvic_prediction(raw)
 
@@ -77,7 +77,7 @@ def test_regional_model_miss_tries_search_before_visible_film(monkeypatch):
         assert calls == ["search"]
         raise RuntimeError("visible film reached")
     monkeypatch.setattr(models, "_read_frame", read)
-    with runtime.session(runtime.parse_options(crop_method="model")):
+    with runtime.session(runtime.Options(crop_method="model")):
         with pytest.raises(RuntimeError, match="visible film reached"):
             models.spinopelvic_prediction(raw)
     assert calls == ["search"]
@@ -100,7 +100,7 @@ def test_rejected_regional_model_crop_tries_search(monkeypatch):
             return {"s1": None, "s1_confidence": 0.}
         raise RuntimeError("search crop reached")
     monkeypatch.setattr(models, "_read_frame", read)
-    with runtime.session(runtime.parse_options(crop_method="model")):
+    with runtime.session(runtime.Options(crop_method="model")):
         with pytest.raises(RuntimeError, match="search crop reached"):
             models.spinopelvic_prediction(raw)
     assert calls == ["search"]

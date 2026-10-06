@@ -61,12 +61,12 @@ test('processor defaults to the CPU for older preferences; a GPU id survives sav
   assert.equal(validPerformance(legacy), false, 'the renderer always carries the field; main migrates files');
 });
 
-test('crop method defaults to search and preserves the trained-model choice', () => {
+test('crop method migrates the retired trained-model choice to search', () => {
   const legacy = { mode: 'standard', cpuThreads: 2, cropLocalizer: true, toolbarRemoval: false, processor: 'cpu' };
   assert.equal(normalizePerformance(legacy).cropMethod, 'search');
   const selected = { ...legacy, cropMethod: 'model' };
-  assert.deepEqual(normalizePerformance(selected), selected);
-  assert.equal(validPerformance(selected), true);
+  assert.deepEqual(normalizePerformance(selected), { ...selected, cropMethod: 'search' });
+  assert.equal(validPerformance(selected), false);
   for (const cropMethod of [null, '', 'automatic', 0]) {
     assert.throws(() => normalizePerformance({ ...legacy, cropMethod }));
     assert.equal(validPerformance({ ...legacy, cropMethod }), false);
