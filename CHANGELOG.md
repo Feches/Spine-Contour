@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.16
+
+- The trained automatic crop method from 1.0.13 is retired. **Settings → Processing →
+  Crop method** now shows **Crop search** only, and every run uses it. A saved Trained
+  model preference, and any request that still asks for the trained method, is run with
+  Crop search instead. Crop localizer On/Off, automatic film detection and the existing
+  landmark checks are unchanged. No measurement change; the weights are unchanged from
+  1.0.15.
+
+[Release notes](docs/releases/1.0.16.md)
+
 ## 1.0.15
 
 - A film that has not been segmented reads **Unsegmented** instead of Processing.

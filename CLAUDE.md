@@ -1,5 +1,13 @@
 # Spine Contour
 
+**2026-10-07 release 1.0.16 (crop search restored):** branch `ccr-af336f0e-7wacoa` off `main` @ `f2e39e0`, the merge
+of Michael's PR #57 (`0bd01c5`), which retires 1.0.13's trained crop method: Settings shows Crop search only,
+`normalizePerformance` (backend-client.cjs) and `runtime.parse_options` route a saved or requested `model` to `search`,
+and `validPerformance` accepts `search` only. `crop_detector.onnx` still ships and `--verify-models` still loads it; no
+run uses it. PR #57's merge published nothing: `package.json` still said 1.0.15, whose tag is `c53e91d`. This commit is
+the bump only (`package.json`, `version.js`, CHANGELOG, `docs/releases/1.0.16.md`, the README link). Unit 614/614;
+backend tests and smoke suites not run here. Merging the release PR to `main` publishes v1.0.16.
+
 **2026-10-02 release 1.0.15 (issue #39 Failed-status follow-up):** branch `claude/issue-39-failed-status-port` (the main
 checkout, no worktree) off `main` @ `9992b99` (v1.0.13), merged with `origin/main` @ `e7ae5a3` (v1.0.14, PR #52) as
 `0b92fbd` (a CHANGELOG conflict only). Five additions on 1.0.13's Failed status: films with no result read Unsegmented,
