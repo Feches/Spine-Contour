@@ -354,7 +354,7 @@ def test_model_cervical_failure_across_mirrors_tries_crop_search(monkeypatch):
     evidence = {'left': {**orientation_evidence('left', []),
                          'neck_candidates': neck,
                          'neck_search': {'method_used': 'model', 'model_proposals': [[1, 2, 3, 4]]}}}
-    with runtime.session(runtime.parse_options(crop_method='model')):
+    with runtime.session(runtime.Options(crop_method='model')):
         result = full.reconcile_cervical_searches(raw, evidence)
     assert result['left']['neck'] is not None
     assert result['left']['neck_search']['method_used'] == 'search_fallback'

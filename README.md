@@ -196,11 +196,11 @@ borders. It does not search for or reframe the lumbar anatomy.
 The choice is saved and applies to the next individual run or batch. Changing this
 setting changes the model input and may change detected anatomy; review the result.
 The runtime, localizer setting and selected frame are recorded with each result.
-**Crop method** offers **Crop search** (the default) and **Trained model**.
-The chosen method proposes cervical and lumbar regions on full-spine films;
-for lumbar requests it applies when Crop localizer is On. Trained model tries
-Crop search for a region when its proposal is absent or fails landmark checks.
-A region can still remain unconfirmed; review the crop and measurements before use.
+**Crop method** uses **Crop search**. The trained automatic crop method is disabled,
+including for saved preferences and older clients that request it. Crop search
+locates cervical and lumbar regions on full-spine films; for lumbar requests it
+applies when Crop localizer is On. Existing landmark checks remain in place.
+
 See [inference implementation and validation](docs/onnx-inference.md).
 
 ## Partial segmentation

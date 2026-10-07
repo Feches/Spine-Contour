@@ -6,14 +6,10 @@
 images need localization to find the lumbar region at the expected model scale.
 Every candidate region and existing crop acceptance safeguard is retained.
 
-**Crop method** selects Crop search or Trained model for full-spine inference
-and for lumbar inference when Crop localizer is On.
-Crop search retains the existing behavior and remains the default. The model
-proposes bounded regional crops; downstream landmark and agreement checks
-still decide whether cervical and lumbar anatomy is established. If a model
-proposal is missing or fails these checks, Crop search runs for that region.
-The result records which method supplied the crop and why fallback ran. A region
-that remains uncertain should be selected or reviewed manually.
+**Crop method** uses **Crop search**. The trained automatic crop method is disabled,
+including for saved preferences and older clients that request it. Crop search
+locates cervical and lumbar regions on full-spine films; for lumbar requests it
+applies when Crop localizer is On. Existing landmark checks remain in place.
 
 **Crop localizer Off** skips model-based search and S1-based reframing.
 It removes broad near-black screenshot borders with the existing fast pixel-based

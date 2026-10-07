@@ -87,7 +87,7 @@ def test_full_spine_dispatch_uses_original_image_calibration_and_its_own_measure
     assert result["qc"]["provenance"]["segmentation_available"] is False
     assert result["qc"]["warnings"] == ["Verify C7 and S1 landmarks."]
     assert result["qc"]["processing"]["crop_localizer"] is True
-    assert result["qc"]["processing"]["crop_method"] == "model"
+    assert result["qc"]["processing"]["crop_method"] == "search"
     assert result["qc"]["processing"]["toolbar_removal"] is False
     assert result["qc"]["processing"]["requested_crop_localizer"] is False
     assert result["qc"]["processing"]["requested_toolbar_removal"] is True
