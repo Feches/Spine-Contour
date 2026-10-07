@@ -104,6 +104,12 @@ def full_spine_prediction(pixel_array, anterior_side, model=FULL_SPINE_MODEL, **
 
 
 def detect_film(pixel_array, anterior_side=None):
+    if runtime.options().view_selection == "classifier":
+        if __package__:
+            from .view_classifier import detect_film as fast_detect
+        else:
+            from view_classifier import detect_film as fast_detect
+        return fast_detect(pixel_array, anterior_side)
     if __package__:
         from .film_detection import detect_film as detect
     else:
@@ -165,6 +171,7 @@ async def prediction_request(
     processing_mode: str = Form("standard"), cpu_threads: int = Form(2),
     crop_localizer: bool = Form(True),
     crop_method: str = Form("search"),
+    view_selection: str = Form("landmarks"),
     toolbar_removal: bool = Form(False),
     processor: str = Form("cpu"),
     anterior_side: str | None = Form(None),
@@ -176,7 +183,7 @@ async def prediction_request(
         raise HTTPException(status_code=413, detail="The uploaded file exceeds 50 MB")
     try:
         settings = runtime.parse_options(processing_mode, cpu_threads, crop_localizer,
-                                         toolbar_removal, processor, crop_method)
+                                         toolbar_removal, processor, crop_method, view_selection)
         if body_part.strip().lower() == "cervical":
             _validate_cervical_request(modality, view, laterality, vertebra_model,
                                       femoral_model, s1_model, anterior_side)
@@ -216,6 +223,20 @@ def run_prediction(request, reporter=None, cancelled=None):
         finally:
             if settings.low_memory:
                 release_models()
+
+
+@app.post("/classify-view", summary="Preview the experimental whole-film view classifier")
+async def classify_view(file: UploadFile = File(...)):
+    payload = await file.read(MAX_UPLOAD_BYTES + 1)
+    if not payload or len(payload) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=422, detail="Select an image smaller than 50 MB.")
+    def classify():
+        try:
+            with runtime.session(runtime.parse_options(view_selection="classifier")):
+                return detect_film(_decode_grayscale(payload))
+        except (ValueError, OSError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+    return await run_in_threadpool(classify)
 
 
 @app.post("/predict", summary="Find landmarks and measure a lateral spine radiograph")
@@ -337,7 +358,8 @@ def _analyze(payload, modality, body_part, view, laterality,
     # Store model, crop, scale and resource provenance alongside the measurements.
     qc = {**prediction.get("qc", {}), **analysis.get("qc", {}),
           "models": prediction["models"], "framing": prediction["framing"],
-          "processing": {"mode": runtime.options().mode,
+          "processing": {"view_selection": runtime.options().view_selection,
+                         "mode": runtime.options().mode,
                          "cpu_threads": runtime.options().inference_threads,
                          "runtime": "onnxruntime", "runtime_version": ort.__version__,
                          "providers": runtime.providers(),

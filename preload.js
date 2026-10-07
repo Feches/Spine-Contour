@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('spineContour', {
   calibrate: (request) => ipcRenderer.invoke('calibrate', request),
   saveCalibration: (reference) => ipcRenderer.invoke('save-calibration', reference),
   learnCalibrationProfile: (request) => ipcRenderer.invoke('calibration-profile', request),
+  classifyView: (request) => ipcRenderer.invoke('classify-view', request),
   selectFile: () => ipcRenderer.invoke('select-file'),
   predict: (request) => ipcRenderer.invoke('predict', request),
   cancelPredict: (requestId) => ipcRenderer.invoke('cancel-predict', requestId),

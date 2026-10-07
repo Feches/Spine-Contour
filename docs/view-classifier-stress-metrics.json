@@ -1,0 +1,54 @@
+{
+  "n": 2552,
+  "seed": 701,
+  "accuracy": 1.0,
+  "balanced_accuracy": 1.0,
+  "classes": [
+    "cervical_lateral",
+    "lumbar_lateral",
+    "full_spine_lateral",
+    "lumbar_ap",
+    "other"
+  ],
+  "confusion_matrix": [
+    [
+      743,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      775,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      47,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      775,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      212
+    ]
+  ],
+  "automatic_routes": 1565,
+  "automatic_correct": 1565,
+  "manual_selection": 987,
+  "purpose": "One fixed strong whole-film augmentation per held-out test image; no tuning"
+}

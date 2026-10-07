@@ -1,0 +1,44 @@
+{
+  "n": 28436,
+  "raw": 29610,
+  "exact_duplicates_removed": 1174,
+  "near_duplicate_edges": 2910296,
+  "clusters": 11870,
+  "counts": {
+    "train": {
+      "lumbar_lateral": 3730,
+      "lumbar_ap": 3730,
+      "cervical_lateral": 3472,
+      "other": 11904,
+      "full_spine_lateral": 239
+    },
+    "val": {
+      "lumbar_lateral": 800,
+      "lumbar_ap": 800,
+      "cervical_lateral": 748,
+      "other": 196,
+      "full_spine_lateral": 46
+    },
+    "test": {
+      "lumbar_lateral": 775,
+      "lumbar_ap": 775,
+      "cervical_lateral": 743,
+      "other": 212,
+      "full_spine_lateral": 47
+    },
+    "external": {
+      "lumbar_lateral": 149
+    },
+    "challenge": {
+      "full_spine_lateral": 70
+    }
+  },
+  "sources": {
+    "BUU": 10610,
+    "CSXA": 4963,
+    "wrist": 12312,
+    "PMC": 166,
+    "VinDr-hardware": 149,
+    "FullSpine236": 236
+  }
+}

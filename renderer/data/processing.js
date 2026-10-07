@@ -1,4 +1,4 @@
-export const DEFAULT_PERFORMANCE = Object.freeze({ mode: 'standard', cpuThreads: 2, cropLocalizer: true, cropMethod: 'search', toolbarRemoval: false, processor: 'cpu' });
+export const DEFAULT_PERFORMANCE = Object.freeze({ mode: 'standard', cpuThreads: 2, cropLocalizer: true, cropMethod: 'search', viewSelection: 'landmarks', toolbarRemoval: false, processor: 'cpu' });
 
 // 'cpu', or a GPU's PCI identity as backend/processors.py names it (mirrors backend-client.cjs).
 const PROCESSOR_ID = /^(?:cpu|gpu:[0-9a-f]{4,8}:[0-9a-f]{4,8}(?::(?:[2-9]|[1-9][0-9]))?)$/;
@@ -7,6 +7,7 @@ export function validPerformance(value) {
   return value && ['standard', 'low-memory'].includes(value.mode)
     && Number.isInteger(value.cpuThreads) && value.cpuThreads >= 1 && value.cpuThreads <= 4
     && typeof value.cropLocalizer === 'boolean' && value.cropMethod === 'search'
+    && ['landmarks', 'classifier'].includes(value.viewSelection === undefined ? 'landmarks' : value.viewSelection)
     && typeof value.toolbarRemoval === 'boolean'
     && typeof value.processor === 'string' && PROCESSOR_ID.test(value.processor);
 }

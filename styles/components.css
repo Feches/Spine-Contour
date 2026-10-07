@@ -530,3 +530,7 @@
   color: var(--body);
   transition: background .25s ease;
 }
+
+/* Long method names remain readable in the narrow Settings sidebar. */
+.view-selection-choice { display: flex; flex-direction: column; border-radius: 8px; }
+.view-selection-choice .model-choice-btn { padding: 7px 6px; white-space: normal; }

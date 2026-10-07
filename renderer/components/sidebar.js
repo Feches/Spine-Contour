@@ -1,6 +1,6 @@
 import { el } from '../dom.js';
 import { setState } from '../store.js';
-import { openExternal } from '../api.js';
+import { openExternal, selectFile, classifyView } from '../api.js';
 import { showToast } from './toast.js';
 import { DEFAULT_MODELS, VERTEBRA_MODELS, modelLabel } from '../data/models.js';
 import { studyName } from '../data/labels.js';
@@ -75,6 +75,33 @@ function performanceBlock(state) {
     el('div', { class: 'sidebar-models-label' }, 'PROCESSOR'),
     processor,
     el('p', { class: 'processing-note' }, processorNote(state.processors, settings.processor)),
+    el('div', { class: 'sidebar-models-label' }, 'AUTOMATIC VIEW SELECTION'),
+    el('div', { class: 'model-choice view-selection-choice', role: 'group', 'aria-label': 'Automatic view selection' },
+      ...[['landmarks', 'Landmark search'], ['classifier', 'Fast classifier']].map(([viewSelection, label]) => el('button', {
+        type: 'button', class: 'model-choice-btn', disabled: busy,
+        'aria-pressed': (settings.viewSelection ?? 'landmarks') === viewSelection ? 'true' : 'false',
+        onClick: () => changePerformance({ viewSelection }),
+      }, label))),
+    el('p', { class: 'processing-note' }, settings.viewSelection === 'classifier'
+      ? 'Experimental. Classifies the whole film before segmentation. Detected AP and uncertain views need a manual choice. Explicit regions override this setting.'
+      : 'Uses anatomical crop and landmark agreement to identify Auto films.'),
+    el('button', { type: 'button', class: 'btn btn-small', disabled: busy,
+      onClick: async (event) => {
+        const button = event.currentTarget;
+        const result = button.nextElementSibling;
+        try {
+          const file = await selectFile();
+          if (!file) return;
+          button.disabled = true; result.textContent = 'Identifying film…';
+          const prediction = await classifyView(file);
+          if (!prediction.classification) { result.textContent = prediction.warnings.join(' '); return; }
+          const label = ({ cervical_lateral: 'Cervical lateral', lumbar_lateral: 'Lumbar lateral', full_spine_lateral: 'Full-spine lateral', lumbar_ap: 'Lumbar AP', other: 'Other view' })[prediction.classification.label] || 'Unknown view';
+          const action = prediction.body_part ? 'Review the suggested region before processing.' : prediction.warnings.join(' ');
+          result.textContent = `${file.name}: ${label} · score ${(prediction.classification.score * 100).toFixed(1)}% · ${action} ${prediction.classification.elapsed_ms.toFixed(0)} ms. Model scores need independent review.`;
+        } catch (error) { result.textContent = error.message; }
+        finally { button.disabled = false; }
+      } }, 'Check film type…'),
+    el('p', { class: 'processing-note', role: 'status', 'aria-label': 'Film type result' }),
     el('div', { class: 'sidebar-models-label' }, 'CROP LOCALIZER'),
     el('div', { class: 'model-choice', role: 'group', 'aria-label': 'Crop localizer' },
       ...[[true, 'On'], [false, 'Off']].map(([cropLocalizer, label]) => el('button', {

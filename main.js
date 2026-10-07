@@ -93,13 +93,14 @@ function appendPerformance(form, value) {
   form.append('cpu_threads', String(settings.cpuThreads));
   form.append('crop_localizer', String(settings.cropLocalizer));
   form.append('crop_method', settings.cropMethod);
+  form.append('view_selection', settings.viewSelection);
   form.append('toolbar_removal', String(settings.toolbarRemoval));
   form.append('processor', settings.processor);
   return settings;
 }
 
 ipcMain.handle('select-file', async () => {
-  const result = await dialog.showOpenDialog({
+  const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters: [
       { name: 'Radiographs', extensions: ['dcm', 'dicom', 'png', 'jpg', 'jpeg', 'tif', 'tiff', 'bmp', 'webp'] },
@@ -113,6 +114,18 @@ ipcMain.handle('select-file', async () => {
     data: await fsPromises.readFile(filePath),
     path: filePath,
   };
+});
+
+ipcMain.handle('classify-view', async (_event, request) => {
+  if (!backendBaseUrl) throw new Error('The backend is not ready.');
+  const bytes = request?.data instanceof Uint8Array ? request.data : Uint8Array.from(request?.data?.data || request?.data || []);
+  if (!bytes.byteLength || bytes.byteLength > MAX_UPLOAD_BYTES) throw new Error('Select an image smaller than 50 MB.');
+  const form = new FormData();
+  form.append('file', new Blob([bytes]), request.name || 'image');
+  const response = await fetch(`${backendBaseUrl}/classify-view`, { method: 'POST', body: form, signal: AbortSignal.timeout(30000) });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.detail || 'Could not identify the film.');
+  return body;
 });
 
 ipcMain.handle('calibrate', async (_event, request) => {

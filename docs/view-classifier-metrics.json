@@ -1,0 +1,480 @@
+{
+  "classes": [
+    "cervical_lateral",
+    "lumbar_lateral",
+    "full_spine_lateral",
+    "lumbar_ap",
+    "other"
+  ],
+  "seed": 42,
+  "epochs": 12,
+  "architecture": "mobilenet_v3_small",
+  "input_size": 224,
+  "augmentation": "whole-film-aggressive-v2-no-crop",
+  "temperature": 0.5,
+  "threshold": 0.7,
+  "history": [
+    {
+      "epoch": 1,
+      "loss": 0.2814378059389188,
+      "val_balanced_accuracy": 0.9984652406417112,
+      "elapsed_seconds": 44.719099283218384
+    },
+    {
+      "epoch": 2,
+      "loss": 0.23337644086815312,
+      "val_balanced_accuracy": 0.99925,
+      "elapsed_seconds": 82.61363768577576
+    },
+    {
+      "epoch": 3,
+      "loss": 0.22939915901405988,
+      "val_balanced_accuracy": 0.99925,
+      "elapsed_seconds": 119.9818468093872
+    },
+    {
+      "epoch": 4,
+      "loss": 0.22691526439381438,
+      "val_balanced_accuracy": 0.9989826203208555,
+      "elapsed_seconds": 157.82237672805786
+    },
+    {
+      "epoch": 5,
+      "loss": 0.226858409942022,
+      "val_balanced_accuracy": 0.99975,
+      "elapsed_seconds": 195.91115617752075
+    },
+    {
+      "epoch": 6,
+      "loss": 0.2259158908577837,
+      "val_balanced_accuracy": 1.0,
+      "elapsed_seconds": 233.740051984787
+    },
+    {
+      "epoch": 7,
+      "loss": 0.22577145047630298,
+      "val_balanced_accuracy": 0.99975,
+      "elapsed_seconds": 272.0576801300049
+    },
+    {
+      "epoch": 8,
+      "loss": 0.22502364684670256,
+      "val_balanced_accuracy": 1.0,
+      "elapsed_seconds": 311.74997067451477
+    },
+    {
+      "epoch": 9,
+      "loss": 0.22540096108933236,
+      "val_balanced_accuracy": 1.0,
+      "elapsed_seconds": 351.2825937271118
+    },
+    {
+      "epoch": 10,
+      "loss": 0.22483398102822397,
+      "val_balanced_accuracy": 1.0,
+      "elapsed_seconds": 394.7405786514282
+    },
+    {
+      "epoch": 11,
+      "loss": 0.22465461756714164,
+      "val_balanced_accuracy": 1.0,
+      "elapsed_seconds": 441.6489164829254
+    },
+    {
+      "epoch": 12,
+      "loss": 0.2245379252942315,
+      "val_balanced_accuracy": 1.0,
+      "elapsed_seconds": 485.74337458610535
+    }
+  ],
+  "manifest_sha256": "95c5024bb6a633d15567d13e70dae3720fcbf042a3badf7f2a9321927c8ef7be",
+  "partitions": {
+    "val": {
+      "n": 2590,
+      "accuracy": 1.0,
+      "balanced_accuracy": 1.0,
+      "confusion_matrix": [
+        [
+          748,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          800,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          46,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          800,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          196
+        ]
+      ],
+      "classification_report": {
+        "cervical_lateral": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 748.0
+        },
+        "lumbar_lateral": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 800.0
+        },
+        "full_spine_lateral": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 46.0
+        },
+        "lumbar_ap": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 800.0
+        },
+        "other": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 196.0
+        },
+        "accuracy": 1.0,
+        "macro avg": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 2590.0
+        },
+        "weighted avg": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 2590.0
+        }
+      },
+      "confident": {
+        "count": 2590,
+        "accuracy": 1.0
+      },
+      "automatic_supported_routes": {
+        "count": 1594,
+        "accuracy": 1.0
+      },
+      "manual_selection_count": 996
+    },
+    "test": {
+      "n": 2552,
+      "accuracy": 1.0,
+      "balanced_accuracy": 1.0,
+      "confusion_matrix": [
+        [
+          743,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          775,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          47,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          775,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          212
+        ]
+      ],
+      "classification_report": {
+        "cervical_lateral": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 743.0
+        },
+        "lumbar_lateral": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 775.0
+        },
+        "full_spine_lateral": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 47.0
+        },
+        "lumbar_ap": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 775.0
+        },
+        "other": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 212.0
+        },
+        "accuracy": 1.0,
+        "macro avg": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 2552.0
+        },
+        "weighted avg": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1-score": 1.0,
+          "support": 2552.0
+        }
+      },
+      "confident": {
+        "count": 2552,
+        "accuracy": 1.0
+      },
+      "automatic_supported_routes": {
+        "count": 1565,
+        "accuracy": 1.0
+      },
+      "manual_selection_count": 987
+    },
+    "external": {
+      "n": 149,
+      "accuracy": 0.9664429426193237,
+      "balanced_accuracy": 0.9664429530201343,
+      "confusion_matrix": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          144,
+          3,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "classification_report": {
+        "cervical_lateral": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 0.0
+        },
+        "lumbar_lateral": {
+          "precision": 1.0,
+          "recall": 0.9664429530201343,
+          "f1-score": 0.9829351535836177,
+          "support": 149.0
+        },
+        "full_spine_lateral": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 0.0
+        },
+        "lumbar_ap": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 0.0
+        },
+        "other": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 0.0
+        },
+        "accuracy": 0.9664429530201343,
+        "macro avg": {
+          "precision": 0.2,
+          "recall": 0.19328859060402687,
+          "f1-score": 0.19658703071672354,
+          "support": 149.0
+        },
+        "weighted avg": {
+          "precision": 1.0,
+          "recall": 0.9664429530201343,
+          "f1-score": 0.9829351535836177,
+          "support": 149.0
+        }
+      },
+      "confident": {
+        "count": 146,
+        "accuracy": 0.965753436088562
+      },
+      "automatic_supported_routes": {
+        "count": 144,
+        "accuracy": 0.9791666865348816
+      },
+      "manual_selection_count": 5
+    },
+    "challenge": {
+      "n": 70,
+      "accuracy": 0.9285714030265808,
+      "balanced_accuracy": 0.9285714285714286,
+      "confusion_matrix": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          3,
+          65,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "classification_report": {
+        "cervical_lateral": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 0.0
+        },
+        "lumbar_lateral": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 0.0
+        },
+        "full_spine_lateral": {
+          "precision": 1.0,
+          "recall": 0.9285714285714286,
+          "f1-score": 0.9629629629629629,
+          "support": 70.0
+        },
+        "lumbar_ap": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 0.0
+        },
+        "other": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1-score": 0.0,
+          "support": 0.0
+        },
+        "accuracy": 0.9285714285714286,
+        "macro avg": {
+          "precision": 0.2,
+          "recall": 0.18571428571428572,
+          "f1-score": 0.1925925925925926,
+          "support": 70.0
+        },
+        "weighted avg": {
+          "precision": 1.0,
+          "recall": 0.9285714285714286,
+          "f1-score": 0.9629629629629629,
+          "support": 70.0
+        }
+      },
+      "confident": {
+        "count": 65,
+        "accuracy": 0.9846153855323792
+      },
+      "automatic_supported_routes": {
+        "count": 65,
+        "accuracy": 0.9846153855323792
+      },
+      "manual_selection_count": 5
+    }
+  },
+  "onnx_max_absolute_error": 2.86102294921875e-06,
+  "cpu_inference_ms_median": 5.0705570029094815,
+  "training_seconds": 501.72224378585815
+}

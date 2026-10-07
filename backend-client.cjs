@@ -8,17 +8,19 @@ function normalizePerformance(value) {
   const mode = value?.mode ?? 'standard';
   const cpuThreads = value?.cpuThreads ?? 2;
   const cropLocalizer = value?.cropLocalizer === undefined ? true : value.cropLocalizer;
+  const viewSelection = value?.viewSelection === undefined ? 'landmarks' : value.viewSelection;
   const cropMethod = value?.cropMethod === undefined ? 'search' : value.cropMethod;
   const toolbarRemoval = value?.toolbarRemoval === undefined ? false : value.toolbarRemoval;
   const processor = value?.processor === undefined ? 'cpu' : value.processor;
   if (!['standard', 'low-memory'].includes(mode) || !Number.isInteger(cpuThreads) || cpuThreads < 1 || cpuThreads > 4
     || typeof cropLocalizer !== 'boolean' || !['search', 'model'].includes(cropMethod)
+    || !['landmarks', 'classifier'].includes(viewSelection)
     || typeof toolbarRemoval !== 'boolean'
     || typeof processor !== 'string' || !PROCESSOR_ID.test(processor)) {
     throw new Error('Invalid processing settings.');
   }
   // Migrate the retired trained-crop preference for saved settings and all requests.
-  return { mode, cpuThreads, cropLocalizer, cropMethod: 'search', toolbarRemoval, processor };
+  return { mode, cpuThreads, cropLocalizer, cropMethod: 'search', toolbarRemoval, processor, viewSelection };
 }
 
 // The backend's GET /processors body, reduced to what Settings shows. Anything malformed is

@@ -53,6 +53,7 @@ export async function predict(request) {
   return invoke('predict', { performance: getState().performance, ...request });
 }
 
+export async function classifyView(request) { return invoke('classifyView', request); }
 export async function loadPerformance() { return invoke('loadPerformance'); }
 export async function savePerformance(settings) { return invoke('savePerformance', settings); }
 export async function listProcessors() { return invoke('listProcessors'); }
