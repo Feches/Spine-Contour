@@ -22,8 +22,8 @@ test('resource defaults agree across the desktop and renderer; invalid settings 
 
 test('crop localizer defaults on for legacy preferences and persists explicit off', () => {
   const legacy = { mode: 'low-memory', cpuThreads: 1 };
-  assert.deepEqual(normalizePerformance(legacy), { ...legacy, cropLocalizer: true, cropMethod: 'search', toolbarRemoval: false, processor: 'cpu' });
-  const off = { ...legacy, cropLocalizer: false, cropMethod: 'search', toolbarRemoval: false, processor: 'cpu' };
+  assert.deepEqual(normalizePerformance(legacy), { ...legacy, cropLocalizer: true, cropMethod: 'search', toolbarRemoval: false, processor: 'cpu', viewSelection: 'landmarks' });
+  const off = { ...legacy, cropLocalizer: false, cropMethod: 'search', toolbarRemoval: false, processor: 'cpu', viewSelection: 'landmarks' };
   assert.deepEqual(normalizePerformance(JSON.parse(JSON.stringify(off))), off);
   assert.equal(validPerformance(off), true);
   for (const cropLocalizer of [null, 'false', 0, 1]) {
@@ -34,9 +34,9 @@ test('crop localizer defaults on for legacy preferences and persists explicit of
 
 test('toolbar removal defaults off for older preferences and saves independently of crop localizer', () => {
   const legacy = { mode: 'standard', cpuThreads: 2, cropLocalizer: false };
-  assert.deepEqual(normalizePerformance(legacy), { ...legacy, cropMethod: 'search', toolbarRemoval: false, processor: 'cpu' });
+  assert.deepEqual(normalizePerformance(legacy), { ...legacy, cropMethod: 'search', toolbarRemoval: false, processor: 'cpu', viewSelection: 'landmarks' });
   for (const toolbarRemoval of [true, false]) {
-    const saved = { ...legacy, cropMethod: 'search', toolbarRemoval, processor: 'cpu' };
+    const saved = { ...legacy, cropMethod: 'search', toolbarRemoval, processor: 'cpu', viewSelection: 'landmarks' };
     assert.deepEqual(normalizePerformance(JSON.parse(JSON.stringify(saved))), saved);
     assert.equal(validPerformance(saved), true);
   }
@@ -50,7 +50,7 @@ test('processor defaults to the CPU for older preferences; a GPU id survives sav
   const legacy = { mode: 'standard', cpuThreads: 2, cropLocalizer: true, cropMethod: 'search', toolbarRemoval: false };
   assert.equal(normalizePerformance(legacy).processor, 'cpu');
   for (const processor of ['cpu', 'gpu:10de:2520', 'gpu:10de:2520:2', 'gpu:4d4f4351:36334330']) {
-    const saved = { ...legacy, processor };
+    const saved = { ...legacy, processor, viewSelection: 'landmarks' };
     assert.deepEqual(normalizePerformance(JSON.parse(JSON.stringify(saved))), saved);
     assert.equal(validPerformance(saved), true);
   }
@@ -62,7 +62,7 @@ test('processor defaults to the CPU for older preferences; a GPU id survives sav
 });
 
 test('crop method migrates the retired trained-model choice to search', () => {
-  const legacy = { mode: 'standard', cpuThreads: 2, cropLocalizer: true, toolbarRemoval: false, processor: 'cpu' };
+  const legacy = { mode: 'standard', cpuThreads: 2, cropLocalizer: true, toolbarRemoval: false, processor: 'cpu', viewSelection: 'landmarks' };
   assert.equal(normalizePerformance(legacy).cropMethod, 'search');
   const selected = { ...legacy, cropMethod: 'model' };
   assert.deepEqual(normalizePerformance(selected), { ...selected, cropMethod: 'search' });
@@ -234,4 +234,16 @@ test('cancelling an image stops its batch without marking untouched studies fail
   assert.ok(state.studies.every(s => s.measurements === null));
   assert.match(messages[0], /1 cancelled/);
   assert.ok(!messages[0].includes('deleted'));
+});
+
+
+test('view selection defaults to landmark search and persists the optional classifier', () => {
+  assert.equal(normalizePerformance({}).viewSelection, 'landmarks');
+  const settings = { ...DEFAULT_PERFORMANCE, viewSelection: 'classifier' };
+  assert.deepEqual(normalizePerformance(JSON.parse(JSON.stringify(settings))), settings);
+  assert.equal(validPerformance(settings), true);
+  for (const viewSelection of ['', 'auto', 'model', 0, null]) {
+    assert.throws(() => normalizePerformance({ ...DEFAULT_PERFORMANCE, viewSelection }));
+    assert.equal(validPerformance({ ...DEFAULT_PERFORMANCE, viewSelection }), false);
+  }
 });

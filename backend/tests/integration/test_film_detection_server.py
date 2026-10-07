@@ -111,7 +111,8 @@ def test_invalid_auto_requests_fail_before_decoding(monkeypatch, invalid):
 
 
 @pytest.mark.parametrize("side", [None, "auto", "left", "right"])
-def test_explicit_full_spine_skips_region_detection_and_accepts_auto_side(monkeypatch, side):
+@pytest.mark.parametrize("view_selection", ["landmarks", "classifier"])
+def test_explicit_full_spine_skips_region_detection_and_accepts_auto_side(monkeypatch, side, view_selection):
     observed = []
     monkeypatch.setattr(server, "detect_film", lambda *a, **kw: pytest.fail("Explicit region must bypass detection"))
     def infer(pixels, anterior_side, model):
@@ -119,7 +120,7 @@ def test_explicit_full_spine_skips_region_detection_and_accepts_auto_side(monkey
         return prediction(pixels, {**geometry(), "anterior_side": side if side in ("left", "right") else "right"})
     monkeypatch.setattr(server, "full_spine_prediction", infer)
     monkeypatch.setattr(server, "calibration_from_payload", lambda payload, **_: calibration(payload))
-    data = {"modality": "xray", "body_part": "full_spine", "view": "lateral"}
+    data = {"modality": "xray", "body_part": "full_spine", "view": "lateral", "view_selection": view_selection}
     if side is not None:
         data["anterior_side"] = side
     body = result(TestClient(server.app).post("/predict", data=data,

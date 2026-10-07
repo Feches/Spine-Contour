@@ -1,0 +1,17 @@
+{
+  "classes": [
+    "cervical_lateral",
+    "lumbar_lateral",
+    "full_spine_lateral",
+    "lumbar_ap",
+    "other"
+  ],
+  "architecture": "mobilenet_v3_small",
+  "input_size": 224,
+  "temperature": 0.5,
+  "threshold": 0.7,
+  "manifest_sha256": "95c5024bb6a633d15567d13e70dae3720fcbf042a3badf7f2a9321927c8ef7be",
+  "augmentation": "whole-film-aggressive-v2-no-crop",
+  "version": "20261007-whole-film-v2",
+  "sha256": "3958674eaed84d7843df42f182172d94deccfd59803e3cddfbfe0f88fa389f9e"
+}
