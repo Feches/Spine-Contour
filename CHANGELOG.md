@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0
+## 1.0.17
 
 - Adds an optional **Fast classifier** under **Settings → Automatic view selection**
   to identify the film type before segmentation. Landmark search remains the default.
@@ -8,7 +8,7 @@
 - Recognizes cervical lateral, lumbar lateral, full-spine lateral, lumbar AP, and other
   views. Unsupported or uncertain predictions ask for manual selection.
 
-[Release notes](docs/releases/1.1.0.md)
+[Release notes](docs/releases/1.0.17.md)
 
 ## 1.0.16
 
