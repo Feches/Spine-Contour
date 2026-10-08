@@ -7,6 +7,7 @@ import {
   predict, calibrate, saveCsv, savePrediction, loadPrediction, persistenceDisabledReason, readFile, selectFile,
 } from '../api.js';
 import { showToast } from '../components/toast.js';
+import { openCropComparison } from '../components/crop-comparison.js';
 import { toCsv } from '../data/csv.js';
 import { loadStudyImages, disposeStudyImages, thumbnailDataUri, bitmapFromBase64 } from '../viewer/canvas.js';
 import { mountViewer, recordPrediction, forgetPrediction } from '../components/viewer.js';
@@ -202,6 +203,77 @@ async function relocateFilm(study) {
     studies: state.studies.map((s) => (s.id === study.id ? { ...s, fileName: chosen.name, filePath: chosen.path } : s)),
   }));
   return chosen.data;
+}
+
+// A temporary demonstration: run both full-spine crop methods on the same bytes,
+// sequentially, without replacing the study's saved prediction or user preferences.
+async function compareCropMethods(studyId) {
+  const state = getState();
+  const study = state.studies.find((item) => item.id === studyId);
+  if (!study || study.source !== 'real' || studyRegion(study) !== 'full_spine'
+      || !inferenceView(study.view) || state.running || state.batch || locating) return;
+  locating = true;
+  let data;
+  let savedPrediction = null;
+  try {
+    data = await filmBytes(study);
+    if (!data) data = await relocateFilm(study);
+    if (data && study.predictionId && !persistenceDisabledReason()) {
+      try { savedPrediction = await loadPrediction(studyId); } catch { /* A missing sidecar only costs a fresh run. */ }
+    }
+  } catch (error) {
+    showToast(`Could not read ${study.fileName}: ${error.message}`);
+    return;
+  } finally {
+    locating = false;
+  }
+  if (!data) return;
+  const current = getState().studies.find((item) => item.id === studyId);
+  if (!current || current.addedAt !== study.addedAt || getState().running || getState().batch) return;
+  if (!predictionMatchesStudy(current, savedPrediction)
+      || !['search', 'model'].includes(savedPrediction?.qc?.processing?.crop_method)
+      || typeof savedPrediction?.image_png !== 'string') savedPrediction = null;
+  const dialog = openCropComparison(studyName(current));
+  ++runRevision;
+  runsByStudy.set(studyId, (runsByStudy.get(studyId) ?? 0) + 1);
+  try {
+    let reusedMethod = null;
+    if (savedPrediction) {
+      const method = savedPrediction.qc.processing.crop_method;
+      try {
+        dialog.setStatus(`Showing saved ${method === 'search' ? 'crop search' : 'trained model'} result…`);
+        await dialog.addResult(method === 'search' ? 0 : 1,
+          method === 'search' ? 'Crop search' : 'Trained model', savedPrediction);
+        reusedMethod = method;
+      } catch { /* An unreadable saved result is regenerated below. */ }
+      savedPrediction = null;
+    }
+    for (const [index, method, title] of [[0, 'search', 'Crop search'], [1, 'model', 'Trained model']]) {
+      if (reusedMethod === method) continue;
+      const requestId = crypto.randomUUID();
+      dialog.setStatus(`Running ${title.toLowerCase()} (${index + 1} of 2)…`);
+      setState({ running: studyId, runStage: { requestId, mode: getState().performance.mode,
+        stage: 'starting', message: `Comparing ${title.toLowerCase()}`, elapsed_seconds: 0 } });
+      try {
+        const response = await predict({ requestId, name: current.fileName, data, modality: 'xray',
+          bodyPart: 'full_spine', anteriorSide: current.anteriorSide ?? null, view: inferenceView(current.view),
+          models: { vertebrae: 'dual_hrnet' }, calibration: calibrationForStudy(current),
+          performance: { ...getState().performance, cropLocalizer: true, cropMethod: method } });
+        if (getState().runStage?.cancelling) throw new Error('Processing cancelled.');
+        await dialog.addResult(index, title, response);
+      } catch (error) {
+        dialog.addFailure(index, title, error.message);
+        if (getState().runStage?.cancelling || error.message === 'Processing cancelled.') {
+          dialog.setStatus('Comparison cancelled. Saved study results were kept.');
+          break;
+        }
+      }
+    }
+    if (!getState().runStage?.cancelling) dialog.setStatus('Comparison ready. Blue shows the cervical crop; orange shows the lumbar crop.');
+  } finally {
+    setState({ running: null, runStage: null });
+    dialog.finish();
+  }
 }
 
 // The one path from a film to a committed record, for the viewer's button (interactive) and for a
@@ -703,7 +775,10 @@ export function render(state) {
     onClick: () => previewOriginal(getState().openId) }, 'View original');
   const alignmentRunButton = el('button', { type: 'button', class: 'btn btn-small btn-primary',
     onClick: () => segmentStudy(getState().openId) }, 'Run segmentation');
-  const regionBar = el('div', { class: 'analysis-region-bar' }, el('label', {}, 'Region ', regionSelect), anteriorLabel, previewButton, alignmentRunButton, regionNote);
+  const compareButton = el('button', { type: 'button', class: 'btn btn-small',
+    onClick: () => compareCropMethods(getState().openId) }, 'Compare crop methods');
+  const regionBar = el('div', { class: 'analysis-region-bar' }, el('label', {}, 'Region ', regionSelect), anteriorLabel,
+    previewButton, alignmentRunButton, compareButton, regionNote);
   const root = el('main', { class: 'analysis-screen' }, header, regionBar, body, clinicalHost);
 
   const viewer = mountViewer(viewerHost);
@@ -785,6 +860,8 @@ export function render(state) {
     previewButton.hidden = alignmentRunButton.hidden = !alignmentSetup;
     previewButton.disabled = Boolean(live.running || live.batch);
     alignmentRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view));
+    compareButton.hidden = studyRegion(open) !== 'full_spine' || open.source !== 'real';
+    compareButton.disabled = Boolean(live.running || live.batch || locating || !inferenceView(open.view));
     // The preview message shows only during alignment setup: it is not cleared when a preview is
     // abandoned, so its being set is not enough.
     const previewNote = mounted?.previewMessage && alignmentSetup ? mounted.previewMessage : '';
