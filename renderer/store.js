@@ -47,6 +47,9 @@ let state = {
 
   editing: false,
   selection: null,
+  // (2026-10-10, level editor) The edit-mode level editor's state, or null outside edit mode; see the LevelEditor
+  // typedef in renderer/data/levels.js. Written only by renderer/level-editor.js; session-only, never persisted.
+  levelEditor: null,
   running: null, // string|null — the id of the study whose /predict is in flight; one run at a time
   runStage: null,
   // (2026-09-08, batch spec 8.1) The running batch, or null: { ids, done, failed, warnings, skipped,
