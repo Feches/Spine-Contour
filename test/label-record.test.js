@@ -245,6 +245,37 @@ test('labelFileName suffixes a clash', () => {
   assert.equal(labelFileName('Film', ['film.label.json']), 'Film-2.label.json', 'Windows and macOS file names ignore case');
 });
 
+// The main process's own rule (main.js LABEL_FILE): every name labelFileName returns must pass it.
+const MAIN_LABEL_FILE = /^(?!\.)[^\\/:*?"<>|\u0000-\u001f]{1,200}\.label\.json$/;
+
+test('labelFileName sanitises the stem so the main process accepts the name (R12)', () => {
+  assert.equal(labelFileName('a:b*c?d"e<f>g|h', []), 'a_b_c_d_e_f_g_h.label.json', 'reserved characters become _');
+  assert.equal(labelFileName('a\\b/c', []), 'a_b_c.label.json', 'both separators become _');
+  assert.equal(labelFileName('tab\there\u0000\u001f', []), 'tab_here__.label.json', 'control characters become _');
+  assert.equal(labelFileName('\u007fété', []), '\u007fété.label.json', 'DEL and non-ASCII letters are kept');
+  assert.equal(labelFileName('..hidden', []), 'hidden.label.json', 'leading dots are stripped');
+  assert.equal(labelFileName('a.b', []), 'a.b.label.json', 'an inner dot is kept');
+  assert.equal(labelFileName('...', []), 'film.label.json', 'nothing left: film');
+  assert.equal(labelFileName('', []), 'film.label.json', 'an empty stem: film');
+  assert.equal(labelFileName('x'.repeat(250), []), `${'x'.repeat(180)}.label.json`, 'capped at 180 characters');
+  const astral = `${'x'.repeat(179)}\u{1F600}`;
+  assert.equal(labelFileName(astral, []), `${'x'.repeat(179)}.label.json`, 'the cap never splits a surrogate pair');
+  for (const device of ['CON', 'prn', 'Aux', 'NUL', 'COM1', 'com9', 'LPT1', 'lpt9']) {
+    assert.equal(labelFileName(device, []), `${device}_.label.json`, `${device} is a Windows device name`);
+  }
+  assert.equal(labelFileName('con.x', []), 'con_.x.label.json', 'a device name before the first dot is a device too');
+  for (const plain of ['COM10', 'CONSOLE', 'LPT0', 'nul_', 'xCON']) {
+    assert.equal(labelFileName(plain, []), `${plain}.label.json`, `${plain} is not a device name`);
+  }
+  assert.equal(labelFileName('a:b', ['A_B.label.json']), 'a_b-2.label.json', 'the clash check runs on the sanitised name');
+  for (const stem of ['a:b', '..x', '', 'x'.repeat(250), 'CON', 'con.x', 'tab\t', '.', 'a b']) {
+    for (const taken of [[], [labelFileName(stem, [])]]) {
+      const name = labelFileName(stem, taken);
+      assert.match(name, MAIN_LABEL_FILE, `${JSON.stringify(stem)} gives a name the main process accepts`);
+    }
+  }
+});
+
 // ---------- toLabelRecord ----------
 
 test('toLabelRecord from a lumbar editor validates and maps corners', () => {
