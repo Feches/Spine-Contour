@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analysis · edit segmentation</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/spine-contour/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;500&amp;family=Source+Sans+3:wght@400..700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#c1502b}a:hover{color:#a6421f}
+.sc{--bg:#fefdfc;--card:#ffffff;--well:#f4eee4;--border:#e5ddd1;--ink:#201814;--body:#4a4038;--muted:#8a7e72;--accent:#c1502b;--sage:#6e8577;--on-accent:#ffffff;--amber:#bc7b36;font-family:'Source Sans 3',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:var(--body);background:var(--bg);-webkit-font-smoothing:antialiased}
+.sc[data-theme="dark"]{--bg:#151312;--card:#181614;--well:#282522;--border:#38342f;--ink:#faf7f2;--body:#c9c2b8;--muted:#9a9188;--accent:#d45a32;--sage:#8aa894}
+.cb{width:20px;height:20px;flex-shrink:0;border-radius:6px;border:1.5px solid var(--border);background:var(--card);display:flex;align-items:center;justify-content:center;color:var(--on-accent);transition:background .15s ease,border-color .15s ease}
+.cb-on,.cb-mixed{background:var(--accent);border-color:var(--accent)}
+.checkbox-row input:focus-visible ~ .cb{outline:2px solid var(--accent);outline-offset:2px}
+.grp-btn,.lv-btn,.txt-btn{border:none;background:transparent;cursor:pointer;transition:background .15s ease}
+.grp-btn:hover,.lv-btn:hover,.txt-btn:hover{background:var(--well)}
+.grp-btn:focus-visible,.lv-btn:focus-visible,.txt-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.chev{transition:transform .2s ease}
+@media (max-width:900px){.sc-body{flex-direction:column}.sc-stage{min-height:60vh}.sc-panel{width:100% !important;border-left:none !important;border-top:1px solid var(--border)}}
+</style>
+</helmet>
+<div class="sc" data-theme="{{theme}}" style="height: 100vh; min-height: 640px; display: flex; flex-direction: column; overflow: hidden; position: relative">
+
+<header class="analysis-header" style="display: flex; align-items: center; gap: 14px; padding: 9px 18px; border-bottom: 1px solid var(--border); background: var(--bg); flex-shrink: 0">
+<button class="icon-btn" type="button" aria-label="Back to studies" title="Back to studies"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></button>
+<span class="analysis-name" style="font-family: 'Chivo Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.12em; color: var(--ink); padding: 3px 7px">lateral_lumbar_001</span>
+<span class="analysis-meta" style="font-family: 'Chivo Mono', monospace; font-size: 10px; font-weight: 500; letter-spacing: 0.15em; color: var(--muted)">LUMBAR · STANDING LATERAL</span>
+<span style="flex: 1"></span>
+<span class="analysis-meta" style="font-family: 'Chivo Mono', monospace; font-size: 10px; font-weight: 500; letter-spacing: 0.15em; color: var(--accent)">EDITING SEGMENTATION</span>
+</header>
+
+<div class="sc-body" style="flex: 1; display: flex; min-height: 0">
+
+<div class="sc-stage viewer-stage" style="flex: 1; min-width: 0; position: relative; overflow: hidden; background: #0b0a09; user-select: none">
+
+<div style="position: absolute; inset: 0; touch-action: none; cursor: {{cursor}}" onClick="{{stageClick}}" onMouseDown="{{stageDown}}" onMouseMove="{{stageMove}}" onMouseUp="{{stageUp}}" onMouseLeave="{{stageUp}}">
+
+<svg viewBox="0 0 600 800" preserveAspectRatio="xMidYMid meet" style="position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none" aria-hidden="true">
+<defs>
+<radialGradient id="film" cx="50%" cy="45%" r="70%">
+<stop offset="0%" stop-color="#1d1a17"></stop>
+<stop offset="100%" stop-color="#100e0c"></stop>
+</radialGradient>
+<filter id="sc-wl" filterUnits="userSpaceOnUse" x="0" y="0" width="600" height="800" color-interpolation-filters="sRGB">
+<feComponentTransfer>
+<feFuncR type="linear" slope="{{wlSlope}}" intercept="{{wlIntercept}}"></feFuncR>
+<feFuncG type="linear" slope="{{wlSlope}}" intercept="{{wlIntercept}}"></feFuncG>
+<feFuncB type="linear" slope="{{wlSlope}}" intercept="{{wlIntercept}}"></feFuncB>
+</feComponentTransfer>
+</filter>
+</defs>
+<g filter="url(#sc-wl)">
+<rect x="0" y="0" width="600" height="800" fill="url(#film)"></rect>
+<g fill="rgba(250, 247, 242, .13)" stroke="rgba(250, 247, 242, .22)" stroke-width="1" stroke-linejoin="round">
+<path d="M304.5,38.0 L407.5,52.5 Q400.5,81.2 399.5,110.0 L296.5,95.5 Q303.5,66.8 304.5,38.0 Z"></path>
+<path d="M289.5,121.5 L396.9,132.8 Q390.7,163.7 390.5,194.5 L283.1,183.2 Q289.3,152.3 289.5,121.5 Z"></path>
+<path d="M270.8,211.1 L382.7,217.0 Q377.9,249.9 379.2,282.9 L267.3,277.0 Q272.1,244.1 270.8,211.1 Z"></path>
+<path d="M255.4,307.0 L371.4,305.0 Q369.0,339.0 372.6,373.0 L256.6,375.0 Q259.0,341.0 255.4,307.0 Z"></path>
+<path d="M252.3,406.4 L369.4,392.1 Q370.5,425.9 377.7,459.6 L260.6,473.9 Q259.5,440.1 252.3,406.4 Z"></path>
+<path d="M262.7,508.2 L374.2,476.2 Q379.8,506.0 391.3,535.8 L279.8,567.8 Q274.2,538.0 262.7,508.2 Z"></path>
+<path d="M291,603 L389,547 Q420,600 432,668 Q440,740 424,800 L392,800 Q350,744 322,688 Q300,648 291,603 Z"></path>
+<circle cx="214" cy="690" r="40"></circle>
+<circle cx="233" cy="677" r="42"></circle>
+</g>
+<g fill="rgba(250, 247, 242, .07)" stroke="rgba(250, 247, 242, .12)" stroke-width="1">
+<path d="M410,62 L452,70 L456,92 L414,100 Z"></path>
+<path d="M398,146 L444,152 L448,176 L402,182 Z"></path>
+<path d="M386,232 L434,236 L438,262 L390,266 Z"></path>
+<path d="M376,322 L426,322 L430,350 L378,352 Z"></path>
+<path d="M374,410 L426,404 L434,432 L382,440 Z"></path>
+<path d="M382,494 L434,482 L446,508 L394,522 Z"></path>
+</g>
+</g>
+</svg>
+
+<sc-for list="{{overlays}}" as="o" hint-placeholder-count="7">
+<svg viewBox="0 0 600 800" preserveAspectRatio="xMidYMid meet" style="position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none">
+<polygon points="{{o.points}}" fill="{{o.fill}}" stroke="{{o.stroke}}" stroke-width="{{o.sw}}" stroke-linejoin="round" display="{{o.polyD}}"></polygon>
+<polygon points="{{o.ghost}}" fill="none" stroke="rgba(250, 247, 242, .7)" stroke-width="1.25" stroke-dasharray="6 5" display="{{o.ghostD}}"></polygon>
+<line x1="{{o.x1}}" y1="{{o.y1}}" x2="{{o.x2}}" y2="{{o.y2}}" stroke="{{o.lineStroke}}" stroke-width="3" stroke-linecap="round" display="{{o.lineD}}"></line>
+<circle cx="{{o.cx}}" cy="{{o.cy}}" r="{{o.r}}" fill="{{o.fill}}" stroke="{{o.stroke}}" stroke-width="{{o.sw}}" display="{{o.circD}}"></circle>
+<circle cx="{{o.gcx}}" cy="{{o.gcy}}" r="{{o.gcr}}" fill="none" stroke="rgba(250, 247, 242, .7)" stroke-width="1.25" stroke-dasharray="6 5" display="{{o.gcD}}"></circle>
+<circle cx="{{o.mx}}" cy="{{o.my}}" r="3.5" fill="#faf7f2" stroke="#0b0a09" stroke-width="1.5" display="{{o.mD}}"></circle>
+<rect x="{{o.px}}" y="{{o.py}}" width="{{o.pw}}" height="18" rx="4" fill="rgba(11, 10, 9, .78)" display="{{o.labD}}"></rect>
+<text x="{{o.lx}}" y="{{o.ly}}" fill="{{o.lc}}" font-family="Chivo Mono, monospace" font-size="11" font-weight="500" letter-spacing="0.6" dominant-baseline="central" display="{{o.labD}}">{{o.label}}</text>
+<circle cx="{{o.h0.x}}" cy="{{o.h0.y}}" r="6" fill="{{o.h0.c}}" stroke="#0b0a09" stroke-width="2" display="{{o.h0.d}}" onMouseDown="{{o.h0.down}}" style="cursor: grab; pointer-events: all"></circle>
+<circle cx="{{o.h1.x}}" cy="{{o.h1.y}}" r="6" fill="{{o.h1.c}}" stroke="#0b0a09" stroke-width="2" display="{{o.h1.d}}" onMouseDown="{{o.h1.down}}" style="cursor: grab; pointer-events: all"></circle>
+<circle cx="{{o.h2.x}}" cy="{{o.h2.y}}" r="6" fill="{{o.h2.c}}" stroke="#0b0a09" stroke-width="2" display="{{o.h2.d}}" onMouseDown="{{o.h2.down}}" style="cursor: grab; pointer-events: all"></circle>
+<circle cx="{{o.h3.x}}" cy="{{o.h3.y}}" r="6" fill="{{o.h3.c}}" stroke="#0b0a09" stroke-width="2" display="{{o.h3.d}}" onMouseDown="{{o.h3.down}}" style="cursor: grab; pointer-events: all"></circle>
+</svg>
+</sc-for>
+
+<svg viewBox="0 0 600 800" preserveAspectRatio="xMidYMid meet" style="position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none" aria-hidden="true">
+<polyline points="{{pl.line}}" fill="none" stroke="#d45a32" stroke-width="1.5" stroke-dasharray="6 5" display="{{pl.lineD}}"></polyline>
+<circle cx="{{pl.fx}}" cy="{{pl.fy}}" r="{{pl.fr}}" fill="none" stroke="#d45a32" stroke-width="1.5" stroke-dasharray="6 5" display="{{pl.fD}}"></circle>
+<circle cx="{{pl.fx}}" cy="{{pl.fy}}" r="3.5" fill="#d45a32" stroke="#0b0a09" stroke-width="1.5" display="{{pl.fD}}"></circle>
+<circle cx="{{pl.p0.x}}" cy="{{pl.p0.y}}" r="6" fill="{{pl.p0.c}}" stroke="#0b0a09" stroke-width="2" display="{{pl.p0.d}}"></circle>
+<circle cx="{{pl.p1.x}}" cy="{{pl.p1.y}}" r="6" fill="{{pl.p1.c}}" stroke="#0b0a09" stroke-width="2" display="{{pl.p1.d}}"></circle>
+<circle cx="{{pl.p2.x}}" cy="{{pl.p2.y}}" r="6" fill="{{pl.p2.c}}" stroke="#0b0a09" stroke-width="2" display="{{pl.p2.d}}"></circle>
+<circle cx="{{pl.p3.x}}" cy="{{pl.p3.y}}" r="6" fill="{{pl.p3.c}}" stroke="#0b0a09" stroke-width="2" display="{{pl.p3.d}}"></circle>
+</svg>
+
+</div>
+
+<div class="viewer-chip" style="position: absolute; top: 14px; left: 14px; display: flex; align-items: center; gap: 9px; padding: 6px 12px; border-radius: 12px; background: rgba(20, 18, 16, .85); border: 1px solid #38342f; backdrop-filter: blur(8px)">
+<span class="viewer-chip-id" style="font-family: 'Chivo Mono', monospace; font-size: 9.5px; font-weight: 500; letter-spacing: 0.13em; color: #faf7f2">lateral_lumbar_001</span>
+<span style="width: 1px; height: 12px; background: #38342f"></span>
+<span style="font-family: 'Chivo Mono', monospace; font-size: 9px; font-weight: 500; letter-spacing: 0.13em; color: #9a9188; font-variant-numeric: tabular-nums">{{winText}}</span>
+</div>
+
+<div class="viewer-toolbar" style="position: absolute; top: 14px; right: 14px; display: flex; align-items: center; gap: 3px; padding: 6px; border-radius: 12px; background: rgba(20, 18, 16, .85); border: 1px solid #38342f; backdrop-filter: blur(8px)">
+<button class="{{wlClass}}" type="button" aria-pressed="{{wlOpen}}" aria-label="Window / level" title="Window / level" onClick="{{toggleWL}}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18"></path><path d="M12 8h5"></path><path d="M12 12h6.5"></path><path d="M12 16h5"></path></svg></button>
+<button class="{{ovClass}}" type="button" aria-pressed="{{showOverlays}}" aria-label="Show segmentation overlays" title="Show segmentation overlays" onClick="{{toggleOverlays}}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"></path><path d="m2 13 10 5 10-5"></path></svg></button>
+<button class="viewer-tool is-active" type="button" aria-pressed="true" aria-label="Edit segmentation" title="Edit segmentation"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg></button>
+<span class="viewer-divider" style="width: 1px; height: 18px; margin: 0 3px; background: #38342f"></span>
+<label class="viewer-fill" style="display: flex; align-items: center; gap: 7px; padding: 0 8px 0 5px">
+<span class="viewer-fill-label" style="font-family: 'Chivo Mono', monospace; font-size: 8px; font-weight: 500; letter-spacing: 0.14em; color: #9a9188">FILL</span>
+<input class="viewer-fill-slider" type="range" min="0" max="100" value="{{fill}}" onChange="{{setFill}}" aria-label="Overlay fill" style="width: 72px; height: 12px; accent-color: #d45a32">
+</label>
+</div>
+
+<div class="viewer-editbar" style="position: absolute; top: 64px; left: 14px; right: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 6px 6px 10px; border-radius: 12px; background: rgba(20, 18, 16, .85); border: 1px solid #38342f; backdrop-filter: blur(8px)">
+<span class="viewer-editbar-label" style="font-family: 'Chivo Mono', monospace; font-size: 8px; font-weight: 500; letter-spacing: 0.14em; color: #d45a32; white-space: nowrap">{{editLabel}}</span>
+<span style="flex: 1 1 220px; min-width: 0; font-size: 12px; line-height: 1.4; color: #c9c2b8">{{editHelp}}</span>
+<sc-if value="{{isPlacing}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; align-items: center; gap: 3px">
+<sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+<span style="display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px; font-family: 'Chivo Mono', monospace; font-size: 9px; font-weight: 500; letter-spacing: 0.13em; background: {{s.bg}}; color: {{s.fg}}"><span style="width: 7px; height: 7px; border-radius: 50%; box-sizing: border-box; background: {{s.dotBg}}; border: 1.5px solid {{s.dotBorder}}"></span>{{s.label}}</span>
+</sc-for>
+</div>
+<span style="width: 1px; height: 18px; background: #38342f"></span>
+<sc-if value="{{isCircle}}" hint-placeholder-val="{{false}}"><button class="viewer-tool viewer-tool-text is-active" type="button" disabled="{{fitDisabled}}" onClick="{{fitNow}}" aria-label="Fit the circle to the rim points" style="width: auto; height: 30px; padding: 0 10px; font-family: 'Chivo Mono', monospace; font-size: 9px; font-weight: 500; letter-spacing: 0.13em">FIT</button></sc-if>
+<button class="viewer-tool viewer-tool-text" type="button" disabled="{{undoDisabled}}" onClick="{{undoPoint}}" style="width: auto; height: 30px; padding: 0 10px; font-family: 'Chivo Mono', monospace; font-size: 9px; font-weight: 500; letter-spacing: 0.13em">UNDO</button>
+<button class="viewer-tool viewer-tool-text" type="button" onClick="{{cancelPlace}}" style="width: auto; height: 30px; padding: 0 10px; font-family: 'Chivo Mono', monospace; font-size: 9px; font-weight: 500; letter-spacing: 0.13em">CANCEL</button>
+</sc-if>
+</div>
+
+<sc-if value="{{wlOpen}}" hint-placeholder-val="{{false}}">
+<div role="group" aria-label="Window and level" style="position: absolute; top: 116px; right: 14px; width: 300px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 8px 8px 12px 12px; border-radius: 12px; background: rgba(20, 18, 16, .85); border: 1px solid #38342f; backdrop-filter: blur(8px)">
+<div style="display: flex; align-items: center; gap: 3px">
+<span style="flex: 1; font-family: 'Chivo Mono', monospace; font-size: 8px; font-weight: 500; letter-spacing: 0.14em; color: #9a9188">WINDOW / LEVEL</span>
+<button class="viewer-tool viewer-tool-text" type="button" onClick="{{resetWin}}" aria-label="Reset to the file’s default window" title="Reset to the file’s default window" style="width: auto; height: 30px; padding: 0 10px; font-family: 'Chivo Mono', monospace; font-size: 9px; font-weight: 500; letter-spacing: 0.13em">RESET</button>
+<button class="viewer-tool viewer-tool-text" type="button" onClick="{{toggleWL}}" style="width: auto; height: 30px; padding: 0 10px; font-family: 'Chivo Mono', monospace; font-size: 9px; font-weight: 500; letter-spacing: 0.13em">DONE</button>
+</div>
+<label style="display: flex; align-items: center; gap: 10px; padding-right: 4px">
+<span style="width: 44px; font-family: 'Chivo Mono', monospace; font-size: 8px; font-weight: 500; letter-spacing: 0.14em; color: #9a9188">WIDTH</span>
+<input type="range" min="64" max="4096" step="1" value="{{winW}}" onChange="{{setWinW}}" aria-label="Window width" style="flex: 1; min-width: 0; height: 12px; accent-color: #d45a32">
+<span style="width: 36px; text-align: right; font-family: 'Chivo Mono', monospace; font-size: 9.5px; font-weight: 500; letter-spacing: 0.06em; color: #faf7f2; font-variant-numeric: tabular-nums">{{winW}}</span>
+</label>
+<label style="display: flex; align-items: center; gap: 10px; padding-right: 4px">
+<span style="width: 44px; font-family: 'Chivo Mono', monospace; font-size: 8px; font-weight: 500; letter-spacing: 0.14em; color: #9a9188">LEVEL</span>
+<input type="range" min="0" max="4096" step="1" value="{{winL}}" onChange="{{setWinL}}" aria-label="Window level" style="flex: 1; min-width: 0; height: 12px; accent-color: #d45a32">
+<span style="width: 36px; text-align: right; font-family: 'Chivo Mono', monospace; font-size: 9.5px; font-weight: 500; letter-spacing: 0.06em; color: #faf7f2; font-variant-numeric: tabular-nums">{{winL}}</span>
+</label>
+<p style="margin: 0; padding-right: 4px; font-size: 11.5px; line-height: 1.45; color: #c9c2b8">Display only. Measurements and the label record don’t change.</p>
+</div>
+</sc-if>
+
+<div class="viewer-footer" style="position: absolute; left: 16px; bottom: 14px; font-family: 'Chivo Mono', monospace; font-size: 8.5px; font-weight: 500; letter-spacing: 0.14em; color: rgba(250, 247, 242, .3); white-space: nowrap">SPINECONTOUR · RESEARCH USE ONLY · NOT FOR CLINICAL USE</div>
+
+</div>
+
+<aside class="sc-panel" aria-label="Vertebral levels" style="width: 400px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; min-height: 0">
+
+<div style="padding: 14px 16px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px">
+<h2 style="margin: 0; font-size: 15px; font-weight: 650; line-height: 1.3; color: var(--ink)">Vertebral levels</h2>
+<span style="font-family: 'Chivo Mono', monospace; font-size: 10px; font-weight: 500; letter-spacing: 0.15em; color: var(--muted); font-variant-numeric: tabular-nums">{{summary}}</span>
+<p style="margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--body)">Uncheck a level you can’t see on this film. It’s saved as not visible, not as missing.</p>
+</div>
+
+<div style="flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 10px">
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="5">
+<section style="display: flex; flex-direction: column; padding: 4px 0; border-bottom: 1px solid var(--border)">
+<div style="display: flex; align-items: center; gap: 6px; padding-left: 6px">
+<label class="checkbox-row" style="display: flex; align-items: center; cursor: pointer; padding: 12px 0">
+<input type="checkbox" checked="{{g.allOn}}" onChange="{{g.toggleAll}}" aria-label="{{g.cbLabel}}">
+<span class="{{g.boxClass}}">
+<sc-if value="{{g.on}}" hint-placeholder-val="{{true}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+<sc-if value="{{g.mixed}}" hint-placeholder-val="{{false}}"><span style="width: 8px; height: 2px; border-radius: 1px; background: var(--on-accent)"></span></sc-if>
+</span>
+</label>
+<button class="grp-btn" type="button" aria-expanded="{{g.open}}" onClick="{{g.toggleOpen}}" style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px; border-radius: 10px; text-align: left; color: var(--muted)">
+<span style="font-size: 14px; font-weight: 650; color: var(--ink)">{{g.title}}</span>
+<span style="font-family: 'Chivo Mono', monospace; font-size: 9.5px; font-weight: 500; letter-spacing: 0.13em; color: var(--muted)">{{g.range}}</span>
+<span style="flex: 1"></span>
+<span style="font-family: 'Chivo Mono', monospace; font-size: 9px; font-weight: 500; letter-spacing: 0.13em; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right">{{g.count}}</span>
+<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; transform: {{g.chevRot}}"><path d="m6 9 6 6 6-6"></path></svg>
+</button>
+</div>
+<sc-if value="{{g.open}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; flex-direction: column; gap: 1px; padding: 0 0 6px 26px">
+<sc-for list="{{g.levels}}" as="l" hint-placeholder-count="5">
+<div style="display: flex; flex-direction: column">
+<div style="display: flex; align-items: center; gap: 6px; border-radius: 10px; padding-right: 6px; background: {{l.rowBg}}">
+<label class="checkbox-row" style="display: flex; align-items: center; cursor: pointer; padding: 10px 0 10px 6px">
+<input type="checkbox" checked="{{l.visible}}" onChange="{{l.toggle}}" aria-label="{{l.cbLabel}}">
+<span class="{{l.boxClass}}"><sc-if value="{{l.visible}}" hint-placeholder-val="{{true}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if></span>
+</label>
+<button class="lv-btn" type="button" aria-pressed="{{l.selected}}" onClick="{{l.select}}" style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 8px; border-radius: 8px; text-align: left">
+<span style="width: 8px; height: 8px; border-radius: 50%; box-sizing: border-box; flex-shrink: 0; background: {{l.swBg}}; border: {{l.swBorder}}"></span>
+<span style="font-size: 14px; font-weight: 600; line-height: 1.25; color: {{l.nameColor}}">{{l.name}}</span>
+<span style="flex: 1"></span>
+<span class="{{l.badgeClass}}"><span class="dot"></span>{{l.badge}}</span>
+</button>
+<div style="width: 70px; flex-shrink: 0; display: flex; justify-content: flex-end">
+<sc-if value="{{l.canPlace}}" hint-placeholder-val="{{false}}"><button class="btn btn-small" type="button" aria-label="{{l.placeLabel}}" onClick="{{l.place}}" style="padding: 5px 12px; font-size: 13px">Place…</button></sc-if>
+<sc-if value="{{l.canClear}}" hint-placeholder-val="{{false}}"><button class="txt-btn" type="button" aria-label="{{l.clearLabel}}" title="{{l.clearLabel}}" onClick="{{l.clear}}" style="padding: 7px 8px; border-radius: 8px; font-family: 'Chivo Mono', monospace; font-size: 9px; font-weight: 500; letter-spacing: 0.13em; color: var(--accent)">CLEAR</button></sc-if>
+<sc-if value="{{l.canCancel}}" hint-placeholder-val="{{false}}"><button class="txt-btn" type="button" aria-label="{{l.cancelLabel}}" onClick="{{l.cancel}}" style="padding: 7px 8px; border-radius: 8px; font-family: 'Chivo Mono', monospace; font-size: 9px; font-weight: 500; letter-spacing: 0.13em; color: var(--accent)">CANCEL</button></sc-if>
+</div>
+</div>
+<sc-if value="{{l.hasNote}}" hint-placeholder-val="{{false}}"><p style="margin: -4px 0 4px; padding: 0 12px 0 36px; font-size: 12px; line-height: 1.45; color: var(--body)">{{l.note}}</p></sc-if>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</section>
+</sc-for>
+</div>
+
+<div style="border-top: 1px solid var(--border); padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: flex-start; gap: 10px">
+<span style="width: 7px; height: 7px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; background: {{readyDot}}"></span>
+<div style="display: flex; flex-direction: column; gap: 3px; min-width: 0">
+<span style="font-family: 'Chivo Mono', monospace; font-size: 9.5px; font-weight: 500; letter-spacing: 0.15em; color: var(--muted)">{{readyLabel}}</span>
+<span style="font-size: 12.5px; line-height: 1.45; color: {{readyColor}}">{{readyText}}</span>
+</div>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+<span style="flex: 1; font-family: 'Chivo Mono', monospace; font-size: 10px; font-weight: 500; letter-spacing: 0.15em; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap">{{unsavedText}}</span>
+<button class="btn btn-small" type="button" disabled="{{noChanges}}" onClick="{{discard}}">Discard</button>
+<button class="btn btn-primary btn-small" type="button" disabled="{{noChanges}}" onClick="{{save}}">Save edits</button>
+</div>
+</div>
+
+</aside>
+</div>
+
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{false}}">
+<div class="toast" role="status" style="position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: 420px; padding: 11px 18px; border-radius: 11px; background: var(--ink); color: var(--bg); font-size: 13.5px; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,.18)">{{toast}}</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(...args) {
+    super(...args);
+    const levels = this.seedLevels();
+    this.state = {
+      levels: levels,
+      saved: this.seedSaved(levels),
+      open: { cervical: false, thoracic: false, lumbar: true, sacral: true, femoral: true },
+      selected: 'L3',
+      placing: { code: 'L3', pts: [[255.4, 307], [371.4, 305]] },
+      drag: null,
+      fill: 50,
+      showOverlays: true,
+      win: { w: 4096, l: 2048 },
+      winDefault: { w: 4096, l: 2048 },
+      wlOpen: false,
+      wlDrag: null,
+      toast: ''
+    };
+  }
+
+  componentWillUnmount() { if (this._t) clearTimeout(this._t); }
+
+  clone(x) { return x == null ? x : JSON.parse(JSON.stringify(x)); }
+
+  groupDefs() {
+    const seq = (p, a, b) => { const out = []; for (let i = a; i <= b; i++) out.push(p + i); return out; };
+    return [
+      { key: 'cervical', title: 'Cervical', range: 'C2–C7', codes: seq('C', 2, 7) },
+      { key: 'thoracic', title: 'Thoracic', range: 'T1 · T4', codes: ['T1', 'T4'] },
+      { key: 'lumbar', title: 'Lumbar', range: 'L1–L5', codes: seq('L', 1, 5) },
+      { key: 'sacral', title: 'Sacral', range: 'S1 ENDPLATE', codes: ['S1'] },
+      { key: 'femoral', title: 'Femoral heads', range: '2–4 RIM POINTS', codes: ['FH1', 'FH2'] }
+    ];
+  }
+  allCodes() { return [].concat(...this.groupDefs().map(g => g.codes)); }
+  kindOf(code) {
+    if (code === 'S1' || code === 'T1') return 'endplate';
+    if (code === 'T4') return 'point';
+    return code.indexOf('FH') === 0 ? 'circle' : 'body';
+  }
+  needOf(code) { const k = this.kindOf(code); return k === 'body' || k === 'circle' ? 4 : (k === 'point' ? 1 : 2); }
+  rowName(code) { return { FH1: 'Head 1', FH2: 'Head 2', T1: 'T1 endplate', T4: 'T4 centroid' }[code] || code; }
+  fullName(code) { return { FH1: 'femoral head 1', FH2: 'femoral head 2', T1: 'T1 superior endplate', T4: 'T4 centroid' }[code] || code; }
+  capsName(code) { return this.fullName(code).toUpperCase(); }
+  colorOf(code) {
+    if (this.kindOf(code) === 'circle') return [98, 210, 111];
+    const pal = [[255, 99, 132], [255, 159, 64], [255, 205, 86], [75, 192, 192], [54, 162, 235]];
+    const codes = this.allCodes();
+    const i = codes.indexOf(code) - codes.indexOf('L1');
+    return pal[((i % 5) + 5) % 5];
+  }
+  rgba(c, a) { return 'rgba(' + c[0] + ', ' + c[1] + ', ' + c[2] + ', ' + a + ')'; }
+  corners() { return ['#32d4ff', '#64e19a', '#ffb259', '#fa78d4']; }
+
+  geo() {
+    return {
+      L1: [[289.5, 121.5], [396.9, 132.8], [283.1, 183.2], [390.5, 194.5]],
+      L2: [[270.8, 211.1], [382.7, 217.0], [267.3, 277.0], [379.2, 282.9]],
+      L4: [[252.3, 406.4], [369.4, 392.1], [260.6, 473.9], [377.7, 459.6]],
+      L5: [[262.7, 508.2], [374.2, 476.2], [279.8, 567.8], [391.3, 535.8]],
+      S1: [[291, 603], [389, 547]],
+      FH1: { c: [214, 690], r: 40, rim: [[185.7, 661.7], [242.3, 661.7], [242.3, 718.3], [185.7, 718.3]] },
+      FH2: { c: [233, 677], r: 42, rim: [[203.3, 647.3], [262.7, 647.3], [262.7, 706.7], [203.3, 706.7]] }
+    };
+  }
+
+  seedLevels() {
+    const g = this.geo();
+    const L = {};
+    this.allCodes().forEach(c => { L[c] = { visible: false, geom: null, model: null, src: 'film_type' }; });
+    ['L1', 'L4', 'L5', 'S1', 'FH1', 'FH2'].forEach(c => {
+      L[c] = { visible: true, geom: this.clone(g[c]), model: this.clone(g[c]), src: 'model' };
+    });
+    L.L2 = { visible: true, geom: [[270.8, 211.1], [382.7, 217.0], [264.8, 280.6], [384.6, 288.4]], model: this.clone(g.L2), src: 'annotator' };
+    L.L3 = { visible: true, geom: null, model: null, src: 'film_type' };
+    return L;
+  }
+
+  seedSaved(levels) {
+    const s = this.clone(levels);
+    s.L2 = { visible: true, geom: this.clone(s.L2.model), model: this.clone(s.L2.model), src: 'model' };
+    return s;
+  }
+
+  stateOf(l) {
+    if (!l.visible) return 'not_visible';
+    if (!l.geom) return 'not_placed';
+    if (!l.model) return 'manual';
+    return JSON.stringify(l.geom) === JSON.stringify(l.model) ? 'segmented' : 'edited';
+  }
+
+  depsOf(code) {
+    const d = {
+      C2: 'C2–C7', C7: 'C2–C7 and SVA',
+      L1: 'LL and L1–L2', L2: 'L1–L2 and L2–L3', L3: 'L2–L3 and L3–L4', L4: 'L3–L4 and L4–L5', L5: 'L4–L5 and L5–S1',
+      S1: 'PI, SS, PT, LL, SVA and L5–S1', FH1: 'PI and PT', FH2: 'PI and PT'
+    };
+    return d[code] || '';
+  }
+
+  unsavedCount() {
+    const L = this.state.levels, S = this.state.saved;
+    return this.allCodes().filter(c => JSON.stringify([L[c].visible, L[c].geom]) !== JSON.stringify([S[c].visible, S[c].geom])).length;
+  }
+
+  toggleVisible(code) {
+    const levels = this.clone(this.state.levels);
+    const l = levels[code];
+    l.visible = !l.visible;
+    l.src = 'annotator';
+    let placing = this.state.placing;
+    if (!l.visible && placing && placing.code === code) placing = null;
+    this.setState({ levels: levels, placing: placing });
+  }
+
+  toggleGroup(codes) {
+    const levels = this.clone(this.state.levels);
+    const allOn = codes.every(c => levels[c].visible);
+    codes.forEach(c => { levels[c].visible = !allOn; levels[c].src = 'annotator'; });
+    let placing = this.state.placing;
+    if (allOn && placing && codes.indexOf(placing.code) >= 0) placing = null;
+    this.setState({ levels: levels, placing: placing });
+  }
+
+  selectLevel(code) {
+    const p = this.state.placing;
+    this.setState({ selected: code, placing: p && p.code !== code ? null : p });
+  }
+
+  startPlace(code) { this.setState({ placing: { code: code, pts: [] }, selected: code }); }
+
+  clearLevel(code) {
+    const levels = this.clone(this.state.levels);
+    levels[code].geom = null;
+    levels[code].src = 'annotator';
+    this.setState({ levels: levels });
+  }
+
+  toVB(e) {
+    const r = e.currentTarget.getBoundingClientRect();
+    const s = Math.min(r.width / 600, r.height / 800);
+    const ox = (r.width - 600 * s) / 2, oy = (r.height - 800 * s) / 2;
+    const x = Math.max(0, Math.min(600, (e.clientX - r.left - ox) / s));
+    const y = Math.max(0, Math.min(800, (e.clientY - r.top - oy) / s));
+    return [Math.round(x * 10) / 10, Math.round(y * 10) / 10];
+  }
+
+  stageClick(e) {
+    const p = this.state.placing;
+    if (!p || this.state.wlOpen) return;
+    const kind = this.kindOf(p.code);
+    const need = this.needOf(p.code);
+    const pts = p.pts.concat([this.toVB(e)]);
+    if (pts.length < need) { this.setState({ placing: { code: p.code, pts: pts } }); return; }
+    this.finishPlace(p.code, pts);
+  }
+
+  finishPlace(code, pts) {
+    const kind = this.kindOf(code);
+    const levels = this.clone(this.state.levels);
+    const l = levels[code];
+    if (kind === 'circle') l.geom = this.fitCircle(pts);
+    else if (kind === 'point') l.geom = pts[0];
+    else l.geom = pts;
+    l.visible = true;
+    l.src = 'annotator';
+    this.setState({ levels: levels, placing: null, selected: code });
+  }
+
+  fitCircle(pts) {
+    const rnd = v => Math.round(v * 10) / 10;
+    const rim = pts.map(p => [p[0], p[1]]);
+    const diameter = (a, b) => ({
+      c: [rnd((a[0] + b[0]) / 2), rnd((a[1] + b[1]) / 2)],
+      r: rnd(Math.hypot(b[0] - a[0], b[1] - a[1]) / 2),
+      rim: rim
+    });
+    if (pts.length === 2) return diameter(pts[0], pts[1]);
+    let sxx = 0, sxy = 0, syy = 0, sx = 0, sy = 0, sxz = 0, syz = 0, sz = 0;
+    pts.forEach(p => {
+      const x = p[0], y = p[1], z = x * x + y * y;
+      sxx += x * x; sxy += x * y; syy += y * y; sx += x; sy += y; sxz += x * z; syz += y * z; sz += z;
+    });
+    const M = [[sxx, sxy, sx], [sxy, syy, sy], [sx, sy, pts.length]], b = [-sxz, -syz, -sz];
+    const det = m => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    const swap = i => M.map((row, k) => row.map((v, j) => (j === i ? b[k] : v)));
+    const d = det(M);
+    const D = det(swap(0)) / d, E = det(swap(1)) / d, F = det(swap(2)) / d;
+    const cx = -D / 2, cy = -E / 2, r = Math.sqrt(cx * cx + cy * cy - F);
+    if (!isFinite(r) || r > 1000) {
+      let best = [pts[0], pts[1]], far = -1;
+      pts.forEach(a => pts.forEach(c => { const dd = Math.hypot(a[0] - c[0], a[1] - c[1]); if (dd > far) { far = dd; best = [a, c]; } }));
+      return diameter(best[0], best[1]);
+    }
+    return { c: [rnd(cx), rnd(cy)], r: rnd(r), rim: rim };
+  }
+
+  handleDown(code, idx, e) {
+    if (this.state.placing || this.state.wlOpen) return;
+    if (e) { e.stopPropagation(); e.preventDefault(); }
+    this.setState({ drag: { code: code, idx: idx }, selected: code });
+  }
+
+  stageDown(e) {
+    if (!this.state.wlOpen || e.button !== 0) return;
+    e.preventDefault();
+    this.setState({ wlDrag: { x: e.clientX, y: e.clientY, w: this.state.win.w, l: this.state.win.l } });
+  }
+
+  stageMove(e) {
+    const wd = this.state.wlDrag;
+    if (wd) {
+      const clamp = (v, a, b) => Math.max(a, Math.min(b, Math.round(v)));
+      this.setState({ win: { w: clamp(wd.w + (e.clientX - wd.x) * 4, 64, 4096), l: clamp(wd.l + (e.clientY - wd.y) * 4, 0, 4096) } });
+      return;
+    }
+    const d = this.state.drag;
+    if (!d) return;
+    const pt = this.toVB(e);
+    const levels = this.clone(this.state.levels);
+    const l = levels[d.code];
+    if (this.kindOf(d.code) === 'circle') {
+      const rim = l.geom.rim.slice();
+      rim[d.idx] = pt;
+      l.geom = this.fitCircle(rim);
+    } else if (this.kindOf(d.code) === 'point') {
+      l.geom = pt;
+    } else {
+      l.geom[d.idx] = pt;
+    }
+    l.src = 'annotator';
+    this.setState({ levels: levels });
+  }
+
+  stageUp() { if (this.state.drag || this.state.wlDrag) this.setState({ drag: null, wlDrag: null }); }
+
+  flash(text) {
+    if (this._t) clearTimeout(this._t);
+    this.setState({ toast: text });
+    this._t = setTimeout(() => this.setState({ toast: '' }), 2800);
+  }
+
+  save() {
+    const n = this.unsavedCount();
+    if (!n) return;
+    this.setState({ saved: this.clone(this.state.levels) });
+    this.flash('Saved ' + n + (n === 1 ? ' edit' : ' edits') + ' to the label record.');
+  }
+
+  discard() {
+    const n = this.unsavedCount();
+    if (!n) return;
+    this.setState({ levels: this.clone(this.state.saved), placing: null });
+    this.flash('Discarded ' + n + (n === 1 ? ' change.' : ' changes.'));
+  }
+
+  rowVals(code) {
+    const S = this.state, l = S.levels[code], st = this.stateOf(l);
+    const isPlacing = !!(S.placing && S.placing.code === code);
+    const sel = S.selected === code;
+    const col = this.colorOf(code);
+    const name = this.rowName(code);
+    const full = this.fullName(code);
+    const badges = {
+      segmented: ['badge badge-seg', 'Segmented'],
+      edited: ['badge badge-ok', 'Edited'],
+      manual: ['badge badge-ok', 'Manual'],
+      not_placed: ['badge badge-rev', isPlacing ? 'Placing…' : 'Not placed'],
+      not_visible: ['badge badge-proc', 'Not visible']
+    };
+    const dep = st === 'not_visible' ? this.depsOf(code) : '';
+    const b = isPlacing ? ['badge badge-rev', 'Placing…'] : badges[st];
+    const placeable = st === 'not_placed' || (this.kindOf(code) === 'circle' && l.visible);
+    return {
+      code: code, name: name, visible: l.visible,
+      boxClass: l.visible ? 'cb cb-on' : 'cb',
+      cbLabel: full + ' visible on film',
+      toggle: () => this.toggleVisible(code),
+      select: () => this.selectLevel(code),
+      selected: sel,
+      rowBg: sel ? 'var(--well)' : 'transparent',
+      nameColor: sel ? 'var(--accent)' : (st === 'not_visible' ? 'var(--muted)' : 'var(--ink)'),
+      swBg: l.visible && l.geom ? this.rgba(col, 1) : 'transparent',
+      swBorder: st === 'not_visible' ? '1.5px solid var(--border)' : '1.5px solid ' + this.rgba(col, 1),
+      badgeClass: b[0], badge: b[1],
+      canPlace: placeable && !isPlacing, placeLabel: this.kindOf(code) === 'circle' ? 'Place rim points for ' + full : 'Place ' + full, place: () => this.startPlace(code),
+      canClear: st === 'manual', clearLabel: 'Clear the placed ' + full, clear: () => this.clearLevel(code),
+      canCancel: isPlacing, cancelLabel: 'Cancel placing ' + full, cancel: () => this.setState({ placing: null }),
+      hasNote: !!dep, note: dep ? dep + ' will show —' : ''
+    };
+  }
+
+  overlayVals(code, fillA) {
+    const S = this.state, l = S.levels[code], kind = this.kindOf(code), col = this.colorOf(code);
+    const sel = S.selected === code && !S.placing;
+    const CC = this.corners();
+    const fmt = p => p[0] + ',' + p[1];
+    const g = l.geom;
+    const o = {
+      key: code, label: code,
+      polyD: 'none', points: '', ghostD: 'none', ghost: '',
+      lineD: 'none', x1: 0, y1: 0, x2: 0, y2: 0, lineStroke: 'none',
+      circD: 'none', cx: 0, cy: 0, r: 0,
+      mD: 'none', mx: 0, my: 0,
+      gcD: 'none', gcx: 0, gcy: 0, gcr: 0,
+      fill: this.rgba(col, fillA.toFixed(3)),
+      stroke: sel ? '#d45a32' : (S.showOverlays ? this.rgba(col, 0.85) : 'none'),
+      sw: sel ? 2 : 1.25
+    };
+    let hs = [];
+    let lx = 0, ly = 0;
+    if (kind === 'body') {
+      o.polyD = 'inline';
+      o.points = [g[0], g[1], g[3], g[2]].map(fmt).join(' ');
+      if (sel && l.model && this.stateOf(l) === 'edited') {
+        o.ghostD = 'inline';
+        o.ghost = [l.model[0], l.model[1], l.model[3], l.model[2]].map(fmt).join(' ');
+      }
+      hs = g.map((p, i) => ({ p: p, c: CC[i], idx: i }));
+      lx = Math.max(g[1][0], g[3][0]) + 14;
+      ly = (g[1][1] + g[3][1]) / 2;
+    } else if (kind === 'endplate') {
+      o.lineD = 'inline';
+      o.x1 = g[0][0]; o.y1 = g[0][1]; o.x2 = g[1][0]; o.y2 = g[1][1];
+      o.lineStroke = sel ? '#d45a32' : (S.showOverlays ? this.rgba(col, 1) : 'none');
+      hs = g.map((p, i) => ({ p: p, c: CC[i], idx: i }));
+      lx = g[1][0] + 14;
+      ly = g[1][1];
+    } else if (kind === 'point') {
+      o.circD = 'inline';
+      o.cx = g[0]; o.cy = g[1]; o.r = 5;
+      o.fill = this.rgba(col, S.showOverlays || sel ? 1 : 0);
+      o.stroke = sel ? '#d45a32' : '#0b0a09';
+      o.sw = 2;
+      hs = [{ p: g, c: this.rgba(col, 1), idx: 0 }];
+      lx = g[0] + 14;
+      ly = g[1];
+    } else {
+      o.circD = 'inline';
+      o.cx = g.c[0]; o.cy = g.c[1]; o.r = g.r;
+      hs = g.rim.map((p, i) => ({ p: p, c: '#ffe071', idx: i }));
+      if (sel) { o.mD = 'inline'; o.mx = g.c[0]; o.my = g.c[1]; }
+      if (sel && l.model && this.stateOf(l) === 'edited') {
+        o.gcD = 'inline'; o.gcx = l.model.c[0]; o.gcy = l.model.c[1]; o.gcr = l.model.r;
+      }
+    }
+    for (let i = 0; i < 4; i++) {
+      const h = hs[i];
+      o['h' + i] = h && sel
+        ? { x: h.p[0], y: h.p[1], c: h.c, d: 'inline', down: (e) => this.handleDown(code, h.idx, e) }
+        : { x: 0, y: 0, c: 'none', d: 'none', down: null };
+    }
+    o.labD = kind !== 'circle' && (S.showOverlays || sel) ? 'inline' : 'none';
+    o.lx = lx; o.ly = ly;
+    o.px = lx - 6; o.py = ly - 9; o.pw = code.length * 8 + 12;
+    o.lc = sel ? '#d45a32' : 'rgba(250, 247, 242, .75)';
+    return o;
+  }
+
+  renderVals() {
+    const S = this.state, L = S.levels, CC = this.corners();
+    const codes = this.allCodes();
+    const placing = S.placing;
+    const fmt = p => p[0] + ',' + p[1];
+
+    const groups = this.groupDefs().map(g => {
+      const ls = g.codes.map(c => L[c]);
+      const vis = ls.filter(l => l.visible).length;
+      const placed = ls.filter(l => l.visible && l.geom).length;
+      const toPlace = vis - placed, nv = ls.length - vis;
+      const parts = [];
+      if (placed) parts.push(placed + ' PLACED');
+      if (toPlace) parts.push(toPlace + ' TO PLACE');
+      if (nv) parts.push(nv + ' NOT VISIBLE');
+      const on = vis === ls.length, mixed = vis > 0 && !on;
+      const open = !!S.open[g.key];
+      return {
+        key: g.key, title: g.title, range: g.range, count: parts.join(' · '),
+        open: open, chevRot: open ? 'rotate(0deg)' : 'rotate(-90deg)',
+        allOn: on, on: on, mixed: mixed,
+        boxClass: on ? 'cb cb-on' : (mixed ? 'cb cb-mixed' : 'cb'),
+        cbLabel: g.title + ': ' + (on ? 'mark every level not visible' : 'mark every level visible'),
+        toggleAll: () => this.toggleGroup(g.codes),
+        toggleOpen: () => { const next = Object.assign({}, this.state.open); next[g.key] = !open; this.setState({ open: next }); },
+        levels: g.codes.map(c => this.rowVals(c))
+      };
+    });
+
+    const fillA = S.showOverlays ? (116 / 255) * (S.fill / 100) : 0;
+    const overlays = codes.filter(c => L[c].visible && L[c].geom && !(placing && placing.code === c)).map(c => this.overlayVals(c, fillA));
+
+    const hidden = { x: 0, y: 0, c: 'none', d: 'none' };
+    const pl = { lineD: 'none', line: '', fD: 'none', fx: 0, fy: 0, fr: 0, p0: hidden, p1: hidden, p2: hidden, p3: hidden };
+    let isCircle = false, fitDisabled = true;
+    let editLabel = 'EDITING SEGMENTATION', editHelp = '', steps = [], undoDisabled = true;
+    if (placing) {
+      const kind = this.kindOf(placing.code);
+      const need = this.needOf(placing.code);
+      const n = placing.pts.length;
+      const lc = this.rgba(this.colorOf(placing.code), 1);
+      const cols = kind === 'body' ? CC : (kind === 'endplate' ? [CC[0], CC[1]] : (kind === 'point' ? [lc] : ['#ffe071', '#ffe071', '#ffe071', '#ffe071']));
+      const names = kind === 'body' ? ['SA', 'SP', 'IA', 'IP'] : (kind === 'endplate' ? ['ANT', 'POST'] : (kind === 'point' ? ['CENTROID'] : ['P1', 'P2', 'P3', 'P4']));
+      const helps = kind === 'body'
+        ? ['Click the superior-anterior corner (SA).', 'Click the superior-posterior corner (SP).', 'Click the inferior-anterior corner (IA).', 'Click the inferior-posterior corner (IP).']
+        : kind === 'endplate'
+          ? ['Click the anterior corner of the ' + placing.code + ' superior endplate.', 'Click the posterior corner of the ' + placing.code + ' superior endplate.']
+          : kind === 'point'
+            ? ['Click the centroid of ' + placing.code + '.']
+            : ['Click a point on the rim of the femoral head.', 'Click a second rim point. Two points are read as the ends of a diameter.', 'Fit now, or click up to 2 more rim points for a better fit.', 'Fit now, or click one more rim point.'];
+      isCircle = kind === 'circle';
+      fitDisabled = n < 2;
+      pl.lineD = isCircle ? 'none' : 'inline';
+      pl.line = placing.pts.map(fmt).join(' ');
+      placing.pts.forEach((p, i) => { pl['p' + i] = { x: p[0], y: p[1], c: cols[i], d: 'inline' }; });
+      if (isCircle && n >= 2) {
+        const f = this.fitCircle(placing.pts);
+        pl.fD = 'inline'; pl.fx = f.c[0]; pl.fy = f.c[1]; pl.fr = f.r;
+      }
+      editLabel = isCircle
+        ? 'PLACING ' + this.capsName(placing.code) + ' · ' + n + ' OF 4 RIM POINTS'
+        : 'PLACING ' + this.capsName(placing.code) + ' · ' + Math.min(n + 1, need) + ' OF ' + need;
+      editHelp = helps[Math.min(n, need - 1)];
+      steps = names.map((s, i) => {
+        const done = i < n, cur = i === n;
+        return {
+          label: s,
+          bg: cur ? 'rgba(212, 90, 50, .16)' : 'transparent',
+          fg: cur ? '#d45a32' : (done ? '#faf7f2' : '#9a9188'),
+          dotBg: done ? cols[i] : 'transparent',
+          dotBorder: done || cur ? cols[i] : '#38342f'
+        };
+      });
+      undoDisabled = n === 0;
+    } else {
+      const sl = S.selected ? L[S.selected] : null;
+      editHelp = sl && sl.visible && sl.geom
+        ? this.rowName(S.selected).replace('Head', 'Femoral head') + (this.kindOf(S.selected) === 'circle' ? ' selected — drag a rim point to refit it.' : ' selected — drag a handle to adjust it.')
+        : 'Select a level in the panel to adjust it, or place one the model missed.';
+    }
+
+    if (S.wlOpen) {
+      editLabel = 'WINDOW / LEVEL' + (placing ? ' · PLACING PAUSED' : '');
+      editHelp = 'Drag on the film: left–right sets width, up–down sets level. Press Done to go back to editing.';
+    }
+
+    const vis = codes.filter(c => L[c].visible).length;
+    const placedAll = codes.filter(c => L[c].visible && L[c].geom).length;
+    const parts = [placedAll + ' PLACED'];
+    if (vis - placedAll) parts.push((vis - placedAll) + ' TO PLACE');
+    if (codes.length - vis) parts.push((codes.length - vis) + ' NOT VISIBLE');
+
+    const missing = codes.filter(c => L[c].visible && !L[c].geom).map(c => this.fullName(c));
+    const ready = missing.length === 0;
+    const list = missing.length <= 1 ? (missing[0] || '') : missing.slice(0, -1).join(', ') + ' and ' + missing[missing.length - 1];
+    const readyText = ready
+      ? 'Every level is placed or marked not visible.'
+      : list.charAt(0).toUpperCase() + list.slice(1) + (missing.length === 1 ? ' is visible but not placed — place it or uncheck it.' : ' are visible but not placed — place them or uncheck them.');
+
+    const n = this.unsavedCount();
+
+    return {
+      theme: this.props.dark ? 'dark' : 'light',
+      groups: groups,
+      overlays: overlays,
+      pl: pl,
+      cursor: S.wlOpen ? 'all-scroll' : (placing ? 'crosshair' : (S.drag ? 'grabbing' : 'default')),
+      stageClick: (e) => this.stageClick(e),
+      stageDown: (e) => this.stageDown(e),
+      wlOpen: S.wlOpen,
+      wlClass: S.wlOpen ? 'viewer-tool is-active' : 'viewer-tool',
+      toggleWL: () => this.setState({ wlOpen: !this.state.wlOpen, wlDrag: null }),
+      winW: S.win.w,
+      winL: S.win.l,
+      winText: 'W ' + S.win.w + ' · L ' + S.win.l,
+      setWinW: (e) => this.setState({ win: { w: Number(e.target.value), l: this.state.win.l } }),
+      setWinL: (e) => this.setState({ win: { w: this.state.win.w, l: Number(e.target.value) } }),
+      resetWin: () => this.setState({ win: Object.assign({}, this.state.winDefault) }),
+      wlSlope: (4096 / S.win.w).toFixed(4),
+      wlIntercept: ((S.win.w / 2 - S.win.l) / S.win.w).toFixed(4),
+      stageMove: (e) => this.stageMove(e),
+      stageUp: () => this.stageUp(),
+      isPlacing: !!placing && !S.wlOpen,
+      isCircle: isCircle,
+      fitDisabled: fitDisabled,
+      fitNow: () => { const p = this.state.placing; if (p && this.kindOf(p.code) === 'circle' && p.pts.length >= 2) this.finishPlace(p.code, p.pts); },
+      editLabel: editLabel,
+      editHelp: editHelp,
+      steps: steps,
+      undoDisabled: undoDisabled,
+      undoPoint: () => { const p = this.state.placing; if (p && p.pts.length) this.setState({ placing: { code: p.code, pts: p.pts.slice(0, -1) } }); },
+      cancelPlace: () => this.setState({ placing: null }),
+      showOverlays: S.showOverlays,
+      ovClass: S.showOverlays ? 'viewer-tool is-active' : 'viewer-tool',
+      toggleOverlays: () => this.setState({ showOverlays: !this.state.showOverlays }),
+      fill: S.fill,
+      setFill: (e) => this.setState({ fill: Number(e.target.value) }),
+      summary: parts.join(' · '),
+      readyLabel: ready ? 'TRAINING LABEL · COMPLETE' : 'TRAINING LABEL · INCOMPLETE',
+      readyText: readyText,
+      readyDot: ready ? 'var(--sage)' : 'var(--accent)',
+      readyColor: ready ? 'var(--body)' : 'var(--accent)',
+      unsavedText: n ? n + (n === 1 ? ' UNSAVED CHANGE' : ' UNSAVED CHANGES') : 'NOTHING TO SAVE',
+      noChanges: n === 0,
+      save: () => this.save(),
+      discard: () => this.discard(),
+      hasToast: !!S.toast,
+      toast: S.toast
+    };
+  }
+}
+</script>
+</body>
+</html>

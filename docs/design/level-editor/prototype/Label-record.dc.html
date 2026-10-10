@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Segmentation label record</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/spine-contour/components/bundle.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@400;500&amp;family=Source+Sans+3:wght@400..700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#c1502b}a:hover{color:#a6421f}
+.sc{--bg:#fefdfc;--card:#ffffff;--well:#f4eee4;--border:#e5ddd1;--ink:#201814;--body:#4a4038;--muted:#8a7e72;--accent:#c1502b;--sage:#6e8577;--on-accent:#ffffff;font-family:'Source Sans 3',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:var(--body);background:var(--bg);-webkit-font-smoothing:antialiased}
+.sc[data-theme="dark"]{--bg:#151312;--card:#181614;--well:#282522;--border:#38342f;--ink:#faf7f2;--body:#c9c2b8;--muted:#9a9188;--accent:#d45a32;--sage:#8aa894}
+.code div{white-space:pre}
+.tbl td,.tbl th{vertical-align:top;text-align:left}
+.tbl tbody tr + tr td{border-top:1px solid var(--border)}
+</style>
+</helmet>
+<div class="sc" data-theme="{{theme}}" style="width: 1280px; height: 1320px; box-sizing: border-box; padding: 56px 64px; display: flex; flex-direction: column; gap: 32px">
+
+<div style="display: flex; flex-direction: column; gap: 10px; max-width: 640px">
+<span style="font-family: 'Chivo Mono', monospace; font-size: 10px; font-weight: 500; letter-spacing: 0.15em; color: var(--muted)">TRAINING DATA · ONE FILE PER FILM</span>
+<h1 style="margin: 0; font-size: 26px; font-weight: 650; line-height: 1.2; letter-spacing: -0.01em; color: var(--ink)">Segmentation label record</h1>
+<p style="margin: 0; font-size: 15px; line-height: 1.55; color: var(--body)">Save edits writes this record beside the study. It keeps what the annotator asserted for every level, and the model’s original output wherever it was corrected, so retraining can tell a fixed level from one nobody looked at.</p>
+</div>
+
+<div style="display: flex; gap: 32px; align-items: flex-start">
+
+<section style="width: 600px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--card); overflow: hidden">
+<div style="display: flex; align-items: center; gap: 12px; padding: 12px 22px; border-bottom: 1px solid var(--border); background: var(--well)">
+<span style="font-family: 'Chivo Mono', monospace; font-size: 9.5px; font-weight: 500; letter-spacing: 0.15em; color: var(--muted)">EXAMPLE</span>
+<span style="font-family: 'Chivo Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; color: var(--ink)">lateral_lumbar_001.label.json</span>
+</div>
+<div class="code" style="padding: 18px 22px 20px; font-family: 'Chivo Mono', monospace; font-size: 11px; line-height: 1.6; color: var(--ink); font-variant-numeric: tabular-nums">
+<div>{</div>
+<div>  "schema": "spinecontour.segmentation-label/1",</div>
+<div>  "study": "lateral_lumbar_001",</div>
+<div>  "image": {</div>
+<div>    "file": "lateral_lumbar_001.dcm",</div>
+<div>    "sha256": "[SHA-256 OF PIXEL DATA]",</div>
+<div>    "width_px": 2040, "height_px": 2720</div>
+<div>  },</div>
+<div>  "film": { "region": "lumbar", "view": "standing_lateral" },</div>
+<div>  "model": { "name": "U-Net", "version": "[MODEL VERSION]" },</div>
+<div>  "app_version": "[APP VERSION]",</div>
+<div>  "saved_at": "2026-10-08T16:20:00Z",</div>
+<div>  "complete": true,</div>
+<div>  "levels": {</div>
+<div>    "C2": { "state": "not_visible", "source": "film_type" },</div>
+<div style="color: var(--muted)">    … C3–C7 the same</div>
+<div>    "T1": { "state": "not_visible", "source": "film_type" },</div>
+<div>    "T4": { "state": "not_visible", "source": "film_type" },</div>
+<div>    "L1": {</div>
+<div>      "state": "segmented", "source": "model",</div>
+<div>      "corners": { "sa": [984, 413], "sp": [1349, 452],</div>
+<div>                   "ia": [963, 623], "ip": [1328, 661] },</div>
+<div>      "model_corners": null,</div>
+<div>      "contour": [[981, 409], [1018, 411], …]</div>
+<div>    },</div>
+<div>    "L2": {</div>
+<div>      "state": "edited", "source": "annotator",</div>
+<div>      "corners": { "sa": [921, 718], "sp": [1301, 738],</div>
+<div>                   "ia": [900, 954], "ip": [1308, 981] },</div>
+<div>      "model_corners": { "sa": [921, 718], "sp": [1301, 738],</div>
+<div>                         "ia": [909, 942], "ip": [1289, 962] },</div>
+<div>      "contour": null</div>
+<div>    },</div>
+<div>    "L3": {</div>
+<div>      "state": "manual", "source": "annotator",</div>
+<div>      "corners": { "sa": [868, 1044], "sp": [1263, 1037],</div>
+<div>                   "ia": [872, 1275], "ip": [1267, 1268] },</div>
+<div>      "model_corners": null,</div>
+<div>      "contour": null</div>
+<div>    },</div>
+<div style="color: var(--muted)">    … L4 and L5 like L1</div>
+<div>    "S1": {</div>
+<div>      "state": "segmented", "source": "model",</div>
+<div>      "corners": { "sa": [989, 2050], "sp": [1323, 1860] },</div>
+<div>      "model_corners": null</div>
+<div>    }</div>
+<div>  },</div>
+<div>  "femoral_heads": [</div>
+<div>    { "id": 1, "state": "segmented", "source": "model",</div>
+<div>      "center": [728, 2346], "radius": 136, "rim": null },</div>
+<div>    { "id": 2, "state": "segmented", "source": "model",</div>
+<div>      "center": [792, 2302], "radius": 143, "rim": null }</div>
+<div>  ]</div>
+<div>}</div>
+</div>
+</section>
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+
+<section style="border: 1px solid var(--border); border-radius: 14px; background: var(--card); overflow: hidden">
+<div style="padding: 14px 18px 12px; border-bottom: 1px solid var(--border)">
+<h2 style="margin: 0; font-size: 15px; font-weight: 650; color: var(--ink)">How retraining reads each state</h2>
+</div>
+<table class="tbl" style="width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45">
+<thead>
+<tr style="background: var(--well)">
+<th style="padding: 9px 18px; font-family: 'Chivo Mono', monospace; font-size: 9.5px; font-weight: 500; letter-spacing: 0.15em; color: var(--muted); width: 130px">STATE</th>
+<th style="padding: 9px 12px; font-family: 'Chivo Mono', monospace; font-size: 9.5px; font-weight: 500; letter-spacing: 0.15em; color: var(--muted)">MEANING</th>
+<th style="padding: 9px 18px 9px 12px; font-family: 'Chivo Mono', monospace; font-size: 9.5px; font-weight: 500; letter-spacing: 0.15em; color: var(--muted); width: 128px">TRAINING USE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="padding: 12px 18px"><div style="display: flex; flex-direction: column; align-items: flex-start; gap: 6px"><span class="badge badge-seg"><span class="dot"></span>Segmented</span><span style="font-family: 'Chivo Mono', monospace; font-size: 10px; letter-spacing: 0.04em; color: var(--ink)">segmented</span></div></td>
+<td style="padding: 12px 12px; color: var(--body)">Model output, accepted unchanged.</td>
+<td style="padding: 12px 18px 12px 12px; color: var(--ink); font-weight: 600">Positive label</td>
+</tr>
+<tr>
+<td style="padding: 12px 18px"><div style="display: flex; flex-direction: column; align-items: flex-start; gap: 6px"><span class="badge badge-ok"><span class="dot"></span>Edited</span><span style="font-family: 'Chivo Mono', monospace; font-size: 10px; letter-spacing: 0.04em; color: var(--ink)">edited</span></div></td>
+<td style="padding: 12px 12px; color: var(--body)">Model output corrected by hand. model_corners keeps the original.</td>
+<td style="padding: 12px 18px 12px 12px; color: var(--ink); font-weight: 600">Positive label · error pair</td>
+</tr>
+<tr>
+<td style="padding: 12px 18px"><div style="display: flex; flex-direction: column; align-items: flex-start; gap: 6px"><span class="badge badge-ok"><span class="dot"></span>Manual</span><span style="font-family: 'Chivo Mono', monospace; font-size: 10px; letter-spacing: 0.04em; color: var(--ink)">manual</span></div></td>
+<td style="padding: 12px 12px; color: var(--body)">Placed by hand where the model found nothing.</td>
+<td style="padding: 12px 18px 12px 12px; color: var(--ink); font-weight: 600">Positive label · missed level</td>
+</tr>
+<tr>
+<td style="padding: 12px 18px"><div style="display: flex; flex-direction: column; align-items: flex-start; gap: 6px"><span class="badge badge-proc"><span class="dot"></span>Not visible</span><span style="font-family: 'Chivo Mono', monospace; font-size: 10px; letter-spacing: 0.04em; color: var(--ink)">not_visible</span></div></td>
+<td style="padding: 12px 12px; color: var(--body)">The annotator says the level isn’t on the film.</td>
+<td style="padding: 12px 18px 12px 12px; color: var(--ink); font-weight: 600">Negative label</td>
+</tr>
+<tr>
+<td style="padding: 12px 18px"><div style="display: flex; flex-direction: column; align-items: flex-start; gap: 6px"><span class="badge badge-rev"><span class="dot"></span>Not placed</span><span style="font-family: 'Chivo Mono', monospace; font-size: 10px; letter-spacing: 0.04em; color: var(--ink)">not_placed</span></div></td>
+<td style="padding: 12px 12px; color: var(--body)">Visible, but nobody placed it.</td>
+<td style="padding: 12px 18px 12px 12px; color: var(--ink); font-weight: 600">Ignored · film incomplete</td>
+</tr>
+</tbody>
+</table>
+</section>
+
+<section style="border: 1px solid var(--border); border-radius: 14px; background: var(--card); overflow: hidden">
+<div style="padding: 14px 18px 12px; border-bottom: 1px solid var(--border)">
+<h2 style="margin: 0; font-size: 15px; font-weight: 650; color: var(--ink)">Fields</h2>
+</div>
+<table class="tbl" style="width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45">
+<thead>
+<tr style="background: var(--well)">
+<th style="padding: 9px 18px; font-family: 'Chivo Mono', monospace; font-size: 9.5px; font-weight: 500; letter-spacing: 0.15em; color: var(--muted); width: 190px">FIELD</th>
+<th style="padding: 9px 18px 9px 12px; font-family: 'Chivo Mono', monospace; font-size: 9.5px; font-weight: 500; letter-spacing: 0.15em; color: var(--muted)">CONTENT</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="padding: 11px 18px; font-family: 'Chivo Mono', monospace; font-size: 10.5px; letter-spacing: 0.02em; color: var(--ink)">image.sha256</td>
+<td style="padding: 11px 18px 11px 12px; color: var(--body)">Hash of the pixel data. Ties the record to the exact image without a name or record id.</td>
+</tr>
+<tr>
+<td style="padding: 11px 18px; font-family: 'Chivo Mono', monospace; font-size: 10.5px; letter-spacing: 0.02em; color: var(--ink)">film.region · film.view</td>
+<td style="padding: 11px 18px 11px 12px; color: var(--body)">The film type. Sets which groups start expected visible.</td>
+</tr>
+<tr>
+<td style="padding: 11px 18px; font-family: 'Chivo Mono', monospace; font-size: 10.5px; letter-spacing: 0.02em; color: var(--ink)">model.name · model.version</td>
+<td style="padding: 11px 18px 11px 12px; color: var(--body)">The model whose output was reviewed.</td>
+</tr>
+<tr>
+<td style="padding: 11px 18px; font-family: 'Chivo Mono', monospace; font-size: 10.5px; letter-spacing: 0.02em; color: var(--ink)">levels.*.corners</td>
+<td style="padding: 11px 18px 11px 12px; color: var(--body)">SA, SP, IA and IP in image pixels from the top-left. T1 and S1 hold only the anterior (sa) and posterior (sp) corners of the superior endplate.</td>
+</tr>
+<tr>
+<td style="padding: 11px 18px; font-family: 'Chivo Mono', monospace; font-size: 10.5px; letter-spacing: 0.02em; color: var(--ink)">levels.T4.centroid</td>
+<td style="padding: 11px 18px 11px 12px; color: var(--body)">One point, [x, y], in image pixels. T4 has no corners.</td>
+</tr>
+<tr>
+<td style="padding: 11px 18px; font-family: 'Chivo Mono', monospace; font-size: 10.5px; letter-spacing: 0.02em; color: var(--ink)">levels.*.model_corners</td>
+<td style="padding: 11px 18px 11px 12px; color: var(--body)">The model’s corners when the level was edited; null otherwise.</td>
+</tr>
+<tr>
+<td style="padding: 11px 18px; font-family: 'Chivo Mono', monospace; font-size: 10.5px; letter-spacing: 0.02em; color: var(--ink)">levels.*.contour</td>
+<td style="padding: 11px 18px 11px 12px; color: var(--body)">Outline in image pixels; null when only corners exist.</td>
+</tr>
+<tr>
+<td style="padding: 11px 18px; font-family: 'Chivo Mono', monospace; font-size: 10.5px; letter-spacing: 0.02em; color: var(--ink)">levels.*.source</td>
+<td style="padding: 11px 18px 11px 12px; color: var(--body)">Who set the state: model, annotator or film_type.</td>
+</tr>
+<tr>
+<td style="padding: 11px 18px; font-family: 'Chivo Mono', monospace; font-size: 10.5px; letter-spacing: 0.02em; color: var(--ink)">femoral_heads[]</td>
+<td style="padding: 11px 18px 11px 12px; color: var(--body)">Centre and radius in image pixels, fitted from the 2–4 points in rim (two points are read as a diameter). rim is null for unedited model output. Same state and source as a level.</td>
+</tr>
+<tr>
+<td style="padding: 11px 18px; font-family: 'Chivo Mono', monospace; font-size: 10.5px; letter-spacing: 0.02em; color: var(--ink)">complete</td>
+<td style="padding: 11px 18px 11px 12px; color: var(--body)">True when no level is not_placed.</td>
+</tr>
+</tbody>
+</table>
+</section>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":1320}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.dark ? 'dark' : 'light' };
+  }
+}
+</script>
+</body>
+</html>

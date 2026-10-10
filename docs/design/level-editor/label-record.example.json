@@ -1,0 +1,64 @@
+{
+  "schema": "spinecontour.segmentation-label/1",
+  "study": "lateral_lumbar_001",
+  "image": {
+    "file": "lateral_lumbar_001.dcm",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "width_px": 2040,
+    "height_px": 2720
+  },
+  "film": { "region": "lumbar", "view": "standing_lateral" },
+  "model": { "name": "U-Net", "version": "[MODEL VERSION]" },
+  "app_version": "[APP VERSION]",
+  "saved_at": "2026-10-10T15:00:00Z",
+  "complete": true,
+  "levels": {
+    "C2": { "state": "not_visible", "source": "film_type" },
+    "C3": { "state": "not_visible", "source": "film_type" },
+    "C4": { "state": "not_visible", "source": "film_type" },
+    "C5": { "state": "not_visible", "source": "film_type" },
+    "C6": { "state": "not_visible", "source": "film_type" },
+    "C7": { "state": "not_visible", "source": "film_type" },
+    "T1": { "state": "not_visible", "source": "film_type" },
+    "T4": { "state": "not_visible", "source": "film_type" },
+    "L1": {
+      "state": "segmented", "source": "model",
+      "corners": { "sa": [984, 413], "sp": [1349, 452], "ia": [963, 623], "ip": [1328, 661] },
+      "model_corners": null,
+      "contour": [[984, 413], [1349, 452], [1328, 661], [963, 623]]
+    },
+    "L2": {
+      "state": "edited", "source": "annotator",
+      "corners": { "sa": [921, 718], "sp": [1301, 738], "ia": [900, 954], "ip": [1308, 981] },
+      "model_corners": { "sa": [921, 718], "sp": [1301, 738], "ia": [909, 942], "ip": [1289, 962] },
+      "contour": null
+    },
+    "L3": {
+      "state": "manual", "source": "annotator",
+      "corners": { "sa": [868, 1044], "sp": [1263, 1037], "ia": [872, 1275], "ip": [1267, 1268] },
+      "model_corners": null,
+      "contour": null
+    },
+    "L4": {
+      "state": "segmented", "source": "model",
+      "corners": { "sa": [858, 1382], "sp": [1256, 1333], "ia": [886, 1611], "ip": [1284, 1563] },
+      "model_corners": null,
+      "contour": [[858, 1382], [1256, 1333], [1284, 1563], [886, 1611]]
+    },
+    "L5": {
+      "state": "segmented", "source": "model",
+      "corners": { "sa": [893, 1728], "sp": [1272, 1619], "ia": [951, 1931], "ip": [1330, 1822] },
+      "model_corners": null,
+      "contour": [[893, 1728], [1272, 1619], [1330, 1822], [951, 1931]]
+    },
+    "S1": {
+      "state": "segmented", "source": "model",
+      "corners": { "sa": [989, 2050], "sp": [1323, 1860] },
+      "model_corners": null
+    }
+  },
+  "femoral_heads": [
+    { "id": 1, "state": "segmented", "source": "model", "center": [728, 2346], "radius": 136, "rim": null, "model_circle": null },
+    { "id": 2, "state": "segmented", "source": "model", "center": [792, 2302], "radius": 143, "rim": null, "model_circle": null }
+  ]
+}
