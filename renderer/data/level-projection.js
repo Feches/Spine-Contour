@@ -1,0 +1,154 @@
+// The level editor's way into and out of `study.geometry` (plan 2026-10-10 Task 2).
+//
+// `levels.js` owns the level model (sixteen items, each { visible, source, geometry }); the app's measure
+// queue, the persistence validator and studies.json all speak `study.geometry`. `projectGeometry` writes the
+// levels a film's region measures into that shape; `levelsFromGeometry` (levels.js) reads it back. T1 and T4
+// are never projected: no measurement reads them, so they live in the level model and the label record only.
+//
+// Pure: no DOM, no store, no I/O. Nothing here mutates its arguments, and the result shares no point arrays
+// with the editor, so a later in-place edit of a cloned geometry cannot reach the level model.
+
+import { kindOf } from './levels.js';
+import { CERVICAL_LEVELS, studyRegion, validAnteriorSide } from './cervical.js';
+
+const LUMBAR_BODIES = ['L1', 'L2', 'L3', 'L4', 'L5'];
+const FEMORAL_HEADS = ['FH1', 'FH2'];
+// The order the anterior side is read in: C2 (its inferior endplate), then every body, then T1 and S1.
+const SIDE_ORDER = [...CERVICAL_LEVELS, ...LUMBAR_BODIES, 'T1', 'S1'];
+
+const copyPoint = p => [p[0], p[1]];
+const copyPair = pair => [copyPoint(pair[0]), copyPoint(pair[1])];
+const mean = points => [0, 1].map(axis => points.reduce((sum, p) => sum + p[axis], 0) / points.length);
+
+/** `[SA, SP, IP, IA]`: the superior pair, then the inferior pair reversed (the order `setLandmarkAt` keeps). */
+export function quadrilateral(body) {
+  return [body.superior[0], body.superior[1], body.inferior[1], body.inferior[0]].map(copyPoint);
+}
+
+// The entry for a level that is visible and has geometry, else null.
+function placed(editor, code) {
+  const entry = editor?.levels?.[code];
+  return entry?.visible && entry.geometry ? entry : null;
+}
+
+const anyPlaced = (editor, codes) => codes.some(code => placed(editor, code));
+
+/**
+ * The region the projection takes: the study's own when it resolved to one; for Auto with no result,
+ * what the visible placed levels say (a C level -> cervical, an L, S1 or femoral level -> lumbar, both ->
+ * full spine, neither -> lumbar).
+ * @returns {'lumbar'|'cervical'|'full_spine'}
+ */
+export function projectionRegion(editor, study) {
+  const region = studyRegion(study);
+  if (region === 'lumbar' || region === 'cervical' || region === 'full_spine') return region;
+  const cervical = anyPlaced(editor, CERVICAL_LEVELS);
+  const lumbar = anyPlaced(editor, [...LUMBAR_BODIES, 'S1', ...FEMORAL_HEADS]);
+  if (cervical && lumbar) return 'full_spine';
+  return cervical ? 'cervical' : 'lumbar';
+}
+
+/**
+ * Which side of the image the anterior is on, read from the first visible placed level that gives one
+ * (a level whose anterior and posterior corners share an x gives none): C2 by IA.x against IP.x, every
+ * other level by SA.x against SP.x (the anterior corner sitting at the smaller x is `left`). Otherwise
+ * `fallback`, when it is `left` or `right`, else null. A side is never invented.
+ * @returns {'left'|'right'|null}
+ */
+export function anteriorSideFrom(editor, fallback) {
+  for (const code of SIDE_ORDER) {
+    const entry = placed(editor, code);
+    if (!entry) continue;
+    const [anterior, posterior] = kindOf(code) === 'c2' ? entry.geometry.inferior : entry.geometry.superior;
+    if (anterior[0] !== posterior[0]) return anterior[0] < posterior[0] ? 'left' : 'right';
+  }
+  return validAnteriorSide(fallback) ? fallback : null;
+}
+
+// ---------- the pieces of each region ----------
+
+function cervicalPart(editor) {
+  const vertebrae = {};
+  let c2Centroid = null;
+  for (const code of CERVICAL_LEVELS) {
+    const entry = placed(editor, code);
+    if (!entry) continue;
+    const { geometry } = entry;
+    if (code === 'C2') {
+      vertebrae.C2 = { superior: null, inferior: copyPair(geometry.inferior), quadrilateral: null };
+      c2Centroid = copyPoint(geometry.centroid);
+    } else {
+      vertebrae[code] = { superior: copyPair(geometry.superior), inferior: copyPair(geometry.inferior), quadrilateral: quadrilateral(geometry) };
+    }
+  }
+  const c7 = vertebrae.C7;
+  return { vertebrae, c2_centroid: c2Centroid, c7_centroid: c7 ? mean(c7.quadrilateral) : null };
+}
+
+// A head the validator would reject (`r > 0`, finite) is left out rather than written: the persistence
+// validator nulls the whole geometry of a film that holds one, which would discard every edit on reload.
+const usableCircle = geometry => Array.isArray(geometry.center) && geometry.center.every(Number.isFinite)
+  && Number.isFinite(geometry.radius) && geometry.radius > 0;
+
+function lumbarPart(editor, base) {
+  const vertebrae = {};
+  for (const code of LUMBAR_BODIES) {
+    const entry = placed(editor, code);
+    if (!entry) continue;
+    const { geometry } = entry;
+    vertebrae[code] = {
+      superior: copyPair(geometry.superior),
+      inferior: copyPair(geometry.inferior),
+      quadrilateral: quadrilateral(geometry),
+      // the model's "this level's anterior is unconfirmed" flag holds only while the level is still the model's
+      ...(base.vertebrae?.[code]?.anterior_confirmed === false && entry.source === 'model' ? { anterior_confirmed: false } : {}),
+    };
+  }
+  const s1 = placed(editor, 'S1');
+  const circles = FEMORAL_HEADS
+    .map(code => placed(editor, code)?.geometry)
+    .filter(geometry => geometry && usableCircle(geometry))
+    .map(({ center, radius }) => [center[0], center[1], radius]);
+  return {
+    vertebrae,
+    s1_superior: s1 ? copyPair(s1.geometry.superior) : null,
+    femoral_circles: circles,
+    // The backend recomputes both on /measure; the persistence validator needs them whenever L1 / two heads exist.
+    l1_center: vertebrae.L1 ? mean(vertebrae.L1.quadrilateral) : null,
+    hip_midpoint: circles.length === 2 ? mean(circles.map(circle => circle.slice(0, 2))) : null,
+  };
+}
+
+/**
+ * The editor's levels as the `study.geometry` of the film's region, for `/measure` and the record; null only
+ * when there is no editor. Only visible, placed levels are written. `study.geometry` supplies everything the
+ * level model does not own (`image_width`, `image_height`, `source_sha256`, `coordinate_space`, ...); the keys
+ * of a region the projection leaves out (C centroids on a lumbar film, the lumbar and sacral content on a
+ * cervical one) are cleared, and `manually_cleared` is set exactly when a lumbar film has nothing left.
+ * `anterior_side` of a cervical or full-spine film is null when neither the placed levels nor the stored
+ * geometry nor the study say which side: it is never guessed.
+ */
+export function projectGeometry(editor, study) {
+  if (!editor) return null;
+  const base = study?.geometry ?? {};
+  const region = projectionRegion(editor, study);
+  const { c2_centroid: _c2, c7_centroid: _c7, manually_cleared: _cleared, ...kept } = base;
+  if (region === 'lumbar') {
+    const lumbar = lumbarPart(editor, base);
+    const empty = Object.keys(lumbar.vertebrae).length === 0 && lumbar.s1_superior === null && lumbar.femoral_circles.length === 0;
+    return { ...kept, region, ...lumbar, ...(empty ? { manually_cleared: true } : {}) };
+  }
+  const { vertebrae: cervicalBodies, c2_centroid, c7_centroid } = cervicalPart(editor);
+  const anterior_side = anteriorSideFrom(editor, base.anterior_side ?? study?.anteriorSide ?? null);
+  if (region === 'cervical') {
+    return {
+      ...kept, region, anterior_side, c2_centroid, vertebrae: cervicalBodies,
+      s1_superior: null, femoral_circles: [], hip_midpoint: null, l1_center: null,
+    };
+  }
+  const lumbar = lumbarPart(editor, base);
+  return {
+    ...kept, region, anterior_side, c2_centroid, c7_centroid,
+    ...lumbar, vertebrae: { ...cervicalBodies, ...lumbar.vertebrae },
+  };
+}
