@@ -288,6 +288,44 @@ def release_models():
     gc.collect()
 
 
+# The ONNX graph(s) behind each model id, for `qc.model_versions`. A key is the id alone or (structure, id): the
+# U-Net reads vertebrae and femoral heads with two different graphs, so its slot decides.
+_GRAPHS_BY_MODEL = {
+    ("vertebrae", "unet"): ("vertebra",),
+    ("femoral", "unet"): ("femoral",),
+    "keypointrcnn": ("s1",),
+    "hrnet": ("hrnet",),
+    "cervical_hrnet": ("cervical_hrnet",),
+    "cervical_detr": ("cervical_detr",),
+    "dual_hrnet": ("cervical_hrnet", "hrnet"),
+}
+
+
+def _graph_version(kind):
+    """The export's onnx_sha256 from its sidecar, or None. Reads the metadata only; no graph is loaded."""
+    try:
+        digest = json.loads((ONNX_DIRECTORY / f"{kind}.json").read_text())["onnx_sha256"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return digest if isinstance(digest, str) and digest else None
+
+
+def model_versions(models: dict[str, str]) -> dict[str, str | None]:
+    """For each structure in `models` ({'vertebrae': 'unet', ...}) the onnx_sha256 of the graph(s) that read it.
+
+    A model id that runs two graphs (dual_hrnet) gives their hashes joined by '+', cervical first. An unknown id,
+    or a graph whose sidecar is missing or unreadable, gives None: half a version would name no real export.
+    """
+    versions = {}
+    for structure, name in models.items():
+        kinds = ()
+        if isinstance(name, str):
+            kinds = _GRAPHS_BY_MODEL.get((structure, name)) or _GRAPHS_BY_MODEL.get(name) or ()
+        digests = [_graph_version(kind) for kind in kinds]
+        versions[structure] = "+".join(digests) if digests and all(digests) else None
+    return versions
+
+
 def _infer(kind, operation, message):
     global _resident_key, _cache_policy
     runtime.checkpoint()
