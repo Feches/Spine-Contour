@@ -52,7 +52,8 @@ export function projectionRegion(editor, study) {
  * Which side of the image the anterior is on, read from the first visible placed level that gives one
  * (a level whose anterior and posterior corners share an x gives none): C2 by IA.x against IP.x, every
  * other level by SA.x against SP.x (the anterior corner sitting at the smaller x is `left`). Otherwise
- * `fallback`, when it is `left` or `right`, else null. A side is never invented.
+ * `fallback`, when it is `left` or `right`, else null. A side is never invented. (This is the general helper:
+ * it derives first. `projectGeometry` consults the film's stored side before calling it.)
  * @returns {'left'|'right'|null}
  */
 export function anteriorSideFrom(editor, fallback) {
@@ -125,8 +126,10 @@ function lumbarPart(editor, base) {
  * level model does not own (`image_width`, `image_height`, `source_sha256`, `coordinate_space`, ...); the keys
  * of a region the projection leaves out (C centroids on a lumbar film, the lumbar and sacral content on a
  * cervical one) are cleared, and `manually_cleared` is set exactly when a lumbar film has nothing left.
- * `anterior_side` of a cervical or full-spine film is null when neither the placed levels nor the stored
- * geometry nor the study say which side: it is never guessed.
+ * `anterior_side` of a cervical or full-spine film is, in order: the stored geometry's side, the study's chosen
+ * side (each only when `left` or `right`), else what the placed levels show (`anteriorSideFrom`). A stored side is
+ * never overridden by the landmarks, so dragging a corner cannot flip the sign of SVA. It is null when none of
+ * the three says: a side is never guessed.
  */
 export function projectGeometry(editor, study) {
   if (!editor) return null;
@@ -139,7 +142,9 @@ export function projectGeometry(editor, study) {
     return { ...kept, region, ...lumbar, ...(empty ? { manually_cleared: true } : {}) };
   }
   const { vertebrae: cervicalBodies, c2_centroid, c7_centroid } = cervicalPart(editor);
-  const anterior_side = anteriorSideFrom(editor, base.anterior_side ?? study?.anteriorSide ?? null);
+  // The film's stored or chosen side is authoritative (the backend signs SVA by it and never checks it against
+  // the landmarks): the geometry's, then the study's. Only a film with neither is oriented from the placed levels.
+  const anterior_side = [base.anterior_side, study?.anteriorSide].find(validAnteriorSide) ?? anteriorSideFrom(editor, null);
   if (region === 'cervical') {
     return {
       ...kept, region, anterior_side, c2_centroid, vertebrae: cervicalBodies,

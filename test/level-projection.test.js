@@ -375,8 +375,8 @@ test('a cervical projection holds C2 as an inferior endplate and a centroid, and
     quadrilateral: [[10, 110], [20, 111], [21, 122], [11, 120]],
   });
   assert.deepEqual(geometry.c2_centroid, [45, 12]);
-  // the placed levels give an orientation (C2: IA.x < IP.x), which outranks the base's stored side
-  assert.equal(geometry.anterior_side, 'left');
+  // the stored side stands although C2 (IA.x < IP.x) would read as 'left': the landmarks never override it
+  assert.equal(geometry.anterior_side, 'right');
   assert.equal(geometry.s1_superior, null);
   assert.deepEqual(geometry.femoral_circles, []);
   assert.equal(geometry.hip_midpoint, null);
@@ -412,13 +412,44 @@ test('an unplaced or hidden C2 leaves no C2 and no centroid', (t) => {
   assert.notEqual(reload(t, hidden, EMPTY_MEASUREMENTS.cervical).study.geometry, null);
 });
 
-test('the anterior side falls back to the stored geometry, then the study, and is never invented', (t) => {
-  const none = editorWith({}, { region: 'cervical' });
-  const fromGeometry = projectGeometry(none, { region: 'cervical', anteriorSide: 'left', geometry: { region: 'cervical', anterior_side: 'right' } });
-  assert.equal(fromGeometry.anterior_side, 'right');
-  const fromStudy = projectGeometry(none, { region: 'cervical', anteriorSide: 'left' });
-  assert.equal(fromStudy.anterior_side, 'left');
+test('a stored anterior side survives a placed body that reads the other way (R8), cervical and full spine', (t) => {
+  // C3 is bodyAt: SA.x < SP.x, which reads as 'left'; the film's stored side is 'right'
+  const body = { C3: bodyAt(10, 30) };
+  const cervical = projectGeometry(editorWith(body, { region: 'cervical' }),
+    { region: 'cervical', geometry: { region: 'cervical', anterior_side: 'right' } });
+  assert.equal(cervical.anterior_side, 'right');
+  const full = projectGeometry(editorWith(body),
+    { region: 'full_spine', geometry: { region: 'full_spine', anterior_side: 'right' } });
+  assert.equal(full.anterior_side, 'right');
+  // dragging a corner past its partner (SA.x now > SP.x on the first placed body) does not flip the film
+  const stored = { region: 'cervical', geometry: { region: 'cervical', anterior_side: 'left' } };
+  assert.equal(projectGeometry(editorWith({ C3: mirroredBodyAt(10, 30) }, { region: 'cervical' }), stored).anterior_side, 'left');
+  assert.equal(reload(t, cervical, EMPTY_MEASUREMENTS.cervical).study.geometry.anterior_side, 'right');
+  assert.equal(reload(t, full, EMPTY_MEASUREMENTS.full_spine).study.geometry.anterior_side, 'right');
+});
+
+test('the study\'s chosen anterior side is used when the geometry has none, and the geometry\'s wins when both exist', (t) => {
+  const editor = editorWith({ C3: bodyAt(10, 30) }, { region: 'cervical' });   // the body reads as 'left'
+  const fromStudy = projectGeometry(editor, { region: 'cervical', anteriorSide: 'right' });
+  assert.equal(fromStudy.anterior_side, 'right');
+  const noSideInGeometry = projectGeometry(editor, { region: 'cervical', anteriorSide: 'right', geometry: { region: 'cervical', vertebrae: {} } });
+  assert.equal(noSideInGeometry.anterior_side, 'right');
+  const both = projectGeometry(editor, { region: 'cervical', anteriorSide: 'left', geometry: { region: 'cervical', anterior_side: 'right' } });
+  assert.equal(both.anterior_side, 'right');
+  // a stored value that is not a side is no side
+  const junk = projectGeometry(editor, { region: 'cervical', anteriorSide: 'right', geometry: { region: 'cervical', anterior_side: 'auto' } });
+  assert.equal(junk.anterior_side, 'right');
   assert.notEqual(reload(t, fromStudy, EMPTY_MEASUREMENTS.cervical).study.geometry, null);
+});
+
+test('the placed levels orient a film only when neither the geometry nor the study has a side, and a side is never invented', (t) => {
+  const none = editorWith({}, { region: 'cervical' });
+  const derived = projectGeometry(editorWith({ C3: mirroredBodyAt(10, 30) }, { region: 'cervical' }), { region: 'cervical' });
+  assert.equal(derived.anterior_side, 'right');
+  const derivedLeft = projectGeometry(editorWith({ C3: bodyAt(10, 30) }, { region: 'cervical' }),
+    { region: 'cervical', geometry: { region: 'cervical', anterior_side: null } });
+  assert.equal(derivedLeft.anterior_side, 'left');
+  assert.notEqual(reload(t, derivedLeft, EMPTY_MEASUREMENTS.cervical).study.geometry, null);
 
   // no placed level gives an orientation and nothing is stored: the side stays null, and the validator
   // (which needs a side on a cervical film) does not accept the geometry as complete
