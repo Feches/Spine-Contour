@@ -16,14 +16,18 @@ export const WIDTH_MIN = 64;
 const UINT16_MAX = 65535;
 
 // An 8-bit film (a PNG or JPEG import, or an 8-bit DICOM) windows over 0..255 whatever values it
-// happens to hold; so does a film with no bit depth on record whose values are exactly 0..255.
+// happens to hold; so does a film with no bit depth on record whose values are exactly 0..255. Only
+// while its values stay inside 0..255: an 8-bit DICOM whose RescaleSlope / RescaleIntercept moves them
+// outside takes the general rule (ruling R13).
 function eightBit(raw) {
-  return raw.bitsStored === 8 || (raw.valueMin === 0 && raw.valueMax === 255);
+  return raw.valueMin >= 0 && raw.valueMax <= 255
+    && (raw.bitsStored === 8 || (raw.valueMin === 0 && raw.valueMax === 255));
 }
 
 function clampInt(value, min, max) {
   if (!Number.isFinite(value)) return min;
-  return Math.min(max, Math.max(min, Math.round(value)));
+  // `+ 0` turns Math.round's -0 (from -0.5) into 0.
+  return Math.min(max, Math.max(min, Math.round(value) + 0));
 }
 
 function validWindow(window) {

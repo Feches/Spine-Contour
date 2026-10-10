@@ -35,6 +35,17 @@ test('defaultWindow: an 8-bit film opens at width 256, level 128, whatever value
   assert.deepEqual(defaultWindow(raw({ bitsStored: null, valueMin: 0, valueMax: 255 })), { width: 256, level: 128 });
 });
 
+test('an 8-bit DICOM rescaled outside 0..255 takes the general rule (R13)', () => {
+  const rescaled = raw({ bitsStored: 8, valueMin: 100, valueMax: 355 });
+  assert.deepEqual(defaultWindow(rescaled), { width: 255, level: 228 });
+  assert.deepEqual(windowRange(rescaled), { widthMin: 64, widthMax: 256, levelMin: 100, levelMax: 355 });
+  const negative = raw({ bitsStored: 8, valueMin: -128, valueMax: 127 });
+  assert.deepEqual(windowRange(negative), { widthMin: 64, widthMax: 256, levelMin: -128, levelMax: 127 });
+  assert.deepEqual(defaultWindow(negative), { width: 255, level: 0 });
+  // A 16-bit film whose values happen to sit inside 0..255 without spanning it is not 8-bit.
+  assert.deepEqual(windowRange(raw({ bitsStored: 16, valueMin: 10, valueMax: 200 })), { widthMin: 64, widthMax: 191, levelMin: 10, levelMax: 200 });
+});
+
 test('defaultWindow: a DICOM window wins, rounded and clamped to the film range', () => {
   const dicom = raw({ bitsStored: 12, valueMin: 0, valueMax: 4095, window: { center: 2048, width: 4096 } });
   assert.deepEqual(defaultWindow(dicom), { width: 4096, level: 2048 });

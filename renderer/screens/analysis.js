@@ -401,7 +401,19 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     const onScreen = Boolean(mounted && mounted.studyId === studyId);
     if (!batch || onScreen) cacheImages(studyId, images);
     if (onScreen) mounted.viewer.setImages(images);
-    else if (batch) disposeStudyImages(images);
+    else if (batch) {
+      disposeStudyImages(images);
+      // This study's OWN cache entry predates the result: an original-film preview (previewOriginal),
+      // a film decoded from its original (ensureFilm) or an earlier run's images. Left in place, the
+      // next open re-hands it instead of restoring the new sidecar (render()'s needsRestore is false
+      // while an entry exists) and ensureFilm returns it as this result's film. Dropped and closed
+      // here; no viewer draws it, since the study is not on screen (cacheImages' identity check).
+      if (imageCache && imageCache.studyId === studyId && !(mounted && mounted.studyId === studyId)) {
+        const stale = imageCache.images;
+        imageCache = null;
+        disposeStudyImages(stale);
+      }
+    }
 
     recordPrediction(studyId, response);
 
@@ -512,8 +524,8 @@ const FILM_NOT_FOUND = 'The source film could not be found.';
 const FILM_MISMATCH = 'The original film does not match the stored image.';
 const SAVED_FILM_MISSING = 'The saved segmentation was not found.';
 
-function filmOutcome(images, raw, reason) {
-  return { images, raw, reason };
+function filmOutcome(images, raw, reason, superseded = false) {
+  return { images, raw, reason, superseded };
 }
 
 function cachedImages(studyId) {
@@ -524,15 +536,24 @@ function cachedImages(studyId) {
 // decode. Keyed by the record's identity and its run count, like every guard below.
 let filmLoad = null; // { studyId, addedAt, runs, promise } | null
 
-// The open study's images and its decoded original: {images, raw, reason}. Never throws.
-// `images`: the cache entry; else, for a study with a result, its restored sidecar (restoreFilm,
-// every one of its guards kept); else -- a film with no result, the main case -- built from the
-// decoded original at its default window, cached and handed to the live viewer so the stage shows
-// the film. `raw`: the RawFilm, decoded at most once per study and cached on `images.raw` (a NEW
-// images object, so the viewer's reference-keyed static gate repaints); cropped to a toolbar-cropped
-// stored image's height, refused on a width mismatch. `reason` is display-ready when `raw` is null,
-// except the sentinel 'superseded': the study was deleted, re-run, had its Region changed or its
-// cache entry replaced while this was in flight, and nothing was written.
+/**
+ * The open study's images and its decoded original. Never throws.
+ *
+ * `images`: the cache entry; else, for a study with a result, its restored sidecar (restoreFilm, every
+ * one of its guards kept); else -- a film with no result, the main case -- built from the decoded
+ * original at its default window, cached and handed to the live viewer so the stage shows the film.
+ * `raw`: the RawFilm, decoded at most once per study and cached on `images.raw` (a NEW images object,
+ * so the viewer's reference-keyed static gate repaints); cropped to a toolbar-cropped stored image's
+ * height, refused on a width mismatch.
+ *
+ * @param {string} studyId
+ * @returns {Promise<{images: object|null, raw: import('../viewer/window-level.js').RawFilm|null,
+ *   reason: string|null, superseded: boolean}>}
+ *   `reason`: display-ready, set when `raw` is null and the call was not superseded; null otherwise.
+ *   `superseded`: true when the study was deleted, re-run, had its Region changed or its cache entry
+ *   replaced while this call was in flight; then `images`, `raw` and `reason` are null and nothing was
+ *   written. Not a failure to show: the caller may simply call again.
+ */
 export async function ensureFilm(studyId) {
   const study = getState().studies.find((s) => s.id === studyId);
   const runs = runsByStudy.get(studyId) ?? 0;
@@ -558,7 +579,7 @@ async function loadFilm(studyId) {
     const study = getState().studies.find((s) => s.id === studyId);
     return study && study.addedAt === addedAt && (runsByStudy.get(studyId) ?? 0) === runAtStart ? study : null;
   };
-  const superseded = () => filmOutcome(null, null, 'superseded');
+  const superseded = () => filmOutcome(null, null, null, true);
 
   // (1) The stored image.
   let images = cachedImages(studyId);
