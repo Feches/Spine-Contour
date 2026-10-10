@@ -434,16 +434,23 @@ test('study is the filename stem, never the renamed name or the record id', () =
   assert.equal(JSON.stringify(rec).includes('SP-0042'), false, 'the SP id appears nowhere in the record');
 });
 
-test('contours fill the body levels; everything else gets null', () => {
+test('a contour is written only for a segmented body level; edited, manual and every other level get null (R10)', () => {
   const square = [[10, 10], [20, 10], [20, 20], [10, 20]];
-  const rec = record(sinkEditor(), { contours: { L1: square, L2: square, C2: square, S1: square, L4: [[1, 1], [2, 2]], L5: null } });
+  const e = sinkEditor();
+  assert.deepEqual(['L1', 'L2', 'L3', 'L4', 'C3', 'C4'].map(code => levelState(e.levels[code], e.model[code])),
+    ['segmented', 'edited', 'manual', 'segmented', 'segmented', 'edited']);
+  const rec = record(e, {
+    contours: { L1: square, L2: square, L3: square, C4: square, C2: square, S1: square, L4: [[1, 1], [2, 2]], L5: null },
+  });
   assertValid(rec);
-  assert.deepEqual(rec.levels.L1.contour, square);
+  assert.deepEqual(rec.levels.L1.contour, square, 'a segmented level carries the polygon it was given');
   assert.notEqual(rec.levels.L1.contour, square, 'the polygon is copied');
-  assert.deepEqual(rec.levels.L2.contour, square, 'whatever the caller supplies for a placed body is written');
+  assert.equal(rec.levels.L2.contour, null, 'the contour of an edited level is null even when one is supplied');
+  assert.equal(rec.levels.C4.contour, null, 'an edited cervical body too');
+  assert.equal(rec.levels.L3.contour, null, 'the contour of a manual level is null even when one is supplied');
   assert.equal(rec.levels.L4.contour, null, 'a polygon of fewer than 3 points is not a polygon');
   assert.equal(rec.levels.L5.contour, null);
-  assert.equal(rec.levels.C3.contour, null);
+  assert.equal(rec.levels.C3.contour, null, 'segmented but none supplied');
   assert.equal('contour' in rec.levels.C2, false, 'C2 has no contour field');
   assert.equal('contour' in rec.levels.S1, false, 'an endplate has no contour field');
   assert.equal(record(sinkEditor()).levels.L1.contour, null, 'contours default to none');

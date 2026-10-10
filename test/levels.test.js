@@ -506,6 +506,50 @@ test('openEditor fills the heads in order FH1, FH2 with circles that match nothi
   assert.equal(lone.levels.FH2.geometry.center[0], 3, 'Head 2 keeps the record geometry the study lacks');
 });
 
+test('openEditor keeps a saved rim: a matched head takes the saved geometry, not the study [x, y, r] circle (R9)', () => {
+  const rim = [[5, 140], [15, 140], [10, 135], [10, 145]];
+  const head1 = { center: [10, 140], radius: 5, rim };
+  const head2 = { center: [20, 140], radius: 5, rim: null };
+  const saved = headsRecord(head1, head2);
+  const e = withCircles([[10, 140, 5], [20, 140, 5]], saved);
+  assert.deepEqual(e.levels.FH1.geometry, head1, 'the four clicked rim points survive a reopen');
+  assert.deepEqual(e.levels.FH1.geometry.rim, rim);
+  assert.deepEqual(e.levels.FH2.geometry, head2);
+  assert.deepEqual(e.baseline.FH1.geometry.rim, rim);
+  assert.equal(unsavedCount(e), 0);
+  assert.notEqual(e.levels.FH1.geometry, saved.levels.FH1.geometry, 'the level holds a copy, not the saved object');
+  assert.notEqual(e.levels.FH1.geometry.rim, rim);
+  assert.notEqual(e.levels.FH1.geometry.rim[0], rim[0]);
+  assert.notEqual(e.levels.FH1.geometry.center, head1.center);
+  const lone = withCircles([[10, 140, 5]], headsRecord(head1, null));
+  assert.deepEqual(lone.levels.FH1.geometry.rim, rim, 'a lone matched circle keeps the rim too');
+  assert.equal(lone.levels.FH2.geometry, null);
+});
+
+test('openEditor puts a circle that matches nothing on a head the record does not hide (R9)', () => {
+  const head2 = { center: [20, 140], radius: 5, rim: null };
+  // Head 1 is hidden in the record and Head 2 was dragged after the save: the one study circle matches neither.
+  const dragged = withCircles([[22, 141, 5]], headsRecord(null, head2));
+  assert.equal(dragged.levels.FH1.geometry, null, 'the hidden head stays empty');
+  assert.equal(dragged.levels.FH1.visible, false);
+  assert.deepEqual(dragged.levels.FH2.geometry, { center: [22, 141], radius: 5, rim: null });
+  assert.equal(dragged.levels.FH2.visible, true);
+  assert.equal(unsavedCount(dragged), 1, 'only Head 2 differs from the record');
+  // Head 2 hidden instead: the stray circle takes Head 1.
+  const head1 = { center: [10, 140], radius: 5, rim: null };
+  const other = withCircles([[12, 141, 5]], headsRecord(head1, null));
+  assert.deepEqual(other.levels.FH1.geometry, { center: [12, 141], radius: 5, rim: null });
+  assert.equal(other.levels.FH2.geometry, null);
+  // Both heads hidden in the record: the order FH1, FH2 stands.
+  const hidden = withCircles([[12, 141, 5]], headsRecord(null, null));
+  assert.deepEqual(hidden.levels.FH1.geometry, { center: [12, 141], radius: 5, rim: null });
+  assert.equal(hidden.levels.FH2.geometry, null);
+  // A hidden head is still used when the other is taken by a matching circle.
+  const both = withCircles([[20, 140, 5], [50, 50, 3]], headsRecord(null, head2));
+  assert.deepEqual(both.levels.FH2.geometry, head2);
+  assert.deepEqual(both.levels.FH1.geometry, { center: [50, 50], radius: 3, rim: null });
+});
+
 test('openEditor without a record keeps slot order: slot 0 is Head 1, slot 1 is Head 2 (R9)', () => {
   const one = withCircles([[20, 140, 5]], null);
   assert.deepEqual(one.levels.FH1.geometry, { center: [20, 140], radius: 5, rim: null });

@@ -66,7 +66,11 @@ function levelRecord(code, entry, model, contours) {
   const edited = state === 'edited';
   switch (kindOf(code)) {
     case 'body':
-      return { ...head, corners: bodyCorners(g), model_corners: edited ? bodyCorners(model) : null, contour: contourOf(contours?.[code]) };
+      // The contour is the model's mask outline, so it is written only while the level still is the model's (R10).
+      return {
+        ...head, corners: bodyCorners(g), model_corners: edited ? bodyCorners(model) : null,
+        contour: state === 'segmented' ? contourOf(contours?.[code]) : null,
+      };
     case 'c2':
       return {
         ...head, corners: c2Corners(g), centroid: copyPoint(g.centroid),
@@ -98,7 +102,8 @@ function headRecord(id, entry, model) {
 /**
  * The label record for one film, ready for JSON.stringify. `image` is `{ file, sha256, width, height }`, `model`
  * is `{ name, version }`, `savedAt` an ISO-8601 string and `contours` maps a level code to the model's mask
- * outline (`Pt[]`, or null). `study` supplies the file name (the stem is written, never the film's renamed
+ * outline (`Pt[]`, or null); only a `segmented` body level takes its contour, an edited or manual one writes null
+ * (R10). `study` supplies the file name (the stem is written, never the film's renamed
  * name or its SP id), the view, and the region when the editor's is Auto. Not-visible and not-placed levels
  * carry only `state` and `source`; a level's geometry is written only while it is visible and placed.
  */

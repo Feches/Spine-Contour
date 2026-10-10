@@ -319,10 +319,21 @@ function snapshot(levels) {
 
 const HEADS = ['FH1', 'FH2'];
 
-// `study.geometry.femoral_circles` is a compact array: a film whose Head 1 is hidden and Head 2 placed stores one
-// circle at slot 0, which levelsFromGeometry reads as FH1 (R9). With a saved record each study circle is matched
-// to the head whose recorded circle it equals (centre and radius); circles that match nothing fill the heads
-// still free, FH1 then FH2. Without a record the slots stand as read: slot 0 is Head 1, slot 1 is Head 2.
+// `study.geometry.femoral_circles` is a compact array of [x, y, r]: a film whose Head 1 is hidden and Head 2 placed
+// stores one circle at slot 0, which levelsFromGeometry reads as FH1 (R9), and no circle there carries a rim. With a
+// saved record each study circle is matched to the head whose recorded circle it equals (centre and radius), and
+// that head takes the RECORD's geometry (copied, rim included), so the annotator's rim clicks survive a reopen.
+// Circles that match nothing fill the heads still free in order FH1, FH2, preferring a head the record does not
+// mark not visible (a hidden head is used only when no other is free). Without a record the slots stand as read:
+// slot 0 is Head 1, slot 1 is Head 2.
+function copyCircle(geometry) {
+  return {
+    center: copyPoint(geometry.center),
+    radius: geometry.radius,
+    rim: Array.isArray(geometry.rim) ? geometry.rim.map(copyPoint) : null,
+  };
+}
+
 function assignHeads(fromStudy, saved) {
   if (!saved) return fromStudy;
   const slots = { FH1: null, FH2: null };
@@ -330,10 +341,11 @@ function assignHeads(fromStudy, saved) {
   for (const circle of HEADS.map(code => fromStudy[code]).filter(Boolean)) {
     const code = HEADS.find(head => !slots[head] && saved.levels?.[head]?.geometry
       && sameGeometry(circle, saved.levels[head].geometry));
-    if (code) slots[code] = circle; else unmatched.push(circle);
+    if (code) slots[code] = copyCircle(saved.levels[code].geometry); else unmatched.push(circle);
   }
   for (const circle of unmatched) {
-    const code = HEADS.find(head => !slots[head]);
+    const free = HEADS.filter(head => !slots[head]);
+    const code = free.find(head => saved.levels?.[head]?.visible !== false) ?? free[0];
     if (code) slots[code] = circle;
   }
   return { ...fromStudy, ...slots };
@@ -343,7 +355,8 @@ function assignHeads(fromStudy, saved) {
  * Start editing a study. `study` is read for `geometry`, `labelFile` and (optionally) `id`.
  * `modelGeometry` is the prediction's study-shaped geometry (or null). `saved` is the label record on
  * disk converted to `{ file, levels }` (levels keyed by code with `{visible, source, geometry}`), or null;
- * with it, the study's femoral circles are matched to the heads by value, not by slot (assignHeads).
+ * with it, the study's femoral circles are matched to the heads by value, not by slot, and a match takes the
+ * record's geometry, rim included (assignHeads).
  * @returns {LevelEditor}
  */
 export function openEditor({ study, region, modelGeometry, saved }) {
