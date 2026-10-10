@@ -4,11 +4,12 @@ import { imageConfidence, scorePercent } from '../data/confidence.js';
 import { el, mount } from '../dom.js';
 import { getState, setState, subscribe } from '../store.js';
 import {
-  predict, calibrate, saveCsv, savePrediction, loadPrediction, persistenceDisabledReason, readFile, selectFile,
+  predict, calibrate, saveCsv, savePrediction, loadPrediction, persistenceDisabledReason, readFile, selectFile, decodeFilm,
 } from '../api.js';
 import { showToast } from '../components/toast.js';
 import { toCsv } from '../data/csv.js';
-import { loadStudyImages, disposeStudyImages, thumbnailDataUri, bitmapFromBase64 } from '../viewer/canvas.js';
+import { loadStudyImages, disposeStudyImages, thumbnailDataUri, bitmapFromBase64, imagesFromRaw } from '../viewer/canvas.js';
+import { cropRaw, defaultWindow, rawFromDecoded } from '../viewer/window-level.js';
 import { mountViewer, recordPrediction, forgetPrediction } from '../components/viewer.js';
 import { describeModels } from '../data/models.js';
 import { describeProcessor, processorTitle } from '../data/processing.js';
@@ -79,7 +80,9 @@ function cacheImages(studyId, images) {
   // holding the OLD cache entry -- disposing it here would detach bitmaps it still draws,
   // and ctx.drawImage on a detached ImageBitmap throws inside a store subscriber, which
   // stops every subscriber after it. Same identity check as the hand-off gate.
-  if (outgoing && outgoing.images !== images
+  // (2026-10-10) ensureFilm replaces an entry with a copy that carries the decoded original and
+  // SHARES the outgoing bitmaps; closing them would detach the copy's film.
+  if (outgoing && outgoing.images !== images && outgoing.images.image !== images.image
       && !(mounted && mounted.studyId === outgoing.studyId)) {
     disposeStudyImages(outgoing.images);
   }
@@ -442,6 +445,8 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
 // STORED geometry as the measured one. Guarded like segmentStudy but per study: a newer
 // restore, a run for THIS study, or its deletion drops this one's result; navigation does not,
 // and `imageCache` deliberately survives it.
+// Resolves to its outcome, which render() ignores and ensureFilm reads: {status: 'restored', images},
+// {status: 'superseded'}, {status: 'missing'} (no sidecar for this result) or {status: 'failed', reason}.
 async function restoreFilm(studyId) {
   const revision = ++restoreRevision;
   // Per study, not runRevision: a batch bumps the global counter at every film's turn (batch spec
@@ -463,10 +468,10 @@ async function restoreFilm(studyId) {
     // missing sidecar, which already has a defined outcome (FILM UNAVAILABLE; a re-run
     // recreates it) rather than a wrong one.
     const sidecar = persistenceDisabledReason() ? null : await loadPrediction(studyId);
-    if (revision !== restoreRevision || runMoved()) return;
+    if (revision !== restoreRevision || runMoved()) return { status: 'superseded' };
     if (!predictionMatchesStudy(getState().studies.find(s => s.id === studyId), sidecar)) {
       if (live()) mounted.viewer.setFilmStatus('missing');
-      return;
+      return { status: 'missing' };
     }
     const images = await loadStudyImages(sidecar);
     const study = getState().studies.find((s) => s.id === studyId);
@@ -480,7 +485,7 @@ async function restoreFilm(studyId) {
     if (!study || study.addedAt !== addedAt || revision !== restoreRevision || runMoved()
         || !predictionMatchesStudy(study, sidecar)) {
       disposeStudyImages(images);
-      return;
+      return { status: 'superseded' };
     }
     cacheImages(studyId, images);
     recordPrediction(studyId, sidecar, study.geometry ? study.geometry : sidecar.geometry);
@@ -489,11 +494,112 @@ async function restoreFilm(studyId) {
       mounted.viewer.setImages(images);
       mounted.update();
     }
+    return { status: 'restored', images };
   } catch (error) {
-    if (revision !== restoreRevision) return;
+    if (revision !== restoreRevision) return { status: 'superseded' };
     if (live()) mounted.viewer.setFilmStatus('missing');
     showToast(`Could not load the film for ${studyId}: ${error.message}`);
+    return { status: 'failed', reason: error.message };
   }
+}
+
+// ---------------------------------------------------------------------------
+// (2026-10-10, level editor, Task 8) The film for the stage and its decoded original for the
+// display-only window / level (plan D1, D11). The decoded original lives on the cached images
+// object as `images.raw`, never in the store; releaseStudy drops it with the cache entry.
+
+const FILM_NOT_FOUND = 'The source film could not be found.';
+const FILM_MISMATCH = 'The original film does not match the stored image.';
+const SAVED_FILM_MISSING = 'The saved segmentation was not found.';
+
+function filmOutcome(images, raw, reason) {
+  return { images, raw, reason };
+}
+
+function cachedImages(studyId) {
+  return imageCache && imageCache.studyId === studyId ? imageCache.images : null;
+}
+
+// The ensureFilm in flight, so two callers (entering edit mode, then opening the W/L panel) share one
+// decode. Keyed by the record's identity and its run count, like every guard below.
+let filmLoad = null; // { studyId, addedAt, runs, promise } | null
+
+// The open study's images and its decoded original: {images, raw, reason}. Never throws.
+// `images`: the cache entry; else, for a study with a result, its restored sidecar (restoreFilm,
+// every one of its guards kept); else -- a film with no result, the main case -- built from the
+// decoded original at its default window, cached and handed to the live viewer so the stage shows
+// the film. `raw`: the RawFilm, decoded at most once per study and cached on `images.raw` (a NEW
+// images object, so the viewer's reference-keyed static gate repaints); cropped to a toolbar-cropped
+// stored image's height, refused on a width mismatch. `reason` is display-ready when `raw` is null,
+// except the sentinel 'superseded': the study was deleted, re-run, had its Region changed or its
+// cache entry replaced while this was in flight, and nothing was written.
+export async function ensureFilm(studyId) {
+  const study = getState().studies.find((s) => s.id === studyId);
+  const runs = runsByStudy.get(studyId) ?? 0;
+  if (study && filmLoad && filmLoad.studyId === studyId && filmLoad.addedAt === study.addedAt && filmLoad.runs === runs) {
+    return filmLoad.promise;
+  }
+  const promise = loadFilm(studyId).catch((error) => filmOutcome(null, null, error?.message || 'The original film could not be loaded.'));
+  const entry = { studyId, addedAt: study?.addedAt, runs, promise };
+  filmLoad = entry;
+  promise.then(() => { if (filmLoad === entry) filmLoad = null; });
+  return promise;
+}
+
+async function loadFilm(studyId) {
+  const start = getState().studies.find((s) => s.id === studyId);
+  if (!start) return filmOutcome(null, null, 'The study is no longer in the library.');
+  // The record's identity and its run count at the start, checked after every await below: ids are
+  // max+1, so a deleted id is reused by the next film, and a run or a Region change (changeRegion
+  // bumps the count too) replaces the film this call is resolving.
+  const addedAt = start.addedAt;
+  const runAtStart = runsByStudy.get(studyId) ?? 0;
+  const current = () => {
+    const study = getState().studies.find((s) => s.id === studyId);
+    return study && study.addedAt === addedAt && (runsByStudy.get(studyId) ?? 0) === runAtStart ? study : null;
+  };
+  const superseded = () => filmOutcome(null, null, 'superseded');
+
+  // (1) The stored image.
+  let images = cachedImages(studyId);
+  if (!images && start.source === 'real' && start.measurements && start.geometry) {
+    const restored = await restoreFilm(studyId);
+    if (!current() || restored.status === 'superseded') return superseded();
+    // The result's geometry is in the stored image's pixels and FILM UNAVAILABLE (re-run to restore
+    // it) is that film's defined outcome: the original is not swapped in under it.
+    if (restored.status !== 'restored') return filmOutcome(null, null, restored.reason || SAVED_FILM_MISSING);
+    images = restored.images;
+  }
+  // The cache must still hold what this call resolved: a replaced entry may already be closed.
+  const unchanged = () => current() && cachedImages(studyId) === images;
+  if (!unchanged()) return superseded();
+  if (images?.raw) return filmOutcome(images, images.raw, null);
+
+  // (2) The decoded original. The bytes are not parked: the decode is cached instead, and a read that
+  // lands after a delete must not leave bytes under an id the next film can reuse.
+  const study = current();
+  let raw;
+  try {
+    const data = await filmBytes(study, { park: false });
+    if (!unchanged()) return superseded();
+    if (!data) return filmOutcome(images, null, FILM_NOT_FOUND);
+    raw = rawFromDecoded(await decodeFilm({ name: study.fileName, data }));
+    if (!unchanged()) return superseded();
+    if (images && raw.width !== images.width) return filmOutcome(images, null, FILM_MISMATCH);
+    if (images) raw = cropRaw(raw, images.height);
+  } catch (error) {
+    if (!unchanged()) return superseded();
+    return filmOutcome(images, null, error?.message || 'The original film could not be decoded.');
+  }
+
+  // (3) Attach. A new images object either way; the cached one is never changed in place.
+  const next = images ? { ...images, raw } : imagesFromRaw(raw, defaultWindow(raw));
+  cacheImages(studyId, next);
+  if (mounted && mounted.studyId === studyId) {
+    mounted.viewer.setImages(next);
+    mounted.update();
+  }
+  return filmOutcome(next, raw, null);
 }
 
 

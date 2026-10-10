@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVEL_RGB, BASE_OVERLAY_ALPHA, buildLabelColorMap, buildOverlayPixels, drawDynamicLayer, constructionLabel, thumbnailSize } from '../renderer/viewer/canvas.js';
+import {
+  LEVEL_RGB, BASE_OVERLAY_ALPHA, buildLabelColorMap, buildOverlayPixels, drawDynamicLayer, drawStaticLayer, constructionLabel,
+  thumbnailSize, imagesFromRaw, disposeStudyImages,
+} from '../renderer/viewer/canvas.js';
 
 test('buildLabelColorMap maps L1..L5 backend label ids to the fixed RGB ramp', () => {
   const labels = { BACKGROUND: 0, L1: 20, L2: 21, L3: 22, L4: 23, L5: 24, S1: 25 };
@@ -59,11 +62,12 @@ function fakeGeometry() {
   };
 }
 
-// A 2D context stand-in that records every method call. Canvas code is otherwise
-// untestable here; this pins the one structural fact the design depends on -- how many
-// handles exist, and when.
+// A 2D context stand-in that records every method call, and every property write in
+// `writes`. Canvas code is otherwise untestable here; this pins the one structural fact the
+// design depends on -- how many handles exist, and when.
 function recordingContext() {
   const calls = [];
+  const writes = [];
   const ctx = new Proxy({}, {
     get(target, prop) {
       if (prop === 'measureText') return () => ({ width: 10 });
@@ -71,11 +75,12 @@ function recordingContext() {
       return (...args) => { calls.push([prop, args]); };
     },
     set(target, prop, value) {
+      writes.push([prop, value]);
       target[prop] = value;
       return true;
     },
   });
-  return { ctx, calls };
+  return { ctx, calls, writes };
 }
 
 function arcCount(calls) {
@@ -170,4 +175,106 @@ test('hip midpoint marker and centre connection require two circles', () => {
   drawDynamicLayer(partial.ctx, { width: 200, height: 150 }, geometry, { editing: false });
   assert.equal(arcCount(partial.calls), 1);
   assert.equal(partial.calls.filter(([name]) => name === 'fill').length, 0, 'no bilateral midpoint for one head');
+});
+
+// (2026-10-10, level editor) The static layer: the film, optionally windowed from the decoded
+// original, and the mask overlay, which edit mode never draws.
+const FILM = { name: 'film' };
+const OVERLAY = { name: 'overlay' };
+const STAGE = { width: 2, height: 1 };
+
+// A RawFilm two pixels wide and one row high: values 0 and 100.
+function rawFilm() {
+  return { pixels: new Uint16Array([0, 100]), width: 2, height: 1, valueMin: 0, valueMax: 100, bitsStored: 16, window: null, scale: 1 };
+}
+
+// ImageData is a browser global; this stand-in keeps what it was built from.
+class FakeImageData {
+  constructor(data, width, height) {
+    this.data = data;
+    this.width = width;
+    this.height = height;
+  }
+}
+
+function withImageData(body) {
+  const saved = globalThis.ImageData;
+  globalThis.ImageData = FakeImageData;
+  try {
+    return body();
+  } finally {
+    globalThis.ImageData = saved;
+  }
+}
+
+test('drawStaticLayer without the new options draws the film, then the overlay at the chosen opacity', () => {
+  const { ctx, calls, writes } = recordingContext();
+  drawStaticLayer(ctx, STAGE, { image: FILM, overlayCanvas: OVERLAY }, { overlays: true, overlayOpacity: 50 });
+  assert.deepEqual(calls, [['clearRect', [0, 0, 2, 1]], ['drawImage', [FILM, 0, 0]], ['drawImage', [OVERLAY, 0, 0]]]);
+  assert.deepEqual(writes, [['globalAlpha', 0.5], ['globalAlpha', 1]]);
+});
+
+test('drawStaticLayer in edit mode never draws the mask overlay', () => {
+  const { ctx, calls, writes } = recordingContext();
+  drawStaticLayer(ctx, STAGE, { image: FILM, overlayCanvas: OVERLAY }, { overlays: true, overlayOpacity: 50, editing: true });
+  assert.deepEqual(calls.filter(([name]) => name === 'drawImage'), [['drawImage', [FILM, 0, 0]]]);
+  assert.deepEqual(writes, [], 'no globalAlpha write');
+});
+
+test('drawStaticLayer with a window and a decoded film puts the windowed pixels and does not draw the stored image', () => {
+  withImageData(() => {
+    const { ctx, calls } = recordingContext();
+    drawStaticLayer(ctx, STAGE, { image: FILM, overlayCanvas: OVERLAY, raw: rawFilm() },
+      { overlays: false, overlayOpacity: 50, window: { width: 100, level: 50 } });
+    assert.equal(calls.filter(([name]) => name === 'drawImage').length, 0);
+    const puts = calls.filter(([name]) => name === 'putImageData');
+    assert.equal(puts.length, 1);
+    const [imageData, x, y] = puts[0][1];
+    assert.ok(imageData instanceof FakeImageData);
+    assert.deepEqual([imageData.width, imageData.height, x, y], [2, 1, 0, 0]);
+    assert.deepEqual([...imageData.data], [0, 0, 0, 255, 255, 255, 255, 255]);
+  });
+});
+
+test('drawStaticLayer with a window draws the overlay over the windowed film outside edit mode', () => {
+  withImageData(() => {
+    const { ctx, calls } = recordingContext();
+    drawStaticLayer(ctx, STAGE, { image: FILM, overlayCanvas: OVERLAY, raw: rawFilm() },
+      { overlays: true, overlayOpacity: 100, window: { width: 100, level: 50 } });
+    assert.deepEqual(calls.map(([name]) => name), ['clearRect', 'putImageData', 'drawImage']);
+    assert.equal(calls[2][1][0], OVERLAY);
+  });
+});
+
+test('drawStaticLayer with a window but no decoded film draws the stored image', () => {
+  const { ctx, calls } = recordingContext();
+  drawStaticLayer(ctx, STAGE, { image: FILM, overlayCanvas: null }, { overlays: true, overlayOpacity: 50, window: { width: 100, level: 50 } });
+  assert.deepEqual(calls, [['clearRect', [0, 0, 2, 1]], ['drawImage', [FILM, 0, 0]]]);
+});
+
+test('imagesFromRaw paints the windowed film into a canvas and returns a preview images object', () => {
+  const savedDocument = globalThis.document;
+  const painted = [];
+  const canvas = { width: 0, height: 0, getContext: () => ({ putImageData: (...args) => painted.push(args) }) };
+  globalThis.document = { createElement: (tag) => { assert.equal(tag, 'canvas'); return canvas; } };
+  try {
+    withImageData(() => {
+      const film = rawFilm();
+      const images = imagesFromRaw(film, { width: 100, level: 50 });
+      assert.deepEqual(images, { image: canvas, mask: null, overlayCanvas: null, width: 2, height: 1, raw: film, preview: true });
+      assert.deepEqual([canvas.width, canvas.height], [2, 1]);
+      assert.equal(painted.length, 1);
+      assert.deepEqual([...painted[0][0].data], [0, 0, 0, 255, 255, 255, 255, 255]);
+    });
+  } finally {
+    globalThis.document = savedDocument;
+  }
+});
+
+test('disposeStudyImages closes bitmaps and tolerates a canvas image', () => {
+  const closed = [];
+  disposeStudyImages({ image: { close: () => closed.push('image') }, mask: { close: () => closed.push('mask') } });
+  assert.deepEqual(closed, ['image', 'mask']);
+  assert.doesNotThrow(() => disposeStudyImages({ image: { width: 2, height: 1 }, mask: null }));
+  assert.doesNotThrow(() => disposeStudyImages(null));
 });

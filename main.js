@@ -138,6 +138,31 @@ ipcMain.handle('classify-view', async (_event, request) => {
   return body;
 });
 
+// (2026-10-10, level editor) The original film's own pixels for the stage's display-only window /
+// level (backend/decode.py). The base64 becomes bytes here, so the renderer receives a Uint8Array of
+// little-endian uint16 (structured-clonable) instead of a string a third larger.
+ipcMain.handle('decode-film', async (_event, request) => {
+  if (!backendBaseUrl) throw new Error('The backend is not ready.');
+  const bytes = request?.data instanceof Uint8Array ? request.data : Uint8Array.from(request?.data?.data || request?.data || []);
+  if (!bytes.byteLength || bytes.byteLength > MAX_UPLOAD_BYTES) throw new Error('Select an image smaller than 50 MB.');
+  const form = new FormData();
+  form.append('file', new Blob([bytes]), request.name || 'image');
+  const response = await fetch(`${backendBaseUrl}/decode`, { method: 'POST', body: form, signal: AbortSignal.timeout(60000) });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.detail || 'Could not decode the film.');
+  const pixels = Buffer.from(body.pixels_base64, 'base64');
+  return {
+    width: body.width,
+    height: body.height,
+    bitsStored: body.bits_stored ?? null,
+    valueMin: body.value_min,
+    valueMax: body.value_max,
+    window: body.window ?? null,
+    scaled: body.scaled === true,
+    pixels: new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength),
+  };
+});
+
 ipcMain.handle('calibrate', async (_event, request) => {
   if (!backendBaseUrl) throw new Error('The backend is not ready.');
   const bytes = request.data instanceof Uint8Array

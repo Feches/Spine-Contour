@@ -2,6 +2,7 @@ import { segmentalColumns, segmentalEndplates } from '../data/segmental.js';
 import { CERVICAL_LEVELS } from '../data/cervical.js';
 import { LEVELS, landmarkAt, femoralCircle, FEMORAL_SIDES, landmarkHandles } from './geometry.js';
 import { sameHandle } from './interactions.js';
+import { applyWindow } from './window-level.js';
 
 export const LEVEL_RGB = {
   C2: [183, 139, 244],
@@ -71,10 +72,33 @@ export async function loadStudyImages(predictResponse) {
   return { image, mask, overlayCanvas: scratch, width: image.width, height: image.height };
 }
 
+// `image` is an ImageBitmap, except for a film shown from its decoded original (imagesFromRaw),
+// whose `image` is a canvas: nothing to close.
 export function disposeStudyImages(images) {
   if (!images) return;
-  images.image.close();
+  images.image.close?.();
   images.mask?.close();
+}
+
+// (2026-10-10, level editor) The windowed film's RGBA, reused while the film size is unchanged, so a
+// slider tick or a drag frame on a 25-megapixel film does not allocate 100 MB.
+let windowScratch = null;
+
+function windowedPixels(raw, window) {
+  const size = raw.width * raw.height * 4;
+  if (!windowScratch || windowScratch.length !== size) windowScratch = new Uint8ClampedArray(size);
+  return applyWindow(raw, window, windowScratch);
+}
+
+// A film with no stored image (no segmentation result, or none yet) shown from its decoded original
+// at `window`: the same shape loadStudyImages returns, with no mask and no overlay, `raw` attached
+// and `preview: true` -- it is never a prediction. A canvas is a valid drawImage source.
+export function imagesFromRaw(raw, window) {
+  const image = document.createElement('canvas');
+  image.width = raw.width;
+  image.height = raw.height;
+  image.getContext('2d').putImageData(new ImageData(windowedPixels(raw, window), raw.width, raw.height), 0, 0);
+  return { image, mask: null, overlayCanvas: null, width: raw.width, height: raw.height, raw, preview: true };
 }
 
 // Spec 13: a thumbnail is at most 128 px on its long edge, JPEG, inline as a data URI. Pure size
@@ -118,11 +142,20 @@ export function sizeCanvases(canvases, width, height) {
   canvases.dynamicCanvas.height = height;
 }
 
+// The film, then the mask overlay. (2026-10-10, level editor) `opts.window` ({width, level}) with a
+// decoded original on `images.raw` puts the windowed original instead of the stored image -- the
+// LUT touches the film layer only -- and `opts.editing` leaves the overlay off. With neither set,
+// the calls are exactly what they were.
 export function drawStaticLayer(ctx, canvas, images, opts) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!images) return;
-  ctx.drawImage(images.image, 0, 0);
-  if (opts.overlays && images.overlayCanvas) {
+  if (opts.window && images.raw) {
+    const { raw } = images;
+    ctx.putImageData(new ImageData(windowedPixels(raw, opts.window), raw.width, raw.height), 0, 0);
+  } else {
+    ctx.drawImage(images.image, 0, 0);
+  }
+  if (opts.overlays && images.overlayCanvas && !opts.editing) {
     ctx.globalAlpha = Math.max(0, Math.min(1, opts.overlayOpacity / 100));
     ctx.drawImage(images.overlayCanvas, 0, 0);
     ctx.globalAlpha = 1;
