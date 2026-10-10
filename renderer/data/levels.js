@@ -38,6 +38,8 @@
  *  @property {number} width  @property {number} level
  *  @property {number} defaultWidth  @property {number} defaultLevel
  *  @property {number} min  @property {number} max                   the decoded value range
+ *  @property {{widthMin: number, widthMax: number, levelMin: number, levelMax: number}|null} range
+ *                                                                   the slider and drag bounds (window-level.js windowRange), null until ready
  */
 
 import { fitCircle } from '../viewer/geometry.js';

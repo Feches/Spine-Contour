@@ -10,7 +10,8 @@ import { showToast } from '../components/toast.js';
 import { toCsv } from '../data/csv.js';
 import { loadStudyImages, disposeStudyImages, thumbnailDataUri, bitmapFromBase64, imagesFromRaw } from '../viewer/canvas.js';
 import { cropRaw, defaultWindow, rawFromDecoded } from '../viewer/window-level.js';
-import { mountViewer, recordPrediction, forgetPrediction } from '../components/viewer.js';
+import { mountViewer, recordPrediction, forgetPrediction, getPrediction, commitGeometry } from '../components/viewer.js';
+import { configureLevelEditor, forgetLevelEditor, requestExit } from '../level-editor.js';
 import { describeModels } from '../data/models.js';
 import { describeProcessor, processorTitle } from '../data/processing.js';
 import { WAIT_FOR_BATCH } from '../data/batch.js';
@@ -97,6 +98,8 @@ let mounted = null;
 export function releaseStudy(studyId) {
   filePayloads.delete(studyId);
   runsByStudy.delete(studyId);
+  // (2026-10-10) Its level editor too, open or stashed: a reused id must never inherit this film's levels.
+  forgetLevelEditor(studyId);
   if (imageCache && imageCache.studyId === studyId) {
     // The entry always goes -- the next film can reuse this id. The bitmaps are CLOSED only
     // when no live viewer draws them (the same identity check cacheImages makes); a viewer
@@ -423,11 +426,14 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     // Studies list the user may have opened study B and entered edit mode while A's /predict
     // was in flight: the viewer disables Edit only for the running study itself. A's completion
     // must not drop B out of edit mode. The error path below never touched either key.
+    // (2026-10-10) The study's level editor goes with its edit mode, and forgetLevelEditor below drops a
+    // stashed one: the levels it holds describe geometry this result has just replaced.
     setState((state) => ({
       running: null,
       runStage: null,
       editing: state.openId === studyId ? false : state.editing,
       selection: state.openId === studyId ? null : state.selection,
+      levelEditor: state.levelEditor?.studyId === studyId ? null : state.levelEditor,
       studies: state.studies.map((s) => (s.id === studyId
         ? { ...s, predictionId: requestId, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
           calibration: preferReviewedCalibration(response.calibration, calibrationForStudy(s)), thumbnail,
@@ -435,6 +441,7 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
           reviewedAt: null, processingError: null, processingErrorAt: null }
         : s)),
     }));
+    forgetLevelEditor(studyId);
     return warning ? { ok: true, warning } : { ok: true };
   } catch (error) {
     if (revision === runRevision) {
@@ -623,6 +630,40 @@ async function loadFilm(studyId) {
   return filmOutcome(next, raw, null);
 }
 
+/**
+ * (2026-10-10, level editor) What the label record says about the stored image (plan Task 10): the film's file
+ * name, the stored image's size and the hex SHA-256 of its grayscale bytes -- the red channel of every pixel,
+ * row by row -- which ties a record to the exact pixels with no identifier. For a film with no result the
+ * "stored image" is the decoded original at its default window, the image every point was placed on.
+ * `maskPixels` and `labels` arrive with Task 12. Rejects with a display-ready message when there is no film.
+ * @param {string} studyId
+ * @returns {Promise<{file: string, sha256: string, width: number, height: number, maskPixels: null, labels: null}>}
+ */
+export async function imageInfo(studyId) {
+  const outcome = await ensureFilm(studyId);
+  if (outcome.superseded) throw new Error('The film changed while it was being read. Try again.');
+  const { images } = outcome;
+  if (!images) throw new Error(outcome.reason || SAVED_FILM_MISSING);
+  const study = getState().studies.find((s) => s.id === studyId);
+  if (!study) throw new Error('The study is no longer in the library.');
+  const { width, height } = images;
+  const scratch = document.createElement('canvas');
+  scratch.width = width;
+  scratch.height = height;
+  const context = scratch.getContext('2d', { willReadFrequently: true });
+  context.drawImage(images.image, 0, 0);
+  const rgba = context.getImageData(0, 0, width, height).data;
+  const grey = new Uint8Array(width * height);
+  for (let i = 0, o = 0; i < grey.length; i += 1, o += 4) grey[i] = rgba[o];
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', grey));
+  const sha256 = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return { file: study.fileName, sha256, width, height, maskPixels: null, labels: null };
+}
+
+// The level editor's wiring (renderer/level-editor.js) gets the viewer's measure queue and prediction snapshots,
+// and this screen's film loader and image facts. Once, at import, like the subscription above.
+configureLevelEditor({ commitGeometry, getPrediction, ensureFilm, imageInfo });
+
 
 let previewRevision = 0;
 // A clean original-image preview (including DICOM) gives the user evidence for the
@@ -688,7 +729,11 @@ export function render(state) {
     title: 'Back to studies',
     'aria-label': 'Back to studies',
     innerHTML: BACK_SVG,
-    onClick: () => setState({ screen: 'studies', editing: false, selection: null }),
+    // (2026-10-10) While editing, Back asks first when level edits are unsaved (D7), then returns to the list.
+    onClick: () => {
+      if (getState().editing) requestExit({ then: 'back' });
+      else setState({ screen: 'studies', editing: false, selection: null });
+    },
   });
 
   // The name is an input, not text: it is the one field on the header the user owns. It defaults
@@ -809,10 +854,12 @@ export function render(state) {
     if (outgoing) imageCache = null;
     mounted?.viewer.setImages(null);
     if (outgoing) disposeStudyImages(outgoing.images);
-    setState({ editing: false, selection: null, selectedLevel: null,
+    setState({ editing: false, selection: null, selectedLevel: null, levelEditor: null,
       studies: live.studies.map(s => s.id === open.id ? { ...s, ...patch,
         geometry: null, measurements: null, qc: null, reviewedAt: null, predictionId: null,
         processingError: null, processingErrorAt: null } : s) });
+    // (2026-10-10) The film type the levels were opened for is gone; a stashed editor goes too.
+    forgetLevelEditor(open.id);
     mounted?.viewer.setFilmStatus(null);
     previewOriginal(open.id);
   }
@@ -1015,5 +1062,8 @@ export function render(state) {
   update();
   if (needsRestore) restoreFilm(study.id);
   else if (!study.geometry && requiresAnteriorSide(study) && !(imageCache?.studyId === study.id && imageCache.images?.preview)) previewOriginal(study.id);
+  // (2026-10-10) Back on the screen still editing (the sidebar's OPEN STUDY card keeps the level editor) with
+  // no film cached for this study: load it, as entering edit mode did.
+  else if (getState().levelEditor?.studyId === study.id && !(imageCache?.studyId === study.id)) ensureFilm(study.id);
   return root;
 }

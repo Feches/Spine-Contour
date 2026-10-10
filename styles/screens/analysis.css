@@ -298,6 +298,22 @@
   color: var(--stage-ink);
   font-variant-numeric: tabular-nums;
 }
+/* (2026-10-10, level editor) While editing with the film decoded, the chip also reads the window. */
+.viewer-chip-divider {
+  width: 1px;
+  height: 12px;
+  background: var(--stage-line);
+}
+.viewer-chip-window {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  color: var(--stage-muted);
+  font-variant-numeric: tabular-nums;
+}
+.viewer-chip-divider.is-hidden,
+.viewer-chip-window.is-hidden { display: none; }
 
 .viewer-toolbar {
   position: absolute;
@@ -476,32 +492,164 @@
   letter-spacing: 0.13em;
 }
 
-/* Second glass bar, directly under the toolbar (14px top + 44px bar + 6px gap). */
+/* Second glass bar, directly under the toolbar (14px top + 44px bar + 6px gap). (2026-10-10, level
+   editor, handoff §3) The label, the help line, then while placing the step chips, FIT, UNDO and
+   CANCEL; RESET TO PREDICTION and DONE last. */
 .viewer-editbar {
   position: absolute;
   top: 64px;
   right: 14px;
   left: 14px;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 6px;
+  gap: 10px;
+  padding: 6px 6px 6px 10px;
   border-radius: 12px;
   background: var(--stage-chrome);
   border: 1px solid var(--stage-line);
   backdrop-filter: blur(8px);
 }
 .viewer-editbar.is-hidden { display: none; }
+/* Placement-only controls and the divider before RESET. (0,2,0), so it beats .viewer-tool's display. */
+.viewer-editbar .is-hidden { display: none; }
 .viewer-editbar-label {
-  padding: 0 8px;
+  padding: 0;
+  white-space: nowrap;
   font-family: 'Chivo Mono', monospace;
   font-size: 8px;
   font-weight: 500;
   letter-spacing: 0.14em;
   color: var(--stage-accent);
 }
+.viewer-edit-help {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--stage-body);
+  text-align: left;
+}
+
+/* The placement's steps: done (filled dot, ink), current (accent on its soft ground, filled dot),
+   pending (outline dot, muted). The dot's colour is the step's handle colour, set inline as
+   --step-color from viewer/canvas.js colorFor, so the chip and the canvas share one source. */
+.viewer-steps {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.viewer-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  color: var(--stage-muted);
+}
+.viewer-step.is-done { color: var(--stage-ink); }
+.viewer-step.is-current {
+  background: var(--stage-accent-soft);
+  color: var(--stage-accent);
+}
+.viewer-step-dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1.5px solid var(--stage-line);
+  background: transparent;
+}
+.viewer-step.is-done .viewer-step-dot,
+.viewer-step.is-current .viewer-step-dot {
+  border-color: var(--step-color);
+  background: var(--step-color);
+}
+
+/* The window / level panel (handoff §3, §6): a third glass bar under the edit bar, display only. */
+.viewer-wl {
+  position: absolute;
+  top: 116px;
+  right: 14px;
+  width: 300px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 8px 12px 12px;
+  border-radius: 12px;
+  background: var(--stage-chrome);
+  border: 1px solid var(--stage-line);
+  backdrop-filter: blur(8px);
+}
+.viewer-wl.is-hidden { display: none; }
+.viewer-wl-head {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.viewer-wl-title {
+  flex: 1;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--stage-muted);
+}
+.viewer-wl-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 4px;
+}
+.viewer-wl-label {
+  width: 44px;
+  flex-shrink: 0;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--stage-muted);
+}
+.viewer-wl-slider {
+  flex: 1;
+  min-width: 0;
+  height: 12px;
+  cursor: pointer;
+  accent-color: var(--stage-accent);
+}
+.viewer-wl-slider:disabled { opacity: .4; cursor: not-allowed; }
+.viewer-wl-slider:focus-visible {
+  outline: 2px solid var(--stage-accent);
+  outline-offset: 2px;
+}
+.viewer-wl-value {
+  width: 36px;
+  flex-shrink: 0;
+  text-align: right;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--stage-ink);
+  font-variant-numeric: tabular-nums;
+}
+/* The display-only sentence, and the note saying why there is nothing to window. */
+.viewer-wl-copy,
+.viewer-wl-note {
+  margin: 0;
+  padding-right: 4px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--stage-body);
+}
+.viewer-wl-note.is-hidden { display: none; }
 
 /* Cursors. While editing with the pan toggle on, a primary-button drag pans, not edits; the
    pan-mode rules resolve to the same `grab` the hover rule uses, so whichever wins on
@@ -509,6 +657,9 @@
 .viewer-stage.is-editing .viewer-canvas-dynamic { cursor: crosshair; }
 .viewer-stage.is-editing.is-over-handle .viewer-canvas-dynamic { cursor: grab; }
 .viewer-stage.is-editing.is-dragging-handle .viewer-canvas-dynamic { cursor: grabbing; }
+/* (2026-10-10) While the window / level panel is open a drag on the film sets the window. Before the
+   pan-mode rules, so with Pan on (a primary drag pans) the pan cursor wins on source order. */
+.viewer-stage.is-windowing .viewer-canvas-dynamic { cursor: all-scroll; }
 .viewer-stage.is-pan-mode .viewer-canvas-dynamic { cursor: grab; }
 .viewer-stage.is-pan-mode:active .viewer-canvas-dynamic { cursor: grabbing; }
 
@@ -876,7 +1027,6 @@
   box-shadow: 0 10px 30px #0003; font: 13px/1.45 'Source Sans 3', sans-serif; }
 .confidence-breakdown p { margin: 0 0 9px; }
 .confidence-breakdown p:last-child { margin-bottom: 0; color: var(--body); }
-.viewer-edit-help { flex-basis: 100%; padding: 4px 8px; color: var(--stage-accent); font-size: 11px; text-align: right; }
 
 .analysis-region-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; padding: 8px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .analysis-region-bar label { display: flex; align-items: center; gap: 8px; font-size: 12px; }

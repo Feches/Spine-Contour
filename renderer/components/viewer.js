@@ -6,15 +6,22 @@ import { getState, setState } from '../store.js';
 import { measure } from '../api.js';
 import { showToast } from './toast.js';
 import {
-  createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel,
+  createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel, colorFor,
 } from '../viewer/canvas.js';
-import { clientToImage, imageToClient, nearestLandmark, setLandmarkAt, femoralCircle, setFemoralCircle, removeFemoralCircle, fitCircle } from '../viewer/geometry.js';
-import { zoomIn, zoomOut, zoomAbout, isChordHeld, vertebraAt, sameHandle, hitTestFemoral, nextSelection, nudge, arrowKeyDelta } from '../viewer/interactions.js';
+import { clientToImage } from '../viewer/geometry.js';
+import { zoomIn, zoomOut, zoomAbout, isChordHeld, vertebraAt, arrowKeyDelta } from '../viewer/interactions.js';
 import { createMeasureQueue } from '../viewer/measure-queue.js';
 import { isQueued, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
 import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
 import { progressTitle, progressDetail } from '../data/processing.js';
 import { cancelProcessing } from '../processing.js';
+import { kindOf, rowName, placementSteps, placingLabel, placingHelp } from '../data/levels.js';
+import { levelHandles, hitTestLevelHandles, moveHandle, nudgeHandle, nextLevelHandle, handleAt } from '../viewer/level-handles.js';
+import { dragWindow, windowText } from '../viewer/window-level.js';
+import {
+  enterLevelEditor, requestExit, keepEditing, placePoint, undoPlacedPoint, cancelPlace, fitPlacing, setFocusedHandle,
+  selectLevelRow, commitHandleMove, openWindowPanel, closeWindowPanel, setWindow, resetWindow, resetLevelsToModel,
+} from '../level-editor.js';
 
 // Icons lifted verbatim from design-reference/template.html's Study Analysis toolbar.
 // Same inline-SVG-through-innerHTML pattern plan 02 uses in components/sidebar.js and
@@ -26,6 +33,9 @@ const ICONS = {
   zoomIn: `${SVG_OPEN}<circle cx="11" cy="11" r="7"></circle><path d="M8 11 H14"></path><path d="M11 8 V14"></path><path d="M16.5 16.5 L21 21"></path></svg>`,
   fit: `${SVG_OPEN}<path d="M9 4 H5 V8"></path><path d="M15 4 H19 V8"></path><path d="M9 20 H5 V16"></path><path d="M15 20 H19 V16"></path></svg>`,
   pan: `${SVG_OPEN}<path d="M12 3 V21"></path><path d="M3 12 H21"></path><path d="M9.5 5.5 L12 3 L14.5 5.5"></path><path d="M9.5 18.5 L12 21 L14.5 18.5"></path><path d="M5.5 9.5 L3 12 L5.5 14.5"></path><path d="M18.5 9.5 L21 12 L18.5 14.5"></path></svg>`,
+  // (2026-10-10, level editor) The level-editor prototype's window / level glyph (docs/design/level-editor/
+  // prototype/Main.dc.html): a circle with a vertical bar and three ticks.
+  windowLevel: `${SVG_OPEN}<circle cx="12" cy="12" r="9"></circle><path d="M12 3 V21"></path><path d="M12 8 H17"></path><path d="M12 12 H18.5"></path><path d="M12 16 H17"></path></svg>`,
   overlays: `${SVG_OPEN}<path d="M12 3 L21 8 L12 13 L3 8 Z"></path><path d="M3 14 L12 19 L21 14"></path></svg>`,
   edit: `${SVG_OPEN}<path d="M12 20 H21"></path><path d="M16.5 3.5 a2.1 2.1 0 0 1 3 3 L7 19 L3 20 L4 16 Z"></path></svg>`,
   rerun: `${SVG_OPEN}<path d="M21 4 V10 H15"></path><path d="M3 20 V14 H9"></path><path d="M20.5 9.5 A8 8 0 0 0 5.6 6.6 L3 9"></path><path d="M3.5 14.5 A8 8 0 0 0 18.4 17.4 L21 15"></path></svg>`,
@@ -33,30 +43,39 @@ const ICONS = {
 
 const MEASURE_DEBOUNCE_MS = 150;
 
+// The edit bar's copy while no placement is running (handoff §3, §6).
+const EDIT_LABEL = 'EDITING SEGMENTATION';
+const WINDOW_LABEL = 'WINDOW / LEVEL';
+const WINDOW_PAUSED_LABEL = 'WINDOW / LEVEL \u00B7 PLACING PAUSED';
+const WINDOW_HELP = 'Drag on the film: left\u2013right sets width, up\u2013down sets level. Press Done to go back to editing.';
+const IDLE_HELP = 'Select a level in the panel to adjust it, or place one the model missed.';
+
+// Keyboard: in edit mode only text entry keeps its keys (a checkbox or a slider still lets Escape and Tab
+// through), and Tab stays ordinary focus movement inside the stage's own controls and the levels panel.
+const TEXT_ENTRY = 'input:not([type="checkbox"]):not([type="range"]), select, textarea, [contenteditable="true"]';
+const OWN_TAB_ORDER = '.viewer-editbar, .viewer-wl, .level-editor, .analysis-level-host';
+
 // ---------------------------------------------------------------------------
 // Transient interaction state. Module scope, NOT the store, per the architecture
 // contract's viewer/interactions.js section: only committed geometry reaches the store.
 //
-// One `drag` for every kind of gesture -- pan, landmark handle, femoral handle -- so two
-// gestures can never be live at once and there is one place to look for what the pointer
-// is doing. Plan 03 kept the pan drag in a closure inside interactions.js; it moved here so
-// plan 04's handle drag would not become a second copy. detach() resets all of it.
-let drag = null;           // {kind:'pan', pointerId, clientX, clientY, panX, panY} | {kind:'handle', ...} | {kind:'label', ...} | null
+// One `drag` for every kind of gesture -- pan, a level's handle, the window / level drag, the
+// construction label -- so two gestures can never be live at once and there is one place to look for
+// what the pointer is doing. detach() resets all of it.
+let drag = null;           // {kind:'pan', ...} | {kind:'levelHandle', ...} | {kind:'window', ...} | {kind:'label', ...} | null
 let suppressClick = false; // a pointerdown that started a gesture eats the click that follows it
-let hover = null;          // Selection | null -- the handle under the pointer
-let retracing = false;
-let tracePoints = [];      // [x, y][] in image space
-// Which pointer placed the last retrace point, so a chord that starts as a left press in
-// retrace mode can take that point back -- the retrace branch sets no `drag`, so nothing else
-// would undo it and a stray point would survive the pan into fitCircle.
-let tracePointPointer = null;
+// Which pointer placed the newest placement point, so a chord that starts as a LEFT press while placing can
+// take that point back: the press lands as a placement click before the second button makes it a chord.
+let placePointer = null;
 
 // Where the user has dragged each construction's label, in image pixels, for the open study.
 let labelOffsets = new Map(); // construction key ('L3', 'PI', ...) -> {dx, dy}
 let labelStudyId = null;
 
 const measureQueue = createMeasureQueue({ measure, getState, setState, showToast, debounceMs: MEASURE_DEBOUNCE_MS });
-const { commitGeometry } = measureQueue;
+// The level editor's projection reaches the store through here (renderer/level-editor.js, wired by
+// screens/analysis.js): previewed as a draft, re-measured, then written to the study record.
+export const { commitGeometry } = measureQueue;
 
 // ---------------------------------------------------------------------------
 // The raw /predict output per study: the target of RESET TO PREDICTION. Kept off the Study
@@ -79,6 +98,12 @@ export function recordPrediction(studyId, { measurements, geometry, qc }, measur
   // study restored from disk it is the stored geometry, so a failed /measure restores the
   // correction, never the prediction.
   measureQueue.replaceMeasured(studyId, measuredGeometry);
+}
+
+// (2026-10-10, level editor) The model's own output for a study, {measurements, geometry, qc}, or
+// undefined: what the level editor compares each level against (renderer/level-editor.js).
+export function getPrediction(studyId) {
+  return predictions.get(studyId);
 }
 
 // The inverse of recordPrediction, for a deleted study. Drop its snapshot so RESET TO
@@ -109,6 +134,11 @@ function textButton(label, onClick, props = {}) {
   return el('button', { type: 'button', class: 'viewer-tool viewer-tool-text', onClick, ...props }, label);
 }
 
+// Writes only on a change: these run on every store notification, pan frames included.
+function setText(node, text) {
+  if (node.textContent !== text) node.textContent = text;
+}
+
 function footerText(study) {
   // `study.pt` is the demo-set PATIENT label. It is not the PT pelvic-tilt measurement,
   // which lives at study.measurements.PT. Do not "fix" this to a number.
@@ -121,9 +151,9 @@ function footerText(study) {
 // Redraw gating compares by REFERENCE, not by JSON.stringify: the dynamic key contains
 // study.geometry, and stringifying a full geometry object on every pointermove frame is
 // exactly the per-frame cost the layered design exists to avoid. Reference equality holds
-// because nothing mutates the store's geometry in place: /predict and /measure replace it
-// wholesale, and every edit in this file works on a structuredClone and commits that clone
-// as a new reference (see handlePointerUp, handleKeyDown, applyFit, resetToPrediction).
+// because nothing mutates the store's geometry or the level editor in place: /predict and
+// /measure replace the geometry wholesale, every level-editor action builds a new editor
+// (renderer/level-editor.js), and a handle drag works on a copy until its release.
 function sameKey(a, b) {
   return a !== null && b !== null && a.length === b.length && a.every((v, i) => v === b[i]);
 }
@@ -133,6 +163,27 @@ function currentStudy() {
   const study = state.studies.find((s) => s.id === state.openId) ?? null;
   const draft = state.measurementDrafts?.[state.openId];
   return study && draft ? { ...study, geometry: draft } : study;
+}
+
+// (2026-10-10) The level editor of the study on the stage while editing, else null.
+function editorFor(state, study) {
+  const editor = state.levelEditor;
+  return state.editing && editor && study && editor.studyId === study.id ? editor : null;
+}
+
+// The edit bar's help line (handoff §3; the prototype's renderVals): the W/L instruction, the placement step,
+// the selected placed level, or the idle prompt.
+function editHelpText(editor, windowOpen) {
+  if (!editor) return '';
+  if (windowOpen) return WINDOW_HELP;
+  if (editor.placing) return placingHelp(editor) ?? '';
+  const code = editor.selected;
+  const entry = code ? editor.levels[code] : null;
+  if (!entry?.visible || !entry.geometry) return IDLE_HELP;
+  const name = rowName(code).replace('Head', 'Femoral head');
+  return kindOf(code) === 'circle'
+    ? `${name} selected \u2014 drag a rim point to refit it.`
+    : `${name} selected \u2014 drag a handle to adjust it.`;
 }
 
 export function mountViewer(container) {
@@ -147,24 +198,31 @@ export function mountViewer(container) {
   const labelChip = el('div', { class: 'viewer-label is-hidden', 'aria-hidden': 'true' });
   host.append(labelChip);
 
+  // The study chip; while editing with the film decoded it also reads the window (handoff §3).
   const chipId = el('div', { class: 'viewer-chip-id' });
-  const chip = el('div', { class: 'viewer-chip' }, chipId);
+  const chipDivider = el('span', { class: 'viewer-chip-divider is-hidden', 'aria-hidden': 'true' });
+  const chipWindow = el('span', { class: 'viewer-chip-window is-hidden' });
+  const chip = el('div', { class: 'viewer-chip' }, chipId, chipDivider, chipWindow);
 
   const zoomLabel = el('div', { class: 'viewer-zoom' }, '100%');
   const panButton = toolButton('Pan', ICONS.pan, () => setState((s) => ({ panMode: !s.panMode })), { 'aria-pressed': 'false' });
+  // Shown only while editing (updateViewer); opens and closes the window / level panel.
+  const windowButton = toolButton('Window / level', ICONS.windowLevel, () => {
+    if (getState().levelEditor?.window?.open) closeWindowPanel();
+    else openWindowPanel();
+  }, { 'aria-pressed': 'false' });
   const overlayButton = toolButton('Toggle segmentation overlay', ICONS.overlays, () => setState((s) => ({ overlays: !s.overlays })), { 'aria-pressed': 'false' });
-  const editButton = toolButton('Edit landmarks', ICONS.edit, () => {
-    if (getState().editing) exitEditMode();
-    // Entering edit mode drops the pan toggle: with it on, a primary-button drag pans and the
-    // handle press underneath never happens, so pressing Edit and then finding you cannot move
-    // a landmark was the whole complaint. Panning is not taken away -- the middle button and
-    // the left+right chord both still pan in every mode, edit included.
+  const editButton = toolButton('Edit segmentation', ICONS.edit, () => {
+    // Entering edit mode drops the pan toggle (renderer/level-editor.js enterLevelEditor): with it on, a
+    // primary-button drag pans and the handle press underneath never happens. Panning is not taken away --
+    // the middle button and the left+right chord both still pan in every mode, edit included.
     //
     // ONE-WAY on purpose. Pressing Pan while already editing must keep pan winning: that is a
     // signed-off behaviour asserted by tools/smoke/smoke-gate1.mjs and stated in the gesture
-    // comment on handlePointerDown. Do not make this symmetric without changing those too.
-    // exitEditMode does not restore the toggle, so DONE/Escape returns with Pan off.
-    else setState({ editing: true, panMode: false });
+    // comment on handlePointerDown. Leaving edit mode does not restore the toggle.
+    const state = getState();
+    if (state.editing) requestExit();
+    else if (state.openId) enterLevelEditor(state.openId);
   }, { 'aria-pressed': 'false', disabled: true });
   let runHandler = null;
   const rerunButton = toolButton('Re-run segmentation', ICONS.rerun, () => { if (runHandler) runHandler(); }, { disabled: true });
@@ -185,6 +243,7 @@ export function mountViewer(container) {
     toolButton('Fit to view', ICONS.fit, () => setState({ zoom: 1, panX: 0, panY: 0 })),
     el('div', { class: 'viewer-divider' }),
     panButton,
+    windowButton,
     overlayButton,
     el('div', { class: 'viewer-divider' }),
     el('div', { class: 'viewer-fill' },
@@ -194,23 +253,51 @@ export function mountViewer(container) {
     editButton,
     rerunButton);
 
-  // Shown only while editing: RETRACE, FIT and RESET TO PREDICTION alongside DONE.
-  const addCircleButton = textButton('ADD CIRCLE', () => addCircle(), { title: 'Place at least 3 points around the head, then Fit' });
-  const deleteCircleButton = textButton('DELETE CIRCLE', () => deleteCircle(), { disabled: true, title: 'Delete selected head (Delete / Backspace)' });
+  // The edit bar (handoff §3): the label, the help line, then -- while placing, and not while the window
+  // / level panel is open -- the step chips, FIT (femoral heads), UNDO and CANCEL; then RESET TO PREDICTION
+  // (D14) and DONE, always.
+  const editLabel = el('div', { class: 'viewer-editbar-label' }, EDIT_LABEL);
   const editHelp = el('div', { class: 'viewer-edit-help' });
-  const retraceButton = textButton('RETRACE', () => toggleRetrace(), { 'aria-pressed': 'false', disabled: true });
-  const fitButton = textButton('FIT', () => applyFit(), { disabled: true });
+  const steps = el('div', { class: 'viewer-steps is-hidden' });
+  const fitButton = textButton('FIT', () => fitPlacing(imageSize()), { 'aria-label': 'Fit the circle to the rim points', class: 'viewer-tool viewer-tool-text is-active is-hidden' });
+  const undoButton = textButton('UNDO', () => undoPlacedPoint(), { class: 'viewer-tool viewer-tool-text is-hidden' });
+  const placeCancelButton = textButton('CANCEL', () => cancelPlace(), { class: 'viewer-tool viewer-tool-text is-hidden' });
+  const placeDivider = el('div', { class: 'viewer-divider is-hidden' });
   const resetButton = textButton('RESET TO PREDICTION', () => resetToPrediction(), { disabled: true });
-  const doneButton = textButton('DONE', () => exitEditMode());
+  const doneButton = textButton('DONE', () => requestExit());
   const editBar = el('div', { class: 'viewer-editbar is-hidden' },
-    el('div', { class: 'viewer-editbar-label' }, 'EDITING LANDMARKS'),
-    addCircleButton,
-    deleteCircleButton,
-    retraceButton,
+    editLabel,
+    editHelp,
+    steps,
     fitButton,
+    undoButton,
+    placeCancelButton,
+    placeDivider,
     resetButton,
-    doneButton,
-    editHelp);
+    doneButton);
+
+  // The window / level panel (handoff §3, §6): display only. The slider bounds are the film's own
+  // (window-level.js windowRange); the note says why there is nothing to window.
+  const wlWidth = el('input', {
+    type: 'range', class: 'viewer-wl-slider', min: '64', max: '256', step: '1', 'aria-label': 'Window width', disabled: true,
+    onInput: (e) => setWindow({ width: Number(e.target.value), level: getState().levelEditor?.window?.level }),
+  });
+  const wlLevel = el('input', {
+    type: 'range', class: 'viewer-wl-slider', min: '0', max: '255', step: '1', 'aria-label': 'Window level', disabled: true,
+    onInput: (e) => setWindow({ width: getState().levelEditor?.window?.width, level: Number(e.target.value) }),
+  });
+  const wlWidthValue = el('span', { class: 'viewer-wl-value' }, '\u2014');
+  const wlLevelValue = el('span', { class: 'viewer-wl-value' }, '\u2014');
+  const wlNote = el('p', { class: 'viewer-wl-note is-hidden' });
+  const wlPanel = el('div', { class: 'viewer-wl is-hidden', role: 'group', 'aria-label': 'Window and level' },
+    el('div', { class: 'viewer-wl-head' },
+      el('span', { class: 'viewer-wl-title' }, WINDOW_LABEL),
+      textButton('RESET', () => resetWindow(), { title: "Reset to the file's default window", 'aria-label': "Reset to the file's default window" }),
+      textButton('DONE', () => closeWindowPanel())),
+    el('label', { class: 'viewer-wl-row' }, el('span', { class: 'viewer-wl-label' }, 'WIDTH'), wlWidth, wlWidthValue),
+    el('label', { class: 'viewer-wl-row' }, el('span', { class: 'viewer-wl-label' }, 'LEVEL'), wlLevel, wlLevelValue),
+    el('p', { class: 'viewer-wl-copy' }, "Display only. Measurements and the label record don't change."),
+    wlNote);
 
   const footer = el('div', { class: 'viewer-footer' });
 
@@ -224,12 +311,13 @@ export function mountViewer(container) {
   const runCard = el('div', { class: 'run-card is-hidden' },
     el('div', { class: 'run-card-inner' }, runEyebrow, runTitle, runBody, runSpinner, runButton, cancelButton));
 
-  stage.append(host, chip, toolbar, editBar, footer, runCard);
+  stage.append(host, chip, toolbar, editBar, wlPanel, footer, runCard);
   container.append(stage);
 
   let currentImages = null;
   let lastStatic = null;
   let lastDynamic = null;
+  let lastSteps = null;
 
   // 'loading' | 'missing' | null -- what this mount knows about the film for the open study.
   // A study restored from disk has numbers before it has bitmaps; screens/analysis.js drives
@@ -244,17 +332,34 @@ export function mountViewer(container) {
     return rect.width > 0 ? dynamicCanvas.width / rect.width : 1;
   }
 
-  // The geometry the stage should show right now: a live drag's working copy, else the store's.
+  // The stored image's size, which every placement click and handle point is clamped to.
+  function imageSize() {
+    return { width: dynamicCanvas.width, height: dynamicCanvas.height };
+  }
+
+  function clampToImage(point) {
+    return [
+      Math.max(0, Math.min(dynamicCanvas.width - 1, point[0])),
+      Math.max(0, Math.min(dynamicCanvas.height - 1, point[1])),
+    ];
+  }
+
+  // The geometry the stage should show: the store's (a level-handle drag travels separately, as
+  // dragGeometry, because the editor draws levels, not study.geometry).
   function liveGeometry() {
-    if (drag && drag.kind === 'handle') return drag.geometry;
     const study = currentStudy();
     return study ? study.geometry : null;
   }
 
+  // A live handle drag's working copy of one level, for drawLevelEditor's `dragGeometry`.
+  function dragGeometryFor(editor) {
+    return drag && drag.kind === 'levelHandle' && drag.studyId === editor.studyId
+      ? { code: drag.code, geometry: drag.geometry } : null;
+  }
+
   // The ONE place the dynamic layer is drawn from. Store-driven redraws reach it through
-  // updateViewer's reference-keyed gate; per-frame drag and hover redraws call it directly
-  // with the working geometry. Both compose the same options, so there is exactly one
-  // notion of what the dynamic layer shows.
+  // updateViewer's reference-keyed gate; per-frame drag redraws call it directly. Both compose
+  // the same options, so there is exactly one notion of what the dynamic layer shows.
   function redrawDynamic(geometry) {
     // Geometry is in the FILM's pixel space, and without the film there is nothing to draw it
     // on -- the canvases keep their default 300x150 until setImages sizes them, so painting
@@ -267,6 +372,7 @@ export function mountViewer(container) {
     }
     const state = getState();
     const study = currentStudy();
+    const editor = editorFor(state, study);
     drawDynamicLayer(dynamicCtx, dynamicCanvas, geometry, {
       selectedLevel: state.selectedLevel,
       measurements: study && !state.measurementDrafts?.[study.id]
@@ -274,10 +380,15 @@ export function mountViewer(container) {
           : studyRegion(study) === 'full_spine' ? { ...study.measurements, ...cervicalMeasurements(study), ...globalSvaMeasurements(study) } : study.measurements) } : null,
       editing: state.editing,
       selection: state.selection,
-      hover,
-      tracePoints,
-      retracing,
       pixelRatio: pixelRatio(),
+      // (2026-10-10) In edit mode the level editor draws every level, its handles and the placement.
+      ...(editor ? {
+        editor,
+        handle: editor.handle,
+        dragGeometry: dragGeometryFor(editor),
+        overlays: state.overlays,
+        overlayOpacity: state.overlayOpacity,
+      } : {}),
     });
     placeLabel(geometry);
   }
@@ -315,29 +426,24 @@ export function mountViewer(container) {
   });
   resizeObserver.observe(stage);
 
-  // Landmarks first, then femoral handles. The two sets are anatomically far apart, so the
-  // order only matters in a degenerate geometry.
-  function hitTestHandle(geometry, event) {
-    const landmark = nearestLandmark(geometry, event.clientX, event.clientY, dynamicCanvas);
-    if (landmark) return { kind: 'landmark', level: landmark.level, corner: landmark.corner };
-    // hitTestFemoral is coordinate-space agnostic; feed it the circles in CLIENT space so
-    // the hit radius is a constant 14 CSS pixels at any zoom, as nearestLandmark's is.
-    const rect = dynamicCanvas.getBoundingClientRect();
-    const scale = rect.width / dynamicCanvas.width;
-    const circles = (geometry.femoral_circles ?? []).map(([cx, cy, r]) => [...imageToClient([cx, cy], rect, dynamicCanvas), r * scale]);
-    return hitTestFemoral(circles, event.clientX, event.clientY);
+  // The selected level's handle under the pointer, or null. Only the selected level has handles (handoff
+  // §5), and none while it is being placed. Hit-tested in client space, so the grab radius is a constant
+  // 14 CSS pixels at any zoom.
+  function selectedHandleAt(editor, event) {
+    const code = editor.selected;
+    const entry = code ? editor.levels[code] : null;
+    if (!entry?.visible || !entry.geometry || editor.placing?.code === code) return null;
+    const handle = hitTestLevelHandles(levelHandles(code, entry.geometry), event.clientX, event.clientY, dynamicCanvas);
+    return handle ? { code, handle, geometry: entry.geometry } : null;
   }
 
-  function setHover(next) {
-    if (next === hover || sameHandle(hover, next)) return;
-    hover = next;
-    stage.classList.toggle('is-over-handle', Boolean(hover));
-    redrawDynamic(liveGeometry());
-  }
-
-  function clearHover() {
-    hover = null;
-    stage.classList.remove('is-over-handle');
+  // The grab cursor over a handle. No redraw: the editor draws no hover state.
+  function updateHover(event) {
+    const state = getState();
+    const editor = editorFor(state, currentStudy());
+    const over = Boolean(editor && currentImages && !editor.placing && !editor.window?.open
+      && state.running !== editor.studyId && selectedHandleAt(editor, event));
+    stage.classList.toggle('is-over-handle', over);
   }
 
   // NOTE ON COORDINATES, because this looks like a missing correction and is not.
@@ -414,18 +520,16 @@ export function mountViewer(container) {
       labelChip.releasePointerCapture(event.pointerId);
       labelChip.classList.remove('is-dragging');
     }
-    // A LEFT-first chord in retrace mode has already appended a point. Take it back.
-    if (tracePointPointer === event.pointerId && tracePoints.length > 0) {
-      tracePoints = tracePoints.slice(0, -1);
-      updateEditBar(getState(), currentStudy());
-    }
-    tracePointPointer = null;
+    // A LEFT-first chord while placing has already placed a point with its first press. Take it back
+    // (a press that finished the placement is not undone: the level is placed and can be adjusted).
+    if (placePointer === event.pointerId) undoPlacedPoint();
+    placePointer = null;
     startPan(event, true);
     stage.classList.remove('is-dragging-handle');
-    clearHover();
+    stage.classList.remove('is-over-handle');
     // Load-bearing: panX/panY are absent from dynamicKey, so nothing else repaints and an
-    // abandoned handle drag's working copy would stay painted. liveGeometry() returns the
-    // store's geometry here because drag.kind is already 'pan'.
+    // abandoned handle drag's working copy would stay painted. dragGeometryFor() returns null
+    // here because drag.kind is already 'pan'.
     redrawDynamic(liveGeometry());
   }
 
@@ -438,11 +542,20 @@ export function mountViewer(container) {
     // makes both the click-fires and no-click-fires orders safe.
   }
 
+  // One placement click, at the pointer, clamped to the film by clientToImage and addPoint.
+  function placeAt(event) {
+    event.preventDefault();
+    suppressClick = true;
+    placePoint(clientToImage(event, dynamicCanvas), imageSize());
+    placePointer = event.pointerId;
+  }
+
   // Gesture precedence: a LEFT+RIGHT chord pans in every mode and outranks everything below
   // it, including a handle drag while editing; the middle button pans in every mode; the
-  // primary button pans when the pan toggle is on; while editing, a retrace press places a
-  // point and a handle press starts a handle drag. A second pointer while a gesture is live is
-  // ignored. The construction label has its own drag -- see handleLabelPointerDown below.
+  // primary button pans when the pan toggle is on; while editing (level editor, handoff §6), a press
+  // with the window / level panel open drags the window, a press while placing places the next point,
+  // and a press on the selected level's handle starts a handle drag. A second pointer while a gesture is
+  // live is ignored. The construction label has its own drag -- see handleLabelPointerDown below.
   //
   // The chord test is FIRST, above `if (drag) return`, because outranking a live handle drag
   // is the point. It is also, for a real mouse, dead code: Chromium fires pointerdown only on
@@ -458,6 +571,7 @@ export function mountViewer(container) {
     }
     if (drag) return;
     suppressClick = false;
+    placePointer = null;
     const state = getState();
     if (event.button === 1 || (event.button === 0 && state.panMode)) {
       event.preventDefault();
@@ -466,36 +580,50 @@ export function mountViewer(container) {
     }
     if (event.button !== 0) return;
     const study = currentStudy();
-    if (!study || !study.geometry) return;
+    const editor = editorFor(state, study);
     // Busy means THIS study's /predict is in flight. A run on a different study must not
-    // freeze this one's handles (state.running is that study's id, not a boolean).
-    const busy = state.running === study.id;
-    if (state.editing && !busy) {
-      if (retracing) {
-        event.preventDefault();
-        suppressClick = true;
-        tracePoints = [...tracePoints, clientToImage(event, dynamicCanvas)];
-        // Remember whose press this was, so a chord completed by the OTHER button can take the
-        // point back rather than leaving a stray one to reach fitCircle.
-        tracePointPointer = event.pointerId;
-        updateEditBar(state, study);
-        redrawDynamic(liveGeometry());
-        return;
-      }
-      const hit = hitTestHandle(study.geometry, event);
-      if (hit) {
-        event.preventDefault();
-        suppressClick = true;
-        // Drag a WORKING COPY. The store's geometry is never mutated in place: the copy is
-        // committed as a new reference on release, which is what this file's reference-keyed
-        // redraw gate and router.js's key sets both require.
-        drag = { kind: 'handle', pointerId: event.pointerId, selection: hit, geometry: structuredClone(study.geometry), studyId: study.id, moved: false };
-        dynamicCanvas.setPointerCapture(event.pointerId);
-        stage.classList.add('is-dragging-handle');
-        setState({ selection: hit });
-        return;
-      }
+    // freeze this one's handles (state.running is that study's id, not a boolean). Without the
+    // film there is nothing to place on: the canvas is still its 300x150 stub.
+    if (!editor || state.running === study.id || !currentImages) return;
+    if (editor.window?.open) {
+      // Placement clicks and handle drags pause while the window / level panel is open.
+      event.preventDefault();
+      suppressClick = true;
+      const wl = editor.window;
+      if (wl.status !== 'ready') return;
+      drag = { kind: 'window', pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, start: { width: wl.width, level: wl.level } };
+      dynamicCanvas.setPointerCapture(event.pointerId);
+      stage.classList.add('is-windowing');
+      return;
     }
+    if (editor.placing) {
+      placeAt(event);
+      return;
+    }
+    const hit = selectedHandleAt(editor, event);
+    if (!hit) return;
+    event.preventDefault();
+    suppressClick = true;
+    // Drag a WORKING COPY. The editor is never mutated in place: the copy is committed as a
+    // new level geometry on release (commitHandleMove), which this file's reference-keyed redraw
+    // gate and router.js's key sets both require.
+    drag = { kind: 'levelHandle', pointerId: event.pointerId, studyId: editor.studyId, code: hit.code, handle: hit.handle, geometry: structuredClone(hit.geometry), moved: false };
+    dynamicCanvas.setPointerCapture(event.pointerId);
+    stage.classList.add('is-dragging-handle');
+    setFocusedHandle({ code: hit.code, handle: hit.handle });
+  }
+
+  // A placement click on the black surround around the film (handoff §11: clamped to the image bounds).
+  // The film's own presses reach handlePointerDown on the canvas and bubble here; they are skipped.
+  function handleHostPointerDown(event) {
+    if (event.target === dynamicCanvas || event.button !== 0 || drag) return;
+    const state = getState();
+    if (state.panMode) return;
+    const study = currentStudy();
+    const editor = editorFor(state, study);
+    if (!editor || !editor.placing || editor.window?.open || state.running === study.id || !currentImages) return;
+    suppressClick = false;
+    placeAt(event);
   }
 
   function handlePointerMove(event) {
@@ -514,11 +642,7 @@ export function mountViewer(container) {
       return;
     }
     if (!drag) {
-      const state = getState();
-      if (!state.editing || retracing) return;
-      const study = currentStudy();
-      if (!study || !study.geometry) return;
-      setHover(hitTestHandle(study.geometry, event));
+      updateHover(event);
       return;
     }
     if (event.pointerId !== drag.pointerId) return;
@@ -529,26 +653,21 @@ export function mountViewer(container) {
       });
       return;
     }
-    const point = clientToImage(event, dynamicCanvas);
-    const { selection, geometry } = drag;
-    if (selection.kind === 'landmark') {
-      setLandmarkAt(geometry, selection.level, selection.corner, point);
-    } else if (selection.part === 'center') {
-      const [, , r] = femoralCircle(geometry, selection.side);
-      setFemoralCircle(geometry, selection.side, [point[0], point[1], r]);
-    } else {
-      // Radius floored at 1px in setFemoralCircle: the backend rejects a non-positive
-      // radius, and dragging the rim back through the centre must shrink smoothly, never
-      // flip or go negative.
-      const [cx, cy] = femoralCircle(geometry, selection.side);
-      setFemoralCircle(geometry, selection.side, [cx, cy, Math.hypot(point[0] - cx, point[1] - cy)]);
+    if (drag.kind === 'window') {
+      // Four per screen pixel: left-right for width, up-down for level (dragWindow), clamped.
+      const range = getState().levelEditor?.window?.range;
+      if (range) setWindow(dragWindow(drag.start, event.clientX - drag.clientX, event.clientY - drag.clientY, range));
+      return;
     }
+    if (drag.kind !== 'levelHandle') return;
+    // moveHandle does not clamp; the stage does, to the stored image (rim points refit the head live).
+    drag.geometry = moveHandle(drag.code, drag.geometry, drag.handle, clampToImage(clientToImage(event, dynamicCanvas)));
     drag.moved = true;
-    redrawDynamic(geometry);
+    redrawDynamic(liveGeometry());
   }
 
   function handlePointerLeave() {
-    if (!drag) setHover(null);
+    if (!drag) stage.classList.remove('is-over-handle');
   }
 
   function handlePointerUp(event) {
@@ -556,17 +675,19 @@ export function mountViewer(container) {
     if (dynamicCanvas.hasPointerCapture(event.pointerId)) dynamicCanvas.releasePointerCapture(event.pointerId);
     const ended = drag;
     drag = null;
+    placePointer = null;
     stage.classList.remove('is-dragging-handle');
     // Covers the ordinary pan, a chord released as one simultaneous pointerup, and pointercancel.
     stage.classList.remove('is-panning');
-    if (!ended || ended.kind !== 'handle') return;
+    if (!ended || ended.kind !== 'levelHandle') return;
     // A cancelled gesture (pen lifted out of range, window lost the pointer) discards the
-    // working copy: the store still holds the pre-drag geometry, so redraw from it.
-    if (event.type === 'pointercancel' || !ended.moved) {
+    // working copy: the editor still holds the pre-drag geometry, so redraw from it. So does a
+    // drag whose editor has gone (a run finished under it).
+    if (event.type === 'pointercancel' || !ended.moved || getState().levelEditor?.studyId !== ended.studyId) {
       redrawDynamic(liveGeometry());
       return;
     }
-    commitGeometry(ended.studyId, ended.geometry);
+    commitHandleMove(ended.code, ended.geometry);
   }
 
   // The chip drags itself. Deltas are converted to image px through the live canvas rect so
@@ -615,12 +736,14 @@ export function mountViewer(container) {
   labelChip.addEventListener('pointercancel', handleLabelPointerUp);
 
   // Coarse click-select: the vertebra under the pointer becomes the construction target.
-  // A click that ended a gesture is not a selection.
+  // A click that ended a gesture is not a selection, and in edit mode a click selects nothing:
+  // the levels panel selects a level.
   function handleClick(event) {
     if (suppressClick) {
       suppressClick = false;
       return;
     }
+    if (getState().editing) return;
     const study = currentStudy();
     if (!study || !study.geometry) return;
     const level = vertebraAt(study.geometry, clientToImage(event, dynamicCanvas));
@@ -630,78 +753,12 @@ export function mountViewer(container) {
     if (next !== state.selectedLevel) setState({ selectedLevel: next });
   }
 
-  // Retrace is bound to the selected femoral side (Task 14). Any selection change, and
-  // every exit from edit mode, ends it.
-  function cancelRetrace() {
-    retracing = false;
-    tracePoints = [];
-    tracePointPointer = null;
-  }
-
-  // The one way out of edit mode. Clears every piece of transient edit state before the
-  // store update so updateViewer sees a consistent picture.
-  function exitEditMode() {
-    cancelRetrace();
-    clearHover();
-    setState({ editing: false, selection: null });
-  }
-
-  function toggleRetrace() {
-    const state = getState();
-    if (!state.selection || state.selection.kind !== 'femoral') return;
-    const next = !retracing;
-    cancelRetrace();
-    retracing = next;
-    // No hover highlight while placing points. Cleared directly (not via setHover) so
-    // this handler redraws exactly once.
-    clearHover();
-    updateEditBar(state, currentStudy());
-    redrawDynamic(liveGeometry());
-  }
-
-  function addCircle() {
-    const study = currentStudy();
-    if (studyRegion(study) === 'cervical') return;
-    const count = study?.geometry?.femoral_circles?.length ?? 0;
-    if (!study?.geometry || count >= 2 || getState().running === study.id) return;
-    cancelRetrace();
-    retracing = true;
-    clearHover();
-    setState({ panMode: false, selection: { kind: 'femoral', side: count === 0 ? 'left' : 'right', part: 'center' } });
-  }
-
-  function deleteCircle() {
-    const state = getState(), study = currentStudy();
-    if (!study?.geometry || state.running === study.id || state.selection?.kind !== 'femoral'
-      || !femoralCircle(study.geometry, state.selection.side)) return;
-    const geometry = structuredClone(study.geometry);
-    removeFemoralCircle(geometry, state.selection.side);
-    cancelRetrace(); clearHover();
-    setState({ selection: null });
-    commitGeometry(study.id, geometry);
-  }
-
-  function applyFit() {
-    const state = getState();
-    const study = currentStudy();
-    if (!study || !study.geometry || !state.selection || state.selection.kind !== 'femoral') return;
-    const fitted = fitCircle(tracePoints);
-    if (!fitted) {
-      // Collinear points have no circle. Never apply a guess.
-      showToast('Those points do not describe a circle. Place them along the head contour.');
-      return;
-    }
-    const geometry = structuredClone(study.geometry);
-    setFemoralCircle(geometry, state.selection.side, fitted);
-    cancelRetrace();
-    commitGeometry(study.id, geometry);
-  }
-
+  // RESET TO PREDICTION (D14): the whole study back to the model's output -- the prediction's own
+  // numbers on the record, and every level of the editor back to the model's geometry.
   function resetToPrediction() {
     const study = currentStudy();
     const predicted = study ? predictions.get(study.id) : null;
     if (!predicted) return;
-    cancelRetrace();
     // No /measure: the snapshot IS the prediction's own numbers. Orphan anything in flight.
     measureQueue.replaceMeasured(study.id, predicted.geometry);
     setState((current) => ({
@@ -712,30 +769,83 @@ export function mountViewer(container) {
         ? { ...item, measurements: structuredClone(predicted.measurements), geometry: structuredClone(predicted.geometry), qc: predicted.qc ? structuredClone(predicted.qc) : item.qc, reviewedAt: null }
         : item)),
     }));
+    resetLevelsToModel();
   }
 
-  // Edit-bar button states. Called from updateViewer on every notification and directly by
-  // the retrace handlers; it only writes DOM, never the store.
+  // The step chips of the placement in progress: done (filled dot), current (accent), pending (outline).
+  function buildSteps(editor) {
+    const { code, points } = editor.placing;
+    const placed = points.length;
+    return placementSteps(code).steps.map((step, index) => {
+      const dot = el('span', { class: 'viewer-step-dot' });
+      dot.style.setProperty('--step-color', colorFor(step.colorKey, code));
+      const state = index < placed ? ' is-done' : index === placed ? ' is-current' : '';
+      return el('span', { class: `viewer-step${state}` }, dot, step.label);
+    });
+  }
+
+  // Edit-bar contents and button states (handoff §3). Called from updateViewer on every
+  // notification; it only writes DOM, never the store.
   function updateEditBar(state, study) {
-    for (const button of [addCircleButton, deleteCircleButton, retraceButton, fitButton]) button.classList.toggle('is-hidden', studyRegion(study) === 'cervical');
+    const editor = editorFor(state, study);
     // Only a run on THIS study disables the edit bar; a run on another study leaves it alone.
-    // A null study is never busy -- toggleRetrace passes currentStudy(), which may be null.
     const busy = Boolean(study) && state.running === study.id;
-    const femoralSelected = Boolean(state.selection && state.selection.kind === 'femoral');
-    const geometry = state.measurementDrafts?.[study?.id] ?? study?.geometry;
-    const hasSelectedCircle = femoralSelected && femoralCircle(geometry, state.selection.side);
-    addCircleButton.disabled = busy || !geometry || (geometry.femoral_circles?.length ?? 0) >= 2 || retracing;
-    deleteCircleButton.disabled = busy || !hasSelectedCircle;
-    retraceButton.disabled = busy || !hasSelectedCircle;
-    editHelp.textContent = studyRegion(study) === 'full_spine' ? 'Drag a landmark, or use Tab and arrow keys. Review the cervical and lumbar endplates, C7 centroid, S1 and femoral heads.'
-      : studyRegion(study) === 'cervical' ? 'Drag a landmark, or use Tab and arrow keys. C2 centroid and C2/C7 endplates define these measurements.'
-      : retracing ? 'Click at least 3 points around the head, then Fit. Escape cancels.'
-      : 'Drag a centre to move; drag its rim to resize. The diamond marks the hip midpoint.';
-    retraceButton.setAttribute('aria-pressed', String(retracing));
-    retraceButton.classList.toggle('is-active', retracing);
-    fitButton.disabled = busy || !retracing || tracePoints.length < 3;
+    const windowOpen = Boolean(editor?.window?.open);
+    const placing = editor?.placing ?? null;
+    const showPlacement = Boolean(placing) && !windowOpen;
+    setText(editLabel, windowOpen ? (placing ? WINDOW_PAUSED_LABEL : WINDOW_LABEL)
+      : placing ? placingLabel(editor) : EDIT_LABEL);
+    setText(editHelp, editHelpText(editor, windowOpen));
+    const stepsKey = [showPlacement ? placing : null];
+    if (!sameKey(stepsKey, lastSteps)) {
+      lastSteps = stepsKey;
+      steps.replaceChildren(...(showPlacement ? buildSteps(editor) : []));
+    }
+    const circle = showPlacement && kindOf(placing.code) === 'circle';
+    steps.classList.toggle('is-hidden', !showPlacement);
+    fitButton.classList.toggle('is-hidden', !circle);
+    fitButton.disabled = busy || !circle || placing.points.length < placementSteps(placing.code).fitFrom;
+    undoButton.classList.toggle('is-hidden', !showPlacement);
+    undoButton.disabled = busy || !placing || placing.points.length === 0;
+    placeCancelButton.classList.toggle('is-hidden', !showPlacement);
+    placeCancelButton.disabled = busy;
+    placeDivider.classList.toggle('is-hidden', !showPlacement);
     resetButton.disabled = busy || !study || !predictions.has(study.id);
     doneButton.disabled = busy;
+  }
+
+  // The window / level panel, its toolbar tool and the chip's window readout.
+  function updateWindow(state, editor) {
+    const wl = editor?.window ?? null;
+    const open = Boolean(wl?.open);
+    windowButton.classList.toggle('is-hidden', !state.editing);
+    windowButton.classList.toggle('is-active', open);
+    windowButton.setAttribute('aria-pressed', String(open));
+    wlPanel.classList.toggle('is-hidden', !open);
+    stage.classList.toggle('is-windowing', open);
+    const ready = wl?.status === 'ready' && Boolean(wl.range);
+    chipDivider.classList.toggle('is-hidden', !ready);
+    chipWindow.classList.toggle('is-hidden', !ready);
+    if (ready) setText(chipWindow, windowText(wl));
+    if (!open) return;
+    wlWidth.disabled = !ready;
+    wlLevel.disabled = !ready;
+    if (ready) {
+      setSlider(wlWidth, wl.range.widthMin, wl.range.widthMax, wl.width);
+      setSlider(wlLevel, wl.range.levelMin, wl.range.levelMax, wl.level);
+    }
+    setText(wlWidthValue, ready ? String(wl.width) : '\u2014');
+    setText(wlLevelValue, ready ? String(wl.level) : '\u2014');
+    const unavailable = wl.status === 'unavailable';
+    wlNote.classList.toggle('is-hidden', !unavailable);
+    setText(wlNote, unavailable ? (wl.reason ?? '') : '');
+  }
+
+  // Bounds before the value: a range input clamps an assigned value to its current min and max.
+  function setSlider(input, min, max, value) {
+    if (input.min !== String(min)) input.min = String(min);
+    if (input.max !== String(max)) input.max = String(max);
+    if (input.value !== String(value)) input.value = String(value);
   }
 
   // What the stage card shows for this study right now, or null when the film stands alone.
@@ -752,6 +862,9 @@ export function mountViewer(container) {
         button: null,
       };
     }
+    // (2026-10-10, level editor) Edit mode keeps the stage clear: an unsegmented or failed film is
+    // where levels are placed by hand (handoff §11), so no card covers it.
+    if (state.editing) return null;
     // `busy` is THIS study's run; `otherRunning` is somebody else's. Everything the card SAYS
     // follows busy, so opening study B while A runs never claims B is running. Only the
     // button's `disabled` looks at any run at all, because only one run is allowed at a time,
@@ -840,7 +953,6 @@ export function mountViewer(container) {
 
   // Keyboard lives on window: the canvas is not focusable and the shortcuts must work
   // wherever focus happens to be on the Analysis screen, except inside a text control.
-  // Tab and Arrow branches follow the Escape branch below.
   function handleKeyDown(event) {
     const state = getState();
     // The study is resolved up here, not at the arrow branch, because the busy check below
@@ -848,42 +960,58 @@ export function mountViewer(container) {
     // swallow this study's keys. A null study is never busy.
     const study = currentStudy();
     const busy = Boolean(study) && state.running === study.id;
-    if (event.target instanceof Element && event.target.closest('input, select, textarea, [contenteditable="true"]')) return;
+    const target = event.target instanceof Element ? event.target : null;
     if (!state.editing) {
+      if (target && target.closest('input, select, textarea, [contenteditable="true"]')) return;
       // Outside edit mode Escape clears the construction -- the keyboard's way to get a
-      // label plate off the stage. Inside edit mode Escape exits editing (below).
+      // label plate off the stage. Inside edit mode Escape belongs to the level editor (below).
       if (event.key === 'Escape' && state.selectedLevel !== null && !drag) setState({ selectedLevel: null });
       return;
     }
+    if (target && target.closest(TEXT_ENTRY)) return;
     if (busy || drag) return;
+    const editor = editorFor(state, study);
     if (event.key === 'Escape') {
+      // One thing at a time: the exit prompt (Keep editing), a placement, the window / level panel, then
+      // edit mode itself -- which asks first when something is unsaved (D7).
       event.preventDefault();
-      exitEditMode();
+      if (editor?.exitPrompt) keepEditing();
+      else if (editor?.placing) cancelPlace();
+      else if (editor?.window?.open) closeWindowPanel();
+      else requestExit();
       return;
     }
-    if ((event.key === 'Delete' || event.key === 'Backspace') && state.selection?.kind === 'femoral') {
-      event.preventDefault(); deleteCircle(); return;
-    }
+    // Handles are disabled while placing or while the window / level panel is open (handoff §6).
+    if (!editor || editor.placing || editor.window?.open) return;
     if (event.key === 'Tab') {
-      // Inside the edit bar, Tab stays ordinary focus movement so RETRACE / FIT / RESET /
-      // DONE remain keyboard-operable once focus is there (BD-11 d).
-      if (event.target instanceof Element && event.target.closest('.viewer-editbar')) return;
+      // Inside the edit bar, the window / level panel and the levels panel, Tab stays ordinary focus
+      // movement so their controls remain keyboard-operable once focus is there (BD-11 d).
+      if (target && target.closest(OWN_TAB_ORDER)) return;
+      const next = nextLevelHandle(editor, event.shiftKey ? -1 : 1);
+      if (!next) return;
       event.preventDefault();
-      cancelRetrace(); // retrace is bound to the selected side; a new selection ends it
-      setState({ selection: nextSelection(state.selection, event.shiftKey ? -1 : 1, liveGeometry()) });
+      if (editor.selected !== next.code) selectLevelRow(next.code);
+      setFocusedHandle(next);
       return;
     }
+    // Arrows nudge the focused handle by 1 px (Shift: 10), clamped to the film. A focused slider keeps
+    // its own arrows. Delete and Backspace do nothing in the level editor.
     const delta = arrowKeyDelta(event.key, event.shiftKey);
-    if (!delta || !state.selection) return;
-    if (!study || !study.geometry) return;
+    if (!delta || !editor.handle || !currentImages) return;
+    if (target && target.matches('input[type="range"]')) return;
+    const { code, handle } = editor.handle;
+    const entry = editor.levels[code];
+    const from = entry?.visible && entry.geometry ? handleAt(code, entry.geometry, handle) : null;
+    if (!from) return;
     event.preventDefault();
-    const geometry = structuredClone(study.geometry);
-    nudge(geometry, state.selection, delta.dx, delta.dy);
-    commitGeometry(study.id, geometry);
+    const [x, y] = clampToImage([from[0] + delta.dx, from[1] + delta.dy]);
+    if (x === from[0] && y === from[1]) return;
+    commitHandleMove(code, nudgeHandle(code, entry.geometry, handle, x - from[0], y - from[1]));
   }
 
   stage.addEventListener('wheel', handleWheel, { passive: false });
   stage.addEventListener('contextmenu', handleContextMenu);
+  host.addEventListener('pointerdown', handleHostPointerDown);
   dynamicCanvas.addEventListener('pointerdown', handlePointerDown);
   dynamicCanvas.addEventListener('pointermove', handlePointerMove);
   dynamicCanvas.addEventListener('pointerleave', handlePointerLeave);
@@ -895,6 +1023,7 @@ export function mountViewer(container) {
   function detach() {
     stage.removeEventListener('wheel', handleWheel);
     stage.removeEventListener('contextmenu', handleContextMenu);
+    host.removeEventListener('pointerdown', handleHostPointerDown);
     dynamicCanvas.removeEventListener('pointerdown', handlePointerDown);
     dynamicCanvas.removeEventListener('pointermove', handlePointerMove);
     dynamicCanvas.removeEventListener('pointerleave', handlePointerLeave);
@@ -907,13 +1036,11 @@ export function mountViewer(container) {
     labelChip.removeEventListener('pointerup', handleLabelPointerUp);
     labelChip.removeEventListener('pointercancel', handleLabelPointerUp);
     resizeObserver.disconnect();
+    // Every gesture kind ends with the mount: pan, level handle, window drag, label.
     drag = null;
     suppressClick = false;
-    hover = null;
-    retracing = false;
-    tracePoints = [];
-    tracePointPointer = null;
-    stage.classList.remove('is-panning');
+    placePointer = null;
+    stage.classList.remove('is-panning', 'is-windowing', 'is-dragging-handle', 'is-over-handle');
     labelOffsets = new Map();
     labelStudyId = null;
   }
@@ -965,49 +1092,61 @@ export function mountViewer(container) {
     // state.running is the id of the study whose /predict is in flight, so "busy" is only
     // true for the study on screen. A run on another study leaves this one alone.
     const busy = state.running === study.id;
+    const editor = editorFor(state, study);
     applyTransform(state);
     if (study.id !== labelStudyId) {
       labelStudyId = study.id;
       labelOffsets = new Map();
     }
-    chipId.textContent = study.id;
-    footer.textContent = footerText(study);
+    setText(chipId, study.id);
+    setText(footer, footerText(study));
 
     const hasResult = Boolean(study.measurements && study.geometry);
     applyCard(describeCard(study, state, hasResult));
 
-    // Edit mode needs geometry to edit and must not start under THIS study's own running
-    // prediction. A study whose film is missing must still be able to re-run -- that is the
-    // remedy -- but must not be editable until the film is back: the handles are drawn in the
-    // film's pixel space. Re-run is the one control that answers to ANY run in flight, because
-    // only one run is allowed at a time. A demo study has neither measurements nor geometry,
-    // so hasResult keeps both disabled for it.
-    editButton.disabled = !hasResult || busy || filmStatus !== null;
+    // Edit mode must not start under THIS study's own running prediction, nor while the saved film
+    // is loading or missing (the levels are drawn in the stored film's pixel space; re-run is the
+    // remedy for a missing one). It needs a film: the stored image, one already on the stage, or a
+    // source file the level editor can decode (an unsegmented or failed film, handoff §11) -- entering
+    // edit mode loads it. Re-run is the one control that answers to ANY run in flight, because only
+    // one run is allowed at a time. A demo study has no film, no geometry and no source file.
+    const canDecode = Boolean(study.filePath);
+    editButton.disabled = busy || filmStatus !== null || (!hasResult && !currentImages && !canDecode);
     // Re-run answers to ANY run in flight and to a batch, because only one run is allowed at a time.
     rerunButton.disabled = !hasResult || Boolean(state.running) || Boolean(state.batch) || filmStatus === 'loading' || !inferenceView(study.view) || Boolean(regionRunReason(study));
     rerunButton.title = inferenceView(study.view) ? 'Re-run segmentation' : unsupportedViewReason(study.view);
     editButton.setAttribute('aria-pressed', String(state.editing));
     editButton.classList.toggle('is-active', state.editing);
-    const editLabel = state.editing ? 'Done editing' : 'Edit landmarks';
-    editButton.title = editLabel;
-    editButton.setAttribute('aria-label', editLabel);
+    const editButtonLabel = state.editing ? 'Done editing' : 'Edit segmentation';
+    editButton.title = editButtonLabel;
+    editButton.setAttribute('aria-label', editButtonLabel);
     editBar.classList.toggle('is-hidden', !state.editing);
     stage.classList.toggle('is-editing', state.editing);
+    if (!editor) stage.classList.remove('is-over-handle');
     updateEditBar(state, study);
+    updateWindow(state, editor);
 
-    const staticKey = [state.overlays, state.overlayOpacity, currentImages];
+    // (2026-10-10) While editing, the film layer shows the decoded original at the editor's window once
+    // it is ready (display only, D1/D11) and leaves the mask overlay off: the editor draws the levels.
+    const wl = editor?.window ?? null;
+    const staticKey = [state.overlays, state.overlayOpacity, currentImages, state.editing, wl?.width, wl?.level, wl?.status];
     if (!sameKey(staticKey, lastStatic)) {
       lastStatic = staticKey;
       drawStaticLayer(staticCtx, staticCanvas, currentImages, {
         overlays: state.overlays,
         overlayOpacity: state.overlayOpacity,
+        editing: state.editing,
+        window: wl?.status === 'ready' ? { width: wl.width, level: wl.level } : null,
       });
     }
 
     // editing, selection and zoom are in the key: handles appear and disappear with
     // editing, follow selection, and are sized in CSS pixels so zoom changes their image-
     // space size. panX/panY are deliberately NOT here -- a pan moves the host, not the pixels.
-    const dynamicKey = [study.calibration, study.geometry, state.measurementDrafts?.[study.id], state.selectedLevel, study.measurements, state.editing, state.selection, state.zoom];
+    // The level editor is in it (every action builds a new one), and so are the overlay toggle
+    // and the fill while editing: the editor's level fills follow both.
+    const dynamicKey = [study.calibration, study.geometry, state.measurementDrafts?.[study.id], state.selectedLevel, study.measurements, state.editing, state.selection, state.zoom,
+      state.levelEditor, editor ? state.overlays : null, editor ? state.overlayOpacity : null];
     if (!sameKey(dynamicKey, lastDynamic)) {
       lastDynamic = dynamicKey;
       redrawDynamic(liveGeometry());
