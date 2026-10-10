@@ -395,3 +395,20 @@ test('validate round-trips the review mark, defaults it to null, and drops a non
   assert.equal(warn.mock.callCount(), 1);
   assert.match(warn.mock.calls[0].arguments[0], /SP-1002/);
 });
+
+// (2026-10-10, level editor) the film's label record file name: optional-null on the review mark's
+// terms, so no STORE_VERSION bump. Listed on validateStudy's returned object, or the saver writes it
+// and the next load drops it -- the record on disk would then be unreachable by delete and quarantine.
+test('validate keeps labelFile, defaults it to null, and nulls a non-string value silently', (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const [bare] = validate({ version: STORE_VERSION, studies: [identity('SP-1000')] });
+  assert.equal(bare.labelFile, null);
+  assert.ok('labelFile' in bare);
+  const [kept] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1001'), labelFile: 'a.label.json' }] });
+  assert.equal(kept.labelFile, 'a.label.json');
+  for (const bad of [42, {}, ['a.label.json'], true, '   ', null]) {
+    const [study] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1002'), labelFile: bad }] });
+    assert.equal(study.labelFile, null, JSON.stringify(bad));
+  }
+  assert.equal(warn.mock.callCount(), 0);
+});

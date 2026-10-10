@@ -10,7 +10,7 @@
 import { deleteStudyBatch } from '../data/delete-studies.js';
 import { el, mount } from '../dom.js';
 import { getState, setState, subscribe } from '../store.js';
-import { selectFile, pathForFile, deletePrediction, persistenceDisabledReason } from '../api.js';
+import { selectFile, pathForFile, deletePrediction, deleteLabelRecord, persistenceDisabledReason } from '../api.js';
 import { showToast } from '../components/toast.js';
 import { displayStatus } from '../data/status.js';
 import { failureTitle } from '../data/failure.js';
@@ -477,7 +477,8 @@ async function deleteStudy(id) {
   confirmingId = null;
   // Read the name before the record leaves the list -- the toast below fires after the setState
   // that removes it, and the user knows this study by its name, not by SP-nnnn.
-  const label = studyName(getState().studies.find((s) => s.id === id) ?? { id });
+  const study = getState().studies.find((s) => s.id === id);
+  const label = studyName(study ?? { id });
   if (getState().running === id) {
     showToast('Wait for the segmentation to finish before deleting this study.');
     // The row is still there, so hand focus back to its trash button, as cancelDelete does;
@@ -488,6 +489,9 @@ async function deleteStudy(id) {
   if (!persistenceDisabledReason()) {
     try {
       await deletePrediction(id);
+      // (2026-10-10, level editor) the film's label record goes with its sidecar, inside the same try:
+      // a failure leaves the record, its film and every cache exactly as they were.
+      if (study?.labelFile) await deleteLabelRecord(study.labelFile);
     } catch (error) {
       showToast(`Could not delete the saved segmentation: ${error.message}`);
       refreshTable(`.studies-row[data-study-id="${id}"] .studies-delete`);
@@ -561,7 +565,7 @@ async function deleteSelectedStudies(ids) {
   if (targets.length === 0) { refreshTable('[data-find-key="delete"]'); return; }
   setState({ deletingStudies: true });
   try {
-    const { deleted, failed } = await deleteStudyBatch(targets, { deletePrediction });
+    const { deleted, failed } = await deleteStudyBatch(targets, { deletePrediction, deleteLabelRecord });
     const removed = new Set(deleted);
     for (const id of removed) { forgetPrediction(id); releaseStudy(id); }
     setState((current) => ({

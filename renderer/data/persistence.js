@@ -244,6 +244,8 @@ function validateStudy(entry, index) {
     // (2026-09-11) the note read from the filename or typed in the drawer; optional-null like the
     // three above, so no STORE_VERSION bump.
     note: optionalText(entry.note),
+    // (2026-10-10, level editor) the film's label record file name under userData/labels/; optional-null, no STORE_VERSION bump
+    labelFile: optionalText(entry.labelFile),
     reviewedAt,
     thumbnail: typeof entry.thumbnail === 'string' && entry.thumbnail.startsWith('data:image/') ? entry.thumbnail : null,
     measurements: complete ? measurements : null,
