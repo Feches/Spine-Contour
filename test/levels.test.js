@@ -461,6 +461,60 @@ test('openEditor completes a saved record that lacks some codes', () => {
   assert.equal(unsavedCount(e), 0);
 });
 
+// R9: study.geometry.femoral_circles is a compact array (a hidden Head 1 beside a placed Head 2 stores ONE
+// circle at slot 0), so with a saved record the circles are matched to the heads before slot order applies.
+function headsRecord(fh1, fh2) {
+  const head = geometry => ({ visible: geometry != null, source: 'annotator', geometry });
+  return { file: 'film.label.json', levels: { FH1: head(fh1), FH2: head(fh2) } };
+}
+
+function withCircles(circles, saved, modelGeometry = lumbarGeometry()) {
+  const geometry = lumbarGeometry();
+  geometry.femoral_circles = circles;
+  return openEditor({ study: { id: 'SP-0003', geometry }, region: 'lumbar', modelGeometry, saved });
+}
+
+test('openEditor puts a lone study circle on the head the saved record says it is (R9)', () => {
+  const head2 = { center: [20, 140], radius: 5, rim: null };
+  const e = withCircles([[20, 140, 5]], headsRecord(null, head2));
+  assert.equal(e.levels.FH1.geometry, null, 'Head 1 is hidden in the record: nothing slides into it');
+  assert.equal(e.levels.FH1.visible, false);
+  assert.deepEqual(e.levels.FH2.geometry, head2);
+  assert.equal(e.levels.FH2.visible, true);
+  assert.equal(levelState(e.levels.FH2, e.model.FH2), 'segmented');
+  assert.equal(unsavedCount(e), 0, 'the opening levels equal the record baseline');
+});
+
+test('openEditor matches circles to heads by centre and radius, not by slot, when a record is given (R9)', () => {
+  const head1 = { center: [10, 140], radius: 5, rim: null };
+  const head2 = { center: [20, 140], radius: 5, rim: null };
+  const swapped = withCircles([[20, 140, 5], [10, 140, 5]], headsRecord(head1, head2));
+  assert.deepEqual(swapped.levels.FH1.geometry, head1);
+  assert.deepEqual(swapped.levels.FH2.geometry, head2);
+  const mixed = withCircles([[99, 99, 4], [20, 140, 5]], headsRecord(head1, head2));
+  assert.deepEqual(mixed.levels.FH2.geometry, head2, 'the matching circle takes its head');
+  assert.deepEqual(mixed.levels.FH1.geometry, { center: [99, 99], radius: 4, rim: null }, 'the stray circle takes the head left over');
+});
+
+test('openEditor fills the heads in order FH1, FH2 with circles that match nothing in the record (R9)', () => {
+  const stale = headsRecord({ center: [1, 1], radius: 2, rim: null }, { center: [3, 3], radius: 2, rim: null });
+  const e = withCircles([[10, 140, 5], [20, 140, 5]], stale);
+  assert.deepEqual(e.levels.FH1.geometry, { center: [10, 140], radius: 5, rim: null });
+  assert.deepEqual(e.levels.FH2.geometry, { center: [20, 140], radius: 5, rim: null });
+  const lone = withCircles([[10, 140, 5]], stale);
+  assert.deepEqual(lone.levels.FH1.geometry, { center: [10, 140], radius: 5, rim: null });
+  assert.equal(lone.levels.FH2.geometry.center[0], 3, 'Head 2 keeps the record geometry the study lacks');
+});
+
+test('openEditor without a record keeps slot order: slot 0 is Head 1, slot 1 is Head 2 (R9)', () => {
+  const one = withCircles([[20, 140, 5]], null);
+  assert.deepEqual(one.levels.FH1.geometry, { center: [20, 140], radius: 5, rim: null });
+  assert.equal(one.levels.FH2.geometry, null);
+  const two = withCircles([[10, 140, 5], [20, 140, 5]], null);
+  assert.deepEqual(two.levels.FH1.geometry, { center: [10, 140], radius: 5, rim: null });
+  assert.deepEqual(two.levels.FH2.geometry, { center: [20, 140], radius: 5, rim: null });
+});
+
 test('openEditor reads only study.geometry, study.labelFile and an optional id', () => {
   const e = openEditor({ study: { geometry: lumbarGeometry() }, region: 'lumbar', modelGeometry: null, saved: null });
   assert.equal(e.studyId, null);

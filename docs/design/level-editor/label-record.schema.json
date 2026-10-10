@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "spinecontour.segmentation-label/1",
   "title": "SpineContour segmentation label record",
-  "description": "One file per film, written on Save edits. Coordinates are image pixels of the stored image, origin top-left.",
+  "description": "One file per film, written on Save edits. Coordinates are image pixels of the stored image, origin top-left. C2 is an inferior endplate plus a centroid (owner decision 2026-10-10).",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "study", "image", "film", "model", "app_version", "saved_at", "complete", "levels", "femoral_heads"],
@@ -53,7 +53,7 @@
       "additionalProperties": false,
       "required": ["C2", "C3", "C4", "C5", "C6", "C7", "T1", "T4", "L1", "L2", "L3", "L4", "L5", "S1"],
       "properties": {
-        "C2": { "$ref": "#/$defs/vertebra" },
+        "C2": { "$ref": "#/$defs/c2" },
         "C3": { "$ref": "#/$defs/vertebra" },
         "C4": { "$ref": "#/$defs/vertebra" },
         "C5": { "$ref": "#/$defs/vertebra" },
@@ -105,6 +105,15 @@
         "sp": { "$ref": "#/$defs/point", "description": "Posterior corner of the superior endplate." }
       }
     },
+    "c2corners": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ia", "ip"],
+      "properties": {
+        "ia": { "$ref": "#/$defs/point", "description": "Anterior corner of the inferior endplate." },
+        "ip": { "$ref": "#/$defs/point", "description": "Posterior corner of the inferior endplate." }
+      }
+    },
     "contour": {
       "oneOf": [
         { "type": "array", "items": { "$ref": "#/$defs/point" }, "minItems": 3 },
@@ -112,7 +121,7 @@
       ]
     },
     "vertebra": {
-      "description": "C2–C7 and L1–L5: four body corners.",
+      "description": "C3–C7 and L1–L5: four body corners.",
       "type": "object",
       "additionalProperties": false,
       "required": ["state", "source"],
@@ -128,6 +137,35 @@
         {
           "if": { "properties": { "state": { "const": "edited" } }, "required": ["state"] },
           "then": { "properties": { "model_corners": { "$ref": "#/$defs/corners4" } } }
+        }
+      ]
+    },
+    "c2": {
+      "description": "C2: the inferior endplate (IA, IP) plus a centroid. Owner decision 2026-10-10. No contour.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "source"],
+      "properties": {
+        "state": { "$ref": "#/$defs/state" },
+        "source": { "$ref": "#/$defs/source" },
+        "corners": { "$ref": "#/$defs/c2corners" },
+        "centroid": { "$ref": "#/$defs/point" },
+        "model_corners": { "oneOf": [{ "$ref": "#/$defs/c2corners" }, { "type": "null" }] },
+        "model_centroid": { "oneOf": [{ "$ref": "#/$defs/point" }, { "type": "null" }] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "enum": ["segmented", "edited", "manual"] } }, "required": ["state"] },
+          "then": { "required": ["corners", "centroid", "model_corners", "model_centroid"] },
+          "else": {
+            "not": {
+              "anyOf": [{ "required": ["corners"] }, { "required": ["centroid"] }, { "required": ["model_corners"] }, { "required": ["model_centroid"] }]
+            }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "const": "edited" } }, "required": ["state"] },
+          "then": { "properties": { "model_corners": { "$ref": "#/$defs/c2corners" }, "model_centroid": { "$ref": "#/$defs/point" } } }
         }
       ]
     },

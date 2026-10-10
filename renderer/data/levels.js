@@ -16,6 +16,30 @@
 /** @typedef {BodyGeometry|C2Geometry|EndplateGeometry|CentroidGeometry|CircleGeometry} LevelGeometry */
 /** @typedef {{visible: boolean, source: 'model'|'annotator'|'film_type', geometry: LevelGeometry|null}} LevelEntry */
 
+/** The store key `state.levelEditor`: null outside edit mode, else:
+ * @typedef {Object} LevelEditor
+ *  @property {string} studyId
+ *  @property {'lumbar'|'cervical'|'full_spine'|'auto'} region      the film type the defaults were taken from
+ *  @property {Object<string, LevelEntry>} levels                    one per LEVEL_CODES
+ *  @property {Object<string, LevelGeometry|null>} model             the prediction's geometry per code (null = none)
+ *  @property {Object<string, {visible: boolean, source: string, geometry: LevelGeometry|null}>} baseline
+ *  @property {{file: string|null, exists: boolean}} record           the label record on disk for this study
+ *  @property {string|null} selected                                 the selected row's code
+ *  @property {{code: string, handle: string}|null} handle           the focused handle: 'SA'|'SP'|'IA'|'IP'|'CENTROID'|'R0'..'R3'
+ *  @property {{code: string, points: Pt[]}|null} placing
+ *  @property {{cervical: boolean, thoracic: boolean, lumbar: boolean, sacral: boolean, femoral: boolean}} open
+ *  @property {WindowState|null} window                              null until W/L is first opened for this study
+ *  @property {{then: 'exit'|'back'}|null} exitPrompt
+ */
+/** @typedef {Object} WindowState
+ *  @property {boolean} open
+ *  @property {'loading'|'ready'|'unavailable'} status
+ *  @property {string|null} reason                                   display-ready, when unavailable
+ *  @property {number} width  @property {number} level
+ *  @property {number} defaultWidth  @property {number} defaultLevel
+ *  @property {number} min  @property {number} max                   the decoded value range
+ */
+
 import { fitCircle } from '../viewer/geometry.js';
 import { SEGMENTAL_PAIRS } from './segmental.js';
 // Disc heights (disc-heights.js DISC_LEVEL_PAIRS) read the same five lumbar pairs as the segmental angles,
@@ -293,14 +317,37 @@ function snapshot(levels) {
   return Object.fromEntries(LEVEL_CODES.map(code => [code, copyEntry(levels[code])]));
 }
 
+const HEADS = ['FH1', 'FH2'];
+
+// `study.geometry.femoral_circles` is a compact array: a film whose Head 1 is hidden and Head 2 placed stores one
+// circle at slot 0, which levelsFromGeometry reads as FH1 (R9). With a saved record each study circle is matched
+// to the head whose recorded circle it equals (centre and radius); circles that match nothing fill the heads
+// still free, FH1 then FH2. Without a record the slots stand as read: slot 0 is Head 1, slot 1 is Head 2.
+function assignHeads(fromStudy, saved) {
+  if (!saved) return fromStudy;
+  const slots = { FH1: null, FH2: null };
+  const unmatched = [];
+  for (const circle of HEADS.map(code => fromStudy[code]).filter(Boolean)) {
+    const code = HEADS.find(head => !slots[head] && saved.levels?.[head]?.geometry
+      && sameGeometry(circle, saved.levels[head].geometry));
+    if (code) slots[code] = circle; else unmatched.push(circle);
+  }
+  for (const circle of unmatched) {
+    const code = HEADS.find(head => !slots[head]);
+    if (code) slots[code] = circle;
+  }
+  return { ...fromStudy, ...slots };
+}
+
 /**
  * Start editing a study. `study` is read for `geometry`, `labelFile` and (optionally) `id`.
  * `modelGeometry` is the prediction's study-shaped geometry (or null). `saved` is the label record on
- * disk converted to `{ file, levels }` (levels keyed by code with `{visible, source, geometry}`), or null.
- * @returns {Object} LevelEditor (see the plan's Shared shapes)
+ * disk converted to `{ file, levels }` (levels keyed by code with `{visible, source, geometry}`), or null;
+ * with it, the study's femoral circles are matched to the heads by value, not by slot (assignHeads).
+ * @returns {LevelEditor}
  */
 export function openEditor({ study, region, modelGeometry, saved }) {
-  const fromStudy = levelsFromGeometry(study?.geometry);
+  const fromStudy = assignHeads(levelsFromGeometry(study?.geometry), saved);
   const model = levelsFromGeometry(modelGeometry);
   const defaults = filmTypeDefaults(region);
   const levels = {};

@@ -1,0 +1,180 @@
+// The label record: one JSON file per film, written on Save edits, that carries the annotator's work as
+// training data (handoff §9; plan 2026-10-10 Task 5; schema docs/design/level-editor/label-record.schema.json).
+//
+// `toLabelRecord` writes the level model (levels.js) as a record; `recordLevels` reads a record back into
+// `{ visible, source, geometry }` per code, in exactly the geometry shapes the editor holds, so
+// `openEditor({ saved })` and the baseline comparison (`sameGeometry` tells a missing key from null) see
+// identical shapes. Pure: no DOM, no store, no I/O, and nothing shares point arrays with its input.
+//
+// Points are [x, y] in pixels of the stored image, origin top-left.
+
+import { LEVEL_CODES, kindOf, levelState, trainingStatus } from './levels.js';
+import { projectionRegion } from './level-projection.js';
+import { fileStem } from './labels.js';
+import { VERSION_LABEL } from './version.js';
+
+export const LABEL_SCHEMA = 'spinecontour.segmentation-label/1';
+
+const HEADS = ['FH1', 'FH2'];
+const PLACED_STATES = ['segmented', 'edited', 'manual'];
+const STATES = [...PLACED_STATES, 'not_placed', 'not_visible'];
+const SOURCES = ['model', 'annotator', 'film_type'];
+
+// ---------- small helpers ----------
+
+/** 'Standing lateral' -> 'standing_lateral'; an empty or missing view -> 'unknown'. */
+export function viewSlug(view) {
+  const slug = String(view ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '');
+  return slug === '' ? 'unknown' : slug;
+}
+
+/** 'v1.0.17' -> '1.0.17'. */
+export function appVersion(label = VERSION_LABEL) {
+  return String(label).trim().replace(/^v/i, '');
+}
+
+/**
+ * '<stem>.label.json', or '<stem>-2.label.json', '-3', ... when `taken` (an iterable of file names) already
+ * holds it. Names compare ignoring case: Windows and macOS file names do.
+ */
+export function labelFileName(stem, taken) {
+  const used = new Set([...taken].map(name => String(name).toLowerCase()));
+  let name = `${stem}.label.json`;
+  for (let n = 2; used.has(name.toLowerCase()); n += 1) name = `${stem}-${n}.label.json`;
+  return name;
+}
+
+const copyPoint = p => [p[0], p[1]];
+const isPoint = p => Array.isArray(p) && p.length === 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]);
+
+// ---------- editor -> record ----------
+
+// The editor's geometry as the record's `corners`, per kind.
+const bodyCorners = g => ({ sa: copyPoint(g.superior[0]), sp: copyPoint(g.superior[1]), ia: copyPoint(g.inferior[0]), ip: copyPoint(g.inferior[1]) });
+const c2Corners = g => ({ ia: copyPoint(g.inferior[0]), ip: copyPoint(g.inferior[1]) });
+const endplateCorners = g => ({ sa: copyPoint(g.superior[0]), sp: copyPoint(g.superior[1]) });
+
+// The record's `contour` is a polygon of at least three points, or null.
+const contourOf = polygon => (Array.isArray(polygon) && polygon.length >= 3 ? polygon.map(copyPoint) : null);
+
+// The model's own geometry is written only for an edited level; for every other placed state it is null.
+function levelRecord(code, entry, model, contours) {
+  const state = levelState(entry, model);
+  const head = { state, source: entry.source };
+  if (!PLACED_STATES.includes(state)) return head;
+  const g = entry.geometry;
+  const edited = state === 'edited';
+  switch (kindOf(code)) {
+    case 'body':
+      return { ...head, corners: bodyCorners(g), model_corners: edited ? bodyCorners(model) : null, contour: contourOf(contours?.[code]) };
+    case 'c2':
+      return {
+        ...head, corners: c2Corners(g), centroid: copyPoint(g.centroid),
+        model_corners: edited ? c2Corners(model) : null, model_centroid: edited ? copyPoint(model.centroid) : null,
+      };
+    case 'endplate':
+      return { ...head, corners: endplateCorners(g), model_corners: edited ? endplateCorners(model) : null };
+    case 'centroid':
+      return { ...head, centroid: copyPoint(g.centroid), model_centroid: edited ? copyPoint(model.centroid) : null };
+    default:
+      return head;
+  }
+}
+
+function headRecord(id, entry, model) {
+  const state = levelState(entry, model);
+  const head = { id, state, source: entry.source };
+  if (!PLACED_STATES.includes(state)) return head;
+  const g = entry.geometry;
+  return {
+    ...head,
+    center: copyPoint(g.center),
+    radius: g.radius,
+    rim: Array.isArray(g.rim) ? g.rim.map(copyPoint) : null,
+    model_circle: state === 'edited' ? { center: copyPoint(model.center), radius: model.radius } : null,
+  };
+}
+
+/**
+ * The label record for one film, ready for JSON.stringify. `image` is `{ file, sha256, width, height }`, `model`
+ * is `{ name, version }`, `savedAt` an ISO-8601 string and `contours` maps a level code to the model's mask
+ * outline (`Pt[]`, or null). `study` supplies the file name (the stem is written, never the film's renamed
+ * name or its SP id), the view, and the region when the editor's is Auto. Not-visible and not-placed levels
+ * carry only `state` and `source`; a level's geometry is written only while it is visible and placed.
+ */
+export function toLabelRecord({ editor, study, image, model, appVersion: version = appVersion(), savedAt, contours = {} }) {
+  const levels = {};
+  for (const code of LEVEL_CODES) {
+    if (kindOf(code) !== 'circle') levels[code] = levelRecord(code, editor.levels[code], editor.model[code], contours);
+  }
+  return {
+    schema: LABEL_SCHEMA,
+    study: fileStem(study?.fileName ?? ''),
+    image: { file: image.file, sha256: image.sha256, width_px: image.width, height_px: image.height },
+    film: {
+      region: editor.region === 'auto' ? projectionRegion(editor, study) : editor.region,
+      view: viewSlug(study?.view),
+    },
+    model: { name: model.name, version: model.version },
+    app_version: version,
+    saved_at: savedAt,
+    complete: trainingStatus(editor).complete,
+    levels,
+    femoral_heads: HEADS.map((code, index) => headRecord(index + 1, editor.levels[code], editor.model[code])),
+  };
+}
+
+// ---------- record -> editor ----------
+
+const pointPair = (a, b) => (isPoint(a) && isPoint(b) ? [copyPoint(a), copyPoint(b)] : null);
+
+function geometryOf(code, raw) {
+  switch (kindOf(code)) {
+    case 'body': {
+      const superior = pointPair(raw.corners?.sa, raw.corners?.sp);
+      const inferior = pointPair(raw.corners?.ia, raw.corners?.ip);
+      return superior && inferior ? { superior, inferior } : null;
+    }
+    case 'c2': {
+      const inferior = pointPair(raw.corners?.ia, raw.corners?.ip);
+      return inferior && isPoint(raw.centroid) ? { inferior, centroid: copyPoint(raw.centroid) } : null;
+    }
+    case 'endplate': {
+      const superior = pointPair(raw.corners?.sa, raw.corners?.sp);
+      return superior ? { superior } : null;
+    }
+    case 'centroid':
+      return isPoint(raw.centroid) ? { centroid: copyPoint(raw.centroid) } : null;
+    case 'circle': {
+      if (!isPoint(raw.center) || !Number.isFinite(raw.radius) || !(raw.radius > 0)) return null;
+      const rim = Array.isArray(raw.rim) && raw.rim.length >= 2 && raw.rim.length <= 4 && raw.rim.every(isPoint)
+        ? raw.rim.map(copyPoint) : null;
+      return { center: copyPoint(raw.center), radius: raw.radius, rim };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * A label record as `{ code: { visible, source, geometry } }`, in LEVEL_CODES order, with the two femoral heads
+ * as FH1 and FH2. `visible` is "state is not not_visible"; `geometry` is read only for a placed state, in the
+ * editor's own shapes (`rim` null, not absent, when the record has none), and is null when the record does not
+ * hold a usable one. A code the record does not describe (absent, or an unknown state or source) is left out, so
+ * `openEditor` falls back to that level's opening state; nothing is invented.
+ */
+export function recordLevels(record) {
+  const levels = {};
+  for (const code of LEVEL_CODES) {
+    const raw = kindOf(code) === 'circle'
+      ? (Array.isArray(record?.femoral_heads) ? record.femoral_heads.find(head => head?.id === HEADS.indexOf(code) + 1) : null)
+      : record?.levels?.[code];
+    if (!raw || !STATES.includes(raw.state) || !SOURCES.includes(raw.source)) continue;
+    levels[code] = {
+      visible: raw.state !== 'not_visible',
+      source: raw.source,
+      geometry: PLACED_STATES.includes(raw.state) ? geometryOf(code, raw) : null,
+    };
+  }
+  return levels;
+}
