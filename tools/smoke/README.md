@@ -104,7 +104,10 @@ pointer capture on a mouseMoved with button: 'none', which reads as "capture is 
 chord" and is a false negative. It drives the raw `mouse` primitive throughout, because
 `cdp.click` and `cdp.drag` hardcode a single button. Since 2026-10-11 (gate feedback G4) the right button alone
 windows the film, so a right-first chord begins as a window drag that the left button's arrival turns into the pan
-(the suite presses the left button before any move, so the window does not change); unchanged at 28/28.
+(the suite presses the left button before any move, so the window does not change); unchanged at 28/28. Since the
+review of G3/G4 (ruling R37) a right press is only a pending window drag until the pointer has moved 3 px, so the
+suite's right-first chords, whose left button joins before any move, never begin one and decode nothing; not re-run
+after that change.
 
 **`smoke-label.superseded.mjs` is not in the run order and must not be added back.**
 Plan-04 Task 20 built a canvas-drawn label plate; Task 21 replaced it with a DOM chip
@@ -471,7 +474,19 @@ another study opened (`SP-9303`, no film: its W/L button disabled) resetting it,
 asked for and the panel at the default, and a right-button drag on a film with no window yet decoding it and windowing
 from its first move after. The window is read as `window.__lv.filmWindow()` (the store's `filmWindow`; the level
 editor has carried no window since G3). The right-button gestures use the raw `mouse` primitive with the held button
-on every event (`rightDragVia`, `doubleRightClick`).
+on every event (`rightDragVia`, `doubleRightClick`). The review of G3/G4 (2026-10-11, rulings R35–R37) adds seven
+section-17 checks, each where its film is on the stage: on `SP-9300` before section 1, before any window was asked for,
+a right press released without moving leaves `filmWindow` null, the chip without W/L and the stage without the
+windowing classes, and a right-first chord (the left button joining before any move) pans and leaves it so (R37); in
+section 9, with the panel closed over `SP-9300`'s unavailable film, a right drag toasts `Window / level is unavailable.
+The source film could not be found.` exactly once (R31); on `SP-9301`, a right drag that starts on the black surround
+(a point `document.elementFromPoint` says is `.viewer-host`) windows by (+80, +40), a right drag while placing L3 in edit
+mode windows by (−80, −40) and leaves the placing's points as they were (then CANCEL ends it), with Pan pressed and the
+panel open a left drag windows and does not pan (R36), and with Pan pressed and the panel closed a right drag windows
+and does not pan (Pan unpressed after). The no-window right drag is now two checks: the drag decodes the film once it
+moves and leaves it at its default window, then the next right drag windows from its press by (−80, −40). (The first
+version asserted a window change within one drag whose start waits for the decode; under R37 the decode starts at the
+first move, so that would depend on how many separate moves Chromium delivers.)
 The film phase also saves a record whose `image.sha256` is 64 hex characters and whose `model.version` is the run's.
 
 **Known baseline** (2026-10-10, branch `worktree-level-editor`, a fresh scratch profile, Windows 11, CPU processor):
@@ -480,7 +495,9 @@ phase `dom` 75/75, phase `film` 23/23 (one copied OLIF lumbar film; L1, L2, L4 a
 four step-chip checks in sections 3 and 4, so it should read 79/79; not re-run when they were written. (2026-10-11,
 gate feedback G3 and G4, `8cf213d`) Section 17 adds fifteen dom checks: dom **94/94** (79 before; G2's four pass among
 them) and film **23/23**, measured on one fresh `%TEMP%` profile, with parity, gate1–3, chip and chord green after it
-on the same launch.
+on the same launch. (2026-10-11, the review of G3/G4, `8332dfb`) Eight more dom checks (seven new, and the no-window
+right drag split in two): dom **102/102**, measured on a fresh `%TEMP%` profile (DOM, store and file reads only, no
+screenshots); the film phase and the other suites not re-run.
 
 ## The landmark-editor suites after the level editor (2026-10-10)
 

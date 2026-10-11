@@ -63,7 +63,7 @@ in edit mode on its original and can be placed by hand.
 
 - Spec: `docs/design/level-editor/HANDOFF.md` (`594a982`; its §12 now lists the decisions). Plan:
   `docs/superpowers/plans/2026-10-10-level-editor.md` (`3a4019a`), 15 tasks; its Decisions table D1–D17 and its
-  `## Ledger` (every task's commits and counts, rulings R1–R34 with their costs, every deferred minor) and its
+  `## Ledger` (every task's commits and counts, rulings R1–R37 with their costs, every deferred minor) and its
   `## Gate feedback (2026-10-11)` section (G1–G4, the spec of record for all four). User doc:
   `docs/level-editor.md`. Contract: the 2026-10-10 amendment. SDD ledger
   `.superpowers/sdd/2026-10-10-level-editor/progress.md` (local, untracked).
@@ -95,12 +95,21 @@ in edit mode on its original and can be placed by hand.
   works outside edit mode and belongs to the view like zoom and pan (`state.filmWindow`, written only by the new
   `renderer/film-window.js`; FRESH_VIEW resets it, edit mode keeps it; the level editor carries no window any more), a
   right-button drag windows the film in every mode without the panel, and a double right-click (`isDoubleClick`, pure)
-  restores the default; rulings R29–R34. `8cf213d` (code, tests, smoke section 17) and the records commit.
-- Counts: unit 918/918 after G3 and G4 (901 after the gate feedback's review wave, 898 after G2, 888 after the final
-  review's wave and R25, 887 after the wave, 879/879 before it; 615 at the base; 905 before Task 13 retired 26 tests of
-  removed code); `smoke-levels.mjs` on a fresh `%TEMP%` profile after G3 and G4: dom 94/94 (79 before section 17; G2's
-  four checks pass among them) and film 23/23, then on the same launch parity 15/15, gate1 25/25, gate2 26/26, gate3
-  26/26, chip 20/20, chord 28/28 (DOM reads only, no screenshots). Backend `pytest
+  restores the default; rulings R29–R34. `8cf213d` (code, tests, smoke section 17) and the records commit `106042a`.
+  Their review was approved with five minors, fixed in one wave (decisions 126–128 below): `8332dfb` (R35 a window
+  kept across Back and the sidebar's return is decoded again at the mount when another study's run took the film's
+  cache entry, `windowNeedsDecode` / `redecodeKeptWindow`, and forgotten when it cannot be; R36 the open W/L panel
+  outranks the Pan toggle for the left button; R37 a right press windows only once it has moved 3 CSS px,
+  `exceedsSlop`, so a stray right click or a right-first chord decodes nothing; smoke section 17's missing cases) and
+  the records commit (D15 worded as the behaviour: it resets where zoom and pan reset, and Back and the sidebar's
+  return keep it; Task 15 gains an R35–R37 item).
+- Counts: unit 925/925 after the review of G3 and G4 (918 after G3 and G4, 901 after the gate feedback's review wave,
+  898 after G2, 888 after the final review's wave and R25, 887 after the wave, 879/879 before it; 615 at the base; 905
+  before Task 13 retired 26 tests of removed code); `smoke-levels.mjs` dom 102/102 after that review (fresh `%TEMP%`
+  profile, DOM reads only, no screenshots; the film phase and the other suites not re-run); after G3 and G4 on a fresh
+  `%TEMP%` profile: dom 94/94 (79 before section 17; G2's four checks pass among them) and film 23/23, then on the same
+  launch parity 15/15, gate1 25/25, gate2 26/26, gate3 26/26, chip 20/20, chord 28/28 (DOM reads only, no
+  screenshots). Backend `pytest
   backend -q` 762 passed, 3 skipped (the sc-export venv; the main checkout's graphs hard-linked into the worktree's
   gitignored `backend/onnx/`). The pre-gate smoke run of 2026-10-11 on `9287473`, every suite on its own fresh
   `%TEMP%` profile, one app at a time, DOM reads only (one copied real lumbar film for the film phases, two for
@@ -119,7 +128,7 @@ in edit mode on its original and can be placed by hand.
 final review added (a cervical film, a full-spine film, a DICOM film, a failed Auto film with C and L levels placed, a
 double-click while placing a head), the re-check of G1 to G4 (800% on a large and a small film with the overlay crisp,
 R28; the step chips, re-placing and UNDO; window / level outside edit mode, the right-button drag and the double
-right-click, a chord still panning) and the owner's decision R24 (a hand-placed film that had failed still reads
+right-click, a chord still panning; R35–R37 from their review) and the owner's decision R24 (a hand-placed film that had failed still reads
 Failed). Then a release commit (1.0.18 or later; `docs/release-main.md`) and a PR, all on the owner's say-so (memory:
 test before release). Nothing is pushed.
 
@@ -1853,10 +1862,12 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
      is in client space, with a grab radius that follows the drawn handle past 1:1 (2df1373, the re-review's finding).
      *Cost if wrong:* handles and labels look large at 8x on a film that is already at 1:1 at low zoom (a small film).
 117. **D15 (owner, 2026-10-11, gate feedback G3) — Window / level outside edit mode, and it belongs to the view.**
-     Like zoom and pan, the window lasts while the film is open and resets when another film opens or the Analysis
-     screen is left (FRESH_VIEW); entering and leaving edit mode keep it; never persisted, never in the record. It is
-     `state.filmWindow`, written only by `renderer/film-window.js`; the level editor carries no window (`8cf213d`).
-     Supersedes D11's reset on entering edit mode.
+     Like zoom and pan, the window resets where zoom and pan reset (FRESH_VIEW: another film opened from the list, or
+     the open study closed); Back and the sidebar's return keep it, as they keep zoom and pan; entering and leaving
+     edit mode keep it; never persisted, never in the record. It is `state.filmWindow`, written only by
+     `renderer/film-window.js`; the level editor carries no window (`8cf213d`). Supersedes D11's reset on entering edit
+     mode. (Worded so by the review of G3/G4: the first wording said leaving the Analysis screen reset it, which Back
+     does not do; the owner's choice was "while the film is open, like zoom and pan".)
 118. **D16 (owner, 2026-10-11, G4) — A right-button drag windows the film** in every mode, without opening the panel:
      horizontal the width, vertical the level, four units per screen pixel; the chip shows the live W and L.
 119. **D17 (owner, 2026-10-11, G4) — A double right-click resets the window** to the film's default (the panel's RESET
@@ -1878,6 +1889,22 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
 125. **R34 — Windowing is not gated on the study's own run** (display only; the completed run forgets the window), and
      with the panel open outside edit mode the construction label chip still takes its own left press. *Cost if
      wrong:* a busy guard in two places.
+126. **R35 — A kept window never outlives the decoded original it windows** (the review of G3/G4, finding 1; `8332dfb`).
+     At the mount, when the film's window is ready or loading and its cached images have no `raw` (another study's run
+     took the single image-cache entry while the film was off screen), `screens/analysis.js` calls
+     `redecodeKeptWindow` (`renderer/film-window.js`, beside the pure `windowNeedsDecode`) instead of the plain restore:
+     `ensureFilm` restores the stored image, attaches the decode and hands both to the viewer; when no original comes
+     back a ready window is forgotten, so the chip and the panel never claim a window the film layer does not draw.
+     *Cost if wrong:* one `/decode` on such a return, or a forgotten window when the source has gone.
+127. **R36 — The open W/L panel outranks the Pan toggle for the left button**, in both modes (finding 3). The middle
+     button and the chord still pan; the cursor over the film with the panel open is the window cursor. *Cost if
+     wrong:* with the panel open and Pan on, the left button cannot pan; the middle button, the chord and closing the
+     panel can.
+128. **R37 — A right press windows only once it moves** 3 CSS px (finding 4; `exceedsSlop`, pure): until then the drag
+     is pending and nothing is decoded, so a stray right click, or a right-first chord formed before any movement,
+     leaves a never-windowed film on its stored image with no W / L on the chip; the double right-click still compares
+     presses. *Cost if wrong:* a right drag under 3 px does nothing; the crossing move applies the whole distance from
+     the press at once.
 
 ## Release prerequisites — v1.0.0 main promotion
 

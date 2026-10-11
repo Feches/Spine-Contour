@@ -114,8 +114,9 @@ renderer/                         (new)
   film-window.js                  (2026-10-11, gate feedback G3/G4, plan D15–D17) the view's window / level, the pattern of
                                   level-editor.js: configureFilmWindow({ensureFilm}), windowFor(state, study), openWindowPanel(),
                                   ensureWindowLoaded(), closeWindowPanel(), setWindow({width, level}), resetWindow(),
-                                  forgetFilmWindow(studyId); the ONLY writer of state.filmWindow; no subscriber; never imports
-                                  components/viewer.js or screens/analysis.js; module scope; test/film-window.test.js
+                                  forgetFilmWindow(studyId), and (the review of G3/G4, R35) windowNeedsDecode(state, study,
+                                  images) and redecodeKeptWindow(studyId); the ONLY writer of state.filmWindow; no subscriber;
+                                  never imports components/viewer.js or screens/analysis.js; module scope; test/film-window.test.js
   dom.js                          el() helper, tiny render utilities
 
   screens/landing.js
@@ -843,6 +844,10 @@ export function isDoubleClick(previous, next, { withinMs = 400, withinPx = 6 } =
 //   {time, clientX, clientY, button}, the same button, 0..withinMs apart, within withinPx. Browsers fire no
 //   dblclick for the secondary button; the stage's double right-click (the window reset) asks this. The caller
 //   passes the events' own timeStamps; nothing here reads a clock.
+export function exceedsSlop(start, point, px = 3)
+//   → boolean — (2026-10-11, the review of G3/G4, ruling R37) `point` is at least `px` CSS px from `start` in a
+//   straight line; both {clientX, clientY} (a pointer event or the stage's pending drag will do). The stage's right
+//   press becomes a window drag only once this is true.
 export function zoomAbout(view, direction, offsetX, offsetY)
 //   → {zoom, panX, panY} — a zoom step anchored at a point instead of the film's centre.
 //   `direction` is a SIGN, not a factor, so the wheel and the toolbar buttons reach
@@ -1364,8 +1369,8 @@ workstation with `--verify-models`, which exercises each listed GPU.
 
 Spec `docs/design/level-editor/HANDOFF.md` (`594a982`); plan `plans/2026-10-10-level-editor.md`, whose Decisions
 table (D1–D17, the owner's answers; D15–D17 from the gate feedback of 2026-10-11) wins over the spec and whose Ledger
-holds the execution rulings R1–R34 (R26 and R27 from the gate feedback of 2026-10-11, the plan's "Gate feedback"
-section, R28 from its review, R29–R34 from G3 and G4); user doc
+holds the execution rulings R1–R37 (R26 and R27 from the gate feedback of 2026-10-11, the plan's "Gate feedback"
+section, R28 from its review, R29–R34 from G3 and G4, R35–R37 from their review); user doc
 `docs/level-editor.md`; label record schema `docs/design/level-editor/label-record.schema.json`. Edit mode is the
 level editor: the Analysis screen's right panel becomes the Vertebral levels panel (sixteen levels in five groups:
 C2–C7, T1 · T4, L1–L5, S1, two femoral heads), the stage places, selects and adjusts levels, a display-only window /
@@ -1571,6 +1576,29 @@ order is unchanged. Still display only: no measurement, geometry, record or pers
 - R34 (G3, G4): windowing is not gated on the study's own run (display only; the completed run forgets the window), so
   a left press with the panel open windows before the busy check that guards placement and handles; with the panel
   open outside edit mode the construction label chip still takes its own left press.
+
+**The review of G3 and G4 (2026-10-11; `8332dfb`).** D15's wording follows the behaviour: the window resets where zoom
+and pan reset (FRESH_VIEW: another film opened from the list, or the open study closed); Back and the sidebar's return
+keep it (R29). `renderer/film-window.js` gains **`windowNeedsDecode(state, study, images)`** (pure: `study`'s window is
+ready or loading and `images`, the film's cached images or null, carry no `raw`) and **`redecodeKeptWindow(studyId)`**
+(the deps' `ensureFilm` again, through the private `askFilm` the decode now shares, superseded outcomes asked again; no
+original forgets a READY window of that film, a loading one is left to its own decode); `screens/analysis.js` `render()`
+asks the first, with `cachedImages(study.id)`, ahead of its restore, preview and `ensureFilm` branches, and when it is
+true calls the second in their place. `viewer/interactions.js` gains **`exceedsSlop`** (block above). In `components/viewer.js`
+a right press starts a PENDING window drag (`{kind: 'window', pending: true, …}`, capture, the press point, no classes,
+no decode) that `handlePointerMove` makes a window drag at the first move 3 CSS px from the press (`exceedsSlop`):
+then, and not at the press, `ensureWindowLoaded()` runs for a film with no window yet, and a ready window starts the
+drag with the press point as origin; `startChordPan` dismantles a pending drag as a live one; `is-windowing` ignores a
+pending press. The left press's window branch comes before the Pan toggle's.
+
+- R35 (review, finding 1): a kept window never outlives the decoded original it windows; at the mount a ready or loading
+  window over cached images without `raw` (another study's run took the single cache entry) is decoded again through
+  `ensureFilm`, which restores the stored image too, and a ready window whose re-decode brings no original is forgotten.
+- R36 (finding 3): the open W/L panel outranks the Pan toggle for the left button, in both modes; the middle button and
+  the chord still pan; the `.is-windowing` cursor rule follows the pan-mode rules.
+- R37 (finding 4): a right press alone starts nothing; the drag begins, and decodes a film with no window yet, once the
+  pointer has moved 3 CSS px; a stray right click or a chord formed before any movement decodes nothing; the double
+  right-click still compares presses (R32); R31's toast comes at the move that begins the drag.
 
 No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet file (rules in
 `styles/screens/analysis.css` section `05 — LEVEL EDITOR` and `styles/components.css`), no Python package.

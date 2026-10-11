@@ -220,7 +220,7 @@ All are in the Spine Contour design system. Use the app's CSS variables, not hex
 | Save edits | Click | Writes the label record (section 9) and shows the toast "Saved N edits to the label record." Disabled with the visible reason `NOTHING TO SAVE` when there are 0 changes. |
 | Discard | Click | Reverts to the last save and cancels any placement. Toast: "Discarded N changes." |
 | Window / level tool | Click | Opens or closes the W/L panel (see below). *Amended 2026-10-11 (G3, D15):* in every mode. |
-| Film or its black surround | Right-drag | *Added 2026-10-11 (G4, D16):* windows the film in every mode, panel open or closed, Pan on or off, without opening the panel (see below). A left+right chord still pans. |
+| Film or its black surround | Right-drag | *Added 2026-10-11 (G4, D16):* windows the film in every mode, panel open or closed, Pan on or off, without opening the panel (see below). A left+right chord still pans. *Amended by the review (R37):* once the pointer has moved 3 px; a right press alone does nothing. |
 | Film or its black surround | Double right-click | *Added 2026-10-11 (G4, D17):* the film's default window, as RESET. |
 
 **Unsaved count** is the number of levels whose (visible, geometry) pair differs from the last save. A `source` change alone doesn't count.
@@ -283,22 +283,28 @@ Check this mapping against the actual measurement code. It should be derived fro
 - **Applying it:** use a linear LUT on the **film layer only**: `display = clamp((value − (L − W/2)) / W, 0, 1)`. Apply it to the raw stored values where the DICOM is converted for display, not as a CSS filter on 8-bit output. Overlays, labels and handles are unaffected.
 - **Viewer chip** shows `W <w> · L <l>`.
 
-*Amended 2026-10-11 (the owner's gate feedback, G3 and G4 in the plan; decisions D15–D17, rulings R29–R34).*
+*Amended 2026-10-11 (the owner's gate feedback, G3 and G4 in the plan; decisions D15–D17, rulings R29–R34; and the
+review of G3/G4, rulings R35–R37).*
 
 - **In every mode (D15).** Window / level is no longer an edit-mode tool. The tool, the panel, the chip's readout and
   the windowed film layer work outside edit mode too; outside edit mode the mask overlay is drawn over the windowed film
   as over the stored image. A drag on the film with the panel open windows in both modes, and outside edit mode it takes
-  the press from construction selection. Escape closes the panel first in both modes (outside edit mode, before it
-  clears the construction).
-- **It belongs to the view (D15).** Like zoom and pan, the window lasts while the film is open and resets when another
-  film opens (the app's FRESH_VIEW: a film opened from the list, this one included); entering and leaving edit mode keep
-  it; the sidebar's open-study card returns to it as it returns to the zoom and pan (R29). A re-run, a Region change or a
-  delete forgets it. Still display only: never persisted, never in the label record.
+  the press from construction selection; with Pan on it takes the left button from Pan too (R36; the middle button and
+  the chord still pan). Escape closes the panel first in both modes (outside edit mode, before it clears the
+  construction).
+- **It belongs to the view (D15).** Like zoom and pan, the window resets where zoom and pan reset (the app's FRESH_VIEW:
+  another film opened from the list, this one included, or the open study closed); Back and the sidebar's open-study
+  card keep it, as they keep the zoom and the pan (R29); entering and leaving edit mode keep it. A re-run, a Region
+  change or a delete forgets it. A kept window is always drawn: if the film's decoded original was dropped while it was
+  off screen (another study's run took the image cache), it is decoded again when the film comes back, and forgotten if
+  it can no longer be (R35). Still display only: never persisted, never in the label record.
 - **The right button (D16).** A right-button drag windows the film in every mode, panel open or closed, Pan on or off,
   while placing, on the film or its black surround, with the same rule as the panel's drag (4 per screen pixel,
-  horizontal = width, vertical = level, clamped, the `all-scroll` cursor). It does not open the panel. The first right
-  press on a film decodes its original, and the drag follows from the first move after that. A left+right chord
-  outranks it and pans. A right drag over a film that cannot be decoded says why in a toast, once (R31).
+  horizontal = width, vertical = level, clamped, the `all-scroll` cursor). It does not open the panel. A right press
+  alone does nothing: the drag begins once the pointer has moved 3 px (R37); on a film with no window yet that move
+  decodes its original, and the drag follows from the first move after that. A left+right chord outranks it and pans,
+  and one formed before the pointer moves decodes nothing. A right drag over a film that cannot be decoded says why in
+  a toast, once (R31).
 - **The double right-click (D17).** Two right presses within 400 ms and 6 px restore the film's default window; the
   second press starts no drag (R32). The panel's RESET stays.
 
@@ -398,7 +404,7 @@ The design artboard doesn't show `model_centroid` or `model_circle`. The schema 
 
 The open questions this section held were answered by the owner on 2026-10-10, together with the questions the code
 forced. They are the Decisions table of `docs/superpowers/plans/2026-10-10-level-editor.md`, which wins over this spec
-where the two differ; that plan's Ledger also records the execution rulings R1–R34. Built on branch
+where the two differ; that plan's Ledger also records the execution rulings R1–R37. Built on branch
 `worktree-level-editor`; the user doc is `docs/level-editor.md`. D15–D17 were added on 2026-10-11 from the owner's
 gate feedback (G3, G4).
 
@@ -418,7 +424,7 @@ gate feedback (G3, G4).
 | D12 | T1 and T4 (old question 5) | Both are placeable levels in the Thoracic group and written to the record. No measurement reads them today, so they have no dependency note; T1 slope and T4 angles are out of scope. |
 | D13 | Clear (old question 6) | Kept on manual levels. |
 | D14 | RESET TO PREDICTION | Kept in the edit bar as the whole-study revert to the model's output, beside Discard. |
-| D15 | Window / level outside edit mode (2026-10-11, gate feedback G3) | Available outside edit mode too. The window belongs to the view, like zoom and pan: it lasts while the film is open and resets when another film opens or the Analysis screen is left (FRESH_VIEW); entering and leaving edit mode keeps it. Still never persisted, never in the record. |
+| D15 | Window / level outside edit mode (2026-10-11, gate feedback G3) | Available outside edit mode too. The window belongs to the view, like zoom and pan: it resets where zoom and pan reset (FRESH_VIEW: another film opened from the list, or the open study closed); Back and the sidebar's return keep it, as they keep zoom and pan; entering and leaving edit mode keeps it. Still never persisted, never in the record. (Wording amended 2026-10-11 by the review of G3/G4 to follow the behaviour; R29.) |
 | D16 | A right-button drag (2026-10-11, gate feedback G4) | Windows the film in every mode, without opening the panel: horizontal = width, vertical = level, four units per screen pixel. The chip shows the live W and L. |
 | D17 | A double right-click (2026-10-11, gate feedback G4) | Resets the window to the film's default; the panel's RESET stays. |
 

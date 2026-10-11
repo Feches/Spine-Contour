@@ -54,7 +54,7 @@ assumes these.
 | D12 | T1 and T4 (§12.5) | Both are added as placeable levels in the Thoracic group and written to the record. No measurement reads them today, so they get no dependency note; T1 slope and T4 angles are out of scope. |
 | D13 | Clear (§12.6) | Kept on manual levels. |
 | D14 | RESET TO PREDICTION | Kept in the edit bar as the whole-study revert to the model's output, beside Discard. |
-| D15 | Window / level outside edit mode (gate feedback G3, 2026-10-11) | Available outside edit mode too. The window belongs to the VIEW, like zoom and pan: it lasts while the film is open and resets when another film opens or the Analysis screen is left (FRESH_VIEW); entering and leaving edit mode keeps it. Still never persisted, never in the record. Supersedes D11's reset on entering edit mode; D11's "not persisted, not recorded" stands. |
+| D15 | Window / level outside edit mode (gate feedback G3, 2026-10-11) | Available outside edit mode too. The window belongs to the VIEW, like zoom and pan: it resets where zoom and pan reset (FRESH_VIEW: another film opened from the list, or the open study closed); Back and the sidebar's return keep it, as they keep zoom and pan; entering and leaving edit mode keeps it. Still never persisted, never in the record. Supersedes D11's reset on entering edit mode; D11's "not persisted, not recorded" stands. (Wording amended 2026-10-11 by the review of G3/G4, finding 2, to follow the behaviour the owner chose, "while the film is open, like zoom and pan"; see R29.) |
 | D16 | A right-button drag (gate feedback G4, 2026-10-11) | A RIGHT-button drag on the stage windows the film in every mode, without opening the panel: horizontal = width, vertical = level, four units per screen pixel (`dragWindow`'s rule). The chip shows the live W and L. |
 | D17 | A double right-click (gate feedback G4, 2026-10-11) | Resets the window to the film's default (the panel's RESET stays). |
 
@@ -1265,6 +1265,13 @@ Added by the gate feedback G3 and G4 (2026-10-11; D15–D17, rulings R29–R34):
   surround), left–right the width and up–down the level; a double right-click restores the default; a left+right chord
   still pans, whichever button goes first; no context menu appears.
 
+Added by the review of G3 and G4 (2026-10-11; rulings R35–R37):
+
+- [ ] R35–R37: with the panel open and Pan on, a left drag windows (it does not pan), and the cursor over the film is
+  the window cursor; a right click without moving, on a film never windowed, leaves it as it was (no `W … · L …` on the
+  chip); a window set on a film, then Back and the sidebar's OPEN STUDY card after another film's run finished, is
+  still drawn when the film comes back (or gone from the chip, if the original can no longer be read).
+
 ---
 
 ## Gate feedback (2026-10-11)
@@ -1376,9 +1383,11 @@ chips' focus ring in both themes and the chip that is both placed and current.
 
 **What the owner asked for.** Window / level outside edit mode too (D15). Before this the window was the level editor's
 (`state.levelEditor.window`), the toolbar button showed only while editing, and the window reset on every entry to edit
-mode (D11). Now it belongs to the VIEW, like zoom and pan: it lasts while the film is open, resets when another film
-opens or the Analysis screen is left (FRESH_VIEW; R29 says exactly where), and outlives entering and leaving edit mode.
-Still display only, never persisted, never in the record.
+mode (D11). Now it belongs to the VIEW, like zoom and pan: it resets where zoom and pan reset (FRESH_VIEW: another film
+opened from the list, or the open study closed); Back and the sidebar's return keep it, as they keep zoom and pan (R29
+says exactly where); and it outlives entering and leaving edit mode. Still display only, never persisted, never in the
+record. (Worded so by the review of G3/G4, finding 2: the first wording said the window reset when the Analysis screen
+was left, which Back does not do.)
 
 **The store.** A new key `filmWindow: null` in `renderer/store.js`'s initial state and in BOTH FRESH_VIEW objects
 (`screens/studies.js`, `data/demo-visibility.js`; `test/store.test.js` and `test/demo-visibility.test.js` pin them). Its
@@ -1411,7 +1420,8 @@ under the toolbar (`.viewer-stage:not(.is-editing) .viewer-wl { top: 64px }`), s
 carries a hint line in place of the edit bar's help (R33). The chip shows `W … · L …` whenever the open film's window
 is ready. The static layer draws the windowed original in both modes (its key holds the window's width, level and
 status); outside edit mode the mask overlay is drawn over it as over the stored image. A LEFT drag with the panel open
-windows in both modes; outside edit mode it outranks construction selection (the click that follows is suppressed).
+windows in both modes; outside edit mode it outranks construction selection (the click that follows is suppressed),
+and since the review it outranks the Pan toggle too (R36: the middle button and the chord still pan).
 Escape outside edit mode closes the panel first (a focused W/L slider lets it through), then clears the construction as
 before; inside edit mode the order stays: the exit prompt, a placement, the panel, edit mode.
 
@@ -1427,6 +1437,14 @@ units per screen pixel: left–right width, up–down level) as the panel's drag
 joining a right-button drag dismantles it in `startChordPan` as a label drag is dismantled, and the window keeps what
 the drag set before. `handleContextMenu` already prevents the menu. A right-button drag over a film whose original
 cannot be decoded toasts why (R31).
+
+*Amended by the review of G3/G4 (R37).* The right press alone starts nothing: it is a PENDING window drag
+(`drag = { kind: 'window', pending: true, … }`, pointer capture, the press point, no classes, no decode). The move that
+takes the pointer 3 CSS px from the press (`exceedsSlop`, pure, `renderer/viewer/interactions.js`) makes it a window
+drag: the classes go on, a ready window is its start with the press point as origin (so that move already windows),
+and a film with no window yet calls `ensureWindowLoaded()` there and waits with `start: null` as above. A stray right
+click, and a right-first chord whose left button joins before the pointer moves, decode nothing; the double right-click
+still compares presses only. `is-windowing` ignores a pending press.
 
 **The double right-click (D17).** Browsers fire no `dblclick` for the secondary button, so it is detected in pure logic:
 `isDoubleClick(previous, next, { withinMs = 400, withinPx = 6 } = {})` in `renderer/viewer/interactions.js` over
@@ -1459,6 +1477,41 @@ the release ends the windowing classes; a double right-click restores the defaul
 window; another study opened resets it (and its W/L button is disabled, no film); back on the film there is no window
 until asked for and the panel opens at the default; a right-button drag on a film with no window yet decodes it and
 windows from its first move after. Dom 79 → **94/94**, film 23/23.
+
+### The review of G3 and G4 (2026-10-11; `8332dfb`)
+
+Approved with five minor findings, all fixed in one wave under the controller's rulings (R35–R37 in the Ledger):
+
+1. **A kept window could outlive the decoded original it windows.** Film B windowed; another study's interactive run
+   completes and takes the single image-cache entry; Back, then the sidebar's OPEN STUDY card: the mount restored B's
+   sidecar (the stored image alone) and the window stayed ready, so the chip read `W … · L …` over the stored image.
+   R35: `film-window.js` `windowNeedsDecode(state, study, images)` (pure: the study's window ready or loading and its
+   cached images without `raw`) and `redecodeKeptWindow(studyId)` (`ensureFilm` again through the shared `askFilm`,
+   superseded outcomes asked again; no original forgets a READY window; a loading one is left to its own decode);
+   `screens/analysis.js` `render()` asks it first at the mount, before the restore it replaces.
+2. **D15's wording did not follow the behaviour.** It said the window reset when the Analysis screen was left; Back and
+   the sidebar's return keep it, as they keep zoom and pan (R29), which is what the owner chose ("while the film is open,
+   like zoom and pan"). Reworded in the Decisions row, G3 above, the design handoff's D15 row and HANDOFF decision 117.
+3. **With Pan on, the left button panned with the panel open.** R36: in `handlePointerDown` the panel's branch comes
+   before Pan's for the left button, in both modes; the `is-windowing` cursor rule moves after the pan-mode rules.
+4. **A right press decoded the original before it moved**, so a stray right click or a right-first chord pan switched a
+   never-windowed film to its decoded original and put W / L on the chip. R37, the amendment in G4 above.
+5. **Coverage.** Smoke section 17 gains a right drag with Pan pressed, while placing L3 (then CANCEL), from the black
+   surround, and on the unavailable film with the panel closed (R31's toast once); unit tests for `fitPlacing` under the
+   open panel and `forgetFilmWindow` during a loading decode.
+
+Tests: `test/interactions.test.js` +2 (`exceedsSlop`), `test/film-window.test.js` +4 (`forgetFilmWindow` during a
+loading decode; `windowNeedsDecode`; `redecodeKeptWindow` keeping and forgetting; a loading window and another film's
+window left alone), `test/level-editor-wiring.test.js` +1 (FIT waits under the open panel). Unit 918 → **925/925**.
+Smoke `smoke-levels.mjs` dom 94 → **102/102** on a fresh `%TEMP%` profile (DOM, store and file reads only, no
+screenshots): R37 first, on SP-9300 before any window (a right press without movement; a right-first chord pan); R31's
+toast once on SP-9300's unavailable film (section 9); on SP-9301, a right drag from the black surround, a right drag
+while placing L3, a left drag with Pan pressed and the panel open (R36), a right drag with Pan pressed; and the
+no-window right drag split in two (decoded at the default once it moves, then the next drag windows from its press),
+since a drag whose start waits for the decode must not depend on how many moves Chromium delivers. Not run: the film
+phase and the other suites (no app path they read changed except the right press, which the chord suite presses before
+any move), a packaged build. R35's mount call is covered by the unit tests of its two helpers, not in the app (it needs
+a completed run on another study).
 
 ---
 
@@ -1502,3 +1555,5 @@ already state.
 | 2026-10-11 | gate | **Gate feedback G3** (the owner, D15): window / level outside edit mode, the window the view's. New store key `filmWindow` (initial state and both FRESH_VIEW copies), new wiring module `renderer/film-window.js` (its only writer: `configureFilmWindow`, `windowFor`, `openWindowPanel`, `ensureWindowLoaded`, `closeWindowPanel`, `setWindow`, `resetWindow`, `forgetFilmWindow`); `state.levelEditor.window` and level-editor.js's five window functions removed; `screens/analysis.js` configures it and forgets a film's window with its level editor (delete, a completed run, a Region change); the stage shows the button, the panel (under the toolbar outside edit mode), the chip and the windowed film in both modes, a left drag with the panel open windows in both, Escape outside edit mode closes the panel first. The full design is in "Gate feedback (2026-10-11)" above. `8cf213d`. |
 | 2026-10-11 | gate | **Gate feedback G4** (the owner, D16, D17): a right-button drag windows the film in every mode without the panel, and a double right-click resets it; `isDoubleClick` (pure, `viewer/interactions.js`) detects the double right-click; a chord still outranks the drag. `8cf213d`, with G3. Unit 901 → **918/918**. Smoke on one fresh `%TEMP%` profile (DOM, store and file reads only, no screenshots): `smoke-levels.mjs` dom **94/94** (79 before; G2's four checks, never run when written, pass among them) and film **23/23** (the copied OLIF film); then the gate chain on the injected sample study, since the left press, Escape and the right button changed under them: parity 15/15, gate1 25/25, gate2 26/26, gate3 26/26, chip 20/20, chord 28/28 (its right-first chords now begin as a window drag and still pan). Not run: the other suites (nothing they read changed), a packaged build. |
 | 2026-10-11 | gate | **Rulings for G3 and G4.** **R29:** the window resets exactly where zoom and pan reset, FRESH_VIEW: another film opened from the list (this one too, reopened from the list), and the open study closed by a delete or the demo toggle. Back to the Studies list and the sidebar's OPEN STUDY card keep it, as they keep zoom and pan; a writer that changes `openId` without FRESH_VIEW (the calibration screen's return) leaves a window `windowFor` will not show, since its `studyId` names another film. A film whose images change or go (deleted, a run completed on it, its Region changed) forgets it. *Cost if wrong:* one `filmWindow: null` in Back's write, if leaving the screen should reset it even when the same film is returned to through the sidebar. **R30:** a right press decodes a film with no window yet but does not retry one whose decode came back unavailable; opening the panel does (and its note says why). *Cost if wrong:* a film whose source returns (a drive reconnected) needs the panel opened once before the right-button drag works again. **R31:** a right-button drag over an unavailable film with the panel closed toasts `Window / level is unavailable. <reason>` once per drag, at its first move; a right-first chord whose left button joins before the pointer moves never gets that far (one that moves first does). *Cost if wrong:* one toast per attempt; three lines to remove. **R32:** the double right-click compares the two presses only (button, 400 ms, 6 px, the events' `timeStamp`s), on the film and the black surround alike; the second press resets and starts no drag and is forgotten (a third press begins a new pair); a chord forgets the right press before it (never a click); the first press of a double right-click is an ordinary right press, so its drag may move the window a few units before the reset. *Cost if wrong:* a quick right-drag that ends where it began, followed within 400 ms by another press there, resets the window; a movement test in `viewer.js` would tighten it. **R33:** copy. The toolbar button's tooltip reads `Window / level — or right-drag on the film; double right-click resets` (its accessible name stays `Window / level`, the suites' selector); outside edit mode, where no edit bar carries its help line, the panel shows `Drag on the film: left–right sets width, up–down sets level. With the panel closed, right-drag; double right-click resets.` above its display-only sentence. *Cost if wrong:* copy. **R34:** windowing is not gated on a run: the panel and the right-button drag work on the film on the stage while that study's run is in flight (display only; the RUNNING card covers the middle of the stage, and the completed run forgets the window), so the left press with the panel open now windows before the busy check that guards placement and handles; with the panel open outside edit mode a press on the construction's label chip still drags the chip, its own target. *Cost if wrong:* a busy guard in `handleRightPress` and in the left press's window branch. |
+| 2026-10-11 | gate | **Review of G3 and G4** (`8cf213d`, `106042a`): approved, five minor findings, all fixed in one wave (the full account is "The review of G3 and G4" under "Gate feedback (2026-10-11)"). 1: a kept window could outlive the decoded original it windows (another study's run took the cache entry; Back and the sidebar's return then drew the stored image under a ready window): R35. 2: D15's wording said the window reset when the Analysis screen was left; reworded to the behaviour (it resets where zoom and pan reset, FRESH_VIEW; Back and the sidebar's return keep it) in the Decisions row, G3, the design handoff's D15 row and HANDOFF decision 117; R29 and its cost stand. 3: with Pan on, the left button panned with the panel open: R36. 4: a right press decoded the original before it moved: R37. 5: coverage, smoke section 17 and two unit tests. The wave: `8332dfb` (code, tests, smoke) and the records commit (this row and the next, the review subsection, Task 15's R35–R37 item, D15 in four records, the contract amendment, `docs/level-editor.md`, the design handoff, HANDOFF incl. decisions 126–128, CLAUDE.md, `tools/smoke/README.md`). Unit 918 → **925/925**. `smoke-levels.mjs` dom 94 → **102/102** on a fresh `%TEMP%` profile (DOM reads only, no screenshots); not run: the film phase, the other suites, a packaged build. |
+| 2026-10-11 | gate | **Rulings R35–R37** (controller, the review's findings 1, 3 and 4). **R35:** at the mount (`screens/analysis.js` `render()`), when the open film's window is ready or loading and its cached images have no `raw` (`windowNeedsDecode`), the mount calls `redecodeKeptWindow(study.id)` instead of the plain restore: `ensureFilm` restores the stored image when the film has a result, attaches the decode and hands both to the viewer, so the window is drawn again; when no original comes back a READY window is forgotten (`forgetFilmWindow`), so the chip and the panel never claim a window that is not drawn, while a loading one is left to its own decode (it lands unavailable with its reason). *Cost if wrong:* a kept window's film is decoded again on the sidebar's return after another study's run (one `/decode`), or forgotten when its source has gone; R29's cost line stands if the owner wants every exit to reset instead. **R36:** the open W/L panel outranks the Pan toggle for the LEFT button, in both modes: in `handlePointerDown` the panel's branch comes before Pan's; the middle button and the chord still pan; the panel's hint and the user doc's input rows stay true; the `is-windowing` cursor rule follows the pan-mode rules so the cursor says the same. *Cost if wrong:* with the panel open and Pan on, the left button cannot pan; the middle button, the chord and closing the panel can. **R37:** a right press alone starts nothing: the drag is pending (`drag = { kind: 'window', pending: true, … }` with capture) and becomes a window drag only once the pointer has moved 3 CSS px (`exceedsSlop(start, point, px = 3)`, pure, tested), calling `ensureWindowLoaded()` then if the window is not ready and applying `dragWindow` from the press point when it is; a chord formed first dismantles the pending drag in `startChordPan` and the film never switches to its decoded original; a stray right click does nothing but count toward a double right-click, which still compares presses (R32; its first press now moves the window only past 3 px). R31's toast comes at the move that begins the drag. *Cost if wrong:* a right drag shorter than 3 px windows nothing, and the move that crosses 3 px applies the whole distance from the press at once (no movement lost; about 12 units for a 3 px move). |

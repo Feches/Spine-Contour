@@ -4,7 +4,7 @@ Edit mode on the Analysis screen is a level editor (2026-10-10). It lists every 
 annotator place the levels the model missed, mark the ones that are not on the film, and adjust the rest; it came with
 a display-only window / level for the stage, which since the gate feedback of 2026-10-11 works outside edit mode too;
 and **Save edits** writes one JSON label record per film, whose job is retraining the segmentation models. Design:
-`docs/design/level-editor/HANDOFF.md`. Plan, decisions D1–D17 and the execution rulings R1–R34:
+`docs/design/level-editor/HANDOFF.md`. Plan, decisions D1–D17 and the execution rulings R1–R37:
 `docs/superpowers/plans/2026-10-10-level-editor.md`. Contract: the 2026-10-10 amendment of
 `docs/superpowers/plans/2026-08-31-00-architecture-contract.md`.
 
@@ -197,25 +197,29 @@ LEVEL` (`· PLACING PAUSED` during a placement). Once the film is decoded the st
 
 - **A drag on the film with the panel open** changes the window: left–right the width, up–down the level, four units
   per screen pixel (dragging left narrows the window, dragging up lowers the level, which brightens the film). Outside
-  edit mode it takes the press away from construction selection; in edit mode placement clicks and handles wait.
+  edit mode it takes the press away from construction selection; in edit mode placement clicks and handles wait. With
+  Pan on it windows too: the open panel outranks Pan for the left button (R36), and the middle button or the chord pan.
 - **A right-button drag** does the same in every mode with the panel closed or open, with Pan on or off, while placing,
-  and on the black surround as on the film (D16). The first right press on a film decodes its original; the window
-  follows the drag from the first move after that. A left+right chord still pans, whichever button goes first: the left
-  button joining a right-button drag turns it into a pan.
+  and on the black surround as on the film (D16), once the pointer has moved 3 px from the press (R37): a right press
+  alone does nothing. On a film with no window yet that first move decodes its original, and the window follows the
+  drag from the first move after that. A left+right chord still pans, whichever button goes first: the left button
+  joining a right-button drag turns it into a pan, and one that joins before the pointer moves decodes nothing.
 - **A double right-click** (two right presses within 400 ms and 6 px) restores the film's default window (D17), as
   RESET does.
 
 **It is display only**: measurements, the levels and the label record never change, and nothing is saved (D11). The
-window belongs to the view, like the zoom and the pan (D15): it lasts while the film is open, entering and leaving edit
-mode keep it, and it starts again at the film's default when another film is opened from the list (or this one again).
-Going back to the list and returning through the sidebar's open-study card finds the window that was left, as it finds
-the zoom and the pan (R29). A re-run, a Region change or a delete forgets it.
+window belongs to the view, like the zoom and the pan (D15): it resets where they reset, starting again at the film's
+default when another film is opened from the list (or this one again) or the open study is closed, and entering and
+leaving edit mode keep it. Going back to the list and returning through the sidebar's open-study card finds the window
+that was left, as it finds the zoom and the pan (R29); if the film's decoded original was dropped meanwhile (another
+study's run took its place in the image cache), it is decoded again so the window is drawn, and the window is
+forgotten if the original can no longer be read (R35). A re-run, a Region change or a delete forgets it.
 
 | Input | Every mode |
 |---|---|
 | Window / level button | opens and closes the panel |
-| Left drag on the film, panel open | windows the film; selects no construction and places nothing |
-| Right drag, on the film or the black surround | windows the film, panel open or closed (D16) |
+| Left drag on the film, panel open | windows the film, Pan on or off (R36); selects no construction and places nothing |
+| Right drag, on the film or the black surround | windows the film once it moves, panel open or closed (D16, R37) |
 | Double right-click | the film's default window (D17) |
 | Left + right chord | pans; it takes over a right-button drag |
 | Escape | outside edit mode: closes the panel first, then clears the construction; in edit mode: the exit prompt, a placement, the panel, then edit mode |
