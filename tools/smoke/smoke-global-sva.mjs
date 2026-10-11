@@ -13,7 +13,9 @@ import { connect, quitApp } from './cdp-lib.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const out = path.join(root, 'tools/smoke/out/global-sva');
-const profile = '/tmp/spine-contour-combined-film-ui-20260925';
+// (2026-10-10) SMOKE_GLOBAL_SVA_PROFILE and SPINE_CONTOUR_PYTHON override the macOS defaults, so the suite also runs
+// on Windows (a %TEMP% profile and the venv's Scripts\python.exe).
+const profile = process.env.SMOKE_GLOBAL_SVA_PROFILE || '/tmp/spine-contour-combined-film-ui-20260925';
 const port = process.env.CDP_PORT || '9247';
 const source = path.join(out, 'synthetic-full-spine.png');
 const id = 'SP-9901';
@@ -26,7 +28,7 @@ try { occupied = (await fetch(`http://127.0.0.1:${port}/json/version`)).ok; } ca
 assert.ok(!occupied, `Port ${port} is already occupied; refusing to control another app`);
 const log = fs.openSync(path.join(out, 'electron.log'), 'w');
 const env = { ...process.env, SPINE_CONTOUR_USER_DATA: profile,
-  SPINE_CONTOUR_PYTHON: path.join(root, '.venv/bin/python'), SPINE_CONTOUR_ORT_CPU_ONLY: '1' };
+  SPINE_CONTOUR_PYTHON: process.env.SPINE_CONTOUR_PYTHON || path.join(root, '.venv/bin/python'), SPINE_CONTOUR_ORT_CPU_ONLY: '1' };
 delete env.ELECTRON_RUN_AS_NODE;
 const app = spawn(createRequire(import.meta.url)('electron'), ['.', `--remote-debugging-port=${port}`],
   { cwd: root, env, stdio: ['ignore', log, log] });
@@ -119,22 +121,32 @@ try {
   check('saved sidecar restores global, cervical and lumbar rows together', await cdp.evaluate("document.querySelector('[data-row-key=\"GLOBAL_SVA\"]')&&document.querySelector('[data-row-key=\"C2C7_SVA\"]')&&document.querySelector('[data-row-key=\"LL\"]')"));
   check('global overlay is labelled with explicit uncalibrated pixels', await cdp.evaluate("document.querySelector('.viewer-label')?.textContent.includes('C7–S1 SVA 70.0 px')"));
   await cdp.screenshot(path.join(out, 'synthetic-global-sva.png'));
-  await cdp.setState('{editing:true,selection:null,panMode:false}');
+  // (2026-10-10) Edit mode is the level editor's: entered through the Edit segmentation button; a level is selected
+  // and its handle focused through the page's renderer/level-editor.js, and the arrows nudge the focused handle.
+  // C7 is a body (four corners) in the level editor, and the projection derives c7_centroid as their mean, so the
+  // centroid moves 1 px when all four corners do.
+  await cdp.setState('{selection:null,panMode:false}');
   await cdp.send('Page.bringToFront');
+  await cdp.evaluate("document.querySelector('[aria-label=\"Edit segmentation\"]').click()");
+  await until("import('./renderer/store.js').then(m=>Boolean(m.getState().levelEditor))");
   await wait(250);
-  check('femoral editing controls are available for standing-film pelvic measures', await cdp.evaluate("document.querySelectorAll('.viewer-editbar .viewer-tool.is-hidden').length===0"));
-  const c7 = await cdp.toClient(270, 340); await cdp.click(c7.x, c7.y);
-  check('C7 centroid is selectable for editing', await cdp.evaluate("import('./renderer/store.js').then(m=>m.getState().selection?.level==='C7'&&m.getState().selection?.corner==='CENTROID')"));
-  await cdp.key('ArrowRight');
+  const focus = (code, handle) => cdp.evaluate(`import('./renderer/level-editor.js').then(m=>{m.selectLevelRow('${code}');m.setFocusedHandle({code:'${code}',handle:'${handle}'});const a=document.activeElement;if(a&&a.blur)a.blur();return true;})`);
+  const focused = () => cdp.evaluate("import('./renderer/store.js').then(m=>m.getState().levelEditor?.handle??null)");
+  check('both femoral heads are placeable from the levels panel for standing-film pelvic measures', await cdp.evaluate("Boolean(document.querySelector('[data-level-key=\"place:FH1\"]')&&document.querySelector('[data-level-key=\"place:FH2\"]'))"));
+  await focus('C7', 'SA');
+  check('C7 is selectable for editing: its corners are handles', await cdp.evaluate("import('./renderer/viewer/level-handles.js').then(async h=>{const e=(await import('./renderer/store.js')).getState().levelEditor;return h.levelHandles('C7',e.levels.C7.geometry).map(x=>x.handle).join(',')==='SA,SP,IA,IP'&&e.selected==='C7';})"));
+  for (const corner of ['SA', 'SP', 'IA', 'IP']) { await focus('C7', corner); await cdp.key('ArrowRight'); await wait(60); }
   await until(`import('./renderer/store.js').then(m=>!m.getState().measurementDrafts['${id}']&&m.getState().studies[0].measurements.GLOBAL_SVA_PX===69)`);
-  check('C7 nudge recalculates through real backend', true);
-  const posterior = await cdp.toClient(340, 1050); await cdp.click(posterior.x, posterior.y);
-  check('S1 posterior corner is selectable for editing', await cdp.evaluate("import('./renderer/store.js').then(m=>m.getState().selection?.level==='S1'&&m.getState().selection?.corner==='SP')"));
+  check('nudging the four C7 corners 1 px moves its centroid 1 px and recalculates through real backend', true);
+  await focus('S1', 'SP');
+  const sp = await focused();
+  check('S1 posterior corner is selectable for editing', sp?.code==='S1'&&sp?.handle==='SP');
   await cdp.key('ArrowRight');
   await until(`import('./renderer/store.js').then(m=>!m.getState().measurementDrafts['${id}']&&m.getState().studies[0].measurements.GLOBAL_SVA_PX===70)`);
   check('posterior S1 nudge updates the global distance', true);
-  const anterior = await cdp.toClient(220, 1050); await cdp.click(anterior.x, anterior.y);
-  check('S1 anterior corner is the third editable handle', await cdp.evaluate("import('./renderer/store.js').then(m=>m.getState().selection?.level==='S1'&&m.getState().selection?.corner==='SA')"));
+  await focus('S1', 'SA');
+  const saHandle = await focused();
+  check('S1 anterior corner is editable too', saHandle?.code==='S1'&&saHandle?.handle==='SA');
   await cdp.key('ArrowUp');
   await until(`import('./renderer/store.js').then(m=>!m.getState().measurementDrafts['${id}']&&m.getState().studies[0].geometry.s1_superior[0][1]===1049)`);
   check('anterior S1 correction preserves the posterior-based SVA', await cdp.evaluate("import('./renderer/store.js').then(m=>m.getState().studies[0].measurements.GLOBAL_SVA_PX===70)"));
@@ -159,12 +171,16 @@ try {
     (await import('./renderer/calibration.js')).rememberCalibration(s.filePath,c);
   })()`);
   check('cleared scale restores labelled pixels', await cdp.evaluate("document.querySelector('[data-row-key=\"GLOBAL_SVA\"]').textContent.includes('UNCALIBRATED')&&document.querySelector('[data-row-key=\"GLOBAL_SVA\"] .meas-value').textContent==='70.0px'"));
-  await cdp.setState('{editing:false}');
+  // After the reset nothing is unsaved, so DONE leaves edit mode at once.
+  await cdp.evaluate("document.querySelector('.viewer-editbar > button:last-of-type').click()");
+  await until("import('./renderer/store.js').then(m=>!m.getState().editing&&!m.getState().levelEditor)");
   await wait(300); await openSavedStudy();
   check('geometry, full-spine region, orientation and cleared calibration survive reload', await cdp.evaluate("import('./renderer/store.js').then(m=>{const s=m.getState().studies[0];return s.region==='full_spine'&&s.anteriorSide==='left'&&s.geometry.c7_centroid[0]===270&&s.calibration.status==='cleared';})"));
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false });
   await cdp.screenshot(path.join(out, 'synthetic-global-sva-compact.png'));
-  check('global measurement panel fits the compact window', await cdp.evaluate("document.querySelector('.meas-panel').getBoundingClientRect().right<=innerWidth"));
+  // Within half a CSS pixel: on a scaled Windows display (150%) the panel's right edge measured 1100.00003 in a
+  // 1100-px viewport, float noise from the fractional device pixel, not an overflow (2026-10-10).
+  check('global measurement panel fits the compact window', await cdp.evaluate("document.querySelector('.meas-panel').getBoundingClientRect().right<=innerWidth+0.5"));
   check('no renderer errors during synthetic workflow', cdp.errors.length === 0);
 } finally {
   const result = { synthetic: true, model_inference: false, passed: checks.filter(c => c.ok).length,

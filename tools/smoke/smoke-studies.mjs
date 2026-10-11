@@ -190,7 +190,7 @@ try {
       title: document.querySelector('.run-title')?.textContent,
       runButtonHidden: Boolean(runButton) && runButton.classList.contains('is-hidden'),
       spinnerHidden: document.querySelector('.run-spinner')?.classList.contains('is-hidden'),
-      editDisabled: tool('Edit landmarks')?.disabled,
+      editDisabled: tool('Edit segmentation')?.disabled,
       rerunDisabled: tool('Re-run segmentation')?.disabled,
       headerPill: document.querySelector('.analysis-header .pill-demo')?.textContent,
       exportDisabled: exportButton ? exportButton.disabled : null,
@@ -350,7 +350,7 @@ try {
     title: document.querySelector('.run-title')?.textContent,
     spinnerHidden: document.querySelector('.run-spinner')?.classList.contains('is-hidden'),
     runButtonHidden: document.querySelector('.run-button')?.classList.contains('is-hidden'),
-    editDisabled: document.querySelector('.viewer-tool[aria-label="Edit landmarks"]')?.disabled,
+    editDisabled: document.querySelector('.viewer-tool[aria-label="Edit segmentation"]')?.disabled,
   }))()`);
   check('a demo study opened mid-run shows the demo card, not RUNNING',
     runningWithDemoOpen === RUNNING_ID && demoDuringRun.eyebrow === 'DEMO STUDY'

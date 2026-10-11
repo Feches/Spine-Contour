@@ -137,7 +137,7 @@ const regionNote = () => cdp.evaluate(`(() => { const e = document.querySelector
 const stageState = () => cdp.evaluate(`(() => {
   const card = document.querySelector('.run-card');
   const button = document.querySelector('.run-button');
-  const edit = document.querySelector('.viewer-tool[aria-label="Edit landmarks"], .viewer-tool[aria-label="Done editing"]');
+  const edit = document.querySelector('.viewer-tool[aria-label="Edit segmentation"], .viewer-tool[aria-label="Done editing"]');
   const rerun = document.querySelector('.viewer-tool[aria-label="Re-run segmentation"]');
   const canvas = document.querySelector('.viewer-canvas-dynamic');
   // The FIRST .viewer-canvas is the static layer, which drawStaticLayer paints the radiograph
@@ -199,14 +199,28 @@ async function backToStudies() {
 }
 
 async function enterEditMode() {
-  const edit = await cdp.rect('.viewer-tool[aria-label="Edit landmarks"]');
+  const edit = await cdp.rect('.viewer-tool[aria-label="Edit segmentation"]');
   if (!edit) return false;
   await cdp.click(edit.cx, edit.cy);
-  await cdp.settle(150);
+  await cdp.settle(250);
   return (await cdp.state()).editing === true;
 }
 
-// Tab to L1 SA, nudge it right `times`, and return the SETTLED state after the round trip.
+// (2026-10-10, level editor) Leaving edit mode with level edits unsaved shows the panel's exit prompt (plan D7),
+// and the prompt's Discard would put the correction back. So a phase that ends its edit session on a correction
+// saves first: Save edits writes userData/labels/<stem>.label.json and resets the baseline (D2), the corrected
+// geometry stays on the record, and DONE then leaves at once. Resolves with the study's labelFile, or null.
+async function saveLevelEdits() {
+  const save = await cdp.rect('.lv-save');
+  const enabled = await cdp.evaluate(`(() => { const b = document.querySelector('.lv-save'); return Boolean(b) && !b.disabled; })()`);
+  if (save && enabled) {
+    await cdp.click(save.cx, save.cy);
+    await waitFor(async () => (await cdp.evaluate(`(() => document.querySelector('.lv-unsaved')?.textContent === 'NOTHING TO SAVE')()`)), 8000);
+  }
+  return (await storedStudy())?.labelFile ?? null;
+}
+
+// Focus L1 SA, nudge it right `times`, and return the SETTLED state after the round trip.
 //
 // Why settling matters: ArrowRight commits the nudged geometry to the store SYNCHRONOUSLY
 // (measure-queue's commitGeometry -> writeStudy) and only then SCHEDULES /measure, behind a
@@ -216,23 +230,20 @@ async function enterEditMode() {
 // and reading the geometry before it would capture a value /measure is about to replace.
 // A failure instead toasts and restores the last measured geometry, which is why the poll
 // watches the toast too.
-// The key sequence only, returning the selection Tab landed on. Split out from nudgeAndSettle
+// The key sequence only, returning the handle the level editor focused. Split out from nudgeAndSettle
 // because a successful /measure and a forced failure settle on different signals: success writes
 // `measurements`, failure only rewrites `geometry` and toasts. Both start from the same keys.
+// (2026-10-10, level editor) The focused handle is state.levelEditor.handle, set through the page's own
+// renderer/level-editor.js: selecting the L1 row focuses its first handle, SA, and setFocusedHandle names it
+// outright, so the landing handle never depends on what the previous section left focused. (Before the level
+// editor this pressed Tab from a cleared selection and relied on the old fixed Tab order's first stop.)
 async function selectAndNudge(times) {
-  // Focus must not be inside the edit bar: viewer.js's handleKeyDown deliberately leaves Tab as
-  // ordinary focus movement there (BD-11 d), so RETRACE/FIT/RESET/DONE stay keyboard-operable.
-  // A nudge right after clicking RESET TO PREDICTION would otherwise never advance the selection
-  // and every ArrowRight after it would be a no-op.
+  // Focus must not be inside the edit bar or the levels panel: viewer.js's handleKeyDown leaves Tab there as
+  // ordinary focus movement (BD-11 d), and arrows on a focused slider are the slider's.
   await cdp.evaluate('(() => { const a = document.activeElement; if (a && a.blur) a.blur(); return true; })()');
-  // Clear the selection so Tab always lands on the FIRST stop, L1 SA (nextSelection(null, 1)).
-  // Without this the landing stop depends on what the previous section left selected -- a second
-  // nudge in the same edit session would advance to L1 SP and every "L1 SA moved" assertion would
-  // read an untouched landmark. gate3 seeds `selection: null` the same way.
-  await cdp.setState('{ selection: null }');
-  await cdp.key('Tab');
+  await cdp.evaluate("import('./renderer/level-editor.js').then((m) => { m.selectLevelRow('L1'); m.setFocusedHandle({ code: 'L1', handle: 'SA' }); return true; })");
   await cdp.settle(60);
-  const selection = (await cdp.state()).selection;
+  const selection = (await cdp.state()).levelEditor?.handle ?? null;
   for (let i = 0; i < times; i += 1) {
     await cdp.key('ArrowRight');
     await cdp.settle(30);
@@ -415,10 +426,10 @@ try {
     const resetArmed = await editBarButton('RESET TO PREDICTION');
     check('RESET TO PREDICTION is enabled once editing', Boolean(resetArmed) && resetArmed.disabled === false, resetArmed);
 
-    // 9. Tab to L1 SA, nudge it right three times, and confirm the saver wrote the correction.
+    // 9. Focus L1 SA, nudge it right three times, and confirm the saver wrote the correction.
     const predictedSA = study ? l1sa(study.geometry) : null;
     const firstNudge = await nudgeAndSettle(3);
-    check('Tab selects L1 SA', firstNudge.selection && firstNudge.selection.kind === 'landmark' && firstNudge.selection.level === 'L1' && firstNudge.selection.corner === 'SA', firstNudge.selection);
+    check('the level editor focuses L1 SA', firstNudge.selection && firstNudge.selection.code === 'L1' && firstNudge.selection.handle === 'SA', firstNudge.selection);
     check('/measure settled after the nudge (measurements changed)', Boolean(firstNudge.after) && !firstNudge.failed, { failed: firstNudge.failed, settled: Boolean(firstNudge.after) });
     const correction = await waitFor(async () => {
       const raw = await cdp.evaluate(`window.spineContour.loadStudies().then((r) => (r.studies || []).find((x) => x.id === ${JSON.stringify(STUDY_ID)}) ?? null)`);
@@ -444,13 +455,17 @@ try {
     // only differs from the prediction's own for a study whose stored geometry is a correction.
     // If phase 1 ended on the reset, `study.geometry` and the sidecar's would be value-identical
     // at restart and either argument would supply the same numbers -- the riskiest semantic in
-    // this task would go untested. resetToPrediction clears the selection, so Tab again.
+    // this task would go untested. resetToPrediction clears the focused handle, so focus L1 SA again.
     const secondNudge = await nudgeAndSettle(3);
     check('the study can be corrected again after a reset', Boolean(secondNudge.after) && !secondNudge.failed, { failed: secondNudge.failed, settled: Boolean(secondNudge.after) });
     check('the phase ends with a geometry that differs from the prediction',
       Boolean(secondNudge.after && sidecar) && !same(secondNudge.after.geometry, sidecar.geometry), null);
 
-    // 11. DONE leaves edit mode.
+    // 11. Save edits keeps the correction and writes the label record (plan D2); then DONE leaves edit mode.
+    const labelFile = await saveLevelEdits();
+    check('Save edits writes the label record and the corrected geometry stays',
+      typeof labelFile === 'string' && fs.existsSync(path.join(USER_DATA, 'labels', labelFile))
+      && Boolean(secondNudge.after) && same((await storedStudy())?.geometry, secondNudge.after.geometry), labelFile);
     const done = await editBarButton('DONE');
     check('DONE is present', Boolean(done), done);
     if (done) {
@@ -601,6 +616,10 @@ try {
     check('the edit toggle enters edit mode', await enterEditMode(), null);
     const resetArmed = await editBarButton('RESET TO PREDICTION');
     check('RESET TO PREDICTION is enabled after a restart', Boolean(resetArmed) && resetArmed.disabled === false, resetArmed);
+    // (2026-10-10, level editor) Phase 1 saved its correction as the label record; reopening reads it back as the
+    // baseline, so the restored correction is not an unsaved change.
+    await waitFor(async () => Boolean(await text('.lv-unsaved')), 5000);
+    check('reopening after the restart reads the saved label record: nothing unsaved', (await text('.lv-unsaved')) === 'NOTHING TO SAVE', await text('.lv-unsaved'));
 
     // A nudge that SUCCEEDS. The mirror case -- what a FAILED /measure restores -- needs the
     // backend dead and so lives in `--phase measurefail`, on its own app session.
@@ -627,6 +646,9 @@ try {
     const afterReset = await openStudy();
     check('RESET TO PREDICTION restores the sidecar geometry', Boolean(sidecar && afterReset) && same(afterReset.geometry, sidecar.geometry), null);
 
+    // The reset differs from the saved record (phase 1's correction), so DONE would ask; Save edits records it.
+    await saveLevelEdits();
+    check('Save edits after the reset leaves nothing unsaved', (await text('.lv-unsaved')) === 'NOTHING TO SAVE', await text('.lv-unsaved'));
     const done = await editBarButton('DONE');
     check('DONE is present', Boolean(done), done);
     if (done) {

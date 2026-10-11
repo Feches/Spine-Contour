@@ -47,10 +47,13 @@ try {
       coordinate_space:'original_image',status:'dicom',candidates:[],selected_index:null,
       spacing:{row_mm:.5,column_mm:.5,source:'dicom_pixel_spacing'}};
     const qc={femoral:{confidence:.95},framing:{s1_confidence:.95,search_confidence:.95,searched:true}};
-    await api.savePrediction('SP-8901',{...result,image_png,mask_png,femoral_mask_png:mask_png,labels:{BACKGROUND:0},qc,calibration});
+    // (2026-10-10) A prediction id on both the sidecar and the record: a study with neither a prediction id nor
+    // qc.models reads as placed by hand in the level editor (ruling R16) and would open on its original, which
+    // this synthetic fixture does not have.
+    await api.savePrediction('SP-8901',{...result,image_png,mask_png,femoral_mask_png:mask_png,labels:{BACKGROUND:0},qc,calibration,prediction_id:'synthetic-disc-heights'});
     const study={id:'SP-8901',source:'real',fileName:'synthetic-disc-heights.png',filePath:'/synthetic/disc-heights.png',
       name:'Synthetic disc heights',addedAt:new Date().toISOString(),view:'Standing lateral',subjectId:'SYNTHETIC-01',
-      timepoint:'Pre-op',thumbnail:null,clinical:{},...result,qc,calibration};
+      timepoint:'Pre-op',thumbnail:null,clinical:{},...result,qc,calibration,predictionId:'synthetic-disc-heights'};
     window.discOriginal=structuredClone(study);
     store.setState({studies:[study],ack:true,screen:'studies',openId:null,batch:null,running:null,measurementDrafts:{}});
     store.setState({screen:'analysis',openId:study.id,editing:false,selectedLevel:null,tab:'meas',showAllLordosis:false,dataOpen:false});
@@ -63,18 +66,27 @@ try {
   await cdp.screenshot(path.join(out,'calibrated-disc-heights.png'));
   check('single and paired CSV match the panel', await cdp.evaluate(`(async()=>{
     const {toCsv,toPairedCsv,parse}=await import('./renderer/data/csv.js');
+    const {pairStudies}=await import('./renderer/data/pairing.js');
     const study=(await import('./renderer/store.js')).getState().studies[0];
     const read=text=>parse(text.split(String.fromCharCode(13,10)).slice(2).join(String.fromCharCode(13,10))).rows[0];
     const single=read(toCsv([study]));
-    const later={...study,id:'SP-8902',calibration:{...study.calibration,spacing:{...study.calibration.spacing,row_mm:.6,column_mm:.6}}};
-    const paired=read(toPairedCsv({visits:['Post-op'],subjects:[{subject:'SYNTHETIC-01',films:new Map([['Pre-op',study],['Post-op',later]])}]}));
+    // (2026-10-10) Through pairStudies: toPairedCsv takes its visits since 2026-09-11, not a hand-built Map.
+    const later={...study,id:'SP-8902',timepoint:'Post-op',calibration:{...study.calibration,spacing:{...study.calibration.spacing,row_mm:.6,column_mm:.6}}};
+    const paired=read(toPairedCsv(pairStudies([study,later])));
     return single['Disc height L1-L2 middle (mm)']==='11.3' && paired['Disc height L1-L2 middle (mm) Post-op']==='13.5'
       && paired['Delta Disc height L1-L2 middle (mm) Post-op']==='2.2';
   })()`));
 
   // Drive a real correction through the production viewer and backend, not a mock of it.
-  await cdp.setState('{editing:true,selection:null,selectedLevel:null,panMode:false}');
+  // (2026-10-10) Through the level editor: the Edit segmentation button, then L2 selected (only the selected
+  // level has handles) through the page's renderer/level-editor.js.
+  await cdp.setState('{selection:null,selectedLevel:null,panMode:false}');
   await cdp.send('Page.bringToFront');
+  const pencil=await cdp.rect('.viewer-tool[aria-label="Edit segmentation"]');
+  await cdp.click(pencil.cx,pencil.cy);
+  await until("import('./renderer/store.js').then(m=>Boolean(m.getState().levelEditor))");
+  await cdp.evaluate("import('./renderer/level-editor.js').then(m=>{m.selectLevelRow('L2');return true;})");
+  await cdp.settle(120);
   const corner=await cdp.toClient(210,260);
   await cdp.mouse('mouseMoved',corner.x,corner.y);
   await cdp.mouse('mousePressed',corner.x,corner.y,{button:'left',buttons:1,clickCount:1});
@@ -88,7 +100,9 @@ try {
     await cdp.evaluate("(()=>{const cells=[...document.querySelectorAll('[data-disc-level=\"L1-L2\"] td')].map(c=>c.textContent);return cells[0]!=='12.5' && cells[1]!=='11.3' && cells[2]==='10.0';})()"));
   await cdp.evaluate("[...document.querySelectorAll('.viewer-editbar button')].find(b=>b.textContent.trim()==='RESET TO PREDICTION').click()");
   check('reset restores the original heights', JSON.stringify(await heights())===JSON.stringify(initial));
-  await cdp.setState('{editing:false}');
+  // After the reset nothing is unsaved, so DONE leaves edit mode at once.
+  await cdp.evaluate("document.querySelector('.viewer-editbar > button:last-of-type').click()");
+  await until("import('./renderer/store.js').then(m=>!m.getState().editing&&!m.getState().levelEditor)");
 
   await cdp.evaluate(`(async()=>{
     const {rememberCalibration}=await import('./renderer/calibration.js');

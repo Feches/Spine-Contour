@@ -447,6 +447,102 @@ The film phase also saves a record whose `image.sha256` is 64 hex characters and
 phase `dom` 75/75, phase `film` 23/23 (one copied OLIF lumbar film; L1, L2, L4 and L5 segmented with contours of 9 to
 15 points, L3 edited by a handle drag and a nudge, contour null).
 
+## The landmark-editor suites after the level editor (2026-10-10)
+
+The level editor (plan 2026-10-10) replaced the old edit mode: the Edit button is `Edit segmentation` (it was `Edit
+landmarks`), the edit bar reads `EDITING SEGMENTATION`, and `state.selection` is always null in edit mode. Only the
+SELECTED level has handles; a suite selects a level with `selectLevelRow(code)` and focuses a handle with
+`setFocusedHandle({code, handle})`, both imported from the page's own `./renderer/level-editor.js`, and reads the
+focused handle from `state.levelEditor.handle`. A femoral head has rim points (four synthesised ones while it is the
+model's) and no centre or circumference handle; a rim-point drag refits it, and the panel's Place… on a head (2 to 4
+rim points, FIT from 2) replaces RETRACE. Leaving edit mode with unsaved level edits shows the panel's exit prompt
+(plan D7), so a suite that ends an edit session on a change saves it (Save edits) or discards it at the prompt.
+Three more things the suites now meet:
+
+- **Ruling R16.** A study with neither a prediction id nor `qc.models` reads as placed by hand and opens on its
+  decoded original. A synthetic fixture that wants its sidecar restored carries a `prediction_id` on the sidecar and the
+  same `predictionId` on the record (disc-heights, partial-segmentation, accuracy).
+- **The edit bar is taller** (its help line). In a small window it covers the film's upper landmarks and a press there
+  lands on the bar, so gate1, gate2, gate3, chord and accuracy set a 1600x1100 viewport as the synthetic suites do.
+- **Escape takes one thing at a time** (the exit prompt, a placement, the W/L panel, then edit mode).
+
+Per suite, what changed and which checks were retired, each with the check that replaces it:
+
+- `smoke-gate1.mjs` (25 → 25). Handle colours are checked with the level selected first; two checks added (`no handle
+  at L1 SA until a level is selected`, `only the selected level has handles: L1 SA has none while S1 is selected`).
+  Retired: `hover paints a label plate above-right of the handle` (the level editor draws no hover state; the hover
+  cursor checks stay); `left femoral centre handle is femoral green` and `right femoral rim handle at 3 o'clock is
+  femoral green` (a head has rim handles only, in the trace yellow), replaced by `Head 1's first rim handle is the
+  trace yellow`.
+- `smoke-gate2.mjs` (32 → 26). Drags select their level first; `dragging L2 SP focuses that handle` reads the editor's
+  focused handle. Retired: `left centre drag translates the circle`, `radius unchanged by a centre drag` (no centre
+  handle) and `rim drag leaves the centre alone` (a rim drag refits through the rim, so the centre moves), replaced by
+  `a rim-point drag refits Head 2: its radius grows` and `the refit head keeps its four rim points, the dragged one
+  moved`; `grabbing the circumference at 9 o'clock resizes` (handles are the rim points); `dragging the rim onto the
+  centre floors the radius at 1, never negative` and `a 1px radius is accepted by /measure (no toast)` (no radius floor
+  in the level editor); `RETRACE enabled with a femoral selection` and `RETRACE toggles on` (no RETRACE), replaced by
+  `Place… on Head 1 starts a rim placement`. Rewritten to the Place… flow: FIT disabled with 1 point and enabled with
+  2 (it was 2 and 3), `the placement ends after FIT`, `CANCEL clears the points and hides FIT`, `selecting another
+  level's row cancels the placement` (was `a landmark selection disables RETRACE`), `Escape while placing cancels the
+  placement and stays in edit mode` (was "exits edit mode": Escape now takes one thing at a time), `re-entering edit
+  mode shows no leftover placement`; added `DONE with unsaved edits asks, and its Discard leaves edit mode`.
+- `smoke-gate3.mjs` (25 → 26). The old fixed 24-stop `TAB_ORDER` walk is retired; its intent survives in the level
+  editor's handle order (`viewer/level-handles.js` `handleOrder`: every handle of every visible, placed level in panel
+  order, each head's four rim points included, 30 stops on the sample film), so `Tab walks all 30 handles in panel
+  order, selecting each handle's level` and the two wrap checks follow it. Nudges focus L3 SA through
+  `setFocusedHandle`; `ArrowLeft nudges while a levels-panel row has focus` (the Measurements panel is hidden while
+  editing); Tab in the edit bar starts from RESET TO PREDICTION (RETRACE is gone); `reset clears the focused handle`.
+  Retired: `Re-run enabled with a result` (in edit mode), replaced by `Re-run is disabled while editing (R17)` and
+  `Re-run is enabled again once edit mode is left`; `re-run exits edit mode and clears the selection` became `re-run
+  leaves edit mode off and no level editor`.
+- `smoke-chord.mjs` (28 → 28). §2 enters edit mode by the button and selects L3 before the chord on its SA handle; §7
+  uses the new label; §8 presses Pan after entering edit mode by the button. No check retired.
+- `smoke-chip.mjs` (20 → 20). §6 enters edit mode by the button and selects L4; the handle-press check reads the
+  editor's focused handle; it leaves through the exit prompt's Discard. No check retired.
+- `smoke-persist.mjs` (phase 1 41 → 42, phase 2 53 → 55). `nudgeAndSettle` focuses L1 SA through `setFocusedHandle`
+  (it pressed Tab from a cleared selection); `Tab selects L1 SA` became `the level editor focuses L1 SA`. Phase 1 adds
+  `Save edits writes the label record and the corrected geometry stays` before DONE (a correction is an unsaved level
+  edit, and the prompt's Discard would undo it); phase 2 adds `reopening after the restart reads the saved label
+  record: nothing unsaved` and `Save edits after the reset leaves nothing unsaved`.
+- `smoke-femoral-confidence.mjs` (edit 16 → 16, reload 5 → 5). The test circles are placed relative to the
+  prediction's image size and the canvas width is read from its PNG header (it was fixed at 1906 px). Rewritten:
+  `a rim-point drag refits Head 1 and recalculates the hip axis` (was the centre drag), `a second rim point dragged
+  outward grows the head` (was `rim drag resizes without translating the centre`), `hiding a head shows pending
+  assessment before the response`, `hiding a head keeps one circle and clears dependent angles` and `hiding a head
+  preserves all calibrated disc heights` (DELETE CIRCLE became the head's checkbox), `adding a circle by tracing
+  restores the bilateral measurements` (ADD CIRCLE and FIT became Place… and four rim clicks), `the Delete key leaves
+  a selected head in place (the level editor has no delete)` (was `Delete key removes selected circle`), `both circles
+  can be hidden without losing the spinal result` (the Femoral heads group box); the reload phase enters edit mode by
+  the button. Run it with `SMOKE_PREDICTION` pointing at a sidecar from a real run (2026-10-10: a copy of the sample
+  film's `predictions/SP-9000.json` from the gate chain).
+- `smoke-disc-heights.mjs` (13 → 13). The fixture carries a prediction id (R16); the correction goes through the
+  button and L2 selected; DONE after the reset. Also fixed, unrelated to the level editor: the paired-CSV check built
+  `toPairedCsv`'s input by hand in its pre-2026-09-11 shape and threw; it now goes through `pairStudies`.
+- `smoke-global-sva.mjs` (21 → 21). C7 is a body of four corners in the level editor (its centroid is derived), so
+  `nudging the four C7 corners 1 px moves its centroid 1 px and recalculates through real backend` replaces `C7
+  centroid is selectable for editing` / `C7 nudge recalculates through real backend` (the first became `C7 is
+  selectable for editing: its corners are handles`); `both femoral heads are placeable from the levels panel for
+  standing-film pelvic measures` replaces the edit-bar circle-button count; `S1 anterior corner is editable too`.
+  `SPINE_CONTOUR_PYTHON` and `SMOKE_GLOBAL_SVA_PROFILE` now override its macOS defaults, and the compact-window check
+  allows half a CSS pixel (a scaled Windows display measured the panel's edge at 1100.00003 in an 1100-px viewport).
+- `smoke-cervical.mjs` (not run here). Its edit section enters by the button and focuses C2's CENTROID handle (C2 is
+  an inferior endplate plus a centroid, plan D8), and leaves by DONE after the reset.
+- `smoke-studies.mjs` (151 → 151): the Edit button's label only.
+- `smoke-partial-segmentation.mjs` (8 → 8): a prediction id on the fixture (R16); Tab on the L1-only film comes back to
+  L1 SA after five presses; an annotator's edit confirms the anterior side, so `anterior_confirmed` is no longer
+  `false` after the nudge (the projection keeps the model's `false` only while the level is the model's, plan Task 2).
+- `smoke-accuracy.mjs` (17 → 17): a prediction id on the fixture, the 1600x1100 viewport, the button and the selected
+  level; DONE after the reset.
+- `smoke-segmental.mjs` (not run here): enters by the button, focuses the level's SA handle, and saves before DONE.
+
+**Known baseline after the level editor** (2026-10-10, each on a fresh scratch profile under `%TEMP%`, Windows 11, CPU
+processor; these supersede the plan-04 counts above): parity 15/15, gate1 25/25, gate2 26/26, gate3 26/26 (with its
+fresh inject + run), chip 20/20, chord 28/28 (the gate chain in the plan-04 order on one launch); studies 151/151;
+persist 42/42 then 55/55; femoral-confidence 16/16 then 5/5; disc-heights 13/13, partial-segmentation 8/8 and accuracy
+17/17 (one launch); global-sva 21/21 (its own app). Not run: `smoke-cervical.mjs` and `smoke-segmental.mjs` need a
+lateral cervical film with anterior on image left, which this workstation does not have, and both screenshot the
+film they run on.
+
 ## Library
 
 `cdp-lib.mjs` exports `connect()`, whose returned object provides trusted-input helpers
