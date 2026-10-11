@@ -13,9 +13,13 @@ the record. Save edits writes `userData/labels/<stem>.label.json` (schema `docs/
 `POST /decode` and windows the film layer only, display only (D1, D11); `qc.model_versions` names each graph. A film
 with no result opens in edit mode on its original and can be placed by hand (`isHandPlaced`, R16); Re-run is disabled
 while editing (R17). The old edit bar's RETRACE / ADD / DELETE CIRCLE and the landmark Tab, nudge and hit-test code are
-retired. Plan `docs/superpowers/plans/2026-10-10-level-editor.md` (Decisions D1–D14; its Ledger holds R1–R18 and every
+retired. Plan `docs/superpowers/plans/2026-10-10-level-editor.md` (Decisions D1–D14; its Ledger holds R1–R24 and every
 deferred minor); spec `docs/design/level-editor/HANDOFF.md`; user doc `docs/level-editor.md`; the contract's 2026-10-10
-amendment; HANDOFF's first "Where things stand" section. Unit 879/879; backend pytest 762 passed, 3 skipped. Smoke on
+amendment; HANDOFF's first "Where things stand" section. The final whole-branch review ("With fixes") landed `7e9d502`
+and `e3d5df7`: an Auto film with no model run takes its region from its placed levels on every projection (R20), Region
+and Orientation are disabled while editing (R21), a femoral head needs a radius of 0.5 px (R22); a hand-placed film
+that had failed still reads Failed, the owner's call at the gate (R24). Unit 887/887 after that wave (879 before it);
+`smoke-levels.mjs` re-run after it, dom 75/75 and film 23/23; backend pytest 762 passed, 3 skipped. Smoke on
 fresh `%TEMP%` profiles: `smoke-levels.mjs` dom 75/75, film 23/23 (one copied real film, DOM reads only, no
 screenshots); the rewritten landmark-editor suites parity 15/15, gate1 25/25, gate2 26/26, gate3 26/26, chip 20/20,
 chord 28/28, studies 151/151, persist 42/42 then 55/55, femoral-confidence 16/16 then 5/5, disc-heights 13/13,

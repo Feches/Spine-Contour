@@ -216,7 +216,8 @@ renderer/                         (new)
                                   derivation, placement steps, visibility, the unsaved count, summary and training status, the
                                   measurement-to-level table behind the dependency notes; the LevelEditor and WindowState typedefs; pure
   data/level-projection.js        (2026-10-10) the level model into study.geometry per region (projectGeometry, projectionRegion,
-                                  anteriorSideFrom, quadrilateral); the reverse direction is levels.js levelsFromGeometry; pure
+                                  regionFollowsLevels, projectsLevel, anteriorSideFrom, quadrilateral); the reverse direction is
+                                  levels.js levelsFromGeometry; pure
   data/label-record.js            (2026-10-10) the label record: toLabelRecord, recordLevels, labelFileName (a safe stem, -2/-3 on a
                                   clash), viewSlug, appVersion, LABEL_SCHEMA; pure
   data/contours.js                (2026-10-10) a level's outline in the label mask (traceLabel, simplify, levelContours), for the
@@ -1345,7 +1346,7 @@ workstation with `--verify-models`, which exercises each listed GPU.
 ## 2026-10-10 amendment: vertebral level editor, window / level, label record
 
 Spec `docs/design/level-editor/HANDOFF.md` (`594a982`); plan `plans/2026-10-10-level-editor.md`, whose Decisions
-table (D1–D14, the owner's answers) wins over the spec and whose Ledger holds the execution rulings R1–R18; user doc
+table (D1–D14, the owner's answers) wins over the spec and whose Ledger holds the execution rulings R1–R24; user doc
 `docs/level-editor.md`; label record schema `docs/design/level-editor/label-record.schema.json`. Edit mode is the
 level editor: the Analysis screen's right panel becomes the Vertebral levels panel (sixteen levels in five groups:
 C2–C7, T1 · T4, L1–L5, S1, two femoral heads), the stage places, selects and adjusts levels, a display-only window /
@@ -1396,7 +1397,10 @@ studies never write one.
 **Backend API.** `POST /decode` (multipart `file`, no model): `{width, height, bits_stored, value_min, value_max,
 window: {center, width}|null, photometric, scaled, pixels_base64}`, the original film's pixels as little-endian uint16
 of `round(value − value_min)` (RescaleSlope/Intercept applied; a MONOCHROME1 film inverted with its WindowCenter), the
-25-megapixel cap and the 50 MB upload limit; 422 with a display-ready `detail` for a file it cannot read. IPC
+25-megapixel cap and the 50 MB upload limit; 422 with a display-ready `detail` for a file it cannot read. A value
+range wider than 65535 is scaled into 0..65535 and `scaled` is true; the renderer's `RawFilm` (`viewer/window-level.js`
+`rawFromDecoded`) carries the factor as `scale` (value = pixel × scale + valueMin, 1 when unscaled). Both are a
+deviation from the plan, which had neither (R23). IPC
 `decode-film` hands the renderer bytes, not base64. Every `/predict` result's `qc` gains `model_versions`
 (`backend/models/models.py` `model_versions(models)`: per structure the graph's `onnx_sha256`, two joined with `+`,
 null when unknown), which the label record writes as `model.version`.
@@ -1447,6 +1451,22 @@ refitted by a rim-point drag, and hidden with its checkbox; Delete and Backspace
   before re-running segmentation`; a batch reaching a film with an open or stashed editor still drops that editor on
   completion.
 - R18: a level row with two actions stacks them in its 70px column (Place… above CLEAR, `.lv-actions.is-stacked`).
+- R20 (final review): a film's region follows its placed levels while `data/level-projection.js`
+  `regionFollowsLevels(editor, study)` holds: the editor opened as Auto, or `requestedRegion(study) === 'auto'` and the
+  study is `isHandPlaced` (or its result names no region). Then `projectionRegion` derives the region from the visible
+  placed levels on every projection (C only → cervical, L/S1/head only → lumbar, both → full spine, neither → lumbar),
+  never from the `geometry.region` a commit wrote; `projectsLevel(code, editor, study)` decides which level changes
+  commit (every code but T1/T4 while the region follows); `enterLevelEditor` opens such a film with `region: 'auto'`
+  (D6's defaults). R7 still holds a cervical or full-spine projection with no anterior side.
+- R21 (final review): the region bar's Region and Orientation selects are disabled while editing, titled `Finish
+  editing before changing the region` / `Finish editing before changing the orientation`, and `changeRegion` returns
+  early while editing; outside edit mode it still drops a stashed editor (`forgetLevelEditor`).
+- R22 (final review): `data/levels.js` `canFinishPlacing(editor, imageSize)` is false while a femoral head's fit would
+  have a radius under 0.5 px (or below `fitFrom` clicks); `finishPlacing` is a no-op then, FIT's enabled state reads
+  it, and `addPoint` drops a head's click within 1 px of any of its rim points.
+- R24 (final review): a hand-placed film whose run had failed keeps `processingError` and its Failed status; whether
+  the first hand-placed commit should clear it, or the film get a status of its own, is the owner's decision (plan
+  Task 15, ROADMAP §8).
 
 No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet file (rules in
 `styles/screens/analysis.css` section `05 — LEVEL EDITOR` and `styles/components.css`), no Python package.

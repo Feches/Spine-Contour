@@ -4,7 +4,7 @@ Edit mode on the Analysis screen is a level editor (2026-10-10). It lists every 
 annotator place the levels the model missed, mark the ones that are not on the film, and adjust the rest; it adds a
 display-only window / level to the stage; and **Save edits** writes one JSON label record per film, whose job is
 retraining the segmentation models. Design: `docs/design/level-editor/HANDOFF.md`. Plan, decisions D1–D14 and the
-execution rulings R1–R18: `docs/superpowers/plans/2026-10-10-level-editor.md`. Contract: the 2026-10-10 amendment of
+execution rulings R1–R24: `docs/superpowers/plans/2026-10-10-level-editor.md`. Contract: the 2026-10-10 amendment of
 `docs/superpowers/plans/2026-08-31-00-architecture-contract.md`.
 
 ## Entering and leaving
@@ -14,7 +14,9 @@ the Measurements panel give way to the **Vertebral levels** panel; the header sh
 across the top of the stage reads `EDITING SEGMENTATION` with a help line, then RESET TO PREDICTION and DONE. Entering
 edit mode turns the Pan toggle off (the middle button and the left+right chord still pan). While editing, the toolbar's
 Re-run segmentation and the region bar's Run segmentation are disabled, titled `Finish editing before re-running
-segmentation` (R17): a run would replace the levels under the editor.
+segmentation` (R17): a run would replace the levels under the editor. The region bar's Region and Orientation selects
+are disabled too, titled `Finish editing before changing the region` and `Finish editing before changing the
+orientation` (R21): either change clears the study, its levels included.
 
 DONE, the pencil, Escape and Back leave edit mode. With nothing unsaved they leave at once. With unsaved changes the
 panel's footer asks `Discard 2 unsaved changes? Saved edits are kept.` with **Save edits**, **Discard** and **Keep
@@ -86,7 +88,9 @@ so they have no note (D12).
 
 **Place…** starts a placement; the edit bar reads `PLACING L3 · 1 OF 4` with a chip per step, UNDO and CANCEL, and the
 help line names the next click. Clicks are in pixels of the stored image and clamp to it, including clicks on the black
-surround. A click within one pixel of the previous point is ignored (a zero-length endplate is a measurement error).
+surround. A click within one pixel of the previous point is ignored (a zero-length endplate is a measurement error); for
+a femoral head, a click within one pixel of any of its rim points is ignored, and FIT stays disabled until the fit has
+a radius of at least 0.5 px (R22: a double-click would otherwise give a zero radius, which the record cannot hold).
 
 | Kind | Clicks |
 |---|---|
@@ -178,6 +182,15 @@ level can be placed by hand. This is the case the feature exists for. Once a lev
 measurements but no prediction id and no `qc.models`: the app treats it as hand-placed (`isHandPlaced`, R16) and shows
 it from its original outside edit mode too, never FILM UNAVAILABLE. Its record names model `none`.
 
+On an Auto film with no model run the region follows the levels placed on it, read again at every change (R20): C
+levels alone make it cervical, L1–L5, S1 or a femoral head alone lumbar, both full spine, nothing lumbar. Placing L3
+and then C3 on a failed Auto full-spine film therefore measures it as a full spine, and the record's `film.region`
+says `full_spine`; such a film always opens in edit mode as Auto (every level visible, unless its label record says
+otherwise), whatever region its last commit wrote. A cervical or full-spine reading with no anterior side known is not measured until one is (R7).
+
+A film whose segmentation failed keeps its Failed status after levels are placed on it by hand: it still sorts first
+and blocks Mark reviewed until a run succeeds or the owner decides otherwise (R24, on the human gate's checklist).
+
 ## Demo studies
 
 Demo studies have no film, so Edit stays disabled for them and they can neither place nor window anything. They never
@@ -188,4 +201,5 @@ write a label record; the save path refuses with `Demo studies are not exported`
 `tools/smoke/smoke-levels.mjs` (phases `dom` and `film`; see `tools/smoke/README.md`) covers the panel, placing,
 unchecking, Save edits and the record on disk, Discard and the exit prompt, femoral rim points, window / level, the
 keyboard and the stash; the pure modules have unit tests (`test/levels`, `level-projection`, `level-handles`,
-`window-level`, `label-record`, `contours`). The human gate (plan Task 15) is the owner's.
+`window-level`, `label-record`, `contours`), and `test/level-editor-wiring.test.js` drives the wiring through the real
+store and measure queue (R20). The human gate (plan Task 15) is the owner's.

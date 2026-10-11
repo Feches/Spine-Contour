@@ -489,8 +489,11 @@ async function deleteStudy(id) {
   if (!persistenceDisabledReason()) {
     try {
       await deletePrediction(id);
-      // (2026-10-10, level editor) the film's label record goes with its sidecar, inside the same try:
-      // a failure leaves the record, its film and every cache exactly as they were.
+      // (2026-10-10, level editor) the film's label record goes with its sidecar, inside the same try. A failed
+      // sidecar delete leaves the record, its film and every cache as they were. A failed label-record delete
+      // comes after the sidecar's has succeeded: the record, its label file and the caches stay, but the sidecar
+      // is gone, so once the cached film is dropped its stored image cannot be restored (FILM UNAVAILABLE) until
+      // the film is run again.
       if (study?.labelFile) await deleteLabelRecord(study.labelFile);
     } catch (error) {
       showToast(`Could not delete the saved segmentation: ${error.message}`);

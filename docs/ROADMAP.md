@@ -394,8 +394,14 @@ built.
 - **A hand-placed film whose source moved** opens outside edit mode to a black stage with no card; the reason (`The
   source film could not be found.`) is toasted only when Edit is pressed. A card with a relocate would say why up front.
   Related: a very old record with a sidecar but neither a prediction id nor `qc.models` reads as hand-placed (R16).
-- **A radius-0 femoral head** from two identical rim clicks is dropped by the projection with no explanation in the
-  panel (Task 2, M1); the near-duplicate click rule covers body, C2 and endplate placements only.
+- **A hand-placed film that had failed still reads Failed (R24, the owner's decision).** A film whose segmentation
+  failed and whose levels were then placed by hand keeps its `processingError`: it reads Failed, sorts first and blocks
+  Mark reviewed until a run succeeds. Clear `processingError` on the first hand-placed commit, or give such a film a
+  status of its own? On the human gate's checklist (plan Task 15); nothing changed in code.
+- **A radius-0 femoral head.** Placement is guarded since R22 (a head's click within 1 px of any of its rim points is
+  dropped, and FIT waits for a radius of at least 0.5 px), but a rim-point drag or nudge that lands one point of a
+  two-point rim on the other still refits the head to radius 0, which the projection drops with no explanation in the
+  panel (Task 2, M1) and the label record would write as is (its schema needs a radius above 0).
 - **Stage layout.** The edit bar's help line makes it taller: in a small window it covers the film's upper landmarks
   (the smoke suites now run at 1600x1100), and the W/L panel at top 116 px may overlap a two-row edit bar. A level's
   label plate is fixed to the right of its posterior corner and not clamped to the canvas, so it can run off an
