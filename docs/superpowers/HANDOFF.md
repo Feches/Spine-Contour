@@ -76,18 +76,24 @@ in edit mode on its original and can be placed by hand.
   film with no model run takes its region from its placed levels on every projection; R21 Region and Orientation
   disabled while editing; R22 no femoral head under 0.5 px), `e3d5df7` (version-derived test expectations; the panel's
   rebuild key), and the records (R23, R24, the gate checklist). The wave's re-review was clean; its one residual, a
-  rim-point drag or nudge that would leave a head under 0.5 px, is refused: `f3a3a32` (R25).
+  rim-point drag or nudge that would leave a head under 0.5 px, is refused: `f3a3a32` (R25). The pre-gate smoke run of
+  2026-10-11 found two suites stale since before the branch base (seeding's export columns and header line;
+  manual-calibration's 240 s batch wait against Auto detection), fixed in `f610a8d` with the README's baselines.
 - Counts: unit 888/888 after the final review's wave and R25 (887 after the wave, 879/879 before it; 615 at the base;
   905 before Task 13 retired 26 tests of removed code); `smoke-levels.mjs` re-run after the wave, dom 75/75 and film 23/23. Backend `pytest
   backend -q` 762 passed, 3 skipped (the sc-export venv; the main checkout's graphs hard-linked into the worktree's
-  gitignored `backend/onnx/`). Smoke on fresh scratch profiles under `%TEMP%`: `smoke-levels.mjs` dom 75/75 and film
-  23/23 (one copied real lumbar film, DOM reads only, no screenshots); parity 15/15, gate1 25/25, gate2 26/26, gate3
-  26/26, chip 20/20, chord 28/28; studies 151/151; persist 42/42 then 55/55; femoral-confidence 16/16 then 5/5;
-  disc-heights 13/13; partial-segmentation 8/8; accuracy 17/17; global-sva 21/21.
+  gitignored `backend/onnx/`). The pre-gate smoke run of 2026-10-11 on `9287473`, every suite on its own fresh
+  `%TEMP%` profile, one app at a time, DOM reads only (one copied real lumbar film for the film phases, two for
+  processing, onnx-localizer and manual-calibration): landing 16/16; parameters 58/58; studies 151/151; workspace
+  100/100; persist 42/42 then 55/55; parity 15/15, gate1 25/25, gate2 26/26, gate3 26/26, chip 20/20, chord 28/28;
+  femoral-confidence 16/16 then 5/5; disc-heights 13/13; partial-segmentation 8/8; accuracy 17/17; global-sva 21/21;
+  levels dom 75/75 and film 23/23; processing 15/15; onnx-localizer 10/10; seeding 34/36 then 36/36 and
+  manual-calibration (timed out at 240 s) then 5/5, 7/7, 5/5 after `f610a8d`.
 - Not run: the human gate (plan Task 15; its checklist is prepared in the plan); a packaged build (no installer has
   been built from this branch); `smoke-cervical.mjs` and `smoke-segmental.mjs` (no lateral cervical film on this
-  workstation, and both screenshot their film); a DICOM film's default window from its tags on a real DICOM (the unit
-  and backend tests cover it).
+  workstation, and both screenshot their film); `smoke-calibration.mjs` (no Tesseract binary and no ruler films on this
+  workstation, and it screenshots); a DICOM film's default window from its tags on a real DICOM (the unit and backend
+  tests cover it).
 
 **Next.** The owner's human gate (plan Task 15): real films from their library, both themes, including the items the
 final review added (a cervical film, a full-spine film, a DICOM film, a failed Auto film with C and L levels placed, a

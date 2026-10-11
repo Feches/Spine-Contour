@@ -20,14 +20,18 @@ and `e3d5df7`: an Auto film with no model run takes its region from its placed l
 and Orientation are disabled while editing (R21), a femoral head needs a radius of 0.5 px (R22); a hand-placed film
 that had failed still reads Failed, the owner's call at the gate (R24). The wave's re-review was clean; its one residual,
 a rim-point drag or nudge that would leave a head under 0.5 px, is refused (`f3a3a32`, R25). Unit 888/888 (887 after the
-wave, 879 before it); `smoke-levels.mjs` re-run after the wave, dom 75/75 and film 23/23; backend pytest 762 passed, 3 skipped. Smoke on
-fresh `%TEMP%` profiles: `smoke-levels.mjs` dom 75/75, film 23/23 (one copied real film, DOM reads only, no
-screenshots); the rewritten landmark-editor suites parity 15/15, gate1 25/25, gate2 26/26, gate3 26/26, chip 20/20,
-chord 28/28, studies 151/151, persist 42/42 then 55/55, femoral-confidence 16/16 then 5/5, disc-heights 13/13,
-partial-segmentation 8/8, accuracy 17/17, global-sva 21/21 (retired checks named in `tools/smoke/README.md`). The film
-phase needs the ONNX graphs: this worktree's `backend/onnx/` holds hard links to the main checkout's (gitignored). Not
-run: a packaged build, the human gate (Task 15, checklist prepared in the plan), `smoke-cervical.mjs` and
-`smoke-segmental.mjs` (no cervical film here). Releases as 1.0.18 or later; nothing pushed.
+wave, 879 before it); `smoke-levels.mjs` re-run after the wave, dom 75/75 and film 23/23; backend pytest 762 passed, 3 skipped. The pre-gate
+smoke run of 2026-10-11 on the final tree (`9287473`), every suite on its own fresh `%TEMP%` profile, one app at a time,
+DOM reads only: landing 16/16, parameters 58/58, studies 151/151, workspace 100/100, persist 42/42 then 55/55, parity
+15/15, gate1 25/25, gate2 26/26, gate3 26/26, chip 20/20, chord 28/28, femoral-confidence 16/16 then 5/5, disc-heights
+13/13, partial-segmentation 8/8, accuracy 17/17, global-sva 21/21, levels dom 75/75 and film 23/23, processing 15/15,
+onnx-localizer 10/10; two suites were stale since before the branch base and read 34/36 (seeding: the export's region
+and segmental columns and 1.0.14's header line) and a 240 s batch timeout (manual-calibration: Auto detection takes
+about 275 s for two films on this CPU) — fixed in `f610a8d`, after which seeding reads 36/36 and manual-calibration
+5/5, 7/7, 5/5 (retired checks and baselines in `tools/smoke/README.md`). The film phases need the ONNX graphs: this
+worktree's `backend/onnx/` holds hard links to the main checkout's (gitignored). Not run: a packaged build, the human
+gate (Task 15, checklist prepared in the plan), `smoke-cervical.mjs` and `smoke-segmental.mjs` (no cervical film here),
+`smoke-calibration.mjs` (no Tesseract binary and no ruler films here). Releases as 1.0.18 or later; nothing pushed.
 
 **2026-10-07 release 1.0.16 (crop search restored):** branch `ccr-af336f0e-7wacoa` off `main` @ `f2e39e0`, the merge
 of Michael's PR #57 (`0bd01c5`), which retires 1.0.13's trained crop method: Settings shows Crop search only,
