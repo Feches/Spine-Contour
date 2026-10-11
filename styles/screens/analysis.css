@@ -1176,7 +1176,10 @@
   gap: 6px;
   padding-right: 6px;
   border-radius: 10px;
+  transition: background .15s ease;
 }
+/* The selected row's ground covers the whole row, checkbox and actions included (handoff §3; the prototype's rowBg). */
+.lv-row.is-selected { background: var(--well); }
 .lv-row .level-check { padding: 10px 0 10px 6px; }
 .lv-select {
   flex: 1;
@@ -1193,8 +1196,7 @@
   cursor: pointer;
   transition: background .15s ease;
 }
-.lv-select:hover,
-.lv-row.is-selected .lv-select { background: var(--well); }
+.lv-select:hover { background: var(--well); }
 .lv-select .badge { flex-shrink: 0; }
 .lv-swatch {
   width: 8px;
@@ -1215,6 +1217,12 @@
   flex-shrink: 0;
   display: flex;
   justify-content: flex-end;
+}
+/* Ruling R18: a head placed by hand has two actions, Place… over CLEAR, in the same 70px column. */
+.lv-actions.is-stacked {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
 }
 .lv-actions .lv-place {
   padding: 5px 12px;

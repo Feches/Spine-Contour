@@ -131,10 +131,17 @@ function dropStaleHandle(editor) {
   return entry?.visible && entry.geometry && editor.placing?.code !== focus.code ? editor : { ...editor, handle: null };
 }
 
+// (Task 11 fix round 1, I1) The exit prompt asks about unsaved changes; once a step has undone the last of them it
+// has nothing to ask, so it goes. The pending exit is forgotten: DONE (or Back) again leaves at once.
+function dropStalePrompt(editor) {
+  return editor.exitPrompt && unsavedCount(editor) === 0 ? { ...editor, exitPrompt: null } : editor;
+}
+
 /**
  * Every action: the open study's editor, one pure step, and a write only when the step changed something.
  * `edit`: the step changes the level model, refused while this study's own run is in flight (its result is about
- * to replace the levels). `commit`: a change to a projected level commits the projection (sync).
+ * to replace the levels). `commit`: a change to a projected level commits the projection (sync). A step that
+ * leaves nothing unsaved also drops the exit prompt (dropStalePrompt).
  * @returns {object|null} the editor now in the store, or null when there is none
  */
 function update(step, { edit = false, commit = true } = {}) {
@@ -144,7 +151,7 @@ function update(step, { edit = false, commit = true } = {}) {
   if (edit && state.running === editor.studyId) return editor;
   const stepped = step(editor);
   if (!stepped || stepped === editor) return editor;
-  const next = dropStaleHandle(stepped);
+  const next = dropStalePrompt(dropStaleHandle(stepped));
   setState({ levelEditor: next });
   if (commit && projectedChange(editor, next, studyOf(getState(), next.studyId))) sync(next);
   return next;

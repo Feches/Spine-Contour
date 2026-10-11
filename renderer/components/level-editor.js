@@ -75,12 +75,13 @@ function levelRow(editor, code) {
   swatch.style.background = entry.visible && entry.geometry ? color : 'transparent';
   swatch.style.borderColor = entry.visible ? color : 'var(--border)';
 
-  // One action at a time: Place… for a level with nothing placed, or for any visible femoral head (rim points
-  // refit it); CLEAR for a level placed by hand; CANCEL while it is being placed, which also covers a head placed
-  // by hand being re-placed (a CLEAR there would leave the placement running with nothing to clear).
+  // Place… for a level with nothing placed, or for any visible femoral head (rim points refit it); CLEAR for a level
+  // placed by hand; CANCEL alone while it is being placed, which also covers a head placed by hand being re-placed
+  // (a CLEAR there would leave the placement running with nothing to clear). A head placed by hand takes both
+  // Place… and CLEAR (ruling R18): `is-stacked` lays them out as a column, Place… above CLEAR, in the same 70px.
   const canPlace = !placing && (state === 'not_placed' || (circle && entry.visible));
   const canClear = !placing && state === 'manual';
-  const actions = el('div', { class: 'lv-actions' },
+  const actions = el('div', { class: `lv-actions${canPlace && canClear ? ' is-stacked' : ''}` },
     canPlace ? el('button', {
       type: 'button',
       class: 'btn btn-small lv-place',
@@ -182,12 +183,15 @@ function footer(editor, study) {
       el('span', { class: 'lv-status-label' }, status.label),
       el('span', { class: `lv-status-text${status.complete ? '' : ' is-incomplete'}` }, status.text)));
 
+  // The wiring drops the prompt once nothing is unsaved (I1); its Save edits still follows canSave, as the action
+  // row's does, so it is never an enabled button that does nothing.
   const actions = editor.exitPrompt
     ? el('div', { class: 'lv-prompt', role: 'group', 'aria-labelledby': 'lv-prompt-text' },
       el('p', { class: 'lv-prompt-text', id: 'lv-prompt-text' }, unsavedPrompt(n)),
       el('div', { class: 'lv-prompt-actions' },
         el('button', {
-          type: 'button', class: 'btn btn-primary btn-small lv-prompt-save', 'data-level-key': 'prompt:save',
+          type: 'button', class: 'btn btn-primary btn-small lv-prompt-save', disabled: !canSave(editor),
+          'data-level-key': 'prompt:save',
           onClick: () => saveLevelEdits(),
         }, 'Save edits'),
         el('button', {
