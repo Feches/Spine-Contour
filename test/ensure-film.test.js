@@ -178,6 +178,29 @@ test('a study with hand-placed geometry and no prediction id decodes its origina
   });
 });
 
+// Ruling R16 as amended: a study segmented before v1.0.10 has a sidecar and qc.models but no prediction id. It is a
+// model result, so its sidecar is restored (stored image and mask), not replaced by the decoded original.
+test('a legacy model result with qc.models and no prediction id restores its sidecar, not the original (R16 amended)', async (t) => {
+  const geometry = { region: 'lumbar', vertebrae: {} };
+  const measurements = { SS: 40 };
+  const qc = { models: { vertebrae: 'unet' } };
+  const study = film('SP-9810', { measurements, geometry, qc, predictionId: null });
+  let reads = 0;
+  const bridge = {
+    decodeFilm: async () => decoded(),
+    loadPrediction: async () => { reads += 1; return { measurements, geometry, qc, image_png: 'AAAA', mask_png: 'AAAA', labels: {} }; },
+  };
+  await withBridge(t, bridge, [study], async () => {
+    setFilePayload(study.id, BYTES);
+    const result = await ensureFilm(study.id);
+    assert.equal(reads, 1, 'the sidecar path was taken');
+    assert.equal(result.reason, null);
+    assert.equal(result.images.preview, undefined, 'the stored image, not the decoded original');
+    assert.ok(result.images.overlayCanvas, 'the result keeps its mask overlay');
+    assert.equal(result.images.raw, result.raw, 'the original is decoded only for window / level');
+  });
+});
+
 // Task 8 ruling R-a, pinned beside R16: a study WITH a prediction id whose sidecar is gone gets a reason, never
 // its original film under the result's geometry (FILM UNAVAILABLE stays its outcome; a re-run restores it).
 test('a model result whose sidecar is missing gets a reason and is never decoded (R-a)', async (t) => {

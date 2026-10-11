@@ -1,4 +1,4 @@
-import { predictionMatchesStudy } from '../data/predictions.js';
+import { predictionMatchesStudy, isHandPlaced } from '../data/predictions.js';
 import { studyRegion, requestedRegion, studyRegionLabel, requiresAnteriorSide, regionRunReason, validAnteriorSide } from '../data/cervical.js';
 import { imageConfidence, scorePercent } from '../data/confidence.js';
 import { el, mount } from '../dom.js';
@@ -546,9 +546,9 @@ let filmLoad = null; // { studyId, addedAt, runs, promise } | null
 /**
  * The open study's images and its decoded original. Never throws.
  *
- * `images`: the cache entry; else, for a study with a model result (a `predictionId`), its restored sidecar
+ * `images`: the cache entry; else, for a study with a model result (not isHandPlaced), its restored sidecar
  * (restoreFilm, every one of its guards kept); else -- a film with no result, the main case, or one whose
- * levels were placed by hand with no model run (R16) -- built from the decoded original at its default
+ * levels were placed by hand with no model run (R16, isHandPlaced) -- built from the decoded original at its default
  * window, cached and handed to the live viewer so the stage shows the film.
  * `raw`: the RawFilm, decoded at most once per study and cached on `images.raw` (a NEW images object,
  * so the viewer's reference-keyed static gate repaints); cropped to a toolbar-cropped stored image's
@@ -589,12 +589,12 @@ async function loadFilm(studyId) {
   };
   const superseded = () => filmOutcome(null, null, null, true);
 
-  // (1) The stored image. Only a model run writes one (a sidecar, named by `predictionId`). A study whose
-  // geometry came from the level editor alone has no prediction id and no sidecar (ruling R16): it is a film
-  // with no result here, shown from its decoded original, never FILM UNAVAILABLE. R-a below still holds for a
-  // study that has a prediction id and lost its sidecar.
+  // (1) The stored image. Only a model run writes one (a sidecar). A study whose geometry came from the level
+  // editor alone (isHandPlaced: no prediction id and no qc.models, ruling R16 as amended) has none: it is a film
+  // with no result here, shown from its decoded original, never FILM UNAVAILABLE. R-a below still holds for every
+  // model result that lost its sidecar, a pre-v1.0.10 one (qc.models, no id) included.
   let images = cachedImages(studyId);
-  if (!images && start.source === 'real' && start.measurements && start.geometry && start.predictionId) {
+  if (!images && start.source === 'real' && start.measurements && start.geometry && !isHandPlaced(start)) {
     const restored = await restoreFilm(studyId);
     if (!current() || restored.status === 'superseded') return superseded();
     // The result's geometry is in the stored image's pixels and FILM UNAVAILABLE (re-run to restore
@@ -907,11 +907,11 @@ export function render(state) {
   if (imageCache && imageCache.studyId === study.id) viewer.setImages(imageCache.images);
   // Only DECIDED here; the restore itself starts after the first paint, because restoreFilm's
   // live() reads `mounted`. A demo study has no film to restore and no sidecar to read.
-  // (2026-10-10, ruling R16) Nor does a study no model run ever produced (`predictionId` is null): its geometry
+  // (2026-10-10, ruling R16 as amended) Nor does a study no model run ever produced (isHandPlaced): its geometry
   // came from the level editor, placed on the decoded original, so it is shown from that original (below).
-  const needsRestore = !(imageCache && imageCache.studyId === study.id)
-    && study.source === 'real' && Boolean(study.measurements && study.geometry) && Boolean(study.predictionId);
-  const handPlaced = study.source === 'real' && Boolean(study.measurements && study.geometry) && !study.predictionId;
+  const hasGeometry = study.source === 'real' && Boolean(study.measurements && study.geometry);
+  const needsRestore = !(imageCache && imageCache.studyId === study.id) && hasGeometry && !isHandPlaced(study);
+  const handPlaced = hasGeometry && isHandPlaced(study);
 
   // The mark is a timestamp on the record (spec 8.1); unmarking writes null. Refused for the reasons
   // reviewBlockedReason lists, which update() also shows beside the button, so a keyboard

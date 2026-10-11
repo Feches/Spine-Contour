@@ -14,3 +14,12 @@ export function predictionMatchesStudy(study, sidecar) {
   }
   return true;
 }
+
+// (2026-10-10, level editor, ruling R16 as amended) True when no model run produced this study's record: it has no
+// prediction id and its qc has no `models`. A model run always records `qc.models`, and from v1.0.10 a prediction
+// id too; a level-editor commit through /measure writes neither (only qc.coverage and qc.manual_edits). So a study
+// with geometry for which this is true got that geometry from the level editor alone: it has no sidecar and is
+// shown from its decoded original. A study segmented before v1.0.10 (qc.models, no id) is still a model result.
+export function isHandPlaced(study) {
+  return study?.predictionId == null && !study?.qc?.models;
+}
