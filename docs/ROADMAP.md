@@ -385,9 +385,10 @@ built.
 
 - **Row keys.** The handoff's suggested keyboard for the panel (↑/↓ between level rows, Space to toggle visible, P for
   Place…) is not built (plan Global Constraints). Tab, the arrows and Escape work on the stage today.
-- **Window / level outside edit mode.** The W/L tool shows only while editing. Reading a film at another window
-  outside edit mode, remembering a window per study, or recording it in the label record are all unbuilt (D11 keeps it
-  display only and unsaved).
+- **Window / level beyond the view.** ~~The W/L tool shows only while editing; reading a film at another window outside
+  edit mode is unbuilt.~~ Built 2026-10-11 (gate feedback G3 and G4, D15–D17: the tool in every mode, the window kept
+  for the view like zoom and pan, a right-button drag and a double right-click). Still unbuilt: remembering a window per
+  study across opens or sessions, and recording it in the label record (D11 keeps it display only and unsaved).
 - **A batch can overtake an open or stashed editor.** Ruling R17 disables a run from the stage while editing, but a
   batch started from the Find tab that reaches a film with an open or stashed level editor drops that editor, and its
   unsaved level state, when the film's run completes.

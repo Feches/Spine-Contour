@@ -54,6 +54,9 @@ assumes these.
 | D12 | T1 and T4 (§12.5) | Both are added as placeable levels in the Thoracic group and written to the record. No measurement reads them today, so they get no dependency note; T1 slope and T4 angles are out of scope. |
 | D13 | Clear (§12.6) | Kept on manual levels. |
 | D14 | RESET TO PREDICTION | Kept in the edit bar as the whole-study revert to the model's output, beside Discard. |
+| D15 | Window / level outside edit mode (gate feedback G3, 2026-10-11) | Available outside edit mode too. The window belongs to the VIEW, like zoom and pan: it lasts while the film is open and resets when another film opens or the Analysis screen is left (FRESH_VIEW); entering and leaving edit mode keeps it. Still never persisted, never in the record. Supersedes D11's reset on entering edit mode; D11's "not persisted, not recorded" stands. |
+| D16 | A right-button drag (gate feedback G4, 2026-10-11) | A RIGHT-button drag on the stage windows the film in every mode, without opening the panel: horizontal = width, vertical = level, four units per screen pixel (`dragWindow`'s rule). The chip shows the live W and L. |
+| D17 | A double right-click (gate feedback G4, 2026-10-11) | Resets the window to the film's default (the panel's RESET stays). |
 
 ## Global Constraints
 
@@ -207,6 +210,10 @@ LEVEL_CODES = ['C2','C3','C4','C5','C6','C7','T1','T4','L1','L2','L3','L4','L5',
  *            bitsStored: number|null, window: {center: number, width: number}|null}} RawFilm
  *  pixel value = pixels[i] + valueMin */
 ```
+
+(The gate feedback of 2026-10-11 changed two of these shapes: `placing` became `{ code, points, current, history }`
+(G2), and `window` left the editor for the store's own key `filmWindow`, a `WindowState` with `studyId` and `range`
+added (G3, D15; the `FilmWindow` typedef in `renderer/film-window.js`). See "Gate feedback (2026-10-11)".)
 
 ---
 
@@ -1248,14 +1255,26 @@ Added by the gate feedback of 2026-10-11 (G1, G2; see "Gate feedback (2026-10-11
 - [ ] G2: click a chip to choose the next point, and re-place a placed point from its chip; UNDO removes the most
   recently set point; the current chip's dot is a ring until its point is placed.
 
+Added by the gate feedback G3 and G4 (2026-10-11; D15–D17, rulings R29–R34):
+
+- [ ] G3: outside edit mode the Window / level button opens the panel under the toolbar (with its hint line); the film
+  layer, the overlay over it and the chip follow the window; a left drag with the panel open windows and selects no
+  construction; Escape closes the panel first. Entering and leaving edit mode keep the window; opening another film
+  from the list, or this one again, starts at its default. On a real DICOM, the default comes from its tags.
+- [ ] G4: a right-button drag windows the film in every mode (panel closed, Pan on or off, while placing, over the black
+  surround), left–right the width and up–down the level; a double right-click restores the default; a left+right chord
+  still pans, whichever button goes first; no context menu appears.
+
 ---
 
 ## Gate feedback (2026-10-11)
 
 The owner's requests from the human gate (Task 15), with the automatic ruler OCR confirmed working: zoom in further
-than the old cap, and choose which point the next click places from the step chips in the edit bar. Each is built,
-unit-tested and recorded in the Ledger; the owner re-checks both at the gate. This section is the spec of record for
-both.
+than the old cap, and choose which point the next click places from the step chips in the edit bar (G1, G2); then,
+after those, window / level outside edit mode and a right-button shortcut for it (G3, G4: "I want windowing available
+not in editing screen as well. I also want to be able to right click and window as shortcut"). Each is built,
+unit-tested and recorded in the Ledger; the owner re-checks them at the gate. This section is the spec of record for
+all four.
 
 ### G1: zoom to 8x (`9e2deec`)
 
@@ -1326,7 +1345,8 @@ a re-placed step showed nothing the current one did not. No new shortcut: Escape
 
 **The wiring (`renderer/level-editor.js`).** `selectPlacingStep(index)`:
 `update((editor) => (editor.placing && !editor.window?.open ? setPlacingStep(editor, index) : editor))`, with no edit
-flag: nothing is committed, and it waits while the window / level panel is open. A chord's take-back of a placement
+flag: nothing is committed, and it waits while the window / level panel is open (since G3 the guard reads the view's
+panel, `windowPanelOpen(editor)`). A chord's take-back of a placement
 press (`placeAt`, `startChordPan`) now applies only when the press set a point, so a press R26 drops cannot make the
 chord clear another point. The review of the gate feedback (finding 2) found that the take-back still went through
 UNDO, which under R27 clears the slot, so a chord begun with a press that re-placed a point lost the point's earlier
@@ -1351,6 +1371,94 @@ done, `4 OF 4` again); and the first chip (`1 OF 4`) before the full placement i
 **To check at the gate.** On a body, choose IP first and place the corners in any order; re-place a placed corner from
 its chip; UNDO after a re-place clears that corner; a double-click counts once; a head's chips are not clickable; the
 chips' focus ring in both themes and the chip that is both placed and current.
+
+### G3: the window lives with the view (`8cf213d`)
+
+**What the owner asked for.** Window / level outside edit mode too (D15). Before this the window was the level editor's
+(`state.levelEditor.window`), the toolbar button showed only while editing, and the window reset on every entry to edit
+mode (D11). Now it belongs to the VIEW, like zoom and pan: it lasts while the film is open, resets when another film
+opens or the Analysis screen is left (FRESH_VIEW; R29 says exactly where), and outlives entering and leaving edit mode.
+Still display only, never persisted, never in the record.
+
+**The store.** A new key `filmWindow: null` in `renderer/store.js`'s initial state and in BOTH FRESH_VIEW objects
+(`screens/studies.js`, `data/demo-visibility.js`; `test/store.test.js` and `test/demo-visibility.test.js` pin them). Its
+shape is the old window state plus `studyId`, so a decode that finishes after another film opened lands nowhere:
+`{studyId, open, status: 'loading'|'ready'|'unavailable', reason, width, level, defaultWidth, defaultLevel, min, max,
+range}` (the `FilmWindow` typedef in `renderer/film-window.js`). `state.levelEditor.window` is gone: `openEditor` no
+longer writes one, the stash no longer resets one, and the `WindowState` typedef left `data/levels.js`.
+
+**The wiring (`renderer/film-window.js`)**, the ONLY writer of `state.filmWindow`, built like `renderer/level-editor.js`
+(configure with deps, read the store, write new objects, no subscriber). `configureFilmWindow({ ensureFilm })`;
+`windowFor(state, study)` (the store's window when its `studyId` is that study's, else null; every stage reader goes
+through it); `openWindowPanel()` (a window loading or ready just opens; none, or an unavailable one, starts a loading
+state with `open: true` and the decode); `ensureWindowLoaded()` (the same decode without the panel, for the right-button
+drag, only when the open film has no window yet: R30); `closeWindowPanel()`; `setWindow({width, level})` (clamped to
+the range, only when ready, an unchanged window writes nothing); `resetWindow()`; `forgetFilmWindow(studyId)` (null when
+the window is that film's). The decode is level-editor.js's old `loadWindow`: up to three attempts on a superseded
+outcome, `ready` at `defaultWindow(raw)` with `windowRange(raw)` as `range`, or `unavailable` with the outcome's
+display-ready reason (`The original film could not be loaded.` when it has none); only the newest decode lands, and only
+on the loading window it was started for while that film is still open. Both open functions return the decode's
+promise (the tests await it). `screens/analysis.js` calls `configureFilmWindow({ ensureFilm })` beside
+`configureLevelEditor`, and `forgetFilmWindow(studyId)` wherever it calls `forgetLevelEditor(studyId)` for a film whose
+images change or go: `releaseStudy` (delete), a run completing on the study, `changeRegion`. The level editor's
+`placePoint`, `selectPlacingStep` and `fitPlacing` pause while the view's panel is open over its film
+(`windowPanelOpen(editor)`, through `windowFor`).
+
+**The stage (`components/viewer.js`), in both modes.** The toolbar's Window / level button is always shown, disabled
+for a demo study and while there is no film on the stage (`currentImages` null); `aria-pressed` follows the panel; its
+tooltip names the right-button shortcuts (R33). The panel opens in both modes; outside edit mode it sits directly
+under the toolbar (`.viewer-stage:not(.is-editing) .viewer-wl { top: 64px }`), so it never meets the edit bar, and it
+carries a hint line in place of the edit bar's help (R33). The chip shows `W … · L …` whenever the open film's window
+is ready. The static layer draws the windowed original in both modes (its key holds the window's width, level and
+status); outside edit mode the mask overlay is drawn over it as over the stored image. A LEFT drag with the panel open
+windows in both modes; outside edit mode it outranks construction selection (the click that follows is suppressed).
+Escape outside edit mode closes the panel first (a focused W/L slider lets it through), then clears the construction as
+before; inside edit mode the order stays: the exit prompt, a placement, the panel, edit mode.
+
+### G4: the right button windows; a double right-click resets (`8cf213d`)
+
+**The drag (D16).** In `handlePointerDown` (the film) and `handleHostPointerDown` (the black surround, and a press on
+the construction label, which bubbles there), a RIGHT press (`event.button === 2`) that is not a chord starts a window
+drag (`drag = { kind: 'window', … }`) in every mode, Pan toggle on or off, with pointer capture on the dynamic canvas and
+the `is-windowing` and `is-window-drag` classes; not on a demo study and not without a film. When the window is not
+ready yet the press calls `ensureWindowLoaded()` and the drag waits with `start: null`; `handlePointerMove` takes the
+window and the pointer as the drag's start at its first move once the window is ready, then applies `dragWindow` (four
+units per screen pixel: left–right width, up–down level) as the panel's drag does. A chord outranks it: the left button
+joining a right-button drag dismantles it in `startChordPan` as a label drag is dismantled, and the window keeps what
+the drag set before. `handleContextMenu` already prevents the menu. A right-button drag over a film whose original
+cannot be decoded toasts why (R31).
+
+**The double right-click (D17).** Browsers fire no `dblclick` for the secondary button, so it is detected in pure logic:
+`isDoubleClick(previous, next, { withinMs = 400, withinPx = 6 } = {})` in `renderer/viewer/interactions.js` over
+`{ time, clientX, clientY, button }` records (the same button, no more than 400 ms after the first press and no more
+than 6 px from it; no clock read). The stage records each right press with the event's `timeStamp`; a second press
+that qualifies resets the window (`resetWindow()`) and starts no drag (R32 for the details).
+
+**Cursor and classes.** As for the panel's drag: `is-windowing` while the panel is open or a window drag is live; a live
+drag adds `is-window-drag`, whose `all-scroll` cursor rule (`.viewer-stage.is-window-drag .viewer-canvas.viewer-canvas-dynamic`,
+after the pan-mode rules) wins over Pan's `grab`, and loses only to a chord's `grabbing`. A release or cancel drops
+`is-window-drag` and keeps `is-windowing` only while the panel is open.
+
+**Tests.** `test/film-window.test.js` (new, through the real store, a stub `ensureFilm` whose calls the test resolves):
+open → loading → ready at the film's window and at the full range; clamping, the unchanged reference, `resetWindow`;
+`closeWindowPanel` and a reopen with no decode; `ensureWindowLoaded` without the panel; an unavailable outcome with its
+reason, and R30; three superseded attempts; a decode dropped after FRESH_VIEW and after another film opened;
+`windowFor` and a window left by a writer that changes `openId` without FRESH_VIEW; `forgetFilmWindow`; demo and no
+study; and the window kept across `enterLevelEditor` and `exitNow` (13 tests). `test/interactions.test.js`:
+`isDoubleClick` (3). `test/demo-visibility.test.js`: FRESH_VIEW's nine keys. `test/store.test.js`,
+`test/levels.test.js` (the editor has no `window`) and `test/level-editor-wiring.test.js` (the G2 test opens the view's
+panel; a placement click waits under it) follow the new key. Unit 901 → 918.
+
+**Smoke.** `tools/smoke/smoke-levels.mjs` reads the window through `window.__lv.filmWindow()` (section 16's checks keep
+their meaning) and gains section 17, outside edit mode on the hand-placed synthetic film SP-9301 right after section 12
+leaves edit mode, plus SP-9303, a study with no film, to open and leave: the window kept on leaving edit mode; the
+button shown, enabled, not pressed; the chip; the panel under the toolbar with its hint; a left drag with the panel
+open on L1 windows by (−80, −40) and selects nothing; Escape closes the panel, then the same press selects L1 and Escape
+clears it; a right-button drag with the panel closed lowers the width and the level by (−80, −40), the chip follows and
+the release ends the windowing classes; a double right-click restores the default; entering edit mode keeps the
+window; another study opened resets it (and its W/L button is disabled, no film); back on the film there is no window
+until asked for and the panel opens at the default; a right-button drag on a film with no window yet decodes it and
+windows from its first move after. Dom 79 → **94/94**, film 23/23.
 
 ---
 
@@ -1391,3 +1499,6 @@ already state.
 | 2026-10-11 | gate | **Gate feedback G2** (the owner): the step chips choose which point the next click places, in any order, and re-place a placed one; femoral heads unchanged. `placing` is `{ code, points, current, history }` for every kind (`points` one slot per step, null until set); new `setPlacingStep` (levels.js) and `selectPlacingStep` (level-editor.js); UNDO clears the most recently set point and makes its step current. The full design is in "Gate feedback (2026-10-11)" above. `068c8e2`; unit 888 → 898; `smoke-levels.mjs` dom gains four checks (79 expected, not run when written); `smoke-gate2.mjs` reads the slots. **R26:** a click within 1 px of ANY other placed point of the placement is dropped, for every kind (it generalises the previous-point rule for bodies, C2 and endplates and keeps R22 for heads; a double-click still counts once). *Cost if wrong:* a body or endplate corner cannot be placed within 1 px of another of its points. **R27:** a re-placed point counts once in `history` and moves to its end, so UNDO after a re-place clears that point rather than restoring where it was. *Cost if wrong:* re-placing a point loses its earlier position to UNDO. Also in the commit: only a placed point fills its chip's dot (the prototype's rule; the current, empty step's dot is now an outline in its colour), the chips are disabled during the study's run and keep keyboard focus across a rebuild, and a chord takes back a placement press only when that press set a point, which closes Task 10's deferred minor (a chord after a refused click or a host press could undo a legitimate point; ROADMAP §8's clause is struck in the review's records commit). |
 | 2026-10-11 | gate | **Review of the gate feedback** (`9e2deec`, `068c8e2`, `8fddcea`): approved, four minor findings, all fixed in one wave. 1: past 1:1 on screen, which the 8x cap makes reachable, every CSS-sized part of the overlay fell under one image pixel and was anti-aliased away before being magnified (faint lines, unreadable plates): ruled R28, next row. 2: a chord's take-back of its placement press went through UNDO, which under R27 clears the slot, so a chord begun with a press that RE-PLACED a point (SA and IP placed, the SA chip, a left-first chord on the film) lost SA: `placeAt` now keeps the placing from before the press and the one it left, and the chord calls the new wiring export `restorePlacing(prior, pressed)`, a no-op once the placing has moved on or the press finished the placement. 3: ROADMAP §8 still listed "a chord after a refused click can undo a legitimate point", fixed by `068c8e2`: struck. 4: the records had not followed G1 and G2 (HANDOFF's date, its first section and its decisions list; the ruling counts in CLAUDE.md and `docs/level-editor.md`; the unit count). The wave: `dcd0cb5` (code and tests: `test/canvas.test.js` +2, the editor and the hip line at pixel ratio 0.25, 0.5 and 0.999 paint exactly as at 1 and still double at 2; `test/level-editor-wiring.test.js` +1, `restorePlacing` through the real store, a stale press and a finishing press included) and the records commit (this row and the next, the G1 and G2 sections, Task 15's G1 and G2 items, the contract amendment's R28 and `restorePlacing`, `docs/level-editor.md`, ROADMAP §8, HANDOFF incl. decisions 114–116, CLAUDE.md). Unit 898 → **901/901**. No smoke suite re-run (no app launched; `smoke-levels.mjs` dom 79/79 is still expected and not run since G2). |
 | 2026-10-11 | gate | **Ruling R28** (controller, the review's finding 1): `viewer/canvas.js` `drawLevelEditor` and `drawDynamicLayer` (the hip line, its dash and the centre and midpoint markers outside edit mode) floor the drawing ratio at 1 image pixel per CSS pixel, `Math.max(1, opts.pixelRatio ?? 1)`. Below 1:1 the overlay holds its size on screen as before; past 1:1 it keeps its image-pixel size and magnifies with the film, crisp. Hit testing is in client space; the grab radius follows the drawn handle past 1:1 (`Math.max(14, 6 / Math.min(1, pixelRatio))` CSS px, the re-review's finding; before it a press inside a handle drawn larger than 14 px missed). `dcd0cb5`, 2df1373. *Cost if wrong:* handles and labels look large at 8x on a film that is already at 1:1 at low zoom (a small film), where they can cover the detail being inspected; a cap on the growth would replace the floor. |
+| 2026-10-11 | gate | **Gate feedback G3** (the owner, D15): window / level outside edit mode, the window the view's. New store key `filmWindow` (initial state and both FRESH_VIEW copies), new wiring module `renderer/film-window.js` (its only writer: `configureFilmWindow`, `windowFor`, `openWindowPanel`, `ensureWindowLoaded`, `closeWindowPanel`, `setWindow`, `resetWindow`, `forgetFilmWindow`); `state.levelEditor.window` and level-editor.js's five window functions removed; `screens/analysis.js` configures it and forgets a film's window with its level editor (delete, a completed run, a Region change); the stage shows the button, the panel (under the toolbar outside edit mode), the chip and the windowed film in both modes, a left drag with the panel open windows in both, Escape outside edit mode closes the panel first. The full design is in "Gate feedback (2026-10-11)" above. `8cf213d`. |
+| 2026-10-11 | gate | **Gate feedback G4** (the owner, D16, D17): a right-button drag windows the film in every mode without the panel, and a double right-click resets it; `isDoubleClick` (pure, `viewer/interactions.js`) detects the double right-click; a chord still outranks the drag. `8cf213d`, with G3. Unit 901 → **918/918**. Smoke on one fresh `%TEMP%` profile (DOM, store and file reads only, no screenshots): `smoke-levels.mjs` dom **94/94** (79 before; G2's four checks, never run when written, pass among them) and film **23/23** (the copied OLIF film); then the gate chain on the injected sample study, since the left press, Escape and the right button changed under them: parity 15/15, gate1 25/25, gate2 26/26, gate3 26/26, chip 20/20, chord 28/28 (its right-first chords now begin as a window drag and still pan). Not run: the other suites (nothing they read changed), a packaged build. |
+| 2026-10-11 | gate | **Rulings for G3 and G4.** **R29:** the window resets exactly where zoom and pan reset, FRESH_VIEW: another film opened from the list (this one too, reopened from the list), and the open study closed by a delete or the demo toggle. Back to the Studies list and the sidebar's OPEN STUDY card keep it, as they keep zoom and pan; a writer that changes `openId` without FRESH_VIEW (the calibration screen's return) leaves a window `windowFor` will not show, since its `studyId` names another film. A film whose images change or go (deleted, a run completed on it, its Region changed) forgets it. *Cost if wrong:* one `filmWindow: null` in Back's write, if leaving the screen should reset it even when the same film is returned to through the sidebar. **R30:** a right press decodes a film with no window yet but does not retry one whose decode came back unavailable; opening the panel does (and its note says why). *Cost if wrong:* a film whose source returns (a drive reconnected) needs the panel opened once before the right-button drag works again. **R31:** a right-button drag over an unavailable film with the panel closed toasts `Window / level is unavailable. <reason>` once per drag, at its first move; a right-first chord whose left button joins before the pointer moves never gets that far (one that moves first does). *Cost if wrong:* one toast per attempt; three lines to remove. **R32:** the double right-click compares the two presses only (button, 400 ms, 6 px, the events' `timeStamp`s), on the film and the black surround alike; the second press resets and starts no drag and is forgotten (a third press begins a new pair); a chord forgets the right press before it (never a click); the first press of a double right-click is an ordinary right press, so its drag may move the window a few units before the reset. *Cost if wrong:* a quick right-drag that ends where it began, followed within 400 ms by another press there, resets the window; a movement test in `viewer.js` would tighten it. **R33:** copy. The toolbar button's tooltip reads `Window / level — or right-drag on the film; double right-click resets` (its accessible name stays `Window / level`, the suites' selector); outside edit mode, where no edit bar carries its help line, the panel shows `Drag on the film: left–right sets width, up–down sets level. With the panel closed, right-drag; double right-click resets.` above its display-only sentence. *Cost if wrong:* copy. **R34:** windowing is not gated on a run: the panel and the right-button drag work on the film on the stage while that study's run is in flight (display only; the RUNNING card covers the middle of the stage, and the completed run forgets the window), so the left press with the panel open now windows before the busy check that guards placement and handles; with the panel open outside edit mode a press on the construction's label chip still drags the chip, its own target. *Cost if wrong:* a busy guard in `handleRightPress` and in the left press's window branch. |

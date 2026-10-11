@@ -107,9 +107,15 @@ renderer/                         (new)
   demo-studies.js                 (2026-09-10, studies-table spec §9) demoToggleAvailable(), setDemoStudiesShown(shown) — the one wiring of
                                   data/demo-visibility.js to the store, the toast and api.setDemoStudiesHidden; module scope
   level-editor.js                 (2026-10-10) the level editor's wiring, the pattern of batch.js: enter/exit, save, discard, every
-                                  panel and stage action, the window / level state, the per-study stash; the ONLY writer of a non-null
+                                  panel and stage action, the per-study stash; the ONLY writer of a non-null
                                   state.levelEditor; never imports components/viewer.js or screens/analysis.js (they hand it their
-                                  parts through configureLevelEditor); module scope; verified by smoke
+                                  parts through configureLevelEditor); module scope; verified by smoke. (2026-10-11, G3) The
+                                  window / level state moved out to film-window.js
+  film-window.js                  (2026-10-11, gate feedback G3/G4, plan D15–D17) the view's window / level, the pattern of
+                                  level-editor.js: configureFilmWindow({ensureFilm}), windowFor(state, study), openWindowPanel(),
+                                  ensureWindowLoaded(), closeWindowPanel(), setWindow({width, level}), resetWindow(),
+                                  forgetFilmWindow(studyId); the ONLY writer of state.filmWindow; no subscriber; never imports
+                                  components/viewer.js or screens/analysis.js; module scope; test/film-window.test.js
   dom.js                          el() helper, tiny render utilities
 
   screens/landing.js
@@ -422,6 +428,12 @@ a draw function must blank a layer, never freeze the application.
   levelEditor: null,        // (2026-10-10) LevelEditor | null — the level editor's state while editing (typedef in
                             // renderer/data/levels.js); renderer/level-editor.js is the only writer of a non-null value;
                             // session-only, never persisted; reset to null by FRESH_VIEW, a run's completion and changeRegion
+  filmWindow: null,         // (2026-10-11, gate feedback G3, plan D15) FilmWindow | null — the open film's window / level,
+                            // part of the VIEW like zoom and pan, in every mode: {studyId, open, status: 'loading'|'ready'|
+                            // 'unavailable', reason, width, level, defaultWidth, defaultLevel, min, max, range} (typedef in
+                            // renderer/film-window.js, its ONLY writer); display only, session-only, never persisted, never in
+                            // the label record; reset to null by FRESH_VIEW and by forgetFilmWindow (delete, a run's
+                            // completion, changeRegion); entering and leaving edit mode keep it
   running: null,            // string | null — the id of the study whose /predict is in flight (plan 05);
                             // one run at a time. `if (state.running)` still means "a run is in flight";
                             // the viewer and the Studies list compare it with a study's id.
@@ -826,6 +838,11 @@ export function debounce(fn, ms)                    // (plan 04) → fn with .ca
 
 export const CHORD_MASK = 0b11                      // primary|secondary bits of PointerEvent.buttons
 export function isChordHeld(buttons)                // → boolean — BOTH primary and secondary held
+export function isDoubleClick(previous, next, { withinMs = 400, withinPx = 6 } = {})
+//   → boolean — (2026-10-11, gate feedback G4, D17) `next` completes a double click with `previous`: both
+//   {time, clientX, clientY, button}, the same button, 0..withinMs apart, within withinPx. Browsers fire no
+//   dblclick for the secondary button; the stage's double right-click (the window reset) asks this. The caller
+//   passes the events' own timeStamps; nothing here reads a clock.
 export function zoomAbout(view, direction, offsetX, offsetY)
 //   → {zoom, panX, panY} — a zoom step anchored at a point instead of the film's centre.
 //   `direction` is a SIGN, not a factor, so the wheel and the toolbar buttons reach
@@ -1346,8 +1363,9 @@ workstation with `--verify-models`, which exercises each listed GPU.
 ## 2026-10-10 amendment: vertebral level editor, window / level, label record
 
 Spec `docs/design/level-editor/HANDOFF.md` (`594a982`); plan `plans/2026-10-10-level-editor.md`, whose Decisions
-table (D1–D14, the owner's answers) wins over the spec and whose Ledger holds the execution rulings R1–R28 (R26 and
-R27 from the gate feedback of 2026-10-11, the plan's "Gate feedback" section, and R28 from its review); user doc
+table (D1–D17, the owner's answers; D15–D17 from the gate feedback of 2026-10-11) wins over the spec and whose Ledger
+holds the execution rulings R1–R34 (R26 and R27 from the gate feedback of 2026-10-11, the plan's "Gate feedback"
+section, R28 from its review, R29–R34 from G3 and G4); user doc
 `docs/level-editor.md`; label record schema `docs/design/level-editor/label-record.schema.json`. Edit mode is the
 level editor: the Analysis screen's right panel becomes the Vertebral levels panel (sixteen levels in five groups:
 C2–C7, T1 · T4, L1–L5, S1, two femoral heads), the stage places, selects and adjusts levels, a display-only window /
@@ -1368,8 +1386,9 @@ draw path in `drawDynamicLayer` (`opts.editor`, `handle`, `dragGeometry`, `overl
 `drawStaticLayer` (`opts.editing`, `opts.window`).
 
 **`state.levelEditor`** (store block above): `LevelEditor | null`, typedef in `renderer/data/levels.js` (studyId,
-region, levels, model, baseline, record, selected, handle, placing, open, window, exitPrompt). `renderer/level-editor.js`
-is the only writer of a non-null value; the other writers only ever reset it to null: `FRESH_VIEW` (its eight keys in
+region, levels, model, baseline, record, selected, handle, placing, open, exitPrompt; the `window` it held until
+2026-10-11 is the store's own `filmWindow` now, see "Gate feedback" below). `renderer/level-editor.js`
+is the only writer of a non-null value; the other writers only ever reset it to null: `FRESH_VIEW` (its keys in
 `screens/studies.js` and `data/demo-visibility.js` gain `levelEditor: null`), a run's completion for that study
 (`segmentStudy`), and `changeRegion`. Session-only, never persisted, never mutated in place: every action builds a new
 editor, which the viewer's dynamic key and the panel's rebuild key compare by reference. An editor with unsaved changes
@@ -1503,6 +1522,55 @@ when the press set a point and left the placement open; `startChordPan` calls it
 `editor.placing` is still `pressed`, and is a no-op otherwise (the placing has moved on, or `pressed` is null); no edit
 flag, nothing committed. UNDO is no longer the take-back: under R27 it clears the slot, so a press that re-placed a
 point would lose the point's earlier position.
+
+**Gate feedback G3 and G4 (2026-10-11; D15–D17).** Window / level works outside edit mode and belongs to the view.
+**`state.filmWindow`** (store block above) replaces `state.levelEditor.window`: `FilmWindow | null`, the old window
+state plus `studyId` (a decode for a film no longer open lands nowhere), typedef in the new **`renderer/film-window.js`**,
+its only writer (File structure block above). FRESH_VIEW gains `filmWindow: null` in both copies (nine keys; pinned
+equal, and to their content, by `test/demo-visibility.test.js`); entering and leaving edit mode keep the window.
+Exports: **`configureFilmWindow({ensureFilm})`** (`screens/analysis.js` hands it `ensureFilm`, beside
+`configureLevelEditor`); **`windowFor(state, study)`** (the store's window when its `studyId` is that study's, else
+null; every reader in `components/viewer.js` and the level editor's placement guards go through it);
+**`openWindowPanel()`** (a window loading or ready opens; none, or an unavailable one, starts a loading window with the
+panel open and the decode); **`ensureWindowLoaded()`** (the same decode with the panel closed, for the right-button
+drag, only when the open film has no window yet); **`closeWindowPanel()`**; **`setWindow({width, level})`** (clamped by
+`clampWindow` to the window's `range`, only when ready, an unchanged window writes nothing); **`resetWindow()`**;
+**`forgetFilmWindow(studyId)`** (`screens/analysis.js` calls it wherever it calls `forgetLevelEditor(studyId)` for a film
+whose images change or go: `releaseStudy`, a run's completion, `changeRegion`). The two open functions return the
+decode's promise. The decode is the level editor's former `loadWindow` (up to three attempts on a superseded outcome;
+ready at `defaultWindow(raw)` with `windowRange(raw)`, or unavailable with a display-ready reason); only the newest
+decode lands, on the loading window it was started for, while that film is open. **Removed** from
+`renderer/level-editor.js`: ~~`openWindowPanel`~~, ~~`closeWindowPanel`~~, ~~`setWindow`~~, ~~`resetWindow`~~ (moved to
+`film-window.js`) and the private `loadWindow`; `openEditor` writes no `window` and the stash no longer resets one; the
+`WindowState` typedef left `data/levels.js`. `placePoint`, `selectPlacingStep` and `fitPlacing` pause while the view's
+panel is open over the editor's film. `viewer/interactions.js` gains **`isDoubleClick`** (block above).
+
+The stage, in every mode: the Window / level tool is always shown (disabled for a demo study and with no film on the
+stage); the panel opens outside edit mode under the toolbar (`.viewer-stage:not(.is-editing) .viewer-wl`) with a hint
+line; the chip reads the window whenever it is ready; `drawStaticLayer` gets `opts.window` from the view's window in
+both modes (outside edit mode the overlay is drawn over the windowed film); a LEFT press with the panel open starts a
+window drag in both modes (outside edit mode it outranks construction selection). A RIGHT press (`button === 2`, not a
+chord) on the film (`handlePointerDown`) or the black surround (`handleHostPointerDown`) starts a window drag in every
+mode, Pan on or off (D16), calling `ensureWindowLoaded()` and waiting with `start: null` until the window is ready; a
+second right press that `isDoubleClick` accepts resets the window and starts no drag (D17); `startChordPan` dismantles a
+window drag as it dismantles a label drag. A live window drag carries `is-window-drag` (its `all-scroll` cursor beats
+the pan-mode cursor). Escape outside edit mode closes the panel before it clears the construction; in edit mode the
+order is unchanged. Still display only: no measurement, geometry, record or persisted value depends on the window.
+
+- R29 (G3): the window resets where zoom and pan reset, FRESH_VIEW; Back to the list and the sidebar's open-study card
+  keep it as they keep zoom and pan; a writer that changes `openId` without FRESH_VIEW (the calibration screen's return)
+  leaves a window `windowFor` refuses, its `studyId` being another film's.
+- R30 (G4): `ensureWindowLoaded` does not retry an unavailable window; `openWindowPanel` does.
+- R31 (G4): a right-button drag over an unavailable film with the panel closed toasts `Window / level is unavailable.`
+  and the reason, once per drag at its first move.
+- R32 (G4): the double right-click compares the two presses only (button, 400 ms, 6 px, the events' `timeStamp`s), on
+  the film and the black surround alike; its second press is forgotten (a third begins a new pair); a chord forgets the
+  right press before it; its first press is an ordinary right press.
+- R33 (G3, G4): copy. The tool's tooltip `Window / level — or right-drag on the film; double right-click resets` (its
+  accessible name stays `Window / level`); the panel's hint outside edit mode.
+- R34 (G3, G4): windowing is not gated on the study's own run (display only; the completed run forgets the window), so
+  a left press with the panel open windows before the busy check that guards placement and handles; with the panel
+  open outside edit mode the construction label chip still takes its own left press.
 
 No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet file (rules in
 `styles/screens/analysis.css` section `05 — LEVEL EDITOR` and `styles/components.css`), no Python package.

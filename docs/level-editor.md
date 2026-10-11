@@ -1,10 +1,11 @@
 # The vertebral level editor
 
 Edit mode on the Analysis screen is a level editor (2026-10-10). It lists every vertebral level the app knows, lets the
-annotator place the levels the model missed, mark the ones that are not on the film, and adjust the rest; it adds a
-display-only window / level to the stage; and **Save edits** writes one JSON label record per film, whose job is
-retraining the segmentation models. Design: `docs/design/level-editor/HANDOFF.md`. Plan, decisions D1–D14 and the
-execution rulings R1–R28: `docs/superpowers/plans/2026-10-10-level-editor.md`. Contract: the 2026-10-10 amendment of
+annotator place the levels the model missed, mark the ones that are not on the film, and adjust the rest; it came with
+a display-only window / level for the stage, which since the gate feedback of 2026-10-11 works outside edit mode too;
+and **Save edits** writes one JSON label record per film, whose job is retraining the segmentation models. Design:
+`docs/design/level-editor/HANDOFF.md`. Plan, decisions D1–D17 and the execution rulings R1–R34:
+`docs/superpowers/plans/2026-10-10-level-editor.md`. Contract: the 2026-10-10 amendment of
 `docs/superpowers/plans/2026-08-31-00-architecture-contract.md`.
 
 ## Entering and leaving
@@ -141,7 +142,8 @@ once (D2).
 | Delete, Backspace | nothing (the level editor has no delete; uncheck or CLEAR instead) |
 
 Handles and placement clicks pause while the W/L panel is open. The left+right chord and the middle button pan in every
-mode; with the Pan toggle pressed, a primary drag pans even over a handle. Not built: the handoff's suggested row keys
+mode; with the Pan toggle pressed, a primary drag pans even over a handle. The right button alone windows the film in
+every mode (see Window / level below); it never places a point. Not built: the handoff's suggested row keys
 (↑/↓ between rows, Space to toggle visible, P for Place…), deferred to `docs/ROADMAP.md`.
 
 The stage zooms to 800% (gate feedback G1, 2026-10-11), so a film can be inspected past one screen pixel per image
@@ -186,11 +188,40 @@ is never recorded (D11).
 
 ## Window / level
 
-The toolbar's window / level button (shown only in edit mode) opens a panel with WIDTH and LEVEL sliders, RESET (the
-file's default window) and DONE; the edit bar reads `WINDOW / LEVEL` (`· PLACING PAUSED` during a placement); the study
-chip reads `W 256 · L 128`. Dragging on the film changes the window too: left–right the width, up–down the level, four
-units per screen pixel. **It is display only**: measurements, the levels and the label record never change, nothing is
-saved, and it resets when the study is opened again (D11).
+Window / level works in every mode, on any film on the stage (gate feedback G3 and G4, 2026-10-11). The toolbar's
+window / level button is always shown, and disabled only for a demo study and while there is no film on the stage. It
+opens a panel with WIDTH and LEVEL sliders, RESET (the file's default window) and DONE; outside edit mode the panel sits
+directly under the toolbar and says how to drag, in edit mode it sits under the edit bar, which then reads `WINDOW /
+LEVEL` (`· PLACING PAUSED` during a placement). Once the film is decoded the study chip reads the window, `W 256 · L
+128`, in both modes, and follows every change.
+
+- **A drag on the film with the panel open** changes the window: left–right the width, up–down the level, four units
+  per screen pixel (dragging left narrows the window, dragging up lowers the level, which brightens the film). Outside
+  edit mode it takes the press away from construction selection; in edit mode placement clicks and handles wait.
+- **A right-button drag** does the same in every mode with the panel closed or open, with Pan on or off, while placing,
+  and on the black surround as on the film (D16). The first right press on a film decodes its original; the window
+  follows the drag from the first move after that. A left+right chord still pans, whichever button goes first: the left
+  button joining a right-button drag turns it into a pan.
+- **A double right-click** (two right presses within 400 ms and 6 px) restores the film's default window (D17), as
+  RESET does.
+
+**It is display only**: measurements, the levels and the label record never change, and nothing is saved (D11). The
+window belongs to the view, like the zoom and the pan (D15): it lasts while the film is open, entering and leaving edit
+mode keep it, and it starts again at the film's default when another film is opened from the list (or this one again).
+Going back to the list and returning through the sidebar's open-study card finds the window that was left, as it finds
+the zoom and the pan (R29). A re-run, a Region change or a delete forgets it.
+
+| Input | Every mode |
+|---|---|
+| Window / level button | opens and closes the panel |
+| Left drag on the film, panel open | windows the film; selects no construction and places nothing |
+| Right drag, on the film or the black surround | windows the film, panel open or closed (D16) |
+| Double right-click | the film's default window (D17) |
+| Left + right chord | pans; it takes over a right-button drag |
+| Escape | outside edit mode: closes the panel first, then clears the construction; in edit mode: the exit prompt, a placement, the panel, then edit mode |
+
+A right-button drag on a film whose original cannot be decoded says why in a toast (`Window / level is unavailable.`
+and the reason, R31) and changes nothing; it does not try the decode again, and opening the panel does (R30).
 
 The pixels are the ORIGINAL film's, not the 8-bit image the model stored: the backend's `POST /decode` returns the
 uploaded file's own values (16-bit for DICOM, with RescaleSlope/Intercept applied and MONOCHROME1 inverted), and the
@@ -224,7 +255,9 @@ write a label record; the save path refuses with `Demo studies are not exported`
 ## Verification
 
 `tools/smoke/smoke-levels.mjs` (phases `dom` and `film`; see `tools/smoke/README.md`) covers the panel, placing,
-unchecking, Save edits and the record on disk, Discard and the exit prompt, femoral rim points, window / level, the
-keyboard and the stash; the pure modules have unit tests (`test/levels`, `level-projection`, `level-handles`,
-`window-level`, `label-record`, `contours`), and `test/level-editor-wiring.test.js` drives the wiring through the real
-store and measure queue (R20). The human gate (plan Task 15) is the owner's.
+unchecking, Save edits and the record on disk, Discard and the exit prompt, femoral rim points, window / level in edit
+mode and (section 17) outside it, with the right-button drag and the double right-click, the keyboard and the stash;
+the pure modules have unit tests (`test/levels`, `level-projection`, `level-handles`, `window-level`, `label-record`,
+`contours`, and `interactions` for the double right-click), `test/level-editor-wiring.test.js` drives the wiring
+through the real store and measure queue (R20), and `test/film-window.test.js` drives the view's window
+(`renderer/film-window.js`) through the real store. The human gate (plan Task 15) is the owner's.

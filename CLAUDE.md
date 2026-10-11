@@ -10,18 +10,21 @@ rim points for a head), gives only the selected level handles, and nudges with t
 `study.geometry` through `/measure` as before, while T1, T4, visibility and rim points live only in the level model and
 the record. Save edits writes `userData/labels/<stem>.label.json` (schema `docs/design/level-editor/label-record.schema.json`;
 `labelFile` on the study; deleted and quarantined with it). Window / level decodes the original film through a new
-`POST /decode` and windows the film layer only, display only (D1, D11); `qc.model_versions` names each graph. A film
+`POST /decode` and windows the film layer only, display only (D1, D11); since gate feedback G3/G4 it works in every
+mode and belongs to the view like zoom and pan (`state.filmWindow`, written only by `renderer/film-window.js`;
+FRESH_VIEW resets it, edit mode keeps it), a right-button drag windows and a double right-click resets (D15–D17);
+`qc.model_versions` names each graph. A film
 with no result opens in edit mode on its original and can be placed by hand (`isHandPlaced`, R16); Re-run is disabled
 while editing (R17). The old edit bar's RETRACE / ADD / DELETE CIRCLE and the landmark Tab, nudge and hit-test code are
-retired. Plan `docs/superpowers/plans/2026-10-10-level-editor.md` (Decisions D1–D14; its Ledger holds R1–R28 and every
+retired. Plan `docs/superpowers/plans/2026-10-10-level-editor.md` (Decisions D1–D17; its Ledger holds R1–R34 and every
 deferred minor); spec `docs/design/level-editor/HANDOFF.md`; user doc `docs/level-editor.md`; the contract's 2026-10-10
 amendment; HANDOFF's first "Where things stand" section. The final whole-branch review ("With fixes") landed `7e9d502`
 and `e3d5df7`: an Auto film with no model run takes its region from its placed levels on every projection (R20), Region
 and Orientation are disabled while editing (R21), a femoral head needs a radius of 0.5 px (R22); a hand-placed film
 that had failed still reads Failed, the owner's call at the gate (R24). The wave's re-review was clean; its one residual,
-a rim-point drag or nudge that would leave a head under 0.5 px, is refused (`f3a3a32`, R25). Unit 901/901 after the gate
-feedback's review wave (898 after G2, 888 after R25, 887 after the wave, 879 before it); `smoke-levels.mjs` re-run
-after the wave, dom 75/75 and film 23/23; backend pytest 762 passed, 3 skipped. The pre-gate
+a rim-point drag or nudge that would leave a head under 0.5 px, is refused (`f3a3a32`, R25). Unit 918/918 after G3/G4
+(901 after the gate feedback's review wave, 898 after G2, 888 after R25, 887 after the wave, 879 before it);
+`smoke-levels.mjs` after G3/G4, dom 94/94 and film 23/23; backend pytest 762 passed, 3 skipped. The pre-gate
 smoke run of 2026-10-11 on the final tree (`9287473`), every suite on its own fresh `%TEMP%` profile, one app at a time,
 DOM reads only: landing 16/16, parameters 58/58, studies 151/151, workspace 100/100, persist 42/42 then 55/55, parity
 15/15, gate1 25/25, gate2 26/26, gate3 26/26, chip 20/20, chord 28/28, femoral-confidence 16/16 then 5/5, disc-heights
@@ -39,7 +42,11 @@ which point the next click places, in any order, with UNDO clearing the most rec
 898/898, `smoke-levels.mjs` dom expected 79/79 but not re-run). Their review (approved, four minors) landed `dcd0cb5`
 and a records commit: past 1:1 the overlay keeps its image-pixel size and magnifies with the film (R28), a LEFT-first
 chord's take-back of a re-placing press restores the placing from before it (`restorePlacing`), ROADMAP §8's fixed
-chord clause struck, HANDOFF decisions 114–116; unit 901/901. Releases as 1.0.18 or later; nothing pushed.
+chord clause struck, HANDOFF decisions 114–116; unit 901/901. Then G3 and G4 (D15–D17, rulings R29–R34, HANDOFF
+decisions 117–125): window / level outside edit mode as the view's (`filmWindow`; the level editor carries no window),
+the right-button drag and the double right-click (`isDoubleClick`), `8cf213d` and its records commit; unit 918/918,
+`smoke-levels.mjs` dom 94/94 (section 17 new) and film 23/23, parity, gate1–3, chip and chord green on the same
+launch. Releases as 1.0.18 or later; nothing pushed.
 
 **2026-10-07 release 1.0.16 (crop search restored):** branch `ccr-af336f0e-7wacoa` off `main` @ `f2e39e0`, the merge
 of Michael's PR #57 (`0bd01c5`), which retires 1.0.13's trained crop method: Settings shows Crop search only,

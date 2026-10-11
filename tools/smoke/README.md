@@ -102,7 +102,9 @@ chord 28/28. Use these to spot a real regression later.
 moves MUST carry the held buttons ({ button: 'left', buttons: 3 }): Chromium silently drops
 pointer capture on a mouseMoved with button: 'none', which reads as "capture is lost during a
 chord" and is a false negative. It drives the raw `mouse` primitive throughout, because
-`cdp.click` and `cdp.drag` hardcode a single button.
+`cdp.click` and `cdp.drag` hardcode a single button. Since 2026-10-11 (gate feedback G4) the right button alone
+windows the film, so a right-first chord begins as a window drag that the left button's arrival turns into the pan
+(the suite presses the left button before any move, so the window does not change); unchanged at 28/28.
 
 **`smoke-label.superseded.mjs` is not in the run order and must not be added back.**
 Plan-04 Task 20 built a canvas-drawn label plate; Task 21 replaced it with a DOM chip
@@ -405,7 +407,8 @@ Baseline: 16/16 (2026-10-01; 9/16 before the fix, the logo at opacity 0.07 40 ms
 `smoke-levels.mjs` drives the vertebral level editor (plan `docs/superpowers/plans/2026-10-10-level-editor.md`,
 Task 14; user doc `docs/level-editor.md`) against the real app: the Vertebral levels panel, placing a level,
 unchecking one, Save edits and the label record on disk, Discard and the exit prompt, femoral rim points and FIT,
-window / level, the keyboard, the per-study stash, and the main process's label-file name check. Two phases:
+window / level (in edit mode, and since 2026-10-11 outside it, with the right-button drag and the double right-click),
+the keyboard, the per-study stash, and the main process's label-file name check. Two phases:
 
 ```
 SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-levels-smoke SPINE_CONTOUR_PYTHON=<main checkout>/.venv/Scripts/python.exe node tools/smoke/launch.mjs
@@ -429,9 +432,10 @@ node tools/smoke/cdp.mjs --quit
   commit). Pass a COPY of the film, made under `%TEMP%`, never the original: the record names the copy. **A real film
   is on screen in this phase: the suite takes no screenshots, and none may be added; every check is a DOM, store or
   file read.** About a minute on the CPU.
-- **Ids** `SP-9300`–`SP-9302`, reserved for this suite. `finally` removes the studies, their sidecars, their label
-  records and any stashed editor, deletes the synthetic film, and resets `editing`, `levelEditor`, `selection`,
-  `screen`, `openId` and `measurementDrafts`. The dom phase prepends its studies and leaves the rest alone, so it may
+- **Ids** `SP-9300`–`SP-9303`, reserved for this suite (`SP-9303`, a study with no film, only for section 17 to open
+  and leave). `finally` removes the studies, their sidecars, their label records and any stashed editor, deletes the
+  synthetic film, and resets `editing`, `levelEditor`, `filmWindow`, `selection`, `screen`, `openId` and
+  `measurementDrafts`. The dom phase prepends its studies and leaves the rest alone, so it may
   follow other suites on one launch; never run it between `smoke-persist.mjs --phase run` and `--phase restart`.
 
 What it checks (numbers as in the plan's Task 14 brief): (1) Edit opens the panel, hides the tabs and the run card, and
@@ -456,13 +460,27 @@ outside edit mode (R16); (13) `saveLabelRecord('..')` and `saveLabelRecord('a/b.
 process with `Invalid label file name.`; (14) `hasStashedEditor` read from the page's own `renderer/level-editor.js`;
 (15) Re-run disabled while editing, titled `Finish editing before re-running segmentation` (R17); (16) window / level
 `ready` on a decoded film with the chip `W … · L …`, a drag changing both numbers, RESET, the sliders and DONE (both
-phases: the synthetic film's 8-bit window and the real film's), and the chip hidden while the source is unavailable.
+phases: the synthetic film's 8-bit window and the real film's), and the chip hidden while the source is unavailable;
+(17, dom; gate feedback G3 and G4, 2026-10-11, plan D15–D17) window / level outside edit mode on the hand-placed film
+just left: the window kept on leaving edit mode, the W/L button shown, enabled and not pressed, the chip, the panel
+under the toolbar (top 64) with its hint, a left drag with the panel open windowing by (−80, −40) from inside L1 and
+selecting nothing, Escape closing the panel first (then the same press selects L1 and Escape clears it), a right-button
+drag with the panel closed lowering the width and the level by (−80, −40) with the chip following and the windowing
+classes gone after the release, a double right-click restoring the default, entering edit mode keeping the window,
+another study opened (`SP-9303`, no film: its W/L button disabled) resetting it, the film reopened with no window until
+asked for and the panel at the default, and a right-button drag on a film with no window yet decoding it and windowing
+from its first move after. The window is read as `window.__lv.filmWindow()` (the store's `filmWindow`; the level
+editor has carried no window since G3). The right-button gestures use the raw `mouse` primitive with the held button
+on every event (`rightDragVia`, `doubleRightClick`).
 The film phase also saves a record whose `image.sha256` is 64 hex characters and whose `model.version` is the run's.
 
 **Known baseline** (2026-10-10, branch `worktree-level-editor`, a fresh scratch profile, Windows 11, CPU processor):
 phase `dom` 75/75, phase `film` 23/23 (one copied OLIF lumbar film; L1, L2, L4 and L5 segmented with contours of 9 to
 15 points, L3 edited by a handle drag and a nudge, contour null). (2026-10-11, gate feedback G2) The dom phase gains
-four step-chip checks in sections 3 and 4, so it should read 79/79; not re-run when they were written.
+four step-chip checks in sections 3 and 4, so it should read 79/79; not re-run when they were written. (2026-10-11,
+gate feedback G3 and G4, `8cf213d`) Section 17 adds fifteen dom checks: dom **94/94** (79 before; G2's four pass among
+them) and film **23/23**, measured on one fresh `%TEMP%` profile, with parity, gate1–3, chip and chord green after it
+on the same launch.
 
 ## The landmark-editor suites after the level editor (2026-10-10)
 

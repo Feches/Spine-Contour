@@ -3,7 +3,7 @@
 **Last updated:** 2026-10-11
 **Branch:** `worktree-level-editor` in the worktree `.claude\worktrees\level-editor` of the main checkout, off
 `origin/main` @ `20fd4c5` (v1.0.17): the vertebral level editor, window / level and the label record — BUILT, human
-gate IN PROGRESS since 2026-10-11 (G1 and G2 are its first findings), nothing pushed (first section under "Where
+gate IN PROGRESS since 2026-10-11 (G1–G4 are its findings so far), nothing pushed (first section under "Where
 things stand").
 **2026-10-02 branch (historical):** `claude/issue-39-failed-status-port` (the Failed-status additions on 1.0.13, issue
 #39 follow-up; DONE, merged with v1.0.14, release 1.0.15 committed and awaiting the PR)
@@ -62,9 +62,9 @@ label record per film for retraining, at `userData/labels/<stem>.label.json`. A 
 in edit mode on its original and can be placed by hand.
 
 - Spec: `docs/design/level-editor/HANDOFF.md` (`594a982`; its §12 now lists the decisions). Plan:
-  `docs/superpowers/plans/2026-10-10-level-editor.md` (`3a4019a`), 15 tasks; its Decisions table D1–D14 and its
-  `## Ledger` (every task's commits and counts, rulings R1–R28 with their costs, every deferred minor) and its
-  `## Gate feedback (2026-10-11)` section (G1, G2, the spec of record for both). User doc:
+  `docs/superpowers/plans/2026-10-10-level-editor.md` (`3a4019a`), 15 tasks; its Decisions table D1–D17 and its
+  `## Ledger` (every task's commits and counts, rulings R1–R34 with their costs, every deferred minor) and its
+  `## Gate feedback (2026-10-11)` section (G1–G4, the spec of record for all four). User doc:
   `docs/level-editor.md`. Contract: the 2026-10-10 amendment. SDD ledger
   `.superpowers/sdd/2026-10-10-level-editor/progress.md` (local, untracked).
 - What was built, by commit (`594a982..` this branch's tip): the level model `77c8e5a`; the projection into
@@ -90,11 +90,17 @@ in edit mode on its original and can be placed by hand.
   overlay keeps its image-pixel size and magnifies with the film instead of shrinking under a pixel; a LEFT-first
   chord's take-back of a placement press restores the placing from before the press, `restorePlacing(prior, pressed)`,
   so a press that re-placed a point no longer loses it) and the records commit (ROADMAP §8's fixed chord clause struck;
-  decisions 114–116 below; Task 15 gains a G1 and a G2 item).
-- Counts: unit 901/901 after the gate feedback's review wave (898 after G2, 888 after the final review's wave and R25,
-  887 after the wave, 879/879 before it; 615 at the base; 905 before Task 13 retired 26 tests of removed code);
-  `smoke-levels.mjs` re-run after the final review's wave, dom 75/75 and film 23/23 (G2 adds four dom checks, 79/79
-  expected, not run since). Backend `pytest
+  decisions 114–116 below; Task 15 gains a G1 and a G2 item). Then G3 and G4 (the owner: "windowing available not in
+  editing screen as well", and "right click and window as shortcut"; D15–D17, decisions 117–125 below): window / level
+  works outside edit mode and belongs to the view like zoom and pan (`state.filmWindow`, written only by the new
+  `renderer/film-window.js`; FRESH_VIEW resets it, edit mode keeps it; the level editor carries no window any more), a
+  right-button drag windows the film in every mode without the panel, and a double right-click (`isDoubleClick`, pure)
+  restores the default; rulings R29–R34. `8cf213d` (code, tests, smoke section 17) and the records commit.
+- Counts: unit 918/918 after G3 and G4 (901 after the gate feedback's review wave, 898 after G2, 888 after the final
+  review's wave and R25, 887 after the wave, 879/879 before it; 615 at the base; 905 before Task 13 retired 26 tests of
+  removed code); `smoke-levels.mjs` on a fresh `%TEMP%` profile after G3 and G4: dom 94/94 (79 before section 17; G2's
+  four checks pass among them) and film 23/23, then on the same launch parity 15/15, gate1 25/25, gate2 26/26, gate3
+  26/26, chip 20/20, chord 28/28 (DOM reads only, no screenshots). Backend `pytest
   backend -q` 762 passed, 3 skipped (the sc-export venv; the main checkout's graphs hard-linked into the worktree's
   gitignored `backend/onnx/`). The pre-gate smoke run of 2026-10-11 on `9287473`, every suite on its own fresh
   `%TEMP%` profile, one app at a time, DOM reads only (one copied real lumbar film for the film phases, two for
@@ -111,13 +117,14 @@ in edit mode on its original and can be placed by hand.
 
 **Next.** The owner's human gate (plan Task 15): real films from their library, both themes, including the items the
 final review added (a cervical film, a full-spine film, a DICOM film, a failed Auto film with C and L levels placed, a
-double-click while placing a head), the re-check of G1 and G2 (800% on a large and a small film with the overlay crisp,
-R28; the step chips, re-placing and UNDO) and the owner's decision R24 (a hand-placed film that had failed still reads
+double-click while placing a head), the re-check of G1 to G4 (800% on a large and a small film with the overlay crisp,
+R28; the step chips, re-placing and UNDO; window / level outside edit mode, the right-button drag and the double
+right-click, a chord still panning) and the owner's decision R24 (a hand-placed film that had failed still reads
 Failed). Then a release commit (1.0.18 or later; `docs/release-main.md`) and a PR, all on the owner's say-so (memory:
 test before release). Nothing is pushed.
 
-**Follow-ups (deferred; see `docs/ROADMAP.md` §8):** the handoff's row keys (↑/↓, Space, P); window / level outside
-edit mode; a batch started from the Find tab can still overtake an open or stashed editor; a hand-placed film whose
+**Follow-ups (deferred; see `docs/ROADMAP.md` §8):** the handoff's row keys (↑/↓, Space, P); a batch started from the
+Find tab can still overtake an open or stashed editor; a hand-placed film whose
 source moved opens to a black stage outside edit mode; and the smaller items in the plan's Ledger.
 
 ### Failed-status additions on 1.0.13 (issue #39 follow-up) — DONE; release 1.0.15 awaiting the PR (branch `claude/issue-39-failed-status-port`, off `main` @ `9992b99`, v1.0.13, merged with `origin/main` @ `e7ae5a3`, v1.0.14)
@@ -1845,6 +1852,32 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
      then magnified (faint lines, unreadable plates). Below 1:1 the overlay holds its screen size as before; hit testing
      is in client space, with a grab radius that follows the drawn handle past 1:1 (2df1373, the re-review's finding).
      *Cost if wrong:* handles and labels look large at 8x on a film that is already at 1:1 at low zoom (a small film).
+117. **D15 (owner, 2026-10-11, gate feedback G3) — Window / level outside edit mode, and it belongs to the view.**
+     Like zoom and pan, the window lasts while the film is open and resets when another film opens or the Analysis
+     screen is left (FRESH_VIEW); entering and leaving edit mode keep it; never persisted, never in the record. It is
+     `state.filmWindow`, written only by `renderer/film-window.js`; the level editor carries no window (`8cf213d`).
+     Supersedes D11's reset on entering edit mode.
+118. **D16 (owner, 2026-10-11, G4) — A right-button drag windows the film** in every mode, without opening the panel:
+     horizontal the width, vertical the level, four units per screen pixel; the chip shows the live W and L.
+119. **D17 (owner, 2026-10-11, G4) — A double right-click resets the window** to the film's default (the panel's RESET
+     stays). Browsers fire no `dblclick` for the right button, so `viewer/interactions.js` `isDoubleClick` (pure,
+     tested) detects it.
+120. **R29 — The window resets where zoom and pan reset**, FRESH_VIEW (another film opened from the list, this one too;
+     the open study closed by a delete or the demo toggle); Back and the sidebar's open-study card keep it, as they keep
+     zoom and pan; a delete, a completed run or a Region change forgets it. *Cost if wrong:* one `filmWindow: null` in
+     Back's write.
+121. **R30 — A right press decodes a film with no window yet, but does not retry an unavailable one**; opening the
+     panel does. *Cost if wrong:* a film whose source comes back needs the panel opened once before the right drag works.
+122. **R31 — A right-button drag over an undecodable film says why** in a toast (`Window / level is unavailable.` and
+     the reason), once per drag, with the panel closed. *Cost if wrong:* one toast per attempt.
+123. **R32 — The double right-click compares the two presses only** (400 ms, 6 px, the events' timestamps), on the film
+     and the black surround; its second press starts no drag and is forgotten; a chord forgets the right press before
+     it. *Cost if wrong:* a quick right-drag ending where it began, then a press there within 400 ms, resets the window.
+124. **R33 — Copy**: the tool's tooltip names the right-button shortcuts (its accessible name stays `Window / level`),
+     and outside edit mode the panel carries the help line the edit bar gives in edit mode. *Cost if wrong:* copy.
+125. **R34 — Windowing is not gated on the study's own run** (display only; the completed run forgets the window), and
+     with the panel open outside edit mode the construction label chip still takes its own left press. *Cost if
+     wrong:* a busy guard in two places.
 
 ## Release prerequisites — v1.0.0 main promotion
 
