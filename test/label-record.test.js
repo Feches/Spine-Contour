@@ -8,6 +8,7 @@ import {
   LEVEL_CODES, kindOf, levelState, trainingStatus, openEditor, setLevelGeometry, toggleVisible,
   startPlacing, addPoint, finishPlacing,
 } from '../renderer/data/levels.js';
+import { VERSION_LABEL } from '../renderer/data/version.js';
 import { validateAgainst } from './fixtures/schema-check.js';
 
 const SCHEMA = JSON.parse(fs.readFileSync(new URL('../docs/design/level-editor/label-record.schema.json', import.meta.url), 'utf8'));
@@ -18,6 +19,8 @@ const IMAGE = { file: 'lateral_lumbar_001.dcm', sha256: SHA, width: 200, height:
 const MODEL = { name: 'U-Net', version: '2026-09-01' };
 const SAVED_AT = '2026-10-10T15:00:00Z';
 const STUDY = { id: 'SP-0001', fileName: 'lateral_lumbar_001.dcm', name: 'My film', view: 'Standing lateral', region: 'lumbar' };
+// The shipped version without its leading 'v' (the final review's minor 1: no test pins a release number).
+const SHIPPED_VERSION = VERSION_LABEL.replace(/^v/, '');
 
 // ---------- fixtures (inline: the study geometry shape the app stores) ----------
 
@@ -233,7 +236,7 @@ test('viewSlug and appVersion', () => {
   assert.equal(viewSlug('???'), 'unknown');
   assert.equal(appVersion('v1.0.17'), '1.0.17');
   assert.equal(appVersion('1.0.17'), '1.0.17');
-  assert.equal(appVersion(), '1.0.17', 'defaults to the shipped VERSION_LABEL');
+  assert.equal(appVersion(), SHIPPED_VERSION, 'defaults to the shipped VERSION_LABEL');
 });
 
 test('labelFileName suffixes a clash', () => {
@@ -316,7 +319,7 @@ test('toLabelRecord writes the envelope: image, film, model, versions, time, com
   assert.equal(record(done).complete, true);
   assertValid(record(done));
   assertValid(rec);
-  assert.equal(record(e, { appVersion: undefined }).app_version, '1.0.17', 'the app version defaults to the shipped label');
+  assert.equal(record(e, { appVersion: undefined }).app_version, SHIPPED_VERSION, 'the app version defaults to the shipped label');
 });
 
 test('film.region is the editor region, or the projection\'s reading of the placed levels for Auto', () => {

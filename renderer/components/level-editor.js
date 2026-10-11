@@ -274,14 +274,15 @@ export function mountLevelEditor(container) {
   function update(state, study) {
     const editor = state.levelEditor;
     // Rebuild gate. screens/analysis.js calls this on every store notification, pan and window / level drag
-    // frames included. The key is the plan's [levelEditor, study.id, study.geometry, the study's pending
-    // measurement], with the editor taken field by field: only the fields this panel reads. A window / level drag
-    // and the focused handle replace `state.levelEditor` on every frame or Tab press and change nothing here, and
-    // a rebuild between a press and its release would swallow the click that press began.
+    // frames included. The key is every field this panel reads: the editor's, field by field, and the study's id
+    // and source. A window / level drag and the focused handle replace `state.levelEditor` on every frame or Tab
+    // press and change nothing here, and a rebuild between a press and its release would swallow the click that
+    // press began. The study's geometry and its pending measurement are left out (the final review's minor 6):
+    // the panel reads neither, and keying on them rebuilt it twice per /measure round trip.
     const key = [
       editor?.studyId, editor?.region, editor?.levels, editor?.model, editor?.baseline, editor?.record,
       editor?.selected, editor?.placing, editor?.open, editor?.exitPrompt,
-      study?.id, study?.source, study?.geometry, state.measurementDrafts?.[study?.id],
+      study?.id, study?.source,
     ];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
