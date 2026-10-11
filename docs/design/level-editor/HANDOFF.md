@@ -133,6 +133,13 @@ The state is **derived** from three things: the visibility flag, the current geo
   - **done:** filled dot, `stage-ink` text
   - **current:** `stage-accent-soft` ground and `stage-accent` text
   - **pending:** outline dot in `stage-line`, `stage-muted` text
+  - *Amended 2026-10-11 (the owner's gate feedback, G2 in the plan):* while a body, C2, T1, S1 or T4 is being placed,
+    each chip is a button that makes its step the one the next film click sets, in any order; choosing a placed step
+    makes the next click re-place it. Only a placed point fills its dot (the prototype's rule; a current, empty step's
+    dot is outlined in its colour), so a placed step chosen again shows both the filled dot and the current ground. A
+    femoral head's chips stay progress only (its rim points are unordered). Each chip button keeps the look above,
+    with a hover ground and a focus ring like the edit bar's other buttons, and is disabled while the study's run is in
+    flight.
 - **Window / level panel:** a glass bar (`stage-chrome`, 1px `stage-line`, `radius-panel`, 8px blur), absolutely positioned at top 116 and right 14, 300 wide.
 - **Viewer chip:** the study name, a 1px divider, then the current window in mono 9px `stage-muted`.
 
@@ -196,8 +203,8 @@ All are in the Spine Contour design system. Use the app's CSS variables, not hex
 | Group header | Click | Expand / collapse. On open, groups matching the film type start expanded. |
 | Level checkbox | Click | Toggles visible. Sets `source: annotator`. Unchecking the level being placed cancels the placement. |
 | Level row | Click | Selects the level and shows its handles on the film. Selecting another level cancels any placement in progress. |
-| Place… | Click | Enters placement for that level: the badge becomes Placing… and the edit bar shows the label `PLACING L3 · 1 OF 4`, help text and step chips. Each click on the film adds the next point. Placement **finishes automatically** at 4 corners, 2 endplate points or 1 centroid. Femoral finishes on **FIT** (enabled from 2 points) or automatically at the 4th point. Result: `manual` if there's no model output, otherwise `edited`. |
-| UNDO | Click | Removes the last placed point. Disabled at 0 points. |
+| Place… | Click | Enters placement for that level: the badge becomes Placing… and the edit bar shows the label `PLACING L3 · 1 OF 4`, help text and step chips. Each click on the film adds the next point. Placement **finishes automatically** at 4 corners, 2 endplate points or 1 centroid. Femoral finishes on **FIT** (enabled from 2 points) or automatically at the 4th point. Result: `manual` if there's no model output, otherwise `edited`. *Amended 2026-10-11 (the owner's gate feedback, G2):* for every kind but a femoral head, a click on a step chip chooses which point the next film click sets, in any order, and a placed point chosen again is re-placed; after each click the next empty step is current (wrapping), and the placement finishes when every step is placed. A click within 1 px of any other point of the placement is ignored (R26). Femoral heads are unchanged. |
+| UNDO | Click | Removes the last placed point. Disabled at 0 points. *Amended 2026-10-11 (G2):* removes the most recently set point and makes its step the current one; a re-placed point is cleared, not returned to its earlier position (R27). |
 | CANCEL | Click | Exits placement with no change. Shown in the edit bar and in the row's action column. |
 | CLEAR | Click (manual rows only) | Removes the geometry; the level becomes `not_placed`. |
 | Handle | Drag | Moves that corner or point. A femoral rim point refits the circle live. Disabled while placing or while window / level is open. |

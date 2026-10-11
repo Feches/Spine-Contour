@@ -31,7 +31,11 @@ about 275 s for two films on this CPU) — fixed in `f610a8d`, after which seedi
 5/5, 7/7, 5/5 (retired checks and baselines in `tools/smoke/README.md`). The film phases need the ONNX graphs: this
 worktree's `backend/onnx/` holds hard links to the main checkout's (gitignored). Not run: a packaged build, the human
 gate (Task 15, checklist prepared in the plan), `smoke-cervical.mjs` and `smoke-segmental.mjs` (no cervical film here),
-`smoke-calibration.mjs` (no Tesseract binary and no ruler films here). Releases as 1.0.18 or later; nothing pushed.
+`smoke-calibration.mjs` (no Tesseract binary and no ruler films here). The owner's gate feedback of 2026-10-11 (the
+plan's "Gate feedback" section, Ledger rows G1 and G2) is built: G1 zoom to 8x (`9e2deec`), and G2 the step chips choose
+which point the next click places, in any order, with UNDO clearing the most recently set point (`placing` is
+`{code, points, current, history}`, `setPlacingStep` / `selectPlacingStep`, rulings R26 and R27; `068c8e2`, unit
+898/898, `smoke-levels.mjs` dom expected 79/79 but not re-run). Releases as 1.0.18 or later; nothing pushed.
 
 **2026-10-07 release 1.0.16 (crop search restored):** branch `ccr-af336f0e-7wacoa` off `main` @ `f2e39e0`, the merge
 of Michael's PR #57 (`0bd01c5`), which retires 1.0.13's trained crop method: Settings shows Crop search only,

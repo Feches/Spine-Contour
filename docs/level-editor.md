@@ -88,19 +88,33 @@ so they have no note (D12).
 
 **Place…** starts a placement; the edit bar reads `PLACING L3 · 1 OF 4` with a chip per step, UNDO and CANCEL, and the
 help line names the next click. Clicks are in pixels of the stored image and clamp to it, including clicks on the black
-surround. A click within one pixel of the previous point is ignored (a zero-length endplate is a measurement error); for
-a femoral head, a click within one pixel of any of its rim points is ignored, and FIT stays disabled until the fit has
-a radius of at least 0.5 px (R22: a double-click would otherwise give a zero radius, which the record cannot hold).
+surround. Left alone, the clicks fill the steps in the order of the table below.
+
+The step chips choose which point the next click sets (gate feedback G2, 2026-10-11). For a vertebral body, C2, T1, S1
+or T4, click a chip and the next click on the film places that point: the IP chip of L3 makes the bar read
+`PLACING L3 · 4 OF 4` and the help line ask for the inferior-posterior corner, whatever is placed already. After the
+click the next empty step is current again (the one after it, wrapping round to the first), so the points can go in
+any order; the level is placed once every step has its point. Clicking the chip of a point already placed and then the
+film moves that point (re-placing it). A chip whose dot is filled is placed; the chip on the accent ground is the
+current one, and a placed point chosen again shows both. A femoral head's chips only show progress and cannot be
+clicked: its rim points are unordered.
+
+A click within one pixel of any other point of the placement is ignored (R26), so a double-click counts once and no
+corner can land on another (a zero-length endplate is a measurement error); a re-placed point may land beside its own
+old position. For a femoral head FIT stays disabled until the fit has a radius of at least 0.5 px (R22: a double-click
+would otherwise give a zero radius, which the record cannot hold).
 
 | Kind | Clicks |
 |---|---|
-| C3–C7, L1–L5 | 4: superior-anterior, superior-posterior, inferior-anterior, inferior-posterior (SA → SP → IA → IP) |
-| C2 | 3: inferior-anterior corner, inferior-posterior corner, then the centroid of the body |
-| T1, S1 | 2: the anterior then the posterior corner of the superior endplate |
+| C3–C7, L1–L5 | 4: superior-anterior, superior-posterior, inferior-anterior, inferior-posterior (SA → SP → IA → IP; the chips choose another order) |
+| C2 | 3: inferior-anterior corner, inferior-posterior corner, then the centroid of the body (any order by the chips) |
+| T1, S1 | 2: the anterior then the posterior corner of the superior endplate (either first by the chips) |
 | T4 | 1: the centroid |
-| Femoral head | 2–4 rim points: two are read as the ends of a diameter, three or four are fitted; **FIT** finishes from 2, the fourth click finishes by itself (`PLACING FEMORAL HEAD 1 · 2 OF 4 RIM POINTS`) |
+| Femoral head | 2–4 rim points: two are read as the ends of a diameter, three or four are fitted; **FIT** finishes from 2, the fourth click finishes by itself (`PLACING FEMORAL HEAD 1 · 2 OF 4 RIM POINTS`); the chips are progress only |
 
-UNDO takes the last point back; CANCEL (in the edit bar or on the row) abandons the placement; selecting another row
+UNDO clears the most recently set point and makes its step the current one, so the next click places it again; it is
+disabled until a point is set. A re-placed point is cleared by UNDO, not returned to where it was before (R27).
+CANCEL (in the edit bar or on the row) abandons the placement; selecting another row
 cancels it too. A level placed by hand can be removed with **CLEAR**, which sends it back to Not placed (D13). A
 segmented vertebral level has no Place… or reset of its own: drag its handles, uncheck it, or use Discard or RESET TO
 PREDICTION for the whole study.

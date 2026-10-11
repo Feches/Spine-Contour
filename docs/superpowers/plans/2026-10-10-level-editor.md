@@ -1243,6 +1243,94 @@ workstation; rulings R20–R22, R24 and R25):
 
 ---
 
+## Gate feedback (2026-10-11)
+
+The owner's requests from the human gate (Task 15), with the automatic ruler OCR confirmed working: zoom in further
+than the old cap, and choose which point the next click places from the step chips in the edit bar. Each is built,
+unit-tested and recorded in the Ledger; the owner re-checks both at the gate. This section is the spec of record for
+both.
+
+### G1: zoom to 8x (`9e2deec`)
+
+`ZOOM_MAX` in `renderer/viewer/interactions.js` goes from 2.4 to 8, so a large film can be inspected past one screen
+pixel per image pixel; the zoom label reads up to 800%. `test/interactions.test.js` pins the cap (a step near it,
+7.2 × 1.25, clamps to 8); `tools/smoke/smoke-chord.mjs`'s clamp check sets zoom 8; the frozen-label note in
+`docs/superpowers/HANDOFF.md` says 800%.
+
+### G2: the step chips choose which point the next click places (`068c8e2`)
+
+**What the owner asked for.** While placing a level the edit bar shows one chip per step (SA, SP, IA, IP for a body;
+IA, IP, CENTROID for C2; ANT, POST for an endplate; CENTROID for T4; P1–P4 for a femoral head). They only showed
+progress, and clicks on the film filled the steps in order. Now a chip click chooses which point the next film click
+sets, in any order, and a placed point is re-placed by clicking its chip and then the film. Femoral heads stay exactly
+as they were (unordered rim clicks, FIT from two points, chips not clickable). T4's single chip is clickable for
+consistency; it is always the current step.
+
+**The model (`renderer/data/levels.js`), one shape for every kind.** `placing = { code, points, current, history }`:
+`points` has length `need` and holds a point or null per step; `current` is the index the next film click sets;
+`history` lists the indices of the placed points in the order they were last set, each at most once.
+
+- `startPlacing(editor, code)`: `{ code, points: Array(need).fill(null), current: 0, history: [] }`, the code
+  selected, no focused handle.
+- `addPoint(editor, point, imageSize)`: no placement, the editor. The slot is `current` for a body, C2, an endplate
+  or a centroid, and the first null index for a femoral head (none left: the editor). The click is clamped to the
+  image, then dropped when it lies within 1 px of ANY OTHER placed point of this placement (R26; a slot's own earlier
+  point is not another point). Otherwise `points[slot]` is set, `slot` moves to the end of `history` (an earlier
+  occurrence removed first, R27), and `current` becomes the next null index after `slot`, wrapping, or stays at `slot`
+  when none is left. With no null left the placement finishes through `finishPlacing`.
+- `undoPoint(editor)`: an empty history, the editor. Otherwise the last history entry is cleared, dropped from history
+  and made current. UNDO is enabled while the history is not empty.
+- `setPlacingStep(editor, index)` (new): every kind but a femoral head; a valid index other than `current` sets
+  `current`; a head, no placement, an out-of-range or non-integer index, or the current index: the editor unchanged.
+- `finishedGeometry` / `canFinishPlacing` / `finishPlacing` count the placed (non-null) points: below `fitFrom`
+  nothing finishes; a head fits its placed points in slot order (`fitRim`); every other kind needs every slot and
+  passes `points` in step order to `geometryFromPoints`. The sequential flow and every earlier finish rule, R22's
+  0.5 px floor included, are unchanged.
+- `placingLabel`: `${current + 1} OF ${need}` for every kind but a head, which counts its placed points
+  (`N OF 4 RIM POINTS`). `placingHelp`: `steps[current].help`, or the help for a head's next rim point. In the
+  sequential flow both read as before (1 OF 4, 2 OF 4, …; UNDO steps back one).
+- Readers of `placing.points`: `viewer/canvas.js` `drawPlacement` draws the placed points in their step colours, the
+  dashed line through them in slot order once two are placed, and a head's fitted circle over its placed points;
+  `components/viewer.js` reads `history` for UNDO and `points`/`current` for the chips; `components/level-editor.js`
+  and `viewer/level-handles.js` read only `placing?.code`. `smoke-levels.mjs` and `smoke-gate2.mjs` read the slots.
+
+**The chips (`components/viewer.js` `buildSteps` / `updateEditBar`; `styles/screens/analysis.css`).** For every kind
+but a femoral head each chip is a `<button type="button">` with `viewer-step`, `is-done` (its point is placed) and/or
+`is-current` (its index is `current`), `aria-current="step"` on the current one, a title `Place SA next` or
+`Re-place SA`, and a click that calls `selectPlacingStep(index)`; the dot keeps its step colour. A head keeps the
+non-interactive spans. `button.viewer-step` resets the button chrome (no border or background, inherited font, a
+pointer cursor; the span's padding and radius), has a hover ground and a 2 px `stage-accent` focus ring as the edit
+bar's other buttons do, and is disabled while this study's run is in flight, like UNDO. The chips rebuild whenever the
+placing object changes (by reference) or the run starts or ends; a chip with keyboard focus hands it to its successor
+at the same place. Only a placed point fills its dot, as the prototype draws it (`Main.dc.html`: the dot's fill is the
+step colour when done, its border when done or current); before this the current, empty step's dot was filled too, so
+a re-placed step showed nothing the current one did not. No new shortcut: Escape while placing still cancels.
+
+**The wiring (`renderer/level-editor.js`).** `selectPlacingStep(index)`:
+`update((editor) => (editor.placing && !editor.window?.open ? setPlacingStep(editor, index) : editor))`, with no edit
+flag: nothing is committed, and it waits while the window / level panel is open. A chord's take-back of a placement
+press (`placeAt`, `startChordPan`) now applies only when the press set a point, so a press R26 drops cannot make the
+chord clear another point.
+
+**Tests.** `test/levels.test.js`: every placement test on the new shape, and new tests for a body placed in a chosen
+order (IP first, wrapping, finishing with every corner in place), re-placing (one history entry, UNDO clears it and
+makes it current), R26 for bodies and C2 with the double-click case, `setPlacingStep`'s no-ops, the label and help
+following `current`, the unchanged sequential flow, and a head's slot filling and fit after UNDO. `test/canvas.test.js`:
+a placement in a chosen order. `test/level-editor-wiring.test.js`: `selectPlacingStep` through the real store (a new
+editor, no commit until the placement finishes, paused under the open W/L panel). Unit 888 → 898.
+
+**Smoke.** `tools/smoke/smoke-levels.mjs` sections 3–4 keep every check and gain four, after the CANCEL check and the
+second Place… on L3: the fourth chip (`PLACING L3 · 4 OF 4`, current, `aria-current="step"`, titled `Place IP next`);
+a film click (IP done, titled `Re-place IP`, the label back at the first empty step, `1 OF 4`); UNDO (IP no longer
+done, `4 OF 4` again); and the first chip (`1 OF 4`) before the full placement in the suite's order. Expected dom
+79/79; not run when written.
+
+**To check at the gate.** On a body, choose IP first and place the corners in any order; re-place a placed corner from
+its chip; UNDO after a re-place clears that corner; a double-click counts once; a head's chips are not clickable; the
+chips' focus ring in both themes and the chip that is both placed and current.
+
+---
+
 ## Ledger
 
 Filled in during execution, one line per ruling or result, newest last: unit totals per task, smoke counts, the
@@ -1276,3 +1364,5 @@ already state.
 | 2026-10-10 | final | **Re-review of the wave** (opus; `871b475..3038d5c`): every finding ADDRESSED, no new Critical or Important breakage. The judged points: `regionFollowsLevels`' clause for an Auto result that names no region keeps the old path (the backend writes `geometry.region` on every Auto run, and the measure queue and persistence never leave it unset); the `projectionRegion` fixture now carrying `qc.models` still tests a model result; FIT enables at the second distinct rim point; a two-point rim dragged or nudged onto itself still reached radius 0 (`moveHandle` had no floor). Residuals: HANDOFF decision 108's parenthetical lacked the no-region clause (wording, fixed here); the drag path, closed by R25. |
 | 2026-10-10 | final | **Ruling R25** (controller, after the re-review): `moveHandle` refuses a rim-point move whose refit would have a radius under `MIN_RADIUS` (0.5 px, now exported by `data/levels.js`) and returns the geometry unchanged, so a drag or an arrow nudge can no longer leave a head the record's schema rejects (`radius exclusiveMinimum 0`); the ROADMAP §8 item is withdrawn. Test in `test/level-handles.test.js`; unit 888/888. `f3a3a32`. *Cost if wrong:* a rim point cannot be dragged within 1 px of the other point of a two-point rim. |
 | 2026-10-11 | pre-gate | **The automated pre-gate run** on `9287473` (a sequential workflow: backend pytest 762 passed, 3 skipped; unit 888/888; then every runnable smoke suite, one app at a time on CDP 9222, each on a fresh `%TEMP%` profile, DOM reads only): landing 16/16, parameters 58/58, studies 151/151, workspace 100/100, persist 42/42 then 55/55, parity 15/15, gate1 25/25, gate2 26/26, gate3 26/26, chip 20/20, chord 28/28, femoral-confidence 16/16 then 5/5, disc-heights 13/13, partial-segmentation 8/8, accuracy 17/17, global-sva 21/21, levels dom 75/75 and film 23/23, processing 15/15, onnx-localizer 10/10. Two suites failed deterministically for reasons that predate the branch base (verified by re-runs and `git merge-base --is-ancestor`): `smoke-seeding.mjs` 34/36 (its `EXPORT_HEADER` lacked the region columns an `auto` record gets and 1.0.11's ten segmental columns, and it read the header at [3] after 1.0.14 moved it to [2]) and `smoke-manual-calibration.mjs` (its 240 s batch wait against two Auto-region films that take about 275 s on this CPU; its later batch checks and the whole verify phase had never run). Both fixed as suite changes in `f610a8d` (literal 44-column header, rows [2]/[3]; the wait 600 s as `smoke-onnx-localizer` already allows; README notes and baselines): seeding 36/36; manual-calibration save 5/5, batch 7/7, verify 5/5. `smoke-calibration.mjs` cannot run here (no Tesseract binary, no ruler films, and it screenshots). The launcher's exit 127 after `ready` (a libuv assertion on Windows / Node 24) is harmless and now named in the README. |
+| 2026-10-11 | gate | **Gate feedback G1** (the owner, at the human gate, with the ruler OCR confirmed working): zoom further. `ZOOM_MAX` 2.4 → 8 in `renderer/viewer/interactions.js` (the label reads up to 800%); `test/interactions.test.js` pins the cap, `smoke-chord.mjs`'s clamp check sets zoom 8. `9e2deec`. See "Gate feedback (2026-10-11)". |
+| 2026-10-11 | gate | **Gate feedback G2** (the owner): the step chips choose which point the next click places, in any order, and re-place a placed one; femoral heads unchanged. `placing` is `{ code, points, current, history }` for every kind (`points` one slot per step, null until set); new `setPlacingStep` (levels.js) and `selectPlacingStep` (level-editor.js); UNDO clears the most recently set point and makes its step current. The full design is in "Gate feedback (2026-10-11)" above. `068c8e2`; unit 888 → 898; `smoke-levels.mjs` dom gains four checks (79 expected, not run when written); `smoke-gate2.mjs` reads the slots. **R26:** a click within 1 px of ANY other placed point of the placement is dropped, for every kind (it generalises the previous-point rule for bodies, C2 and endplates and keeps R22 for heads; a double-click still counts once). *Cost if wrong:* a body or endplate corner cannot be placed within 1 px of another of its points. **R27:** a re-placed point counts once in `history` and moves to its end, so UNDO after a re-place clears that point rather than restoring where it was. *Cost if wrong:* re-placing a point loses its earlier position to UNDO. Also in the commit: only a placed point fills its chip's dot (the prototype's rule; the current, empty step's dot is now an outline in its colour), the chips are disabled during the study's run and keep keyboard focus across a rebuild, and a chord takes back a placement press only when that press set a point. |

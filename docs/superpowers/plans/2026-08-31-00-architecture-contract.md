@@ -1346,7 +1346,8 @@ workstation with `--verify-models`, which exercises each listed GPU.
 ## 2026-10-10 amendment: vertebral level editor, window / level, label record
 
 Spec `docs/design/level-editor/HANDOFF.md` (`594a982`); plan `plans/2026-10-10-level-editor.md`, whose Decisions
-table (D1–D14, the owner's answers) wins over the spec and whose Ledger holds the execution rulings R1–R25; user doc
+table (D1–D14, the owner's answers) wins over the spec and whose Ledger holds the execution rulings R1–R27 (R26 and
+R27 from the gate feedback of 2026-10-11, the plan's "Gate feedback" section); user doc
 `docs/level-editor.md`; label record schema `docs/design/level-editor/label-record.schema.json`. Edit mode is the
 level editor: the Analysis screen's right panel becomes the Vertebral levels panel (sixteen levels in five groups:
 C2–C7, T1 · T4, L1–L5, S1, two femoral heads), the stage places, selects and adjusts levels, a display-only window /
@@ -1470,6 +1471,25 @@ refitted by a rim-point drag, and hidden with its checkbox; Delete and Backspace
 - R25 (the wave's re-review): `viewer/level-handles.js` `moveHandle` refuses a rim-point move (a drag or an arrow nudge)
   whose refit would have a radius under `MIN_RADIUS` (0.5 px, exported by `data/levels.js`) and returns the geometry
   unchanged, so no path leaves a femoral head the label record's schema rejects.
+- R26 (gate feedback G2): `addPoint` drops a click within 1 px of ANY other placed point of the placement, for every
+  kind (it generalises the previous-point rule and keeps R22's rule for a head; a slot's own earlier point is not
+  another point, and a double-click counts once).
+- R27 (G2): a re-placed point counts once in `placing.history` and moves to its end, so UNDO after a re-place clears
+  the point instead of restoring its earlier position.
+
+**Gate feedback (2026-10-11).** G1: `viewer/interactions.js` `ZOOM_MAX` is 8 (was 2.4). G2: the step chips choose which
+point the next placement click sets. `state.levelEditor.placing` is `{code, points, current, history} | null` for every
+kind (typedef `Placing` in `renderer/data/levels.js`): `points` holds one slot per step (`placementSteps(code).need`),
+null until set; `current` is the slot the next film click sets (a femoral head's first empty slot); `history` lists the
+set slots in the order they were last set, each once. New exports: `data/levels.js`
+**`setPlacingStep(editor, index)`** (every kind but a femoral head; an out-of-range or non-integer index, a head or no
+placement returns the editor unchanged) and `renderer/level-editor.js` **`selectPlacingStep(index)`** (the chips'
+click; no edit flag, nothing committed, paused while the window / level panel is open). `addPoint` sets the point in
+slot `current` (a head: in its first empty slot), then moves `current` to the next empty slot after it, wrapping, and
+finishes when none is empty; `undoPoint` clears the last `history` entry and makes it current; `finishPlacing`/`canFinishPlacing` count the
+placed points; `placingLabel` reads `current + 1` (a head still counts its placed rim points) and `placingHelp` the
+current step's help. While placing every kind but a head, each step chip in `components/viewer.js` is a `<button>`
+(`viewer-step`, `is-done`, `is-current`, `aria-current="step"`); a head's chips stay spans.
 
 No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet file (rules in
 `styles/screens/analysis.css` section `05 — LEVEL EDITOR` and `styles/components.css`), no Python package.
