@@ -1,10 +1,8 @@
-import { landmarkHandles } from '../renderer/viewer/geometry.js';
 import { predictionMatchesStudy } from '../renderer/data/predictions.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cervicalMeasurements, cervicalRows, cervicalMeasureGeometry, CERVICAL_HANDLES, regionRunReason } from '../renderer/data/cervical.js';
-import { landmarkAt, setLandmarkAt, nearestLandmark } from '../renderer/viewer/geometry.js';
-import { nextSelection, nudge } from '../renderer/viewer/interactions.js';
+import { cervicalMeasurements, cervicalRows, cervicalMeasureGeometry, regionRunReason } from '../renderer/data/cervical.js';
+import { landmarkAt, setLandmarkAt } from '../renderer/viewer/geometry.js';
 import { constructionLabel } from '../renderer/viewer/canvas.js';
 import { STORE_VERSION, validate } from '../renderer/data/persistence.js';
 import { toCsv, toPairedCsv, parse } from '../renderer/data/csv.js';
@@ -82,21 +80,13 @@ test('missing/invalid landmarks remain absent, without lumbar fallthrough', () =
   assert.match(constructionLabel(study().geometry, 'C2C7_SVA', study().measurements).text, /10.0 mm/);
 });
 
-test('all available endplate and centroid handles are keyboard/click reachable and centroid edits preserve C2 null superior anatomy', () => {
+test('centroid edits preserve C2 null superior anatomy and stay inside the image', () => {
   const g = study().geometry;
-  let selected = null;
-  for (const expected of landmarkHandles(g).filter(h => landmarkAt(g, h.level, h.corner))) { selected = nextSelection(selected, 1, g); assert.deepEqual(selected, expected); }
-  assert.deepEqual(nextSelection(selected, 1, g), CERVICAL_HANDLES[0]);
-  const canvas = { width: 500, height: 600, getBoundingClientRect: () => ({ left: 0, top: 0, width: 500, height: 600 }) };
-  assert.equal(nearestLandmark(g, 140, 110, canvas).corner, 'CENTROID');
-  nudge(g, CERVICAL_HANDLES[0], 5, -2); assert.deepEqual(g.c2_centroid, [145, 108]);
   setLandmarkAt(g, 'C2', 'IA', [99, 150]);
   assert.equal(g.vertebrae.C2.quadrilateral, null);
   assert.equal(landmarkAt(g, 'C2', 'SA'), null);
   assert.deepEqual(g.vertebrae.C2.inferior[0], [99, 150]);
   setLandmarkAt(g, 'C2', 'CENTROID', [500, -5]);
-  assert.deepEqual(g.c2_centroid, [499, 0]);
-  nudge(g, CERVICAL_HANDLES[0], 10, -10);
   assert.deepEqual(g.c2_centroid, [499, 0]);
 });
 
@@ -145,7 +135,7 @@ test('landmark recalculation sends cervical centroid, orientation and current sc
     setState: patch => { state = { ...state, ...patch(state) }; }, showToast: message => assert.fail(message), debounceMs: 1,
     measure: async geometry => { request = geometry; return { geometry, measurements: cervicalMeasurements({ ...s, geometry }) }; } });
   queue.replaceMeasured(s.id, s.geometry);
-  const edited = structuredClone(s.geometry); nudge(edited, CERVICAL_HANDLES[0], 5, 0);
+  const edited = structuredClone(s.geometry); setLandmarkAt(edited, 'C2', 'CENTROID', [145, 110]);
   queue.commitGeometry(s.id, edited);
   await new Promise(resolve => setTimeout(resolve, 20));
   assert.equal(request.region, 'cervical'); assert.equal(request.anterior_side, 'left');

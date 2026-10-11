@@ -1,7 +1,6 @@
 import { segmentalColumns, segmentalEndplates } from '../data/segmental.js';
 import { CERVICAL_LEVELS } from '../data/cervical.js';
-import { LEVELS, landmarkAt, femoralCircle, FEMORAL_SIDES, landmarkHandles } from './geometry.js';
-import { sameHandle } from './interactions.js';
+import { LEVELS, FEMORAL_SIDES } from './geometry.js';
 import { applyWindow } from './window-level.js';
 import { LEVEL_CODES, kindOf, levelState, placementSteps, fitRim } from '../data/levels.js';
 import { quadrilateral } from '../data/level-projection.js';
@@ -201,10 +200,7 @@ export const TRACE_COLOR = '#ffe071';
 // Handles keep a constant size ON SCREEN, unlike the outlines, which scale with the image.
 // Every handle dimension below is in CSS pixels and is multiplied by opts.pixelRatio
 // (image pixels per CSS pixel at the current fit and zoom) at draw time.
-const HANDLE_RADIUS_PX = 5;
-const HANDLE_HOVER_RADIUS_PX = 8;
 const HANDLE_RING_RADIUS_PX = 10;
-const HANDLE_LABEL_PX = 11;
 
 function midpoint(a, b) {
   return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
@@ -440,90 +436,12 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
   }
 }
 
-function drawHandle(ctx, canvas, point, color, { selected, hovered, label, pixelRatio }) {
-  const radius = (hovered ? HANDLE_HOVER_RADIUS_PX : HANDLE_RADIUS_PX) * pixelRatio;
-  if (selected) {
-    ctx.beginPath();
-    ctx.arc(point[0], point[1], HANDLE_RING_RADIUS_PX * pixelRatio, 0, 2 * Math.PI);
-    ctx.strokeStyle = STAGE_SELECTED_COLOR;
-    ctx.lineWidth = 2 * pixelRatio;
-    ctx.stroke();
-  }
-  ctx.beginPath();
-  ctx.arc(point[0], point[1], radius, 0, 2 * Math.PI);
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.strokeStyle = STAGE_BG_COLOR;
-  ctx.lineWidth = pixelRatio;
-  ctx.stroke();
-  if (!(selected || hovered) || !label) return;
-  const fontSize = HANDLE_LABEL_PX * pixelRatio;
-  const pad = 4 * pixelRatio;
-  ctx.font = `600 ${fontSize}px ${CANVAS_MONO}`;
-  const width = ctx.measureText(label).width + 2 * pad;
-  const height = fontSize + 2 * pad;
-  // Keep the plate inside the canvas.
-  const x = Math.max(0, Math.min(point[0] + radius + 2 * pad, canvas.width - width));
-  const y = Math.max(0, Math.min(point[1] - radius - height, canvas.height - height));
-  ctx.fillStyle = LABEL_PLATE_FILL;
-  ctx.fillRect(x, y, width, height);
-  ctx.fillStyle = STAGE_LABEL_FILL;
-  ctx.textBaseline = 'top';
-  ctx.fillText(label, x + pad, y + pad);
-  ctx.textBaseline = 'alphabetic';
-}
-
-// Lumbar: 22 landmarks and centre/rim handles for femoral heads. Cervical:
-// all available endplate corners and the C2 centroid. Order matters for labels: a selected or
-// hovered handle's label is drawn with it, so later handles can overlap it.
-function drawHandles(ctx, canvas, geometry, { selection, hover, pixelRatio }) {
-  const handleOpts = (handle, label) => ({
-    selected: sameHandle(selection, handle),
-    hovered: sameHandle(hover, handle),
-    label,
-    pixelRatio,
-  });
-  for (const { level, corner } of landmarkHandles(geometry)) {
-    const handle = { kind: 'landmark', level, corner };
-    const point = landmarkAt(geometry, level, corner);
-    if (!point) continue;
-    const label = geometry.vertebrae?.[level]?.anterior_confirmed === false
-      ? `${level} ${corner.startsWith('S') ? 'upper' : 'lower'} ${corner.endsWith('A') ? '1' : '2'}`
-      : `${level} ${corner === 'CENTROID' ? 'centroid' : corner}`;
-    drawHandle(ctx, canvas, point, CORNER_COLORS[corner] ?? STAGE_SELECTED_COLOR, handleOpts(handle, label));
-  }
-  for (const side of FEMORAL_SIDES) {
-    const circle = femoralCircle(geometry, side);
-    if (!circle) continue;
-    const [cx, cy, r] = circle;
-    const name = side === 'left' ? 'Head 1' : 'Head 2';
-    drawHandle(ctx, canvas, [cx, cy], FEMORAL_HANDLE_COLOR, handleOpts({ kind: 'femoral', side, part: 'center' }, name));
-    drawHandle(ctx, canvas, [cx + r, cy], FEMORAL_HANDLE_COLOR, handleOpts({ kind: 'femoral', side, part: 'rim' }, `${name} \u00B7 resize`));
-  }
-}
-
-function drawTracePoints(ctx, tracePoints, pixelRatio) {
-  const fontSize = HANDLE_LABEL_PX * pixelRatio;
-  ctx.font = `600 ${fontSize}px ${CANVAS_MONO}`;
-  tracePoints.forEach((point, index) => {
-    ctx.beginPath();
-    ctx.arc(point[0], point[1], HANDLE_RADIUS_PX * pixelRatio, 0, 2 * Math.PI);
-    ctx.fillStyle = TRACE_COLOR;
-    ctx.fill();
-    ctx.strokeStyle = STAGE_BG_COLOR;
-    ctx.lineWidth = pixelRatio;
-    ctx.stroke();
-    ctx.fillStyle = STAGE_LABEL_FILL;
-    ctx.fillText(String(index + 1), point[0] + 8 * pixelRatio, point[1] - 8 * pixelRatio);
-  });
-}
-
 // ---- Level editor (2026-10-10) ----
 //
 // What the level editor draws on the dynamic layer while editing (handoff §5; plan Task 9): every visible
 // placed level filled and outlined, the selected level's handles, the model's own geometry dashed under an
 // edited level, a plate naming each level, and the placement in progress. Every size is in CSS pixels times
-// `opts.pixelRatio`, like the handles above, so it holds its size on screen at any fit and zoom. The editor
+// `opts.pixelRatio`, so it holds its size on screen at any fit and zoom. The editor
 // state is read, never written.
 
 const LEVEL_STROKE_ALPHA = 0.85;
@@ -767,7 +685,7 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (opts?.editor) {
     // (2026-10-10, level editor) The editor draws every level itself, so the region outlines, the S1 line, the C7
-    // cross, the femoral circles and the old handles are skipped. The selected measurement's construction stays
+    // cross and the femoral circles are skipped. The selected measurement's construction stays
     // (under the editor), and a film with no geometry (a failed run) still has an editor to draw.
     if (geometry) drawSelectedMeasurement(ctx, canvas, geometry, opts.selectedLevel ?? null, opts.measurements);
     drawLevelEditor(ctx, canvas, opts.editor, {
@@ -852,10 +770,4 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
   }
 
   drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, opts.measurements);
-
-  // Handles exist only in edit mode -- outside it the stage is exactly plan 03's
-  // user-verified rendering -- and are drawn LAST so they sit above the construction lines.
-  if (!opts.editing) return;
-  drawHandles(ctx, canvas, geometry, { selection: opts.selection ?? null, hover: opts.hover ?? null, pixelRatio });
-  if (opts.retracing) drawTracePoints(ctx, opts.tracePoints ?? [], pixelRatio);
 }

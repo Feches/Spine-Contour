@@ -1,14 +1,6 @@
 import { normalizeCalibration } from './calibration.js';
 
 export const CERVICAL_LEVELS = ['C2', 'C3', 'C4', 'C5', 'C6', 'C7'];
-export const CERVICAL_HANDLES = [
-  { kind: 'landmark', level: 'C2', corner: 'CENTROID' },
-  { kind: 'landmark', level: 'C2', corner: 'IA' },
-  { kind: 'landmark', level: 'C2', corner: 'IP' },
-  { kind: 'landmark', level: 'C7', corner: 'SP' },
-  { kind: 'landmark', level: 'C7', corner: 'IA' },
-  { kind: 'landmark', level: 'C7', corner: 'IP' },
-];
 export const CERVICAL_COLUMNS = [
   { key: 'C2C7_COBB', label: 'C2–C7 Cobb', unit: '°' },
   { key: 'C2C7_SVA_MM', label: 'C2–C7 SVA (mm)', unit: 'mm' },

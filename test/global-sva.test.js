@@ -1,12 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { globalSvaMeasurements, globalSvaRows, globalSvaMeasureGeometry, GLOBAL_SVA_HANDLES } from '../renderer/data/global-sva.js';
+import { globalSvaMeasurements, globalSvaRows, globalSvaMeasureGeometry } from '../renderer/data/global-sva.js';
 import { studyRegion, regionRunReason, cervicalMeasurements } from '../renderer/data/cervical.js';
 import { modelLabel } from '../renderer/data/models.js';
 import { deriveStatus, landmarkReviewReasons } from '../renderer/data/status.js';
 import { measurementWarnings } from '../renderer/components/measurements.js';
-import { landmarkAt, setLandmarkAt, nearestLandmark } from '../renderer/viewer/geometry.js';
-import { nextSelection, nudge } from '../renderer/viewer/interactions.js';
+import { landmarkAt, setLandmarkAt } from '../renderer/viewer/geometry.js';
 import { constructionLabel, drawDynamicLayer } from '../renderer/viewer/canvas.js';
 import { createMeasureQueue } from '../renderer/viewer/measure-queue.js';
 import { STORE_VERSION, validate } from '../renderer/data/persistence.js';
@@ -78,14 +77,9 @@ test('missing, malformed, out-of-frame and collapsed anchors leave global SVA un
   }
 });
 
-test('the three global handles are keyboard and pointer reachable, editable, and bounded', () => {
+test('the three global landmarks are editable and bounded', () => {
   const s = study(), g = s.geometry;
-  let selected = null;
-  for (const expected of GLOBAL_SVA_HANDLES) { selected = nextSelection(selected, 1, g); assert.deepEqual(selected, expected); }
-  assert.deepEqual(nextSelection(selected, 1, g), GLOBAL_SVA_HANDLES[0]);
-  const canvas = { width: 500, height: 1000, getBoundingClientRect: () => ({ left: 0, top: 0, width: 500, height: 1000 }) };
-  assert.equal(nearestLandmark(g, 140, 100, canvas).corner, 'CENTROID');
-  nudge(g, GLOBAL_SVA_HANDLES[0], 5, 0);
+  setLandmarkAt(g, 'C7', 'CENTROID', [145, 100]);
   assert.equal(globalSvaMeasurements(s).GLOBAL_SVA_PX, 35);
   setLandmarkAt(g, 'S1', 'SP', [183, 920]);
   assert.equal(globalSvaMeasurements(s).GLOBAL_SVA_PX, 38);
@@ -108,7 +102,7 @@ test('global overlay uses image-vertical C7 plumb line and horizontal distance t
     && calls[i + 1][0] === 'lineTo' && calls[i + 1][1][0] === 140 && calls[i + 1][1][1] === 920));
   assert.ok(calls.some(([key, p], i) => key === 'moveTo' && p[0] === 140 && p[1] === 920
     && calls[i + 1][0] === 'lineTo' && calls[i + 1][1][0] === 180 && calls[i + 1][1][1] === 920));
-  assert.equal(calls.filter(([key]) => key === 'arc').length, 3);
+  assert.equal(calls.filter(([key]) => key === 'arc').length, 0, 'no handles are drawn outside the level editor');
   assert.match(constructionLabel(s.geometry, 'GLOBAL_SVA', s.measurements).text, /C7–S1 SVA 10.0 mm/);
   assert.equal(constructionLabel(s.geometry, 'C2C7_SVA', s.measurements), null);
 });
@@ -179,7 +173,7 @@ test('correction queue retains C7, orientation and current scale, and resets can
     measure: async geometry => { request = geometry; calls++; return { geometry,
       measurements: globalSvaMeasurements({ ...s, geometry }), qc: { coverage: { partial: false } } }; } });
   queue.replaceMeasured(s.id, s.geometry);
-  const edited = structuredClone(s.geometry); nudge(edited, GLOBAL_SVA_HANDLES[0], 5, 0);
+  const edited = structuredClone(s.geometry); setLandmarkAt(edited, 'C7', 'CENTROID', [145, 100]);
   queue.commitGeometry(s.id, edited);
   await new Promise(resolve => setTimeout(resolve, 20));
   assert.equal(request.region, 'full_spine'); assert.deepEqual(request.c7_centroid, [145, 100]);
@@ -253,16 +247,8 @@ test('combined standing result cannot retain a reported regional measurement wit
   assert.equal(parameterValues(loaded).C2C7_COBB, null);
 });
 
-test('standing cervical and lumbar landmarks and femoral heads remain editable with appropriate constructions', () => {
+test('standing cervical and lumbar landmarks remain editable with appropriate constructions', () => {
   const s = combinedStudy(), g = s.geometry;
-  const stops = []; let selected = null;
-  do { selected = nextSelection(selected, 1, g); stops.push(selected); } while (stops.length < 100
-    && JSON.stringify(nextSelection(selected, 1, g)) !== JSON.stringify(stops[0]));
-  for (const expected of [{ kind: 'landmark', level: 'C2', corner: 'CENTROID' },
-    { kind: 'landmark', level: 'C7', corner: 'SA' }, { kind: 'landmark', level: 'C7', corner: 'CENTROID' },
-    { kind: 'landmark', level: 'L1', corner: 'SA' }, { kind: 'femoral', side: 'left', part: 'center' }]) {
-    assert.ok(stops.some(stop => JSON.stringify(stop) === JSON.stringify(expected)));
-  }
   assert.match(constructionLabel(g, 'L1', s.measurements).text, /LL L1-S1/);
   assert.match(constructionLabel(g, 'PI', s.measurements).text, /PI 50/);
   assert.match(constructionLabel(g, 'C2C7_COBB', s.measurements).text, /C2–C7 Cobb/);

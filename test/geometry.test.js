@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fitCircle, imageToClient, clientToImage, nearestLandmark,
+  fitCircle, imageToClient, clientToImage,
   landmarkAt, setLandmarkAt, LEVELS, CORNERS, FEMORAL_SIDES, femoralCircle, setFemoralCircle,
 } from '../renderer/viewer/geometry.js';
 
@@ -96,15 +96,6 @@ test('imageToClient is the inverse of clientToImage at interior points', () => {
   const [cx, cy] = imageToClient([100, 50], rect, canvas);
   assert.equal(cx, 100);
   assert.equal(cy, 45);
-});
-
-test('nearestLandmark finds the closest handle within radius and null outside it', () => {
-  const geometry = fakeGeometry();
-  const canvas = fakeCanvas(200, 150, { left: 0, top: 0, width: 200, height: 150 });
-  const hit = nearestLandmark(geometry, 10, 30, canvas, 14);
-  assert.deepEqual({ level: hit.level, corner: hit.corner }, { level: 'L2', corner: 'SA' });
-  const miss = nearestLandmark(geometry, 500, 500, canvas, 14);
-  assert.equal(miss, null);
 });
 
 test('femoralCircle reads index 0 for left and 1 for right', () => {
