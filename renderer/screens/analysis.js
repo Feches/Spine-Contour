@@ -546,9 +546,10 @@ let filmLoad = null; // { studyId, addedAt, runs, promise } | null
 /**
  * The open study's images and its decoded original. Never throws.
  *
- * `images`: the cache entry; else, for a study with a result, its restored sidecar (restoreFilm, every
- * one of its guards kept); else -- a film with no result, the main case -- built from the decoded
- * original at its default window, cached and handed to the live viewer so the stage shows the film.
+ * `images`: the cache entry; else, for a study with a model result (a `predictionId`), its restored sidecar
+ * (restoreFilm, every one of its guards kept); else -- a film with no result, the main case, or one whose
+ * levels were placed by hand with no model run (R16) -- built from the decoded original at its default
+ * window, cached and handed to the live viewer so the stage shows the film.
  * `raw`: the RawFilm, decoded at most once per study and cached on `images.raw` (a NEW images object,
  * so the viewer's reference-keyed static gate repaints); cropped to a toolbar-cropped stored image's
  * height, refused on a width mismatch.
@@ -588,9 +589,12 @@ async function loadFilm(studyId) {
   };
   const superseded = () => filmOutcome(null, null, null, true);
 
-  // (1) The stored image.
+  // (1) The stored image. Only a model run writes one (a sidecar, named by `predictionId`). A study whose
+  // geometry came from the level editor alone has no prediction id and no sidecar (ruling R16): it is a film
+  // with no result here, shown from its decoded original, never FILM UNAVAILABLE. R-a below still holds for a
+  // study that has a prediction id and lost its sidecar.
   let images = cachedImages(studyId);
-  if (!images && start.source === 'real' && start.measurements && start.geometry) {
+  if (!images && start.source === 'real' && start.measurements && start.geometry && start.predictionId) {
     const restored = await restoreFilm(studyId);
     if (!current() || restored.status === 'superseded') return superseded();
     // The result's geometry is in the stored image's pixels and FILM UNAVAILABLE (re-run to restore
@@ -875,8 +879,9 @@ export function render(state) {
   const regionNote = el('span', { class: 'meas-note' });
   const previewButton = el('button', { type: 'button', class: 'btn btn-small',
     onClick: () => previewOriginal(getState().openId) }, 'View original');
+  // (2026-10-10, ruling R17) No run starts while editing, from here either: see the stage's run handler below.
   const alignmentRunButton = el('button', { type: 'button', class: 'btn btn-small btn-primary',
-    onClick: () => segmentStudy(getState().openId) }, 'Run segmentation');
+    onClick: () => { if (!getState().editing) segmentStudy(getState().openId); } }, 'Run segmentation');
   const regionBar = el('div', { class: 'analysis-region-bar' }, el('label', {}, 'Region ', regionSelect), anteriorLabel, previewButton, alignmentRunButton, regionNote);
   const root = el('main', { class: 'analysis-screen' }, header, regionBar, body, clinicalHost);
 
@@ -890,7 +895,10 @@ export function render(state) {
     // second click must not raise a second native dialog. It is not a run, so it never claims one.
     // `batch` (batch spec 8.3): no single run starts while a batch is up, including in the window
     // between two films where `running` is null.
-    if (live.running || live.batch || locating) return;
+    // (2026-10-10, ruling R17) `editing`: a run would replace the levels under the open level editor and drop its
+    // unsaved edits without the exit prompt, while edit mode hides the RUNNING card and its Cancel. The Re-run
+    // tool is disabled while editing; this covers every other way onto this handler.
+    if (live.running || live.batch || locating || live.editing) return;
     segmentStudy(live.openId);
   });
 
@@ -899,8 +907,11 @@ export function render(state) {
   if (imageCache && imageCache.studyId === study.id) viewer.setImages(imageCache.images);
   // Only DECIDED here; the restore itself starts after the first paint, because restoreFilm's
   // live() reads `mounted`. A demo study has no film to restore and no sidecar to read.
+  // (2026-10-10, ruling R16) Nor does a study no model run ever produced (`predictionId` is null): its geometry
+  // came from the level editor, placed on the decoded original, so it is shown from that original (below).
   const needsRestore = !(imageCache && imageCache.studyId === study.id)
-    && study.source === 'real' && Boolean(study.measurements && study.geometry);
+    && study.source === 'real' && Boolean(study.measurements && study.geometry) && Boolean(study.predictionId);
+  const handPlaced = study.source === 'real' && Boolean(study.measurements && study.geometry) && !study.predictionId;
 
   // The mark is a timestamp on the record (spec 8.1); unmarking writes null. Refused for the reasons
   // reviewBlockedReason lists, which update() also shows beside the button, so a keyboard
@@ -958,7 +969,7 @@ export function render(state) {
     const alignmentSetup = requiresAnteriorSide(open) && !open.measurements;
     previewButton.hidden = alignmentRunButton.hidden = !alignmentSetup;
     previewButton.disabled = Boolean(live.running || live.batch);
-    alignmentRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view));
+    alignmentRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view) || live.editing);
     // The preview message shows only during alignment setup: it is not cleared when a preview is
     // abandoned, so its being set is not enough.
     const previewNote = mounted?.previewMessage && alignmentSetup ? mounted.previewMessage : '';
@@ -1064,6 +1075,8 @@ export function render(state) {
   else if (!study.geometry && requiresAnteriorSide(study) && !(imageCache?.studyId === study.id && imageCache.images?.preview)) previewOriginal(study.id);
   // (2026-10-10) Back on the screen still editing (the sidebar's OPEN STUDY card keeps the level editor) with
   // no film cached for this study: load it, as entering edit mode did.
-  else if (getState().levelEditor?.studyId === study.id && !(imageCache?.studyId === study.id)) ensureFilm(study.id);
+  // (2026-10-10, ruling R16) A study whose geometry came from the level editor alone has no sidecar and is shown
+  // from its decoded original, the image its levels were placed on.
+  else if ((handPlaced || getState().levelEditor?.studyId === study.id) && !(imageCache?.studyId === study.id)) ensureFilm(study.id);
   return root;
 }

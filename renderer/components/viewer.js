@@ -1113,8 +1113,12 @@ export function mountViewer(container) {
     const canDecode = Boolean(study.filePath);
     editButton.disabled = busy || filmStatus !== null || (!hasResult && !currentImages && !canDecode);
     // Re-run answers to ANY run in flight and to a batch, because only one run is allowed at a time.
-    rerunButton.disabled = !hasResult || Boolean(state.running) || Boolean(state.batch) || filmStatus === 'loading' || !inferenceView(study.view) || Boolean(regionRunReason(study));
-    rerunButton.title = inferenceView(study.view) ? 'Re-run segmentation' : unsupportedViewReason(study.view);
+    // (2026-10-10, ruling R17) And not while editing: a run would replace the levels under the editor and
+    // drop its unsaved edits without the exit prompt, and edit mode hides the RUNNING card and its Cancel.
+    rerunButton.disabled = !hasResult || Boolean(state.running) || Boolean(state.batch) || filmStatus === 'loading' || !inferenceView(study.view) || Boolean(regionRunReason(study))
+      || state.editing;
+    rerunButton.title = state.editing ? 'Finish editing before re-running segmentation'
+      : inferenceView(study.view) ? 'Re-run segmentation' : unsupportedViewReason(study.view);
     editButton.setAttribute('aria-pressed', String(state.editing));
     editButton.classList.toggle('is-active', state.editing);
     const editButtonLabel = state.editing ? 'Done editing' : 'Edit segmentation';

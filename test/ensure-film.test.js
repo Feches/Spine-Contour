@@ -155,6 +155,45 @@ test('a study deleted during the decode is superseded with no reason, and a new 
   });
 });
 
+// Ruling R16: a study whose geometry came from the level editor alone (levels placed by hand, committed through
+// /measure) has measurements and geometry but no predictionId, and no model run ever wrote it a sidecar. It is
+// shown from its decoded original, like a film with no result; the sidecar is never read.
+test('a study with hand-placed geometry and no prediction id decodes its original and never reads a sidecar (R16)', async (t) => {
+  const study = film('SP-9808', { measurements: { SS: 40 }, geometry: { region: 'lumbar', vertebrae: {} }, predictionId: null });
+  let decodes = 0;
+  const bridge = {
+    decodeFilm: async () => { decodes += 1; return decoded(); },
+    loadPrediction: async () => assert.fail('no sidecar is read for a study no model run produced'),
+  };
+  await withBridge(t, bridge, [study], async () => {
+    setFilePayload(study.id, BYTES);
+    const result = await ensureFilm(study.id);
+    assert.equal(result.reason, null);
+    assert.equal(result.superseded, false);
+    assert.equal(decodes, 1);
+    assert.equal(result.images.preview, true, 'the decoded original, not a stored image');
+    assert.equal(result.images.raw, result.raw);
+    assert.equal(result.images.overlayCanvas, null);
+    assert.deepEqual([result.images.width, result.images.height], [2, 1]);
+  });
+});
+
+// Task 8 ruling R-a, pinned beside R16: a study WITH a prediction id whose sidecar is gone gets a reason, never
+// its original film under the result's geometry (FILM UNAVAILABLE stays its outcome; a re-run restores it).
+test('a model result whose sidecar is missing gets a reason and is never decoded (R-a)', async (t) => {
+  const study = film('SP-9809', { measurements: { SS: 40 }, geometry: { region: 'lumbar', vertebrae: {} }, predictionId: 'run-1' });
+  let reads = 0;
+  const bridge = {
+    decodeFilm: async () => assert.fail('the original is not swapped in under a model result'),
+    loadPrediction: async () => { reads += 1; return null; },
+  };
+  await withBridge(t, bridge, [study], async () => {
+    setFilePayload(study.id, BYTES);
+    assert.deepEqual(await ensureFilm(study.id), outcome('The saved segmentation was not found.'));
+    assert.equal(reads, 1, 'the sidecar was looked for');
+  });
+});
+
 test('a study that is not in the library is a reason', async (t) => {
   await withBridge(t, {}, [], async () => {
     assert.deepEqual(await ensureFilm('SP-9806'), outcome('The study is no longer in the library.'));

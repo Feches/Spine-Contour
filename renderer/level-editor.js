@@ -199,17 +199,17 @@ export async function enterLevelEditor(studyId) {
   showFilm(studyId);
 }
 
-// The film for the stage. A study with a result already has its stored image (Edit is enabled only once it is
-// on the stage); a film with none gets its decoded original here. A reason with no film is toasted once. A study
-// with a result never reaches that branch except through restoreFilm, which has already said why (a toast, or
-// FILM UNAVAILABLE), so it is not said twice.
+// The film for the stage. A study with a model result already has its stored image (Edit is enabled only once it
+// is on the stage); a film with none, or with levels placed by hand and no prediction id (R16), gets its decoded
+// original here. A reason with no film is toasted once. A model result never reaches that branch except through
+// restoreFilm, which has already said why (a toast, or FILM UNAVAILABLE), so it is not said twice.
 async function showFilm(studyId) {
   if (typeof deps.ensureFilm !== 'function') return;
   const outcome = await deps.ensureFilm(studyId);
   if (!outcome || outcome.superseded || outcome.images || !outcome.reason) return;
   const live = getState();
   const study = studyOf(live, studyId);
-  if (!study || currentEditor(live)?.studyId !== studyId || (study.measurements && study.geometry)) return;
+  if (!study || currentEditor(live)?.studyId !== studyId || (study.measurements && study.geometry && study.predictionId)) return;
   showToast(outcome.reason);
 }
 
