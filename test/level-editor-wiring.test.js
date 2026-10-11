@@ -14,7 +14,7 @@ import { getState, setState } from '../renderer/store.js';
 import { newStudy } from '../renderer/screens/studies.js';
 import {
   configureLevelEditor, enterLevelEditor, exitNow, startPlace, placePoint, toggleLevelVisible, selectPlacingStep,
-  restorePlacing,
+  restorePlacing, fitPlacing,
 } from '../renderer/level-editor.js';
 // (Gate feedback G3, 2026-10-11; plan D15) The window / level belongs to the view: renderer/film-window.js.
 import { configureFilmWindow, openWindowPanel, closeWindowPanel } from '../renderer/film-window.js';
@@ -255,5 +255,39 @@ test('a chord takes back a re-placing press: restorePlacing puts the placing fro
     await settle();
     assert.equal(commits.length, 1, 'only the finished placement committed');
     assert.deepEqual(commits[0].geometry.vertebrae.L3.superior, [[90, 395], [140, 402]]);
+  });
+});
+
+// The review of G3/G4, finding 5: FIT, like a placement click and a step chip, waits while the view's W/L panel is open
+// over the editor's film (D15; renderer/film-window.js), and works again once it closes.
+test('FIT (fitPlacing) is a no-op while the W/L panel is open, and finishes the head once it closes', async () => {
+  const study = failedAutoFilm('SP-9505');
+  const commits = [];
+  wire(commits);
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    startPlace('FH1');
+    placePoint([100, 400], IMAGE);
+    placePoint([140, 400], IMAGE);                       // two rim points: FIT is enabled
+    const placing = getState().levelEditor.placing;
+    assert.equal(placing.code, 'FH1');
+
+    openWindowPanel();
+    assert.equal(getState().filmWindow?.open, true, 'the view\'s window panel (D15)');
+    const paused = getState().levelEditor;
+    fitPlacing(IMAGE);
+    assert.equal(getState().levelEditor, paused, 'FIT waits while the window / level panel is open: nothing written');
+    assert.equal(getState().levelEditor.placing, placing);
+    await settle();
+    assert.equal(commits.length, 0, 'nothing committed while paused');
+
+    closeWindowPanel();
+    fitPlacing(IMAGE);
+    const fitted = getState().levelEditor;
+    assert.equal(fitted.placing, null, 'with the panel closed FIT finishes the placement');
+    assert.deepEqual(fitted.levels.FH1.geometry.center, [120, 400]);
+    assert.equal(fitted.levels.FH1.geometry.radius, 20);
+    await settle();
+    assert.equal(commits.length, 1, 'the fitted head is committed');
   });
 });

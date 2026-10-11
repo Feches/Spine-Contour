@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ZOOM_MIN, ZOOM_MAX, clampZoom, zoomIn, zoomOut, zoomAbout, isChordHeld, isDoubleClick, vertebraAt, arrowKeyDelta, debounce,
+  ZOOM_MIN, ZOOM_MAX, clampZoom, zoomIn, zoomOut, zoomAbout, isChordHeld, isDoubleClick, exceedsSlop, vertebraAt, arrowKeyDelta,
+  debounce,
 } from '../renderer/viewer/interactions.js';
 
 // The transform is `translate(pan) scale(zoom)` about the stage CENTRE, so a host-local point
@@ -207,4 +208,23 @@ test('isDoubleClick takes its limits as options', () => {
   assert.equal(isDoubleClick(first, second, { withinMs: 500, withinPx: 10 }), true);
   assert.equal(isDoubleClick(first, second, { withinMs: 499, withinPx: 10 }), false, 'one millisecond too late');
   assert.equal(isDoubleClick(first, second, { withinMs: 500 }), false, 'the other limit keeps its default');
+});
+
+// (Ruling R37, 2026-10-11) A right press windows the film only once the pointer has moved 3 CSS px from it, so a
+// stray right click or a right-first chord formed before any movement decodes nothing.
+test('exceedsSlop: 3 CSS px or more from the press, in a straight line', () => {
+  const press = { clientX: 200, clientY: 300 };
+  assert.equal(exceedsSlop(press, { clientX: 200, clientY: 300 }), false, 'no movement');
+  assert.equal(exceedsSlop(press, { clientX: 202.9, clientY: 300 }), false, '2.9 px');
+  assert.equal(exceedsSlop(press, { clientX: 197.9, clientY: 302.1 }), false, '2.97 px on the diagonal');
+  assert.equal(exceedsSlop(press, { clientX: 203, clientY: 300 }), true, 'exactly 3 px');
+  assert.equal(exceedsSlop(press, { clientX: 200, clientY: 297 }), true, 'up 3 px');
+  assert.equal(exceedsSlop(press, { clientX: 197.8, clientY: 302.2 }), true, '3.11 px on the diagonal');
+});
+
+test('exceedsSlop takes its distance as an option and reads only clientX and clientY', () => {
+  const press = { clientX: 0, clientY: 0, button: 2, time: 5 };
+  assert.equal(exceedsSlop(press, { clientX: 4, clientY: 0 }, 5), false);
+  assert.equal(exceedsSlop(press, { clientX: 3, clientY: 4 }, 5), true, '5 px, the 3-4-5 triangle');
+  assert.equal(exceedsSlop(press, { clientX: 1, clientY: 0, buttons: 2 }, 1), true);
 });

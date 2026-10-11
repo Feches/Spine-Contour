@@ -1,15 +1,18 @@
 /**
  * The view's window / level (gate feedback G3 and G4, 2026-10-11; plan D15-D17, after D1 and D11): the one place that
  * writes `state.filmWindow`. Display only: nothing here reaches a measurement, the study's geometry or the label
- * record, and nothing is persisted. The window belongs to the VIEW, like zoom and pan: it lasts while the film is
- * open, FRESH_VIEW (screens/studies.js, data/demo-visibility.js) resets it when another film opens, and entering or
- * leaving edit mode keeps it. The stage asks for it from the toolbar's Window / level button and the right-button drag
+ * record, and nothing is persisted. The window belongs to the VIEW, like zoom and pan: it resets where zoom and pan
+ * reset (FRESH_VIEW in screens/studies.js and data/demo-visibility.js: another film opened from the list, or the open
+ * study closed); Back and the sidebar's return keep it, as they keep zoom and pan (R29); entering or leaving edit mode
+ * keeps it. The stage asks for it from the toolbar's Window / level button and the right-button drag
  * (components/viewer.js); the pure rules are viewer/window-level.js.
  *
  * The screen hands in its film loader through configureFilmWindow: screens/analysis.js ensureFilm, which decodes the
- * original through POST /decode and caches it on the image cache entry as `images.raw`, never in the store. This file
- * never imports components/viewer.js or screens/analysis.js, which both import it. Store subscribers never call it.
- * Covered by test/film-window.test.js through the real store; the stage by tools/smoke/smoke-levels.mjs.
+ * original through POST /decode and caches it on the image cache entry as `images.raw`, never in the store. A kept
+ * window never outlives that decode (R35): when the film is mounted again over images without it, the screen asks
+ * windowNeedsDecode and calls redecodeKeptWindow. This file never imports components/viewer.js or screens/analysis.js,
+ * which both import it. Store subscribers never call it. Covered by test/film-window.test.js through the real store;
+ * the stage by tools/smoke/smoke-levels.mjs.
  */
 import { getState, setState } from './store.js';
 import { defaultWindow, windowRange, clampWindow } from './viewer/window-level.js';
@@ -57,6 +60,18 @@ function currentWindow(state) {
   return wl && state.openId && wl.studyId === state.openId ? wl : null;
 }
 
+/**
+ * (Ruling R35) Whether `study`'s film must be decoded again for the window the view kept: the window is ready or
+ * loading, and `images`, the film's cached images (null when the single cache entry went to another study, for
+ * instance that study's interactive run completing while this film was off screen), carry no decoded original. A
+ * ready window over the stored image alone would put W / L on the chip and in the panel while the film layer draws
+ * the stored image. An unavailable window claims nothing. screens/analysis.js asks this as it mounts the film.
+ */
+export function windowNeedsDecode(state, study, images) {
+  const wl = windowFor(state, study);
+  return Boolean(wl && (wl.status === 'ready' || wl.status === 'loading') && !images?.raw);
+}
+
 // ---------------------------------------------------------------------------
 // The decode.
 
@@ -79,10 +94,11 @@ function startLoading(open) {
   return pending;
 }
 
-async function decode(studyId, seq) {
+// The screen's ensureFilm for one film. A superseded result is not a failure: the cache entry was replaced under the
+// call, so it is asked again, a few times. A throw is an outcome with its message as the reason.
+async function askFilm(studyId) {
   let outcome = null;
   try {
-    // A superseded result is not a failure: the cache entry was replaced under the call. Ask again, a few times.
     for (let attempt = 0; attempt < 3; attempt += 1) {
       outcome = typeof deps.ensureFilm === 'function' ? await deps.ensureFilm(studyId) : null;
       if (!outcome?.superseded) break;
@@ -90,6 +106,11 @@ async function decode(studyId, seq) {
   } catch (error) {
     outcome = { images: null, raw: null, reason: error?.message || null, superseded: false };
   }
+  return outcome;
+}
+
+async function decode(studyId, seq) {
+  const outcome = await askFilm(studyId);
   // Lands only as the newest decode, on the loading window it was started for, while that film is still open:
   // FRESH_VIEW, another study opened or forgetFilmWindow has already put it out of reach.
   const state = getState();
@@ -161,4 +182,19 @@ export function resetWindow() {
  */
 export function forgetFilmWindow(studyId) {
   if (getState().filmWindow?.studyId === studyId) setState({ filmWindow: null });
+}
+
+/**
+ * (Ruling R35) The mount's call when windowNeedsDecode says so: ensureFilm again, which restores the film's stored
+ * image when it has a result, attaches the decoded original and hands both to the live viewer, so the kept window is
+ * drawn again as it was (the window itself is not touched). A superseded outcome is asked again, as the panel's decode
+ * does. When no original comes back, a READY window of that film is forgotten, so the chip and the panel never claim a
+ * window the film layer does not draw; a loading one is left to its own decode, which lands it ready or unavailable
+ * with its reason. Resolves once that has happened.
+ */
+export async function redecodeKeptWindow(studyId) {
+  const outcome = await askFilm(studyId);
+  if (outcome?.raw && !outcome.superseded) return;
+  const wl = getState().filmWindow;
+  if (wl?.studyId === studyId && wl.status === 'ready') forgetFilmWindow(studyId);
 }

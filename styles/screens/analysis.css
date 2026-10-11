@@ -687,11 +687,13 @@ button.viewer-step:disabled { opacity: .35; cursor: not-allowed; }
 .viewer-stage.is-editing .viewer-canvas-dynamic { cursor: crosshair; }
 .viewer-stage.is-editing.is-over-handle .viewer-canvas-dynamic { cursor: grab; }
 .viewer-stage.is-editing.is-dragging-handle .viewer-canvas-dynamic { cursor: grabbing; }
-/* (2026-10-10) While the window / level panel is open a drag on the film sets the window. Before the
-   pan-mode rules, so with Pan on (a primary drag pans) the pan cursor wins on source order. */
-.viewer-stage.is-windowing .viewer-canvas-dynamic { cursor: all-scroll; }
 .viewer-stage.is-pan-mode .viewer-canvas-dynamic { cursor: grab; }
 .viewer-stage.is-pan-mode:active .viewer-canvas-dynamic { cursor: grabbing; }
+/* (2026-10-10) While the window / level panel is open a drag on the film sets the window. (2026-10-11, ruling R36)
+   The open panel outranks the Pan toggle for the primary button, so this comes AFTER the pan-mode hover rule and wins
+   on source order; a press starts a window drag, whose rule below beats the :active one. A middle-button or chord pan
+   still reads `grabbing` from the .is-panning rules at the end, which tie this at (0,3,0) and come later. */
+.viewer-stage.is-windowing .viewer-canvas-dynamic { cursor: all-scroll; }
 /* (2026-10-11, gate feedback G4) A live window drag -- the right button in every mode, Pan on or off -- shows the
    window cursor over the pan-mode rules: (0,4,0) and after them, so it beats the :active rule too. */
 .viewer-stage.is-window-drag .viewer-canvas.viewer-canvas-dynamic { cursor: all-scroll; }

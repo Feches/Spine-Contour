@@ -12,7 +12,7 @@ import { loadStudyImages, disposeStudyImages, thumbnailDataUri, bitmapFromBase64
 import { cropRaw, defaultWindow, rawFromDecoded } from '../viewer/window-level.js';
 import { mountViewer, recordPrediction, forgetPrediction, getPrediction, commitGeometry } from '../components/viewer.js';
 import { configureLevelEditor, forgetLevelEditor, requestExit } from '../level-editor.js';
-import { configureFilmWindow, forgetFilmWindow } from '../film-window.js';
+import { configureFilmWindow, forgetFilmWindow, windowNeedsDecode, redecodeKeptWindow } from '../film-window.js';
 import { describeModels } from '../data/models.js';
 import { describeProcessor, processorTitle } from '../data/processing.js';
 import { WAIT_FOR_BATCH } from '../data/batch.js';
@@ -1120,7 +1120,13 @@ export function render(state) {
   // update(), before writing such a caller.
   mounted = { viewer, update, studyId: study.id };
   update();
-  if (needsRestore) restoreFilm(study.id);
+  // (2026-10-11, ruling R35) A window the view kept for this film (Back, then the sidebar's OPEN STUDY card) over images
+  // with no decoded original -- another study's run took the single cache entry meanwhile, so the restore below would
+  // hand the viewer the stored image alone -- would read W / L on the chip while the film layer draws the stored image.
+  // ensureFilm (through redecodeKeptWindow) restores the stored image, attaches the decode and hands both to this
+  // viewer, so the window is drawn again; if no original comes back the window is forgotten.
+  if (windowNeedsDecode(getState(), study, cachedImages(study.id))) redecodeKeptWindow(study.id);
+  else if (needsRestore) restoreFilm(study.id);
   else if (!study.geometry && requiresAnteriorSide(study) && !(imageCache?.studyId === study.id && imageCache.images?.preview)) previewOriginal(study.id);
   // (2026-10-10) Back on the screen still editing (the sidebar's OPEN STUDY card keeps the level editor) with
   // no film cached for this study: load it, as entering edit mode did.

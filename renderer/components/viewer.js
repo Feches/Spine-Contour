@@ -9,7 +9,9 @@ import {
   createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel, colorFor, LEVEL_HANDLE_RADIUS_PX,
 } from '../viewer/canvas.js';
 import { clientToImage } from '../viewer/geometry.js';
-import { zoomIn, zoomOut, zoomAbout, isChordHeld, isDoubleClick, vertebraAt, arrowKeyDelta } from '../viewer/interactions.js';
+import {
+  zoomIn, zoomOut, zoomAbout, isChordHeld, isDoubleClick, exceedsSlop, vertebraAt, arrowKeyDelta,
+} from '../viewer/interactions.js';
 import { createMeasureQueue } from '../viewer/measure-queue.js';
 import { isQueued, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
 import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
@@ -556,8 +558,10 @@ export function mountViewer(container) {
       labelChip.releasePointerCapture(event.pointerId);
       labelChip.classList.remove('is-dragging');
     }
-    // (Gate feedback G4) A RIGHT-first chord began as a right-button window drag: the chord takes over, the window
-    // keeps whatever the drag set before the left button joined, and the right press is no double right-click's first.
+    // (Gate feedback G4) A RIGHT-first chord began as a right press: still pending when the left button joins before
+    // the pointer moves (ruling R37: nothing was decoded and the film stays as it is), or a window drag once it moved.
+    // Either way the chord takes over, the window keeps whatever the drag set before the left button joined, and the
+    // right press is no double right-click's first.
     if (previous && previous.kind === 'window') endWindowDragClasses();
     lastRightPress = null;
     // A LEFT-first chord while placing has already placed a point with its first press. Take that press back by
@@ -584,16 +588,41 @@ export function mountViewer(container) {
     // makes both the click-fires and no-click-fires orders safe.
   }
 
-  // A window / level drag (handoff §6; gate feedback G3, G4): a LEFT press with the panel open, in every mode, or a
-  // RIGHT press in every mode, panel open or not (D16). `start` is the window at the press, or null while the film is
-  // still being decoded: the first move once it is ready takes the window and the pointer there as its start.
+  // A window / level drag (handoff §6; gate feedback G3, G4): a LEFT press with the panel open, in every mode, Pan on or
+  // off (R36), on a ready window. `start` is the window at the press, and the drag windows from the press point.
   function startWindowDrag(event, wl) {
     drag = {
-      kind: 'window', pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY,
+      kind: 'window', pending: false, pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY,
       start: wl?.status === 'ready' ? { width: wl.width, level: wl.level } : null, told: false,
     };
     if (!dynamicCanvas.hasPointerCapture(event.pointerId)) dynamicCanvas.setPointerCapture(event.pointerId);
     stage.classList.add('is-windowing', 'is-window-drag');
+  }
+
+  // (Ruling R37) A RIGHT press in every mode, panel open or not (D16), starts nothing yet: the drag is PENDING. It holds
+  // the pointer (capture, so no other gesture starts and the moves come here) and the press point, and becomes a window
+  // drag only once the pointer has moved 3 CSS px from the press (exceedsSlop, in handlePointerMove). Released where it
+  // began -- a stray right click, or the first press of a double right-click -- or taken over by a chord before any
+  // movement, it decodes nothing and the film layer keeps what it shows.
+  function startPendingWindowDrag(event) {
+    drag = {
+      kind: 'window', pending: true, pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY,
+      start: null, told: false,
+    };
+    if (!dynamicCanvas.hasPointerCapture(event.pointerId)) dynamicCanvas.setPointerCapture(event.pointerId);
+  }
+
+  // The move that takes a pending right press past the slop. A ready window is the drag's start and the press point its
+  // origin, so the move that crossed the slop already windows. Otherwise the film's original is decoded now
+  // (ensureWindowLoaded: only when the film has no window yet, R30) and `start` stays null until it is ready: the first
+  // move after that takes the window and the pointer there as its start. Pending goes before the decode's write, so the
+  // stage's update sees a live window drag.
+  function activateWindowDrag() {
+    const wl = windowFor(getState(), currentStudy());
+    drag.pending = false;
+    drag.start = wl?.status === 'ready' ? { width: wl.width, level: wl.level } : null;
+    stage.classList.add('is-windowing', 'is-window-drag');
+    if (wl?.status !== 'ready') ensureWindowLoaded();
   }
 
   // A window drag's classes once it ends (released, cancelled, or taken over by a chord): `is-windowing` stays only
@@ -604,9 +633,10 @@ export function mountViewer(container) {
   }
 
   // (Gate feedback G4; plan D16, D17) A RIGHT-button press on the film or the black surround, in every mode and with
-  // the pan toggle on or off: a window drag, or -- the second of two presses isDoubleClick accepts -- the film's
-  // default window back and no drag. The first press of a film decodes its original (ensureWindowLoaded); the drag
-  // waits for it. Not on a demo study and not without a film. A chord (the left button joining) outranks it.
+  // the pan toggle on or off: a pending window drag that windows once it moves (R37), or -- the second of two presses
+  // isDoubleClick accepts, which compares presses only -- the film's default window back and no drag. The first move
+  // past the slop on a film with no window yet decodes its original (ensureWindowLoaded); a press alone decodes nothing.
+  // Not on a demo study and not without a film. A chord (the left button joining) outranks it.
   function handleRightPress(event) {
     const study = currentStudy();
     if (!study || study.source === 'demo' || !currentImages) return;
@@ -619,9 +649,7 @@ export function mountViewer(container) {
       return;
     }
     lastRightPress = press;
-    const wl = windowFor(getState(), study);
-    if (wl?.status !== 'ready') ensureWindowLoaded();
-    startWindowDrag(event, wl);
+    startPendingWindowDrag(event);
   }
 
   // One placement click, at the pointer, clamped to the film by clientToImage and addPoint. The press is remembered
@@ -644,13 +672,14 @@ export function mountViewer(container) {
 
   // Gesture precedence: a LEFT+RIGHT chord pans in every mode and outranks everything below
   // it, including a handle drag while editing; the RIGHT button alone windows the film in every mode,
-  // pan toggle on or off, and a double right-click resets the window (gate feedback G4, D16, D17); the
-  // middle button pans in every mode; the primary button pans when the pan toggle is on; with the window /
-  // level panel open a primary press drags the window in every mode (gate feedback G3: outside edit mode
-  // it outranks construction selection); while editing (level editor, handoff §6) a press while placing
-  // places the next point, and a press on the selected level's handle starts a handle drag. A second
-  // pointer while a gesture is live is ignored. The construction label has its own drag -- see
-  // handleLabelPointerDown below.
+  // pan toggle on or off, once it moves (gate feedback G4, D16; ruling R37), and a double right-click
+  // resets the window (D17); the middle button pans in every mode; with the window / level panel open a
+  // primary press drags the window in every mode, the pan toggle on or off (gate feedback G3: outside edit
+  // mode it outranks construction selection; ruling R36: the open panel outranks Pan for the primary
+  // button); the primary button pans when the pan toggle is on; while editing (level editor, handoff §6)
+  // a press while placing places the next point, and a press on the selected level's handle starts a
+  // handle drag. A second pointer while a gesture is live is ignored. The construction label has its own
+  // drag -- see handleLabelPointerDown below.
   //
   // The chord test is FIRST, above `if (drag) return`, because outranking a live handle drag
   // is the point. It is also, for a real mouse, dead code: Chromium fires pointerdown only on
@@ -672,7 +701,7 @@ export function mountViewer(container) {
       handleRightPress(event);
       return;
     }
-    if (event.button === 1 || (event.button === 0 && state.panMode)) {
+    if (event.button === 1) {
       event.preventDefault();
       startPan(event);
       return;
@@ -680,15 +709,22 @@ export function mountViewer(container) {
     if (event.button !== 0) return;
     const study = currentStudy();
     // Without the film there is nothing to window or place on: the canvas is still its 300x150 stub.
-    if (!study || !currentImages) return;
-    const wl = windowFor(state, study);
+    const wl = study && currentImages ? windowFor(state, study) : null;
     if (wl?.open) {
       // Placement clicks, handle drags and construction selection pause while the window / level panel is open.
+      // (Ruling R36) So does the pan toggle: with the panel open the primary button windows, Pan on or off; the
+      // middle button and the chord still pan, and closing the panel gives the primary button back to Pan.
       event.preventDefault();
       suppressClick = true;
       if (wl.status === 'ready') startWindowDrag(event, wl);
       return;
     }
+    if (state.panMode) {
+      event.preventDefault();
+      startPan(event);
+      return;
+    }
+    if (!study || !currentImages) return;
     const editor = editorFor(state, study);
     // Busy means THIS study's /predict is in flight. A run on a different study must not
     // freeze this one's handles (state.running is that study's id, not a boolean).
@@ -760,10 +796,16 @@ export function mountViewer(container) {
       return;
     }
     if (drag.kind === 'window') {
+      if (drag.pending) {
+        // (Ruling R37) A right press windows nothing until the pointer has moved 3 CSS px from it; this move begins
+        // the drag (and, on a film with no window yet, its decode) and is applied below like any other.
+        if (!exceedsSlop(drag, event)) return;
+        activateWindowDrag();
+      }
       const wl = windowFor(getState(), currentStudy());
       if (!wl || wl.status !== 'ready' || !wl.range) {
-        // (Ruling R31) A right-button drag on a film whose original cannot be decoded says why, once per drag:
-        // with the panel closed nothing else would. The panel's note says it while the panel is open.
+        // (Ruling R31) A right-button drag on a film whose original cannot be decoded says why, once per drag, at the
+        // move that begins it: with the panel closed nothing else would. The panel's note says it while it is open.
         if (wl?.status === 'unavailable' && !wl.open && !drag.told) {
           drag.told = true;
           showToast(`${WINDOW_UNAVAILABLE}${wl.reason ?? ''}`);
@@ -801,7 +843,8 @@ export function mountViewer(container) {
     stage.classList.remove('is-dragging-handle');
     // Covers the ordinary pan, a chord released as one simultaneous pointerup, and pointercancel.
     stage.classList.remove('is-panning');
-    // A window drag keeps what it set, released or cancelled (display only; nothing to discard).
+    // A window drag keeps what it set, released or cancelled (display only; nothing to discard). A right press released
+    // while still pending (R37) set nothing and decoded nothing.
     if (ended?.kind === 'window') endWindowDragClasses();
     if (!ended || ended.kind !== 'levelHandle') return;
     // A cancelled gesture (pen lifted out of range, window lost the pointer) discards the
@@ -962,7 +1005,8 @@ export function mountViewer(container) {
 
   // The window / level panel, its toolbar tool and the chip's window readout, in every mode (gate feedback G3, D15):
   // the button is always shown, and disabled for a demo study and while there is no film on the stage. The chip reads
-  // the window whenever the open film's is ready. `is-windowing` is the panel open or a window drag live.
+  // the window whenever the open film's is ready. `is-windowing` is the panel open or a window drag live (a right press
+  // still pending, R37, is not one yet).
   function updateWindow(state, study) {
     const wl = windowFor(state, study);
     const open = Boolean(wl?.open);
@@ -971,7 +1015,7 @@ export function mountViewer(container) {
     windowButton.setAttribute('aria-pressed', String(open));
     wlPanel.classList.toggle('is-hidden', !open);
     wlHint.classList.toggle('is-hidden', Boolean(state.editing));
-    stage.classList.toggle('is-windowing', open || drag?.kind === 'window');
+    stage.classList.toggle('is-windowing', open || (drag?.kind === 'window' && !drag.pending));
     const ready = wl?.status === 'ready' && Boolean(wl.range);
     chipDivider.classList.toggle('is-hidden', !ready);
     chipWindow.classList.toggle('is-hidden', !ready);

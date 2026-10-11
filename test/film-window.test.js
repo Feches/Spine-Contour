@@ -12,7 +12,7 @@ import { getState, setState } from '../renderer/store.js';
 import { newStudy, FRESH_VIEW } from '../renderer/screens/studies.js';
 import {
   configureFilmWindow, openWindowPanel, ensureWindowLoaded, closeWindowPanel, setWindow, resetWindow, forgetFilmWindow,
-  windowFor,
+  windowFor, windowNeedsDecode, redecodeKeptWindow,
 } from '../renderer/film-window.js';
 import { configureLevelEditor, enterLevelEditor, exitNow } from '../renderer/level-editor.js';
 
@@ -283,6 +283,114 @@ test('forgetFilmWindow drops only that study\'s window', async () => {
     assert.equal(wl(), ready);
     forgetFilmWindow('SP-9611');
     assert.equal(wl(), null);
+  });
+});
+
+// The review of G3/G4, finding 5: a window forgotten while its decode is in flight (a delete, a completed run or a
+// Region change on that film) stays forgotten when the decode lands.
+test('forgetFilmWindow during a loading decode: the decode lands nowhere and the window stays null', async () => {
+  const calls = stubFilm();
+  await withStore([film('SP-9615')], 'SP-9615', async () => {
+    const done = openWindowPanel();
+    assert.equal(wl().status, 'loading');
+    forgetFilmWindow('SP-9615');
+    assert.equal(wl(), null);
+    calls[0].resolve(decodedOutcome(RAW));
+    await done;
+    assert.equal(wl(), null, 'the decode of a forgotten window writes nothing');
+    const again = openWindowPanel();
+    assert.equal(calls.length, 2, 'the next open decodes again');
+    calls[1].resolve(decodedOutcome(RAW));
+    await again;
+    assert.equal(wl().status, 'ready');
+  });
+});
+
+// Ruling R35 (the review of G3/G4, finding 1): a window kept across Back and the sidebar's return must not outlive the
+// decoded original it windows. When another study's run replaced the film's cache entry meanwhile, the mount
+// (screens/analysis.js render()) asks windowNeedsDecode with the film's cached images and, if so, redecodeKeptWindow.
+test('windowNeedsDecode: a ready or loading window over images with no decoded original (R35)', async () => {
+  const calls = stubFilm();
+  await withStore([film('SP-9616'), film('SP-9617')], 'SP-9616', async () => {
+    const study = { id: 'SP-9616' };
+    const stored = { image: {}, width: 2, height: 2 };          // the stored image alone, as a restore caches it
+    const decoded = { ...stored, raw: RAW };                     // with the decoded original attached (ensureFilm)
+    assert.equal(windowNeedsDecode(getState(), study, stored), false, 'no window: nothing to keep drawn');
+    const done = openWindowPanel();
+    assert.equal(windowNeedsDecode(getState(), study, null), true, 'loading, and the cache entry went to another study');
+    calls[0].resolve(decodedOutcome(RAW));
+    await done;
+    assert.equal(windowNeedsDecode(getState(), study, stored), true, 'ready over the stored image alone');
+    assert.equal(windowNeedsDecode(getState(), study, null), true, 'ready with no cache entry for the film');
+    assert.equal(windowNeedsDecode(getState(), study, decoded), false, 'the decoded original is there: drawn');
+    assert.equal(windowNeedsDecode(getState(), { id: 'SP-9617' }, stored), false, 'another study\'s window is not this one\'s');
+    assert.equal(windowNeedsDecode(getState(), null, stored), false);
+
+    forgetFilmWindow('SP-9616');
+    const again = openWindowPanel();
+    calls[1].resolve(failedOutcome('The source film could not be found.'));
+    await again;
+    assert.equal(windowNeedsDecode(getState(), study, stored), false, 'an unavailable window claims no window to draw');
+  });
+});
+
+test('redecodeKeptWindow: the film is decoded again and the kept window stays ready; no original forgets it (R35)', async () => {
+  const calls = stubFilm();
+  await withStore([film('SP-9618')], 'SP-9618', async () => {
+    const done = openWindowPanel();
+    calls[0].resolve(decodedOutcome(RAW));
+    await done;
+    setWindow({ width: 1200, level: 600 });
+    closeWindowPanel();
+    const kept = wl();
+
+    let again = redecodeKeptWindow('SP-9618');
+    assert.equal(calls.length, 2, 'ensureFilm asked again (it restores the stored image and attaches the decode)');
+    assert.equal(calls[1].studyId, 'SP-9618');
+    assert.equal(wl(), kept, 'the window stays as it was while the film is decoded');
+    calls[1].resolve(decodedOutcome(RAW));
+    await again;
+    assert.equal(wl(), kept, 'decoded: the kept window is drawn again, unchanged and not decoded into a new one');
+    assert.equal(wl().width, 1200);
+
+    again = redecodeKeptWindow('SP-9618');
+    calls[2].resolve(SUPERSEDED);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(calls.length, 4, 'a superseded outcome is asked again, as the panel\'s decode does');
+    assert.equal(wl(), kept);
+    calls[3].resolve(failedOutcome('The saved segmentation was not found.'));
+    await again;
+    assert.equal(wl(), null, 'no original: the window is forgotten, so the chip and the panel claim none');
+  });
+});
+
+test('redecodeKeptWindow leaves a loading window to its own decode, and another film\'s window alone (R35)', async () => {
+  const calls = stubFilm();
+  await withStore([film('SP-9619'), film('SP-9620')], 'SP-9619', async () => {
+    const loading = openWindowPanel();
+    const redecode = redecodeKeptWindow('SP-9619');
+    calls[1].resolve(failedOutcome('The source film could not be found.'));
+    await redecode;
+    assert.equal(wl().status, 'loading', 'the panel\'s own decode is still in flight: it says how it ends');
+    calls[0].resolve(failedOutcome('The source film could not be found.'));
+    await loading;
+    assert.equal(wl().status, 'unavailable');
+    assert.equal(wl().reason, 'The source film could not be found.', 'the panel keeps its reason');
+
+    forgetFilmWindow('SP-9619');
+    let done = openWindowPanel();
+    calls[2].resolve(decodedOutcome(RAW));
+    await done;
+    const late = redecodeKeptWindow('SP-9619');
+    setState({ openId: 'SP-9620', ...FRESH_VIEW });
+    done = openWindowPanel();
+    calls[4].resolve(decodedOutcome(RAW_PLAIN));
+    await done;
+    const other = wl();
+    calls[3].resolve(failedOutcome('The source film could not be found.'));
+    await late;
+    assert.equal(wl(), other, 'the open film\'s window is not the one the late failure forgets');
+    assert.equal(wl().studyId, 'SP-9620');
   });
 });
 

@@ -5,6 +5,11 @@
 // 2026-10-11): window / level outside edit mode -- the toolbar button, the panel, the chip, the window kept across
 // edit mode and reset by opening another study (D15), the right-button drag (D16) and the double right-click (D17).
 // The window is the view's, `state.filmWindow` (renderer/film-window.js), read through `window.__lv.filmWindow()`.
+// The review of G3/G4 (2026-10-11) adds section-17 checks elsewhere in the run, where their film is on the stage: a
+// right press without movement, and a right-first chord, decode nothing on SP-9300 before any window was asked for
+// (R37, first, before section 1); a right drag on SP-9300's unavailable film with the panel closed toasts its reason
+// once (R31, in section 9); and on SP-9301 a right drag while placing L3, from the black surround, and with Pan
+// pressed (the panel closed), and a left drag with Pan pressed and the panel open (R36).
 //
 //   node tools/smoke/launch.mjs                                     (SPINE_CONTOUR_USER_DATA under %TEMP%)
 //   node tools/smoke/smoke-levels.mjs                               phase `dom` (the default)
@@ -264,6 +269,10 @@ async function windowLevelChecks(prefix) {
 
 const pairOf = (wl) => (wl ? [wl.width, wl.level] : null);
 const selectedLevel = () => ev(`import('./renderer/store.js').then((m) => m.getState().selectedLevel)`);
+// (Section 17, R36) The view's pan and the Pan toggle.
+const PAN_TOOL = '.viewer-tool[aria-label="Pan"]';
+const viewNow = () => ev(`import('./renderer/store.js').then((m) => { const s = m.getState(); return { panX: s.panX, panY: s.panY, panMode: s.panMode }; })`);
+const R31_TOAST = 'Window / level is unavailable. The source film could not be found.';
 const editingNow = () => ev(`import('./renderer/store.js').then((m) => m.getState().editing)`);
 const toolState = () => ev(`(() => { const b = document.querySelector(${js(WL_TOOL)}); return b ? { shown: !b.classList.contains('is-hidden') && b.offsetParent !== null, disabled: b.disabled, pressed: b.getAttribute('aria-pressed') } : null; })()`);
 const stageClasses = () => ev(`(() => { const s = document.querySelector('.viewer-stage'); return { windowing: s.classList.contains('is-windowing'), dragging: s.classList.contains('is-window-drag'), editing: s.classList.contains('is-editing') }; })()`);
@@ -329,6 +338,27 @@ async function windowOutsideEditChecks(windowInEdit) {
   check('17. the chip follows the right-button drag, and the release ends the stage\'s windowing state',
     chipRight?.text === `W ${afterRight?.width} ${MID} L ${afterRight?.level}` && !released.windowing && !released.dragging, { chipRight, released });
 
+  // D16 on the black surround (the review's finding 5): a right drag that starts beside the film, on .viewer-host, windows
+  // it as one on the film does. Right and down, back up from the drag above. The point is the first of the surround's
+  // left, right and lower middles that the page itself says is the host.
+  const surround = await ev(`(() => {
+    const s = document.querySelector('.viewer-stage').getBoundingClientRect();
+    const c = document.querySelector('.viewer-canvas-dynamic').getBoundingClientRect();
+    const candidates = [[(s.left + c.left) / 2, c.top + c.height / 2], [(c.right + s.right) / 2, c.top + c.height / 2], [c.left + c.width / 2, (c.bottom + s.bottom) / 2]];
+    for (const [x, y] of candidates.map(([x, y]) => [Math.round(x), Math.round(y)])) {
+      const target = document.elementFromPoint(x, y);
+      if (target && target.classList.contains('viewer-host')) return { x, y };
+    }
+    return null;
+  })()`);
+  const beforeSurround = await windowState();
+  if (surround) await rightDrag(surround.x, surround.y, surround.x + 20, surround.y + 10);
+  const afterSurround = await windowState();
+  check('17. a right-button drag that starts on the black surround windows the film: right raises the width, down the level (D16)',
+    Boolean(surround) && afterSurround?.width === beforeSurround?.width + 80 && afterSurround?.level === beforeSurround?.level + 40 && afterSurround.open === false
+      && !(await stageClasses()).dragging,
+    { surround, before: pairOf(beforeSurround), after: pairOf(afterSurround) });
+
   // D17: a double right-click restores the film's default window, clear of the drag's press in time and place.
   await cdp.settle(450);
   await doubleRightClick(canvas.cx + 40, canvas.cy + 40);
@@ -346,6 +376,26 @@ async function windowOutsideEditChecks(windowInEdit) {
   check('17. entering edit mode keeps the window (D15)',
     entered && beforeEdit?.width === beforeEdit?.defaultWidth - 40 && inEdit?.width === beforeEdit.width && inEdit?.level === beforeEdit.level,
     { beforeEdit: pairOf(beforeEdit), inEdit: pairOf(inEdit), entered });
+
+  // D16 while placing (the review's finding 5): L3 placed by one click, then a right drag windows the film and places
+  // nothing; CANCEL ends the placement with nothing changed. Clear of the drag above in time (no double right-click).
+  await clickSelector('[data-level-key="place:L3"]');
+  await clickImage(250, 430);
+  const placingBefore = await ev('window.__lv.editor()?.placing ?? null');
+  const beforePlacingDrag = await windowState();
+  const editFilm = await cdp.rect('.viewer-canvas-dynamic');
+  await cdp.settle(450);
+  await rightDrag(editFilm.cx, editFilm.cy, editFilm.cx - 20, editFilm.cy - 10);
+  const placingAfter = await ev('window.__lv.editor()?.placing ?? null');
+  const afterPlacingDrag = await windowState();
+  await clickSelector('[data-level-key="cancel:L3"]');
+  const placingCancelled = await ev('window.__lv.editor()?.placing ?? null');
+  check('17. while placing L3 a right-button drag windows the film and leaves the placing\'s points as they were; CANCEL then ends it (D16)',
+    placingBefore?.code === 'L3' && placingBefore.points.filter(Boolean).length === 1 && placingAfter?.code === 'L3'
+      && JSON.stringify(placingAfter.points) === JSON.stringify(placingBefore.points) && placingAfter.current === placingBefore.current
+      && afterPlacingDrag?.width === beforePlacingDrag?.width - 80 && afterPlacingDrag?.level === beforePlacingDrag?.level - 40
+      && placingCancelled === null && (await badge('L3')) === 'Not placed',
+    { before: placingBefore?.points ?? null, after: placingAfter?.points ?? null, window: [pairOf(beforePlacingDrag), pairOf(afterPlacingDrag)], placingCancelled, L3: await badge('L3') });
   await cdp.key('Escape');
   await until(`(async () => !(await import('./renderer/store.js')).getState().editing)()`, 5000);
 
@@ -374,21 +424,53 @@ async function windowOutsideEditChecks(windowInEdit) {
   check('17. the W/L panel opens at the film\'s default window again',
     fresh?.width === fresh?.defaultWidth && fresh?.level === fresh?.defaultLevel && fresh.open === true,
     fresh && { pair: pairOf(fresh), defaults: [fresh.defaultWidth, fresh.defaultLevel] });
-  await clickSelector(WL_DONE);
 
-  // D16 on a film with no window yet: the press starts the decode (its original is cached by now, so it lands before
-  // the first move), the first move after it is the drag's start, and the second windows from there: (-20, -10).
+  // R36 (the review's finding 3): with Pan pressed and the panel open the LEFT button windows and does not pan; then,
+  // the panel closed and Pan still pressed, a RIGHT drag windows and does not pan either (D16); Pan unpressed after.
+  await clickSelector(PAN_TOOL);
+  const panPressed = await viewNow();
+  const panFilm = await cdp.rect('.viewer-canvas-dynamic');
+  await drag(panFilm.cx, panFilm.cy, panFilm.cx - 20, panFilm.cy - 10);
+  const panLeft = await windowState();
+  const viewAfterLeft = await viewNow();
+  check('17. with Pan pressed and the panel open a left drag windows the film and does not pan (R36)',
+    panPressed.panMode === true && panLeft?.width === fresh?.width - 80 && panLeft?.level === fresh?.level - 40 && panLeft.open === true
+      && viewAfterLeft.panX === panPressed.panX && viewAfterLeft.panY === panPressed.panY,
+    { panPressed, viewAfterLeft, before: pairOf(fresh), after: pairOf(panLeft) });
+  await clickSelector(WL_DONE);
+  await cdp.settle(450);
+  await rightDrag(panFilm.cx, panFilm.cy, panFilm.cx - 20, panFilm.cy - 10);
+  const panRight = await windowState();
+  const viewAfterRight = await viewNow();
+  await clickSelector(PAN_TOOL);
+  const panReleased = await viewNow();
+  const panTool = await ev(`document.querySelector(${js(PAN_TOOL)})?.getAttribute('aria-pressed') ?? null`);
+  check('17. with Pan pressed and the panel closed a right drag windows the film and does not pan; Pan is unpressed after (D16)',
+    panRight?.width === panLeft?.width - 80 && panRight?.level === panLeft?.level - 40 && panRight.open === false
+      && viewAfterRight.panX === panPressed.panX && viewAfterRight.panY === panPressed.panY && panReleased.panMode === false && panTool === 'false',
+    { before: pairOf(panLeft), after: pairOf(panRight), viewAfterRight, panReleased, panTool });
+
+  // D16 on a film with no window yet, after R37: the first move past the slop starts the decode (its original is
+  // cached by now, so it lands within that move's task) and the drag's start is the first move after it, so the drag
+  // leaves the film at its default window however the moves arrive; the next right drag windows from its press.
   await openFromList(OTHER);
   await openFromList(HAND);
   await until(`document.querySelector('.viewer-canvas-dynamic')?.width === 600`, 10000);
   const none = await windowState();
   const film = await cdp.rect('.viewer-canvas-dynamic');
-  await rightDragVia(film.cx, film.cy, [[film.cx - 5, film.cy - 5], [film.cx - 25, film.cy - 15]]);
+  await rightDragVia(film.cx, film.cy, [[film.cx - 5, film.cy - 5], [film.cx - 10, film.cy - 10]]);
+  await until(`window.__lv.filmWindow()?.status === 'ready'`, 10000);
   const byDrag = await windowState();
-  check('17. a right-button drag on a film with no window yet decodes it and windows from its first move after (D16)',
+  check('17. a right-button drag on a film with no window yet decodes it once it moves, the panel closed, at the default (D16, R37)',
     none === null && byDrag?.status === 'ready' && byDrag.open === false
-      && byDrag.width === byDrag.defaultWidth - 80 && byDrag.level === byDrag.defaultLevel - 40,
+      && byDrag.width === byDrag.defaultWidth && byDrag.level === byDrag.defaultLevel,
     { none: pairOf(none), byDrag: byDrag && { status: byDrag.status, pair: pairOf(byDrag), defaults: [byDrag.defaultWidth, byDrag.defaultLevel] } });
+  await cdp.settle(450);
+  await rightDrag(film.cx, film.cy, film.cx - 20, film.cy - 10);
+  const windowed = await windowState();
+  check('17. the next right-button drag windows it from its press: (-80, -40) (D16)',
+    windowed?.width === windowed?.defaultWidth - 80 && windowed?.level === windowed?.defaultLevel - 40 && (await chip())?.text === `W ${windowed?.width} ${MID} L ${windowed?.level}`,
+    { windowed: windowed && { pair: pairOf(windowed), defaults: [windowed.defaultWidth, windowed.defaultLevel] }, chip: await chip() });
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +524,53 @@ async function domPhase() {
   await installHelpers();
   const restored = await until(`document.querySelector('.viewer-canvas-dynamic')?.width === 600 && document.querySelector('.run-card')?.classList.contains('is-hidden')`, 15000);
   check('precondition: the fixture SP-9300 opens on its restored 600x800 film', restored, injected);
+
+  // 17 (ruling R37; the review of G3/G4, finding 4) on a film never windowed: SP-9300 before any window was asked for.
+  // A right press released where it began decodes nothing and starts no window drag; nor does a right-first chord,
+  // whose left button joins before the pointer moves (the chord suite's press order), though it pans. Before R37 the
+  // press alone decoded the original (here: an unavailable window, its source being gone).
+  {
+    const seg = await cdp.rect('.viewer-canvas-dynamic');
+    const x = Math.round(seg.cx);
+    const y = Math.round(seg.cy);
+    await clearToasts();
+    await cdp.mouse('mouseMoved', x, y);
+    await cdp.mouse('mousePressed', x, y, { button: 'right', buttons: 2, clickCount: 1 });
+    await cdp.settle(80);
+    const pressed = await windowState();
+    const pressedClasses = await stageClasses();
+    await cdp.mouse('mouseReleased', x, y, { button: 'right', buttons: 0, clickCount: 1 });
+    await cdp.settle(150);
+    const clicked = await windowState();
+    const chipClicked = await chip();
+    check('17. a right press without movement on a film never windowed leaves filmWindow null and the chip without W/L (R37)',
+      pressed === null && clicked === null && chipClicked?.hidden === true && !pressedClasses.windowing && !pressedClasses.dragging
+        && (await ev('window.__lv.toasts.length')) === 0,
+      { pressed, clicked, chipClicked, pressedClasses, toasts: await ev('window.__lv.toasts') });
+
+    await cdp.settle(450);
+    const viewBefore = await viewNow();
+    await cdp.mouse('mousePressed', x, y, { button: 'right', buttons: 2, clickCount: 1 });
+    await cdp.settle(40);
+    await cdp.mouse('mouseMoved', x, y, { button: 'left', buttons: 3 });           // the left button joins: a chord
+    await cdp.settle(40);
+    await cdp.mouse('mouseMoved', x + 30, y - 20, { button: 'left', buttons: 3 });
+    await cdp.mouse('mouseMoved', x + 60, y - 40, { button: 'left', buttons: 3 });
+    await cdp.settle(60);
+    const during = await viewNow();
+    await cdp.mouse('mouseMoved', x + 60, y - 40, { button: 'left', buttons: 2 });  // the left button lifts first
+    await cdp.settle(40);
+    await cdp.mouse('mouseReleased', x + 60, y - 40, { button: 'right', buttons: 0, clickCount: 1 });
+    await cdp.settle(150);
+    const chordWindow = await windowState();
+    const chordChip = await chip();
+    check('17. a right-first chord pan on that film pans and keeps it unwindowed: filmWindow null, the chip without W/L (R37)',
+      Math.abs(during.panX - viewBefore.panX - 60) <= 1.5 && Math.abs(during.panY - viewBefore.panY + 40) <= 1.5
+        && chordWindow === null && chordChip?.hidden === true && (await ev('window.__lv.toasts.length')) === 0,
+      { viewBefore, during, chordWindow, chordChip });
+    await ev(`import('./renderer/store.js').then((m) => { m.setState({ panX: 0, panY: 0 }); return true; })`);
+    await cdp.settle(80);
+  }
 
   // 1. Edit.
   const editEnabled = await until(`(() => { const b = document.querySelector(${js(EDIT_TOOL)}); return b && !b.disabled; })()`, 10000);
@@ -640,6 +769,19 @@ async function domPhase() {
   check('16. the chip shows no window while the film is unavailable', (await chip())?.hidden === true, await chip());
   await clickSelector(WL_DONE);
   check('9. DONE closes the W/L panel', await isHidden('.viewer-wl'), null);
+
+  // 17 (ruling R31; the review of G3/G4, finding 5): with the panel closed, a right drag over the same unavailable film
+  // says why in a toast, once for the whole drag, and changes nothing.
+  await clearToasts();
+  const segFilm = await cdp.rect('.viewer-canvas-dynamic');
+  await rightDragVia(segFilm.cx, segFilm.cy, [[segFilm.cx - 10, segFilm.cy - 5], [segFilm.cx - 20, segFilm.cy - 10], [segFilm.cx - 30, segFilm.cy - 15]]);
+  const r31Seen = await toastSeen(R31_TOAST);
+  await cdp.settle(200);
+  const r31Count = await ev(`window.__lv.toasts.filter((t) => t === ${js(R31_TOAST)}).length`);
+  const r31Window = await windowState();
+  check(`17. a right drag on the unavailable film with the panel closed toasts ${R31_TOAST} once (R31)`,
+    r31Seen && r31Count === 1 && r31Window?.status === 'unavailable' && r31Window.open === false && (await isHidden('.viewer-wl')),
+    { toasts: await ev('window.__lv.toasts'), window: r31Window && { status: r31Window.status, open: r31Window.open } });
 
   // 10 (first half). Escape during a placement cancels it and stays in edit mode.
   await clickSelector('[data-level-key="place:FH2"]');

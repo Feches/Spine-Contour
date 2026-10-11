@@ -47,6 +47,20 @@ export function isDoubleClick(previous, next, { withinMs = 400, withinPx = 6 } =
 }
 
 /**
+ * (2026-10-11, ruling R37) Whether the pointer has moved far enough from its press to begin a drag: at least `px` CSS
+ * pixels in a straight line (3 by default). The stage's right press windows the film only once this is true, so a
+ * stray right click, or a right-first chord whose left button joins before the pointer moves, decodes nothing.
+ *
+ * @param {{clientX:number, clientY:number}} start the press
+ * @param {{clientX:number, clientY:number}} point the pointer now
+ * @param {number} [px] the distance, CSS px
+ * @returns {boolean}
+ */
+export function exceedsSlop(start, point, px = 3) {
+  return Math.hypot(point.clientX - start.clientX, point.clientY - start.clientY) >= px;
+}
+
+/**
  * Zoom about a point rather than the film's centre.
  *
  * components/viewer.js writes `translate(panX,panY) scale(zoom)` on .viewer-host, which is
