@@ -14,8 +14,10 @@ import { getState, setState } from '../renderer/store.js';
 import { newStudy } from '../renderer/screens/studies.js';
 import {
   configureLevelEditor, enterLevelEditor, exitNow, startPlace, placePoint, toggleLevelVisible, selectPlacingStep,
-  openWindowPanel, closeWindowPanel, restorePlacing,
+  restorePlacing,
 } from '../renderer/level-editor.js';
+// (Gate feedback G3, 2026-10-11; plan D15) The window / level belongs to the view: renderer/film-window.js.
+import { configureFilmWindow, openWindowPanel, closeWindowPanel } from '../renderer/film-window.js';
 import { createMeasureQueue } from '../renderer/viewer/measure-queue.js';
 import { toLabelRecord } from '../renderer/data/label-record.js';
 import { LEVEL_CODES } from '../renderer/data/levels.js';
@@ -43,22 +45,24 @@ const studyOf = (id) => getState().studies.find((study) => study.id === id);
 // The wiring's dependencies, with every commit recorded before it reaches the real queue.
 function wire(commits) {
   const queue = createMeasureQueue({ measure, getState, setState, showToast: () => {}, debounceMs: 0 });
+  const ensureFilm = async () => ({ images: null, raw: null, reason: null, superseded: false });
   configureLevelEditor({
     commitGeometry: (studyId, geometry) => {
       commits.push({ studyId, geometry });
       queue.commitGeometry(studyId, geometry);
     },
     getPrediction: () => undefined,
-    ensureFilm: async () => ({ images: null, raw: null, reason: null, superseded: false }),
+    ensureFilm,
     imageInfo: async () => ({ file: 'x', sha256: SHA, width: IMAGE.width, height: IMAGE.height, maskPixels: null, labels: null }),
   });
+  configureFilmWindow({ ensureFilm });
 }
 
 async function withStore(study, body) {
   const saved = getState();
   try {
     setState({ studies: [study], openId: study.id, screen: 'analysis', editing: false, levelEditor: null, selection: null,
-      running: null, batch: null, measurementDrafts: {}, toast: '' });
+      filmWindow: null, running: null, batch: null, measurementDrafts: {}, toast: '' });
     await body();
   } finally {
     exitNow();
@@ -181,9 +185,12 @@ test('a step chip (selectPlacingStep) chooses the next point, commits nothing, a
 
     openWindowPanel();
     const paused = getState().levelEditor;
-    assert.equal(paused.window?.open, true);
+    assert.equal(getState().filmWindow?.open, true, 'the view\'s window panel (D15)');
+    assert.equal(getState().filmWindow.studyId, study.id);
     selectPlacingStep(2);
     assert.equal(getState().levelEditor, paused, 'paused while the window / level panel is open');
+    placePoint([10, 10], IMAGE);
+    assert.equal(getState().levelEditor, paused, 'a placement click waits while the panel is open');
     closeWindowPanel();
 
     selectPlacingStep(0);

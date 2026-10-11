@@ -615,6 +615,9 @@ button.viewer-step:disabled { opacity: .35; cursor: not-allowed; }
   backdrop-filter: blur(8px);
 }
 .viewer-wl.is-hidden { display: none; }
+/* (2026-10-11, gate feedback G3) Outside edit mode there is no edit bar: the panel sits directly under the toolbar
+   (14px top + 44px bar + 6px gap), and moves under the edit bar when editing, so the two never overlap. */
+.viewer-stage:not(.is-editing) .viewer-wl { top: 64px; }
 .viewer-wl-head {
   display: flex;
   align-items: center;
@@ -675,7 +678,8 @@ button.viewer-step:disabled { opacity: .35; cursor: not-allowed; }
   line-height: 1.45;
   color: var(--stage-body);
 }
-.viewer-wl-note.is-hidden { display: none; }
+.viewer-wl-note.is-hidden,
+.viewer-wl-hint.is-hidden { display: none; }
 
 /* Cursors. While editing with the pan toggle on, a primary-button drag pans, not edits; the
    pan-mode rules resolve to the same `grab` the hover rule uses, so whichever wins on
@@ -688,6 +692,9 @@ button.viewer-step:disabled { opacity: .35; cursor: not-allowed; }
 .viewer-stage.is-windowing .viewer-canvas-dynamic { cursor: all-scroll; }
 .viewer-stage.is-pan-mode .viewer-canvas-dynamic { cursor: grab; }
 .viewer-stage.is-pan-mode:active .viewer-canvas-dynamic { cursor: grabbing; }
+/* (2026-10-11, gate feedback G4) A live window drag -- the right button in every mode, Pan on or off -- shows the
+   window cursor over the pan-mode rules: (0,4,0) and after them, so it beats the :active rule too. */
+.viewer-stage.is-window-drag .viewer-canvas.viewer-canvas-dynamic { cursor: all-scroll; }
 
 /* A left+right chord pans in every mode, including over the label chip, so its cursor has to
    beat the mode rules above AND .viewer-label's own `cursor: move`. These MUST stay last: the

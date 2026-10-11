@@ -12,6 +12,7 @@ import { loadStudyImages, disposeStudyImages, thumbnailDataUri, bitmapFromBase64
 import { cropRaw, defaultWindow, rawFromDecoded } from '../viewer/window-level.js';
 import { mountViewer, recordPrediction, forgetPrediction, getPrediction, commitGeometry } from '../components/viewer.js';
 import { configureLevelEditor, forgetLevelEditor, requestExit } from '../level-editor.js';
+import { configureFilmWindow, forgetFilmWindow } from '../film-window.js';
 import { describeModels } from '../data/models.js';
 import { describeProcessor, processorTitle } from '../data/processing.js';
 import { WAIT_FOR_BATCH } from '../data/batch.js';
@@ -101,6 +102,8 @@ export function releaseStudy(studyId) {
   runsByStudy.delete(studyId);
   // (2026-10-10) Its level editor too, open or stashed: a reused id must never inherit this film's levels.
   forgetLevelEditor(studyId);
+  // (2026-10-11, gate feedback G3) And its window / level: the decoded original goes with the cache entry below.
+  forgetFilmWindow(studyId);
   if (imageCache && imageCache.studyId === studyId) {
     // The entry always goes -- the next film can reuse this id. The bitmaps are CLOSED only
     // when no live viewer draws them (the same identity check cacheImages makes); a viewer
@@ -443,6 +446,9 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
         : s)),
     }));
     forgetLevelEditor(studyId);
+    // (2026-10-11, gate feedback G3) The result's images carry no decoded original: the window goes with the old
+    // film, and the next W/L press or right-button drag decodes again.
+    forgetFilmWindow(studyId);
     return warning ? { ok: true, warning } : { ok: true };
   } catch (error) {
     if (revision === runRevision) {
@@ -678,6 +684,8 @@ export async function imageInfo(studyId) {
 // The level editor's wiring (renderer/level-editor.js) gets the viewer's measure queue and prediction snapshots,
 // and this screen's film loader and image facts. Once, at import, like the subscription above.
 configureLevelEditor({ commitGeometry, getPrediction, ensureFilm, imageInfo });
+// (2026-10-11, gate feedback G3) The view's window / level (renderer/film-window.js) decodes through the same loader.
+configureFilmWindow({ ensureFilm });
 
 
 let previewRevision = 0;
@@ -888,6 +896,8 @@ export function render(state) {
         processingError: null, processingErrorAt: null } : s) });
     // (2026-10-10) The film type the levels were opened for is gone; a stashed editor goes too.
     forgetLevelEditor(open.id);
+    // (2026-10-11, gate feedback G3) So does the film on the stage, and its window with it.
+    forgetFilmWindow(open.id);
     mounted?.viewer.setFilmStatus(null);
     previewOriginal(open.id);
   }

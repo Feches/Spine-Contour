@@ -1,7 +1,10 @@
 // The level editor (plan 2026-10-10 Task 14) against the real, running app: the Vertebral levels panel, placing a
 // level (the step chips choose which point the next click sets: gate feedback G2, 2026-10-11), unchecking one, Save
 // edits and the label record on disk, Discard and the exit prompt, femoral rim points and FIT, window / level, the
-// keyboard, the per-study stash, and the main process's label-file name check.
+// keyboard, the per-study stash, and the main process's label-file name check. Section 17 (gate feedback G3 and G4,
+// 2026-10-11): window / level outside edit mode -- the toolbar button, the panel, the chip, the window kept across
+// edit mode and reset by opening another study (D15), the right-button drag (D16) and the double right-click (D17).
+// The window is the view's, `state.filmWindow` (renderer/film-window.js), read through `window.__lv.filmWindow()`.
 //
 //   node tools/smoke/launch.mjs                                     (SPINE_CONTOUR_USER_DATA under %TEMP%)
 //   node tools/smoke/smoke-levels.mjs                               phase `dom` (the default)
@@ -11,6 +14,7 @@
 // Phase `dom`: no model run and no real film. Two synthetic, canvas-drawn films: SP-9300, a segmented fixture whose
 // geometry is the prototype's (L1, L2, L4, L5, S1 and two heads; L3 missing) with an all-zero mask, measured by the
 // real /measure; and SP-9301, an unsegmented film written to %TEMP% and placed by hand, decoded by the real /decode.
+// Section 17 adds SP-9303, a study with no film, only so that another study can be opened and left.
 // Phase `film`: one real lateral lumbar film, segmented by the real models as SP-9302 (backend/onnx must hold the
 // graphs). A REAL FILM IS ON SCREEN IN THAT PHASE: this suite takes no screenshots in either phase, and every check
 // is a DOM, store or file read.
@@ -37,6 +41,7 @@ const FILM_DIR = path.join(os.tmpdir(), 'spine-contour-levels-films');
 const SEG = 'SP-9300';   // the segmented fixture (dom)
 const HAND = 'SP-9301';  // the unsegmented synthetic film, placed by hand (dom)
 const REAL = 'SP-9302';  // the real film (film)
+const OTHER = 'SP-9303'; // a study with no film, opened and left in section 17 (dom)
 const SEG_FILE = 'levels-ui-check.png';
 const HAND_FILE = 'levels-hand-placed.png';
 const HAND_PATH = path.join(FILM_DIR, HAND_FILE);
@@ -124,6 +129,30 @@ async function drag(x0, y0, x1, y1) {
   await cdp.settle(80);
 }
 
+// (Section 17, gate feedback G4) The same drag on the RIGHT button, through `points` in order: the raw `mouse`
+// primitive, every event carrying the held button (smoke-chord.mjs: a move without it drops pointer capture), the
+// moves and the release dispatched before any is awaited, as above.
+async function rightDragVia(x0, y0, points) {
+  await cdp.mouse('mouseMoved', x0, y0);
+  await cdp.mouse('mousePressed', x0, y0, { button: 'right', buttons: 2, clickCount: 1 });
+  const moves = points.map(([x, y]) => cdp.mouse('mouseMoved', x, y, { button: 'right', buttons: 2 }));
+  await cdp.settle(60);
+  const [x1, y1] = points[points.length - 1];
+  await Promise.all([...moves, cdp.mouse('mouseReleased', x1, y1, { button: 'right', buttons: 0, clickCount: 1 })]);
+  await cdp.settle(80);
+}
+const rightDrag = (x0, y0, x1, y1) => rightDragVia(x0, y0, [[x1, y1]]);
+
+// Two right-button clicks at one point, back to back (well inside isDoubleClick's 400 ms and 6 px).
+async function doubleRightClick(x, y) {
+  await cdp.mouse('mouseMoved', x, y);
+  for (const clickCount of [1, 2]) {
+    await cdp.mouse('mousePressed', x, y, { button: 'right', buttons: 2, clickCount });
+    await cdp.mouse('mouseReleased', x, y, { button: 'right', buttons: 0, clickCount });
+  }
+  await cdp.settle(120);
+}
+
 // The page-side helpers, installed once per run: store reads, the wiring module's test hook (check 14), and a
 // toast log fed by a store subscription that only reads (subscribers never call setState).
 async function installHelpers() {
@@ -135,6 +164,8 @@ async function installHelpers() {
     const lv = {
       study: (id) => store.getState().studies.find((s) => s.id === id) ?? null,
       editor: () => store.getState().levelEditor,
+      // (Gate feedback G3, D15) The window / level is the view's, not the editor's.
+      filmWindow: () => store.getState().filmWindow,
       settled: (id) => !store.getState().measurementDrafts?.[id],
       unsaved: () => { const e = store.getState().levelEditor; return e ? levels.unsavedCount(e) : null; },
       // Check 14: the stash's test hook, imported from the page's own module instance.
@@ -175,7 +206,7 @@ const STUDIES_NAV = '.nav-row[aria-label="Studies"]';
 const row = (id) => `.studies-row[data-study-id="${id}"]`;
 const checkboxOf = (code) => `[data-level-row="${code}"] .level-check`;
 
-const windowState = () => ev('window.__lv.editor()?.window ?? null');
+const windowState = () => ev('window.__lv.filmWindow() ?? null');
 const chip = () => ev(`(() => { const c = document.querySelector('.viewer-chip-window'); return c ? { text: c.textContent, hidden: c.classList.contains('is-hidden') } : null; })()`);
 const CHIP_TEXT = new RegExp(`^W \\d+ ${MID} L -?\\d+$`);
 
@@ -196,7 +227,7 @@ async function enterEdit() {
 // The window / level panel's checks, run on a decoded film in both phases (16, and the film phase's list).
 async function windowLevelChecks(prefix) {
   await clickSelector(WL_TOOL);
-  const ready = await until(`window.__lv.editor()?.window?.status === 'ready'`, 30000);
+  const ready = await until(`window.__lv.filmWindow()?.status === 'ready'`, 30000);
   const wl = await windowState();
   const chipNow = await chip();
   check(`${prefix}: the W/L panel opens and the decoded film is ready`, ready && !(await isHidden('.viewer-wl')), wl);
@@ -228,7 +259,136 @@ async function windowLevelChecks(prefix) {
   check(`${prefix}: the width and level sliders move the window`, slid?.width === wl.defaultWidth - 1 && slid?.level === wl.defaultLevel - 1, slid && [slid.width, slid.level]);
 
   await clickSelector(WL_DONE);
-  check(`${prefix}: DONE closes the W/L panel`, (await isHidden('.viewer-wl')) && (await ev('window.__lv.editor()?.window?.open')) === false, await windowState());
+  check(`${prefix}: DONE closes the W/L panel`, (await isHidden('.viewer-wl')) && (await ev('window.__lv.filmWindow()?.open')) === false, await windowState());
+}
+
+const pairOf = (wl) => (wl ? [wl.width, wl.level] : null);
+const selectedLevel = () => ev(`import('./renderer/store.js').then((m) => m.getState().selectedLevel)`);
+const editingNow = () => ev(`import('./renderer/store.js').then((m) => m.getState().editing)`);
+const toolState = () => ev(`(() => { const b = document.querySelector(${js(WL_TOOL)}); return b ? { shown: !b.classList.contains('is-hidden') && b.offsetParent !== null, disabled: b.disabled, pressed: b.getAttribute('aria-pressed') } : null; })()`);
+const stageClasses = () => ev(`(() => { const s = document.querySelector('.viewer-stage'); return { windowing: s.classList.contains('is-windowing'), dragging: s.classList.contains('is-window-drag'), editing: s.classList.contains('is-editing') }; })()`);
+
+// 17 (gate feedback G3 and G4, 2026-10-11; plan D15-D17). Window / level outside edit mode, on the hand-placed
+// synthetic film SP-9301 just left by Escape. `windowInEdit` is the window as edit mode left it (16's sliders put both
+// numbers one below the 8-bit default). Every window move below is left and up, so the 8-bit film's maxed width moves.
+async function windowOutsideEditChecks(windowInEdit) {
+  const kept = await windowState();
+  check('17. leaving edit mode keeps the window (D15)',
+    kept?.status === 'ready' && kept.open === false && kept.width === windowInEdit?.width && kept.level === windowInEdit?.level,
+    { kept: pairOf(kept), windowInEdit: pairOf(windowInEdit) });
+  const tool = await toolState();
+  check('17. outside edit mode the toolbar shows the W/L button, enabled and not pressed', tool?.shown === true && tool.disabled === false && tool.pressed === 'false', tool);
+  const chipOut = await chip();
+  check(`17. outside edit mode the chip reads W ${ELLIPSIS} ${MID} L ${ELLIPSIS}`,
+    chipOut?.hidden === false && chipOut.text === `W ${kept?.width} ${MID} L ${kept?.level}`, chipOut);
+
+  // The panel, outside edit mode: under the toolbar (no edit bar above it), with the hint the edit bar gives in edit mode.
+  await clickSelector(WL_TOOL);
+  const panel = await ev(`(() => { const p = document.querySelector('.viewer-wl'); const s = document.querySelector('.viewer-stage'); const h = document.querySelector('.viewer-wl-hint');
+    return p && s ? { hidden: p.classList.contains('is-hidden'), top: Math.round(p.getBoundingClientRect().top - s.getBoundingClientRect().top), hint: Boolean(h) && !h.classList.contains('is-hidden') } : null; })()`);
+  check('17. outside edit mode the W/L button opens the panel under the toolbar, with its hint, the button pressed',
+    panel?.hidden === false && Math.abs(panel.top - 64) <= 1 && panel.hint === true && (await toolState())?.pressed === 'true' && (await windowState())?.open === true,
+    { panel, tool: await toolState() });
+
+  // With the panel open a LEFT drag windows the film and outranks construction selection: it starts inside L1, placed
+  // by hand in 12 at (200,150) (400,160) (196,232) (396,242).
+  const l1 = await cdp.toClient(298, 196);
+  const beforeLeft = await windowState();
+  await drag(l1.x, l1.y, l1.x - 20, l1.y - 10);
+  const afterLeft = await windowState();
+  const selectedAfterLeft = await selectedLevel();
+  check('17. with the panel open a left drag windows the film, 4 per pixel, and selects no construction',
+    afterLeft?.width === beforeLeft?.width - 80 && afterLeft?.level === beforeLeft?.level - 40 && selectedAfterLeft === null,
+    { before: pairOf(beforeLeft), after: pairOf(afterLeft), selectedAfterLeft });
+
+  // Escape outside edit mode: the panel first; the same press with the panel closed selects L1, and Escape clears it.
+  await cdp.key('Escape');
+  await cdp.settle(100);
+  const closed = await windowState();
+  const escapedEditing = await editingNow();
+  check('17. Escape outside edit mode closes the panel, keeps the window and stays out of edit mode',
+    closed?.open === false && (await isHidden('.viewer-wl')) && closed.width === afterLeft?.width && closed.level === afterLeft?.level && escapedEditing === false,
+    { closed: closed && { open: closed.open, pair: pairOf(closed) }, escapedEditing });
+  await clickImage(298, 196);
+  const selectedByClick = await selectedLevel();
+  await cdp.key('Escape');
+  await cdp.settle(100);
+  check('17. with the panel closed the same press selects L1, and Escape then clears the construction',
+    selectedByClick === 'L1' && (await selectedLevel()) === null && (await windowState())?.width === afterLeft?.width, { selectedByClick, after: await selectedLevel() });
+
+  // D16: the RIGHT button windows with the panel closed. Left lowers the width, up lowers the level (dragWindow).
+  const canvas = await cdp.rect('.viewer-canvas-dynamic');
+  const beforeRight = await windowState();
+  await rightDrag(canvas.cx, canvas.cy, canvas.cx - 20, canvas.cy - 10);
+  const afterRight = await windowState();
+  check('17. a right-button drag with the panel closed windows the film: left lowers the width, up the level (D16)',
+    afterRight?.width === beforeRight?.width - 80 && afterRight?.level === beforeRight?.level - 40 && afterRight.open === false && (await isHidden('.viewer-wl')),
+    { before: pairOf(beforeRight), after: pairOf(afterRight), open: afterRight?.open });
+  const chipRight = await chip();
+  const released = await stageClasses();
+  check('17. the chip follows the right-button drag, and the release ends the stage\'s windowing state',
+    chipRight?.text === `W ${afterRight?.width} ${MID} L ${afterRight?.level}` && !released.windowing && !released.dragging, { chipRight, released });
+
+  // D17: a double right-click restores the film's default window, clear of the drag's press in time and place.
+  await cdp.settle(450);
+  await doubleRightClick(canvas.cx + 40, canvas.cy + 40);
+  const doubled = await windowState();
+  check('17. a double right-click restores the film\'s default window, the panel still closed (D17)',
+    doubled?.width === doubled?.defaultWidth && doubled?.level === doubled?.defaultLevel && doubled.open === false && !(await stageClasses()).dragging,
+    doubled && { pair: pairOf(doubled), defaults: [doubled.defaultWidth, doubled.defaultLevel] });
+
+  // D15: entering edit mode keeps the window, and leaving it again.
+  await cdp.settle(450);
+  await rightDrag(canvas.cx, canvas.cy, canvas.cx - 10, canvas.cy - 5);
+  const beforeEdit = await windowState();
+  const entered = await enterEdit();
+  const inEdit = await windowState();
+  check('17. entering edit mode keeps the window (D15)',
+    entered && beforeEdit?.width === beforeEdit?.defaultWidth - 40 && inEdit?.width === beforeEdit.width && inEdit?.level === beforeEdit.level,
+    { beforeEdit: pairOf(beforeEdit), inEdit: pairOf(inEdit), entered });
+  await cdp.key('Escape');
+  await until(`(async () => !(await import('./renderer/store.js')).getState().editing)()`, 5000);
+
+  // D15: opening another study resets the window (FRESH_VIEW); coming back, the film opens at its default again.
+  await ev(`(async () => {
+    const store = await import('./renderer/store.js');
+    const { newStudy } = await import('./renderer/screens/studies.js');
+    const other = { ...newStudy({ id: ${js(OTHER)}, fileName: 'levels-other.png', filePath: null }), labelFile: null };
+    store.setState((s) => ({ studies: [other, ...s.studies.filter((x) => x.id !== ${js(OTHER)})] }));
+    return true;
+  })()`);
+  await openFromList(OTHER);
+  const otherTool = await toolState();
+  const otherWindow = await windowState();
+  check('17. opening another study resets the window; with no film on the stage the W/L button is disabled',
+    otherWindow === null && otherTool?.shown === true && otherTool.disabled === true, { otherWindow: pairOf(otherWindow), otherTool });
+  await openFromList(HAND);
+  await until(`document.querySelector('.viewer-canvas-dynamic')?.width === 600`, 10000);
+  const back = await windowState();
+  const backChip = await chip();
+  check('17. coming back to the film: no window until it is asked for, and the chip reads none',
+    back === null && backChip?.hidden === true, { back: pairOf(back), backChip });
+  await clickSelector(WL_TOOL);
+  await until(`window.__lv.filmWindow()?.status === 'ready'`, 15000);
+  const fresh = await windowState();
+  check('17. the W/L panel opens at the film\'s default window again',
+    fresh?.width === fresh?.defaultWidth && fresh?.level === fresh?.defaultLevel && fresh.open === true,
+    fresh && { pair: pairOf(fresh), defaults: [fresh.defaultWidth, fresh.defaultLevel] });
+  await clickSelector(WL_DONE);
+
+  // D16 on a film with no window yet: the press starts the decode (its original is cached by now, so it lands before
+  // the first move), the first move after it is the drag's start, and the second windows from there: (-20, -10).
+  await openFromList(OTHER);
+  await openFromList(HAND);
+  await until(`document.querySelector('.viewer-canvas-dynamic')?.width === 600`, 10000);
+  const none = await windowState();
+  const film = await cdp.rect('.viewer-canvas-dynamic');
+  await rightDragVia(film.cx, film.cy, [[film.cx - 5, film.cy - 5], [film.cx - 25, film.cy - 15]]);
+  const byDrag = await windowState();
+  check('17. a right-button drag on a film with no window yet decodes it and windows from its first move after (D16)',
+    none === null && byDrag?.status === 'ready' && byDrag.open === false
+      && byDrag.width === byDrag.defaultWidth - 80 && byDrag.level === byDrag.defaultLevel - 40,
+    { none: pairOf(none), byDrag: byDrag && { status: byDrag.status, pair: pairOf(byDrag), defaults: [byDrag.defaultWidth, byDrag.defaultLevel] } });
 }
 
 // ---------------------------------------------------------------------------
@@ -272,7 +432,7 @@ async function domPhase() {
       name: 'Levels UI check', addedAt: new Date().toISOString(), view: 'Standing lateral', clinical: {},
       predictionId: ${js(PREDICTION_ID)}, labelFile: null, measurements: result.measurements, geometry: result.geometry, qc: result.qc ?? null };
     const hand = { ...newStudy({ id: ${js(HAND)}, fileName: ${js(HAND_FILE)}, filePath: ${js(HAND_PATH)} }), labelFile: null };
-    const ours = new Set([${js(SEG)}, ${js(HAND)}, ${js(REAL)}]);
+    const ours = new Set([${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}]);
     store.setState((s) => ({ ack: true, studies: [seg, hand, ...s.studies.filter((x) => !ours.has(x.id))], screen: 'studies',
       studiesTab: 'find', query: '', openId: null, editing: false, levelEditor: null, selection: null, measurementDrafts: {},
       running: null, batch: null, tab: 'meas', overlays: true }));
@@ -472,7 +632,7 @@ async function domPhase() {
 
   // 9 and 16 (dom). Window / level on a film whose source cannot be read.
   await clickSelector(WL_TOOL);
-  const unavailable = await until(`window.__lv.editor()?.window?.status === 'unavailable'`, 10000);
+  const unavailable = await until(`window.__lv.filmWindow()?.status === 'unavailable'`, 10000);
   const wlNote = await ev(`(() => { const n = document.querySelector('.viewer-wl-note'); return n ? { text: n.textContent, hidden: n.classList.contains('is-hidden') } : null; })()`);
   check('9. the toolbar has the W/L button and it opens the panel', !(await isHidden(WL_TOOL)) && !(await isHidden('.viewer-wl')), null);
   check('9 / 16. with no readable source the panel says The source film could not be found.',
@@ -565,11 +725,14 @@ async function domPhase() {
   check("12. the hand-placed record names model 'none', the 600x800 image and a 64-hex digest",
     handRecord?.model?.name === 'none' && handRecord.image?.width_px === 600 && handRecord.image?.height_px === 800 && /^[0-9a-f]{64}$/.test(handRecord.image?.sha256 ?? ''),
     handRecord && { model: handRecord.model, image: handRecord.image });
+  const windowInEdit = await windowState();   // for section 17: what leaving edit mode must keep
   await cdp.key('Escape');
   await cdp.settle(150);
   const outOfEdit = await ev(`(async () => ({ editing: (await import('./renderer/store.js')).getState().editing, width: document.querySelector('.viewer-canvas-dynamic')?.width, card: !document.querySelector('.run-card')?.classList.contains('is-hidden') }))()`);
   check('12. outside edit mode the hand-placed film stays on its original, with no card (R16)',
     outOfEdit.editing === false && outOfEdit.width === 600 && outOfEdit.card === false, outOfEdit);
+
+  await windowOutsideEditChecks(windowInEdit);
 
   // 13. The main process refuses a label file name that is not a bare <stem>.label.json, through the real bridge.
   const refused = await ev(`Promise.allSettled([window.spineContour.saveLabelRecord('..', {}), window.spineContour.saveLabelRecord('a/b.label.json', {})])
@@ -595,7 +758,7 @@ async function filmPhase() {
     const store = await import('./renderer/store.js');
     const { newStudy } = await import('./renderer/screens/studies.js');
     const study = { ...newStudy({ id: ${js(REAL)}, fileName: ${js(fileName)}, filePath: ${js(film)} }), region: 'lumbar', labelFile: null };
-    const ours = new Set([${js(SEG)}, ${js(HAND)}, ${js(REAL)}]);
+    const ours = new Set([${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}]);
     store.setState((s) => ({ ack: true, studies: [study, ...s.studies.filter((x) => !ours.has(x.id))], screen: 'studies',
       studiesTab: 'find', query: '', openId: null, editing: false, levelEditor: null, selection: null, measurementDrafts: {},
       running: null, batch: null, tab: 'meas' }));
@@ -693,10 +856,10 @@ try {
       const store = await import('./renderer/store.js');
       const api = await import('./renderer/api.js');
       const wiring = await import('./renderer/level-editor.js');
-      const ids = [${js(SEG)}, ${js(HAND)}, ${js(REAL)}];
+      const ids = [${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}];
       const s = store.getState();
       const names = s.studies.filter((x) => ids.includes(x.id) && x.labelFile).map((x) => x.labelFile);
-      store.setState({ editing: false, levelEditor: null, selection: null, screen: 'studies', openId: null, measurementDrafts: {} });
+      store.setState({ editing: false, levelEditor: null, filmWindow: null, selection: null, screen: 'studies', openId: null, measurementDrafts: {} });
       for (const id of ids) { wiring.forgetLevelEditor(id); try { await api.deletePrediction(id); } catch (_e) {} }
       for (const name of names) { try { await api.deleteLabelRecord(name); } catch (_e) {} }
       store.setState((st) => ({ studies: st.studies.filter((x) => !ids.includes(x.id)), paramSelected: (st.paramSelected ?? []).filter((id) => !ids.includes(id)) }));

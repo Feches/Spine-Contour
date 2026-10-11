@@ -103,10 +103,13 @@ export function studyFromFile({ id, fileName, filePath }) {
 }
 
 // Every path that changes openId resets the per-study view state, so a study never inherits
-// the previous one's zoom, pan, selection or edit mode (handoff item 6). Exported only so
-// test/demo-visibility.test.js can pin it equal to data/demo-visibility.js's copy: data/ never
-// imports from screens/, so the eight keys are written out twice and must not drift.
-export const FRESH_VIEW = { selectedLevel: null, zoom: 1, panX: 0, panY: 0, panMode: false, editing: false, selection: null, levelEditor: null };
+// the previous one's zoom, pan, selection, edit mode or window / level (handoff item 6; the window since
+// 2026-10-11, plan D15). Exported only so test/demo-visibility.test.js can pin it equal to
+// data/demo-visibility.js's copy: data/ never imports from screens/, so the nine keys are written out
+// twice and must not drift.
+export const FRESH_VIEW = {
+  selectedLevel: null, zoom: 1, panX: 0, panY: 0, panMode: false, editing: false, selection: null, levelEditor: null, filmWindow: null,
+};
 
 function openStudy(study) {
   setState({ screen: 'analysis', openId: study.id, ...FRESH_VIEW });

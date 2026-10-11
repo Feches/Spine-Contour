@@ -9,7 +9,7 @@ import {
   createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel, colorFor, LEVEL_HANDLE_RADIUS_PX,
 } from '../viewer/canvas.js';
 import { clientToImage } from '../viewer/geometry.js';
-import { zoomIn, zoomOut, zoomAbout, isChordHeld, vertebraAt, arrowKeyDelta } from '../viewer/interactions.js';
+import { zoomIn, zoomOut, zoomAbout, isChordHeld, isDoubleClick, vertebraAt, arrowKeyDelta } from '../viewer/interactions.js';
 import { createMeasureQueue } from '../viewer/measure-queue.js';
 import { isQueued, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
 import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
@@ -20,9 +20,10 @@ import { levelHandles, hitTestLevelHandles, moveHandle, nudgeHandle, nextLevelHa
 import { dragWindow, windowText } from '../viewer/window-level.js';
 import {
   enterLevelEditor, requestExit, keepEditing, placePoint, undoPlacedPoint, restorePlacing, selectPlacingStep, cancelPlace,
-  fitPlacing, setFocusedHandle, selectLevelRow, commitHandleMove, openWindowPanel, closeWindowPanel, setWindow, resetWindow,
-  resetLevelsToModel,
+  fitPlacing, setFocusedHandle, selectLevelRow, commitHandleMove, resetLevelsToModel,
 } from '../level-editor.js';
+// (2026-10-11, gate feedback G3 and G4; plan D15-D17) The window / level belongs to the view, in every mode.
+import { windowFor, openWindowPanel, ensureWindowLoaded, closeWindowPanel, setWindow, resetWindow } from '../film-window.js';
 
 // Icons lifted verbatim from design-reference/template.html's Study Analysis toolbar.
 // Same inline-SVG-through-innerHTML pattern plan 02 uses in components/sidebar.js and
@@ -49,6 +50,12 @@ const EDIT_LABEL = 'EDITING SEGMENTATION';
 const WINDOW_LABEL = 'WINDOW / LEVEL';
 const WINDOW_PAUSED_LABEL = 'WINDOW / LEVEL \u00B7 PLACING PAUSED';
 const WINDOW_HELP = 'Drag on the film: left\u2013right sets width, up\u2013down sets level. Press Done to go back to editing.';
+// (Gate feedback G4, D16 and D17) The toolbar button's tooltip; its accessible name stays 'Window / level'.
+const WINDOW_TOOL_TITLE = 'Window / level \u2014 or right-drag on the film; double right-click resets';
+// A right-button drag on a film whose original cannot be decoded (ruling R31); the reason follows.
+const WINDOW_UNAVAILABLE = 'Window / level is unavailable. ';
+// The panel's hint outside edit mode, where no edit bar carries WINDOW_HELP.
+const WINDOW_PANEL_HINT = 'Drag on the film: left\u2013right sets width, up\u2013down sets level. With the panel closed, right-drag; double right-click resets.';
 const IDLE_HELP = 'Select a level in the panel to adjust it, or place one the model missed.';
 
 // Keyboard: in edit mode only text entry keeps its keys (a checkbox or a slider still lets Escape and Tab
@@ -65,6 +72,9 @@ const OWN_TAB_ORDER = '.viewer-editbar, .viewer-wl, .level-editor, .analysis-lev
 // what the pointer is doing. detach() resets all of it.
 let drag = null;           // {kind:'pan', ...} | {kind:'levelHandle', ...} | {kind:'window', ...} | {kind:'label', ...} | null
 let suppressClick = false; // a pointerdown that started a gesture eats the click that follows it
+// (Gate feedback G4, D17) The last right-button press that could begin a double right-click, as isDoubleClick reads
+// it ({time, clientX, clientY, button}), or null. A chord forgets it: its right press was never a click.
+let lastRightPress = null;
 // Which pointer placed the newest placement point, so a chord that starts as a LEFT press while placing can
 // take that point back: the press lands as a placement click before the second button makes it a chord.
 // placePrior and placePressed are the editor's placing from before that press and the one it left; the take-back
@@ -210,7 +220,8 @@ export function mountViewer(container) {
   const labelChip = el('div', { class: 'viewer-label is-hidden', 'aria-hidden': 'true' });
   host.append(labelChip);
 
-  // The study chip; while editing with the film decoded it also reads the window (handoff §3).
+  // The study chip; once the film is decoded for window / level it also reads the window, in every mode (handoff §3;
+  // gate feedback G3, D15).
   const chipId = el('div', { class: 'viewer-chip-id' });
   const chipDivider = el('span', { class: 'viewer-chip-divider is-hidden', 'aria-hidden': 'true' });
   const chipWindow = el('span', { class: 'viewer-chip-window is-hidden' });
@@ -218,11 +229,12 @@ export function mountViewer(container) {
 
   const zoomLabel = el('div', { class: 'viewer-zoom' }, '100%');
   const panButton = toolButton('Pan', ICONS.pan, () => setState((s) => ({ panMode: !s.panMode })), { 'aria-pressed': 'false' });
-  // Shown only while editing (updateViewer); opens and closes the window / level panel.
+  // (Gate feedback G3, D15) Shown in every mode; disabled for a demo study and while there is no film (updateWindow).
+  // Opens and closes the window / level panel. The tooltip names the right-button shortcuts (D16, D17).
   const windowButton = toolButton('Window / level', ICONS.windowLevel, () => {
-    if (getState().levelEditor?.window?.open) closeWindowPanel();
+    if (windowFor(getState(), currentStudy())?.open) closeWindowPanel();
     else openWindowPanel();
-  }, { 'aria-pressed': 'false' });
+  }, { 'aria-pressed': 'false', title: WINDOW_TOOL_TITLE });
   const overlayButton = toolButton('Toggle segmentation overlay', ICONS.overlays, () => setState((s) => ({ overlays: !s.overlays })), { 'aria-pressed': 'false' });
   const editButton = toolButton('Edit segmentation', ICONS.edit, () => {
     // Entering edit mode drops the pan toggle (renderer/level-editor.js enterLevelEditor): with it on, a
@@ -289,17 +301,20 @@ export function mountViewer(container) {
     doneButton);
 
   // The window / level panel (handoff §3, §6): display only. The slider bounds are the film's own
-  // (window-level.js windowRange); the note says why there is nothing to window.
+  // (window-level.js windowRange); the note says why there is nothing to window. (2026-10-11, gate feedback G3, D15)
+  // In every mode: it reads and writes the view's window (renderer/film-window.js), never the level editor.
   const wlWidth = el('input', {
     type: 'range', class: 'viewer-wl-slider', min: '64', max: '256', step: '1', 'aria-label': 'Window width', disabled: true,
-    onInput: (e) => setWindow({ width: Number(e.target.value), level: getState().levelEditor?.window?.level }),
+    onInput: (e) => setWindow({ width: Number(e.target.value), level: windowFor(getState(), currentStudy())?.level }),
   });
   const wlLevel = el('input', {
     type: 'range', class: 'viewer-wl-slider', min: '0', max: '255', step: '1', 'aria-label': 'Window level', disabled: true,
-    onInput: (e) => setWindow({ width: getState().levelEditor?.window?.width, level: Number(e.target.value) }),
+    onInput: (e) => setWindow({ width: windowFor(getState(), currentStudy())?.width, level: Number(e.target.value) }),
   });
   const wlWidthValue = el('span', { class: 'viewer-wl-value' }, '\u2014');
   const wlLevelValue = el('span', { class: 'viewer-wl-value' }, '\u2014');
+  // (Gate feedback G3) Outside edit mode no edit bar carries WINDOW_HELP, so the panel says it, with the shortcuts.
+  const wlHint = el('p', { class: 'viewer-wl-copy viewer-wl-hint is-hidden' }, WINDOW_PANEL_HINT);
   const wlNote = el('p', { class: 'viewer-wl-note is-hidden' });
   const wlPanel = el('div', { class: 'viewer-wl is-hidden', role: 'group', 'aria-label': 'Window and level' },
     el('div', { class: 'viewer-wl-head' },
@@ -308,6 +323,7 @@ export function mountViewer(container) {
       textButton('DONE', () => closeWindowPanel())),
     el('label', { class: 'viewer-wl-row' }, el('span', { class: 'viewer-wl-label' }, 'WIDTH'), wlWidth, wlWidthValue),
     el('label', { class: 'viewer-wl-row' }, el('span', { class: 'viewer-wl-label' }, 'LEVEL'), wlLevel, wlLevelValue),
+    wlHint,
     el('p', { class: 'viewer-wl-copy' }, "Display only. Measurements and the label record don't change."),
     wlNote);
 
@@ -459,8 +475,9 @@ export function mountViewer(container) {
   // The grab cursor over a handle. No redraw: the editor draws no hover state.
   function updateHover(event) {
     const state = getState();
-    const editor = editorFor(state, currentStudy());
-    const over = Boolean(editor && currentImages && !editor.placing && !editor.window?.open
+    const study = currentStudy();
+    const editor = editorFor(state, study);
+    const over = Boolean(editor && currentImages && !editor.placing && !windowFor(state, study)?.open
       && state.running !== editor.studyId && selectedHandleAt(editor, event));
     stage.classList.toggle('is-over-handle', over);
   }
@@ -539,6 +556,10 @@ export function mountViewer(container) {
       labelChip.releasePointerCapture(event.pointerId);
       labelChip.classList.remove('is-dragging');
     }
+    // (Gate feedback G4) A RIGHT-first chord began as a right-button window drag: the chord takes over, the window
+    // keeps whatever the drag set before the left button joined, and the right press is no double right-click's first.
+    if (previous && previous.kind === 'window') endWindowDragClasses();
+    lastRightPress = null;
     // A LEFT-first chord while placing has already placed a point with its first press. Take that press back by
     // putting the placing from before it back (restorePlacing), not by UNDO: UNDO clears the slot (R27), so a press
     // that re-placed a point would lose the point's earlier position. A press that finished the placement is not
@@ -563,6 +584,46 @@ export function mountViewer(container) {
     // makes both the click-fires and no-click-fires orders safe.
   }
 
+  // A window / level drag (handoff §6; gate feedback G3, G4): a LEFT press with the panel open, in every mode, or a
+  // RIGHT press in every mode, panel open or not (D16). `start` is the window at the press, or null while the film is
+  // still being decoded: the first move once it is ready takes the window and the pointer there as its start.
+  function startWindowDrag(event, wl) {
+    drag = {
+      kind: 'window', pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY,
+      start: wl?.status === 'ready' ? { width: wl.width, level: wl.level } : null, told: false,
+    };
+    if (!dynamicCanvas.hasPointerCapture(event.pointerId)) dynamicCanvas.setPointerCapture(event.pointerId);
+    stage.classList.add('is-windowing', 'is-window-drag');
+  }
+
+  // A window drag's classes once it ends (released, cancelled, or taken over by a chord): `is-windowing` stays only
+  // while the panel is open, which is what it means between drags.
+  function endWindowDragClasses() {
+    stage.classList.remove('is-window-drag');
+    stage.classList.toggle('is-windowing', Boolean(windowFor(getState(), currentStudy())?.open));
+  }
+
+  // (Gate feedback G4; plan D16, D17) A RIGHT-button press on the film or the black surround, in every mode and with
+  // the pan toggle on or off: a window drag, or -- the second of two presses isDoubleClick accepts -- the film's
+  // default window back and no drag. The first press of a film decodes its original (ensureWindowLoaded); the drag
+  // waits for it. Not on a demo study and not without a film. A chord (the left button joining) outranks it.
+  function handleRightPress(event) {
+    const study = currentStudy();
+    if (!study || study.source === 'demo' || !currentImages) return;
+    event.preventDefault();
+    suppressClick = true;
+    const press = { time: event.timeStamp, clientX: event.clientX, clientY: event.clientY, button: event.button };
+    if (isDoubleClick(lastRightPress, press)) {
+      lastRightPress = null;
+      resetWindow();
+      return;
+    }
+    lastRightPress = press;
+    const wl = windowFor(getState(), study);
+    if (wl?.status !== 'ready') ensureWindowLoaded();
+    startWindowDrag(event, wl);
+  }
+
   // One placement click, at the pointer, clamped to the film by clientToImage and addPoint. The press is remembered
   // for a chord's take-back (the pointer, and the placing before and after it) only when it set a point and left the
   // placement open: a press addPoint dropped (within 1 px of another point of the placement, R26) leaves the placement
@@ -582,11 +643,14 @@ export function mountViewer(container) {
   }
 
   // Gesture precedence: a LEFT+RIGHT chord pans in every mode and outranks everything below
-  // it, including a handle drag while editing; the middle button pans in every mode; the
-  // primary button pans when the pan toggle is on; while editing (level editor, handoff §6), a press
-  // with the window / level panel open drags the window, a press while placing places the next point,
-  // and a press on the selected level's handle starts a handle drag. A second pointer while a gesture is
-  // live is ignored. The construction label has its own drag -- see handleLabelPointerDown below.
+  // it, including a handle drag while editing; the RIGHT button alone windows the film in every mode,
+  // pan toggle on or off, and a double right-click resets the window (gate feedback G4, D16, D17); the
+  // middle button pans in every mode; the primary button pans when the pan toggle is on; with the window /
+  // level panel open a primary press drags the window in every mode (gate feedback G3: outside edit mode
+  // it outranks construction selection); while editing (level editor, handoff §6) a press while placing
+  // places the next point, and a press on the selected level's handle starts a handle drag. A second
+  // pointer while a gesture is live is ignored. The construction label has its own drag -- see
+  // handleLabelPointerDown below.
   //
   // The chord test is FIRST, above `if (drag) return`, because outranking a live handle drag
   // is the point. It is also, for a real mouse, dead code: Chromium fires pointerdown only on
@@ -604,6 +668,10 @@ export function mountViewer(container) {
     suppressClick = false;
     forgetPlacePress();
     const state = getState();
+    if (event.button === 2) {
+      handleRightPress(event);
+      return;
+    }
     if (event.button === 1 || (event.button === 0 && state.panMode)) {
       event.preventDefault();
       startPan(event);
@@ -611,22 +679,20 @@ export function mountViewer(container) {
     }
     if (event.button !== 0) return;
     const study = currentStudy();
-    const editor = editorFor(state, study);
-    // Busy means THIS study's /predict is in flight. A run on a different study must not
-    // freeze this one's handles (state.running is that study's id, not a boolean). Without the
-    // film there is nothing to place on: the canvas is still its 300x150 stub.
-    if (!editor || state.running === study.id || !currentImages) return;
-    if (editor.window?.open) {
-      // Placement clicks and handle drags pause while the window / level panel is open.
+    // Without the film there is nothing to window or place on: the canvas is still its 300x150 stub.
+    if (!study || !currentImages) return;
+    const wl = windowFor(state, study);
+    if (wl?.open) {
+      // Placement clicks, handle drags and construction selection pause while the window / level panel is open.
       event.preventDefault();
       suppressClick = true;
-      const wl = editor.window;
-      if (wl.status !== 'ready') return;
-      drag = { kind: 'window', pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, start: { width: wl.width, level: wl.level } };
-      dynamicCanvas.setPointerCapture(event.pointerId);
-      stage.classList.add('is-windowing');
+      if (wl.status === 'ready') startWindowDrag(event, wl);
       return;
     }
+    const editor = editorFor(state, study);
+    // Busy means THIS study's /predict is in flight. A run on a different study must not
+    // freeze this one's handles (state.running is that study's id, not a boolean).
+    if (!editor || state.running === study.id) return;
     if (editor.placing) {
       placeAt(event);
       return;
@@ -644,15 +710,24 @@ export function mountViewer(container) {
     setFocusedHandle({ code: hit.code, handle: hit.handle });
   }
 
-  // A placement click on the black surround around the film (handoff §11: clamped to the image bounds).
-  // The film's own presses reach handlePointerDown on the canvas and bubble here; they are skipped.
+  // A placement click on the black surround around the film (handoff §11: clamped to the image bounds), and
+  // (gate feedback G4) a right-button press there, which windows the film as one on the film does. The film's own
+  // presses reach handlePointerDown on the canvas and bubble here; they are skipped. So is a press on the
+  // construction label that its own handler took (a left press starts the label drag).
   function handleHostPointerDown(event) {
-    if (event.target === dynamicCanvas || event.button !== 0 || drag) return;
+    if (event.target === dynamicCanvas || drag) return;
+    if (event.button === 2) {
+      suppressClick = false;
+      forgetPlacePress();
+      handleRightPress(event);
+      return;
+    }
+    if (event.button !== 0) return;
     const state = getState();
     if (state.panMode) return;
     const study = currentStudy();
     const editor = editorFor(state, study);
-    if (!editor || !editor.placing || editor.window?.open || state.running === study.id || !currentImages) return;
+    if (!editor || !editor.placing || windowFor(state, study)?.open || state.running === study.id || !currentImages) return;
     suppressClick = false;
     placeAt(event);
   }
@@ -685,9 +760,25 @@ export function mountViewer(container) {
       return;
     }
     if (drag.kind === 'window') {
+      const wl = windowFor(getState(), currentStudy());
+      if (!wl || wl.status !== 'ready' || !wl.range) {
+        // (Ruling R31) A right-button drag on a film whose original cannot be decoded says why, once per drag:
+        // with the panel closed nothing else would. The panel's note says it while the panel is open.
+        if (wl?.status === 'unavailable' && !wl.open && !drag.told) {
+          drag.told = true;
+          showToast(`${WINDOW_UNAVAILABLE}${wl.reason ?? ''}`);
+        }
+        return;
+      }
+      if (!drag.start) {
+        // The film finished decoding during a right-button drag: the window and the pointer here are its start.
+        drag.start = { width: wl.width, level: wl.level };
+        drag.clientX = event.clientX;
+        drag.clientY = event.clientY;
+        return;
+      }
       // Four per screen pixel: left-right for width, up-down for level (dragWindow), clamped.
-      const range = getState().levelEditor?.window?.range;
-      if (range) setWindow(dragWindow(drag.start, event.clientX - drag.clientX, event.clientY - drag.clientY, range));
+      setWindow(dragWindow(drag.start, event.clientX - drag.clientX, event.clientY - drag.clientY, wl.range));
       return;
     }
     if (drag.kind !== 'levelHandle') return;
@@ -710,6 +801,8 @@ export function mountViewer(container) {
     stage.classList.remove('is-dragging-handle');
     // Covers the ordinary pan, a chord released as one simultaneous pointerup, and pointercancel.
     stage.classList.remove('is-panning');
+    // A window drag keeps what it set, released or cancelled (display only; nothing to discard).
+    if (ended?.kind === 'window') endWindowDragClasses();
     if (!ended || ended.kind !== 'levelHandle') return;
     // A cancelled gesture (pen lifted out of range, window lost the pointer) discards the
     // working copy: the editor still holds the pre-drag geometry, so redraw from it. So does a
@@ -835,7 +928,8 @@ export function mountViewer(container) {
     const editor = editorFor(state, study);
     // Only a run on THIS study disables the edit bar; a run on another study leaves it alone.
     const busy = Boolean(study) && state.running === study.id;
-    const windowOpen = Boolean(editor?.window?.open);
+    // The view's window / level panel (gate feedback G3, D15): while editing, the edit bar reads it.
+    const windowOpen = Boolean(editor) && Boolean(windowFor(state, study)?.open);
     const placing = editor?.placing ?? null;
     const showPlacement = Boolean(placing) && !windowOpen;
     setText(editLabel, windowOpen ? (placing ? WINDOW_PAUSED_LABEL : WINDOW_LABEL)
@@ -866,15 +960,18 @@ export function mountViewer(container) {
     doneButton.disabled = busy;
   }
 
-  // The window / level panel, its toolbar tool and the chip's window readout.
-  function updateWindow(state, editor) {
-    const wl = editor?.window ?? null;
+  // The window / level panel, its toolbar tool and the chip's window readout, in every mode (gate feedback G3, D15):
+  // the button is always shown, and disabled for a demo study and while there is no film on the stage. The chip reads
+  // the window whenever the open film's is ready. `is-windowing` is the panel open or a window drag live.
+  function updateWindow(state, study) {
+    const wl = windowFor(state, study);
     const open = Boolean(wl?.open);
-    windowButton.classList.toggle('is-hidden', !state.editing);
+    windowButton.disabled = !study || study.source === 'demo' || !currentImages;
     windowButton.classList.toggle('is-active', open);
     windowButton.setAttribute('aria-pressed', String(open));
     wlPanel.classList.toggle('is-hidden', !open);
-    stage.classList.toggle('is-windowing', open);
+    wlHint.classList.toggle('is-hidden', Boolean(state.editing));
+    stage.classList.toggle('is-windowing', open || drag?.kind === 'window');
     const ready = wl?.status === 'ready' && Boolean(wl.range);
     chipDivider.classList.toggle('is-hidden', !ready);
     chipWindow.classList.toggle('is-hidden', !ready);
@@ -1013,7 +1110,15 @@ export function mountViewer(container) {
     const study = currentStudy();
     const busy = Boolean(study) && state.running === study.id;
     const target = event.target instanceof Element ? event.target : null;
+    const windowOpen = Boolean(windowFor(state, study)?.open);
     if (!state.editing) {
+      // (Gate feedback G3) Outside edit mode Escape closes the window / level panel first, as it does in edit mode;
+      // a focused W/L slider lets it through, like the edit-mode rule (TEXT_ENTRY).
+      if (event.key === 'Escape' && windowOpen && !drag && !(target && target.closest(TEXT_ENTRY))) {
+        event.preventDefault();
+        closeWindowPanel();
+        return;
+      }
       if (target && target.closest('input, select, textarea, [contenteditable="true"]')) return;
       // Outside edit mode Escape clears the construction -- the keyboard's way to get a
       // label plate off the stage. Inside edit mode Escape belongs to the level editor (below).
@@ -1029,12 +1134,12 @@ export function mountViewer(container) {
       event.preventDefault();
       if (editor?.exitPrompt) keepEditing();
       else if (editor?.placing) cancelPlace();
-      else if (editor?.window?.open) closeWindowPanel();
+      else if (windowOpen) closeWindowPanel();
       else requestExit();
       return;
     }
     // Handles are disabled while placing or while the window / level panel is open (handoff §6).
-    if (!editor || editor.placing || editor.window?.open) return;
+    if (!editor || editor.placing || windowOpen) return;
     if (event.key === 'Tab') {
       // Inside the edit bar, the window / level panel and the levels panel, Tab stays ordinary focus
       // movement so their controls remain keyboard-operable once focus is there (BD-11 d).
@@ -1092,7 +1197,8 @@ export function mountViewer(container) {
     drag = null;
     suppressClick = false;
     forgetPlacePress();
-    stage.classList.remove('is-panning', 'is-windowing', 'is-dragging-handle', 'is-over-handle');
+    lastRightPress = null;
+    stage.classList.remove('is-panning', 'is-windowing', 'is-window-drag', 'is-dragging-handle', 'is-over-handle');
     labelOffsets = new Map();
     labelStudyId = null;
   }
@@ -1180,11 +1286,12 @@ export function mountViewer(container) {
     stage.classList.toggle('is-editing', state.editing);
     if (!editor) stage.classList.remove('is-over-handle');
     updateEditBar(state, study);
-    updateWindow(state, editor);
+    updateWindow(state, study);
 
-    // (2026-10-10) While editing, the film layer shows the decoded original at the editor's window once
-    // it is ready (display only, D1/D11) and leaves the mask overlay off: the editor draws the levels.
-    const wl = editor?.window ?? null;
+    // (2026-10-10) The film layer shows the decoded original at the view's window once it is ready (display only,
+    // D1/D11), in every mode since gate feedback G3 (D15): outside edit mode the mask overlay is drawn over it as
+    // over the stored image; while editing the overlay stays off, the editor draws the levels.
+    const wl = windowFor(state, study);
     const staticKey = [state.overlays, state.overlayOpacity, currentImages, state.editing, wl?.width, wl?.level, wl?.status];
     if (!sameKey(staticKey, lastStatic)) {
       lastStatic = staticKey;

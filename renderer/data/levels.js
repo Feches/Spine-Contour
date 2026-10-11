@@ -28,8 +28,9 @@
  *  @property {{code: string, handle: string}|null} handle           the focused handle: 'SA'|'SP'|'IA'|'IP'|'CENTROID'|'R0'..'R3'
  *  @property {Placing|null} placing                                  the placement in progress
  *  @property {{cervical: boolean, thoracic: boolean, lumbar: boolean, sacral: boolean, femoral: boolean}} open
- *  @property {WindowState|null} window                              null until W/L is first opened for this study
  *  @property {{then: 'exit'|'back'}|null} exitPrompt
+ * (2026-10-11, gate feedback G3; plan D15) No window: the window / level belongs to the view, `state.filmWindow`
+ * (the FilmWindow typedef in renderer/film-window.js), and outlives entering and leaving edit mode.
  */
 /** A placement in progress (gate feedback G2, 2026-10-11): one shape for every kind.
  * @typedef {Object} Placing
@@ -37,16 +38,6 @@
  *  @property {(Pt|null)[]} points     one slot per step (placementSteps(code).need), null until that point is set
  *  @property {number} current         the slot the next film click sets (a femoral head: its first empty slot)
  *  @property {number[]} history       the set slots, in the order they were last set, each at most once (UNDO's order)
- */
-/** @typedef {Object} WindowState
- *  @property {boolean} open
- *  @property {'loading'|'ready'|'unavailable'} status
- *  @property {string|null} reason                                   display-ready, when unavailable
- *  @property {number} width  @property {number} level
- *  @property {number} defaultWidth  @property {number} defaultLevel
- *  @property {number} min  @property {number} max                   the decoded value range
- *  @property {{widthMin: number, widthMax: number, levelMin: number, levelMax: number}|null} range
- *                                                                   the slider and drag bounds (window-level.js windowRange), null until ready
  */
 
 import { fitCircle } from '../viewer/geometry.js';
@@ -397,7 +388,6 @@ export function openEditor({ study, region, modelGeometry, saved }) {
     handle: null,
     placing: null,
     open: Object.fromEntries(LEVEL_GROUPS.map(group => [group.key, group.codes.some(code => levels[code].visible)])),
-    window: null,
     exitPrompt: null,
   };
 }

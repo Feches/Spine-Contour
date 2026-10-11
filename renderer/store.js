@@ -50,6 +50,10 @@ let state = {
   // (2026-10-10, level editor) The edit-mode level editor's state, or null outside edit mode; see the LevelEditor
   // typedef in renderer/data/levels.js. Written only by renderer/level-editor.js; session-only, never persisted.
   levelEditor: null,
+  // (2026-10-11, gate feedback G3; plan D15) The open film's window / level, or null: display only, part of the view
+  // like zoom and pan. FRESH_VIEW resets it; entering and leaving edit mode keep it. See the FilmWindow typedef in
+  // renderer/film-window.js, its only writer. Session-only, never persisted, never in the label record.
+  filmWindow: null,
   running: null, // string|null — the id of the study whose /predict is in flight; one run at a time
   runStage: null,
   // (2026-09-08, batch spec 8.1) The running batch, or null: { ids, done, failed, warnings, skipped,

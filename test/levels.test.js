@@ -382,7 +382,7 @@ test('openEditor on a lumbar film shows the lumbar defaults and records where ea
   assert.equal(e.selected, null);
   assert.equal(e.handle, null);
   assert.equal(e.placing, null);
-  assert.equal(e.window, null);
+  assert.equal('window' in e, false, 'the window / level belongs to the view (state.filmWindow, D15), not the editor');
   assert.equal(e.exitPrompt, null);
 });
 

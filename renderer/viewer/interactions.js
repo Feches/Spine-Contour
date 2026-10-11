@@ -29,6 +29,24 @@ export function isChordHeld(buttons) {
 }
 
 /**
+ * (Gate feedback G4, 2026-10-11; plan D17) Whether a press completes a double click with the press before it.
+ * Browsers fire `dblclick` for the primary button only, so the stage's double right-click (the window / level reset)
+ * is detected here: the same button, no more than `withinMs` after the first press and no more than `withinPx` from
+ * it. The caller passes the presses' own times (a pointer event's `timeStamp`); nothing here reads a clock.
+ *
+ * @param {{time:number, clientX:number, clientY:number, button:number}|null} previous the press before, or null
+ * @param {{time:number, clientX:number, clientY:number, button:number}|null} next the press now
+ * @param {{withinMs?:number, withinPx?:number}} [limits]
+ * @returns {boolean}
+ */
+export function isDoubleClick(previous, next, { withinMs = 400, withinPx = 6 } = {}) {
+  if (!previous || !next || previous.button !== next.button) return false;
+  const elapsed = next.time - previous.time;
+  return elapsed >= 0 && elapsed <= withinMs
+    && Math.hypot(next.clientX - previous.clientX, next.clientY - previous.clientY) <= withinPx;
+}
+
+/**
  * Zoom about a point rather than the film's centre.
  *
  * components/viewer.js writes `translate(panX,panY) scale(zoom)` on .viewer-host, which is

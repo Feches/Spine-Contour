@@ -11,6 +11,10 @@
  * The screen hands in what it owns through configureLevelEditor: the viewer's measure queue (`commitGeometry`)
  * and prediction snapshots (`getPrediction`), and the analysis screen's film loader (`ensureFilm`) and image facts
  * (`imageInfo`). This file never imports components/viewer.js or screens/analysis.js, which both import it.
+ *
+ * (2026-10-11, gate feedback G3; plan D15) The window / level is no longer the editor's: it belongs to the view
+ * (`state.filmWindow`, renderer/film-window.js) and outlives entering and leaving edit mode. The editor only reads
+ * whether its panel is open, to pause placement while it is.
  */
 import { getState, setState, subscribe } from './store.js';
 import { loadLabelRecord, saveLabelRecord, deleteLabelRecord } from './api.js';
@@ -26,11 +30,10 @@ import { levelContours } from './data/contours.js';
 import { studyRegion, validAnteriorSide } from './data/cervical.js';
 import { isHandPlaced } from './data/predictions.js';
 import { fileStem } from './data/labels.js';
-import { defaultWindow, windowRange, clampWindow } from './viewer/window-level.js';
+import { windowFor } from './film-window.js';
 
 const DEMO_NOTE = 'Demo studies are not exported';
 const SAVE_FAILED = 'Could not save the label record: ';
-const FILM_UNREADABLE = 'The original film could not be loaded.';
 
 // ---------------------------------------------------------------------------
 // What the screen supplies.
@@ -82,6 +85,11 @@ function studyOf(state, studyId) {
 function currentEditor(state) {
   const editor = state.levelEditor;
   return state.editing && editor && editor.studyId === state.openId ? editor : null;
+}
+
+// (G3, D15) Whether the view's window / level panel is open over this editor's film: placement pauses while it is.
+function windowPanelOpen(editor) {
+  return Boolean(windowFor(getState(), { id: editor.studyId })?.open);
 }
 
 // ---------------------------------------------------------------------------
@@ -153,9 +161,10 @@ function update(step, { edit = false, commit = true } = {}) {
 let entering = null; // the study whose label record is being read, so a second click does not open twice
 
 /**
- * Edit mode for the open study: a stashed editor for it when there is one (its window / level and exit prompt
- * reset, D11), else a fresh one from the study, the model's own geometry (the viewer's prediction snapshot) and
- * the label record on disk. Then the film: ensureFilm gives an unsegmented or failed film its original.
+ * Edit mode for the open study: a stashed editor for it when there is one (its exit prompt reset), else a fresh one
+ * from the study, the model's own geometry (the viewer's prediction snapshot) and the label record on disk. Then the
+ * film: ensureFilm gives an unsegmented or failed film its original. The view's window / level is not touched: it
+ * belongs to the view and stays as it was (D15, superseding D11's reset on entry).
  */
 export async function enterLevelEditor(studyId) {
   const state = getState();
@@ -164,7 +173,7 @@ export async function enterLevelEditor(studyId) {
   let editor = stash.get(studyId) ?? null;
   if (editor) {
     stash.delete(studyId);
-    editor = { ...editor, window: null, exitPrompt: null };
+    editor = { ...editor, exitPrompt: null };
   } else {
     let saved = null;
     let source = study;
@@ -347,8 +356,8 @@ export function discardLevelEdits() {
 
 /**
  * RESET TO PREDICTION (D14): every level back to the model's output, as a fresh open with no label record would
- * read it. The baseline, the record, the open groups and the window stay. Nothing is committed: the viewer writes
- * the prediction's own numbers onto the study (no /measure).
+ * read it. The baseline, the record and the open groups stay (and the view's window, which is not the editor's).
+ * Nothing is committed: the viewer writes the prediction's own numbers onto the study (no /measure).
  */
 export function resetLevelsToModel() {
   update((editor) => {
@@ -392,7 +401,7 @@ export function clearPlacedLevel(code) {
 
 /** One placement click (clamped by addPoint). Paused while the window / level panel is open. */
 export function placePoint(point, imageSize) {
-  update((editor) => (editor.placing && !editor.window?.open ? addPoint(editor, point, imageSize) : editor), { edit: true });
+  update((editor) => (editor.placing && !windowPanelOpen(editor) ? addPoint(editor, point, imageSize) : editor), { edit: true });
 }
 
 /** UNDO: the most recently set point of the placement is cleared and its step becomes the current one. */
@@ -417,7 +426,7 @@ export function restorePlacing(prior, pressed) {
  * it). Not for a femoral head (setPlacingStep). Paused while the window / level panel is open. Nothing is committed.
  */
 export function selectPlacingStep(index) {
-  update((editor) => (editor.placing && !editor.window?.open ? setPlacingStep(editor, index) : editor));
+  update((editor) => (editor.placing && !windowPanelOpen(editor) ? setPlacingStep(editor, index) : editor));
 }
 
 export function cancelPlace() {
@@ -426,7 +435,7 @@ export function cancelPlace() {
 
 /** FIT: finish a femoral head from 2 or 3 rim points. */
 export function fitPlacing(imageSize) {
-  update((editor) => (editor.window?.open ? editor : finishPlacing(editor, imageSize)), { edit: true });
+  update((editor) => (windowPanelOpen(editor) ? editor : finishPlacing(editor, imageSize)), { edit: true });
 }
 
 /** The focused handle, `{code, handle}` or null. */
@@ -440,66 +449,4 @@ export function setFocusedHandle(handle) {
 /** A handle drag's release or an arrow nudge: the level's new geometry, then the projection. */
 export function commitHandleMove(code, geometry) {
   update((editor) => (editor.levels[code] && geometry ? setLevelGeometry(editor, code, geometry) : editor), { edit: true });
-}
-
-// ---------------------------------------------------------------------------
-// Window / level (D1, D11): display only, never persisted, never in the record. The range the sliders and the
-// drag clamp to travels on the window state as `range` (viewer/window-level.js windowRange).
-
-const LOADING_WINDOW = {
-  open: true, status: 'loading', reason: null, width: 0, level: 0, defaultWidth: 0, defaultLevel: 0, min: 0, max: 0, range: null,
-};
-
-export function openWindowPanel() {
-  const editor = currentEditor(getState());
-  if (!editor) return;
-  const wl = editor.window;
-  if (wl && (wl.status === 'ready' || wl.status === 'loading')) {
-    if (!wl.open) setState({ levelEditor: { ...editor, window: { ...wl, open: true } } });
-    return;
-  }
-  setState({ levelEditor: { ...editor, window: { ...LOADING_WINDOW } } });
-  loadWindow(editor.studyId);
-}
-
-async function loadWindow(studyId) {
-  let outcome = null;
-  // A superseded result is not a failure: the cache entry was replaced under the call. Ask again, a few times.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    outcome = typeof deps.ensureFilm === 'function' ? await deps.ensureFilm(studyId) : null;
-    if (!outcome?.superseded) break;
-  }
-  const editor = currentEditor(getState());
-  if (!editor || editor.studyId !== studyId || editor.window?.status !== 'loading') return;
-  const raw = outcome?.superseded ? null : (outcome?.raw ?? null);
-  if (raw) {
-    const range = windowRange(raw);
-    const start = defaultWindow(raw);
-    setState({ levelEditor: { ...editor, window: {
-      ...editor.window, status: 'ready', reason: null, width: start.width, level: start.level,
-      defaultWidth: start.width, defaultLevel: start.level, min: raw.valueMin, max: raw.valueMax, range,
-    } } });
-  } else {
-    setState({ levelEditor: { ...editor, window: { ...editor.window, status: 'unavailable', reason: outcome?.reason || FILM_UNREADABLE } } });
-  }
-}
-
-export function closeWindowPanel() {
-  update((editor) => (editor.window?.open ? { ...editor, window: { ...editor.window, open: false } } : editor));
-}
-
-/** Slider or drag: clamped to the film's range; only once the film is decoded. */
-export function setWindow({ width, level }) {
-  update((editor) => {
-    const wl = editor.window;
-    if (!wl || wl.status !== 'ready' || !wl.range) return editor;
-    const next = clampWindow({ width, level }, wl.range);
-    return next.width === wl.width && next.level === wl.level ? editor : { ...editor, window: { ...wl, ...next } };
-  });
-}
-
-/** RESET: the file's default window. */
-export function resetWindow() {
-  const wl = currentEditor(getState())?.window;
-  if (wl?.status === 'ready') setWindow({ width: wl.defaultWidth, level: wl.defaultLevel });
 }

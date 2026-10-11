@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ZOOM_MIN, ZOOM_MAX, clampZoom, zoomIn, zoomOut, zoomAbout, isChordHeld, vertebraAt, arrowKeyDelta, debounce } from '../renderer/viewer/interactions.js';
+import {
+  ZOOM_MIN, ZOOM_MAX, clampZoom, zoomIn, zoomOut, zoomAbout, isChordHeld, isDoubleClick, vertebraAt, arrowKeyDelta, debounce,
+} from '../renderer/viewer/interactions.js';
 
 // The transform is `translate(pan) scale(zoom)` about the stage CENTRE, so a host-local point
 // p lands at C + P + z*(p - C). Working in centre-relative coordinates (offset = p - C) that is
@@ -176,4 +178,33 @@ test('debounce.cancel prevents a pending call from firing', async () => {
   debounced.cancel();
   await new Promise((resolve) => setTimeout(resolve, 60));
   assert.deepEqual(calls, []);
+});
+
+// (Gate feedback G4, 2026-10-11; plan D17) Browsers fire no dblclick for the secondary button, so the stage asks
+// isDoubleClick of two right presses: the same button, within 400 ms and 6 px of the first.
+test('isDoubleClick: the same button within the time and the distance is a double click', () => {
+  const first = { time: 1000, clientX: 200, clientY: 300, button: 2 };
+  assert.equal(isDoubleClick(first, { time: 1250, clientX: 203, clientY: 298, button: 2 }), true);
+  assert.equal(isDoubleClick(first, { time: 1400, clientX: 200, clientY: 300, button: 2 }), true, 'exactly 400 ms');
+  assert.equal(isDoubleClick(first, { time: 1001, clientX: 206, clientY: 300, button: 2 }), true, 'exactly 6 px');
+  assert.equal(isDoubleClick({ ...first, button: 0 }, { time: 1100, clientX: 200, clientY: 300, button: 0 }), true, 'any button, matched');
+});
+
+test('isDoubleClick: a different button, a press too late, too far or out of order is not', () => {
+  const first = { time: 1000, clientX: 200, clientY: 300, button: 2 };
+  assert.equal(isDoubleClick(first, { time: 1100, clientX: 200, clientY: 300, button: 0 }), false, 'another button');
+  assert.equal(isDoubleClick(first, { time: 1401, clientX: 200, clientY: 300, button: 2 }), false, 'too late');
+  assert.equal(isDoubleClick(first, { time: 1100, clientX: 205, clientY: 305, button: 2 }), false, 'too far (7.07 px)');
+  assert.equal(isDoubleClick(first, { time: 999, clientX: 200, clientY: 300, button: 2 }), false, 'earlier than the first');
+  assert.equal(isDoubleClick(null, first), false, 'no first press');
+  assert.equal(isDoubleClick(first, null), false, 'no second press');
+});
+
+test('isDoubleClick takes its limits as options', () => {
+  const first = { time: 0, clientX: 0, clientY: 0, button: 2 };
+  const second = { time: 500, clientX: 10, clientY: 0, button: 2 };
+  assert.equal(isDoubleClick(first, second), false);
+  assert.equal(isDoubleClick(first, second, { withinMs: 500, withinPx: 10 }), true);
+  assert.equal(isDoubleClick(first, second, { withinMs: 499, withinPx: 10 }), false, 'one millisecond too late');
+  assert.equal(isDoubleClick(first, second, { withinMs: 500 }), false, 'the other limit keeps its default');
 });
