@@ -62,7 +62,7 @@ in edit mode on its original and can be placed by hand.
 
 - Spec: `docs/design/level-editor/HANDOFF.md` (`594a982`; its §12 now lists the decisions). Plan:
   `docs/superpowers/plans/2026-10-10-level-editor.md` (`3a4019a`), 15 tasks; its Decisions table D1–D14 and its
-  `## Ledger` (every task's commits and counts, rulings R1–R24 with their costs, every deferred minor). User doc:
+  `## Ledger` (every task's commits and counts, rulings R1–R25 with their costs, every deferred minor). User doc:
   `docs/level-editor.md`. Contract: the 2026-10-10 amendment. SDD ledger
   `.superpowers/sdd/2026-10-10-level-editor/progress.md` (local, untracked).
 - What was built, by commit (`594a982..` this branch's tip): the level model `77c8e5a`; the projection into
@@ -75,9 +75,10 @@ in edit mode on its original and can be placed by hand.
   `0d5d629`, `871b475` (R19). The final whole-branch review ("With fixes": I1–I4) and its wave: `7e9d502` (R20 an Auto
   film with no model run takes its region from its placed levels on every projection; R21 Region and Orientation
   disabled while editing; R22 no femoral head under 0.5 px), `e3d5df7` (version-derived test expectations; the panel's
-  rebuild key), and the records (R23, R24, the gate checklist).
-- Counts: unit 887/887 after the final review's wave (879/879 before it; 615 at the base; 905 before Task 13 retired
-  26 tests of removed code); `smoke-levels.mjs` re-run after the wave, dom 75/75 and film 23/23. Backend `pytest
+  rebuild key), and the records (R23, R24, the gate checklist). The wave's re-review was clean; its one residual, a
+  rim-point drag or nudge that would leave a head under 0.5 px, is refused: `f3a3a32` (R25).
+- Counts: unit 888/888 after the final review's wave and R25 (887 after the wave, 879/879 before it; 615 at the base;
+  905 before Task 13 retired 26 tests of removed code); `smoke-levels.mjs` re-run after the wave, dom 75/75 and film 23/23. Backend `pytest
   backend -q` 762 passed, 3 skipped (the sc-export venv; the main checkout's graphs hard-linked into the worktree's
   gitignored `backend/onnx/`). Smoke on fresh scratch profiles under `%TEMP%`: `smoke-levels.mjs` dom 75/75 and film
   23/23 (one copied real lumbar film, DOM reads only, no screenshots); parity 15/15, gate1 25/25, gate2 26/26, gate3
@@ -1709,7 +1710,7 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
 
 **The vertebral level editor (2026-10-10).** 75–88 are the owner's decisions D1–D14 (the plan
 `docs/superpowers/plans/2026-10-10-level-editor.md`, its Decisions table, which wins over the handoff
-`docs/design/level-editor/HANDOFF.md`); 89–112 are the execution rulings R1–R24 from its Ledger, each with its cost.
+`docs/design/level-editor/HANDOFF.md`); 89–113 are the execution rulings R1–R25 from its Ledger, each with its cost.
 
 75. **D1 — Window / level reads the original film.** A backend `POST /decode` returns the uploaded file's 16-bit pixels,
     value range and DICOM window defaults; the renderer applies a linear LUT on the film layer only. No CSS filter and no
@@ -1788,10 +1789,10 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
      gate's edit-bar item, the handoff's contour row per R10, "Location to confirm." struck, the near-duplicate click
      rule's scope). *Cost if wrong:* none; wording.
 108. **R20 — An Auto film with no model run takes its region from its placed levels on every projection** (an editor
-     opened as Auto, or `requestedRegion === 'auto'` and `isHandPlaced`), never from the `geometry.region` its last
-     commit wrote; `projectionRegion`, `projectsLevel` (what commits) and the region the editor opens with share
-     `regionFollowsLevels`. *Why:* the first commit locked the region, so C + L levels could never become a full spine.
-     *Cost if wrong:* an Auto film's region flips as levels are placed (intended).
+     opened as Auto, or `requestedRegion === 'auto'` and `isHandPlaced` or a result that names no region), never from
+     the `geometry.region` its last commit wrote; `projectionRegion`, `projectsLevel` (what commits) and the region the
+     editor opens with share `regionFollowsLevels`. *Why:* the first commit locked the region, so C + L levels could
+     never become a full spine. *Cost if wrong:* an Auto film's region flips as levels are placed (intended).
 109. **R21 — Region and Orientation are disabled while editing** (`Finish editing before changing the region` / `…
      the orientation`), and `changeRegion` refuses while editing; outside edit mode it still drops a stashed editor.
      *Cost if wrong:* a region change needs DONE first.
@@ -1803,6 +1804,10 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
 112. **R24 — A hand-placed film's Failed status is the owner's call** (clear `processingError` on the first hand-placed
      commit, or a status of its own); on the gate's checklist and in ROADMAP §8, unchanged in code. *Cost if wrong:*
      Failed films sort first and block Mark reviewed until the owner decides.
+113. **R25 — A rim-point drag or nudge that would leave a femoral head under 0.5 px is refused** (`moveHandle` returns
+     the geometry unchanged, so the handle stays where it was): the re-review of the final wave found the one path R22
+     left to a radius of 0, which the label record's schema rejects. *Cost if wrong:* a rim point cannot be dragged
+     within 1 px of the other point of a two-point rim.
 
 ## Release prerequisites — v1.0.0 main promotion
 

@@ -166,7 +166,7 @@ renderer/                         (new)
   viewer/interactions.js          pure interaction logic: zoom steps, ~~hit tests, Tab order, nudge~~ (superseded 2026-10-10 by
                                   viewer/level-handles.js), arrow deltas, chord, debounce (no DOM)
   viewer/level-handles.js         (2026-10-10) a level's handles, client-space hit testing, moving and nudging a handle (rim points
-                                  refit the head), the Tab order across the editor; pure
+                                  refit the head, never under 0.5 px), the Tab order across the editor; pure
   viewer/window-level.js          (2026-10-10) display-only window / level: range, default, clamp, drag rule, chip text, crop to the
                                   stored image height, the decoded film as a RawFilm, the linear LUT; pure
   viewer/measure-queue.js         (plan 04) createMeasureQueue({measure, getState, setState, showToast, debounceMs})
@@ -1346,7 +1346,7 @@ workstation with `--verify-models`, which exercises each listed GPU.
 ## 2026-10-10 amendment: vertebral level editor, window / level, label record
 
 Spec `docs/design/level-editor/HANDOFF.md` (`594a982`); plan `plans/2026-10-10-level-editor.md`, whose Decisions
-table (D1–D14, the owner's answers) wins over the spec and whose Ledger holds the execution rulings R1–R24; user doc
+table (D1–D14, the owner's answers) wins over the spec and whose Ledger holds the execution rulings R1–R25; user doc
 `docs/level-editor.md`; label record schema `docs/design/level-editor/label-record.schema.json`. Edit mode is the
 level editor: the Analysis screen's right panel becomes the Vertebral levels panel (sixteen levels in five groups:
 C2–C7, T1 · T4, L1–L5, S1, two femoral heads), the stage places, selects and adjusts levels, a display-only window /
@@ -1467,6 +1467,9 @@ refitted by a rim-point drag, and hidden with its checkbox; Delete and Backspace
 - R24 (final review): a hand-placed film whose run had failed keeps `processingError` and its Failed status; whether
   the first hand-placed commit should clear it, or the film get a status of its own, is the owner's decision (plan
   Task 15, ROADMAP §8).
+- R25 (the wave's re-review): `viewer/level-handles.js` `moveHandle` refuses a rim-point move (a drag or an arrow nudge)
+  whose refit would have a radius under `MIN_RADIUS` (0.5 px, exported by `data/levels.js`) and returns the geometry
+  unchanged, so no path leaves a femoral head the label record's schema rejects.
 
 No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet file (rules in
 `styles/screens/analysis.css` section `05 — LEVEL EDITOR` and `styles/components.css`), no Python package.

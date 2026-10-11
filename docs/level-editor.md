@@ -4,7 +4,7 @@ Edit mode on the Analysis screen is a level editor (2026-10-10). It lists every 
 annotator place the levels the model missed, mark the ones that are not on the film, and adjust the rest; it adds a
 display-only window / level to the stage; and **Save edits** writes one JSON label record per film, whose job is
 retraining the segmentation models. Design: `docs/design/level-editor/HANDOFF.md`. Plan, decisions D1–D14 and the
-execution rulings R1–R24: `docs/superpowers/plans/2026-10-10-level-editor.md`. Contract: the 2026-10-10 amendment of
+execution rulings R1–R25: `docs/superpowers/plans/2026-10-10-level-editor.md`. Contract: the 2026-10-10 amendment of
 `docs/superpowers/plans/2026-08-31-00-architecture-contract.md`.
 
 ## Entering and leaving
@@ -111,7 +111,8 @@ Selecting a row gives that level its handles on the stage (only the selected lev
 handle; the help line says `L3 selected — drag a handle to adjust it.`. A corner handle carries its corner's colour, a
 centroid the level's colour, a rim point the trace yellow. An edited level, when selected, shows the model's original
 geometry dashed beneath it. Dragging a handle moves that point, clamped to the image; a femoral head's rim point refits
-the circle through its rim (a model head's four rim points are synthesised at −45°, 45°, 135° and 225°, the diagonals, until the first edit).
+the circle through its rim (a model head's four rim points are synthesised at −45°, 45°, 135° and 225°, the diagonals, until the first edit);
+a drag or nudge that would leave the head under 0.5 px is refused and the handle stays where it was (R25).
 Every drag release and nudge is committed through the measure queue, so the measurements and `studies.json` follow at
 once (D2).
 
