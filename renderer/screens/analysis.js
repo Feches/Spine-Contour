@@ -640,9 +640,12 @@ async function loadFilm(studyId) {
  * name, the stored image's size and the hex SHA-256 of its grayscale bytes -- the red channel of every pixel,
  * row by row -- which ties a record to the exact pixels with no identifier. For a film with no result the
  * "stored image" is the decoded original at its default window, the image every point was placed on.
- * `maskPixels` and `labels` arrive with Task 12. Rejects with a display-ready message when there is no film.
+ * `maskPixels` is the label mask's RGBA (red channel = label id) read from the cached mask bitmap, and `labels` the
+ * prediction's `{ L1: 20, ... }` map, for the record's contours (data/contours.js); both are null for a film shown
+ * from its decoded original, which has no mask. Rejects with a display-ready message when there is no film.
  * @param {string} studyId
- * @returns {Promise<{file: string, sha256: string, width: number, height: number, maskPixels: null, labels: null}>}
+ * @returns {Promise<{file: string, sha256: string, width: number, height: number,
+ *   maskPixels: Uint8ClampedArray|null, labels: object|null}>}
  */
 export async function imageInfo(studyId) {
   const outcome = await ensureFilm(studyId);
@@ -660,9 +663,16 @@ export async function imageInfo(studyId) {
   const rgba = context.getImageData(0, 0, width, height).data;
   const grey = new Uint8Array(width * height);
   for (let i = 0, o = 0; i < grey.length; i += 1, o += 4) grey[i] = rgba[o];
+  // The mask is read before the digest's await, while the cached bitmap is certainly open.
+  let maskPixels = null;
+  if (images.mask) {
+    context.clearRect(0, 0, width, height);
+    context.drawImage(images.mask, 0, 0);
+    maskPixels = context.getImageData(0, 0, width, height).data;
+  }
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', grey));
   const sha256 = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
-  return { file: study.fileName, sha256, width, height, maskPixels: null, labels: null };
+  return { file: study.fileName, sha256, width, height, maskPixels, labels: images.labels ?? null };
 }
 
 // The level editor's wiring (renderer/level-editor.js) gets the viewer's measure queue and prediction snapshots,

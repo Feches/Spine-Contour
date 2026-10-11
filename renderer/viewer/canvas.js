@@ -80,7 +80,9 @@ export async function loadStudyImages(predictResponse) {
   const overlayPixels = buildOverlayPixels(maskPixels, null, colorByLabel, BASE_OVERLAY_ALPHA);
   context.clearRect(0, 0, image.width, image.height);
   context.putImageData(new ImageData(overlayPixels, image.width, image.height), 0, 0);
-  return { image, mask, overlayCanvas: scratch, width: image.width, height: image.height };
+  // `labels` ({ L1: 20, ... }) rides with `mask` so the label record can trace a level's outline from it later
+  // (Task 12). The RGBA buffer read above is not kept: `mask` is the source and a film's buffer is 4 bytes a pixel.
+  return { image, mask, overlayCanvas: scratch, width: image.width, height: image.height, labels: predictResponse.labels ?? null };
 }
 
 // `image` is an ImageBitmap, except for a film shown from its decoded original (imagesFromRaw),

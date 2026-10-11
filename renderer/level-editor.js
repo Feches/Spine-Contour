@@ -22,6 +22,7 @@ import {
 } from './data/levels.js';
 import { projectGeometry } from './data/level-projection.js';
 import { toLabelRecord, recordLevels, labelFileName, appVersion } from './data/label-record.js';
+import { levelContours } from './data/contours.js';
 import { CERVICAL_LEVELS, studyRegion, validAnteriorSide } from './data/cervical.js';
 import { isHandPlaced } from './data/predictions.js';
 import { fileStem } from './data/labels.js';
@@ -305,8 +306,8 @@ export async function saveLevelEdits() {
       model: { name: owner.qc?.models?.vertebrae ?? 'none', version: owner.qc?.model_versions?.vertebrae ?? 'unknown' },
       appVersion: appVersion(),
       savedAt: new Date().toISOString(),
-      // Task 12 supplies the model's mask outline per segmented level from info.maskPixels.
-      contours: {},
+      // The model's mask outline for each level still segmented now (R10); all null for a film with no mask.
+      contours: levelContours(info.maskPixels, info.width, info.height, info.labels, current),
     });
     await saveLabelRecord(file, record);
     const after = getState();
