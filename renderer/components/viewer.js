@@ -15,7 +15,7 @@ import { isQueued, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
 import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
 import { progressTitle, progressDetail } from '../data/processing.js';
 import { cancelProcessing } from '../processing.js';
-import { kindOf, rowName, placementSteps, placingLabel, placingHelp } from '../data/levels.js';
+import { kindOf, rowName, placementSteps, placingLabel, placingHelp, canFinishPlacing } from '../data/levels.js';
 import { levelHandles, hitTestLevelHandles, moveHandle, nudgeHandle, nextLevelHandle, handleAt } from '../viewer/level-handles.js';
 import { dragWindow, windowText } from '../viewer/window-level.js';
 import {
@@ -804,7 +804,8 @@ export function mountViewer(container) {
     const circle = showPlacement && kindOf(placing.code) === 'circle';
     steps.classList.toggle('is-hidden', !showPlacement);
     fitButton.classList.toggle('is-hidden', !circle);
-    fitButton.disabled = busy || !circle || placing.points.length < placementSteps(placing.code).fitFrom;
+    // (R22) FIT follows finishPlacing's own rule: enough rim points, and a fit with a radius of at least 0.5 px.
+    fitButton.disabled = busy || !circle || !canFinishPlacing(editor, imageSize());
     undoButton.classList.toggle('is-hidden', !showPlacement);
     undoButton.disabled = busy || !placing || placing.points.length === 0;
     placeCancelButton.classList.toggle('is-hidden', !showPlacement);

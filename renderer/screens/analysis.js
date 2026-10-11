@@ -872,7 +872,9 @@ export function render(state) {
   const clinicalHost = el('section', { class: 'clinical-data' });
   function changeRegion(patch) {
     const live = getState(), open = currentStudy(live);
-    if (!open || live.running || live.batch || open.source !== 'real') return;
+    // (2026-10-10, ruling R21) Not while editing: the change wipes the study's levels and drops the open editor
+    // without the exit prompt. Both selects are disabled then (update() below); this covers a keyboard activation.
+    if (!open || live.running || live.batch || live.editing || open.source !== 'real') return;
     // Invalidate any sidecar restoration already awaiting I/O as well as pending edits.
     runsByStudy.set(open.id, (runsByStudy.get(open.id) ?? 0) + 1);
     forgetPrediction(open.id);
@@ -988,7 +990,10 @@ export function render(state) {
     anteriorSelect.options[0].textContent = requestedRegion(open) === 'cervical' ? 'Choose anterior side…' : 'Auto detect';
     anteriorSelect.setAttribute('aria-label', requestedRegion(open) === 'auto' ? 'Anterior image side'
       : studyRegion(open) === 'full_spine' ? 'Full spine anterior image side' : 'Cervical anterior image side');
-    regionSelect.disabled = anteriorSelect.disabled = Boolean(live.running || live.batch || open.source === 'demo');
+    regionSelect.disabled = anteriorSelect.disabled = Boolean(live.running || live.batch || open.source === 'demo' || live.editing);
+    // (2026-10-10, ruling R21) Changing either wipes the study, levels included, so it waits for edit mode to end.
+    regionSelect.title = live.editing ? 'Finish editing before changing the region' : '';
+    anteriorSelect.title = live.editing ? 'Finish editing before changing the orientation' : '';
     const alignmentSetup = requiresAnteriorSide(open) && !open.measurements;
     previewButton.hidden = alignmentRunButton.hidden = !alignmentSetup;
     previewButton.disabled = Boolean(live.running || live.batch);

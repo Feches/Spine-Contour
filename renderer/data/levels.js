@@ -451,10 +451,14 @@ const clampPoint = (point, size) => (size
   ? [Math.max(0, Math.min(size.width - 1, point[0])), Math.max(0, Math.min(size.height - 1, point[1]))]
   : copyPoint(point));
 
+const within1px = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1;
+
 /**
  * Add a click to the placement: clamped to [0, w-1] x [0, h-1]; a click within 1 px of the previous
- * point is dropped for c2, body and endplate placements (a zero-length endplate is a 422 from /measure);
- * the placement finishes by itself at `need` points.
+ * point is dropped for c2, body and endplate placements (a zero-length endplate is a 422 from /measure),
+ * and a femoral head's click within 1 px of ANY of its rim points is dropped (ruling R22: a double-click
+ * would otherwise give two identical rim points and a radius of 0); the placement finishes by itself at
+ * `need` points.
  */
 export function addPoint(editor, point, imageSize) {
   const placing = editor.placing;
@@ -462,8 +466,12 @@ export function addPoint(editor, point, imageSize) {
   const { need } = placementSteps(placing.code);
   if (placing.points.length >= need) return editor;
   const clicked = clampPoint(point, imageSize);
-  const last = placing.points[placing.points.length - 1];
-  if (last && kindOf(placing.code) !== 'circle' && Math.hypot(clicked[0] - last[0], clicked[1] - last[1]) < 1) return editor;
+  if (kindOf(placing.code) === 'circle') {
+    if (placing.points.some(rimPoint => within1px(clicked, rimPoint))) return editor;
+  } else {
+    const last = placing.points[placing.points.length - 1];
+    if (last && within1px(clicked, last)) return editor;
+  }
   const next = { ...editor, placing: { code: placing.code, points: [...placing.points, clicked] } };
   return next.placing.points.length >= need ? finishPlacing(next, imageSize) : next;
 }
@@ -477,13 +485,36 @@ export function cancelPlacing(editor) {
   return editor.placing ? { ...editor, placing: null } : editor;
 }
 
-/** Finish the placement now (FIT for a femoral head from 2 points; any other kind only at `need`). */
+// The smallest femoral head a placement may finish with (ruling R22): the label record's schema needs a radius
+// above 0, and two rim points 1 px apart, the closest addPoint keeps, give 0.5.
+const MIN_RADIUS = 0.5;
+
+// The geometry the placement would finish with now, or null when it may not finish: too few clicks, or a femoral
+// head whose fitted radius is under MIN_RADIUS (or not finite).
+function finishedGeometry(placing, imageSize) {
+  if (placing.points.length < placementSteps(placing.code).fitFrom) return null;
+  const geometry = geometryFromPoints(placing.code, placing.points, imageSize);
+  if (!geometry) return null;
+  if (kindOf(placing.code) === 'circle' && !(Number.isFinite(geometry.radius) && geometry.radius >= MIN_RADIUS)) return null;
+  return geometry;
+}
+
+/**
+ * Whether the placement in progress may finish now: FIT's enabled state. False when nothing is being placed,
+ * below `fitFrom` clicks, and for a femoral head whose fit would have a radius under 0.5 px (R22).
+ */
+export function canFinishPlacing(editor, imageSize) {
+  return Boolean(editor?.placing && finishedGeometry(editor.placing, imageSize));
+}
+
+/**
+ * Finish the placement now (FIT for a femoral head from 2 points; any other kind only at `need`). A no-op
+ * whenever canFinishPlacing is false.
+ */
 export function finishPlacing(editor, imageSize) {
   const placing = editor.placing;
   if (!placing) return editor;
-  const { fitFrom } = placementSteps(placing.code);
-  if (placing.points.length < fitFrom) return editor;
-  const geometry = geometryFromPoints(placing.code, placing.points, imageSize);
+  const geometry = finishedGeometry(placing, imageSize);
   if (!geometry) return editor;
   return {
     ...setEntry(editor, placing.code, { visible: true, source: 'annotator', geometry }),

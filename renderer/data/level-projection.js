@@ -9,10 +9,12 @@
 // with the editor, so a later in-place edit of a cloned geometry cannot reach the level model.
 
 import { kindOf } from './levels.js';
-import { CERVICAL_LEVELS, studyRegion, validAnteriorSide } from './cervical.js';
+import { CERVICAL_LEVELS, requestedRegion, studyRegion, validAnteriorSide } from './cervical.js';
+import { isHandPlaced } from './predictions.js';
 
 const LUMBAR_BODIES = ['L1', 'L2', 'L3', 'L4', 'L5'];
 const FEMORAL_HEADS = ['FH1', 'FH2'];
+const LUMBAR_LEVELS = [...LUMBAR_BODIES, 'S1', ...FEMORAL_HEADS];
 // The order the anterior side is read in: C2 (its inferior endplate), then every body, then T1 and S1.
 const SIDE_ORDER = [...CERVICAL_LEVELS, ...LUMBAR_BODIES, 'T1', 'S1'];
 
@@ -34,18 +36,44 @@ function placed(editor, code) {
 const anyPlaced = (editor, codes) => codes.some(code => placed(editor, code));
 
 /**
- * The region the projection takes: the study's own when it resolved to one; for Auto with no result,
- * what the visible placed levels say (a C level -> cervical, an L, S1 or femoral level -> lumbar, both ->
- * full spine, neither -> lumbar).
+ * (Ruling R20, the final review's I1) Whether the film's region is read from the levels placed on it rather than
+ * from the study: an editor opened as Auto, or an Auto film no model run produced (`isHandPlaced`, data/predictions.js)
+ * or whose result names no region. A level-editor commit writes `geometry.region`, so reading that back would lock
+ * an Auto film to whatever its first commit said (L3 placed first: lumbar, and a C3 placed after it never commits).
+ * The one rule behind `projectionRegion`, `projectsLevel` and the region the level editor opens with.
+ */
+export function regionFollowsLevels(editor, study) {
+  if (editor?.region === 'auto') return true;
+  if (requestedRegion(study) !== 'auto') return false;
+  return isHandPlaced(study) || studyRegion(study) === 'auto';
+}
+
+/**
+ * The region the projection takes: the study's own when it is fixed (chosen, or resolved by a model run); when it
+ * follows the levels (regionFollowsLevels), what the visible placed levels say on every projection (a C level ->
+ * cervical, an L, S1 or femoral level -> lumbar, both -> full spine, neither -> lumbar).
  * @returns {'lumbar'|'cervical'|'full_spine'}
  */
 export function projectionRegion(editor, study) {
-  const region = studyRegion(study);
-  if (region === 'lumbar' || region === 'cervical' || region === 'full_spine') return region;
+  if (!regionFollowsLevels(editor, study)) return studyRegion(study);
   const cervical = anyPlaced(editor, CERVICAL_LEVELS);
-  const lumbar = anyPlaced(editor, [...LUMBAR_BODIES, 'S1', ...FEMORAL_HEADS]);
+  const lumbar = anyPlaced(editor, LUMBAR_LEVELS);
   if (cervical && lumbar) return 'full_spine';
   return cervical ? 'cervical' : 'lumbar';
+}
+
+/**
+ * Whether a change to `code` can change this study's projection, so the level editor commits it: T1 and T4 never
+ * do; a film whose region follows its levels takes every other code (placing C3 can turn a lumbar projection into
+ * a full spine); a lumbar film L1-L5, S1 and the heads; a cervical one C2-C7; a full-spine film all of those.
+ */
+export function projectsLevel(code, editor, study) {
+  if (code === 'T1' || code === 'T4') return false;
+  if (regionFollowsLevels(editor, study)) return true;
+  const region = studyRegion(study);
+  if (region === 'lumbar') return LUMBAR_LEVELS.includes(code);
+  if (region === 'cervical') return CERVICAL_LEVELS.includes(code);
+  return true;
 }
 
 /**

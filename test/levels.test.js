@@ -5,7 +5,7 @@ import {
   kindOf, groupOf, rowName, fullName, filmTypeDefaults, sameGeometry, levelState, badgeFor,
   placementSteps, geometryFromPoints, fitRim, synthesizeRim, levelsFromGeometry, openEditor,
   toggleVisible, toggleGroup, toggleOpen, selectLevel, startPlacing, addPoint, undoPoint, cancelPlacing,
-  finishPlacing, clearLevel, setLevelGeometry, unsavedCount, canSave, unsavedText, summaryText,
+  finishPlacing, canFinishPlacing, clearLevel, setLevelGeometry, unsavedCount, canSave, unsavedText, summaryText,
   groupCountText, groupCheckState, trainingStatus, placingLabel, placingHelp, dependencyNote,
   markSaved, revertToBaseline,
 } from '../renderer/data/levels.js';
@@ -701,11 +701,49 @@ test('addPoint compares the clamped click, so two clicks past the same edge are 
   assert.equal(addPoint(e, [900, 50], IMAGE), e);
 });
 
-test('addPoint accepts repeated points for a femoral head', () => {
+test('addPoint drops a femoral head click within one pixel of ANY of its rim points (R22)', () => {
   let e = startPlacing(lumbarEditor(), 'FH1');
   e = addPoint(e, [50, 50], IMAGE);
-  e = addPoint(e, [50, 50], IMAGE);
+  assert.equal(addPoint(e, [50, 50], IMAGE), e, 'a double-click is one rim point: the editor comes back unchanged');
+  assert.equal(addPoint(e, [50.6, 50.6], IMAGE), e, 'within 1 px of the first');
+  e = addPoint(e, [80, 50], IMAGE);
   assert.equal(e.placing.points.length, 2);
+  assert.equal(addPoint(e, [50.3, 49.8], IMAGE), e, 'within 1 px of an earlier rim point, not only the last one');
+  assert.equal(addPoint(e, [79.5, 50], IMAGE), e, 'within 1 px of the last');
+  assert.equal(addPoint(e, [51, 50], IMAGE).placing.points.length, 3, 'exactly 1 px apart is accepted');
+  const clamped = addPoint(startPlacing(blankEditor('lumbar'), 'FH2'), [500, 50], IMAGE);
+  assert.equal(addPoint(clamped, [900, 50], IMAGE), clamped, 'the clamped click is compared');
+});
+
+test('two near-identical rim points cannot finish a femoral head: no radius under 0.5 px (R22)', () => {
+  // Two rim points 0.8 px apart. addPoint now drops such a second click, so the placement is built directly, as a
+  // double-click left it before R22; finishPlacing must refuse it on its own.
+  const near = { ...startPlacing(blankEditor('lumbar'), 'FH1'), placing: { code: 'FH1', points: [[50, 50], [50.8, 50]] } };
+  assert.equal(fitRim(near.placing.points).radius, 0.4, 'the fit itself would be 0.4 px');
+  assert.equal(canFinishPlacing(near, IMAGE), false);
+  assert.equal(finishPlacing(near, IMAGE), near, 'FIT is a no-op');
+  const same = { ...near, placing: { code: 'FH1', points: [[50, 50], [50, 50]] } };
+  assert.equal(canFinishPlacing(same, IMAGE), false, 'radius 0');
+  assert.equal(finishPlacing(same, IMAGE), same);
+  const third = addPoint(near, [70, 60], IMAGE);
+  assert.equal(third.placing.points.length, 3, 'a third distinct point is taken');
+  assert.equal(canFinishPlacing(third, IMAGE), true, 'and the fit now has a radius');
+  const done = finishPlacing(third, IMAGE);
+  assert.equal(done.placing, null);
+  assert.ok(done.levels.FH1.geometry.radius >= 0.5);
+});
+
+test('canFinishPlacing follows fitFrom and need, and is false with nothing being placed', () => {
+  assert.equal(canFinishPlacing(lumbarEditor(), IMAGE), false, 'idle');
+  let fh = startPlacing(blankEditor('lumbar'), 'FH1');
+  assert.equal(canFinishPlacing(fh, IMAGE), false, 'no rim points');
+  fh = addPoint(fh, [10, 10], IMAGE);
+  assert.equal(canFinishPlacing(fh, IMAGE), false, 'one rim point');
+  fh = addPoint(fh, [11, 10], IMAGE);
+  assert.equal(canFinishPlacing(fh, IMAGE), true, 'two rim points 1 px apart: radius 0.5, the floor');
+  let body3 = startPlacing(blankEditor('lumbar'), 'L3');
+  body3 = addPoint(addPoint(addPoint(body3, [10, 10], IMAGE), [30, 10], IMAGE), [10, 30], IMAGE);
+  assert.equal(canFinishPlacing(body3, IMAGE), false, 'a body needs all four corners');
 });
 
 test('addPoint finishes a femoral head on the fourth rim point and fits the circle', () => {

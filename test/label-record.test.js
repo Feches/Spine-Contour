@@ -6,6 +6,7 @@ import {
 } from '../renderer/data/label-record.js';
 import {
   LEVEL_CODES, kindOf, levelState, trainingStatus, openEditor, setLevelGeometry, toggleVisible,
+  startPlacing, addPoint, finishPlacing,
 } from '../renderer/data/levels.js';
 import { validateAgainst } from './fixtures/schema-check.js';
 
@@ -508,9 +509,13 @@ test('toLabelRecord reads the editor without mutating it and shares no points wi
 });
 
 test('every record toLabelRecord builds validates, whatever the mix of states', () => {
+  // R22's floor: the smallest head a placement can finish with, two rim points 1 px apart, has radius 0.5 (> 0).
+  const smallestHead = finishPlacing(addPoint(addPoint(startPlacing(editorFor(null, 'lumbar'), 'FH1'), [50, 50], IMAGE), [51, 50], IMAGE), IMAGE);
+  assert.equal(smallestHead.placing, null, 'the head was placed');
+  assert.equal(smallestHead.levels.FH1.geometry.radius, 0.5);
   const states = new Set();
   for (const e of [lumbarEditor(), sinkEditor(), editorFor(cervicalGeometry(), 'cervical'), editorFor(null, 'auto'),
-    editorFor(null, 'full_spine'), toggleVisible(sinkEditor(), 'L1')]) {
+    editorFor(null, 'full_spine'), toggleVisible(sinkEditor(), 'L1'), smallestHead]) {
     const rec = record(e);
     assertValid(rec);
     assertValid(JSON.parse(JSON.stringify(rec)));

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  projectionRegion, anteriorSideFrom, quadrilateral, projectGeometry,
+  projectionRegion, anteriorSideFrom, quadrilateral, projectGeometry, regionFollowsLevels, projectsLevel,
 } from '../renderer/data/level-projection.js';
 import {
   levelsFromGeometry, openEditor, setLevelGeometry, toggleVisible,
@@ -165,8 +165,70 @@ test('a resolved study region is the projection region whatever is placed', () =
   assert.equal(projectionRegion(editor, { region: 'lumbar' }), 'lumbar');
   assert.equal(projectionRegion(editor, { region: 'cervical' }), 'cervical');
   assert.equal(projectionRegion(editor, { region: 'full_spine' }), 'full_spine');
-  // 'auto' with a result resolves to the result's region (studyRegion)
-  assert.equal(projectionRegion(editor, { region: 'auto', geometry: { region: 'cervical' } }), 'cervical');
+  // 'auto' with a model result resolves to the result's region (studyRegion); a model run records qc.models (R16)
+  assert.equal(projectionRegion(editor, { region: 'auto', geometry: { region: 'cervical' }, qc: { models: { vertebrae: 'cervical_hrnet' } } }), 'cervical');
+  assert.equal(projectionRegion(editor, { region: 'auto', predictionId: 'p-1', geometry: { region: 'cervical' } }), 'cervical');
+});
+
+// ---------- R20: an Auto film no model run produced follows its placed levels ----------
+
+// An Auto film whose levels were placed by hand and committed once (L3 first): no prediction id, no qc.models, and
+// the geometry the commit wrote says lumbar.
+const HAND_PLACED_AUTO = {
+  region: 'auto', predictionId: null, qc: { manual_edits: { landmarks: true } },
+  geometry: { region: 'lumbar', vertebrae: { L3: studyBody(10, 190) }, s1_superior: null, femoral_circles: [] },
+};
+
+test('an Auto film placed by hand follows its placed levels, whatever region its geometry already says (R20)', (t) => {
+  // the editor is NOT Auto here (full_spine shows every level), so the study alone carries the rule
+  const both = editorWith({ C3: bodyAt(10, 30), L3: bodyAt(10, 190) }, { study: HAND_PLACED_AUTO });
+  assert.equal(projectionRegion(both, HAND_PLACED_AUTO), 'full_spine');
+  const geometry = projectGeometry(both, HAND_PLACED_AUTO);
+  assert.equal(geometry.region, 'full_spine');
+  assert.equal(geometry.anterior_side, 'left', 'no stored side: the placed levels orient it');
+  assert.deepEqual(Object.keys(geometry.vertebrae), ['C3', 'L3']);
+  assert.notEqual(reload(t, geometry, EMPTY_MEASUREMENTS.full_spine).study.geometry, null);
+  // L3 cleared again (the geometry still says lumbar from its commit), C3 placed
+  const onlyC3 = editorWith({ L3: null, C3: bodyAt(10, 30) }, { study: HAND_PLACED_AUTO });
+  assert.equal(projectionRegion(onlyC3, HAND_PLACED_AUTO), 'cervical');
+  assert.equal(projectGeometry(onlyC3, HAND_PLACED_AUTO).region, 'cervical');
+  const hiddenC3 = editorWith({ C3: bodyAt(10, 30), L3: bodyAt(10, 190) }, { study: HAND_PLACED_AUTO, hide: ['C3'] });
+  assert.equal(projectionRegion(hiddenC3, HAND_PLACED_AUTO), 'lumbar', 're-derived on every projection');
+  // the same film once a model run produced it keeps the result's region
+  const modelRun = { ...HAND_PLACED_AUTO, qc: { models: { vertebrae: 'unet' } } };
+  assert.equal(projectionRegion(both, modelRun), 'lumbar');
+  // a chosen region is never derived, hand-placed or not
+  assert.equal(projectionRegion(both, { ...HAND_PLACED_AUTO, region: 'lumbar' }), 'lumbar');
+  assert.equal(projectionRegion(both, { ...HAND_PLACED_AUTO, region: 'cervical' }), 'cervical');
+});
+
+test('regionFollowsLevels: an Auto editor, an Auto film placed by hand, or an Auto result with no region (R20)', () => {
+  const lumbarEditor = editorWith({}, { region: 'lumbar' });
+  assert.equal(regionFollowsLevels(editorWith({}, { region: 'auto' }), { region: 'lumbar', geometry: { region: 'lumbar' } }), true, 'an editor opened as Auto');
+  assert.equal(regionFollowsLevels(lumbarEditor, HAND_PLACED_AUTO), true);
+  assert.equal(regionFollowsLevels(null, HAND_PLACED_AUTO), true, 'no editor: the study decides');
+  assert.equal(regionFollowsLevels(null, { region: 'auto', geometry: null, qc: null }), true, 'no result at all');
+  assert.equal(regionFollowsLevels(null, { region: 'auto', geometry: {}, qc: { models: {} } }), true, 'a model result that names no region');
+  assert.equal(regionFollowsLevels(null, { ...HAND_PLACED_AUTO, qc: { models: { vertebrae: 'unet' } } }), false, 'a model result');
+  assert.equal(regionFollowsLevels(null, { ...HAND_PLACED_AUTO, predictionId: 'p-1' }), false, 'a prediction id');
+  assert.equal(regionFollowsLevels(lumbarEditor, { ...HAND_PLACED_AUTO, region: 'lumbar' }), false, 'a chosen region');
+  assert.equal(regionFollowsLevels(lumbarEditor, { ...HAND_PLACED_AUTO, region: 'full_spine' }), false);
+});
+
+test('projectsLevel: T1 and T4 never; every other code while the region follows the levels; else the region\'s own (R20)', () => {
+  const editor = editorWith({});
+  const fixed = region => ({ region, geometry: { region }, qc: { models: {} } });
+  for (const study of [HAND_PLACED_AUTO, fixed('lumbar'), fixed('cervical'), fixed('full_spine')]) {
+    assert.equal(projectsLevel('T1', editor, study), false);
+    assert.equal(projectsLevel('T4', editor, study), false);
+  }
+  for (const code of ['C2', 'C3', 'C7', 'L1', 'L3', 'S1', 'FH1', 'FH2']) {
+    assert.equal(projectsLevel(code, editor, HAND_PLACED_AUTO), true, `${code} on a hand-placed Auto film`);
+    assert.equal(projectsLevel(code, editor, fixed('full_spine')), true, `${code} on a full spine`);
+    assert.equal(projectsLevel(code, editor, fixed('lumbar')), !code.startsWith('C'), `${code} on a lumbar film`);
+    assert.equal(projectsLevel(code, editor, fixed('cervical')), code.startsWith('C'), `${code} on a cervical film`);
+  }
+  assert.equal(projectsLevel('C3', editorWith({}, { region: 'auto' }), fixed('lumbar')), true, 'an Auto editor follows its levels');
 });
 
 test('region auto with no result follows the visible placed levels', () => {

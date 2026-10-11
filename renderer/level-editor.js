@@ -20,10 +20,10 @@ import {
   cancelPlacing, finishPlacing, clearLevel, setLevelGeometry, unsavedCount, canSave, markSaved, revertToBaseline,
   sameGeometry,
 } from './data/levels.js';
-import { projectGeometry } from './data/level-projection.js';
+import { projectGeometry, projectsLevel, regionFollowsLevels } from './data/level-projection.js';
 import { toLabelRecord, recordLevels, labelFileName, appVersion } from './data/label-record.js';
 import { levelContours } from './data/contours.js';
-import { CERVICAL_LEVELS, studyRegion, validAnteriorSide } from './data/cervical.js';
+import { studyRegion, validAnteriorSide } from './data/cervical.js';
 import { isHandPlaced } from './data/predictions.js';
 import { fileStem } from './data/labels.js';
 import { defaultWindow, windowRange, clampWindow } from './viewer/window-level.js';
@@ -87,26 +87,15 @@ function currentEditor(state) {
 // ---------------------------------------------------------------------------
 // Which changes reach study.geometry.
 
-const LUMBAR_PROJECTED = new Set(['L1', 'L2', 'L3', 'L4', 'L5', 'S1', 'FH1', 'FH2']);
-const CERVICAL_PROJECTED = new Set(CERVICAL_LEVELS);
-
-// Whether `code` is written into this study's geometry: T1 and T4 never are; a lumbar film projects L1-L5, S1
-// and the heads, a cervical one C2-C7, a full-spine film all of those, and an Auto film with no result every code
-// but T1 and T4 (its projection region follows what is placed, data/level-projection.js projectionRegion).
-function projected(code, study) {
-  if (code === 'T1' || code === 'T4') return false;
-  const region = studyRegion(study);
-  if (region === 'lumbar') return LUMBAR_PROJECTED.has(code);
-  if (region === 'cervical') return CERVICAL_PROJECTED.has(code);
-  return true;
-}
-
 // What the projection writes for one level: its geometry while it is visible and placed, else nothing.
 const placedGeometry = (entry) => (entry?.visible && entry.geometry ? entry.geometry : null);
 
+// Whether the step changed a level this study's projection reads (data/level-projection.js projectsLevel: T1 and T4
+// never; a lumbar film L1-L5, S1 and the heads; a cervical one C2-C7; a full-spine film, and an Auto film whose
+// region follows its placed levels (R20), every other code).
 function projectedChange(before, after, study) {
   if (!study || before.levels === after.levels) return false;
-  return LEVEL_CODES.some((code) => projected(code, study)
+  return LEVEL_CODES.some((code) => projectsLevel(code, after, study)
     && !sameGeometry(placedGeometry(before.levels[code]), placedGeometry(after.levels[code])));
 }
 
@@ -198,7 +187,9 @@ export async function enterLevelEditor(studyId) {
     }
     editor = openEditor({
       study: source,
-      region: studyRegion(source),
+      // (R20) An Auto film with no model run opens as Auto (every level visible, D6) even after a commit has written
+      // a region into its geometry: its region follows the placed levels, so that region is no film type to default to.
+      region: regionFollowsLevels(null, source) ? 'auto' : studyRegion(source),
       modelGeometry: deps.getPrediction?.(studyId)?.geometry ?? null,
       saved,
     });
