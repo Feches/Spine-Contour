@@ -1346,8 +1346,8 @@ workstation with `--verify-models`, which exercises each listed GPU.
 ## 2026-10-10 amendment: vertebral level editor, window / level, label record
 
 Spec `docs/design/level-editor/HANDOFF.md` (`594a982`); plan `plans/2026-10-10-level-editor.md`, whose Decisions
-table (D1–D14, the owner's answers) wins over the spec and whose Ledger holds the execution rulings R1–R27 (R26 and
-R27 from the gate feedback of 2026-10-11, the plan's "Gate feedback" section); user doc
+table (D1–D14, the owner's answers) wins over the spec and whose Ledger holds the execution rulings R1–R28 (R26 and
+R27 from the gate feedback of 2026-10-11, the plan's "Gate feedback" section, and R28 from its review); user doc
 `docs/level-editor.md`; label record schema `docs/design/level-editor/label-record.schema.json`. Edit mode is the
 level editor: the Analysis screen's right panel becomes the Vertebral levels panel (sixteen levels in five groups:
 C2–C7, T1 · T4, L1–L5, S1, two femoral heads), the stage places, selects and adjusts levels, a display-only window /
@@ -1476,6 +1476,11 @@ refitted by a rim-point drag, and hidden with its checkbox; Delete and Backspace
   another point, and a double-click counts once).
 - R27 (G2): a re-placed point counts once in `placing.history` and moves to its end, so UNDO after a re-place clears
   the point instead of restoring its earlier position.
+- R28 (the review of the gate feedback): `viewer/canvas.js` `drawLevelEditor` and `drawDynamicLayer` floor the drawing
+  ratio at 1 image pixel per CSS pixel (`Math.max(1, opts.pixelRatio ?? 1)`; `opts.pixelRatio` is still image pixels
+  per CSS pixel). Below 1:1 every screen-sized part of the overlay holds its size on screen; past 1:1 it keeps its
+  image-pixel size and magnifies with the film instead of falling under one image pixel. Hit testing
+  (`viewer/level-handles.js` `hitTestLevelHandles`) is in client space and unaffected.
 
 **Gate feedback (2026-10-11).** G1: `viewer/interactions.js` `ZOOM_MAX` is 8 (was 2.4). G2: the step chips choose which
 point the next placement click sets. `state.levelEditor.placing` is `{code, points, current, history} | null` for every
@@ -1489,7 +1494,13 @@ slot `current` (a head: in its first empty slot), then moves `current` to the ne
 finishes when none is empty; `undoPoint` clears the last `history` entry and makes it current; `finishPlacing`/`canFinishPlacing` count the
 placed points; `placingLabel` reads `current + 1` (a head still counts its placed rim points) and `placingHelp` the
 current step's help. While placing every kind but a head, each step chip in `components/viewer.js` is a `<button>`
-(`viewer-step`, `is-done`, `is-current`, `aria-current="step"`); a head's chips stay spans.
+(`viewer-step`, `is-done`, `is-current`, `aria-current="step"`); a head's chips stay spans. The review of the gate
+feedback added `renderer/level-editor.js` **`restorePlacing(prior, pressed)`**: a LEFT-first chord's take-back of its
+placement press (`components/viewer.js` `placeAt` keeps the placing from before the press and the one it left, only
+when the press set a point and left the placement open; `startChordPan` calls it). It puts `prior` back while
+`editor.placing` is still `pressed`, and is a no-op otherwise (the placing has moved on, or `pressed` is null); no edit
+flag, nothing committed. UNDO is no longer the take-back: under R27 it clears the slot, so a press that re-placed a
+point would lose the point's earlier position.
 
 No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet file (rules in
 `styles/screens/analysis.css` section `05 — LEVEL EDITOR` and `styles/components.css`), no Python package.

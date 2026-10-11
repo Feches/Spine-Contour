@@ -1,6 +1,6 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-10-10
+**Last updated:** 2026-10-11
 **Branch:** `worktree-level-editor` in the worktree `.claude\worktrees\level-editor` of the main checkout, off
 `origin/main` @ `20fd4c5` (v1.0.17): the vertebral level editor, window / level and the label record — BUILT, human
 gate NOT run, nothing pushed (first section under "Where things stand").
@@ -62,7 +62,8 @@ in edit mode on its original and can be placed by hand.
 
 - Spec: `docs/design/level-editor/HANDOFF.md` (`594a982`; its §12 now lists the decisions). Plan:
   `docs/superpowers/plans/2026-10-10-level-editor.md` (`3a4019a`), 15 tasks; its Decisions table D1–D14 and its
-  `## Ledger` (every task's commits and counts, rulings R1–R25 with their costs, every deferred minor). User doc:
+  `## Ledger` (every task's commits and counts, rulings R1–R28 with their costs, every deferred minor) and its
+  `## Gate feedback (2026-10-11)` section (G1, G2, the spec of record for both). User doc:
   `docs/level-editor.md`. Contract: the 2026-10-10 amendment. SDD ledger
   `.superpowers/sdd/2026-10-10-level-editor/progress.md` (local, untracked).
 - What was built, by commit (`594a982..` this branch's tip): the level model `77c8e5a`; the projection into
@@ -79,8 +80,20 @@ in edit mode on its original and can be placed by hand.
   rim-point drag or nudge that would leave a head under 0.5 px, is refused: `f3a3a32` (R25). The pre-gate smoke run of
   2026-10-11 found two suites stale since before the branch base (seeding's export columns and header line;
   manual-calibration's 240 s batch wait against Auto detection), fixed in `f610a8d` with the README's baselines.
-- Counts: unit 888/888 after the final review's wave and R25 (887 after the wave, 879/879 before it; 615 at the base;
-  905 before Task 13 retired 26 tests of removed code); `smoke-levels.mjs` re-run after the wave, dom 75/75 and film 23/23. Backend `pytest
+- The owner's gate feedback of 2026-10-11 (asked for at the human gate, which has not passed yet; the plan's "Gate
+  feedback" section and its Ledger): G1 zoom to 8x, `ZOOM_MAX` 2.4 → 8 (`9e2deec`); G2 the step chips choose which
+  point the next click places, in any order, a placed point is re-placed from its chip, and UNDO clears the most recently
+  set point (`placing` is `{code, points, current, history}`, `setPlacingStep` / `selectPlacingStep`; R26 a click within
+  1 px of any other point of the placement is dropped, R27 a re-placed point counts once, so UNDO clears it; `068c8e2`);
+  the records `8fddcea`. Their review was approved with four minors, fixed in one wave: `dcd0cb5` (R28 past 1:1 the
+  overlay keeps its image-pixel size and magnifies with the film instead of shrinking under a pixel; a LEFT-first
+  chord's take-back of a placement press restores the placing from before the press, `restorePlacing(prior, pressed)`,
+  so a press that re-placed a point no longer loses it) and the records commit (ROADMAP §8's fixed chord clause struck;
+  decisions 114–116 below; Task 15 gains a G1 and a G2 item).
+- Counts: unit 901/901 after the gate feedback's review wave (898 after G2, 888 after the final review's wave and R25,
+  887 after the wave, 879/879 before it; 615 at the base; 905 before Task 13 retired 26 tests of removed code);
+  `smoke-levels.mjs` re-run after the final review's wave, dom 75/75 and film 23/23 (G2 adds four dom checks, 79/79
+  expected, not run since). Backend `pytest
   backend -q` 762 passed, 3 skipped (the sc-export venv; the main checkout's graphs hard-linked into the worktree's
   gitignored `backend/onnx/`). The pre-gate smoke run of 2026-10-11 on `9287473`, every suite on its own fresh
   `%TEMP%` profile, one app at a time, DOM reads only (one copied real lumbar film for the film phases, two for
@@ -97,7 +110,8 @@ in edit mode on its original and can be placed by hand.
 
 **Next.** The owner's human gate (plan Task 15): real films from their library, both themes, including the items the
 final review added (a cervical film, a full-spine film, a DICOM film, a failed Auto film with C and L levels placed, a
-double-click while placing a head) and the owner's decision R24 (a hand-placed film that had failed still reads
+double-click while placing a head), the re-check of G1 and G2 (800% on a large and a small film with the overlay crisp,
+R28; the step chips, re-placing and UNDO) and the owner's decision R24 (a hand-placed film that had failed still reads
 Failed). Then a release commit (1.0.18 or later; `docs/release-main.md`) and a PR, all on the owner's say-so (memory:
 test before release). Nothing is pushed.
 
@@ -1716,7 +1730,8 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
 
 **The vertebral level editor (2026-10-10).** 75–88 are the owner's decisions D1–D14 (the plan
 `docs/superpowers/plans/2026-10-10-level-editor.md`, its Decisions table, which wins over the handoff
-`docs/design/level-editor/HANDOFF.md`); 89–113 are the execution rulings R1–R25 from its Ledger, each with its cost.
+`docs/design/level-editor/HANDOFF.md`); 89–116 are the execution rulings R1–R28 from its Ledger, each with its cost
+(114–116, R26–R28, from the owner's gate feedback of 2026-10-11 and its review).
 
 75. **D1 — Window / level reads the original film.** A backend `POST /decode` returns the uploaded file's 16-bit pixels,
     value range and DICOM window defaults; the renderer applies a linear LUT on the film layer only. No CSS filter and no
@@ -1814,6 +1829,20 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
      the geometry unchanged, so the handle stays where it was): the re-review of the final wave found the one path R22
      left to a radius of 0, which the label record's schema rejects. *Cost if wrong:* a rim point cannot be dragged
      within 1 px of the other point of a two-point rim.
+114. **R26 — A placement click within 1 px of ANY other point of the placement is dropped**, for every kind (gate
+     feedback G2, `068c8e2`): it generalises the previous-point rule for bodies, C2 and endplates and keeps R22's rule
+     for a head; a slot's own earlier point is not another point, and a double-click still counts once. *Cost if
+     wrong:* a body or endplate corner cannot be placed within 1 px of another of its points.
+115. **R27 — A re-placed point counts once in the placement's history** and moves to its end, so UNDO after a re-place
+     clears that point rather than restoring where it was (G2, `068c8e2`). *Cost if wrong:* re-placing a point loses
+     its earlier position to UNDO. (A LEFT-first chord's take-back of a re-placing press is not UNDO: it restores the
+     placing from before the press, `restorePlacing`, `dcd0cb5`.)
+116. **R28 — Past 1:1 the overlay keeps its image-pixel size**: `viewer/canvas.js` `drawLevelEditor` and
+     `drawDynamicLayer` floor the drawing ratio at 1 image pixel per CSS pixel (`dcd0cb5`). *Why:* the dynamic canvas is
+     drawn at the stored image's resolution and CSS-scaled with the film, so past 1:1 on screen (which the 8x cap makes
+     reachable) every CSS-sized stroke, dash, handle and label fell under one image pixel, was anti-aliased away and
+     then magnified (faint lines, unreadable plates). Below 1:1 the overlay holds its screen size as before; hit testing is in client space and unaffected.
+     *Cost if wrong:* handles and labels look large at 8x on a film that is already at 1:1 at low zoom (a small film).
 
 ## Release prerequisites — v1.0.0 main promotion
 

@@ -4,7 +4,7 @@ Edit mode on the Analysis screen is a level editor (2026-10-10). It lists every 
 annotator place the levels the model missed, mark the ones that are not on the film, and adjust the rest; it adds a
 display-only window / level to the stage; and **Save edits** writes one JSON label record per film, whose job is
 retraining the segmentation models. Design: `docs/design/level-editor/HANDOFF.md`. Plan, decisions D1–D14 and the
-execution rulings R1–R25: `docs/superpowers/plans/2026-10-10-level-editor.md`. Contract: the 2026-10-10 amendment of
+execution rulings R1–R28: `docs/superpowers/plans/2026-10-10-level-editor.md`. Contract: the 2026-10-10 amendment of
 `docs/superpowers/plans/2026-08-31-00-architecture-contract.md`.
 
 ## Entering and leaving
@@ -114,6 +114,9 @@ would otherwise give a zero radius, which the record cannot hold).
 
 UNDO clears the most recently set point and makes its step the current one, so the next click places it again; it is
 disabled until a point is set. A re-placed point is cleared by UNDO, not returned to where it was before (R27).
+A left+right chord that begins with a left press while placing is a pan, not a click: the press is taken back and the
+placement returns to how it was before it, so a press that re-placed a point gives the point its earlier position back
+(a press that finished the placement is kept: the level is placed and can be adjusted).
 CANCEL (in the edit bar or on the row) abandons the placement; selecting another row
 cancels it too. A level placed by hand can be removed with **CLEAR**, which sends it back to Not placed (D13). A
 segmented vertebral level has no Place… or reset of its own: drag its handles, uncheck it, or use Discard or RESET TO
@@ -140,6 +143,12 @@ once (D2).
 Handles and placement clicks pause while the W/L panel is open. The left+right chord and the middle button pan in every
 mode; with the Pan toggle pressed, a primary drag pans even over a handle. Not built: the handoff's suggested row keys
 (↑/↓ between rows, Space to toggle visible, P for Place…), deferred to `docs/ROADMAP.md`.
+
+The stage zooms to 800% (gate feedback G1, 2026-10-11), so a film can be inspected past one screen pixel per image
+pixel. Up to 1:1 the overlay (handles, outlines, the dashed ghost, the placement guide and the level plates) keeps its
+size on screen at every zoom. Past 1:1 it keeps its size in image pixels and magnifies with the film instead of
+shrinking under a pixel, so the lines stay crisp and the plates legible (R28); at 800% on a small film the handles and
+plates are correspondingly large. The same holds for the hip line and its markers outside edit mode.
 
 ## Discard, RESET TO PREDICTION, Save edits
 

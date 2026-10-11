@@ -403,8 +403,7 @@ built.
   label plate is fixed to the right of its posterior corner and not clamped to the canvas, so it can run off an
   anterior-right film; labels are drawn interleaved with fills, so a later level can cover an earlier plate (Task 9).
 - **Placement edges.** Clicks on the black surround miss beyond the film at zoom < 1 (listen on `.viewer-stage`); a
-  chord after a refused click can undo a legitimate point; a FRESH_VIEW in the middle of a save drops the edits made
-  after the save's snapshot from the stash (Task 10).
+  FRESH_VIEW in the middle of a save drops the edits made after the save's snapshot from the stash (Task 10).
 - **Cost.** `imageInfo` decodes the original of a segmented film just to hash the stored image, and `imagesFromRaw`
   keeps a shared scratch buffer of up to 100 MB alive for a decoded film even without W/L (Tasks 8 and 10); the contour
   simplifier's farthest-pair split is O(n²) (Task 12).
