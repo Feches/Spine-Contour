@@ -30,7 +30,7 @@ import { levelContours } from './data/contours.js';
 import { studyRegion, validAnteriorSide } from './data/cervical.js';
 import { isHandPlaced } from './data/predictions.js';
 import { fileStem } from './data/labels.js';
-import { windowFor } from './film-window.js';
+import { windowFor, forgetFilmWindow } from './film-window.js';
 
 const DEMO_NOTE = 'Demo studies are not exported';
 const SAVE_FAILED = 'Could not save the label record: ';
@@ -212,10 +212,19 @@ export async function enterLevelEditor(studyId) {
 // is on the stage); a film with none, or with levels placed by hand and no model run (R16, isHandPlaced), gets its decoded
 // original here. A reason with no film is toasted once. A model result never reaches that branch except through
 // restoreFilm, which has already said why (a toast, or FILM UNAVAILABLE), so it is not said twice.
+// (2026-10-11, the window re-review's minor; the rule of film-window.js redecodeKeptWindow, R35) An outcome with no
+// decoded original forgets a READY window of this film, so the chip and the panel never claim a window the film layer
+// does not draw (another study's run took the image cache meanwhile); a loading one is left to its own decode. A
+// superseded outcome says nothing about the film and changes nothing.
 async function showFilm(studyId) {
   if (typeof deps.ensureFilm !== 'function') return;
   const outcome = await deps.ensureFilm(studyId);
-  if (!outcome || outcome.superseded || outcome.images || !outcome.reason) return;
+  if (!outcome || outcome.superseded) return;
+  if (!outcome.raw) {
+    const wl = getState().filmWindow;
+    if (wl?.studyId === studyId && wl.status === 'ready') forgetFilmWindow(studyId);
+  }
+  if (outcome.images || !outcome.reason) return;
   const live = getState();
   const study = studyOf(live, studyId);
   if (!study || currentEditor(live)?.studyId !== studyId || (study.measurements && study.geometry && !isHandPlaced(study))) return;

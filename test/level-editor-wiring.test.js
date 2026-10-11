@@ -42,10 +42,10 @@ function failedAutoFilm(id) {
 
 const studyOf = (id) => getState().studies.find((study) => study.id === id);
 
-// The wiring's dependencies, with every commit recorded before it reaches the real queue.
-function wire(commits) {
+// The wiring's dependencies, with every commit recorded before it reaches the real queue. `ensureFilm` may be
+// replaced (the window re-review's minor: what entering edit mode does to a kept window).
+function wire(commits, ensureFilm = async () => ({ images: null, raw: null, reason: null, superseded: false })) {
   const queue = createMeasureQueue({ measure, getState, setState, showToast: () => {}, debounceMs: 0 });
-  const ensureFilm = async () => ({ images: null, raw: null, reason: null, superseded: false });
   configureLevelEditor({
     commitGeometry: (studyId, geometry) => {
       commits.push({ studyId, geometry });
@@ -289,5 +289,63 @@ test('FIT (fitPlacing) is a no-op while the W/L panel is open, and finishes the 
     assert.equal(fitted.levels.FH1.geometry.radius, 20);
     await settle();
     assert.equal(commits.length, 1, 'the fitted head is committed');
+  });
+});
+
+// The window re-review's minor (2026-10-11, after R35): entering edit mode asks ensureFilm for the film (showFilm). When
+// that outcome carries no decoded original, a READY window of the film is forgotten, the rule film-window.js
+// redecodeKeptWindow applies at the mount, so the chip never claims a window the film layer does not draw after another
+// study's run took the image cache. With an original the window is left exactly as it was.
+function readyWindow(studyId) {
+  return {
+    studyId, open: false, status: 'ready', reason: null, width: 120, level: 60, defaultWidth: 200, defaultLevel: 100,
+    min: 0, max: 255, range: { widthMin: 1, widthMax: 510, levelMin: -255, levelMax: 510 },
+  };
+}
+
+test('entering edit mode forgets a ready window when the film comes back without its decoded original', async () => {
+  const study = failedAutoFilm('SP-9506');
+  const calls = [];
+  wire([], async (studyId) => {
+    calls.push(studyId);
+    return { images: { width: IMAGE.width, height: IMAGE.height }, raw: null, reason: null, superseded: false };
+  });
+  await withStore(study, async () => {
+    setState({ filmWindow: readyWindow(study.id) });
+    await enterLevelEditor(study.id);
+    await settle();
+    assert.deepEqual(calls, [study.id], 'showFilm asked for the film once');
+    assert.equal(getState().editing, true);
+    assert.equal(getState().filmWindow, null, 'no original: the ready window is forgotten');
+  });
+});
+
+test('entering edit mode keeps a ready window when the film comes back with its decoded original, and a loading one either way', async () => {
+  const study = failedAutoFilm('SP-9507');
+  const raw = { width: IMAGE.width, height: IMAGE.height, valueMin: 0, valueMax: 255 };
+  wire([], async () => ({ images: { width: IMAGE.width, height: IMAGE.height, raw }, raw, reason: null, superseded: false }));
+  await withStore(study, async () => {
+    const kept = readyWindow(study.id);
+    setState({ filmWindow: kept });
+    await enterLevelEditor(study.id);
+    await settle();
+    assert.equal(getState().editing, true);
+    assert.equal(getState().filmWindow, kept, 'the same window, untouched');
+  });
+
+  const other = failedAutoFilm('SP-9508');
+  wire([], async () => ({ images: { width: IMAGE.width, height: IMAGE.height }, raw: null, reason: null, superseded: false }));
+  await withStore(other, async () => {
+    const loading = { ...readyWindow(other.id), status: 'loading', range: null };
+    setState({ filmWindow: loading });
+    await enterLevelEditor(other.id);
+    await settle();
+    assert.equal(getState().filmWindow, loading, 'a loading window is left to its own decode');
+    exitNow();
+    const elsewhere = readyWindow('SP-9599');
+    setState({ filmWindow: elsewhere });
+    await enterLevelEditor(other.id);
+    await settle();
+    assert.equal(getState().filmWindow, elsewhere, 'another film\'s window is not this film\'s to forget');
   });
 });

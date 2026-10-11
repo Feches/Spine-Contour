@@ -10,6 +10,11 @@
 // (R37, first, before section 1); a right drag on SP-9300's unavailable film with the panel closed toasts its reason
 // once (R31, in section 9); and on SP-9301 a right drag while placing L3, from the black surround, and with Pan
 // pressed (the panel closed), and a left drag with Pan pressed and the panel open (R36).
+// Gate feedback G5 (2026-10-11, plan D18): the saved record lists each level's and head's `edited_points` and carries
+// an `edits` summary. Section 6 reads them on SP-9300 (L3 manual lists every corner, S1 not visible and a segmented
+// level nothing, every entry carries a list, and the summary agrees with the entries, computed here from the record
+// alone); the film phase reads them on the level edited by the SA handle drag and the nudge (that corner only, and
+// `edits.points_moved` the sum of the edited lists).
 //
 //   node tools/smoke/launch.mjs                                     (SPINE_CONTOUR_USER_DATA under %TEMP%)
 //   node tools/smoke/smoke-levels.mjs                               phase `dom` (the default)
@@ -191,6 +196,20 @@ const studyOf = (id) => ev(`window.__lv.study(${js(id)})`);
 const badge = (code) => text(`[data-level-key="${code}"] .badge`);
 const editLabel = () => text('.viewer-editbar-label');
 const readRecord = (name) => JSON.parse(fs.readFileSync(path.join(LABELS, name), 'utf8'));
+
+// (Gate feedback G5, D18) A record's entries, levels and heads together, and the edits summary computed from them
+// alone, to compare with the record's own `edits`. Null when an entry has no edited_points list.
+const recordEntries = (record) => [...Object.values(record?.levels ?? {}), ...(record?.femoral_heads ?? [])];
+function editsFromEntries(record) {
+  const entries = recordEntries(record);
+  if (entries.length === 0 || !entries.every((e) => Array.isArray(e.edited_points))) return null;
+  const count = (state) => entries.filter((e) => e.state === state).length;
+  const points = (state) => entries.filter((e) => e.state === state).reduce((n, e) => n + e.edited_points.length, 0);
+  return {
+    segmented: count('segmented'), edited: count('edited'), manual: count('manual'), not_placed: count('not_placed'),
+    not_visible: count('not_visible'), points_moved: points('edited'), points_placed: points('manual'),
+  };
+}
 
 // The edit bar's buttons have no class of their own; their order is fixed by components/viewer.js:
 // FIT, UNDO, CANCEL, RESET TO PREDICTION, DONE. FIT carries an aria-label.
@@ -688,6 +707,22 @@ async function domPhase() {
   check("6. the record: L3 manual, S1 not_visible, study 'levels-ui-check'",
     segRecord?.levels?.L3?.state === 'manual' && segRecord?.levels?.S1?.state === 'not_visible' && segRecord?.study === 'levels-ui-check',
     segRecord && { L3: segRecord.levels?.L3?.state, S1: segRecord.levels?.S1?.state, study: segRecord.study });
+  // (G5, D18) The points each level was given: L3 placed by hand lists every corner, S1 (not visible) and a
+  // segmented level nothing; every entry, heads included, carries the list; the summary agrees with the entries.
+  const pointsOf = (code) => segRecord?.levels?.[code]?.edited_points;
+  check("6. (G5) edited_points: L3 (manual) ['sa','sp','ia','ip'], S1 (not_visible) [], L1 (segmented) []",
+    js(pointsOf('L3')) === js(['sa', 'sp', 'ia', 'ip']) && js(pointsOf('S1')) === '[]'
+      && segRecord?.levels?.L1?.state === 'segmented' && js(pointsOf('L1')) === '[]',
+    { L3: pointsOf('L3'), S1: pointsOf('S1'), L1: [segRecord?.levels?.L1?.state, pointsOf('L1')] });
+  check('6. (G5) every level and both heads carry edited_points, empty for each one not edited or manual',
+    recordEntries(segRecord).length === 16 && recordEntries(segRecord).every((e) => Array.isArray(e.edited_points)
+      && (['edited', 'manual'].includes(e.state) || e.edited_points.length === 0)),
+    recordEntries(segRecord).map((e) => [e.state, e.edited_points]));
+  const segEdits = editsFromEntries(segRecord);
+  check('6. (G5) the edits summary agrees with the entries (one manual level, 4 points placed, none moved)',
+    Boolean(segEdits) && js(segRecord?.edits) === js(segEdits) && segEdits.manual === 1 && segEdits.points_placed === 4
+      && segEdits.edited === 0 && segEdits.points_moved === 0,
+    { edits: segRecord?.edits, fromEntries: segEdits });
   check('6. the record names no SP id anywhere', Boolean(segRecord) && !/SP-\d{4}/.test(JSON.stringify(segRecord)), null);
   check('6. the study record carries labelFile', (await studyOf(SEG))?.labelFile === segRecordName, (await studyOf(SEG))?.labelFile);
   check('6. after the save the footer reads NOTHING TO SAVE and Save edits is disabled',
@@ -972,6 +1007,19 @@ async function filmPhase() {
     segBodies.length > 0 && segBodies.every(([, l]) => Array.isArray(l.contour) && l.contour.length >= 3), bodies.map(([c, l]) => [c, l.state, Array.isArray(l.contour) ? l.contour.length : l.contour]));
   check('12. (film) every edited or manual body level has contour null',
     otherBodies.length > 0 && otherBodies.every(([, l]) => l.contour === null), otherBodies.map(([c, l]) => [c, l.state, l.contour === null]));
+  // (G5, D18) The level edited above by the SA handle drag and the nudge lists that corner alone: exactly the corners
+  // whose value differs from the model's, which the suite reads from the record's own corners and model_corners.
+  const editedEntry = code ? record?.levels?.[code] : null;
+  const differing = editedEntry?.corners && editedEntry?.model_corners
+    ? ['sa', 'sp', 'ia', 'ip'].filter((key) => editedEntry.corners[key].some((v, i) => Math.abs(v - editedEntry.model_corners[key][i]) > 1e-6)) : null;
+  check(`film: (G5) the edited ${code} lists the moved corner only: edited_points ['sa']`,
+    editedEntry?.state === 'edited' && js(editedEntry.edited_points) === js(['sa']) && js(differing) === js(['sa']),
+    { state: editedEntry?.state, edited_points: editedEntry?.edited_points, differing });
+  const filmEdits = editsFromEntries(record);
+  const movedSum = recordEntries(record).filter((e) => e.state === 'edited').reduce((n, e) => n + (e.edited_points?.length ?? 0), 0);
+  check('film: (G5) edits.points_moved is the sum of the edited levels\' lists, and the summary agrees with the entries',
+    Boolean(filmEdits) && record?.edits?.points_moved === movedSum && movedSum >= 1 && js(record?.edits) === js(filmEdits),
+    { edits: record?.edits, fromEntries: filmEdits, movedSum });
 
   await cdp.key('Escape');
   await cdp.settle(150);

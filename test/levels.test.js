@@ -7,7 +7,7 @@ import {
   toggleVisible, toggleGroup, toggleOpen, selectLevel, startPlacing, addPoint, undoPoint, cancelPlacing,
   finishPlacing, canFinishPlacing, clearLevel, setLevelGeometry, unsavedCount, canSave, unsavedText, summaryText,
   groupCountText, groupCheckState, trainingStatus, placingLabel, placingHelp, dependencyNote,
-  markSaved, revertToBaseline, setPlacingStep,
+  markSaved, revertToBaseline, setPlacingStep, changedPoints, pointKeys,
 } from '../renderer/data/levels.js';
 import { SEGMENTAL_PAIRS } from '../renderer/data/segmental.js';
 import { DISC_LEVEL_PAIRS } from '../renderer/data/disc-heights.js';
@@ -160,6 +160,134 @@ test('levelState derives the five states from visibility, geometry and the model
   assert.equal(levelState({ visible: false, geometry: g }, g), 'not_visible');
   assert.equal(levelState({ visible: true, geometry: null }, g), 'not_placed', 'a model level the annotator cleared');
   assert.equal(levelState({ visible: false, geometry: null }, null), 'not_visible', 'hidden wins over unplaced');
+});
+
+// ---------- the points an edit moved (gate feedback G5, plan D18) ----------
+
+test('pointKeys names each kind\'s own geometry keys, in record order (D18)', () => {
+  assert.deepEqual(pointKeys('L3'), ['sa', 'sp', 'ia', 'ip']);
+  assert.deepEqual(pointKeys('C5'), ['sa', 'sp', 'ia', 'ip']);
+  assert.deepEqual(pointKeys('C2'), ['ia', 'ip', 'centroid']);
+  assert.deepEqual(pointKeys('T1'), ['sa', 'sp']);
+  assert.deepEqual(pointKeys('S1'), ['sa', 'sp']);
+  assert.deepEqual(pointKeys('T4'), ['centroid']);
+  assert.deepEqual(pointKeys('FH1'), ['center', 'radius']);
+  assert.deepEqual(pointKeys('FH2'), ['center', 'radius']);
+  assert.deepEqual(pointKeys('L7'), [], 'a code that names no level has no keys');
+  const keys = pointKeys('L3');
+  keys.push('x');
+  assert.deepEqual(pointKeys('L3'), ['sa', 'sp', 'ia', 'ip'], 'a fresh array each call');
+});
+
+test('changedPoints names the moved keys of a body, in order', () => {
+  const g = { superior: [[1, 2], [3, 4]], inferior: [[1, 6], [3, 8]] };
+  assert.deepEqual(changedPoints('L3', g, structuredClone(g)), [], 'the model\'s own geometry moved nothing');
+  const sa = structuredClone(g);
+  sa.superior[0][0] += 0.5;
+  assert.deepEqual(changedPoints('L3', sa, g), ['sa'], 'a moved SA');
+  const two = structuredClone(g);
+  two.inferior[1][0] -= 2;
+  two.superior[1][1] += 1;
+  assert.deepEqual(changedPoints('L3', two, g), ['sp', 'ip'], 'record order, not the order they moved in');
+  const all = { superior: [[0, 2], [3, 5]], inferior: [[1, 7], [4, 8]] };
+  assert.deepEqual(changedPoints('C4', all, g), ['sa', 'sp', 'ia', 'ip']);
+  assert.deepEqual(changedPoints('L3', g, null), ['sa', 'sp', 'ia', 'ip'], 'no model geometry: every key (manual)');
+  assert.deepEqual(changedPoints('L3', null, g), [], 'no geometry: nothing (a cleared model level)');
+  assert.deepEqual(changedPoints('L3', null, null), []);
+  assert.deepEqual(changedPoints('L3', undefined, g), []);
+});
+
+test('changedPoints names the moved keys of C2, an endplate, T4 and a femoral head', () => {
+  const c2 = { inferior: [[1, 2], [3, 4]], centroid: [2, 1] };
+  assert.deepEqual(changedPoints('C2', structuredClone(c2), c2), []);
+  assert.deepEqual(changedPoints('C2', { ...c2, centroid: [2, 1.5] }, c2), ['centroid']);
+  assert.deepEqual(changedPoints('C2', { inferior: [[1, 2], [3, 5]], centroid: [2, 1.5] }, c2), ['ip', 'centroid']);
+  assert.deepEqual(changedPoints('C2', { inferior: [[0, 2], [3, 4]], centroid: [2, 1] }, c2), ['ia']);
+  assert.deepEqual(changedPoints('C2', c2, null), ['ia', 'ip', 'centroid']);
+
+  const endplate = { superior: [[10, 110], [20, 110]] };
+  assert.deepEqual(changedPoints('S1', { superior: [[10, 111], [20, 110]] }, endplate), ['sa']);
+  assert.deepEqual(changedPoints('T1', { superior: [[10, 110], [21, 110]] }, endplate), ['sp']);
+  assert.deepEqual(changedPoints('S1', structuredClone(endplate), endplate), []);
+  assert.deepEqual(changedPoints('T1', endplate, null), ['sa', 'sp']);
+
+  assert.deepEqual(changedPoints('T4', { centroid: [5, 6] }, { centroid: [5, 7] }), ['centroid']);
+  assert.deepEqual(changedPoints('T4', { centroid: [5, 6] }, { centroid: [5, 6] }), []);
+  assert.deepEqual(changedPoints('T4', { centroid: [5, 6] }, null), ['centroid']);
+
+  const circle = { center: [10, 20], radius: 5, rim: null };
+  assert.deepEqual(changedPoints('FH1', { center: [11, 20], radius: 5, rim: null }, circle), ['center']);
+  assert.deepEqual(changedPoints('FH1', { center: [10, 20], radius: 5.5, rim: [[4.5, 20], [15.5, 20]] }, circle), ['radius']);
+  assert.deepEqual(changedPoints('FH2', { center: [10, 21], radius: 6, rim: null }, circle), ['center', 'radius']);
+  assert.deepEqual(changedPoints('FH2', circle, null), ['center', 'radius']);
+});
+
+test('changedPoints ignores a rim-only change and a wobble inside sameGeometry\'s eps, as levelState does', () => {
+  const circle = { center: [10, 20], radius: 5, rim: null };
+  const rimOnly = { center: [10, 20], radius: 5, rim: [[5, 20], [15, 20], [10, 15]] };
+  assert.deepEqual(changedPoints('FH1', rimOnly, circle), [], 'the rim is how a circle was fitted, not a point of it');
+  assert.equal(levelState({ visible: true, geometry: rimOnly }, circle), 'segmented', 'and the head stays segmented');
+
+  const g = { superior: [[1, 2], [3, 4]], inferior: [[1, 6], [3, 8]] };
+  const wobble = structuredClone(g);
+  wobble.superior[0][0] += 1e-7;
+  wobble.inferior[1][1] -= 1e-7;
+  assert.deepEqual(changedPoints('L3', wobble, g), [], 'a 1e-7 wobble moved nothing');
+  assert.equal(levelState({ visible: true, geometry: wobble }, g), 'segmented');
+  const past = structuredClone(g);
+  past.superior[0][0] += 1e-5;
+  assert.deepEqual(changedPoints('L3', past, g), ['sa'], 'past the eps it did');
+  assert.equal(levelState({ visible: true, geometry: past }, g), 'edited');
+  const head = { center: [10, 20 + 1e-7], radius: 5 - 1e-7, rim: null };
+  assert.deepEqual(changedPoints('FH1', head, circle), []);
+});
+
+test('changedPoints agrees with levelState: edited exactly when a point moved (R38)', () => {
+  const fixtures = [
+    ['L1', { superior: [[10, 10], [20, 10]], inferior: [[10, 20], [20, 20]] }],
+    ['C2', { inferior: [[40, 20], [50, 20]], centroid: [45, 12] }],
+    ['S1', { superior: [[10, 110], [20, 110]] }],
+    ['T1', { superior: [[30, 5], [60, 7]] }],
+    ['T4', { centroid: [5, 6] }],
+    ['FH1', { center: [10, 140], radius: 5, rim: null }],
+  ];
+  // Every number of the geometry (rim excluded) shifted alone, by each delta.
+  const deltas = [0, 1e-9, 1e-7, 5e-7, 2e-6, 1e-3, 0.5, 3];
+  let checked = 0;
+  for (const [code, model] of fixtures) {
+    const paths = [];
+    (function walk(value, path) {
+      if (typeof value === 'number') paths.push(path);
+      else if (Array.isArray(value)) value.forEach((v, i) => walk(v, [...path, i]));
+      else if (value && typeof value === 'object') {
+        for (const key of Object.keys(value)) if (key !== 'rim') walk(value[key], [...path, key]);
+      }
+    })(model, []);
+    for (const path of paths) {
+      for (const delta of deltas) {
+        const geometry = structuredClone(model);
+        const parent = path.slice(0, -1).reduce((node, key) => node[key], geometry);
+        parent[path[path.length - 1]] += delta;
+        const state = levelState({ visible: true, geometry }, model);
+        const points = changedPoints(code, geometry, model);
+        assert.equal(state === 'edited', points.length > 0, `${code} ${path.join('.')} +${delta}: ${state} vs ${JSON.stringify(points)}`);
+        assert.equal(state === 'segmented', points.length === 0);
+        checked += 1;
+      }
+    }
+    assert.equal(levelState({ visible: true, geometry: model }, null), 'manual');
+    assert.deepEqual(changedPoints(code, model, null), pointKeys(code), `${code}: manual lists every key`);
+  }
+  assert.ok(checked > 100, `${checked} perturbations`);
+});
+
+test('changedPoints reads its inputs without changing them and returns a fresh array', () => {
+  const g = deepFreeze({ superior: [[1, 2], [3, 4]], inferior: [[1, 6], [3, 8]] });
+  const moved = deepFreeze({ superior: [[1, 2], [3, 5]], inferior: [[1, 6], [3, 8]] });
+  assert.deepEqual(changedPoints('L2', moved, g), ['sp']);
+  const first = changedPoints('L2', g, null);
+  first.length = 0;
+  assert.deepEqual(changedPoints('L2', g, null), ['sa', 'sp', 'ia', 'ip']);
 });
 
 test('badgeFor maps each state to its class and label, and Placing… overrides', () => {

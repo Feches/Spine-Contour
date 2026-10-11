@@ -8,7 +8,7 @@
 //
 // Points are [x, y] in pixels of the stored image, origin top-left.
 
-import { LEVEL_CODES, kindOf, levelState, trainingStatus } from './levels.js';
+import { LEVEL_CODES, kindOf, levelState, trainingStatus, changedPoints } from './levels.js';
 import { projectionRegion } from './level-projection.js';
 import { fileStem } from './labels.js';
 import { VERSION_LABEL } from './version.js';
@@ -79,10 +79,18 @@ const endplateCorners = g => ({ sa: copyPoint(g.superior[0]), sp: copyPoint(g.su
 // The record's `contour` is a polygon of at least three points, or null.
 const contourOf = polygon => (Array.isArray(polygon) && polygon.length >= 3 ? polygon.map(copyPoint) : null);
 
+// (Gate feedback G5, plan D18) The points the annotator gave the entry, as keys of its own geometry: an edited
+// entry's moved points (changedPoints, the test levelState uses, so `edited` always lists one and nothing else does:
+// R38), every key of a manual one, and none for segmented, not placed and not visible (a hidden level keeps its
+// geometry in the editor, but the record holds none of it).
+function editedPoints(code, state, entry, model) {
+  return state === 'edited' || state === 'manual' ? changedPoints(code, entry.geometry, model) : [];
+}
+
 // The model's own geometry is written only for an edited level; for every other placed state it is null.
 function levelRecord(code, entry, model, contours) {
   const state = levelState(entry, model);
-  const head = { state, source: entry.source };
+  const head = { state, source: entry.source, edited_points: editedPoints(code, state, entry, model) };
   if (!PLACED_STATES.includes(state)) return head;
   const g = entry.geometry;
   const edited = state === 'edited';
@@ -107,9 +115,9 @@ function levelRecord(code, entry, model, contours) {
   }
 }
 
-function headRecord(id, entry, model) {
+function headRecord(id, code, entry, model) {
   const state = levelState(entry, model);
-  const head = { id, state, source: entry.source };
+  const head = { id, state, source: entry.source, edited_points: editedPoints(code, state, entry, model) };
   if (!PLACED_STATES.includes(state)) return head;
   const g = entry.geometry;
   return {
@@ -121,19 +129,35 @@ function headRecord(id, entry, model) {
   };
 }
 
+// (D18) The edits summary: how many entries, the fourteen levels and the two heads together, are in each state, and
+// how many points the edited ones moved and the manual ones placed. Read from the entries, so it always agrees with them.
+function editsSummary(entries) {
+  const edits = Object.fromEntries(STATES.map(state => [state, 0]));
+  let moved = 0;
+  let placed = 0;
+  for (const entry of entries) {
+    edits[entry.state] += 1;
+    if (entry.state === 'edited') moved += entry.edited_points.length;
+    if (entry.state === 'manual') placed += entry.edited_points.length;
+  }
+  return { ...edits, points_moved: moved, points_placed: placed };
+}
+
 /**
  * The label record for one film, ready for JSON.stringify. `image` is `{ file, sha256, width, height }`, `model`
  * is `{ name, version }`, `savedAt` an ISO-8601 string and `contours` maps a level code to the model's mask
  * outline (`Pt[]`, or null); only a `segmented` body level takes its contour, an edited or manual one writes null
  * (R10). `study` supplies the file name (the stem is written, never the film's renamed
  * name or its SP id), the view, and the region when the editor's is Auto. Not-visible and not-placed levels
- * carry only `state` and `source`; a level's geometry is written only while it is visible and placed.
+ * carry only `state`, `source` and an empty `edited_points`; a level's geometry is written only while it is visible
+ * and placed. (D18) Every level and head lists `edited_points`, and `edits`, after `complete`, sums them.
  */
 export function toLabelRecord({ editor, study, image, model, appVersion: version = appVersion(), savedAt, contours = {} }) {
   const levels = {};
   for (const code of LEVEL_CODES) {
     if (kindOf(code) !== 'circle') levels[code] = levelRecord(code, editor.levels[code], editor.model[code], contours);
   }
+  const femoralHeads = HEADS.map((code, index) => headRecord(index + 1, code, editor.levels[code], editor.model[code]));
   return {
     schema: LABEL_SCHEMA,
     study: fileStem(study?.fileName ?? ''),
@@ -146,8 +170,9 @@ export function toLabelRecord({ editor, study, image, model, appVersion: version
     app_version: version,
     saved_at: savedAt,
     complete: trainingStatus(editor).complete,
+    edits: editsSummary([...Object.values(levels), ...femoralHeads]),
     levels,
-    femoral_heads: HEADS.map((code, index) => headRecord(index + 1, editor.levels[code], editor.model[code])),
+    femoral_heads: femoralHeads,
   };
 }
 

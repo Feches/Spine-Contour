@@ -5,7 +5,8 @@
 //
 // Supported keywords: type (object, array, string, number, integer, boolean, null), const, enum, required,
 // properties, additionalProperties: false, $ref to '#/$defs/<name>', allOf, anyOf, oneOf, not, if/then/else,
-// items, prefixItems, minItems, maxItems, minimum, exclusiveMinimum, minLength, pattern. The annotation keywords
+// items, prefixItems, minItems, maxItems, uniqueItems (2026-10-11, D18: items compared deeply), minimum,
+// exclusiveMinimum, minLength, pattern. The annotation keywords
 // format, description, examples, $schema, $id, title (and the $defs container itself) are ignored. A schema that
 // uses any other keyword throws, so an amendment can never pass silently on a rule this checker does not enforce.
 //
@@ -15,7 +16,8 @@
 const IGNORED = new Set(['format', 'description', 'examples', '$schema', '$id', 'title', '$defs']);
 const SUPPORTED = new Set([
   'type', 'const', 'enum', 'required', 'properties', 'additionalProperties', '$ref', 'allOf', 'anyOf', 'oneOf', 'not',
-  'if', 'then', 'else', 'items', 'prefixItems', 'minItems', 'maxItems', 'minimum', 'exclusiveMinimum', 'minLength', 'pattern',
+  'if', 'then', 'else', 'items', 'prefixItems', 'minItems', 'maxItems', 'uniqueItems', 'minimum', 'exclusiveMinimum',
+  'minLength', 'pattern',
 ]);
 
 const escapePointer = key => String(key).replace(/~/g, '~0').replace(/\//g, '~1');
@@ -60,6 +62,9 @@ function check(schema, value, path, root) {
   for (const key of Object.keys(schema)) {
     if (!SUPPORTED.has(key) && !IGNORED.has(key)) throw new Error(`schema-check: unsupported keyword "${key}"`);
   }
+  if (schema.uniqueItems !== undefined && typeof schema.uniqueItems !== 'boolean') {
+    throw new Error('schema-check: uniqueItems must be a boolean');
+  }
   const errors = [];
   const fail = message => errors.push(`${at(path)}: ${message}`);
 
@@ -103,6 +108,12 @@ function check(schema, value, path, root) {
   if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems) fail(`must have at least ${schema.minItems} items`);
     if (schema.maxItems !== undefined && value.length > schema.maxItems) fail(`must have at most ${schema.maxItems} items`);
+    if (schema.uniqueItems === true) {
+      for (let i = 0; i < value.length; i += 1) {
+        const j = value.findIndex((other, index) => index > i && equal(value[i], other));
+        if (j >= 0) { fail(`items ${i} and ${j} are equal (uniqueItems)`); break; }
+      }
+    }
     const prefix = schema.prefixItems ?? [];
     prefix.forEach((sub, index) => {
       if (index < value.length) errors.push(...check(sub, value[index], `${path}/${index}`, root));

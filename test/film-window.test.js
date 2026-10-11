@@ -412,7 +412,9 @@ test('the window survives entering and leaving edit mode (D15)', async () => {
   configureLevelEditor({
     commitGeometry: () => {},
     getPrediction: () => undefined,
-    ensureFilm: async () => ({ images: null, raw: null, reason: null, superseded: false }),
+    // The film the window was decoded from, as the real ensureFilm hands it back from the cache: with no original,
+    // entering edit mode forgets a ready window (the window re-review's minor; test/level-editor-wiring.test.js).
+    ensureFilm: async () => decodedOutcome(RAW),
     imageInfo: async () => { throw new Error('not used'); },
   });
   await withStore([film('SP-9614')], 'SP-9614', async () => {

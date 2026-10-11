@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "spinecontour.segmentation-label/1",
   "title": "SpineContour segmentation label record",
-  "description": "One file per film, written on Save edits. Coordinates are image pixels of the stored image, origin top-left. C2 is an inferior endplate plus a centroid (owner decision 2026-10-10).",
+  "description": "One file per film, written on Save edits. Coordinates are image pixels of the stored image, origin top-left. C2 is an inferior endplate plus a centroid (owner decision 2026-10-10). Every level and femoral head lists edited_points and the record carries an edits summary (D18, 2026-10-11); both are optional here, so a record saved before them still validates (R39), and the app always writes them.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "study", "image", "film", "model", "app_version", "saved_at", "complete", "levels", "femoral_heads"],
@@ -48,6 +48,7 @@
       "type": "boolean",
       "description": "True when no level and no femoral head is not_placed."
     },
+    "edits": { "$ref": "#/$defs/edits" },
     "levels": {
       "type": "object",
       "additionalProperties": false,
@@ -85,6 +86,55 @@
     },
     "state": { "enum": ["segmented", "edited", "manual", "not_placed", "not_visible"] },
     "source": { "enum": ["model", "annotator", "film_type"] },
+    "count": { "type": "integer", "minimum": 0 },
+    "edits": {
+      "description": "D18 (2026-10-11): entries per state over the fourteen levels and the two femoral heads together, and the edited_points they list: points_moved sums the edited entries' lists, points_placed the manual entries'. Optional (R39).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["segmented", "edited", "manual", "not_placed", "not_visible", "points_moved", "points_placed"],
+      "properties": {
+        "segmented": { "$ref": "#/$defs/count" },
+        "edited": { "$ref": "#/$defs/count" },
+        "manual": { "$ref": "#/$defs/count" },
+        "not_placed": { "$ref": "#/$defs/count" },
+        "not_visible": { "$ref": "#/$defs/count" },
+        "points_moved": { "$ref": "#/$defs/count" },
+        "points_placed": { "$ref": "#/$defs/count" }
+      }
+    },
+    "editedPointsBody": {
+      "description": "D18: the keys of corners the annotator moved (edited) or placed (manual), in the order sa, sp, ia, ip.",
+      "type": "array", "uniqueItems": true, "items": { "enum": ["sa", "sp", "ia", "ip"] }
+    },
+    "editedPointsC2": {
+      "description": "D18: 'ia' and 'ip' name corners, 'centroid' the centroid; in that order.",
+      "type": "array", "uniqueItems": true, "items": { "enum": ["ia", "ip", "centroid"] }
+    },
+    "editedPointsEndplate": {
+      "description": "D18: the keys of corners, in the order sa, sp.",
+      "type": "array", "uniqueItems": true, "items": { "enum": ["sa", "sp"] }
+    },
+    "editedPointsCentroid": {
+      "description": "D18: 'centroid' names the centroid.",
+      "type": "array", "uniqueItems": true, "items": { "enum": ["centroid"] }
+    },
+    "editedPointsHead": {
+      "description": "D18: 'center' and 'radius', in that order. The rim is never listed: a rim-only change leaves the head segmented.",
+      "type": "array", "uniqueItems": true, "items": { "enum": ["center", "radius"] }
+    },
+    "editedPointsRule": {
+      "description": "R38: edited_points lists something exactly when the state is edited; segmented, not_placed and not_visible list nothing; manual lists every key (each kind's own rule). Applies only when edited_points is present (R39).",
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "enum": ["segmented", "not_placed", "not_visible"] } }, "required": ["state"] },
+          "then": { "properties": { "edited_points": { "maxItems": 0 } } }
+        },
+        {
+          "if": { "properties": { "state": { "const": "edited" } }, "required": ["state"] },
+          "then": { "properties": { "edited_points": { "minItems": 1 } } }
+        }
+      ]
+    },
     "corners4": {
       "type": "object",
       "additionalProperties": false,
@@ -128,6 +178,7 @@
       "properties": {
         "state": { "$ref": "#/$defs/state" },
         "source": { "$ref": "#/$defs/source" },
+        "edited_points": { "$ref": "#/$defs/editedPointsBody" },
         "corners": { "$ref": "#/$defs/corners4" },
         "model_corners": { "oneOf": [{ "$ref": "#/$defs/corners4" }, { "type": "null" }] },
         "contour": { "$ref": "#/$defs/contour" }
@@ -137,6 +188,11 @@
         {
           "if": { "properties": { "state": { "const": "edited" } }, "required": ["state"] },
           "then": { "properties": { "model_corners": { "$ref": "#/$defs/corners4" } } }
+        },
+        { "$ref": "#/$defs/editedPointsRule" },
+        {
+          "if": { "properties": { "state": { "const": "manual" } }, "required": ["state"] },
+          "then": { "properties": { "edited_points": { "minItems": 4 } } }
         }
       ]
     },
@@ -148,6 +204,7 @@
       "properties": {
         "state": { "$ref": "#/$defs/state" },
         "source": { "$ref": "#/$defs/source" },
+        "edited_points": { "$ref": "#/$defs/editedPointsC2" },
         "corners": { "$ref": "#/$defs/c2corners" },
         "centroid": { "$ref": "#/$defs/point" },
         "model_corners": { "oneOf": [{ "$ref": "#/$defs/c2corners" }, { "type": "null" }] },
@@ -166,6 +223,11 @@
         {
           "if": { "properties": { "state": { "const": "edited" } }, "required": ["state"] },
           "then": { "properties": { "model_corners": { "$ref": "#/$defs/c2corners" }, "model_centroid": { "$ref": "#/$defs/point" } } }
+        },
+        { "$ref": "#/$defs/editedPointsRule" },
+        {
+          "if": { "properties": { "state": { "const": "manual" } }, "required": ["state"] },
+          "then": { "properties": { "edited_points": { "minItems": 3 } } }
         }
       ]
     },
@@ -177,6 +239,7 @@
       "properties": {
         "state": { "$ref": "#/$defs/state" },
         "source": { "$ref": "#/$defs/source" },
+        "edited_points": { "$ref": "#/$defs/editedPointsEndplate" },
         "corners": { "$ref": "#/$defs/corners2" },
         "model_corners": { "oneOf": [{ "$ref": "#/$defs/corners2" }, { "type": "null" }] }
       },
@@ -185,6 +248,11 @@
         {
           "if": { "properties": { "state": { "const": "edited" } }, "required": ["state"] },
           "then": { "properties": { "model_corners": { "$ref": "#/$defs/corners2" } } }
+        },
+        { "$ref": "#/$defs/editedPointsRule" },
+        {
+          "if": { "properties": { "state": { "const": "manual" } }, "required": ["state"] },
+          "then": { "properties": { "edited_points": { "minItems": 2 } } }
         }
       ]
     },
@@ -196,12 +264,20 @@
       "properties": {
         "state": { "$ref": "#/$defs/state" },
         "source": { "$ref": "#/$defs/source" },
+        "edited_points": { "$ref": "#/$defs/editedPointsCentroid" },
         "centroid": { "$ref": "#/$defs/point" },
         "model_centroid": { "oneOf": [{ "$ref": "#/$defs/point" }, { "type": "null" }] }
       },
       "if": { "properties": { "state": { "enum": ["segmented", "edited", "manual"] } }, "required": ["state"] },
       "then": { "required": ["centroid", "model_centroid"] },
-      "else": { "not": { "anyOf": [{ "required": ["centroid"] }, { "required": ["model_centroid"] }] } }
+      "else": { "not": { "anyOf": [{ "required": ["centroid"] }, { "required": ["model_centroid"] }] } },
+      "allOf": [
+        { "$ref": "#/$defs/editedPointsRule" },
+        {
+          "if": { "properties": { "state": { "const": "manual" } }, "required": ["state"] },
+          "then": { "properties": { "edited_points": { "minItems": 1 } } }
+        }
+      ]
     },
     "geometryRule": {
       "description": "Placed states carry geometry; not_placed and not_visible carry none.",
@@ -228,6 +304,7 @@
         "id": { "enum": [1, 2] },
         "state": { "$ref": "#/$defs/state" },
         "source": { "$ref": "#/$defs/source" },
+        "edited_points": { "$ref": "#/$defs/editedPointsHead" },
         "center": { "$ref": "#/$defs/point", "description": "Fitted from rim when rim is present." },
         "radius": { "type": "number", "exclusiveMinimum": 0 },
         "rim": {
@@ -246,7 +323,14 @@
       "then": { "required": ["center", "radius", "rim", "model_circle"] },
       "else": {
         "not": { "anyOf": [{ "required": ["center"] }, { "required": ["radius"] }, { "required": ["rim"] }, { "required": ["model_circle"] }] }
-      }
+      },
+      "allOf": [
+        { "$ref": "#/$defs/editedPointsRule" },
+        {
+          "if": { "properties": { "state": { "const": "manual" } }, "required": ["state"] },
+          "then": { "properties": { "edited_points": { "minItems": 2 } } }
+        }
+      ]
     }
   }
 }

@@ -128,8 +128,12 @@ function near(a, b, eps) {
   return a === b;
 }
 
+// How far apart two values may be and still be the same, in pixels (a radius too): levelState's test, and
+// changedPoints's, so the two never disagree (ruling R38).
+const SAME_EPS = 1e-6;
+
 /** Same level geometry within `eps` pixels; two nulls are the same. */
-export function sameGeometry(a, b, eps = 1e-6) {
+export function sameGeometry(a, b, eps = SAME_EPS) {
   if (a == null || b == null) return a == null && b == null;
   return near(comparable(a), comparable(b), eps);
 }
@@ -140,6 +144,42 @@ export function levelState(entry, modelGeometry) {
   if (!entry.geometry) return 'not_placed';
   if (!modelGeometry) return 'manual';
   return sameGeometry(entry.geometry, modelGeometry) ? 'segmented' : 'edited';
+}
+
+// (Gate feedback G5, plan D18) Each kind's points under the keys the label record writes them with, in record order,
+// and where each one is in the editor's geometry. These are every value sameGeometry compares for the kind's shape
+// (a circle's rim is not one: `comparable`), which is what keeps changedPoints and levelState in agreement (R38).
+const POINTS = {
+  body: [['sa', g => g.superior?.[0]], ['sp', g => g.superior?.[1]], ['ia', g => g.inferior?.[0]], ['ip', g => g.inferior?.[1]]],
+  c2: [['ia', g => g.inferior?.[0]], ['ip', g => g.inferior?.[1]], ['centroid', g => g.centroid]],
+  endplate: [['sa', g => g.superior?.[0]], ['sp', g => g.superior?.[1]]],
+  centroid: [['centroid', g => g.centroid]],
+  circle: [['center', g => g.center], ['radius', g => g.radius]],
+};
+
+const pointsOf = code => POINTS[kindOf(code)] ?? [];
+
+/**
+ * The label record's geometry keys for a level, in record order (D18): a body 'sa', 'sp', 'ia', 'ip'; C2 'ia', 'ip',
+ * 'centroid'; T1 and S1 'sa', 'sp'; T4 'centroid'; a femoral head 'center', 'radius'. A fresh array each call.
+ */
+export function pointKeys(code) {
+  return pointsOf(code).map(([key]) => key);
+}
+
+/**
+ * The points of `geometry` that differ from `modelGeometry`, as record keys in pointKeys order (D18): each point (a
+ * head's radius, a number) is compared by the test levelState uses, within the same eps, so for the geometry the
+ * editor holds `levelState(...) === 'edited'` exactly when this is not empty (R38). A head compares its centre, then
+ * its radius, never its rim: a rim-only change lists nothing. No model geometry: every key (a manual level). No
+ * geometry: nothing. Pure; a fresh array each call.
+ * @returns {string[]}
+ */
+export function changedPoints(code, geometry, modelGeometry) {
+  if (geometry == null) return [];
+  const points = pointsOf(code);
+  if (modelGeometry == null) return points.map(([key]) => key);
+  return points.filter(([, at]) => !near(at(geometry), at(modelGeometry), SAME_EPS)).map(([key]) => key);
 }
 
 const BADGES = new Map([

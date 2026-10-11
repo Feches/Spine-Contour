@@ -6,7 +6,7 @@ import {
 } from '../renderer/data/label-record.js';
 import {
   LEVEL_CODES, kindOf, levelState, trainingStatus, openEditor, setLevelGeometry, toggleVisible,
-  startPlacing, addPoint, finishPlacing,
+  startPlacing, addPoint, finishPlacing, pointKeys,
 } from '../renderer/data/levels.js';
 import { VERSION_LABEL } from '../renderer/data/version.js';
 import { validateAgainst } from './fixtures/schema-check.js';
@@ -103,6 +103,33 @@ function assertValid(value) {
   assert.ok(result.ok, result.errors.join('\n'));
 }
 
+function failsAt(value, where) {
+  const result = validateAgainst(SCHEMA, value);
+  assert.equal(result.ok, false, `expected a failure at ${where}`);
+  assert.ok(result.errors.some(error => error.startsWith(where)), result.errors.join('\n'));
+}
+
+// (D18) The record's entries, levels and heads together, and the edits summary computed from them alone.
+const entriesOf = rec => [...Object.values(rec.levels), ...rec.femoral_heads];
+
+function summaryOf(rec) {
+  const entries = entriesOf(rec);
+  const count = state => entries.filter(entry => entry.state === state).length;
+  const points = state => entries.filter(entry => entry.state === state).reduce((n, entry) => n + entry.edited_points.length, 0);
+  return {
+    segmented: count('segmented'), edited: count('edited'), manual: count('manual'), not_placed: count('not_placed'),
+    not_visible: count('not_visible'), points_moved: points('edited'), points_placed: points('manual'),
+  };
+}
+
+// (R39) A record as saved before D18: no edits, and no edited_points on any entry.
+function withoutD18(rec) {
+  const old = structuredClone(rec);
+  delete old.edits;
+  entriesOf(old).forEach(entry => delete entry.edited_points);
+  return old;
+}
+
 // ---------- the schema and the checker ----------
 
 test('the shipped example validates against the schema', () => {
@@ -143,8 +170,11 @@ test('the amended schema holds C2 to {ia, ip}, a centroid and both model fields 
   failsAt(withC2(c2 => { delete c2.corners.ip; return c2; }), '/levels/C2/corners/ip');
   failsAt(withC2(c2 => { c2.contour = null; return c2; }), '/levels/C2/contour');
 
-  const manual = withC2(c2 => ({ ...c2, state: 'manual', source: 'annotator', model_corners: null, model_centroid: null }));
+  const manual = withC2(c2 => ({
+    ...c2, state: 'manual', source: 'annotator', edited_points: ['ia', 'ip', 'centroid'], model_corners: null, model_centroid: null,
+  }));
   assertValid(manual);
+  failsAt(withC2(c2 => ({ ...c2, state: 'manual', model_corners: null, model_centroid: null })), '/levels/C2/edited_points');
   failsAt(withC2(() => ({ state: 'not_visible', source: 'film_type', centroid: [1, 1] })), '/levels/C2');
   failsAt(withC2(() => ({ state: 'not_placed', source: 'film_type', corners: { ia: [1, 1], ip: [2, 2] } })), '/levels/C2');
   assertValid(withC2(() => ({ state: 'not_placed', source: 'film_type' })));
@@ -221,6 +251,32 @@ test('the schema check enforces the keywords the label record relies on', () => 
   assert.throws(() => ok({ contains: { type: 'string' } }, []), /unsupported keyword "contains"/);
   assert.throws(() => ok({ $ref: '#/$defs/missing' }, 1), /unknown \$ref/);
   assert.throws(() => ok({ additionalProperties: { type: 'string' } }, {}), /additionalProperties/);
+});
+
+test('the schema check enforces uniqueItems, and enum and minimum inside items (D18)', () => {
+  const ok = (schema, value) => validateAgainst(schema, value);
+  const keys = { type: 'array', uniqueItems: true, items: { enum: ['sa', 'sp'] } };
+  assert.equal(ok(keys, []).ok, true);
+  assert.equal(ok(keys, ['sa', 'sp']).ok, true);
+  assert.equal(ok(keys, ['sp', 'sa']).ok, true, 'uniqueItems says nothing of order');
+  const repeated = ok(keys, ['sa', 'sp', 'sa']);
+  assert.equal(repeated.ok, false);
+  assert.match(repeated.errors[0], /^\(root\): items 0 and 2 are equal \(uniqueItems\)/);
+  const unknown = ok(keys, ['sa', 'ia']);
+  assert.equal(unknown.ok, false, 'an enum inside items holds every item');
+  assert.match(unknown.errors[0], /^\/1: /);
+  assert.equal(ok({ uniqueItems: true }, [[1, 2], [1, 2]]).ok, false, 'items compare deeply');
+  assert.equal(ok({ uniqueItems: true }, [{ a: 1 }, { a: 1 }]).ok, false);
+  assert.equal(ok({ uniqueItems: true }, [1, '1', [1], { a: 1 }]).ok, true);
+  assert.equal(ok({ uniqueItems: false }, [1, 1]).ok, true);
+  assert.equal(ok({ uniqueItems: true }, 'not an array').ok, true, 'only arrays are held to it');
+  assert.throws(() => ok({ uniqueItems: 'yes' }, []), /uniqueItems/);
+
+  const count = { type: 'object', properties: { n: { type: 'integer', minimum: 0 } } };
+  assert.equal(ok(count, { n: 0 }).ok, true);
+  assert.equal(ok(count, { n: 3 }).ok, true);
+  assert.match(ok(count, { n: -1 }).errors[0], /^\/n: must be >= 0/);
+  assert.equal(ok(count, { n: 1.5 }).ok, false);
 });
 
 // ---------- viewSlug, appVersion, labelFileName ----------
@@ -312,7 +368,7 @@ test('toLabelRecord writes the envelope: image, film, model, versions, time, com
   assert.equal(rec.app_version, '1.0.17');
   assert.equal(rec.saved_at, SAVED_AT);
   assert.deepEqual(Object.keys(rec),
-    ['schema', 'study', 'image', 'film', 'model', 'app_version', 'saved_at', 'complete', 'levels', 'femoral_heads']);
+    ['schema', 'study', 'image', 'film', 'model', 'app_version', 'saved_at', 'complete', 'edits', 'levels', 'femoral_heads']);
   assert.equal(rec.complete, false, 'L3 is visible and not placed');
   assert.equal(rec.complete, trainingStatus(e).complete);
   const done = setLevelGeometry(e, 'L3', { superior: [[10, 50], [20, 50]], inferior: [[10, 60], [20, 60]] });
@@ -368,17 +424,17 @@ test('an edited level carries model_corners; a manual one carries null', () => {
   assert.equal(rec.levels.T1.model_corners, null);
 });
 
-test('a not_visible or not_placed level carries only state and source', () => {
+test('a not_visible or not_placed level carries only state, source and an empty edited_points', () => {
   const e = sinkEditor();
   const rec = record(e);
-  assert.deepEqual(rec.levels.C7, { state: 'not_visible', source: 'annotator' }, 'a hidden level\'s geometry is not recorded');
+  assert.deepEqual(rec.levels.C7, { state: 'not_visible', source: 'annotator', edited_points: [] }, 'a hidden level\'s geometry is not recorded');
   assert.ok(e.levels.C7.geometry, 'the editor keeps the hidden level\'s geometry');
-  assert.deepEqual(rec.levels.T4, { state: 'not_placed', source: 'film_type' });
+  assert.deepEqual(rec.levels.T4, { state: 'not_placed', source: 'film_type', edited_points: [] });
   const lumbar = record(lumbarEditor());
-  assert.deepEqual(lumbar.levels.C4, { state: 'not_visible', source: 'film_type' });
-  assert.deepEqual(lumbar.levels.T1, { state: 'not_visible', source: 'film_type' });
-  assert.deepEqual(lumbar.levels.L3, { state: 'not_placed', source: 'film_type' });
-  assert.deepEqual(Object.keys(lumbar.levels.L3), ['state', 'source']);
+  assert.deepEqual(lumbar.levels.C4, { state: 'not_visible', source: 'film_type', edited_points: [] });
+  assert.deepEqual(lumbar.levels.T1, { state: 'not_visible', source: 'film_type', edited_points: [] });
+  assert.deepEqual(lumbar.levels.L3, { state: 'not_placed', source: 'film_type', edited_points: [] });
+  assert.deepEqual(Object.keys(lumbar.levels.L3), ['state', 'source', 'edited_points']);
 });
 
 test('C2 writes corners {ia, ip} and a centroid', () => {
@@ -386,11 +442,11 @@ test('C2 writes corners {ia, ip} and a centroid', () => {
   const rec = record(segmented);
   assertValid(rec);
   assert.deepEqual(rec.levels.C2, {
-    state: 'segmented', source: 'model',
+    state: 'segmented', source: 'model', edited_points: [],
     corners: { ia: [40, 20], ip: [50, 20] }, centroid: [45, 12],
     model_corners: null, model_centroid: null,
   });
-  assert.deepEqual(Object.keys(rec.levels.C2), ['state', 'source', 'corners', 'centroid', 'model_corners', 'model_centroid']);
+  assert.deepEqual(Object.keys(rec.levels.C2), ['state', 'source', 'edited_points', 'corners', 'centroid', 'model_corners', 'model_centroid']);
   assert.equal('contour' in rec.levels.C2, false);
   assert.equal(rec.levels.C3.state, 'segmented', 'C3 stays a four-corner body');
   assert.deepEqual(Object.keys(rec.levels.C3.corners), ['sa', 'sp', 'ia', 'ip']);
@@ -398,7 +454,7 @@ test('C2 writes corners {ia, ip} and a centroid', () => {
   const edited = record(sinkEditor());
   assertValid(edited);
   assert.deepEqual(edited.levels.C2, {
-    state: 'edited', source: 'annotator',
+    state: 'edited', source: 'annotator', edited_points: ['ia', 'centroid'],
     corners: { ia: [41, 20], ip: [50, 20] }, centroid: [46, 13],
     model_corners: { ia: [40, 20], ip: [50, 20] }, model_centroid: [45, 12],
   });
@@ -407,7 +463,7 @@ test('C2 writes corners {ia, ip} and a centroid', () => {
   const manualRecord = record(manual);
   assertValid(manualRecord);
   assert.deepEqual(manualRecord.levels.C2, {
-    state: 'manual', source: 'annotator',
+    state: 'manual', source: 'annotator', edited_points: ['ia', 'ip', 'centroid'],
     corners: { ia: [1, 2], ip: [3, 4] }, centroid: [2, 1], model_corners: null, model_centroid: null,
   });
 });
@@ -416,7 +472,7 @@ test('T4 writes its centroid and the model centroid slot', () => {
   const e = setLevelGeometry(editorFor(fullGeometry(), 'full_spine'), 'T4', { centroid: [5, 6] });
   const rec = record(e);
   assertValid(rec);
-  assert.deepEqual(rec.levels.T4, { state: 'manual', source: 'annotator', centroid: [5, 6], model_centroid: null });
+  assert.deepEqual(rec.levels.T4, { state: 'manual', source: 'annotator', edited_points: ['centroid'], centroid: [5, 6], model_centroid: null });
 });
 
 test('femoral heads are two entries with rim null for unedited model output', () => {
@@ -424,8 +480,8 @@ test('femoral heads are two entries with rim null for unedited model output', ()
   assertValid(rec);
   assert.equal(rec.femoral_heads.length, 2);
   assert.deepEqual(rec.femoral_heads, [
-    { id: 1, state: 'segmented', source: 'model', center: [10, 140], radius: 5, rim: null, model_circle: null },
-    { id: 2, state: 'segmented', source: 'model', center: [20, 140], radius: 5, rim: null, model_circle: null },
+    { id: 1, state: 'segmented', source: 'model', edited_points: [], center: [10, 140], radius: 5, rim: null, model_circle: null },
+    { id: 2, state: 'segmented', source: 'model', edited_points: [], center: [20, 140], radius: 5, rim: null, model_circle: null },
   ]);
 });
 
@@ -433,7 +489,7 @@ test('femoral heads: an edited head carries its rim and the model circle; a hidd
   const rec = record(sinkEditor());
   assertValid(rec);
   assert.deepEqual(rec.femoral_heads[0], {
-    id: 1, state: 'edited', source: 'annotator', center: [11, 141], radius: 6,
+    id: 1, state: 'edited', source: 'annotator', edited_points: ['center', 'radius'], center: [11, 141], radius: 6,
     rim: [[5, 141], [17, 141], [11, 135], [11, 147]], model_circle: { center: [10, 140], radius: 5 },
   });
   assert.equal(rec.femoral_heads[1].state, 'segmented');
@@ -441,20 +497,20 @@ test('femoral heads: an edited head carries its rim and the model circle; a hidd
   const hidden = toggleVisible(lumbarEditor(), 'FH1');
   const hiddenRecord = record(hidden);
   assertValid(hiddenRecord);
-  assert.deepEqual(hiddenRecord.femoral_heads[0], { id: 1, state: 'not_visible', source: 'annotator' });
+  assert.deepEqual(hiddenRecord.femoral_heads[0], { id: 1, state: 'not_visible', source: 'annotator', edited_points: [] });
   assert.equal(hiddenRecord.femoral_heads.length, 2);
 
   const empty = record(editorFor(null, 'lumbar'));
   assertValid(empty);
   assert.deepEqual(empty.femoral_heads, [
-    { id: 1, state: 'not_placed', source: 'film_type' },
-    { id: 2, state: 'not_placed', source: 'film_type' },
+    { id: 1, state: 'not_placed', source: 'film_type', edited_points: [] },
+    { id: 2, state: 'not_placed', source: 'film_type', edited_points: [] },
   ]);
 
   const manual = record(setLevelGeometry(editorFor(null, 'lumbar'), 'FH2', { center: [30, 40], radius: 7, rim: [[23, 40], [37, 40]] }));
   assertValid(manual);
   assert.deepEqual(manual.femoral_heads[1], {
-    id: 2, state: 'manual', source: 'annotator', center: [30, 40], radius: 7, rim: [[23, 40], [37, 40]], model_circle: null,
+    id: 2, state: 'manual', source: 'annotator', edited_points: ['center', 'radius'], center: [30, 40], radius: 7, rim: [[23, 40], [37, 40]], model_circle: null,
   });
 });
 
@@ -524,8 +580,155 @@ test('every record toLabelRecord builds validates, whatever the mix of states', 
     assertValid(JSON.parse(JSON.stringify(rec)));
     Object.values(rec.levels).forEach(level => states.add(level.state));
     rec.femoral_heads.forEach(head => states.add(head.state));
+    // (D18, R38) Every entry lists its edited points, in agreement with its state, and the summary sums them.
+    for (const entry of entriesOf(rec)) {
+      assert.ok(Array.isArray(entry.edited_points), JSON.stringify(entry));
+      assert.equal(entry.state === 'edited', entry.edited_points.length > 0 && entry.state !== 'manual', JSON.stringify(entry));
+    }
+    assert.deepEqual(rec.edits, summaryOf(rec));
+    assert.equal(LEVEL_CODES.length, Object.values(rec.edits).slice(0, 5).reduce((a, b) => a + b, 0), 'every level and head counted once');
   }
   assert.deepEqual([...states].sort(), ['edited', 'manual', 'not_placed', 'not_visible', 'segmented']);
+});
+
+// ---------- edited points and the edits summary (gate feedback G5, plan D18) ----------
+
+test('D18: a segmented, an edited and a manual level and an edited head list their points, and edits sums them', () => {
+  let e = lumbarEditor();
+  e = setLevelGeometry(e, 'L2', { superior: [[10, 30], [20, 30]], inferior: [[11, 41], [20, 40]] });   // IA moved
+  e = setLevelGeometry(e, 'L3', { superior: [[10, 50], [20, 50]], inferior: [[10, 60], [20, 60]] });   // placed by hand
+  e = setLevelGeometry(e, 'FH1', { center: [12, 140], radius: 5, rim: [[7, 140], [17, 140], [12, 135]] });   // the centre moved
+  const rec = record(e);
+  assertValid(rec);
+  assert.equal(rec.levels.L1.state, 'segmented');
+  assert.deepEqual(rec.levels.L1.edited_points, []);
+  assert.equal(rec.levels.L2.state, 'edited');
+  assert.deepEqual(rec.levels.L2.edited_points, ['ia'], 'one corner moved: that corner alone');
+  assert.deepEqual(Object.keys(rec.levels.L2), ['state', 'source', 'edited_points', 'corners', 'model_corners', 'contour']);
+  assert.equal(rec.levels.L3.state, 'manual');
+  assert.deepEqual(rec.levels.L3.edited_points, ['sa', 'sp', 'ia', 'ip'], 'a manual level lists every key');
+  assert.deepEqual(rec.levels.S1.edited_points, []);
+  assert.deepEqual(rec.levels.C4.edited_points, [], 'not visible');
+  assert.equal(rec.femoral_heads[0].state, 'edited');
+  assert.deepEqual(rec.femoral_heads[0].edited_points, ['center'], 'the radius kept: the centre alone');
+  assert.deepEqual(Object.keys(rec.femoral_heads[0]), ['id', 'state', 'source', 'edited_points', 'center', 'radius', 'rim', 'model_circle']);
+  assert.deepEqual(rec.femoral_heads[1].edited_points, []);
+  for (const entry of entriesOf(rec)) {
+    if (entry.edited_points.length > 0) assert.ok(rec.levels.L2 === entry || rec.levels.L3 === entry || rec.femoral_heads[0] === entry);
+  }
+  assert.deepEqual(rec.edits, { segmented: 5, edited: 2, manual: 1, not_placed: 0, not_visible: 8, points_moved: 2, points_placed: 4 });
+  assert.deepEqual(Object.keys(rec.edits), ['segmented', 'edited', 'manual', 'not_placed', 'not_visible', 'points_moved', 'points_placed']);
+  // Each key indexes the entry's own geometry.
+  for (const key of rec.levels.L2.edited_points) assert.notDeepEqual(rec.levels.L2.corners[key], rec.levels.L2.model_corners[key]);
+  for (const key of rec.levels.L3.edited_points) assert.ok(Array.isArray(rec.levels.L3.corners[key]));
+});
+
+test('D18: a rim-only change lists nothing and stays segmented; a hidden edit lists nothing; the record never shares the list', () => {
+  const rimOnly = record(setLevelGeometry(lumbarEditor(), 'FH1', { center: [10, 140], radius: 5, rim: [[5, 140], [15, 140]] }));
+  assertValid(rimOnly);
+  assert.equal(rimOnly.femoral_heads[0].state, 'segmented', 'R38: a rim is not a point, as levelState has it');
+  assert.deepEqual(rimOnly.femoral_heads[0].edited_points, []);
+  assert.equal(rimOnly.edits.edited, 0);
+  assert.equal(rimOnly.edits.points_moved, 0);
+
+  const hidden = record(toggleVisible(sinkEditor(), 'L2'));
+  assert.deepEqual(hidden.levels.L2, { state: 'not_visible', source: 'annotator', edited_points: [] });
+
+  const sink = record(sinkEditor());
+  assert.deepEqual(sink.levels.L2.edited_points, ['sp']);
+  assert.deepEqual(sink.levels.C4.edited_points, ['sa', 'sp', 'ia', 'ip'], 'every corner shifted by 1 px');
+  assert.deepEqual(sink.levels.S1.edited_points, ['sa']);
+  assert.deepEqual(sink.levels.T1.edited_points, ['sa', 'sp'], 'manual endplate');
+  assert.deepEqual(sink.edits, summaryOf(sink));
+  // C3, C5, C6, L1, L4, L5, Head 2 | C2 (2), C4 (4), L2 (1), S1 (1), Head 1 (2) | T1 (2), L3 (4) | T4 | C7.
+  assert.deepEqual(sink.edits, { segmented: 7, edited: 5, manual: 2, not_placed: 1, not_visible: 1, points_moved: 10, points_placed: 6 });
+  const again = record(sinkEditor());
+  assert.notEqual(sink.levels.L1.edited_points, again.levels.L1.edited_points, 'a fresh list per record');
+});
+
+test('R39: a record without edited_points and edits, the shape saved before D18, still validates and reads the same', () => {
+  const oldExample = withoutD18(EXAMPLE);
+  assert.equal('edits' in oldExample, false);
+  assert.ok(entriesOf(oldExample).every(entry => !('edited_points' in entry)));
+  assertValid(oldExample);
+  const sink = record(sinkEditor());
+  const oldSink = withoutD18(sink);
+  assertValid(oldSink);
+  assert.deepEqual(recordLevels(oldSink), recordLevels(sink), 'reading a record ignores both fields');
+  // Each field is optional on its own.
+  const { edits: _edits, ...noEdits } = sink;
+  assertValid(noEdits);
+  assertValid({ ...oldSink, edits: sink.edits });
+  // A literal pre-D18 record: an empty lumbar film.
+  const literal = {
+    schema: LABEL_SCHEMA, study: 'film', image: { file: 'film.png', sha256: SHA, width_px: 10, height_px: 10 },
+    film: { region: 'lumbar', view: 'unknown' }, model: { name: 'none', version: 'unknown' }, app_version: '1.0.17',
+    saved_at: SAVED_AT, complete: false,
+    levels: Object.fromEntries(LEVEL_CODES.filter(code => kindOf(code) !== 'circle').map(code => [code, { state: 'not_placed', source: 'film_type' }])),
+    femoral_heads: [{ id: 1, state: 'not_placed', source: 'film_type' }, { id: 2, state: 'not_placed', source: 'film_type' }],
+  };
+  assertValid(literal);
+});
+
+test('the schema holds edited_points to each kind\'s keys, without repeats, in agreement with the state (R38)', () => {
+  // Each definition's edited_points enumerates exactly pointKeys(code).
+  const resolve = ref => SCHEMA.$defs[ref.replace('#/$defs/', '')];
+  for (const code of LEVEL_CODES) {
+    const def = kindOf(code) === 'circle' ? resolve(SCHEMA.properties.femoral_heads.items.$ref) : resolve(SCHEMA.properties.levels.properties[code].$ref);
+    const points = resolve(def.properties.edited_points.$ref);
+    assert.deepEqual(points.items.enum, pointKeys(code), code);
+    assert.equal(points.uniqueItems, true, code);
+    assert.equal(def.required.includes('edited_points'), false, `${code}: optional (R39)`);
+  }
+  assert.equal(SCHEMA.required.includes('edits'), false, 'edits is optional (R39)');
+  assert.equal(SCHEMA.$id, 'spinecontour.segmentation-label/1', 'the schema id is kept');
+
+  const base = record(sinkEditor());
+  assertValid(base);
+  const patched = (where, patch) => {
+    const copy = structuredClone(base);
+    patch(copy);
+    failsAt(copy, where);
+  };
+  patched('/levels/L2/edited_points', rec => { rec.levels.L2.edited_points = ['sp', 'sp']; });
+  patched('/levels/L2/edited_points/0', rec => { rec.levels.L2.edited_points = ['centroid']; });
+  patched('/levels/C2/edited_points/0', rec => { rec.levels.C2.edited_points = ['sa']; });
+  patched('/levels/S1/edited_points/0', rec => { rec.levels.S1.edited_points = ['ia']; });
+  patched('/levels/T4/edited_points/0', rec => { rec.levels.T4.edited_points = ['sa']; });
+  patched('/femoral_heads/0/edited_points/0', rec => { rec.femoral_heads[0].edited_points = ['rim']; });
+  patched('/levels/L2/edited_points', rec => { rec.levels.L2.edited_points = 'sp'; });
+  // R38 in the schema: edited lists something, manual lists every key, every other state nothing.
+  patched('/levels/L2/edited_points', rec => { rec.levels.L2.edited_points = []; });
+  patched('/femoral_heads/0/edited_points', rec => { rec.femoral_heads[0].edited_points = []; });
+  patched('/levels/C3/edited_points', rec => { rec.levels.C3.edited_points = ['sa']; });
+  patched('/levels/L3/edited_points', rec => { rec.levels.L3.edited_points = ['sa', 'sp', 'ia']; });
+  patched('/levels/T1/edited_points', rec => { rec.levels.T1.edited_points = ['sa']; });
+  patched('/levels/C7/edited_points', rec => { rec.levels.C7.edited_points = ['sa']; });
+  patched('/levels/T4/edited_points', rec => { rec.levels.T4.edited_points = ['centroid']; });
+  patched('/femoral_heads/1/edited_points', rec => { rec.femoral_heads[1].edited_points = ['center']; });
+  // The summary: seven non-negative integers, nothing else.
+  patched('/edits/points_placed', rec => { delete rec.edits.points_placed; });
+  patched('/edits/segmented', rec => { rec.edits.segmented = -1; });
+  patched('/edits/edited', rec => { rec.edits.edited = 1.5; });
+  patched('/edits/extra', rec => { rec.edits.extra = 0; });
+  patched('/edits', rec => { rec.edits = [1, 2]; });
+  assertValid({ ...base, levels: { ...base.levels, L3: { ...base.levels.L3, edited_points: ['ip', 'ia', 'sp', 'sa'] } } });
+});
+
+test('the shipped example lists its edited points and its edits block agrees with its entries', () => {
+  assert.deepEqual(EXAMPLE.levels.L1.edited_points, []);
+  assert.deepEqual(EXAMPLE.levels.L2.edited_points, ['ia', 'ip']);
+  assert.deepEqual(EXAMPLE.levels.L3.edited_points, ['sa', 'sp', 'ia', 'ip']);
+  assert.deepEqual(EXAMPLE.levels.C2.edited_points, []);
+  assert.equal(EXAMPLE.femoral_heads[1].state, 'edited');
+  assert.deepEqual(EXAMPLE.femoral_heads[1].edited_points, ['center', 'radius']);
+  for (const entry of entriesOf(EXAMPLE)) assert.ok(Array.isArray(entry.edited_points), JSON.stringify(entry));
+  assert.deepEqual(EXAMPLE.edits, summaryOf(EXAMPLE));
+  assert.deepEqual(EXAMPLE.edits, { segmented: 5, edited: 2, manual: 1, not_placed: 0, not_visible: 8, points_moved: 4, points_placed: 4 });
+  assert.deepEqual(Object.keys(EXAMPLE).slice(7, 10), ['complete', 'edits', 'levels']);
+  // The example's edited lists name the keys whose value differs from the model's.
+  const l2 = EXAMPLE.levels.L2;
+  assert.deepEqual(Object.keys(l2.corners).filter(key => l2.corners[key].some((v, i) => v !== l2.model_corners[key][i])), l2.edited_points);
 });
 
 // ---------- recordLevels ----------
@@ -582,7 +785,9 @@ test('recordLevels reads the example record: FH1/FH2 from femoral_heads, states 
   assert.equal(levels.L2.source, 'annotator');
   assert.deepEqual(levels.S1.geometry, { superior: [[989, 2050], [1323, 1860]] });
   assert.deepEqual(levels.FH1, { visible: true, source: 'model', geometry: { center: [728, 2346], radius: 136, rim: null } });
-  assert.deepEqual(levels.FH2.geometry, { center: [792, 2302], radius: 143, rim: null });
+  assert.deepEqual(levels.FH2, {
+    visible: true, source: 'annotator', geometry: { center: [795, 2302], radius: 141, rim: [[654, 2302], [936, 2302], [795, 2161]] },
+  }, 'an edited head reads its rim (D18 made Head 2 edited)');
 });
 
 test('recordLevels leaves out what a damaged record does not say, and never invents geometry', () => {
