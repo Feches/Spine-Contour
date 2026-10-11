@@ -21,6 +21,7 @@ import { displayStatus, isReviewed, reviewedLabel, reviewBlockedReason } from '.
 import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
 import { failureReason, failureTitle } from '../data/failure.js';
 import { mountMeasurements } from '../components/measurements.js';
+import { mountLevelEditor } from '../components/level-editor.js';
 import { mountClinicalData } from '../components/clinical-data.js';
 import { calibrationForStudy } from '../calibration.js';
 import { preferReviewedCalibration } from '../data/calibration.js';
@@ -795,6 +796,9 @@ export function render(state) {
   // says: Processing while this study's run is in flight, Reviewed once marked. Rebuilt by update()
   // only when it would change.
   const statusHost = el('div', { class: 'analysis-status' });
+  // (2026-10-10, level editor Task 11) The header's eyebrow while editing (handoff §3), before the status badge;
+  // update() shows it only in edit mode.
+  const editingEyebrow = el('div', { class: 'analysis-meta analysis-editing', hidden: true }, 'EDITING SEGMENTATION');
 
   // The same DEMO pill the Studies list puts beside the patient. A demo study's numbers are
   // fabricated for exploring the interface; the header is where the user is looking when they
@@ -805,6 +809,7 @@ export function render(state) {
     headerMeta,
     study.source === 'demo' ? el('span', { class: 'pill-demo' }, 'DEMO') : null,
     el('div', { class: 'analysis-spacer' }),
+    editingEyebrow,
     statusHost,
     confidenceBadge);
 
@@ -831,13 +836,20 @@ export function render(state) {
   const measurementsHost = el('div', { class: 'analysis-panel-host' });
   const similarHost = el('div', { class: 'analysis-similar is-hidden' },
     'Find similar arrives in a later build.');
+  // (2026-10-10, level editor Task 11) The Vertebral levels panel. In edit mode it replaces the tabs, the actions
+  // row and both tab bodies; update() swaps them. Its class is in the stage keyboard's own-Tab-order list
+  // (components/viewer.js OWN_TAB_ORDER), so Tab moves focus normally inside it.
+  const levelHost = el('div', { class: 'analysis-level-host is-hidden' });
 
+  const tabsRow = el('div', { class: 'analysis-tabs' },
+    el('div', { class: 'analysis-tabgroup' }, tabMeas, tabSim));
+  const actionsRow = el('div', { class: 'analysis-actions' }, exportButton, reviewButton, reviewNote);
   const panel = el('aside', { class: 'analysis-panel' },
-    el('div', { class: 'analysis-tabs' },
-      el('div', { class: 'analysis-tabgroup' }, tabMeas, tabSim)),
-    el('div', { class: 'analysis-actions' }, exportButton, reviewButton, reviewNote),
+    tabsRow,
+    actionsRow,
     measurementsHost,
-    similarHost);
+    similarHost,
+    levelHost);
 
   const viewerHost = el('div', { class: 'analysis-viewer-host' });
   const body = el('div', { class: 'analysis-body' }, viewerHost, panel);
@@ -887,6 +899,7 @@ export function render(state) {
 
   const viewer = mountViewer(viewerHost);
   const measurementsPanel = mountMeasurements(measurementsHost);
+  const levelPanel = mountLevelEditor(levelHost);
   const clinical = mountClinicalData(clinicalHost);
 
   viewer.setRunHandler(() => {
@@ -1051,11 +1064,22 @@ export function render(state) {
 
     tabMeas.classList.toggle('is-active', live.tab === 'meas');
     tabSim.classList.toggle('is-active', live.tab === 'sim');
-    measurementsHost.classList.toggle('is-hidden', live.tab !== 'meas');
-    similarHost.classList.toggle('is-hidden', live.tab !== 'sim');
+    // (2026-10-10, level editor Task 11) Edit mode swaps the panel: the tabs, the actions row and both tab bodies
+    // hide and the Vertebral levels panel shows; DONE brings them back on the tab that was active. A real
+    // boolean: classList.toggle with an undefined force toggles instead of setting.
+    const editing = Boolean(live.editing);
+    panel.classList.toggle('is-editing', editing);
+    tabsRow.classList.toggle('is-hidden', editing);
+    actionsRow.classList.toggle('is-hidden', editing);
+    measurementsHost.classList.toggle('is-hidden', editing || live.tab !== 'meas');
+    similarHost.classList.toggle('is-hidden', editing || live.tab !== 'sim');
+    levelHost.classList.toggle('is-hidden', !editing);
+    editingEyebrow.hidden = !editing;
 
     viewer.updateViewer(open);
     measurementsPanel.updateMeasurements(open);
+    // Same contract: every notification, and the panel's own gate decides whether to rebuild.
+    levelPanel.update(live, open);
     // Same contract as updateMeasurements: this runs on EVERY store notification, pan frames
     // included, and the component's own reference-keyed gate decides whether to rebuild. It
     // reads the store itself, so it takes no argument.
