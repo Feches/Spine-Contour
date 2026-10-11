@@ -3,7 +3,8 @@
 **Last updated:** 2026-10-11
 **Branch:** `worktree-level-editor` in the worktree `.claude\worktrees\level-editor` of the main checkout, off
 `origin/main` @ `20fd4c5` (v1.0.17): the vertebral level editor, window / level and the label record — BUILT, human
-gate NOT run, nothing pushed (first section under "Where things stand").
+gate IN PROGRESS since 2026-10-11 (G1 and G2 are its first findings), nothing pushed (first section under "Where
+things stand").
 **2026-10-02 branch (historical):** `claude/issue-39-failed-status-port` (the Failed-status additions on 1.0.13, issue
 #39 follow-up; DONE, merged with v1.0.14, release 1.0.15 committed and awaiting the PR)
 **Checkout:** `C:\Users\codyj\Spine Contour Desktop\Spine-Contour`, the main checkout on this workstation (no
@@ -50,7 +51,7 @@ algorithm changed; no screenshots were added.
 
 ## Where things stand
 
-### Vertebral level editor, window / level, label record — BUILT, human gate NOT run (branch `worktree-level-editor`, worktree `.claude/worktrees/level-editor`, off `origin/main` @ `20fd4c5`, v1.0.17)
+### Vertebral level editor, window / level, label record — BUILT, human gate IN PROGRESS (branch `worktree-level-editor`, worktree `.claude/worktrees/level-editor`, off `origin/main` @ `20fd4c5`, v1.0.17)
 
 2026-10-10. Edit mode on the Analysis screen is now a level editor. In edit mode the right panel is the **Vertebral
 levels** panel: sixteen levels in five groups (C2–C7, T1 · T4, L1–L5, S1, two femoral heads), each with a visibility
@@ -1841,7 +1842,8 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
      `drawDynamicLayer` floor the drawing ratio at 1 image pixel per CSS pixel (`dcd0cb5`). *Why:* the dynamic canvas is
      drawn at the stored image's resolution and CSS-scaled with the film, so past 1:1 on screen (which the 8x cap makes
      reachable) every CSS-sized stroke, dash, handle and label fell under one image pixel, was anti-aliased away and
-     then magnified (faint lines, unreadable plates). Below 1:1 the overlay holds its screen size as before; hit testing is in client space and unaffected.
+     then magnified (faint lines, unreadable plates). Below 1:1 the overlay holds its screen size as before; hit testing
+     is in client space, with a grab radius that follows the drawn handle past 1:1 (2df1373, the re-review's finding).
      *Cost if wrong:* handles and labels look large at 8x on a film that is already at 1:1 at low zoom (a small film).
 
 ## Release prerequisites — v1.0.0 main promotion

@@ -1,6 +1,6 @@
 # Spine Contour
 
-**2026-10-10 vertebral level editor, window / level, label record (BUILT, human gate NOT run):** branch
+**2026-10-10 vertebral level editor, window / level, label record (BUILT, human gate IN PROGRESS since 2026-10-11):** branch
 `worktree-level-editor` in worktree `.claude/worktrees/level-editor`, off `origin/main` @ `20fd4c5` (v1.0.17). Edit mode
 is a level editor: the right panel becomes the Vertebral levels panel, sixteen levels in five groups (C2–C7, T1 · T4,
 L1–L5, S1, two femoral heads) with a visibility checkbox, a state badge and Place… / CLEAR / CANCEL each

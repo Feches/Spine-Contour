@@ -148,7 +148,8 @@ The stage zooms to 800% (gate feedback G1, 2026-10-11), so a film can be inspect
 pixel. Up to 1:1 the overlay (handles, outlines, the dashed ghost, the placement guide and the level plates) keeps its
 size on screen at every zoom. Past 1:1 it keeps its size in image pixels and magnifies with the film instead of
 shrinking under a pixel, so the lines stay crisp and the plates legible (R28); at 800% on a small film the handles and
-plates are correspondingly large. The same holds for the hip line and its markers outside edit mode.
+plates are correspondingly large, and a handle can be grabbed anywhere on its disc. The same holds for the hip line
+and its markers outside edit mode.
 
 ## Discard, RESET TO PREDICTION, Save edits
 

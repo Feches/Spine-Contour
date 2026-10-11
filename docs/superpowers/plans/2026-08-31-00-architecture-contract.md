@@ -1480,7 +1480,9 @@ refitted by a rim-point drag, and hidden with its checkbox; Delete and Backspace
   ratio at 1 image pixel per CSS pixel (`Math.max(1, opts.pixelRatio ?? 1)`; `opts.pixelRatio` is still image pixels
   per CSS pixel). Below 1:1 every screen-sized part of the overlay holds its size on screen; past 1:1 it keeps its
   image-pixel size and magnifies with the film instead of falling under one image pixel. Hit testing
-  (`viewer/level-handles.js` `hitTestLevelHandles`) is in client space and unaffected.
+  (`viewer/level-handles.js` `hitTestLevelHandles`) is in client space; `components/viewer.js` passes it a grab radius
+  of `Math.max(14, LEVEL_HANDLE_RADIUS_PX / Math.min(1, pixelRatio))` CSS px (`LEVEL_HANDLE_RADIUS_PX`, 6, is now
+  exported by `viewer/canvas.js`), so a handle drawn larger than 14 px past 1:1 is grabbable over its whole disc.
 
 **Gate feedback (2026-10-11).** G1: `viewer/interactions.js` `ZOOM_MAX` is 8 (was 2.4). G2: the step chips choose which
 point the next placement click sets. `state.levelEditor.placing` is `{code, points, current, history} | null` for every
