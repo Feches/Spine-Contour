@@ -533,9 +533,13 @@
   text-align: left;
 }
 
-/* The placement's steps: done (filled dot, ink), current (accent on its soft ground, filled dot),
-   pending (outline dot, muted). The dot's colour is the step's handle colour, set inline as
-   --step-color from viewer/canvas.js colorFor, so the chip and the canvas share one source. */
+/* The placement's steps: done (filled dot, ink), current (accent on its soft ground, the dot outlined
+   in its colour), pending (outline dot, muted); a placed step chosen again is done and current, a
+   filled dot on the soft ground. The dot's colour is the step's handle colour, set inline as
+   --step-color from viewer/canvas.js colorFor, so the chip and the canvas share one source.
+   (Gate feedback G2, 2026-10-11) Only a placed point fills its dot, as in the prototype
+   (Main.dc.html: dotBg is the colour when done, dotBorder when done or current), so the chips show
+   which points are set when they are set in any order. */
 .viewer-steps {
   display: flex;
   align-items: center;
@@ -567,11 +571,32 @@
   border: 1.5px solid var(--stage-line);
   background: transparent;
 }
-.viewer-step.is-done .viewer-step-dot,
-.viewer-step.is-current .viewer-step-dot {
+.viewer-step.is-current .viewer-step-dot { border-color: var(--step-color); }
+.viewer-step.is-done .viewer-step-dot {
   border-color: var(--step-color);
   background: var(--step-color);
 }
+/* A body, C2, endplate or centroid chip is a button that makes its step the one the next film click
+   sets (G2); a femoral head's chips stay spans. The button's own chrome is reset so it looks like the
+   span; .viewer-step.is-current (0,2,0) still wins the ground over this rule (0,1,1). */
+button.viewer-step {
+  margin: 0;
+  border: none;
+  background: none;
+  line-height: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+button.viewer-step:hover:not(:disabled):not(.is-current) {
+  background: var(--stage-well);
+  color: var(--stage-ink);
+}
+button.viewer-step:focus-visible {
+  outline: 2px solid var(--stage-accent);
+  outline-offset: 2px;
+}
+button.viewer-step:disabled { opacity: .35; cursor: not-allowed; }
 
 /* The window / level panel (handoff §3, §6): a third glass bar under the edit bar, display only. */
 .viewer-wl {

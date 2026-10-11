@@ -614,11 +614,13 @@ function drawPlacedLevel(ctx, editor, code, geometry, { overlays, fillAlpha, pix
   return true;
 }
 
-// The placement in progress: each click as a dot in its step's colour, then either a dashed line through them or,
-// for a femoral head with two points or more, the dashed circle they fit and its centre.
+// The placement in progress: each placed point as a dot in its step's colour, then either a dashed line through them
+// in step order or, for a femoral head with two points or more, the dashed circle they fit and its centre. `points`
+// holds one slot per step, null until set (gate feedback G2: the steps may be set in any order).
 function drawPlacement(ctx, canvas, placing, pixelRatio) {
-  const points = placing.points ?? [];
-  if (points.length === 0) return;
+  const placed = (placing.points ?? []).flatMap((point, index) => (point ? [{ point, index }] : []));
+  if (placed.length === 0) return;
+  const points = placed.map(({ point }) => point);
   const { steps } = placementSteps(placing.code);
   const circle = kindOf(placing.code) === 'circle';
   const fit = circle && points.length >= 2 ? fitRim(points, Math.hypot(canvas.width, canvas.height)) : null;
@@ -636,7 +638,7 @@ function drawPlacement(ctx, canvas, placing, pixelRatio) {
     ctx.stroke();
     ctx.restore();
   }
-  points.forEach((point, index) => {
+  placed.forEach(({ point, index }) => {
     ctx.beginPath();
     ctx.arc(point[0], point[1], LEVEL_HANDLE_RADIUS_PX * pixelRatio, 0, 2 * Math.PI);
     ctx.fillStyle = colorFor(steps[index]?.colorKey ?? 'trace', placing.code);

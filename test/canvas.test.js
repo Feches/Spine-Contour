@@ -4,7 +4,7 @@ import {
   LEVEL_RGB, BASE_OVERLAY_ALPHA, FEMORAL_OVERLAY_COLOR, CORNER_COLORS, TRACE_COLOR, buildLabelColorMap, buildOverlayPixels,
   drawDynamicLayer, drawStaticLayer, drawLevelEditor, colorFor, constructionLabel, thumbnailSize, imagesFromRaw, disposeStudyImages,
 } from '../renderer/viewer/canvas.js';
-import { LEVEL_CODES, openEditor, selectLevel, setLevelGeometry, startPlacing, addPoint, toggleVisible } from '../renderer/data/levels.js';
+import { LEVEL_CODES, openEditor, selectLevel, setLevelGeometry, startPlacing, addPoint, setPlacingStep, toggleVisible } from '../renderer/data/levels.js';
 
 test('buildLabelColorMap maps L1..L5 backend label ids to the fixed RGB ramp', () => {
   const labels = { BACKGROUND: 0, L1: 20, L2: 21, L3: 22, L4: 23, L5: 24, S1: 25 };
@@ -444,6 +444,23 @@ test('a placement shows its points in the step colours and joins them with a das
   assert.deepEqual([line.strokeStyle, line.lineWidth], [ACCENT, 1.5]);
   assert.deepEqual(painted.filter(p => p.name === 'stroke' && p.strokeStyle === STAGE_BG).map(p => p.lineWidth), [2, 2]);
   assert.deepEqual(labelsOf(calls), [], 'a placement is no placed level');
+});
+
+test('a placement in a chosen order draws each point in its own step colour, the line through them in step order', () => {
+  const size = { width: 200, height: 150 };
+  let editor = addPoint(setPlacingStep(startPlacing(emptyEditor(), 'L3'), 3), [60, 50], size);   // IP first
+  const one = drawEditor(editor);
+  assert.deepEqual(arcsOf(one.calls).map(([x, y, r]) => [x, y, r]), [[60, 50, 6]]);
+  assert.deepEqual(one.painted.filter(p => p.name === 'fill').map(p => p.fillStyle), [CORNER_COLORS.IP]);
+  assert.equal(dashed(one.calls, [6, 5]).length, 0, 'one point: no line yet');
+
+  editor = addPoint(editor, [30, 20], size);   // SA, the first empty step
+  const { calls, painted } = drawEditor(editor);
+  assert.deepEqual(arcsOf(calls).map(([x, y, r]) => [x, y, r]), [[30, 20, 6], [60, 50, 6]], 'SA, then IP: step order');
+  assert.deepEqual(painted.filter(p => p.name === 'fill').map(p => p.fillStyle), [CORNER_COLORS.SA, CORNER_COLORS.IP]);
+  assert.equal(dashed(calls, [6, 5]).length, 1);
+  assert.ok(calls.some(([name, args]) => name === 'moveTo' && args[0] === 30 && args[1] === 20), 'the line starts at SA');
+  assert.ok(calls.some(([name, args]) => name === 'lineTo' && args[0] === 60 && args[1] === 50), 'and runs to IP');
 });
 
 test('the level being placed is not drawn, though it has geometry; its handles are not either', () => {

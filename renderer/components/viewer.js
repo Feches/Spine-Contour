@@ -19,8 +19,9 @@ import { kindOf, rowName, placementSteps, placingLabel, placingHelp, canFinishPl
 import { levelHandles, hitTestLevelHandles, moveHandle, nudgeHandle, nextLevelHandle, handleAt } from '../viewer/level-handles.js';
 import { dragWindow, windowText } from '../viewer/window-level.js';
 import {
-  enterLevelEditor, requestExit, keepEditing, placePoint, undoPlacedPoint, cancelPlace, fitPlacing, setFocusedHandle,
-  selectLevelRow, commitHandleMove, openWindowPanel, closeWindowPanel, setWindow, resetWindow, resetLevelsToModel,
+  enterLevelEditor, requestExit, keepEditing, placePoint, undoPlacedPoint, selectPlacingStep, cancelPlace, fitPlacing,
+  setFocusedHandle, selectLevelRow, commitHandleMove, openWindowPanel, closeWindowPanel, setWindow, resetWindow,
+  resetLevelsToModel,
 } from '../level-editor.js';
 
 // Icons lifted verbatim from design-reference/template.html's Study Analysis toolbar.
@@ -542,12 +543,15 @@ export function mountViewer(container) {
     // makes both the click-fires and no-click-fires orders safe.
   }
 
-  // One placement click, at the pointer, clamped to the film by clientToImage and addPoint.
+  // One placement click, at the pointer, clamped to the film by clientToImage and addPoint. The pointer is remembered
+  // for a chord's take-back only when the press set a point: a press addPoint dropped (within 1 px of another point
+  // of the placement, R26) leaves UNDO's newest point alone.
   function placeAt(event) {
     event.preventDefault();
     suppressClick = true;
+    const before = getState().levelEditor;
     placePoint(clientToImage(event, dynamicCanvas), imageSize());
-    placePointer = event.pointerId;
+    placePointer = getState().levelEditor !== before ? event.pointerId : null;
   }
 
   // Gesture precedence: a LEFT+RIGHT chord pans in every mode and outranks everything below
@@ -772,15 +776,29 @@ export function mountViewer(container) {
     resetLevelsToModel();
   }
 
-  // The step chips of the placement in progress: done (filled dot), current (accent), pending (outline).
-  function buildSteps(editor) {
-    const { code, points } = editor.placing;
-    const placed = points.length;
+  // The step chips of the placement in progress: done (filled dot), current (accent ground), pending (outline dot); a
+  // placed step chosen again is both. (Gate feedback G2, 2026-10-11) For a body, C2, an endplate or a centroid each
+  // chip is a button that makes its step the one the next film click sets, in any order, a placed one included (the
+  // click re-places it); disabled while this study's run is in flight, like UNDO. A femoral head's rim points are
+  // unordered, so its chips stay plain progress (the owner's choice).
+  function buildSteps(editor, busy) {
+    const { code, points, current } = editor.placing;
+    const circle = kindOf(code) === 'circle';
+    const next = circle ? points.indexOf(null) : current;
     return placementSteps(code).steps.map((step, index) => {
       const dot = el('span', { class: 'viewer-step-dot' });
       dot.style.setProperty('--step-color', colorFor(step.colorKey, code));
-      const state = index < placed ? ' is-done' : index === placed ? ' is-current' : '';
-      return el('span', { class: `viewer-step${state}` }, dot, step.label);
+      const done = points[index] != null;
+      const className = `viewer-step${done ? ' is-done' : ''}${index === next ? ' is-current' : ''}`;
+      if (circle) return el('span', { class: className }, dot, step.label);
+      return el('button', {
+        type: 'button',
+        class: className,
+        title: done ? `Re-place ${step.label}` : `Place ${step.label} next`,
+        'aria-current': index === next ? 'step' : undefined,
+        disabled: busy,
+        onClick: () => selectPlacingStep(index),
+      }, dot, step.label);
     });
   }
 
@@ -796,10 +814,15 @@ export function mountViewer(container) {
     setText(editLabel, windowOpen ? (placing ? WINDOW_PAUSED_LABEL : WINDOW_LABEL)
       : placing ? placingLabel(editor) : EDIT_LABEL);
     setText(editHelp, editHelpText(editor, windowOpen));
-    const stepsKey = [showPlacement ? placing : null];
+    // Rebuilt on every placing change (a new object per step) and when a run starts or ends (the chips' disabled state).
+    const stepsKey = [showPlacement ? placing : null, busy];
     if (!sameKey(stepsKey, lastSteps)) {
       lastSteps = stepsKey;
-      steps.replaceChildren(...(showPlacement ? buildSteps(editor) : []));
+      // A chip chosen from the keyboard is replaced by the rebuild; its successor at the same place keeps the focus.
+      const focused = [...steps.children].indexOf(document.activeElement);
+      steps.replaceChildren(...(showPlacement ? buildSteps(editor, busy) : []));
+      const successor = focused >= 0 ? steps.children[focused] : null;
+      if (successor instanceof HTMLButtonElement && !successor.disabled) successor.focus();
     }
     const circle = showPlacement && kindOf(placing.code) === 'circle';
     steps.classList.toggle('is-hidden', !showPlacement);
@@ -807,7 +830,8 @@ export function mountViewer(container) {
     // (R22) FIT follows finishPlacing's own rule: enough rim points, and a fit with a radius of at least 0.5 px.
     fitButton.disabled = busy || !circle || !canFinishPlacing(editor, imageSize());
     undoButton.classList.toggle('is-hidden', !showPlacement);
-    undoButton.disabled = busy || !placing || placing.points.length === 0;
+    // (G2) UNDO clears the most recently set point, so it is live while any point is set.
+    undoButton.disabled = busy || !placing || placing.history.length === 0;
     placeCancelButton.classList.toggle('is-hidden', !showPlacement);
     placeCancelButton.disabled = busy;
     placeDivider.classList.toggle('is-hidden', !showPlacement);

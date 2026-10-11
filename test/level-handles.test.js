@@ -407,7 +407,7 @@ test('a handle on a level that was hidden is treated as no current handle, not a
 });
 
 test('a handle on the level being placed is treated as no current handle too', () => {
-  const editor = { ...selectLevel(lumbarEditor(), 'L4'), placing: { code: 'L4', points: [] } };
+  const editor = { ...selectLevel(lumbarEditor(), 'L4'), placing: { code: 'L4', points: [null, null, null, null], current: 0, history: [] } };
   assert.deepEqual(handleOrder(editor).filter(entry => entry.code === 'L4'), []);
   assert.deepEqual(nextLevelHandle(editor, 1), { code: 'L1', handle: 'SA' });
 });

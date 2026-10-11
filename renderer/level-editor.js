@@ -17,8 +17,8 @@ import { loadLabelRecord, saveLabelRecord, deleteLabelRecord } from './api.js';
 import { showToast } from './components/toast.js';
 import {
   LEVEL_CODES, openEditor, toggleVisible, toggleGroup, toggleOpen, selectLevel, startPlacing, addPoint, undoPoint,
-  cancelPlacing, finishPlacing, clearLevel, setLevelGeometry, unsavedCount, canSave, markSaved, revertToBaseline,
-  sameGeometry,
+  setPlacingStep, cancelPlacing, finishPlacing, clearLevel, setLevelGeometry, unsavedCount, canSave, markSaved,
+  revertToBaseline, sameGeometry,
 } from './data/levels.js';
 import { projectGeometry, projectsLevel, regionFollowsLevels } from './data/level-projection.js';
 import { toLabelRecord, recordLevels, labelFileName, appVersion } from './data/label-record.js';
@@ -395,8 +395,17 @@ export function placePoint(point, imageSize) {
   update((editor) => (editor.placing && !editor.window?.open ? addPoint(editor, point, imageSize) : editor), { edit: true });
 }
 
+/** UNDO: the most recently set point of the placement is cleared and its step becomes the current one. */
 export function undoPlacedPoint() {
   update((editor) => undoPoint(editor));
+}
+
+/**
+ * A step chip (gate feedback G2): the step the next placement click sets, a placed one included (that click re-places
+ * it). Not for a femoral head (setPlacingStep). Paused while the window / level panel is open. Nothing is committed.
+ */
+export function selectPlacingStep(index) {
+  update((editor) => (editor.placing && !editor.window?.open ? setPlacingStep(editor, index) : editor));
 }
 
 export function cancelPlace() {

@@ -7,7 +7,7 @@ import {
   toggleVisible, toggleGroup, toggleOpen, selectLevel, startPlacing, addPoint, undoPoint, cancelPlacing,
   finishPlacing, canFinishPlacing, clearLevel, setLevelGeometry, unsavedCount, canSave, unsavedText, summaryText,
   groupCountText, groupCheckState, trainingStatus, placingLabel, placingHelp, dependencyNote,
-  markSaved, revertToBaseline,
+  markSaved, revertToBaseline, setPlacingStep,
 } from '../renderer/data/levels.js';
 import { SEGMENTAL_PAIRS } from '../renderer/data/segmental.js';
 import { DISC_LEVEL_PAIRS } from '../renderer/data/disc-heights.js';
@@ -64,6 +64,9 @@ function lumbarEditor(extra = {}) {
 function blankEditor(region = 'lumbar') {
   return openEditor({ study: { id: 'SP-0002', geometry: null, labelFile: null }, region, modelGeometry: null, saved: null });
 }
+
+// How many points of the placement in progress are set (its `points` holds one slot per step, null until set).
+const placedCount = editor => editor.placing.points.filter(Boolean).length;
 
 // ---------- codes, groups, names ----------
 
@@ -658,16 +661,20 @@ test('selectLevel cancels a placement of another level but keeps a placement of 
 test('startPlacing begins an empty placement, selects the level and drops the focused handle', () => {
   const e = selectLevel(lumbarEditor(), 'L2');
   const placing = startPlacing(e, 'L3');
-  assert.deepEqual(placing.placing, { code: 'L3', points: [] });
+  assert.deepEqual(placing.placing, { code: 'L3', points: [null, null, null, null], current: 0, history: [] });
   assert.equal(placing.selected, 'L3');
   assert.equal(placing.handle, null);
   assert.equal(e.placing, null, 'the original is untouched');
+  assert.deepEqual(startPlacing(e, 'C2').placing, { code: 'C2', points: [null, null, null], current: 0, history: [] });
+  assert.deepEqual(startPlacing(e, 'S1').placing, { code: 'S1', points: [null, null], current: 0, history: [] });
+  assert.deepEqual(startPlacing(e, 'T4').placing, { code: 'T4', points: [null], current: 0, history: [] });
+  assert.deepEqual(startPlacing(e, 'FH1').placing, { code: 'FH1', points: [null, null, null, null], current: 0, history: [] });
 });
 
 test('addPoint clamps clicks to the image and finishes a body on the fourth corner', () => {
   let e = startPlacing(lumbarEditor(), 'L3');
   e = addPoint(e, [-5, 20.5], IMAGE);
-  assert.deepEqual(e.placing.points, [[0, 20.5]]);
+  assert.deepEqual(e.placing.points, [[0, 20.5], null, null, null]);
   e = addPoint(e, [500, 20], IMAGE);
   assert.deepEqual(e.placing.points[1], [199, 20], 'width - 1');
   e = addPoint(e, [10, 900], IMAGE);
@@ -687,9 +694,9 @@ test('addPoint drops a click within one pixel of the previous point for bodies, 
   e = addPoint(e, [50, 50], IMAGE);
   assert.equal(addPoint(e, [50.5, 50.4], IMAGE), e, 'ignored: the editor comes back unchanged');
   assert.equal(addPoint(e, [50, 50], IMAGE), e);
-  assert.equal(addPoint(e, [51, 50], IMAGE).placing.points.length, 2, 'exactly 1 px apart is accepted');
+  assert.equal(placedCount(addPoint(e, [51, 50], IMAGE)), 2, 'exactly 1 px apart is accepted');
   const c2 = addPoint(startPlacing(blankEditor('cervical'), 'C2'), [20, 20], IMAGE);
-  assert.equal(c2.placing.points.length, 1, 'the first click has no previous point');
+  assert.equal(placedCount(c2), 1, 'the first click has no previous point');
   assert.equal(addPoint(c2, [20.2, 20.2], IMAGE), c2);
   const endplate = addPoint(startPlacing(blankEditor('lumbar'), 'S1'), [30, 30], IMAGE);
   assert.equal(addPoint(endplate, [30, 30], IMAGE), endplate);
@@ -707,10 +714,10 @@ test('addPoint drops a femoral head click within one pixel of ANY of its rim poi
   assert.equal(addPoint(e, [50, 50], IMAGE), e, 'a double-click is one rim point: the editor comes back unchanged');
   assert.equal(addPoint(e, [50.6, 50.6], IMAGE), e, 'within 1 px of the first');
   e = addPoint(e, [80, 50], IMAGE);
-  assert.equal(e.placing.points.length, 2);
+  assert.equal(placedCount(e), 2);
   assert.equal(addPoint(e, [50.3, 49.8], IMAGE), e, 'within 1 px of an earlier rim point, not only the last one');
   assert.equal(addPoint(e, [79.5, 50], IMAGE), e, 'within 1 px of the last');
-  assert.equal(addPoint(e, [51, 50], IMAGE).placing.points.length, 3, 'exactly 1 px apart is accepted');
+  assert.equal(placedCount(addPoint(e, [51, 50], IMAGE)), 3, 'exactly 1 px apart is accepted');
   const clamped = addPoint(startPlacing(blankEditor('lumbar'), 'FH2'), [500, 50], IMAGE);
   assert.equal(addPoint(clamped, [900, 50], IMAGE), clamped, 'the clamped click is compared');
 });
@@ -718,15 +725,18 @@ test('addPoint drops a femoral head click within one pixel of ANY of its rim poi
 test('two near-identical rim points cannot finish a femoral head: no radius under 0.5 px (R22)', () => {
   // Two rim points 0.8 px apart. addPoint now drops such a second click, so the placement is built directly, as a
   // double-click left it before R22; finishPlacing must refuse it on its own.
-  const near = { ...startPlacing(blankEditor('lumbar'), 'FH1'), placing: { code: 'FH1', points: [[50, 50], [50.8, 50]] } };
-  assert.equal(fitRim(near.placing.points).radius, 0.4, 'the fit itself would be 0.4 px');
+  const near = {
+    ...startPlacing(blankEditor('lumbar'), 'FH1'),
+    placing: { code: 'FH1', points: [[50, 50], [50.8, 50], null, null], current: 2, history: [0, 1] },
+  };
+  assert.equal(fitRim(near.placing.points.slice(0, 2)).radius, 0.4, 'the fit itself would be 0.4 px');
   assert.equal(canFinishPlacing(near, IMAGE), false);
   assert.equal(finishPlacing(near, IMAGE), near, 'FIT is a no-op');
-  const same = { ...near, placing: { code: 'FH1', points: [[50, 50], [50, 50]] } };
+  const same = { ...near, placing: { ...near.placing, points: [[50, 50], [50, 50], null, null] } };
   assert.equal(canFinishPlacing(same, IMAGE), false, 'radius 0');
   assert.equal(finishPlacing(same, IMAGE), same);
   const third = addPoint(near, [70, 60], IMAGE);
-  assert.equal(third.placing.points.length, 3, 'a third distinct point is taken');
+  assert.equal(placedCount(third), 3, 'a third distinct point is taken');
   assert.equal(canFinishPlacing(third, IMAGE), true, 'and the fit now has a radius');
   const done = finishPlacing(third, IMAGE);
   assert.equal(done.placing, null);
@@ -797,10 +807,170 @@ test('undoPoint removes the last point, and is a no-op at zero points', () => {
   assert.equal(undoPoint(e), e);
   e = addPoint(addPoint(e, [10, 10], IMAGE), [30, 10], IMAGE);
   const undone = undoPoint(e);
-  assert.deepEqual(undone.placing, { code: 'L3', points: [[10, 10]] });
-  assert.equal(e.placing.points.length, 2, 'the original is untouched');
+  assert.deepEqual(undone.placing, { code: 'L3', points: [[10, 10], null, null, null], current: 1, history: [0] });
+  assert.deepEqual(e.placing.points, [[10, 10], [30, 10], null, null], 'the original is untouched');
+  assert.deepEqual(e.placing.history, [0, 1]);
   const idle = lumbarEditor();
   assert.equal(undoPoint(idle), idle);
+});
+
+// ---------- free-order placement: the step chips (gate feedback G2, 2026-10-11) ----------
+
+test('addPoint on a femoral head fills the first empty rim slot, and UNDO empties the newest', () => {
+  let e = startPlacing(blankEditor('lumbar'), 'FH1');
+  e = addPoint(addPoint(e, [10, 10], IMAGE), [30, 10], IMAGE);
+  assert.deepEqual(e.placing, { code: 'FH1', points: [[10, 10], [30, 10], null, null], current: 2, history: [0, 1] });
+  e = undoPoint(e);
+  assert.deepEqual(e.placing, { code: 'FH1', points: [[10, 10], null, null, null], current: 1, history: [0] });
+  e = addPoint(e, [50, 10], IMAGE);
+  assert.deepEqual(e.placing.points, [[10, 10], [50, 10], null, null]);
+  assert.deepEqual(e.placing.history, [0, 1]);
+});
+
+test('a body can be placed in any order: a chosen step takes the next click, then the next empty step follows', () => {
+  let e = startPlacing(blankEditor('lumbar'), 'L3');
+  e = setPlacingStep(e, 3);
+  assert.equal(e.placing.current, 3);
+  e = addPoint(e, [60, 140], IMAGE);                       // IP first
+  assert.deepEqual(e.placing.points, [null, null, null, [60, 140]]);
+  assert.equal(e.placing.current, 0, 'past the last step the next empty one wraps to the start');
+  assert.deepEqual(e.placing.history, [3]);
+  e = addPoint(e, [10, 100], IMAGE);                       // SA
+  assert.equal(e.placing.current, 1);
+  e = addPoint(e, [60, 100], IMAGE);                       // SP
+  assert.equal(e.placing.current, 2);
+  assert.deepEqual(e.placing.history, [3, 0, 1]);
+  e = addPoint(e, [10, 140], IMAGE);                       // IA: no step left empty, so the placement finishes
+  assert.equal(e.placing, null);
+  assert.deepEqual(e.levels.L3.geometry, { superior: [[10, 100], [60, 100]], inferior: [[10, 140], [60, 140]] });
+  assert.equal(e.levels.L3.source, 'annotator');
+  assert.equal(e.selected, 'L3');
+
+  // The next empty step is searched from the slot just set, not from the start.
+  let skip = addPoint(startPlacing(blankEditor('lumbar'), 'L3'), [10, 100], IMAGE);   // SA; current 1
+  skip = addPoint(setPlacingStep(skip, 2), [10, 140], IMAGE);                        // IA
+  assert.equal(skip.placing.current, 3, 'IP, after IA, before the empty SP');
+  skip = addPoint(skip, [60, 140], IMAGE);
+  assert.equal(skip.placing.current, 1, 'then SP, wrapping');
+  skip = addPoint(skip, [60, 100], IMAGE);
+  assert.deepEqual(skip.levels.L3.geometry, { superior: [[10, 100], [60, 100]], inferior: [[10, 140], [60, 140]] });
+
+  // C2 and an endplate follow the same rule.
+  let c2 = addPoint(setPlacingStep(startPlacing(blankEditor('cervical'), 'C2'), 2), [20, 5], IMAGE);   // centroid first
+  assert.equal(c2.placing.current, 0);
+  c2 = addPoint(addPoint(c2, [10, 10], IMAGE), [30, 10], IMAGE);
+  assert.deepEqual(c2.levels.C2.geometry, { inferior: [[10, 10], [30, 10]], centroid: [20, 5] });
+  let s1 = addPoint(setPlacingStep(startPlacing(blankEditor('lumbar'), 'S1'), 1), [40, 104], IMAGE);   // POST first
+  s1 = addPoint(s1, [10, 100], IMAGE);
+  assert.deepEqual(s1.levels.S1.geometry, { superior: [[10, 100], [40, 104]] });
+});
+
+test('re-placing a point: the click replaces it, history keeps its slot once, and UNDO then clears it (R27)', () => {
+  let e = startPlacing(blankEditor('lumbar'), 'L3');
+  e = addPoint(addPoint(e, [10, 100], IMAGE), [60, 100], IMAGE);   // SA, SP; current 2
+  e = setPlacingStep(e, 0);
+  assert.equal(e.placing.current, 0, 'a placed step can be the current one');
+  e = addPoint(e, [12, 98], IMAGE);
+  assert.deepEqual(e.placing.points, [[12, 98], [60, 100], null, null], 'SA replaced');
+  assert.deepEqual(e.placing.history, [1, 0], 'SA once, now the most recently set');
+  assert.equal(e.placing.current, 2, 'the next empty step after SA');
+  const undone = undoPoint(e);
+  assert.deepEqual(undone.placing.points, [null, [60, 100], null, null], 'R27: the earlier SA is not restored');
+  assert.equal(undone.placing.current, 0, 'the cleared step is current');
+  assert.deepEqual(undone.placing.history, [1]);
+  const twice = undoPoint(undone);
+  assert.deepEqual(twice.placing, { code: 'L3', points: [null, null, null, null], current: 1, history: [] });
+  assert.equal(undoPoint(twice), twice, 'an empty history: nothing to undo');
+  // A re-placed point may land within 1 px of where it was: its own old position is no other point.
+  const nudged = addPoint(setPlacingStep(e, 1), [60.5, 100], IMAGE);
+  assert.deepEqual(nudged.placing.points[1], [60.5, 100]);
+  assert.deepEqual(nudged.placing.history, [0, 1]);
+});
+
+test('a click within 1 px of ANY other placed point of a body is dropped (R26); a double-click still counts once', () => {
+  let e = startPlacing(blankEditor('lumbar'), 'L3');
+  e = addPoint(addPoint(e, [10, 100], IMAGE), [60, 100], IMAGE);   // SA, SP; current 2 (IA)
+  assert.equal(addPoint(e, [10.4, 100.4], IMAGE), e, 'within 1 px of SA, not the previous point');
+  assert.equal(addPoint(e, [60, 100.5], IMAGE), e, 'within 1 px of SP');
+  const chosen = setPlacingStep(e, 3);
+  assert.equal(addPoint(chosen, [10, 100.9], IMAGE), chosen, 'a chosen step is held to the same rule');
+  const first = addPoint(chosen, [60, 140], IMAGE);
+  assert.equal(addPoint(first, [60, 140], IMAGE), first, 'a double-click: the second click lands on the point the first set');
+  assert.deepEqual(addPoint(e, [11, 100], IMAGE).placing.points[2], [11, 100], 'exactly 1 px apart is accepted');
+  const c2 = addPoint(addPoint(startPlacing(blankEditor('cervical'), 'C2'), [10, 10], IMAGE), [30, 10], IMAGE);
+  assert.equal(addPoint(c2, [10.5, 10], IMAGE), c2, 'C2: the centroid on the IA corner');
+});
+
+test('setPlacingStep chooses the step of an ordered placement; a no-op for a head, with no placement or out of range', () => {
+  const body = startPlacing(blankEditor('lumbar'), 'L3');
+  const chosen = setPlacingStep(body, 2);
+  assert.equal(chosen.placing.current, 2);
+  assert.equal(body.placing.current, 0, 'the original is untouched');
+  assert.equal(chosen.levels, body.levels);
+  assert.equal(setPlacingStep(body, 0), body, 'already the current step');
+  for (const index of [-1, 4, 1.5, Number.NaN, '2', undefined, null]) {
+    assert.equal(setPlacingStep(body, index), body, String(index));
+  }
+  const head = addPoint(startPlacing(blankEditor('lumbar'), 'FH1'), [10, 10], IMAGE);
+  assert.equal(setPlacingStep(head, 3), head, 'rim points stay unordered');
+  assert.equal(setPlacingStep(head, 0), head);
+  const idle = lumbarEditor();
+  assert.equal(setPlacingStep(idle, 0), idle);
+  const t4 = startPlacing(blankEditor('full_spine'), 'T4');
+  assert.equal(setPlacingStep(t4, 0), t4, "T4's one step is always current");
+  assert.equal(setPlacingStep(startPlacing(blankEditor('cervical'), 'C2'), 2).placing.current, 2);
+  assert.equal(setPlacingStep(startPlacing(blankEditor('lumbar'), 'S1'), 1).placing.current, 1);
+  assert.equal(setPlacingStep(startPlacing(blankEditor('lumbar'), 'S1'), 2).placing.current, 0, 'S1 has two steps');
+});
+
+test('placingLabel and placingHelp follow the chosen step', () => {
+  let e = setPlacingStep(startPlacing(blankEditor('lumbar'), 'L3'), 3);
+  assert.equal(placingLabel(e), 'PLACING L3 · 4 OF 4');
+  assert.equal(placingHelp(e), 'Click the inferior-posterior corner (IP).');
+  e = addPoint(e, [60, 140], IMAGE);
+  assert.equal(placingLabel(e), 'PLACING L3 · 1 OF 4', 'back to the first empty step');
+  assert.equal(placingHelp(e), 'Click the superior-anterior corner (SA).');
+  e = setPlacingStep(e, 3);
+  assert.equal(placingLabel(e), 'PLACING L3 · 4 OF 4', 'a placed step chosen again');
+  const c2 = setPlacingStep(startPlacing(blankEditor('cervical'), 'C2'), 2);
+  assert.equal(placingLabel(c2), 'PLACING C2 · 3 OF 3');
+  assert.equal(placingHelp(c2), 'Click the centroid of the C2 body.');
+  const t1 = setPlacingStep(startPlacing(blankEditor('cervical'), 'T1'), 1);
+  assert.equal(placingLabel(t1), 'PLACING T1 SUPERIOR ENDPLATE · 2 OF 2');
+  assert.equal(placingHelp(t1), 'Click the posterior corner of the T1 superior endplate.');
+});
+
+test('the sequential flow is unchanged: 1 OF 4 to 4 OF 4, UNDO steps back one, the fourth click finishes', () => {
+  const corners = [[10, 100], [60, 100], [10, 140], [60, 140]];
+  let e = startPlacing(blankEditor('lumbar'), 'L3');
+  for (const [index, corner] of corners.slice(0, 3).entries()) {
+    assert.equal(placingLabel(e), `PLACING L3 · ${index + 1} OF 4`);
+    e = addPoint(e, corner, IMAGE);
+  }
+  assert.equal(placingLabel(e), 'PLACING L3 · 4 OF 4');
+  assert.deepEqual(e.placing.history, [0, 1, 2]);
+  e = undoPoint(e);
+  assert.equal(placingLabel(e), 'PLACING L3 · 3 OF 4');
+  assert.equal(placingHelp(e), 'Click the inferior-anterior corner (IA).');
+  e = undoPoint(e);
+  assert.equal(placingLabel(e), 'PLACING L3 · 2 OF 4');
+  assert.deepEqual(e.placing, { code: 'L3', points: [[10, 100], null, null, null], current: 1, history: [0] });
+  e = addPoint(addPoint(e, corners[1], IMAGE), corners[2], IMAGE);
+  assert.equal(placingLabel(e), 'PLACING L3 · 4 OF 4');
+  assert.equal(canFinishPlacing(e, IMAGE), false, 'three corners cannot finish');
+  e = addPoint(e, corners[3], IMAGE);
+  assert.equal(e.placing, null);
+  assert.deepEqual(e.levels.L3.geometry, { superior: [[10, 100], [60, 100]], inferior: [[10, 140], [60, 140]] });
+});
+
+test('a femoral head fits its placed rim points in slot order, whatever UNDO left empty', () => {
+  let fh = startPlacing(blankEditor('lumbar'), 'FH2');
+  fh = addPoint(addPoint(addPoint(fh, [120, 100], IMAGE), [100, 120], IMAGE), [80, 100], IMAGE);
+  fh = undoPoint(fh);
+  assert.equal(placingLabel(fh), 'PLACING FEMORAL HEAD 2 · 2 OF 4 RIM POINTS');
+  assert.equal(placingHelp(fh), 'Fit now, or click up to 2 more rim points for a better fit.');
+  const done = finishPlacing(fh, IMAGE);
+  assert.deepEqual(done.levels.FH2.geometry.rim, [[120, 100], [100, 120]]);
 });
 
 test('cancelPlacing ends the placement and changes no level', () => {

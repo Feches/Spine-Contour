@@ -12,7 +12,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getState, setState } from '../renderer/store.js';
 import { newStudy } from '../renderer/screens/studies.js';
-import { configureLevelEditor, enterLevelEditor, exitNow, startPlace, placePoint, toggleLevelVisible } from '../renderer/level-editor.js';
+import {
+  configureLevelEditor, enterLevelEditor, exitNow, startPlace, placePoint, toggleLevelVisible, selectPlacingStep,
+  openWindowPanel, closeWindowPanel,
+} from '../renderer/level-editor.js';
 import { createMeasureQueue } from '../renderer/viewer/measure-queue.js';
 import { toLabelRecord } from '../renderer/data/label-record.js';
 import { LEVEL_CODES } from '../renderer/data/levels.js';
@@ -153,5 +156,46 @@ test('an Auto film a model run resolved keeps its region: a C level placed on a 
     assert.equal(commits.length, 1);
     assert.equal(commits[0].geometry.region, 'lumbar');
     assert.deepEqual(Object.keys(commits[0].geometry.vertebrae), ['L3']);
+  });
+});
+
+test('a step chip (selectPlacingStep) chooses the next point, commits nothing, and waits while the W/L panel is open (G2)', async () => {
+  const study = failedAutoFilm('SP-9503');
+  const commits = [];
+  wire(commits);
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    startPlace('L3');
+    const started = getState().levelEditor;
+    selectPlacingStep(3);
+    const chosen = getState().levelEditor;
+    assert.notEqual(chosen, started, 'a new editor, never the old one changed in place');
+    assert.equal(chosen.placing.current, 3);
+    assert.equal(started.placing.current, 0);
+    assert.equal(chosen.levels, started.levels, 'no level changed');
+    selectPlacingStep(3);
+    assert.equal(getState().levelEditor, chosen, 'the step already current: nothing written');
+    placePoint([142, 432], IMAGE);                       // IP first
+    assert.deepEqual(getState().levelEditor.placing.points, [null, null, null, [142, 432]]);
+    assert.equal(getState().levelEditor.placing.current, 0);
+
+    openWindowPanel();
+    const paused = getState().levelEditor;
+    assert.equal(paused.window?.open, true);
+    selectPlacingStep(2);
+    assert.equal(getState().levelEditor, paused, 'paused while the window / level panel is open');
+    closeWindowPanel();
+
+    selectPlacingStep(0);
+    placePoint([100, 400], IMAGE);                       // SA
+    placePoint([140, 402], IMAGE);                       // SP
+    await settle();
+    assert.equal(commits.length, 0, 'nothing is committed before the placement finishes');
+    placePoint([102, 430], IMAGE);                       // IA: the last empty step finishes it
+    await settle();
+    assert.equal(commits.length, 1);
+    assert.deepEqual(commits[0].geometry.vertebrae.L3.superior, [[100, 400], [140, 402]]);
+    assert.deepEqual(commits[0].geometry.vertebrae.L3.inferior, [[102, 430], [142, 432]]);
+    assert.equal(getState().levelEditor.placing, null);
   });
 });

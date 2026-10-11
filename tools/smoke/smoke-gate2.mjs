@@ -138,7 +138,8 @@ try {
   g0 = await geometry();
   await clickSelector('[data-level-key="place:FH1"]');
   e = await editor();
-  check('Place… on Head 1 starts a rim placement', e && e.placing && e.placing.code === 'FH1' && e.placing.points.length === 0, e && e.placing);
+  // `placing.points` holds one slot per rim point, null until set (gate feedback G2, 2026-10-11): an empty start is all null.
+  check('Place… on Head 1 starts a rim placement', e && e.placing && e.placing.code === 'FH1' && e.placing.points.every((p) => p === null), e && e.placing);
   const target = { cx: g0.femoral_circles[0][0] + 6, cy: g0.femoral_circles[0][1] - 4, r: Math.max(8, g0.femoral_circles[0][2] * 0.8) };
   const angles = [10, 100, 190];
   for (const [i, deg] of angles.entries()) {

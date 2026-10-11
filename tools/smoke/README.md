@@ -437,8 +437,12 @@ node tools/smoke/cdp.mjs --quit
 What it checks (numbers as in the plan's Task 14 brief): (1) Edit opens the panel, hides the tabs and the run card, and
 the eyebrow and the edit bar read `EDITING SEGMENTATION`; (2) the summary `7 PLACED · 1 TO PLACE · 8 NOT VISIBLE`, the
 Lumbar count, the group boxes, L3 `Not placed`; (3) Place… on L3, `PLACING L3 · 1 OF 4`, four step chips, four clicks
-to `Manual`, L3 in the study and `LL['L3-S1']` measured; (4) UNDO and CANCEL mid-placement; (5) unchecking S1, its note
-`LL, PI, PT, SS, PI–LL, L1PA and L5–S1 will show —`, `s1_superior` and PI null; (6) Save edits, the toast
+to `Manual`, L3 in the study and `LL['L3-S1']` measured, and (gate feedback G2, 2026-10-11) the step chips choosing the
+next point: the fourth chip reads `PLACING L3 · 4 OF 4` and is current, a film click marks it done and the label goes
+back to the first empty step (`1 OF 4`), the first chip reads `1 OF 4` again before the full placement; (4) UNDO and
+CANCEL mid-placement, and UNDO after the out-of-order IP clears it (`4 OF 4` again, the chip no longer done); (5)
+unchecking S1, its note `LL, PI, PT, SS, PI–LL, L1PA and L5–S1 will show —`, `s1_superior` and PI null; (6) Save
+edits, the toast
 `Saved 2 edits to the label record.`, `labels/levels-ui-check.label.json` valid against the schema (through
 `test/fixtures/schema-check.js`), no SP id in it, `labelFile` on the study; (7) the exit prompt, Keep editing, Discard
 and `Discarded 1 change.`, the Measurements panel back with PI `—`; (8) Head 1 re-placed from two rim points, FIT, then
@@ -457,7 +461,8 @@ The film phase also saves a record whose `image.sha256` is 64 hex characters and
 
 **Known baseline** (2026-10-10, branch `worktree-level-editor`, a fresh scratch profile, Windows 11, CPU processor):
 phase `dom` 75/75, phase `film` 23/23 (one copied OLIF lumbar film; L1, L2, L4 and L5 segmented with contours of 9 to
-15 points, L3 edited by a handle drag and a nudge, contour null).
+15 points, L3 edited by a handle drag and a nudge, contour null). (2026-10-11, gate feedback G2) The dom phase gains
+four step-chip checks in sections 3 and 4, so it should read 79/79; not re-run when they were written.
 
 ## The landmark-editor suites after the level editor (2026-10-10)
 

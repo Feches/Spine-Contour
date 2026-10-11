@@ -1,6 +1,7 @@
 // The level editor (plan 2026-10-10 Task 14) against the real, running app: the Vertebral levels panel, placing a
-// level, unchecking one, Save edits and the label record on disk, Discard and the exit prompt, femoral rim points
-// and FIT, window / level, the keyboard, the per-study stash, and the main process's label-file name check.
+// level (the step chips choose which point the next click sets: gate feedback G2, 2026-10-11), unchecking one, Save
+// edits and the label record on disk, Discard and the exit prompt, femoral rim points and FIT, window / level, the
+// keyboard, the per-study stash, and the main process's label-file name check.
 //
 //   node tools/smoke/launch.mjs                                     (SPINE_CONTOUR_USER_DATA under %TEMP%)
 //   node tools/smoke/smoke-levels.mjs                               phase `dom` (the default)
@@ -163,6 +164,9 @@ const EDITBAR_DONE = '.viewer-editbar > button:last-of-type';
 const EDIT_TOOL = '.viewer-tool[aria-label="Edit segmentation"]';
 const RERUN_TOOL = '.viewer-tool[aria-label="Re-run segmentation"]';
 const WL_TOOL = '.viewer-tool[aria-label="Window / level"]';
+// The step chips while placing a body (gate feedback G2): buttons in step order SA, SP, IA, IP.
+const CHIP_SA = '.viewer-steps .viewer-step:nth-child(1)';
+const CHIP_IP = '.viewer-steps .viewer-step:nth-child(4)';
 const WL_DONE = '.viewer-wl-head > button:last-of-type';
 const WL_RESET = '.viewer-wl [aria-label="Reset to the file\'s default window"]';
 const WL_WIDTH = '.viewer-wl [aria-label="Window width"]';
@@ -315,7 +319,8 @@ async function domPhase() {
     counts.cervical?.checked === false && counts.cervical?.indeterminate === false && counts.lumbarBox?.checked === true, counts);
   check('2. L3 reads Not placed', (await badge('L3')) === 'Not placed', await badge('L3'));
 
-  // 3 and 4. Place L3: the label and the four step chips, two points, UNDO, CANCEL; then the full placement.
+  // 3 and 4. Place L3: the label and the four step chips, two points, UNDO, CANCEL; then Place… again, a step chip
+  // chosen out of order (IP, a film click, UNDO), and the full placement from the first chip.
   await clickSelector('[data-level-key="place:L3"]');
   const placingStart = await ev(`(() => ({
     label: document.querySelector('.viewer-editbar-label')?.textContent,
@@ -325,15 +330,41 @@ async function domPhase() {
   check(`3. the L3 badge reads Placing${ELLIPSIS}`, (await badge('L3')) === `Placing${ELLIPSIS}`, await badge('L3'));
   await clickImage(...L3[0]);
   await clickImage(...L3[1]);
-  const two = await ev('window.__lv.editor()?.placing?.points.length ?? null');
+  // `placing.points` holds one slot per step, null until set (gate feedback G2): the points placed are the non-null ones.
+  const two = await ev('window.__lv.editor()?.placing?.points.filter(Boolean).length ?? null');
   check(`3. two clicks read PLACING L3 ${MID} 3 OF 4`, two === 2 && (await editLabel()) === `PLACING L3 ${MID} 3 OF 4`, { points: two, label: await editLabel() });
   const undoText = await text(EDITBAR_UNDO);
   await clickSelector(EDITBAR_UNDO);
-  const afterUndo = await ev('window.__lv.editor()?.placing?.points.length ?? null');
+  const afterUndo = await ev('window.__lv.editor()?.placing?.points.filter(Boolean).length ?? null');
   check('4. UNDO mid-placement removes a point', undoText === 'UNDO' && afterUndo === 1 && (await editLabel()) === `PLACING L3 ${MID} 2 OF 4`, { undoText, afterUndo, label: await editLabel() });
   await clickSelector('[data-level-key="cancel:L3"]');
   check('4. CANCEL returns the badge to Not placed', (await badge('L3')) === 'Not placed' && (await ev('window.__lv.editor()?.placing')) === null, await badge('L3'));
   await clickSelector('[data-level-key="place:L3"]');
+  // 3 and 4 (gate feedback G2, 2026-10-11). A step chip chooses the point the next film click sets: the fourth chip
+  // (IP) first; a film click sets IP and the label returns to the first empty step; UNDO clears IP and makes it current.
+  const chipState = (selector) => ev(`(() => {
+    const c = document.querySelector(${js(selector)});
+    return c ? { tag: c.tagName, done: c.classList.contains('is-done'), current: c.classList.contains('is-current'), aria: c.getAttribute('aria-current'), title: c.title } : null;
+  })()`);
+  await clickSelector(CHIP_IP);
+  const ipChosen = await chipState(CHIP_IP);
+  check(`3. clicking the fourth step chip reads PLACING L3 ${MID} 4 OF 4 and makes that chip current`,
+    (await editLabel()) === `PLACING L3 ${MID} 4 OF 4` && ipChosen?.tag === 'BUTTON' && ipChosen.current === true && ipChosen.done === false
+      && ipChosen.aria === 'step' && ipChosen.title === 'Place IP next',
+    { label: await editLabel(), chip: ipChosen });
+  await clickImage(...L3[3]);
+  const ipPlaced = await chipState(CHIP_IP);
+  check(`3. a film click sets IP: its chip is done and the label returns to the first empty step (PLACING L3 ${MID} 1 OF 4)`,
+    ipPlaced?.done === true && ipPlaced.current === false && ipPlaced.title === 'Re-place IP' && (await editLabel()) === `PLACING L3 ${MID} 1 OF 4`,
+    { label: await editLabel(), chip: ipPlaced });
+  await clickSelector(EDITBAR_UNDO);
+  const ipUndone = await chipState(CHIP_IP);
+  check(`4. UNDO clears IP: its chip is no longer done and the label reads PLACING L3 ${MID} 4 OF 4 again`,
+    ipUndone?.done === false && ipUndone.current === true && (await editLabel()) === `PLACING L3 ${MID} 4 OF 4`,
+    { label: await editLabel(), chip: ipUndone });
+  // The full placement in the order the checks below expect: the first chip, then SA, SP, IA and IP.
+  await clickSelector(CHIP_SA);
+  check(`3. clicking the first step chip reads PLACING L3 ${MID} 1 OF 4`, (await editLabel()) === `PLACING L3 ${MID} 1 OF 4`, await editLabel());
   for (const point of L3) await clickImage(...point);
   check('3. four clicks place L3: the badge reads Manual and the placement ends',
     (await badge('L3')) === 'Manual' && (await ev('window.__lv.editor()?.placing')) === null, { badge: await badge('L3') });

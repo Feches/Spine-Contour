@@ -26,10 +26,17 @@
  *  @property {{file: string|null, exists: boolean}} record           the label record on disk for this study
  *  @property {string|null} selected                                 the selected row's code
  *  @property {{code: string, handle: string}|null} handle           the focused handle: 'SA'|'SP'|'IA'|'IP'|'CENTROID'|'R0'..'R3'
- *  @property {{code: string, points: Pt[]}|null} placing
+ *  @property {Placing|null} placing                                  the placement in progress
  *  @property {{cervical: boolean, thoracic: boolean, lumbar: boolean, sacral: boolean, femoral: boolean}} open
  *  @property {WindowState|null} window                              null until W/L is first opened for this study
  *  @property {{then: 'exit'|'back'}|null} exitPrompt
+ */
+/** A placement in progress (gate feedback G2, 2026-10-11): one shape for every kind.
+ * @typedef {Object} Placing
+ *  @property {string} code
+ *  @property {(Pt|null)[]} points     one slot per step (placementSteps(code).need), null until that point is set
+ *  @property {number} current         the slot the next film click sets (a femoral head: its first empty slot)
+ *  @property {number[]} history       the set slots, in the order they were last set, each at most once (UNDO's order)
  */
 /** @typedef {Object} WindowState
  *  @property {boolean} open
@@ -443,8 +450,10 @@ export function selectLevel(editor, code) {
   return { ...editor, selected: code, placing, handle };
 }
 
+/** Begin a placement: every slot empty, the first step current, nothing to undo. */
 export function startPlacing(editor, code) {
-  return { ...editor, placing: { code, points: [] }, selected: code, handle: null };
+  const { need } = placementSteps(code);
+  return { ...editor, placing: { code, points: Array(need).fill(null), current: 0, history: [] }, selected: code, handle: null };
 }
 
 const clampPoint = (point, size) => (size
@@ -453,32 +462,67 @@ const clampPoint = (point, size) => (size
 
 const within1px = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1;
 
+const placedPoints = placing => placing.points.filter(Boolean);
+
+// The first empty slot after `from`, wrapping to the start; `from` itself when no slot is empty.
+function nextEmpty(points, from) {
+  for (let step = 1; step < points.length; step += 1) {
+    const index = (from + step) % points.length;
+    if (points[index] === null) return index;
+  }
+  return from;
+}
+
 /**
- * Add a click to the placement: clamped to [0, w-1] x [0, h-1]; a click within 1 px of the previous
- * point is dropped for c2, body and endplate placements (a zero-length endplate is a 422 from /measure),
- * and a femoral head's click within 1 px of ANY of its rim points is dropped (ruling R22: a double-click
- * would otherwise give two identical rim points and a radius of 0); the placement finishes by itself at
- * `need` points.
+ * Add a click to the placement (gate feedback G2). The slot is `current` for a body, C2, an endplate or a centroid
+ * (the step chip the annotator chose, else the next empty one) and the first empty slot for a femoral head (rim points
+ * stay unordered); a head with no empty slot left takes no click. The click is clamped to [0, w-1] x [0, h-1] and
+ * dropped when it lands within 1 px of ANY OTHER point of this placement (ruling R26, which generalises the earlier
+ * previous-point rule and keeps R22's rule for a head: a zero-length endplate is a 422 from /measure, and two identical
+ * rim points give a radius of 0); a slot's own earlier point is no other point, so a re-placed point may land beside
+ * it. A double-click therefore counts once: the second click lands on the point the first one set. The slot moves to
+ * the end of `history` (a re-placed point counts once, R27) and `current` moves to the next empty slot after it,
+ * wrapping. With no slot left empty the placement finishes by itself.
  */
 export function addPoint(editor, point, imageSize) {
   const placing = editor.placing;
   if (!placing) return editor;
-  const { need } = placementSteps(placing.code);
-  if (placing.points.length >= need) return editor;
+  const slot = kindOf(placing.code) === 'circle' ? placing.points.indexOf(null) : placing.current;
+  if (!(slot >= 0 && slot < placing.points.length)) return editor;
   const clicked = clampPoint(point, imageSize);
-  if (kindOf(placing.code) === 'circle') {
-    if (placing.points.some(rimPoint => within1px(clicked, rimPoint))) return editor;
-  } else {
-    const last = placing.points[placing.points.length - 1];
-    if (last && within1px(clicked, last)) return editor;
-  }
-  const next = { ...editor, placing: { code: placing.code, points: [...placing.points, clicked] } };
-  return next.placing.points.length >= need ? finishPlacing(next, imageSize) : next;
+  if (placing.points.some((other, index) => index !== slot && other && within1px(clicked, other))) return editor;
+  const points = placing.points.map((existing, index) => (index === slot ? clicked : existing));
+  const history = [...placing.history.filter(index => index !== slot), slot];
+  const next = { ...editor, placing: { code: placing.code, points, current: nextEmpty(points, slot), history } };
+  return points.includes(null) ? next : finishPlacing(next, imageSize);
 }
 
+/** UNDO: the most recently set point is cleared and its step becomes the current one; a no-op with nothing set. */
 export function undoPoint(editor) {
-  if (!editor.placing || editor.placing.points.length === 0) return editor;
-  return { ...editor, placing: { code: editor.placing.code, points: editor.placing.points.slice(0, -1) } };
+  const placing = editor.placing;
+  if (!placing || placing.history.length === 0) return editor;
+  const slot = placing.history[placing.history.length - 1];
+  return {
+    ...editor,
+    placing: {
+      code: placing.code,
+      points: placing.points.map((existing, index) => (index === slot ? null : existing)),
+      current: slot,
+      history: placing.history.slice(0, -1),
+    },
+  };
+}
+
+/**
+ * A step chip (gate feedback G2): the step the next film click sets, for a body, C2, an endplate or a centroid.
+ * A placed step may be chosen, and the click then re-places it. A femoral head (its rim points are unordered), no
+ * placement, an index that names no step, or the step already current: the editor unchanged.
+ */
+export function setPlacingStep(editor, index) {
+  const placing = editor.placing;
+  if (!placing || kindOf(placing.code) === 'circle') return editor;
+  if (!Number.isInteger(index) || index < 0 || index >= placing.points.length || index === placing.current) return editor;
+  return { ...editor, placing: { ...placing, current: index } };
 }
 
 export function cancelPlacing(editor) {
@@ -490,11 +534,14 @@ export function cancelPlacing(editor) {
 // apart, the closest addPoint keeps, give 0.5.
 export const MIN_RADIUS = 0.5;
 
-// The geometry the placement would finish with now, or null when it may not finish: too few clicks, or a femoral
-// head whose fitted radius is under MIN_RADIUS (or not finite).
+// The geometry the placement would finish with now, or null when it may not finish: too few points set, a body, C2,
+// endplate or centroid with any step still empty, or a femoral head whose fitted radius is under MIN_RADIUS (or not
+// finite). A head fits its placed rim points in slot order; every other kind passes its points in step order.
 function finishedGeometry(placing, imageSize) {
-  if (placing.points.length < placementSteps(placing.code).fitFrom) return null;
-  const geometry = geometryFromPoints(placing.code, placing.points, imageSize);
+  const placed = placedPoints(placing);
+  if (placed.length < placementSteps(placing.code).fitFrom) return null;
+  if (kindOf(placing.code) !== 'circle' && placed.length < placing.points.length) return null;
+  const geometry = geometryFromPoints(placing.code, placed, imageSize);
   if (!geometry) return null;
   if (kindOf(placing.code) === 'circle' && !(Number.isFinite(geometry.radius) && geometry.radius >= MIN_RADIUS)) return null;
   return geometry;
@@ -502,7 +549,7 @@ function finishedGeometry(placing, imageSize) {
 
 /**
  * Whether the placement in progress may finish now: FIT's enabled state. False when nothing is being placed,
- * below `fitFrom` clicks, and for a femoral head whose fit would have a radius under 0.5 px (R22).
+ * below `fitFrom` placed points, and for a femoral head whose fit would have a radius under 0.5 px (R22).
  */
 export function canFinishPlacing(editor, imageSize) {
   return Boolean(editor?.placing && finishedGeometry(editor.placing, imageSize));
@@ -623,24 +670,27 @@ export function trainingStatus(editor) {
 
 // ---------- the edit bar while placing ----------
 
-/** 'PLACING L3 · 2 OF 4' (the point being asked for) or, for a head, 'PLACING FEMORAL HEAD 1 · 2 OF 4 RIM POINTS' (points placed). */
+/**
+ * 'PLACING L3 · 2 OF 4' (the current step: the point the next click sets) or, for a head,
+ * 'PLACING FEMORAL HEAD 1 · 2 OF 4 RIM POINTS' (points placed).
+ */
 export function placingLabel(editor) {
   const placing = editor.placing;
   if (!placing) return null;
   const { need } = placementSteps(placing.code);
   const name = fullName(placing.code).toUpperCase();
-  const placed = placing.points.length;
   return kindOf(placing.code) === 'circle'
-    ? `PLACING ${name} ${MID_DOT} ${placed} OF ${need} RIM POINTS`
-    : `PLACING ${name} ${MID_DOT} ${Math.min(placed + 1, need)} OF ${need}`;
+    ? `PLACING ${name} ${MID_DOT} ${placedPoints(placing).length} OF ${need} RIM POINTS`
+    : `PLACING ${name} ${MID_DOT} ${placing.current + 1} OF ${need}`;
 }
 
-/** The help for the next click, or null when not placing. */
+/** The help for the next click (the current step's; a head's next rim point's), or null when not placing. */
 export function placingHelp(editor) {
   const placing = editor.placing;
   if (!placing) return null;
   const { need, steps } = placementSteps(placing.code);
-  return steps[Math.min(placing.points.length, need - 1)]?.help ?? null;
+  const index = kindOf(placing.code) === 'circle' ? Math.min(placedPoints(placing).length, need - 1) : placing.current;
+  return steps[index]?.help ?? null;
 }
 
 // ---------- which levels each measurement reads ----------
