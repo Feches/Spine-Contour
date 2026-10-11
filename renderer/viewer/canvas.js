@@ -197,9 +197,10 @@ export const CORNER_COLORS = { SA: '#32d4ff', SP: '#64e19a', IA: '#ffb259', IP: 
 const FEMORAL_HANDLE_COLOR = `rgb(${FEMORAL_OVERLAY_COLOR.join(',')})`;
 export const TRACE_COLOR = '#ffe071';
 
-// Handles keep a constant size ON SCREEN, unlike the outlines, which scale with the image.
+// Handles keep a constant size ON SCREEN up to 1:1 (past it they magnify with the film, R28), unlike the
+// outlines, which scale with the image.
 // Every handle dimension below is in CSS pixels and is multiplied by opts.pixelRatio
-// (image pixels per CSS pixel at the current fit and zoom) at draw time.
+// (image pixels per CSS pixel at the current fit and zoom, floored at 1 by ruling R28) at draw time.
 const HANDLE_RING_RADIUS_PX = 10;
 
 function midpoint(a, b) {
@@ -441,8 +442,8 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
 // What the level editor draws on the dynamic layer while editing (handoff §5; plan Task 9): every visible
 // placed level filled and outlined, the selected level's handles, the model's own geometry dashed under an
 // edited level, a plate naming each level, and the placement in progress. Every size is in CSS pixels times
-// `opts.pixelRatio`, so it holds its size on screen at any fit and zoom. The editor
-// state is read, never written.
+// `opts.pixelRatio` floored at 1 (ruling R28), so it holds its size on screen at any fit and zoom up to 1:1 and
+// magnifies with the film past it. The editor state is read, never written.
 
 const LEVEL_STROKE_ALPHA = 0.85;
 const LEVEL_STROKE_PX = 1.25;
@@ -663,7 +664,13 @@ function drawPlacement(ctx, canvas, placing, pixelRatio) {
  * placed; only the selected level has handles.
  */
 export function drawLevelEditor(ctx, canvas, editor, opts) {
-  const { overlays = true, overlayOpacity = 50, pixelRatio = 1, handle = null, dragGeometry = null } = opts ?? {};
+  const { overlays = true, overlayOpacity = 50, handle = null, dragGeometry = null } = opts ?? {};
+  // Ruling R28: the drawing ratio is floored at 1 image pixel per CSS pixel. The canvas is drawn at the stored
+  // image's resolution and CSS-scaled with the film, so past 1:1 on screen (pixelRatio < 1, reachable on every film
+  // since the zoom cap is 8x) a CSS-sized stroke, dash, handle or label would fall under one image pixel, be
+  // anti-aliased away and then be magnified: faint lines, unreadable labels. Past 1:1 the overlay therefore keeps its
+  // image-pixel size and magnifies with the film, crisp; below 1:1 it holds its size on screen, as before.
+  const pixelRatio = Math.max(1, opts?.pixelRatio ?? 1);
   const fillAlpha = (BASE_OVERLAY_ALPHA / 255) * (Math.max(0, Math.min(100, overlayOpacity)) / 100);
   ctx.save();
   ctx.lineJoin = 'round';
@@ -737,7 +744,9 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
     drawSelectedStageLabel(ctx, 'C7', geometry.c7_centroid, selectedLevel === 'GLOBAL_SVA', canvas.width);
   }
 
-  const pixelRatio = opts.pixelRatio ?? 1;
+  // Ruling R28, as in drawLevelEditor: past 1:1 the hip line, its dash and the markers keep their image-pixel size
+  // and magnify with the film instead of shrinking under one image pixel; below 1:1 they hold their screen size.
+  const pixelRatio = Math.max(1, opts.pixelRatio ?? 1);
   (geometry.femoral_circles ?? []).forEach(([x, y, r], index) => {
     const selectedCircle = Boolean(opts.editing) && opts.selection?.kind === 'femoral'
       && opts.selection.side === FEMORAL_SIDES[index];

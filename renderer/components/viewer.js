@@ -19,8 +19,8 @@ import { kindOf, rowName, placementSteps, placingLabel, placingHelp, canFinishPl
 import { levelHandles, hitTestLevelHandles, moveHandle, nudgeHandle, nextLevelHandle, handleAt } from '../viewer/level-handles.js';
 import { dragWindow, windowText } from '../viewer/window-level.js';
 import {
-  enterLevelEditor, requestExit, keepEditing, placePoint, undoPlacedPoint, selectPlacingStep, cancelPlace, fitPlacing,
-  setFocusedHandle, selectLevelRow, commitHandleMove, openWindowPanel, closeWindowPanel, setWindow, resetWindow,
+  enterLevelEditor, requestExit, keepEditing, placePoint, undoPlacedPoint, restorePlacing, selectPlacingStep, cancelPlace,
+  fitPlacing, setFocusedHandle, selectLevelRow, commitHandleMove, openWindowPanel, closeWindowPanel, setWindow, resetWindow,
   resetLevelsToModel,
 } from '../level-editor.js';
 
@@ -67,7 +67,18 @@ let drag = null;           // {kind:'pan', ...} | {kind:'levelHandle', ...} | {k
 let suppressClick = false; // a pointerdown that started a gesture eats the click that follows it
 // Which pointer placed the newest placement point, so a chord that starts as a LEFT press while placing can
 // take that point back: the press lands as a placement click before the second button makes it a chord.
+// placePrior and placePressed are the editor's placing from before that press and the one it left; the take-back
+// puts placePrior back (restorePlacing), so a press that re-placed a point returns the point to where it was.
 let placePointer = null;
+let placePrior = null;
+let placePressed = null;
+
+// Forgets the placement press: wherever a gesture ends or a new one begins.
+function forgetPlacePress() {
+  placePointer = null;
+  placePrior = null;
+  placePressed = null;
+}
 
 // Where the user has dragged each construction's label, in image pixels, for the open study.
 let labelOffsets = new Map(); // construction key ('L3', 'PI', ...) -> {dx, dy}
@@ -521,10 +532,12 @@ export function mountViewer(container) {
       labelChip.releasePointerCapture(event.pointerId);
       labelChip.classList.remove('is-dragging');
     }
-    // A LEFT-first chord while placing has already placed a point with its first press. Take it back
-    // (a press that finished the placement is not undone: the level is placed and can be adjusted).
-    if (placePointer === event.pointerId) undoPlacedPoint();
-    placePointer = null;
+    // A LEFT-first chord while placing has already placed a point with its first press. Take that press back by
+    // putting the placing from before it back (restorePlacing), not by UNDO: UNDO clears the slot (R27), so a press
+    // that re-placed a point would lose the point's earlier position. A press that finished the placement is not
+    // taken back (placeAt keeps nothing for it): the level is placed and can be adjusted.
+    if (placePointer === event.pointerId) restorePlacing(placePrior, placePressed);
+    forgetPlacePress();
     startPan(event, true);
     stage.classList.remove('is-dragging-handle');
     stage.classList.remove('is-over-handle');
@@ -543,15 +556,22 @@ export function mountViewer(container) {
     // makes both the click-fires and no-click-fires orders safe.
   }
 
-  // One placement click, at the pointer, clamped to the film by clientToImage and addPoint. The pointer is remembered
-  // for a chord's take-back only when the press set a point: a press addPoint dropped (within 1 px of another point
-  // of the placement, R26) leaves UNDO's newest point alone.
+  // One placement click, at the pointer, clamped to the film by clientToImage and addPoint. The press is remembered
+  // for a chord's take-back (the pointer, and the placing before and after it) only when it set a point and left the
+  // placement open: a press addPoint dropped (within 1 px of another point of the placement, R26) leaves the placement
+  // alone, and a press that finished it is not taken back.
   function placeAt(event) {
     event.preventDefault();
     suppressClick = true;
-    const before = getState().levelEditor;
+    const prior = getState().levelEditor?.placing ?? null;
     placePoint(clientToImage(event, dynamicCanvas), imageSize());
-    placePointer = getState().levelEditor !== before ? event.pointerId : null;
+    const pressed = getState().levelEditor?.placing ?? null;
+    forgetPlacePress();
+    if (prior && pressed && pressed !== prior) {
+      placePointer = event.pointerId;
+      placePrior = prior;
+      placePressed = pressed;
+    }
   }
 
   // Gesture precedence: a LEFT+RIGHT chord pans in every mode and outranks everything below
@@ -575,7 +595,7 @@ export function mountViewer(container) {
     }
     if (drag) return;
     suppressClick = false;
-    placePointer = null;
+    forgetPlacePress();
     const state = getState();
     if (event.button === 1 || (event.button === 0 && state.panMode)) {
       event.preventDefault();
@@ -679,7 +699,7 @@ export function mountViewer(container) {
     if (dynamicCanvas.hasPointerCapture(event.pointerId)) dynamicCanvas.releasePointerCapture(event.pointerId);
     const ended = drag;
     drag = null;
-    placePointer = null;
+    forgetPlacePress();
     stage.classList.remove('is-dragging-handle');
     // Covers the ordinary pan, a chord released as one simultaneous pointerup, and pointercancel.
     stage.classList.remove('is-panning');
@@ -1064,7 +1084,7 @@ export function mountViewer(container) {
     // Every gesture kind ends with the mount: pan, level handle, window drag, label.
     drag = null;
     suppressClick = false;
-    placePointer = null;
+    forgetPlacePress();
     stage.classList.remove('is-panning', 'is-windowing', 'is-dragging-handle', 'is-over-handle');
     labelOffsets = new Map();
     labelStudyId = null;

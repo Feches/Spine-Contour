@@ -14,7 +14,7 @@ import { getState, setState } from '../renderer/store.js';
 import { newStudy } from '../renderer/screens/studies.js';
 import {
   configureLevelEditor, enterLevelEditor, exitNow, startPlace, placePoint, toggleLevelVisible, selectPlacingStep,
-  openWindowPanel, closeWindowPanel,
+  openWindowPanel, closeWindowPanel, restorePlacing,
 } from '../renderer/level-editor.js';
 import { createMeasureQueue } from '../renderer/viewer/measure-queue.js';
 import { toLabelRecord } from '../renderer/data/label-record.js';
@@ -197,5 +197,56 @@ test('a step chip (selectPlacingStep) chooses the next point, commits nothing, a
     assert.deepEqual(commits[0].geometry.vertebrae.L3.superior, [[100, 400], [140, 402]]);
     assert.deepEqual(commits[0].geometry.vertebrae.L3.inferior, [[102, 430], [142, 432]]);
     assert.equal(getState().levelEditor.placing, null);
+  });
+});
+
+test('a chord takes back a re-placing press: restorePlacing puts the placing from before the press back (review F2)', async () => {
+  const study = failedAutoFilm('SP-9504');
+  const commits = [];
+  wire(commits);
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    startPlace('L3');
+    placePoint([100, 400], IMAGE);                       // SA
+    selectPlacingStep(3);
+    placePoint([142, 432], IMAGE);                       // IP
+    selectPlacingStep(0);                                // the SA chip: the next click re-places SA
+    const before = getState().levelEditor;
+    const prior = before.placing;
+    assert.deepEqual(prior.history, [0, 3]);
+
+    placePoint([90, 395], IMAGE);                        // the press that a second button turns into a chord
+    const pressed = getState().levelEditor.placing;
+    assert.deepEqual(pressed.points[0], [90, 395], 'the press re-placed SA');
+    assert.deepEqual(pressed.history, [3, 0]);
+
+    restorePlacing(prior, pressed);
+    const restored = getState().levelEditor;
+    assert.notEqual(restored, before, 'a new editor, never the old one changed in place');
+    assert.equal(restored.placing, prior, 'the placing from before the press');
+    assert.deepEqual(restored.placing.points, [[100, 400], null, null, [142, 432]], 'SA is back at its first position');
+    assert.deepEqual(restored.placing.history, [0, 3], 'history as before the press');
+    assert.equal(restored.placing.current, 0);
+    assert.equal(restored.levels, before.levels, 'no level changed');
+
+    restorePlacing(prior, pressed);
+    assert.equal(getState().levelEditor, restored, 'a stale press (the placing has moved on): nothing written');
+
+    placePoint([90, 395], IMAGE);
+    const again = getState().levelEditor.placing;
+    placePoint([140, 402], IMAGE);                       // SP: the placing moves on before any chord
+    const movedOn = getState().levelEditor;
+    restorePlacing(prior, again);
+    assert.equal(getState().levelEditor, movedOn, 'the placing moved on: the take-back is a no-op');
+
+    const last = movedOn.placing;
+    placePoint([102, 430], IMAGE);                       // IA: the last empty step finishes the placement
+    assert.equal(getState().levelEditor.placing, null);
+    const finished = getState().levelEditor;
+    restorePlacing(last, null);
+    assert.equal(getState().levelEditor, finished, 'a press that finished the placement is not taken back');
+    await settle();
+    assert.equal(commits.length, 1, 'only the finished placement committed');
+    assert.deepEqual(commits[0].geometry.vertebrae.L3.superior, [[90, 395], [140, 402]]);
   });
 });

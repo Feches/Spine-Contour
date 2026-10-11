@@ -401,6 +401,18 @@ export function undoPlacedPoint() {
 }
 
 /**
+ * A chord's take-back of the placement press it started from (the gate feedback review, F2): `prior` is the placing
+ * from before that press, `pressed` the one the press left. UNDO would clear the pressed point's slot (R27), so a press
+ * that RE-PLACED a point would lose the point's earlier position; this puts the placing from before the press back
+ * instead (points, current step and history). A no-op unless the placing is still the one the press left: the
+ * placement has moved on, or the press finished it (`pressed` null). Not an edit, so no run refuses it, and nothing
+ * is committed (no level changes).
+ */
+export function restorePlacing(prior, pressed) {
+  update((editor) => (pressed && editor.placing === pressed ? { ...editor, placing: prior } : editor));
+}
+
+/**
  * A step chip (gate feedback G2): the step the next placement click sets, a placed one included (that click re-places
  * it). Not for a femoral head (setPlacingStep). Paused while the window / level panel is open. Nothing is committed.
  */

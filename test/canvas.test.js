@@ -427,6 +427,59 @@ test('sizes that are screen sizes scale with the pixel ratio', () => {
   assert.equal(dashed(ghost.calls, [12, 10]).length, 1);
 });
 
+test('past 1:1 the editor keeps its image-pixel size: a pixel ratio under 1 paints exactly as 1 does (R28)', () => {
+  const size = { width: 200, height: 150 };
+  const edited = { superior: [[8, 28], [20, 30]], inferior: [[10, 40], [20, 40]] };
+  // Every screen-sized part between them: outlines, fills and label plates; the selected level's handles and the focus
+  // ring; an edited level's dashed ghost; the C2 and T4 dots; a body placement's dots and dashed line; a femoral head
+  // placement's dashed preview and centre dot.
+  const scenes = [
+    [setLevelGeometry(lumbarEditor('L3'), 'L2', edited), { handle: { code: 'L3', handle: 'SA' } }],
+    [setLevelGeometry(lumbarEditor('L2'), 'L2', edited), {}],
+    [setLevelGeometry(setLevelGeometry(emptyEditor(), 'C2', { inferior: [[30, 50], [60, 50]], centroid: [45, 30] }), 'T4', { centroid: [45, 10] }), {}],
+    [addPoint(addPoint(startPlacing(emptyEditor(), 'L3'), [30, 20], size), [60, 20], size), {}],
+    [addPoint(addPoint(startPlacing(emptyEditor(), 'FH1'), [20, 30], size), [60, 30], size), {}],
+  ];
+  for (const [editor, extra] of scenes) {
+    const one = drawEditor(editor, { ...extra, pixelRatio: 1 });
+    for (const pixelRatio of [0.25, 0.5, 0.999]) {
+      const zoomed = drawEditor(editor, { ...extra, pixelRatio });
+      assert.deepEqual(zoomed.calls, one.calls, `pixel ratio ${pixelRatio}: every path, radius, dash and plate as at 1`);
+      assert.deepEqual(zoomed.painted, one.painted, `pixel ratio ${pixelRatio}: every width, dash and font as at 1`);
+    }
+  }
+
+  const [handles, extra] = scenes[0];
+  const { calls, painted } = drawEditor(handles, { ...extra, pixelRatio: 0.25 });
+  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 6).length, 4, 'handles are 6 image px, not 1.5');
+  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 10).length, 1, 'the ring is 10 image px');
+  assert.deepEqual(painted.filter(p => p.name === 'stroke' && p.strokeStyle === STAGE_BG).map(p => p.lineWidth), [2, 2, 2, 2]);
+  assert.equal(painted.find(p => p.name === 'fillText').font, "500 11px 'Chivo Mono', monospace");
+  const ghost = drawEditor(scenes[1][0], { pixelRatio: 0.25 });
+  assert.equal(dashed(ghost.calls, [6, 5]).length, 1, 'the ghost dash is 6 5 image px');
+  const placing = drawEditor(scenes[3][0], { pixelRatio: 0.25 });
+  assert.equal(placing.painted.find(p => p.name === 'stroke' && p.lineDash.length === 2).lineWidth, 1.5);
+
+  const doubled = drawEditor(handles, { ...extra, pixelRatio: 2 });
+  assert.equal(arcsOf(doubled.calls).filter(([, , radius]) => radius === 12).length, 4, 'below 1:1 the sizes still scale');
+  assert.equal(doubled.painted.find(p => p.name === 'fillText').font, "500 22px 'Chivo Mono', monospace");
+});
+
+test('drawDynamicLayer outside edit mode keeps the hip line and markers at their image-pixel size past 1:1 (R28)', () => {
+  const paint = (pixelRatio) => {
+    const rec = recordingContext();
+    drawDynamicLayer(rec.ctx, { width: 200, height: 150 }, fakeGeometry(), { selectedLevel: null, measurements: null, editing: false, pixelRatio });
+    return rec;
+  };
+  const hipLine = (rec) => rec.painted.find(p => p.name === 'stroke' && p.lineDash.length === 2);
+  const one = paint(1);
+  const quarter = paint(0.25);
+  assert.deepEqual([hipLine(quarter).lineWidth, hipLine(quarter).lineDash], [1.5, [4, 3]], 'the 1.5 px line stays 1.5');
+  assert.deepEqual(quarter.calls, one.calls, 'the centre crosses and the midpoint diamond as at 1');
+  const doubled = paint(2);
+  assert.deepEqual([hipLine(doubled).lineWidth, hipLine(doubled).lineDash], [3, [8, 6]], 'below 1:1 it still scales');
+});
+
 test('a placement shows its points in the step colours and joins them with a dashed accent line', () => {
   let editor = startPlacing(emptyEditor(), 'L3');
   editor = addPoint(editor, [30, 20], { width: 200, height: 150 });
