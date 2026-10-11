@@ -1,5 +1,29 @@
 # Spine Contour
 
+**2026-10-10 vertebral level editor, window / level, label record (BUILT, human gate NOT run):** branch
+`worktree-level-editor` in worktree `.claude/worktrees/level-editor`, off `origin/main` @ `20fd4c5` (v1.0.17). Edit mode
+is a level editor: the right panel becomes the Vertebral levels panel, sixteen levels in five groups (C2–C7, T1 · T4,
+L1–L5, S1, two femoral heads) with a visibility checkbox, a state badge and Place… / CLEAR / CANCEL each
+(`renderer/components/level-editor.js`, the model `renderer/data/levels.js`, the wiring `renderer/level-editor.js`, the
+only writer of `state.levelEditor`). The stage places a missed level by clicks (4, 3 for C2, 2 for T1/S1, 1 for T4, 2–4
+rim points for a head), gives only the selected level handles, and nudges with the arrows; projected levels reach
+`study.geometry` through `/measure` as before, while T1, T4, visibility and rim points live only in the level model and
+the record. Save edits writes `userData/labels/<stem>.label.json` (schema `docs/design/level-editor/label-record.schema.json`;
+`labelFile` on the study; deleted and quarantined with it). Window / level decodes the original film through a new
+`POST /decode` and windows the film layer only, display only (D1, D11); `qc.model_versions` names each graph. A film
+with no result opens in edit mode on its original and can be placed by hand (`isHandPlaced`, R16); Re-run is disabled
+while editing (R17). The old edit bar's RETRACE / ADD / DELETE CIRCLE and the landmark Tab, nudge and hit-test code are
+retired. Plan `docs/superpowers/plans/2026-10-10-level-editor.md` (Decisions D1–D14; its Ledger holds R1–R18 and every
+deferred minor); spec `docs/design/level-editor/HANDOFF.md`; user doc `docs/level-editor.md`; the contract's 2026-10-10
+amendment; HANDOFF's first "Where things stand" section. Unit 879/879; backend pytest 762 passed, 3 skipped. Smoke on
+fresh `%TEMP%` profiles: `smoke-levels.mjs` dom 75/75, film 23/23 (one copied real film, DOM reads only, no
+screenshots); the rewritten landmark-editor suites parity 15/15, gate1 25/25, gate2 26/26, gate3 26/26, chip 20/20,
+chord 28/28, studies 151/151, persist 42/42 then 55/55, femoral-confidence 16/16 then 5/5, disc-heights 13/13,
+partial-segmentation 8/8, accuracy 17/17, global-sva 21/21 (retired checks named in `tools/smoke/README.md`). The film
+phase needs the ONNX graphs: this worktree's `backend/onnx/` holds hard links to the main checkout's (gitignored). Not
+run: a packaged build, the human gate (Task 15, checklist prepared in the plan), `smoke-cervical.mjs` and
+`smoke-segmental.mjs` (no cervical film here). Releases as 1.0.18 or later; nothing pushed.
+
 **2026-10-07 release 1.0.16 (crop search restored):** branch `ccr-af336f0e-7wacoa` off `main` @ `f2e39e0`, the merge
 of Michael's PR #57 (`0bd01c5`), which retires 1.0.13's trained crop method: Settings shows Crop search only,
 `normalizePerformance` (backend-client.cjs) and `runtime.parse_options` route a saved or requested `model` to `search`,

@@ -8,7 +8,7 @@ Before writing code, read how edit mode works today and follow its patterns:
 - the Analysis screen and its right panel (likely `styles/screens/analysis.css` and the measurements panel)
 - the checkbox component (likely `renderer/components/checkbox.js`)
 
-Those paths come from the design system's source notes. Confirm them in the repo. Check the **Open questions** section before building the parts they affect.
+Those paths come from the design system's source notes. Confirm them in the repo. Check the **Decisions** section (section 12; it held the open questions until 2026-10-10) before building the parts they affect.
 
 Files in this package:
 
@@ -50,7 +50,8 @@ Files in this package:
 
 | Group | Levels | Geometry stored | Placement |
 |---|---|---|---|
-| Cervical | C2–C7 | 4 corners: `sa`, `sp`, `ia`, `ip` | 4 clicks in order SA → SP → IA → IP |
+| Cervical | C2 | Inferior endplate `ia`, `ip` plus a `centroid` (amended 2026-10-10, D8; schema `$defs/c2`) | 3 clicks: IA, IP, then the centroid |
+| Cervical | C3–C7 | 4 corners: `sa`, `sp`, `ia`, `ip` | 4 clicks in order SA → SP → IA → IP |
 | Thoracic | T1 | Superior endplate: `sa` (anterior), `sp` (posterior) | 2 clicks: anterior, then posterior |
 | Thoracic | T4 | Centroid: one point | 1 click |
 | Lumbar | L1–L5 | 4 corners | 4 clicks, SA → SP → IA → IP |
@@ -86,7 +87,7 @@ The state is **derived** from three things: the visibility flag, the current geo
   - Groups that match the film type start visible (`source: film_type`).
   - All other groups start `not_visible` (`source: film_type`).
   - Any user toggle sets `source: annotator`.
-  - The mapping is an open question (see section 11).
+  - The mapping was an open question; decided 2026-10-10 (D5 and D6 in section 12).
 
 ---
 
@@ -286,7 +287,8 @@ Store everything in **image pixels of the stored image, origin top-left**. Conve
 ## 9. Label record
 
 - **When:** written on **Save edits**.
-- **Where:** one file per film, `<study>.label.json`, beside the study's saved results. Location to confirm.
+- **Where:** one file per film, `<study>.label.json`, beside the study's saved results. Location to confirm. (Decided
+  2026-10-10, D3 in section 12: `userData/labels/<stem>.label.json`, `-2`, `-3` on a clash, the name kept on the study.)
 - **Schema:** `label-record.schema.json`.
 - **Example:** `label-record.example.json`.
 
@@ -303,7 +305,8 @@ Store everything in **image pixels of the stored image, origin top-left**. Conve
 | `app_version`, `saved_at` | Provenance |
 | `complete` | True when no level or femoral head is `not_placed` |
 | `levels.<code>.state`, `source` | As in section 2 |
-| `levels.<C2–C7, L1–L5>.corners` | `{sa, sp, ia, ip}`. Absent when `not_visible` or `not_placed`. |
+| `levels.<C3–C7, L1–L5>.corners` | `{sa, sp, ia, ip}`. Absent when `not_visible` or `not_placed`. |
+| `levels.C2.corners`, `levels.C2.centroid` | `{ia, ip}` (the inferior endplate) and `[x, y]` (amended 2026-10-10, D8: C2 has no superior endplate in the app's geometry; schema `$defs/c2`). Absent when `not_visible` or `not_placed`. |
 | `levels.<T1, S1>.corners` | `{sa, sp}`: superior endplate only |
 | `levels.T4.centroid` | `[x, y]` |
 | `model_corners`, `model_centroid` | The model's original geometry when `edited`; otherwise null |
@@ -348,22 +351,34 @@ The design artboard doesn't show `model_centroid` or `model_circle`. The schema 
 - **Unchecking during placement:** the placement is cancelled.
 - **Placement clicks outside the image:** clamp to the image bounds.
 - **Two femoral points that are very close:** the radius is tiny. Accept it, since the user can refit.
-- **Leaving edit mode with unsaved changes:** not designed yet (see Open questions).
+- **Leaving edit mode with unsaved changes:** decided 2026-10-10 (D7 in section 12): an inline prompt in the panel footer.
 - **Motion:** chevron 0.2s; hover 0.15s; toast `riseIn` 0.18s. Nothing else animates. The film and data never animate.
 
 ---
 
-## 12. Open questions (ask Cody before building these parts)
+## 12. Decisions (2026-10-10)
 
-1. **Film type → default visible groups.** Proposed:
-   - lumbar → Lumbar, Sacral, Femoral
-   - cervical → Cervical, Thoracic (T1)
-   - standing full-length → all groups
-2. **Label record location and filename.**
-3. **Leaving edit mode with unsaved changes.** Suggest a confirmation: "Discard 2 unsaved changes? Saved edits are kept."
-4. **Window / level persistence.** Remember it per study, and/or record the window used in the label record?
-5. **Which measurements T1 and T4 feed** (e.g. T1 slope, T4–pelvic angle), so their dependency notes can be added.
-6. **Keep Clear on manual levels?** It's currently kept.
+The open questions this section held were answered by the owner on 2026-10-10, together with the questions the code
+forced. They are the Decisions table of `docs/superpowers/plans/2026-10-10-level-editor.md`, which wins over this spec
+where the two differ; that plan's Ledger also records the execution rulings R1–R18. Built on branch
+`worktree-level-editor`; the user doc is `docs/level-editor.md`.
+
+| # | Question | Decision |
+|---|---|---|
+| D1 | Window / level pixel source | A new backend endpoint `POST /decode` returns the original file's decoded pixels (16-bit), value range and DICOM window defaults; the renderer applies the LUT on the film layer only. No CSS filter, no LUT on the stored 8-bit PNG. The same decode gives a failed film something to display. |
+| D2 | Save semantics | Drags keep auto-committing geometry through `/measure` to studies.json. **Save edits** writes the label record and resets the baseline. **Discard** restores the baseline (the saved record when one exists, else the state at entry). |
+| D3 | Label record location (old question 2) | `userData/labels/<stem>.label.json`, stem = the film's filename without its extension; a second film with the same stem gets `-2`, the third `-3`; the chosen name is stored on the study as `labelFile`. |
+| D4 | Branch base | A new worktree off `origin/main` (v1.0.17), independent of the held similar-cases branch. |
+| D5 | Film type → default visible groups (old question 1) | lumbar → Lumbar, Sacral, Femoral heads; cervical → Cervical plus **T1 only** (T4 starts not visible); full_spine → all five groups; everything else `not_visible` with `source: film_type`. |
+| D6 | A film with region Auto and no result | Every one of the sixteen levels starts visible (not placed) until the annotator unchecks it. |
+| D7 | Leaving edit mode with unsaved changes (old question 3) | An inline prompt in the panel footer: `Discard 2 unsaved changes? Saved edits are kept.` with **Save edits**, **Discard**, **Keep editing**; it covers DONE, the Edit button, Escape and Back. Sidebar navigation keeps the unsaved level state in memory for the session. |
+| D8 | C2 | An **inferior endplate (IA, IP) plus a centroid**, in the panel, the handles and the record: three clicks to place. The schema gained a `c2` definition (sections 2 and 9 amended). |
+| D9 | Overlay colours | The shipped `LEVEL_RGB` is kept (C2 purple, C3–C7 = L1–L5's colours) and extended with T1, T4 and S1; the L1-anchored cycle of the prototype is not adopted. |
+| D10 | Save with zero changes | The first save is allowed: Save is disabled with `NOTHING TO SAVE` only when a record already exists and nothing has changed since. |
+| D11 | Window / level persistence (old question 4) | Not persisted and not recorded: display only, reset when the study is reopened, not in the label record. |
+| D12 | T1 and T4 (old question 5) | Both are placeable levels in the Thoracic group and written to the record. No measurement reads them today, so they have no dependency note; T1 slope and T4 angles are out of scope. |
+| D13 | Clear (old question 6) | Kept on manual levels. |
+| D14 | RESET TO PREDICTION | Kept in the edit bar as the whole-study revert to the model's output, beside Discard. |
 
 ---
 

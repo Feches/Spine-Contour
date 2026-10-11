@@ -1,8 +1,11 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-10-02
-**Branch:** `claude/issue-39-failed-status-port` (the Failed-status additions on 1.0.13, issue #39 follow-up; DONE,
-merged with v1.0.14, release 1.0.15 committed and awaiting the PR — first section under "Where things stand")
+**Last updated:** 2026-10-10
+**Branch:** `worktree-level-editor` in the worktree `.claude\worktrees\level-editor` of the main checkout, off
+`origin/main` @ `20fd4c5` (v1.0.17): the vertebral level editor, window / level and the label record — BUILT, human
+gate NOT run, nothing pushed (first section under "Where things stand").
+**2026-10-02 branch (historical):** `claude/issue-39-failed-status-port` (the Failed-status additions on 1.0.13, issue
+#39 follow-up; DONE, merged with v1.0.14, release 1.0.15 committed and awaiting the PR)
 **Checkout:** `C:\Users\codyj\Spine Contour Desktop\Spine-Contour`, the main checkout on this workstation (no
 worktree). The `C:\Users\codyj\spine contour\…` worktree paths below are the 2026-09 layout of another workstation
 and do not exist here.
@@ -46,6 +49,48 @@ the newest architecture amendment for controls and null rules. No model or calib
 algorithm changed; no screenshots were added.
 
 ## Where things stand
+
+### Vertebral level editor, window / level, label record — BUILT, human gate NOT run (branch `worktree-level-editor`, worktree `.claude/worktrees/level-editor`, off `origin/main` @ `20fd4c5`, v1.0.17)
+
+2026-10-10. Edit mode on the Analysis screen is now a level editor. In edit mode the right panel is the **Vertebral
+levels** panel: sixteen levels in five groups (C2–C7, T1 · T4, L1–L5, S1, two femoral heads), each with a visibility
+checkbox, a state badge (Segmented, Edited, Manual, Not placed, Not visible) and Place… / CLEAR / CANCEL; the stage
+places a missed level by clicks, gives the selected level its handles, and refits a femoral head from 2–4 rim points;
+a display-only window / level decodes the original film and windows the film layer only; **Save edits** writes one
+label record per film for retraining, at `userData/labels/<stem>.label.json`. A film whose segmentation failed opens
+in edit mode on its original and can be placed by hand.
+
+- Spec: `docs/design/level-editor/HANDOFF.md` (`594a982`; its §12 now lists the decisions). Plan:
+  `docs/superpowers/plans/2026-10-10-level-editor.md` (`3a4019a`), 15 tasks; its Decisions table D1–D14 and its
+  `## Ledger` (every task's commits and counts, rulings R1–R18 with their costs, every deferred minor). User doc:
+  `docs/level-editor.md`. Contract: the 2026-10-10 amendment. SDD ledger
+  `.superpowers/sdd/2026-10-10-level-editor/progress.md` (local, untracked).
+- What was built, by commit (`594a982..` this branch's tip): the level model `77c8e5a`; the projection into
+  `study.geometry` `fb07447`, `725e114` (R8); handles and Tab order `15f289a`; `state.levelEditor` `c5d8771`; the label
+  record and the C2 schema amendment `7d8663d`, `25f4c69`; `labels/` on disk with `labelFile`, IPC, delete and
+  quarantine `2aebe22`; `POST /decode` and `qc.model_versions` `868e99e`; window / level in the renderer `6c3ee93`,
+  `daa8380`; drawing the level editor `eff7f6b`; the stage wiring `ffbac68`, `1ca16a9`, `9b099e9`, `0aef002` (R16, R17);
+  the panel `38dcccf`, `276c437` (R18); contours from the label mask `2051715`; the old landmark editor's handle code
+  retired `ccee104`; the smoke suite `3b5ab3b`; the landmark-editor smoke suites rewritten `c37c112`; the records (this
+  commit).
+- Counts: unit 879/879 (615 at the base; 905 before Task 13 retired 26 tests of removed code). Backend `pytest
+  backend -q` 762 passed, 3 skipped (the sc-export venv; the main checkout's graphs hard-linked into the worktree's
+  gitignored `backend/onnx/`). Smoke on fresh scratch profiles under `%TEMP%`: `smoke-levels.mjs` dom 75/75 and film
+  23/23 (one copied real lumbar film, DOM reads only, no screenshots); parity 15/15, gate1 25/25, gate2 26/26, gate3
+  26/26, chip 20/20, chord 28/28; studies 151/151; persist 42/42 then 55/55; femoral-confidence 16/16 then 5/5;
+  disc-heights 13/13; partial-segmentation 8/8; accuracy 17/17; global-sva 21/21.
+- Not run: the human gate (plan Task 15; its checklist is prepared in the plan); a packaged build (no installer has
+  been built from this branch); `smoke-cervical.mjs` and `smoke-segmental.mjs` (no lateral cervical film on this
+  workstation, and both screenshot their film); a DICOM film's default window from its tags on a real DICOM (the unit
+  and backend tests cover it).
+
+**Next.** The owner's human gate (plan Task 15): real films from their library, both themes. Then a final
+whole-branch review if wanted, a release commit (1.0.18 or later; `docs/release-main.md`) and a PR, all on the owner's
+say-so (memory: test before release). Nothing is pushed.
+
+**Follow-ups (deferred; see `docs/ROADMAP.md` §8):** the handoff's row keys (↑/↓, Space, P); window / level outside
+edit mode; a batch started from the Find tab can still overtake an open or stashed editor; a hand-placed film whose
+source moved opens to a black stage outside edit mode; and the smaller items in the plan's Ledger.
 
 ### Failed-status additions on 1.0.13 (issue #39 follow-up) — DONE; release 1.0.15 awaiting the PR (branch `claude/issue-39-failed-status-port`, off `main` @ `9992b99`, v1.0.13, merged with `origin/main` @ `e7ae5a3`, v1.0.14)
 
@@ -1655,6 +1700,84 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
     wanted.
 74. **The final whole-branch code review runs BEFORE the human gate** (2026-09-10, controller ruling). *Why:* so the user
     gates the code the branch ships and no fix wave lands after the gate.
+
+**The vertebral level editor (2026-10-10).** 75–88 are the owner's decisions D1–D14 (the plan
+`docs/superpowers/plans/2026-10-10-level-editor.md`, its Decisions table, which wins over the handoff
+`docs/design/level-editor/HANDOFF.md`); 89–106 are the execution rulings R1–R18 from its Ledger, each with its cost.
+
+75. **D1 — Window / level reads the original film.** A backend `POST /decode` returns the uploaded file's 16-bit pixels,
+    value range and DICOM window defaults; the renderer applies a linear LUT on the film layer only. No CSS filter and no
+    LUT on the stored 8-bit PNG. The same decode gives a failed film something to display.
+76. **D2 — Save semantics.** Drags keep auto-committing geometry through `/measure` to `studies.json`. **Save edits**
+    writes the label record and resets the baseline. **Discard** restores the baseline (the saved record when one
+    exists, else the state at entry) through the measure queue.
+77. **D3 — Label record location.** `userData/labels/<stem>.label.json`, the film's filename without its extension; a
+    second film with the same stem gets `-2`, the third `-3`; the chosen name is stored on the study as `labelFile`, so
+    it is stable and covered by delete and quarantine.
+78. **D4 — Branch base.** A new worktree off `origin/main` (v1.0.17), independent of the held similar-cases branch.
+79. **D5 — Film-type defaults.** lumbar → Lumbar, Sacral, Femoral heads; cervical → Cervical plus T1 only (T4 starts
+    not visible); full_spine → all five groups; everything else starts `not_visible` with `source: film_type`.
+80. **D6 — An Auto film with no result** starts with every one of the sixteen levels visible (not placed) until the
+    annotator unchecks it.
+81. **D7 — Leaving edit mode with unsaved changes** shows an inline prompt in the panel footer, `Discard 2 unsaved
+    changes? Saved edits are kept.`, with Save edits, Discard and Keep editing; it covers DONE, the Edit button, Escape
+    and Back. Sidebar navigation keeps the unsaved level state in memory for the session.
+82. **D8 — C2 is an inferior endplate (IA, IP) plus a centroid**, in the panel, the handles and the record: three clicks.
+    The schema gained a `c2` definition.
+83. **D9 — Overlay colours.** The shipped `LEVEL_RGB` is kept (C2 purple, C3–C7 = L1–L5's colours) and extended with T1,
+    T4 and S1; the handoff's L1-anchored cycle is not adopted.
+84. **D10 — Save with zero changes.** The first save is allowed; Save is disabled with `NOTHING TO SAVE` only when a
+    record already exists and nothing has changed since.
+85. **D11 — Window / level is not persisted and not recorded**: display only, reset when the study is reopened, not in
+    the label record.
+86. **D12 — T1 and T4** are placeable levels in the Thoracic group and written to the record; no measurement reads them,
+    so they get no dependency note. T1 slope and T4 angles are out of scope.
+87. **D13 — Clear** is kept on manual levels.
+88. **D14 — RESET TO PREDICTION** is kept in the edit bar as the whole-study revert to the model's output, beside
+    Discard.
+89. **R1 — Task 13 removes exports the contract named** (`TAB_ORDER`, `FULL_ORDER`, `nextSelection`, `nudge`,
+    `hitTestFemoral`, `sameHandle`, `nearestLandmark`, `landmarkHandles`, `CERVICAL_HANDLES`, `GLOBAL_SVA_HANDLES`);
+    the contract amendment strikes them as superseded. *Cost if wrong:* the amendment reworded.
+90. **R2 — `data/levels.js` imports `fitCircle` from `viewer/geometry.js`** (data → viewer), because geometry.js is pure
+    and the contract forbids reimplementing `fitCircle`. *Cost if wrong:* a one-line import move.
+91. **R3 — The wiring (Task 10) and the panel (Task 11) carry no unit tests**; their verification is the smoke suite and
+    the human gate. *Cost if wrong:* defects surface there.
+92. **R4 — A group's count omits a zero PLACED clause; the summary always writes PLACED.** *Cost if wrong:* one string
+    rule in one function.
+93. **R5 — `fitFrom` equals `need` for every kind but a head** (FIT from 2); `geometryFromPoints` caps a femoral fit at
+    the image diagonal; disc heights add no dependency entries (pinned by a test). *Cost if wrong:* trivial signature
+    churn.
+94. **R6 — The projection computes `l1_center` and `hip_midpoint`** (the validator rejects nulls beside L1 or two
+    circles); `/measure` overwrites both. *Cost if wrong:* two derived fields the backend recomputes anyway.
+95. **R7 — A cervical or full-spine projection with no orientation keeps `anterior_side: null`** and is not committed
+    until an orientation exists. *Cost if wrong:* a 422 toast from `/measure`.
+96. **R8 — Anterior side: the film's stored side, then `study.anteriorSide`, then the side read from placed levels.**
+    *Why:* an annotator dragging SA past SP must not flip a film's sign conventions silently. *Cost if wrong:* only
+    cervical/full-spine films with a stored side differ; a failed Auto film still derives.
+97. **R9 (amended) — With a saved record, the study's circles are matched to the heads by the record's geometry**, a
+    matched head takes the saved geometry with its rim, unmatched circles fill free heads preferring visible ones.
+    *Cost if wrong:* head attribution after a reopen differs in rare mixed cases; Discard clears it.
+98. **R10 — Only a `segmented` level writes `contour`**; edited and manual levels write null. *Cost if wrong:* an edited
+    level's record lacks the model outline (its `model_corners` keep the model's quad).
+99. **R11 — A non-ENOENT failure to move `labels/` aside during quarantine disables persistence for the session**, as a
+    `predictions/` failure does. *Cost if wrong:* a stuck folder stops saving where a notice would have done.
+100. **R12 — `labelFileName` makes the stem safe** (reserved and control characters to `_`, no leading dots, 180
+     characters at most, a Windows device name takes `_`); the main process's regex stays. *Cost if wrong:* such a film's
+     save fails with `Invalid label file name.`.
+101. **R13 — The 8-bit window rule** is `valueMin >= 0 && valueMax <= 255 && (bitsStored === 8 || exactly 0..255)`.
+     *Cost if wrong:* an odd default window on rare 8-bit DICOMs.
+102. **R14 — `ensureFilm` reports `superseded` as its own flag**; `reason` stays display-ready. *Cost if wrong:* none
+     visible.
+103. **R15 — The mask colour map iterates a private `MASK_LEVELS`** (the original eleven), so S1's new colour never
+     paints a mask label. *Cost if wrong:* a future level mask needs the list extended.
+104. **R16 (amended) — Hand-placed means `predictionId == null && !qc?.models`** (`isHandPlaced`): such a study has no
+     sidecar and is shown from its decoded original, never FILM UNAVAILABLE; a pre-v1.0.10 result keeps the sidecar
+     path. *Cost if wrong:* a legacy film with no qc at all would open on its original.
+105. **R17 — No run starts while editing** (Re-run and the region bar's Run segmentation are disabled, titled `Finish
+     editing before re-running segmentation`); a batch reaching a film with an open or stashed editor still drops that
+     editor on completion. *Cost if wrong:* a rare lost label edit when a batch overtakes a film being edited.
+106. **R18 — A row with two actions stacks them** (Place… above CLEAR) in the 70px column. *Cost if wrong:* one taller
+     row for hand-placed heads.
 
 ## Release prerequisites — v1.0.0 main promotion
 

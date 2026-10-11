@@ -106,6 +106,10 @@ renderer/                         (new)
                                   createBatchDriver to the store, the toast, persistenceDisabledReason and segmentStudy; module scope
   demo-studies.js                 (2026-09-10, studies-table spec §9) demoToggleAvailable(), setDemoStudiesShown(shown) — the one wiring of
                                   data/demo-visibility.js to the store, the toast and api.setDemoStudiesHidden; module scope
+  level-editor.js                 (2026-10-10) the level editor's wiring, the pattern of batch.js: enter/exit, save, discard, every
+                                  panel and stage action, the window / level state, the per-study stash; the ONLY writer of a non-null
+                                  state.levelEditor; never imports components/viewer.js or screens/analysis.js (they hand it their
+                                  parts through configureLevelEditor); module scope; verified by smoke
   dom.js                          el() helper, tiny render utilities
 
   screens/landing.js
@@ -154,9 +158,17 @@ renderer/                         (new)
                                   — the tick box both Studies tabs build; keyAttr is data-param-key (grid) or data-find-key (list)
   components/status-badge.js      (2026-09-10) statusBadge(status, title), unsupportedViewBadge(view) — the one badge both screens
                                   show; (2026-10-01) `title`, when a non-empty string, is the pill's tooltip (failureTitle for Failed)
+  components/level-editor.js      (2026-10-10) the Vertebral levels panel that replaces the tabs and Measurements in edit mode:
+                                  mountLevelEditor(host) → {update(state, study)}; DOM only; every control carries a data-level-key
+                                  (each group a data-group-key, each row a data-level-row); every handler calls renderer/level-editor.js
 
   viewer/canvas.js                layered rendering
-  viewer/interactions.js          pure interaction logic: zoom steps, hit tests, Tab order, nudge, debounce (no DOM)
+  viewer/interactions.js          pure interaction logic: zoom steps, ~~hit tests, Tab order, nudge~~ (superseded 2026-10-10 by
+                                  viewer/level-handles.js), arrow deltas, chord, debounce (no DOM)
+  viewer/level-handles.js         (2026-10-10) a level's handles, client-space hit testing, moving and nudging a handle (rim points
+                                  refit the head), the Tab order across the editor; pure
+  viewer/window-level.js          (2026-10-10) display-only window / level: range, default, clamp, drag rule, chip text, crop to the
+                                  stored image height, the decoded film as a RawFilm, the linear LUT; pure
   viewer/measure-queue.js         (plan 04) createMeasureQueue({measure, getState, setState, showToast, debounceMs})
                                   → {commitGeometry, replaceMeasured}: per-study revisions, one owner-tracked
                                   debounce, flush on study switch; session-only drafts, atomic geometry/measurement commit
@@ -200,6 +212,20 @@ renderer/                         (new)
                                   sortFindRows(studies, sort, runningId, batch), (2026-10-01) summaryCounts(studies, runningId,
                                   batch) — the Find list's sort and the Studies summary's counts; pure
   data/demo-visibility.js         (2026-09-10, §9) demoStudiesShown(state), demoVisibilityPatch(state, shown) — pure
+  data/levels.js                  (2026-10-10) the level model: sixteen codes in five groups, kinds, names, film-type defaults, state
+                                  derivation, placement steps, visibility, the unsaved count, summary and training status, the
+                                  measurement-to-level table behind the dependency notes; the LevelEditor and WindowState typedefs; pure
+  data/level-projection.js        (2026-10-10) the level model into study.geometry per region (projectGeometry, projectionRegion,
+                                  anteriorSideFrom, quadrilateral); the reverse direction is levels.js levelsFromGeometry; pure
+  data/label-record.js            (2026-10-10) the label record: toLabelRecord, recordLevels, labelFileName (a safe stem, -2/-3 on a
+                                  clash), viewSlug, appVersion, LABEL_SCHEMA; pure
+  data/contours.js                (2026-10-10) a level's outline in the label mask (traceLabel, simplify, levelContours), for the
+                                  record's contour; pure
+
+backend/decode.py                 (2026-10-10) decode_film(payload): the original film's 16-bit pixels, value range and DICOM window
+                                  defaults for window / level; stateless, runs no model
+test/fixtures/schema-check.js     (2026-10-10) a hand-written JSON Schema (draft 2020-12 subset) checker for the label record; test
+                                  only, not matched by the unit-test glob (the app takes no JSON Schema library)
 
 test/                             (new) mirrors renderer/ — node --test
   geometry.test.js  similarity.test.js  status.test.js
@@ -254,6 +280,9 @@ The single record type. Demo and real studies share it exactly.
  * @property {Geometry|null}     geometry
  * @property {Qc|null}           qc
  * @property {Object|null}       calibration  compact original-image scale record (2026-09-09 amendment below)
+ * @property {string|null} labelFile  (2026-10-10, level editor) the bare file name of this film's label record under
+ *                                    userData/labels/ (`<stem>.label.json`, `-2`/`-3` on a clash), set by its first
+ *                                    Save edits and kept across saves; null until then
  * @property {Object<string,string>} clinical   field name → value
  */
 ```
@@ -387,7 +416,11 @@ a draw function must blank a layer, never freeze the application.
   showAllLordosis: false,
 
   editing: false,
-  selection: null,          // Selection — see viewer/interactions.js
+  selection: null,          // Selection — see viewer/interactions.js; (2026-10-10) always null in edit mode, the level editor
+                            // holds the focused handle instead
+  levelEditor: null,        // (2026-10-10) LevelEditor | null — the level editor's state while editing (typedef in
+                            // renderer/data/levels.js); renderer/level-editor.js is the only writer of a non-null value;
+                            // session-only, never persisted; reset to null by FRESH_VIEW, a run's completion and changeRegion
   running: null,            // string | null — the id of the study whose /predict is in flight (plan 05);
                             // one run at a time. `if (state.running)` still means "a run is in flight";
                             // the viewer and the Studies list compare it with a study's id.
@@ -755,7 +788,8 @@ never rounded or reformatted.
 export function fitCircle(points)        // → [cx,cy,r] | null  (needs ≥3, null if collinear)
 export function imageToClient(pt, rect, canvas)   // → [x,y]
 export function clientToImage(ev, canvas)          // → [x,y]  clamped to bounds
-export function nearestLandmark(geometry, clientX, clientY, canvas, radius = 14)
+// ~~export function nearestLandmark(geometry, clientX, clientY, canvas, radius = 14)~~   superseded 2026-10-10
+//   (viewer/level-handles.js hitTestLevelHandles); ~~landmarkHandles~~ superseded 2026-10-10 (levelHandles)
 export function landmarkAt(geometry, level, corner)   // → [x,y]
 export function setLandmarkAt(geometry, level, corner, point)   // mutates, keeps quadrilateral in sync
 export const LEVELS = ['L1','L2','L3','L4','L5']
@@ -777,19 +811,15 @@ S1 has only `SA` and `SP`. `landmarkAt(g,'S1','SA')` is `g.s1_superior[0]`,
 /** @typedef {{kind:'landmark', level:string, corner:string}
  *          | {kind:'femoral', side:'left'|'right', part:'center'|'rim'}} Selection */
 
-// 22 landmark stops, anatomical order:
-//   L1 SA,SP,IA,IP · L2 … · L5 SA,SP,IA,IP · S1 SA,SP
-export const TAB_ORDER = [...]
-
-// TAB_ORDER plus the two femoral-head centre stops = 24 stops.
-// This is what Tab/Shift+Tab actually cycles; the spec requires the heads to be
-// reachable by keyboard, and they are not landmarks so they are not in TAB_ORDER.
-export const FULL_ORDER = [...]
-
-export function nextSelection(current, direction)   // → Selection, cycles FULL_ORDER
-export function nudge(geometry, selection, dx, dy)  // mutates geometry
-export function sameHandle(a, b)                    // (plan 04) → boolean, exact identity incl. femoral part
-export function hitTestFemoral(circles, x, y, radius = 14)   // (plan 04) → Selection|null, coordinate-space agnostic
+// Superseded 2026-10-10 and removed (plan 2026-10-10 Task 13): the level editor's Tab order, nudge and hit test live in
+// viewer/level-handles.js (handleOrder/nextLevelHandle, nudgeHandle, hitTestLevelHandles). The Selection typedef above
+// is kept unchanged but unused in edit mode (state.selection is always null there).
+// ~~export const TAB_ORDER = [...]~~                    superseded 2026-10-10 (22 landmark stops)
+// ~~export const FULL_ORDER = [...]~~                   superseded 2026-10-10 (TAB_ORDER plus the two femoral centres)
+// ~~export function nextSelection(current, direction)~~ superseded 2026-10-10
+// ~~export function nudge(geometry, selection, dx, dy)~~ superseded 2026-10-10
+// ~~export function sameHandle(a, b)~~                 superseded 2026-10-10
+// ~~export function hitTestFemoral(circles, x, y, radius = 14)~~   superseded 2026-10-10
 export function arrowKeyDelta(key, shiftKey)        // (plan 04) → {dx,dy}|null — 1px, 10px with Shift
 export function debounce(fn, ms)                    // (plan 04) → fn with .cancel()
 
@@ -1310,3 +1340,113 @@ model change. `backend/requirements.txt` selects `onnxruntime-directml==1.24.4` 
 Windows and `onnxruntime==1.24.4` elsewhere; the Windows bundle check requires
 `DmlExecutionProvider` and `DirectML.dll`. CI has no GPU: the GPU path is verified on a
 workstation with `--verify-models`, which exercises each listed GPU.
+
+
+## 2026-10-10 amendment: vertebral level editor, window / level, label record
+
+Spec `docs/design/level-editor/HANDOFF.md` (`594a982`); plan `plans/2026-10-10-level-editor.md`, whose Decisions
+table (D1–D14, the owner's answers) wins over the spec and whose Ledger holds the execution rulings R1–R18; user doc
+`docs/level-editor.md`; label record schema `docs/design/level-editor/label-record.schema.json`. Edit mode is the
+level editor: the Analysis screen's right panel becomes the Vertebral levels panel (sixteen levels in five groups:
+C2–C7, T1 · T4, L1–L5, S1, two femoral heads), the stage places, selects and adjusts levels, a display-only window /
+level acts on the film layer, and **Save edits** writes one label record per film for retraining.
+
+**File structure.** New: `renderer/level-editor.js`, `renderer/components/level-editor.js`, `renderer/data/levels.js`,
+`renderer/data/level-projection.js`, `renderer/data/label-record.js`, `renderer/data/contours.js`,
+`renderer/viewer/level-handles.js`, `renderer/viewer/window-level.js`, `backend/decode.py`,
+`test/fixtures/schema-check.js` (one line each in the File structure block above), with their unit tests
+(`test/levels`, `level-projection`, `level-handles`, `window-level`, `label-record`, `contours` `.test.js`;
+`backend/tests/unit/test_decode.py`, `backend/tests/integration/test_decode_server.py`) and
+`tools/smoke/smoke-levels.mjs`. No root module was added, so neither electron-builder allowlist changed. New exports
+on existing modules: `api.js` `decodeFilm`, `loadLabelRecord`, `saveLabelRecord`, `deleteLabelRecord` (preload
+`decodeFilm`, `loadLabelRecord`, `saveLabelRecord`, `deleteLabelRecord`); `screens/analysis.js` `ensureFilm(studyId)`
+and `imageInfo(studyId)`; `components/viewer.js` `commitGeometry` (the measure queue's) and `getPrediction(studyId)`;
+`data/predictions.js` `isHandPlaced(study)`; `viewer/canvas.js` `imagesFromRaw`, `colorFor` and the level editor's
+draw path in `drawDynamicLayer` (`opts.editor`, `handle`, `dragGeometry`, `overlays`, `overlayOpacity`) and
+`drawStaticLayer` (`opts.editing`, `opts.window`).
+
+**`state.levelEditor`** (store block above): `LevelEditor | null`, typedef in `renderer/data/levels.js` (studyId,
+region, levels, model, baseline, record, selected, handle, placing, open, window, exitPrompt). `renderer/level-editor.js`
+is the only writer of a non-null value; the other writers only ever reset it to null: `FRESH_VIEW` (its eight keys in
+`screens/studies.js` and `data/demo-visibility.js` gain `levelEditor: null`), a run's completion for that study
+(`segmentStudy`), and `changeRegion`. Session-only, never persisted, never mutated in place: every action builds a new
+editor, which the viewer's dynamic key and the panel's rebuild key compare by reference. An editor with unsaved changes
+that leaves the store through a navigation is kept for the session in the wiring module's stash, keyed by study id,
+and brought back by the next Edit on that study (D7); a delete, a re-run or a Region change drops it
+(`forgetLevelEditor`). `state.selection` and the `Selection` typedef are unchanged but unused in edit mode
+(`state.selection` is always null there; the focused handle is `state.levelEditor.handle`).
+
+**`Study.labelFile: string|null`** (Study typedef above): optional and default null like the other optional fields, no
+`STORE_VERSION` bump, listed in `validateStudy`'s returned object. The renderer picks the name (`labelFileName`, D3)
+and keeps it on the record across saves; the main process only validates it.
+
+**Persistence.** A third kind of file: **`userData/labels/<stem>.label.json`**, one per film, named for the film's
+filename stem (`lateral_lumbar_001.dcm` → `lateral_lumbar_001`), `-2`, `-3` … when another study's `labelFile`
+already holds the name (D3). The stem is made safe first (R12: `\ / : * ? " < > |` and control characters become `_`,
+leading dots go, the stem is capped at 180 characters, a Windows device name takes a `_`); the main process accepts
+only a bare `<name>.label.json` (`main.js` `LABEL_FILE`) and rejects anything else with `Invalid label file name.`.
+Written atomically through `main.js` (`writeJsonAtomic`, IPC `save-label-record`, which creates `labels/`), read with
+`load-label-record` (null when absent or unparseable), deleted with the study (`deleteStudy` and the bulk
+`deleteStudyBatch`, inside the same try as the sidecar), and quarantined with the rest: a corrupt `studies.json` moves
+`labels/` aside as `labels.corrupt-<stamp>` under the same stamp as `predictions.corrupt-<stamp>`; a non-ENOENT failure
+to move it takes the existing `persistenceUnsafe` path, nothing written for the session (R11). Writes are gated by
+`assertWritable` like every other write. The record never names the SP id; the study is named by its stem. Demo
+studies never write one.
+
+**Backend API.** `POST /decode` (multipart `file`, no model): `{width, height, bits_stored, value_min, value_max,
+window: {center, width}|null, photometric, scaled, pixels_base64}`, the original film's pixels as little-endian uint16
+of `round(value − value_min)` (RescaleSlope/Intercept applied; a MONOCHROME1 film inverted with its WindowCenter), the
+25-megapixel cap and the 50 MB upload limit; 422 with a display-ready `detail` for a file it cannot read. IPC
+`decode-film` hands the renderer bytes, not base64. Every `/predict` result's `qc` gains `model_versions`
+(`backend/models/models.py` `model_versions(models)`: per structure the graph's `onnx_sha256`, two joined with `+`,
+null when unknown), which the label record writes as `model.version`.
+
+**Geometry.** T1, T4, per-level visibility, `source` and femoral rim points never enter `study.geometry`: they live in
+the level model and the label record only. The levels a film's region measures are projected into `study.geometry`
+through the existing measure queue (`projectGeometry` → `commitGeometry` → `/measure`), so measurements, the em-dash
+rule and `studies.json` work as before (D2: drags keep auto-committing; Save edits writes only the record). C2 in the
+level model is an inferior endplate plus a centroid (D8), projected as `vertebrae.C2.inferior` and `c2_centroid`.
+**`isHandPlaced(study)`** (R16 as amended, `data/predictions.js`): true when `predictionId == null && !qc?.models`. It
+gates the film: such a study has no sidecar, so `needsRestore` is false, `restoreFilm` never runs for it, and
+`ensureFilm` decodes its original for the stage (never FILM UNAVAILABLE); a study with a prediction id or `qc.models`
+(a pre-v1.0.10 result included) keeps the sidecar path. `LEVEL_RGB` gains `T1`, `T4` and `S1` (D9, the shipped colours
+kept); `buildLabelColorMap` iterates a private `MASK_LEVELS` list (the original eleven keys) so S1's entry never colours
+a mask label (R15).
+
+**Removed by Task 13** (no live caller once the level editor drew its own handles), each superseded 2026-10-10:
+`viewer/interactions.js` ~~`TAB_ORDER`~~, ~~`FULL_ORDER`~~, ~~`nextSelection`~~, ~~`nudge`~~, ~~`sameHandle`~~,
+~~`hitTestFemoral`~~; `viewer/geometry.js` ~~`nearestLandmark`~~, ~~`landmarkHandles`~~; `viewer/canvas.js`
+~~`drawHandle`~~, ~~`drawHandles`~~, ~~`drawTracePoints`~~, ~~`HANDLE_HOVER_RADIUS_PX`~~, ~~`HANDLE_RADIUS_PX`~~,
+~~`HANDLE_LABEL_PX`~~; `data/cervical.js` ~~`CERVICAL_HANDLES`~~; `data/global-sva.js` ~~`GLOBAL_SVA_HANDLES`~~. Their
+replacements are in `viewer/level-handles.js` (handleOrder/nextLevelHandle, nudgeHandle, hitTestLevelHandles,
+levelHandles) and the canvas's `drawLevelHandles`. The old edit bar's RETRACE, FIT (as a retrace), ADD CIRCLE and
+DELETE CIRCLE are gone: a femoral head is re-placed from 2–4 rim points with the panel's Place… and the edit bar's FIT,
+refitted by a rim-point drag, and hidden with its checkbox; Delete and Backspace do nothing in the level editor.
+
+**Behavioural rulings** (plan Ledger):
+
+- R4: a group's header count omits a zero PLACED clause (the prototype's rule); the panel summary always writes PLACED.
+- R5: `fitFrom` equals `need` for every kind but a femoral head (FIT from 2); `geometryFromPoints(code, points,
+  imageSize)` caps a femoral fit at the image diagonal; disc heights add no dependency entries (their pairs are pinned
+  equal to the lumbar segmental pairs by a test).
+- R6: the projection computes `l1_center` (the mean of L1's corners) and `hip_midpoint` (the mean of two centres)
+  rather than nulls, because the validator rejects null with L1 or two circles present; `/measure` overwrites both.
+- R7: a cervical or full-spine projection with no orientation keeps `anterior_side: null` and is not committed until an
+  orientation exists (`/measure` and the validator refuse it).
+- R8: anterior side precedence in the projection: the film's stored `anterior_side`, then `study.anteriorSide`, then
+  the side read from placed levels, then null. An annotator dragging SA past SP never flips a film's sign conventions.
+- R9 (amended): with a saved record, the study's femoral circles are matched to Head 1/Head 2 by the record's head
+  geometry (centre and radius); a matched head takes the saved geometry, rim included; unmatched circles fill the free
+  heads FH1 then FH2, preferring a head the record does not mark not visible.
+- R10: the record's `contour` is written only for a `segmented` body level; edited and manual levels write null (their
+  `model_corners` carry the model's quad).
+- R13: the 8-bit window rule is `valueMin >= 0 && valueMax <= 255 && (bitsStored === 8 || exactly 0..255)`, so an
+  8-bit DICOM with a rescale takes the general range.
+- R14: `ensureFilm` reports `superseded: true` as its own flag; `reason` stays display-ready (null when superseded).
+- R17: Re-run (the toolbar's and the region bar's Run segmentation) is disabled while editing, titled `Finish editing
+  before re-running segmentation`; a batch reaching a film with an open or stashed editor still drops that editor on
+  completion.
+- R18: a level row with two actions stacks them in its 70px column (Place… above CLEAR, `.lv-actions.is-stacked`).
+
+No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet file (rules in
+`styles/screens/analysis.css` section `05 — LEVEL EDITOR` and `styles/components.css`), no Python package.
