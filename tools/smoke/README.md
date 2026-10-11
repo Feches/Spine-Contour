@@ -36,6 +36,11 @@ run `node tools/smoke/cdp.mjs --quit` first (then kill stray `electron` processe
 port stays open). To drive an already-running instance on purpose, set `SMOKE_ATTACH=1`:
 it skips the spawn, touches no profile, and its ready line says `"attached": true`.
 
+**On Windows with Node 24 the launcher's own exit code is not a signal.** `launch.mjs` prints its
+`{"ready":true,...}` line and then may exit 127 with a libuv assertion
+(`!(handle->flags & UV_HANDLE_CLOSING)`, `src\win\async.c`) as it detaches; the app is up and the suites drive it
+normally. Observed on every launch on 2026-10-11. Confirm the launch by running a suite, not by the exit code.
+
 ## Running the plan-04 suites
 
 For partial-segmentation regression, run `node tools/smoke/smoke-partial-segmentation.mjs`
@@ -313,7 +318,8 @@ the same way `smoke-studies.mjs`'s own `summaryParts()` was fixed in this task, 
 shared-`addedAt` fix to `loadWorkspaceStudies` (a workspace load's records now stamp one timestamp instead of one
 per record, so the Find tab's newest-first default sort keeps scan order), 100/100 again;
 `smoke-parameters.mjs` 58/58; `smoke-seeding.mjs` 36/36 (re-run 2026-09-10 on the merged tree; the suite's own
-`EXPORT_HEADER` constant gained the fifteen disc-height columns upstream's CSV export already carried); `smoke-persist.mjs` 40/40 then
+`EXPORT_HEADER` constant gained the fifteen disc-height columns upstream's CSV export already carried; re-measured 2026-10-11 on the level-editor tree, 34/36 until the suite's
+expectation followed the export's current columns and header line, then 36/36, see the seeding section); `smoke-persist.mjs` 40/40 then
 47/47 — phase 1 marks SP-9000 reviewed and sets its subject after the last nudge; phase 2 asserts both survived
 and that the re-run cleared the mark. Every check in the suite runs
 unconditionally; there is no skip path.
@@ -370,6 +376,12 @@ on every run, adds five records through Load and removes them in `finally`. It m
 after the other suites on one instance, but never between `smoke-persist.mjs --phase run` and
 `--phase restart`. Not driveable: the native pickers, the datalist and date-picker popups, and
 the save dialog. A silent run has thrown — re-run it bare. Baseline: 36/36.
+
+2026-10-11: the suite's `EXPORT_HEADER` and its first-row expectation follow the export's current shape: the Spine
+region and Anterior image side columns after Note (the fixture films are region `auto`, so `csv.js` writes them and the
+row reads `auto` then an empty side), the ten lumbar segmental columns from 1.0.11 before Age, and the header on line
+[2] with the first row on [3] since 1.0.14 dropped the authors' line. The suite had read 34/36 against correct code
+since those changes; it reads 36/36 again (re-run 2026-10-11, fresh `%TEMP%` profile, CPU).
 
 ## Running the landing suite
 
@@ -542,6 +554,36 @@ persist 42/42 then 55/55; femoral-confidence 16/16 then 5/5; disc-heights 13/13,
 17/17 (one launch); global-sva 21/21 (its own app). Not run: `smoke-cervical.mjs` and `smoke-segmental.mjs` need a
 lateral cervical film with anterior on image left, which this workstation does not have, and both screenshot the
 film they run on.
+
+## Running the manual calibration suite
+
+`smoke-manual-calibration.mjs` runs in three phases on one scratch profile, each given two LOCAL lumbar film paths
+and each needing its own launch: `save` draws and saves a manual scale for each film (it asserts the profile's
+reference store is fresh, so launch without `SMOKE_KEEP_PROFILE`); `batch` loads the two films as a workspace after a
+full restart and runs the real batch segmentation, checking each saved scale survives into the result, the disc
+heights and the CSV; `verify` restarts again and checks the segmentation and the corrected scales, then clears one
+scale. Quit and relaunch between phases keeping the profile (`SMOKE_KEEP_PROFILE=1` on the second and third launch,
+the same `SPINE_CONTOUR_USER_DATA` on every launch and every suite command).
+
+```
+node tools/smoke/launch.mjs                      # fresh profile
+node tools/smoke/smoke-manual-calibration.mjs save   <a.jpg> <b.jpg>
+node tools/smoke/cdp.mjs --quit
+SMOKE_KEEP_PROFILE=1 node tools/smoke/launch.mjs
+node tools/smoke/smoke-manual-calibration.mjs batch  <a.jpg> <b.jpg>
+node tools/smoke/cdp.mjs --quit
+SMOKE_KEEP_PROFILE=1 node tools/smoke/launch.mjs
+node tools/smoke/smoke-manual-calibration.mjs verify <a.jpg> <b.jpg>
+node tools/smoke/cdp.mjs --quit
+```
+
+It runs real segmentations with the region left on Auto (the suite sets `cpuThreads` 2), which searches both
+orientations per film, so the `batch` phase takes about 4 to 5 minutes for two films on this CPU (275 s on
+2026-10-11); the suite waits up to 600 s for it. The two films must be ones the detection can read (the wait ends
+only when every study has a geometry). A real film is on screen throughout, so take no screenshots; the suite reads the
+DOM and the store only and writes nothing to git. Baseline (2026-10-11, level-editor tree, CPU, fresh `%TEMP%`
+profile): save 5/5, batch 7/7, verify 5/5. The `batch` phase had timed out on its 240 s wait on every run since
+1.0.10 made Auto the import default, so its later checks and the whole `verify` phase had not run on this tree before.
 
 ## Library
 
