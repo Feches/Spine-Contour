@@ -204,6 +204,15 @@ test('a two-point rim is a diameter, and moving one end refits it', () => {
   assert.equal(moved.radius, 15);
 });
 
+test('a rim move that would leave the head under 0.5 px is refused and returns the geometry unchanged (R25)', () => {
+  const rimTwo = deepFreeze({ center: [50, 50], radius: 10, rim: [[60, 50], [40, 50]] });
+  assert.equal(moveHandle('FH1', rimTwo, 'R1', [60, 50]), rimTwo);      // onto the other point: radius 0
+  assert.equal(moveHandle('FH1', rimTwo, 'R1', [59.4, 50]), rimTwo);    // 0.6 px apart: radius 0.3
+  assert.equal(nudgeHandle('FH1', rimTwo, 'R1', 20, 0), rimTwo);        // the nudge lands on R0 too
+  const atFloor = moveHandle('FH1', rimTwo, 'R1', [59, 50]);            // 1 px apart: radius 0.5, the floor, kept
+  assert.deepEqual(atFloor, { center: [59.5, 50], radius: 0.5, rim: [[60, 50], [59, 50]] });
+});
+
 test('a rim drag has no radius cap', () => {
   const moved = moveHandle('FH1', circle, 'R0', [5000, 50]);
   assert.equal(moved.rim.length, 4);

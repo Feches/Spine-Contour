@@ -485,9 +485,10 @@ export function cancelPlacing(editor) {
   return editor.placing ? { ...editor, placing: null } : editor;
 }
 
-// The smallest femoral head a placement may finish with (ruling R22): the label record's schema needs a radius
-// above 0, and two rim points 1 px apart, the closest addPoint keeps, give 0.5.
-const MIN_RADIUS = 0.5;
+// The smallest femoral head a placement may finish with (ruling R22) or a rim-point drag may leave (R25, in
+// viewer/level-handles.js moveHandle): the label record's schema needs a radius above 0, and two rim points 1 px
+// apart, the closest addPoint keeps, give 0.5.
+export const MIN_RADIUS = 0.5;
 
 // The geometry the placement would finish with now, or null when it may not finish: too few clicks, or a femoral
 // head whose fitted radius is under MIN_RADIUS (or not finite).

@@ -10,7 +10,7 @@
 // the geometry's own (read them, do not change them); `moveHandle` and `nudgeHandle` never mutate their
 // input and return a NEW geometry with new arrays along the changed path.
 
-import { LEVEL_CODES, kindOf, fitRim, synthesizeRim } from '../data/levels.js';
+import { LEVEL_CODES, MIN_RADIUS, kindOf, fitRim, synthesizeRim } from '../data/levels.js';
 import { imageToClient } from './geometry.js';
 
 export const RIM_HANDLES = ['R0', 'R1', 'R2', 'R3'];
@@ -59,7 +59,9 @@ export function handleAt(code, geometry, handle) {
 /**
  * The geometry with one handle moved to `point`. A corner replaces that entry of its pair, a centroid
  * is replaced; a rim point replaces that point of the (materialised) rim and the circle is refitted
- * over it with no radius cap. A handle the level does not have returns the geometry it was given.
+ * over it with no radius cap. A move that would leave the head's radius under MIN_RADIUS (0.5 px: the
+ * label record cannot hold a radius of 0; ruling R25) is refused and the geometry returned unchanged, as is
+ * a handle the level does not have.
  * @returns {import('../data/levels.js').LevelGeometry}
  */
 export function moveHandle(code, geometry, handle, point) {
@@ -69,7 +71,8 @@ export function moveHandle(code, geometry, handle, point) {
   if (kindOf(code) === 'circle') {
     const rim = rimOf(geometry).map(p => [p[0], p[1]]);
     rim[RIM_HANDLES.indexOf(handle)] = moved;
-    return fitRim(rim, Infinity) ?? geometry;
+    const refit = fitRim(rim, Infinity);
+    return refit && refit.radius >= MIN_RADIUS ? refit : geometry;
   }
   const [key, index] = SLOTS[handle];
   const pair = geometry[key];
