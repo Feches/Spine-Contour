@@ -473,9 +473,11 @@ test('drawDynamicLayer outside edit mode keeps the hip line and markers at their
   };
   const hipLine = (rec) => rec.painted.find(p => p.name === 'stroke' && p.lineDash.length === 2);
   const one = paint(1);
-  const quarter = paint(0.25);
-  assert.deepEqual([hipLine(quarter).lineWidth, hipLine(quarter).lineDash], [1.5, [4, 3]], 'the 1.5 px line stays 1.5');
-  assert.deepEqual(quarter.calls, one.calls, 'the centre crosses and the midpoint diamond as at 1');
+  for (const pixelRatio of [0.25, 0.5, 0.999]) {
+    const past = paint(pixelRatio);
+    assert.deepEqual([hipLine(past).lineWidth, hipLine(past).lineDash], [1.5, [4, 3]], `the 1.5 px line stays 1.5 at ${pixelRatio}`);
+    assert.deepEqual(past.calls, one.calls, `the centre crosses and the midpoint diamond as at 1 (${pixelRatio})`);
+  }
   const doubled = paint(2);
   assert.deepEqual([hipLine(doubled).lineWidth, hipLine(doubled).lineDash], [3, [8, 6]], 'below 1:1 it still scales');
 });

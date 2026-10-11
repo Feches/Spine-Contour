@@ -6,7 +6,7 @@ import { getState, setState } from '../store.js';
 import { measure } from '../api.js';
 import { showToast } from './toast.js';
 import {
-  createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel, colorFor,
+  createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel, colorFor, LEVEL_HANDLE_RADIUS_PX,
 } from '../viewer/canvas.js';
 import { clientToImage } from '../viewer/geometry.js';
 import { zoomIn, zoomOut, zoomAbout, isChordHeld, vertebraAt, arrowKeyDelta } from '../viewer/interactions.js';
@@ -438,14 +438,21 @@ export function mountViewer(container) {
   });
   resizeObserver.observe(stage);
 
+  // The grab radius in CSS pixels: 14 up to 1:1, where the handle is drawn 6 CSS px wide; past 1:1 the handle
+  // keeps its 6 image px and grows with the film (R28), so the grab area follows the drawn disc (the re-review
+  // of the gate feedback: at 800% on a small film a press inside the drawn handle missed it).
+  const HANDLE_GRAB_PX = 14;
+  function grabRadius() {
+    return Math.max(HANDLE_GRAB_PX, LEVEL_HANDLE_RADIUS_PX / Math.min(1, pixelRatio()));
+  }
+
   // The selected level's handle under the pointer, or null. Only the selected level has handles (handoff
-  // §5), and none while it is being placed. Hit-tested in client space, so the grab radius is a constant
-  // 14 CSS pixels at any zoom.
+  // §5), and none while it is being placed. Hit-tested in client space with grabRadius().
   function selectedHandleAt(editor, event) {
     const code = editor.selected;
     const entry = code ? editor.levels[code] : null;
     if (!entry?.visible || !entry.geometry || editor.placing?.code === code) return null;
-    const handle = hitTestLevelHandles(levelHandles(code, entry.geometry), event.clientX, event.clientY, dynamicCanvas);
+    const handle = hitTestLevelHandles(levelHandles(code, entry.geometry), event.clientX, event.clientY, dynamicCanvas, grabRadius());
     return handle ? { code, handle, geometry: entry.geometry } : null;
   }
 
