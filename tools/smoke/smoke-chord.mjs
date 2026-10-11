@@ -143,7 +143,7 @@ await cdp.settle(120);
 
 // ---- 5. the zoom clamp must not drift the pan ----
 await resetView();
-await cdp.setState('{ zoom: 2.4 }');
+await cdp.setState('{ zoom: 8 }');
 await cdp.settle(80);
 {
   const beforeClamp = await cdp.state();

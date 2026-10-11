@@ -74,8 +74,8 @@ test('zoomAbout leaves the pan untouched when the clamp bites, so repeated ticks
 });
 
 test('zoomAbout uses the POST-clamp zoom, so a partly-clamped step still anchors exactly', () => {
-  // 2.2 * 1.25 would be 2.75; the clamp cuts it to 2.4, so k is 1.0909..., not 1.25.
-  const view = { zoom: 2.2, panX: 30, panY: 0 };
+  // 7.2 * 1.25 would be 9; the clamp cuts it to 8, so k is 8/7.2 = 1.111..., not 1.25.
+  const view = { zoom: 7.2, panX: 30, panY: 0 };
   const anchored = pointUnder(view, [200, 0]);
   const next = zoomAbout(view, 1, 200, 0);
   assert.equal(next.zoom, ZOOM_MAX);
@@ -100,16 +100,19 @@ test('zoomAbout does not mutate the view it is given', () => {
   assert.notEqual(next.panX, 30);
 });
 
-test('clampZoom clamps to the 0.6..2.4 range and passes through in between', () => {
+test('clampZoom clamps to the 0.6..8 range and passes through in between', () => {
   assert.equal(clampZoom(0.1), ZOOM_MIN);
   assert.equal(clampZoom(9), ZOOM_MAX);
+  assert.equal(clampZoom(8), 8);
+  assert.equal(clampZoom(2.5), 2.5);
   assert.equal(clampZoom(1.2), 1.2);
 });
 
 test('zoomIn and zoomOut step by 1.25x and clamp at the bounds', () => {
   assert.ok(Math.abs(zoomIn(1) - 1.25) < 1e-9);
   assert.ok(Math.abs(zoomOut(1) - 0.8) < 1e-9);
-  assert.equal(zoomIn(2.4), ZOOM_MAX);
+  assert.equal(zoomIn(ZOOM_MAX), ZOOM_MAX);
+  assert.equal(zoomIn(7.2), ZOOM_MAX);
   assert.equal(zoomOut(0.6), ZOOM_MIN);
 });
 

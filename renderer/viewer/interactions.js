@@ -1,5 +1,5 @@
 export const ZOOM_MIN = 0.6;
-export const ZOOM_MAX = 2.4;
+export const ZOOM_MAX = 8;
 export const ZOOM_STEP = 1.25;
 
 export function clampZoom(zoom) {
@@ -45,7 +45,7 @@ export function isChordHeld(buttons) {
  *
  * The step and the clamp happen INSIDE and k comes from the CLAMPED result, so a tick at
  * ZOOM_MIN/ZOOM_MAX gives k === 1 and leaves the pan alone. Deriving k from the REQUESTED zoom
- * instead makes the film creep further every tick while the zoom label sits frozen at 240%.
+ * instead makes the film creep further every tick while the zoom label sits frozen at 800%.
  *
  * Takes a DIRECTION, not a factor, so the wheel and the toolbar buttons agree bit-for-bit:
  * `zoom * (1/ZOOM_STEP)` is not `zoom / ZOOM_STEP` in binary floating point.

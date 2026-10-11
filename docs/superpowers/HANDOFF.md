@@ -1929,7 +1929,7 @@ plan 06 had never been packaged, or that installed previews contain demos, are s
   top-left formula is wrong by `(1-z)*C` — 500px at 2× on a 1000px stage: nearly right in the middle
   and grossly wrong at the edges, which is where a quick manual check does not look. And `k` must
   come from the **post-clamp** zoom, or the film creeps every tick at `ZOOM_MAX` while the label
-  sits frozen at 240%.
+  sits frozen at 800%.
 - **Before believing a canvas/pointer suite's FAILURE, re-run it alone on a freshly launched
   instance.** On 2026-09-06 a batched re-run reported `gate1` 22/25 and `gate2` 28/32 — pan-vs-edit
   precedence, Escape-exits-edit, and a landmark drag all "failing". Run alone against the same
