@@ -107,7 +107,7 @@ Selecting a row gives that level its handles on the stage (only the selected lev
 handle; the help line says `L3 selected — drag a handle to adjust it.`. A corner handle carries its corner's colour, a
 centroid the level's colour, a rim point the trace yellow. An edited level, when selected, shows the model's original
 geometry dashed beneath it. Dragging a handle moves that point, clamped to the image; a femoral head's rim point refits
-the circle through its rim (a model head's four rim points are synthesised at 45° intervals until the first edit).
+the circle through its rim (a model head's four rim points are synthesised at −45°, 45°, 135° and 225°, the diagonals, until the first edit).
 Every drag release and nudge is committed through the measure queue, so the measurements and `studies.json` follow at
 once (D2).
 

@@ -395,7 +395,7 @@ built.
   source film could not be found.`) is toasted only when Edit is pressed. A card with a relocate would say why up front.
   Related: a very old record with a sidecar but neither a prediction id nor `qc.models` reads as hand-placed (R16).
 - **A radius-0 femoral head** from two identical rim clicks is dropped by the projection with no explanation in the
-  panel (Task 2, M1); the near-duplicate click rule covers bodies and endplates only.
+  panel (Task 2, M1); the near-duplicate click rule covers body, C2 and endplate placements only.
 - **Stage layout.** The edit bar's help line makes it taller: in a small window it covers the film's upper landmarks
   (the smoke suites now run at 1600x1100), and the W/L panel at top 116 px may overlap a two-row edit bar. A level's
   label plate is fixed to the right of its posterior corner and not clamped to the canvas, so it can run off an

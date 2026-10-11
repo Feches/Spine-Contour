@@ -287,8 +287,9 @@ Store everything in **image pixels of the stored image, origin top-left**. Conve
 ## 9. Label record
 
 - **When:** written on **Save edits**.
-- **Where:** one file per film, `<study>.label.json`, beside the study's saved results. Location to confirm. (Decided
-  2026-10-10, D3 in section 12: `userData/labels/<stem>.label.json`, `-2`, `-3` on a clash, the name kept on the study.)
+- **Where:** one file per film, `<study>.label.json`, beside the study's saved results. ~~Location to confirm.~~
+  (Decided 2026-10-10, D3 in section 12: `userData/labels/<stem>.label.json`, `-2`, `-3` on a clash, the name kept on
+  the study.)
 - **Schema:** `label-record.schema.json`.
 - **Example:** `label-record.example.json`.
 
@@ -310,7 +311,7 @@ Store everything in **image pixels of the stored image, origin top-left**. Conve
 | `levels.<T1, S1>.corners` | `{sa, sp}`: superior endplate only |
 | `levels.T4.centroid` | `[x, y]` |
 | `model_corners`, `model_centroid` | The model's original geometry when `edited`; otherwise null |
-| `levels.*.contour` | The model mask outline as a polygon when available; null for manual or corner-only levels |
+| `levels.*.contour` | The model's mask outline for `segmented` body levels (C3–C7, L1–L5) only; null for edited and manual levels; C2, T1, T4, S1 and the femoral heads have no contour field (amended 2026-10-10, R10) |
 | `femoral_heads[]` | `id`, `state`, `source`, `center`, `radius`, `rim` (2–4 points, or null for unedited model output), `model_circle` (when edited) |
 
 The design artboard doesn't show `model_centroid` or `model_circle`. The schema adds them for parity with `model_corners`.

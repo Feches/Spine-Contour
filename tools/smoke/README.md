@@ -480,8 +480,8 @@ Per suite, what changed and which checks were retired, each with the check that 
   `a rim-point drag refits Head 2: its radius grows` and `the refit head keeps its four rim points, the dragged one
   moved`; `grabbing the circumference at 9 o'clock resizes` (handles are the rim points); `dragging the rim onto the
   centre floors the radius at 1, never negative` and `a 1px radius is accepted by /measure (no toast)` (no radius floor
-  in the level editor); `RETRACE enabled with a femoral selection` and `RETRACE toggles on` (no RETRACE), replaced by
-  `Place… on Head 1 starts a rim placement`. Rewritten to the Place… flow: FIT disabled with 1 point and enabled with
+  in the level editor); `clicking the left centre selects it` (no centre handle), `RETRACE enabled with a femoral
+  selection` and `RETRACE toggles on` (no RETRACE), replaced by `Place… on Head 1 starts a rim placement`. Rewritten to the Place… flow: FIT disabled with 1 point and enabled with
   2 (it was 2 and 3), `the placement ends after FIT`, `CANCEL clears the points and hides FIT`, `selecting another
   level's row cancels the placement` (was `a landmark selection disables RETRACE`), `Escape while placing cancels the
   placement and stays in edit mode` (was "exits edit mode": Escape now takes one thing at a time), `re-entering edit

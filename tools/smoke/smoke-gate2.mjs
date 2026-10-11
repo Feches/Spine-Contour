@@ -7,8 +7,10 @@
 // through the page's own renderer/level-editor.js (selectLevelRow). A femoral head has rim points, not a centre and
 // a circumference: a rim-point drag refits it through its rim, and RETRACE became the panel's Place… on a head
 // (2 to 4 rim points, FIT from 2). Retired 2026-10-10, each named in tools/smoke/README.md: the centre-drag checks,
-// "rim drag leaves the centre alone", the 9 o'clock circumference grab, the radius floor at 1 and its toast, and
-// "a landmark selection disables RETRACE".
+// "rim drag leaves the centre alone", the 9 o'clock circumference grab, the radius floor at 1 and its toast,
+// "clicking the left centre selects it" (no centre handle), and "RETRACE enabled with a femoral selection" and
+// "RETRACE toggles on" (no RETRACE), the last three replaced by "Place… on Head 1 starts a rim placement".
+// "a landmark selection disables RETRACE" became "selecting another level's row cancels the placement".
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
