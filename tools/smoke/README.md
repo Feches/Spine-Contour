@@ -388,6 +388,65 @@ node tools/smoke/cdp.mjs --quit
 
 Baseline: 16/16 (2026-10-01; 9/16 before the fix, the logo at opacity 0.07 40 ms after the click).
 
+## Running the level editor suite
+
+`smoke-levels.mjs` drives the vertebral level editor (plan `docs/superpowers/plans/2026-10-10-level-editor.md`,
+Task 14; user doc `docs/level-editor.md`) against the real app: the Vertebral levels panel, placing a level,
+unchecking one, Save edits and the label record on disk, Discard and the exit prompt, femoral rim points and FIT,
+window / level, the keyboard, the per-study stash, and the main process's label-file name check. Two phases:
+
+```
+SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-levels-smoke SPINE_CONTOUR_PYTHON=<main checkout>/.venv/Scripts/python.exe node tools/smoke/launch.mjs
+SPINE_CONTOUR_USER_DATA=<the same folder> node tools/smoke/smoke-levels.mjs                                  # phase dom
+SPINE_CONTOUR_USER_DATA=<the same folder> SMOKE_PHASE=film node tools/smoke/smoke-levels.mjs <copy of a real film>
+node tools/smoke/cdp.mjs --quit
+```
+
+- **The profile.** The suite reads the records it saves from `<userData>/labels/`, where userData is
+  `SMOKE_USER_DATA`, else `SPINE_CONTOUR_USER_DATA` (pass the value you launched with), else launch.mjs's default.
+  Always a scratch folder under `%TEMP%`, never the real `%APPDATA%\spine-contour`.
+- **Phase `dom`** (the default) runs no model and reads no real film: two canvas-drawn 600x800 films. `SP-9300` is a
+  segmented fixture with the prototype's geometry (L1, L2, L4, L5, S1 and two heads; L3 missing; an all-zero mask),
+  measured by the real `/measure`, with a sidecar and a prediction id so it restores like a model result. `SP-9301`
+  is an unsegmented film written to `%TEMP%\spine-contour-levels-films\levels-hand-placed.png` and decoded by the real
+  `/decode`; it is placed by hand. Neither endpoint needs the model graphs. About 40 s.
+- **Phase `film`** segments ONE real lateral lumbar film as `SP-9302` with the real models (region Lumbar), so the
+  backend needs the ONNX graphs. A worktree's `backend/onnx/` holds only the tracked `crop_detector` and
+  `view_classifier` pairs, so the other graphs are linked in from the main checkout (hard links on 2026-10-10, since
+  the folder holds tracked files a directory junction would hide; `backend/onnx/` is gitignored, so they never reach a
+  commit). Pass a COPY of the film, made under `%TEMP%`, never the original: the record names the copy. **A real film
+  is on screen in this phase: the suite takes no screenshots, and none may be added; every check is a DOM, store or
+  file read.** About a minute on the CPU.
+- **Ids** `SP-9300`–`SP-9302`, reserved for this suite. `finally` removes the studies, their sidecars, their label
+  records and any stashed editor, deletes the synthetic film, and resets `editing`, `levelEditor`, `selection`,
+  `screen`, `openId` and `measurementDrafts`. The dom phase prepends its studies and leaves the rest alone, so it may
+  follow other suites on one launch; never run it between `smoke-persist.mjs --phase run` and `--phase restart`.
+
+What it checks (numbers as in the plan's Task 14 brief): (1) Edit opens the panel, hides the tabs and the run card, and
+the eyebrow and the edit bar read `EDITING SEGMENTATION`; (2) the summary `7 PLACED · 1 TO PLACE · 8 NOT VISIBLE`, the
+Lumbar count, the group boxes, L3 `Not placed`; (3) Place… on L3, `PLACING L3 · 1 OF 4`, four step chips, four clicks
+to `Manual`, L3 in the study and `LL['L3-S1']` measured; (4) UNDO and CANCEL mid-placement; (5) unchecking S1, its note
+`LL, PI, PT, SS, PI–LL, L1PA and L5–S1 will show —`, `s1_superior` and PI null; (6) Save edits, the toast
+`Saved 2 edits to the label record.`, `labels/levels-ui-check.label.json` valid against the schema (through
+`test/fixtures/schema-check.js`), no SP id in it, `labelFile` on the study; (7) the exit prompt, Keep editing, Discard
+and `Discarded 1 change.`, the Measurements panel back with PI `—`; (8) Head 1 re-placed from two rim points, FIT, then
+a rim-point drag refits it; (9) the W/L panel on a film whose source is gone says `The source film could not be
+found.`; (10) Escape cancels a placement and stays, Escape with nothing open and nothing unsaved leaves with no prompt;
+(11) the stash across opening another study from the list, brought back by Edit, dropped by deleting the study (the
+delete also removes its label record and sidecar); (12) contours: `null` for every body level of a film with no mask
+outline (the fixture and the hand-placed film), at least 3 points for every segmented body level of the real film and
+`null` for its edited one; also the hand-placed film's own record, `isHandPlaced`, and its original kept on the stage
+outside edit mode (R16); (13) `saveLabelRecord('..')` and `saveLabelRecord('a/b.label.json')` rejected by the main
+process with `Invalid label file name.`; (14) `hasStashedEditor` read from the page's own `renderer/level-editor.js`;
+(15) Re-run disabled while editing, titled `Finish editing before re-running segmentation` (R17); (16) window / level
+`ready` on a decoded film with the chip `W … · L …`, a drag changing both numbers, RESET, the sliders and DONE (both
+phases: the synthetic film's 8-bit window and the real film's), and the chip hidden while the source is unavailable.
+The film phase also saves a record whose `image.sha256` is 64 hex characters and whose `model.version` is the run's.
+
+**Known baseline** (2026-10-10, branch `worktree-level-editor`, a fresh scratch profile, Windows 11, CPU processor):
+phase `dom` 75/75, phase `film` 23/23 (one copied OLIF lumbar film; L1, L2, L4 and L5 segmented with contours of 9 to
+15 points, L3 edited by a handle drag and a nudge, contour null).
+
 ## Library
 
 `cdp-lib.mjs` exports `connect()`, whose returned object provides trusted-input helpers
