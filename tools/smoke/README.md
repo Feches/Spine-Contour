@@ -531,8 +531,11 @@ feedback G6, plan D19) Section 18 adds seven dom checks: dom **112/112** (105 + 
 fresh `%TEMP%` profile (CDP port 9333; DOM, store and file reads only, no screenshots); the film phase is unchanged
 and was not re-run, nor were the other suites. (2026-10-12, review round 1 of G6, R42) Section 18 opens `SP-9301`
 straight after the click and adds two dom checks for the stored-only read: dom **114/114** (112 + 2), on a fresh
-`%TEMP%` profile (CDP port 9333; DOM, store and file reads only, no screenshots); the film phase and the other suites
-not re-run.
+`%TEMP%` profile (CDP port 9333; DOM, store and file reads only, no screenshots). (2026-10-12, after G6 and its review
+round 1) Re-measured on fresh `%TEMP%` profiles, one app at a time, DOM, store and file reads only, no screenshots:
+levels dom **114/114** and film **25/25** (one launch); persist **42/42** then **55/55** (the first run of the run phase
+read 41/42, its 5 s wait for `studies.json` to hold the seeded SP-9010 timing out; the re-run on a fresh launch read
+42/42); studies **151/151**.
 
 ## The landmark-editor suites after the level editor (2026-10-10)
 
