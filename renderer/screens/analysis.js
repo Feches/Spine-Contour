@@ -1,4 +1,4 @@
-import { predictionMatchesStudy, isHandPlaced } from '../data/predictions.js';
+import { predictionMatchesStudy, isHandPlaced, hasStoredImage } from '../data/predictions.js';
 import { studyRegion, requestedRegion, studyRegionLabel, requiresAnteriorSide, regionRunReason, validAnteriorSide } from '../data/cervical.js';
 import { imageConfidence, scorePercent } from '../data/confidence.js';
 import { el, mount } from '../dom.js';
@@ -599,9 +599,10 @@ async function loadFilm(studyId) {
   // (1) The stored image. Only a model run writes one (a sidecar). A study whose geometry came from the level
   // editor alone (isHandPlaced: no prediction id and no qc.models, ruling R16 as amended) has none: it is a film
   // with no result here, shown from its decoded original, never FILM UNAVAILABLE. R-a below still holds for every
-  // model result that lost its sidecar, a pre-v1.0.10 one (qc.models, no id) included.
+  // model result that lost its sidecar, a pre-v1.0.10 one (qc.models, no id) included. (2026-10-12) The test is
+  // data/predictions.js hasStoredImage, which imageInfo's stored-only read shares (R42).
   let images = cachedImages(studyId);
-  if (!images && start.source === 'real' && start.measurements && start.geometry && !isHandPlaced(start)) {
+  if (!images && hasStoredImage(start)) {
     const restored = await restoreFilm(studyId);
     if (!current() || restored.status === 'superseded') return superseded();
     // The result's geometry is in the stored image's pixels and FILM UNAVAILABLE (re-run to restore
@@ -649,36 +650,78 @@ async function loadFilm(studyId) {
  * `maskPixels` is the label mask's RGBA (red channel = label id) read from the cached mask bitmap, and `labels` the
  * prediction's `{ L1: 20, ... }` map, for the record's contours (data/contours.js); both are null for a film shown
  * from its decoded original, which has no mask. Rejects with a display-ready message when there is no film.
+ *
+ * (2026-10-12, review round 1 of gate feedback G6; ruling R42) `storedOnly`, the label record Mark reviewed writes:
+ * for a model result (data/predictions.js hasStoredImage) the stored image is read without its decoded original, which
+ * the record never needs: the cache entry when it holds this film, read at once with no await before its pixels, else
+ * the study's own sidecar read for this call alone (readStoredImages). No /decode runs, nothing is cached, no viewer is
+ * handed anything and no restore is started or superseded, so another film opened straight after the click can
+ * neither take the image from under the read nor be held up by it. The facts are the ones the full read gives: the
+ * decode only ever adds `raw` beside the same stored image, mask and labels (loadFilm step 3). A film whose stored
+ * image is its decoded original (no result, or placed by hand, R16) still goes through ensureFilm.
+ * `sidecarGeometry` is the model's own geometry from the sidecar such a private read loaded, else null: a restore
+ * records it as the viewer's prediction snapshot, which a private read does not do, so a caller that needs the model's
+ * geometry has it even when no restore ever lands (another film opened before it did).
  * @param {string} studyId
+ * @param {{storedOnly?: boolean}} [options]
  * @returns {Promise<{file: string, sha256: string, width: number, height: number,
- *   maskPixels: Uint8ClampedArray|null, labels: object|null}>}
+ *   maskPixels: Uint8ClampedArray|null, labels: object|null, sidecarGeometry: object|null}>}
  */
-export async function imageInfo(studyId) {
-  const outcome = await ensureFilm(studyId);
-  if (outcome.superseded) throw new Error('The film changed while it was being read. Try again.');
-  const { images } = outcome;
-  if (!images) throw new Error(outcome.reason || SAVED_FILM_MISSING);
-  const study = getState().studies.find((s) => s.id === studyId);
-  if (!study) throw new Error('The study is no longer in the library.');
-  const { width, height } = images;
-  const scratch = document.createElement('canvas');
-  scratch.width = width;
-  scratch.height = height;
-  const context = scratch.getContext('2d', { willReadFrequently: true });
-  context.drawImage(images.image, 0, 0);
-  const rgba = context.getImageData(0, 0, width, height).data;
-  const grey = new Uint8Array(width * height);
-  for (let i = 0, o = 0; i < grey.length; i += 1, o += 4) grey[i] = rgba[o];
-  // The mask is read before the digest's await, while the cached bitmap is certainly open.
-  let maskPixels = null;
-  if (images.mask) {
-    context.clearRect(0, 0, width, height);
-    context.drawImage(images.mask, 0, 0);
-    maskPixels = context.getImageData(0, 0, width, height).data;
+export async function imageInfo(studyId, { storedOnly = false } = {}) {
+  const start = getState().studies.find((s) => s.id === studyId);
+  let images;
+  let own = null; // images read for this call alone (readStoredImages): closed once their pixels are read
+  let sidecarGeometry = null;
+  if (storedOnly && hasStoredImage(start)) {
+    images = cachedImages(studyId);
+    if (!images) {
+      const read = await readStoredImages(start);
+      images = own = read.images;
+      sidecarGeometry = read.geometry;
+    }
+  } else {
+    const outcome = await ensureFilm(studyId);
+    if (outcome.superseded) throw new Error('The film changed while it was being read. Try again.');
+    if (!outcome.images) throw new Error(outcome.reason || SAVED_FILM_MISSING);
+    images = outcome.images;
   }
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', grey));
-  const sha256 = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
-  return { file: study.fileName, sha256, width, height, maskPixels, labels: images.labels ?? null };
+  try {
+    const study = getState().studies.find((s) => s.id === studyId);
+    if (!study) throw new Error('The study is no longer in the library.');
+    const { width, height } = images;
+    const scratch = document.createElement('canvas');
+    scratch.width = width;
+    scratch.height = height;
+    const context = scratch.getContext('2d', { willReadFrequently: true });
+    context.drawImage(images.image, 0, 0);
+    const rgba = context.getImageData(0, 0, width, height).data;
+    const grey = new Uint8Array(width * height);
+    for (let i = 0, o = 0; i < grey.length; i += 1, o += 4) grey[i] = rgba[o];
+    // The mask is read before the digest's await, while the cached bitmap is certainly open.
+    let maskPixels = null;
+    if (images.mask) {
+      context.clearRect(0, 0, width, height);
+      context.drawImage(images.mask, 0, 0);
+      maskPixels = context.getImageData(0, 0, width, height).data;
+    }
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', grey));
+    const sha256 = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+    return { file: study.fileName, sha256, width, height, maskPixels, labels: images.labels ?? null, sidecarGeometry };
+  } finally {
+    disposeStudyImages(own);
+  }
+}
+
+// (2026-10-12, R42) A model result's stored image read from its sidecar for one caller alone (imageInfo's stored-only
+// read when the cache does not hold the film, as when Mark reviewed is clicked before the restore has put it on the
+// stage), with the sidecar's geometry, the model's own: restoreFilm's two sidecar guards (persistence off reads as no
+// sidecar; the sidecar must belong to this record's result) and none of its side effects. The caller closes the images.
+async function readStoredImages(study) {
+  const sidecar = persistenceDisabledReason() ? null : await loadPrediction(study.id);
+  const live = getState().studies.find((s) => s.id === study.id);
+  if (!live || live.addedAt !== study.addedAt) throw new Error('The study is no longer in the library.');
+  if (!predictionMatchesStudy(live, sidecar)) throw new Error(SAVED_FILM_MISSING);
+  return { images: await loadStudyImages(sidecar), geometry: sidecar.geometry };
 }
 
 // The level editor's wiring (renderer/level-editor.js) gets the viewer's measure queue and prediction snapshots,

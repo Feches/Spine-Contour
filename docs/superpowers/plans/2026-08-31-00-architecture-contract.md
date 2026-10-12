@@ -1658,6 +1658,18 @@ unchanged.
   studyId` or `hasStashedEditor(studyId)`); the mark still applies.
 - R41 (G6): the mark never waits for or depends on the write: `reviewedAt` is set first, synchronously, and stands
   whatever the write does.
+- R42 (G6, review round 1): the review write reads the stored image only. `screens/analysis.js` is now
+  **`imageInfo(studyId, { storedOnly = false } = {})`**, its result gaining `sidecarGeometry` (object or null): with
+  `storedOnly`, a model result (**`data/predictions.js` `hasStoredImage(study)`**, new: a real study with `measurements`
+  and `geometry` that `isHandPlaced` does not claim, also `loadFilm`'s step-1 test now) is read from the image cache
+  when it holds the film, else from its own sidecar for that call alone (restoreFilm's sidecar guards, none of its side
+  effects: no `/decode`, nothing cached, no viewer handed anything, no restore started or superseded), and
+  `sidecarGeometry` is that sidecar's geometry when it was read (else null). Without `storedOnly`, or for a film whose
+  stored image is its decoded original (no result, or placed by hand), `imageInfo` reads through `ensureFilm` as before.
+  The private core is now `writeRecord(studyId, addedAt, editorOf, imageOptions)`: `imageOptions` goes to
+  `deps.imageInfo` and the facts to `editorOf(state, study, info)`. `writeReviewRecord` passes `{ storedOnly: true }`
+  and takes the model's geometry from `deps.getPrediction(studyId)?.geometry`, else `info.sidecarGeometry`;
+  `saveLevelEdits` passes no options.
 
 No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet file (rules in
 `styles/screens/analysis.css` section `05 — LEVEL EDITOR` and `styles/components.css`), no Python package.

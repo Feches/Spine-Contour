@@ -496,13 +496,21 @@ first move, so that would depend on how many separate moves Chromium delivers.) 
 2026-10-12, plan D19, rulings R40 and R41) Mark reviewed writes the label record of a film that has none: `SP-9304`,
 opened from the list and restored from its sidecar (the precondition reads the prediction snapshot through the page's
 own `components/viewer.js` `getPrediction`), with no record and Mark reviewed enabled; outside edit mode a click on the
-Analysis panel's `.analysis-review` stamps `reviewedAt` and within 10 s names `levels-review-check.label.json` on the
-study and writes it under `<userData>/labels/`; the toast `Saved the label record.`; the record valid against the
-schema; every level and head `segmented` or `not_visible`, every `edited_points` empty, `edits.edited` and
-`edits.manual` 0 and `edits` equal to the summary computed from the entries; still no edit mode and no level editor;
-then, once the toast has gone, unmark and mark again leave one record of that name, not written again (the same
-`saved_at`), and no second toast. Nothing else in the suite clicks Mark reviewed; `smoke-persist.mjs` phase 1 clicks
-it in 11b on a study whose record section 11 has just saved, so that click writes nothing (unchanged, no check added).
+Analysis panel's `.analysis-review` stamps `reviewedAt`, and (review round 1 of G6, R42) `SP-9301` is opened from the
+list straight after the click, without waiting for the write, its load decoding its original and taking the single
+image cache (`SP-9300` was deleted in section 11); within 10 s the study names `levels-review-check.label.json` and
+the file is under `<userData>/labels/`; the toast `Saved the label record.` and no `Marked reviewed. The label record
+could not be written:` toast; the record valid against the schema; every level and head `segmented` or
+`not_visible`, every `edited_points` empty, `edits.edited` and `edits.manual` 0 and `edits` equal to the summary
+computed from the entries; still no edit mode and no level editor. (R42) Once `SP-9301`'s decoded original holds the
+cache (the page's own `ensureFilm`), the page's own `screens/analysis.js` `imageInfo('SP-9304', { storedOnly: true })`
+reads the sidecar: the record's `sha256`, width and height, a mask, and `sidecarGeometry` equal to the study's
+geometry; a second such read comes from the sidecar too (so the first cached nothing), `SP-9301` still open and no
+toast. (`SP-9304`'s original does not exist, so the suite cannot show the decode race itself; the wiring test pins
+that the review write asks for the stored image only.) Then `SP-9304` is opened again and, once the toast has gone,
+unmark and mark again leave one record of that name, not written again (the same `saved_at`), and no second toast.
+Nothing else in the suite clicks Mark reviewed; `smoke-persist.mjs` phase 1 clicks it in 11b on a study whose record
+section 11 has just saved, so that click writes nothing (unchanged, no check added).
 The film phase also saves a record whose `image.sha256` is 64 hex characters and whose `model.version` is the run's,
 and (G5, D18) whose edited level, moved by the SA handle drag and the ArrowRight nudge, lists `edited_points` `['sa']`,
 exactly the corners whose value differs from its `model_corners`, with `edits.points_moved` the sum of the edited
@@ -521,7 +529,10 @@ three dom checks and the film phase two. Measured on one fresh `%TEMP%` profile 
 screenshots): dom **105/105** (102 + 3) and film **25/25** (23 + 2, one copied OLIF lumbar film). (2026-10-12, gate
 feedback G6, plan D19) Section 18 adds seven dom checks: dom **112/112** (105 + 7), measured when it was written on a
 fresh `%TEMP%` profile (CDP port 9333; DOM, store and file reads only, no screenshots); the film phase is unchanged
-and was not re-run, nor were the other suites.
+and was not re-run, nor were the other suites. (2026-10-12, review round 1 of G6, R42) Section 18 opens `SP-9301`
+straight after the click and adds two dom checks for the stored-only read: dom **114/114** (112 + 2), on a fresh
+`%TEMP%` profile (CDP port 9333; DOM, store and file reads only, no screenshots); the film phase and the other suites
+not re-run.
 
 ## The landmark-editor suites after the level editor (2026-10-10)
 

@@ -20,7 +20,9 @@
 // lumbar bodies (its own file name, sidecar and prediction id), and outside edit mode clicks the Analysis panel's Mark
 // reviewed: within 10 s the study names `levels-review-check.label.json`, the file is under <userData>/labels/ and
 // validates, every entry reads segmented or not visible with no edited points, and `Saved the label record.` is
-// toasted; then unmark and mark again leave that one file, unwritten, with no second toast.
+// toasted; then unmark and mark again leave that one file, unwritten, with no second toast. Review round 1 of G6
+// (R42): the click is followed at once by opening SP-9301, whose load takes the single image cache, and the write still
+// lands; with SP-9301 cached, the page's own imageInfo(SP-9304, { storedOnly: true }) reads SP-9304's sidecar, twice.
 //
 //   node tools/smoke/launch.mjs                                     (SPINE_CONTOUR_USER_DATA under %TEMP%)
 //   node tools/smoke/smoke-levels.mjs                               phase `dom` (the default)
@@ -65,6 +67,7 @@ const REVIEW_FILE = 'levels-review-check.png';
 const REVIEW_RECORD = 'levels-review-check.label.json';
 const REVIEW_BUTTON = '.analysis-review';
 const SAVED_TOAST = 'Saved the label record.';
+const REVIEW_WRITE_FAILED = 'Marked reviewed. The label record could not be written: ';
 const HAND_FILE = 'levels-hand-placed.png';
 const HAND_PATH = path.join(FILM_DIR, HAND_FILE);
 const PREDICTION_ID = 'smoke-levels-fixture';
@@ -539,12 +542,22 @@ async function reviewRecordChecks(films) {
 
   await clearToasts();
   await clickSelector(REVIEW_BUTTON);
+  // (Review round 1 of G6, R42) Then, without waiting for the write, the next film, as a review session runs: SP-9301,
+  // the film placed by hand (SP-9300 was deleted in section 11), whose load decodes its original by the real /decode
+  // and takes the single image cache. The write read SP-9304's stored image already, with no /decode of its original,
+  // so the move cannot fail it. (SP-9304's original does not exist, so this step cannot show the decode race itself;
+  // test/level-editor-wiring.test.js pins that the review write asks for the stored image only.)
+  const movedOn = await openFromList(HAND);
   const named = await until(`window.__lv.study(${js(REVIEW)})?.labelFile === ${js(REVIEW_RECORD)}`, 10000);
   const written = await untilNode(() => fs.existsSync(path.join(LABELS, REVIEW_RECORD)), 10000);
   const marked = await studyOf(REVIEW);
-  check(`18. Mark reviewed stamps the study and within 10 s names ${REVIEW_RECORD} on it and writes it under <userData>/labels/ (D19)`,
-    named && written && typeof marked?.reviewedAt === 'string', { labelFile: marked?.labelFile, reviewedAt: marked?.reviewedAt, written });
-  check(`18. the toast reads ${SAVED_TOAST}`, await toastSeen(SAVED_TOAST), await ev('window.__lv.toasts'));
+  check(`18. Mark reviewed stamps the study and within 10 s names ${REVIEW_RECORD} on it and writes it under <userData>/labels/, with SP-9301 opened straight after the click (D19, R42)`,
+    movedOn && named && written && typeof marked?.reviewedAt === 'string',
+    { movedOn, labelFile: marked?.labelFile, reviewedAt: marked?.reviewedAt, written });
+  const seen = await toastSeen(SAVED_TOAST);
+  const failed = await ev(`window.__lv.toasts.filter((t) => t.startsWith(${js(REVIEW_WRITE_FAILED)}))`);
+  check(`18. the toast reads ${SAVED_TOAST}, and no "could not be written" toast came over the next film`,
+    seen && failed.length === 0, await ev('window.__lv.toasts'));
   let record = null;
   try { record = readRecord(REVIEW_RECORD); } catch (_error) { record = null; }
   const valid = record ? validateAgainst(SCHEMA, record) : { ok: false, errors: ['unreadable'] };
@@ -556,6 +569,38 @@ async function reviewRecordChecks(films) {
     record && { states: entries.map((e) => e.state), edits: record.edits });
   const after = await ev(`(async () => { const s = (await import('./renderer/store.js')).getState(); return { editing: s.editing, editor: s.levelEditor }; })()`);
   check('18. no edit mode was entered: editing false and no level editor in the store', after.editing === false && after.editor === null, after);
+
+  // (R42) The stored-only read when the cache does not hold the film (Mark reviewed clicked before the restore landed):
+  // once SP-9301's decoded original holds the single image cache (the page's own ensureFilm, which shares the load the
+  // open started), the page's own imageInfo reads SP-9304 from its sidecar, for that call alone. Read twice: the second
+  // read comes from the sidecar too, so the first cached nothing.
+  const handCached = await until(`import('./renderer/screens/analysis.js').then((m) => m.ensureFilm(${js(HAND)}))
+    .then((o) => Boolean(o.images && o.raw && !o.superseded))`, 15000);
+  const toastsBefore = await ev('window.__lv.toasts.length');
+  const readFact = (id) => `(async () => {
+    const m = await import('./renderer/screens/analysis.js');
+    try {
+      const info = await m.imageInfo(${js(id)}, { storedOnly: true });
+      return { sha256: info.sha256, width: info.width, height: info.height, mask: Boolean(info.maskPixels),
+        geometry: info.sidecarGeometry ? JSON.stringify(info.sidecarGeometry) : null };
+    } catch (error) { return { error: error.message }; }
+  })()`;
+  const fromSidecar = await ev(readFact(REVIEW));
+  const reviewGeometry = await ev(`JSON.stringify(window.__lv.study(${js(REVIEW)})?.geometry ?? null)`);
+  check('18. a stored-only read of SP-9304 while SP-9301\'s film holds the image cache reads its sidecar: the record\'s sha256, width and height, its mask, and the sidecar\'s geometry (R42)',
+    handCached && record && fromSidecar.sha256 === record.image?.sha256 && fromSidecar.width === record.image?.width_px
+      && fromSidecar.height === record.image?.height_px && fromSidecar.mask === true && fromSidecar.geometry === reviewGeometry,
+    { handCached, fromSidecar: { ...fromSidecar, geometry: fromSidecar.geometry && `${fromSidecar.geometry.length} chars` }, image: record?.image });
+  const twice = await ev(readFact(REVIEW));
+  const stage = await ev(`(async () => ({ openId: (await import('./renderer/store.js')).getState().openId, toasts: window.__lv.toasts.length }))()`);
+  check('18. that read cached nothing and left the open film alone: a second read comes from the sidecar too, SP-9301 still open, no toast',
+    twice.sha256 === fromSidecar.sha256 && twice.geometry !== null && twice.geometry === fromSidecar.geometry
+      && stage.openId === HAND && stage.toasts === toastsBefore,
+    { twice: { ...twice, geometry: twice.geometry && 'set' }, stage, toastsBefore });
+
+  // Back to SP-9304 for its button.
+  await openFromList(REVIEW);
+  await until(`(() => { const b = document.querySelector(${js(REVIEW_BUTTON)}); return Boolean(b && !b.disabled); })()`, 10000);
 
   // Unmark, then mark again, once the first toast has gone (the toast log records a change of text, not a repeat).
   await until(`import('./renderer/store.js').then((m) => m.getState().toast === '')`, 10000);

@@ -23,3 +23,12 @@ export function predictionMatchesStudy(study, sidecar) {
 export function isHandPlaced(study) {
   return study?.predictionId == null && !study?.qc?.models;
 }
+
+// (2026-10-12, review round 1 of gate feedback G6; ruling R42) True when the study's film is a model run's stored image
+// (the sidecar's `image_png`, which screens/analysis.js restoreFilm restores) rather than its decoded original: a real
+// study with a result that a model run produced. loadFilm's step (1) restores exactly these, and imageInfo's
+// `storedOnly` read (the label record Mark reviewed writes) reads their image facts with no /decode. A demo, a film with
+// no result and one placed by hand (R16) are false: a hand-placed film's stored image is its decoded original.
+export function hasStoredImage(study) {
+  return study?.source === 'real' && Boolean(study.measurements && study.geometry) && !isHandPlaced(study);
+}

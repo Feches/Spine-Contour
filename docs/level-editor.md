@@ -208,8 +208,13 @@ study names the file in `labelFile`, so a later Save edits writes the same file.
   The label record could not be written:` and the reason, and the study keeps no `labelFile`; unmark and mark again
   (or Save edits) to try again.
 - Nothing is written for a demo study, a film with no result (nothing to label), or a film whose segmentation is
-  running. Writing the record reads the stored image (and, on first use, decodes the original for window / level),
-  so it can take a moment after the click.
+  running.
+- **Moving on straight away is safe** (R42, 2026-10-12): for a segmented film the record reads only the stored image,
+  from the film on the stage, or from its saved segmentation when the click comes before the film has appeared, and
+  never decodes the original, so going Back and opening the next film right after the click does not stop the write.
+  A film placed by hand has no stored image but its decoded original, which the stage decodes when the film opens: a
+  click before that film has appeared waits for the decode, and opening another film before it ends can still fail
+  the write (the toast says so; unmark and mark again).
 
 **Edited points and the edits summary** (gate feedback G5, 2026-10-11, D18). So a folder of records can be counted
 without comparing corners, every level and both femoral heads carry `edited_points`, a list of the entry's own geometry

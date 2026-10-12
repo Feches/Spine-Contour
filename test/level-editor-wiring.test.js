@@ -706,3 +706,87 @@ test('G6: a review write asked for while Save edits is writing waits for it, the
     assert.equal(getState().toast, SAVED);
   }));
 });
+
+// ---------------------------------------------------------------------------
+// Review round 1 of G6 (2026-10-12; ruling R42): the review write reads the stored image only. screens/analysis.js
+// imageInfo's full read can decode the original (POST /decode) and is superseded when another film takes the single
+// image cache meanwhile; its `storedOnly` read takes a model result's stored image from memory or its sidecar and
+// cannot be. imageInfo itself is DOM code (smoke-levels.mjs section 18 drives it); these pin the wiring's side.
+
+// Every imageInfo call, with its options.
+function recordingImageInfo(calls, read = maskedImage) {
+  return async (studyId, options) => {
+    calls.push({ studyId, options });
+    return read(studyId, options);
+  };
+}
+
+test('G6 review round 1: the review write asks for the stored image only; Save edits reads the film as before (R42)', async () => {
+  const study = segmentedFilm('SP-9530');
+  const calls = [];
+  wire([], NO_FILM, { getPrediction: snapshotOf(study.geometry), imageInfo: recordingImageInfo(calls) });
+  await withBridge(labelBridge(), () => withStore(study, async () => {
+    assert.equal(await writeReviewRecord(study.id), 'written');
+  }));
+  assert.deepEqual(calls, [{ studyId: 'SP-9530', options: { storedOnly: true } }], 'one read, of the stored image only');
+
+  calls.length = 0;
+  await withBridge(labelBridge(), () => withStore(segmentedFilm('SP-9530'), async () => {
+    await enterLevelEditor('SP-9530');
+    await saveLevelEdits();
+    assert.equal(getState().toast, SAVED);
+  }));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options?.storedOnly ?? false, false, 'Save edits keeps the full read');
+});
+
+test('G6 review round 1: another film opened straight after the click does not stop the review write (R42)', async () => {
+  // The read models screens/analysis.js imageInfo: the next film is opened while it is in flight (FRESH_VIEW, and its
+  // restore takes the single image cache), which supersedes a full read and leaves a stored-only read alone.
+  const study = segmentedFilm('SP-9531');
+  const next = segmentedFilm('SP-9532', { reviewedAt: null });
+  const read = async (studyId, options) => {
+    setState((s) => ({ studies: [...s.studies, next], openId: next.id, screen: 'analysis', editing: false,
+      levelEditor: null, selection: null, filmWindow: null }));
+    await settle();
+    if (!options?.storedOnly) throw new Error('The film changed while it was being read. Try again.');
+    return maskedImage();
+  };
+  wire([], NO_FILM, { getPrediction: snapshotOf(study.geometry), imageInfo: read });
+  const bridge = labelBridge();
+  await withBridge(bridge, () => withStore(study, async () => {
+    assert.equal(await writeReviewRecord(study.id), 'written');
+    assert.equal(getState().openId, next.id, 'precondition: the next film is open');
+    assert.equal(bridge.saved.length, 1, 'the record is written');
+    assert.equal(bridge.saved[0].name, 'lumbar_9531.label.json');
+    assert.equal(studyOf(study.id).labelFile, 'lumbar_9531.label.json', 'named on the reviewed study');
+    assert.equal(studyOf(study.id).reviewedAt, MARKED_AT);
+    assert.equal(studyOf(next.id).labelFile, null, 'the next film is left alone');
+    assert.equal(getState().toast, SAVED, 'no failure toast over the next film');
+  }));
+});
+
+test('G6 review round 1: with no prediction snapshot, the geometry of the sidecar the read loaded is the model\'s (R42)', async () => {
+  // Clicked before the film's restore landed, then another film opened: no snapshot was ever recorded, and the
+  // stored-only read hands back the sidecar's geometry, the one a restore would have recorded.
+  const model = lumbarGeometry();
+  const stored = lumbarGeometry();
+  stored.vertebrae.L2.superior[0] = [139, 167];
+  const fromSidecar = async () => ({ ...(await maskedImage()), sidecarGeometry: structuredClone(model) });
+  wire([], NO_FILM, { getPrediction: () => undefined, imageInfo: fromSidecar });
+  const viaSidecar = labelBridge();
+  await withBridge(viaSidecar, () => withStore(segmentedFilm('SP-9533', { geometry: structuredClone(stored) }), async () => {
+    assert.equal(await writeReviewRecord('SP-9533'), 'written');
+  }));
+  wire([], NO_FILM, { getPrediction: snapshotOf(model), imageInfo: maskedImage });
+  const viaSnapshot = labelBridge();
+  await withBridge(viaSnapshot, () => withStore(segmentedFilm('SP-9533', { geometry: structuredClone(stored) }), async () => {
+    assert.equal(await writeReviewRecord('SP-9533'), 'written');
+  }));
+  const { saved_at: a, ...sidecarRecord } = viaSidecar.saved[0].record;
+  const { saved_at: b, ...snapshotRecord } = viaSnapshot.saved[0].record;
+  assert.ok(a && b);
+  assert.deepEqual(sidecarRecord, snapshotRecord, 'the same record but for saved_at');
+  assert.equal(sidecarRecord.levels.L1.state, 'segmented', 'a model level reads segmented, not manual');
+  assert.equal(sidecarRecord.levels.L2.state, 'edited', 'the stored correction is still measured against the model');
+});

@@ -113,10 +113,14 @@ and can be placed by hand.
   no write while the study's level edits are open or stashed, R41 the mark never waits for or depends on the write.
   `renderer/level-editor.js` `writeReviewRecord` over `writeRecord`, the one write it shares with Save edits (the
   latch `saving` shared, naming its holder); `toggleReviewed` calls it after marking. `ad2b70b` (code, tests, smoke
-  section 18) and the records commit; unit 948/948.
-- Counts: unit 948/948 after G6 (940 before it, 939 after G5; 925 after the review of G3 and G4, 918 after G3 and G4, 901 after the gate feedback's review wave,
+  section 18) and the records commit; unit 948/948. Its review round 1 (R42, decision 135): the review write reads the
+  segmented film's stored image only (`imageInfo(studyId, { storedOnly: true })`, from the image cache or the sidecar,
+  never `/decode`), so opening the next film straight after the click can no longer fail it; unit 953/953.
+- Counts: unit 953/953 after G6's review round 1 (948 after G6, 940 before it, 939 after G5; 925 after the review of G3 and G4, 918 after G3 and G4, 901 after the gate feedback's review wave,
   898 after G2, 888 after the final review's wave and R25, 887 after the wave, 879/879 before it; 615 at the base; 905
-  before Task 13 retired 26 tests of removed code); `smoke-levels.mjs` dom 112/112 after G6 (section 18's seven checks;
+  before Task 13 retired 26 tests of removed code); `smoke-levels.mjs` dom 114/114 after G6's review round 1 (section
+  18 opens the next film straight after the click and reads stored-only; fresh `%TEMP%` profile, CDP 9333, DOM, store
+  and file reads only, no screenshots; the film phase and the other suites not re-run), dom 112/112 after G6 (section 18's seven checks;
   fresh `%TEMP%` profile, DOM, store and file reads only, no screenshots; the film phase and the other suites not
   re-run), dom 105/105 and film 25/25 after G5 (`tools/smoke/README.md`), dom 102/102 after the review of G3 and G4
   (fresh `%TEMP%` profile, DOM reads only, no screenshots; the film phase and the other suites not re-run); after G3 and G4 on a fresh
@@ -1956,6 +1960,15 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
      toasts `Saved the label record.` and sets `labelFile`. *Cost if wrong:* a reviewed film can lack its record after
      a failed write (the toast says so; unmark and mark again, or Save edits, writes it), and unmarking never deletes a
      record already written.
+135. **R42 (review round 1 of G6) — The review write reads the stored image only.** `screens/analysis.js`
+     `imageInfo(studyId, { storedOnly: true })` takes a segmented film's stored image (`data/predictions.js`
+     `hasStoredImage`) from the image cache, else from its sidecar for that call alone, with no `/decode` of the
+     original and nothing cached or restored, and hands back the sidecar's geometry when it read it (the model's
+     geometry when no prediction snapshot is in memory). Before it, a review write could decode the original, and the
+     next film opened meanwhile superseded the read: the failure toast landed over the next film and no record was
+     written. Save edits reads as before; a hand-placed film still decodes its original (its stored image). *Cost if
+     wrong:* a click before a segmented film reaches the stage reads its sidecar twice; a hand-placed film's review
+     write can still fail if another film is opened before that film's decode ends (the toast says so).
 
 ## Release prerequisites — v1.0.0 main promotion
 

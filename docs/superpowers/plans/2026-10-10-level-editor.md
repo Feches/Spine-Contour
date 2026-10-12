@@ -1290,6 +1290,9 @@ Added by the gate feedback G6 (2026-10-12; D19, rulings R40 and R41):
   `edits.edited` and `edits.manual` 0. Unmark and mark again: still one file of that name, not written again (the same
   `saved_at`), and no second toast. On a film that already has a record, Mark reviewed leaves the file as it was; a
   zero-change Save edits from edit mode on a film with no record still writes it (D10).
+- [ ] G6 (review round 1, R42): on another segmented film with no record, click **Mark reviewed** and at once go Back
+  and open the next film: `Saved the label record.` is toasted (never `Marked reviewed. The label record could not be
+  written: …`) and the first film's file appears.
 
 ---
 
@@ -1643,7 +1646,9 @@ holder (`'edits'` or `'review'`): a second Save edits while one is writing is dr
 while a review write reads the film waits for it (and the review write then defers to the open editor, R40), and a
 review write waits for either. One guard beyond the brief: a model result whose prediction snapshot is not in memory
 once the film has been read is refused (`the model's prediction is not loaded.`) rather than recorded with every placed
-level `manual`; the read restores the sidecar, which records the snapshot, so the guard is defensive.
+level `manual`; the read restores the sidecar, which records the snapshot, so the guard is defensive. (Since review
+round 1, R42, the read no longer restores: the model's geometry is the snapshot's, else the geometry of the sidecar the
+stored-only read loaded, so the guard is still defensive.)
 `renderer/screens/analysis.js` `toggleReviewed`: after the setState that marks the study, and only when marking,
 `writeReviewRecord(open.id)`; `reviewBlockedReason` is unchanged.
 
@@ -1671,6 +1676,50 @@ through the store).
 
 Unit 940 → **948/948**. `smoke-levels.mjs` dom **112/112** (105 + 7) on a fresh `%TEMP%` profile, DOM, store and file
 reads only, no screenshots.
+
+**Review round 1 (2026-10-12; ruling R42).** One important finding. The review write got its image facts through
+`imageInfo`, which calls `ensureFilm`; for a model result whose original had not been decoded yet, that also read the
+source file and ran `POST /decode`, which the record never needs. An annotator who clicked Mark reviewed and went Back
+to open the next film, as a review session runs, could have the next film's load replace the single image cache while
+the decode was in flight: `loadFilm` returned superseded, `imageInfo` threw `The film changed while it was being read.
+Try again.`, and the toast `Marked reviewed. The label record could not be written: …` came over the next film, with
+no record written and the mark kept. Neither suite reached it (the unit tests stub `imageInfo`; `SP-9304`'s original
+does not exist, so no decode ran).
+
+- **R42.** The review write reads the stored image only. `screens/analysis.js` `imageInfo(studyId, { storedOnly })`:
+  with `storedOnly`, a model result (`data/predictions.js` `hasStoredImage(study)`, new: a real study with
+  `measurements` and `geometry` that a model run produced, `loadFilm`'s step-1 test, which now calls it) is read from
+  the image cache when it holds the film, with no await before its pixels are read, else from its own sidecar for that
+  call alone (`readStoredImages`: `restoreFilm`'s two sidecar guards and none of its side effects, the images closed
+  once read). No `/decode` runs, nothing is cached, no viewer is handed anything and no restore is started or
+  superseded, so the next film can neither take the image from under the read nor be held up by it; the facts are the
+  ones the full read gives, since the decode only adds `raw` beside the same image, mask and labels. The result gains
+  `sidecarGeometry`, the sidecar's geometry when that private read ran (else null): a restore records it as the
+  prediction snapshot and a private read does not, so `writeReviewRecord` takes the model's geometry from the snapshot,
+  else `info.sidecarGeometry`. `writeRecord(studyId, addedAt, editorOf, imageOptions)` hands `imageOptions` to
+  `deps.imageInfo` and `info` to `editorOf(state, study, info)`; `writeReviewRecord` passes `{ storedOnly: true }`,
+  Save edits passes nothing and reads as before. A film placed by hand (R16) still has its original decoded, its stored
+  image: the stage decodes it when the film opens, and a click before that decode ends shares it, so opening another
+  film meanwhile can still fail that write (recorded in `docs/level-editor.md`). *Cost if wrong:* a click before a
+  segmented film reaches the stage reads its sidecar twice (the stage's restore and this read); Save edits still
+  decodes a segmented film's original (ROADMAP "Cost"), and is reached only from edit mode, where entering already
+  started that decode.
+
+Tests: `test/predictions.test.js` +2 (`hasStoredImage` true for a real model result, with a prediction id or, before
+v1.0.10, `qc.models` alone; false for a hand-placed film, no result, measurements without geometry, a demo and no
+study); `test/level-editor-wiring.test.js` +3 (the review write asks `imageInfo` for `{ storedOnly: true }` and Save
+edits for no such option; a superseding `imageInfo`, which opens the next film while the read is in flight and fails a
+full read as the real one would, leaves the review write `written`, the record named on the reviewed study and no
+failure toast; with no prediction snapshot the read's `sidecarGeometry` gives the same record as the snapshot, L1
+`segmented` and the earlier L2 correction `edited`). Smoke: section 18's click is followed at once by opening `SP-9301`
+(the hand-placed film, whose load decodes its original by the real `/decode` and takes the image cache; `SP-9300` was
+deleted in section 11) and the write still lands with no failure toast; two new dom checks call the page's own
+`imageInfo(SP-9304, { storedOnly: true })` once `SP-9301` holds the cache (the page's `ensureFilm`): it reads the
+sidecar (the record's sha256, width and height, the mask, the sidecar's geometry), and a second read comes from the
+sidecar too, so the first cached nothing, with `SP-9301` still open and no toast.
+
+Unit 948 → **953/953**. `smoke-levels.mjs` dom **114/114** (112 + 2) on a fresh `%TEMP%` profile (CDP port 9333; DOM,
+store and file reads only, no screenshots); the film phase and the other suites not re-run.
 
 ---
 
@@ -1721,3 +1770,4 @@ already state.
 | 2026-10-11 | gate | **Two minors from the re-review of the window change, folded into G5.** 1: entering edit mode (`level-editor.js` `showFilm`) kept a READY window when `ensureFilm` came back with no decoded original (another study's run took the image cache), so the chip could claim a window the film layer does not draw; `showFilm` now forgets it (`forgetFilmWindow`), the rule of `film-window.js` `redecodeKeptWindow` (a loading window is left to its own decode; a superseded outcome changes nothing). `test/level-editor-wiring.test.js` +2; `test/film-window.test.js`'s edit-mode test stubs the editor's `ensureFilm` with the original its window was decoded from (the old stub returned none, which now forgets). *Cost if wrong:* a ready window is forgotten when the decode fails on entering edit mode; the W/L button decodes again. 2: HANDOFF decision 121 still said a right press decodes; reworded to the behaviour since R37 (a right drag decodes once it moves). Both in `3e552e6` and the G5 records commit. |
 | 2026-10-12 | gate | **Gate feedback G6** (the owner, D19): Mark reviewed also writes the label record when the study has none yet, the zero-change record of the stored state (what Save edits writes right after entering edit mode with nothing changed); unmarking writes nothing; a study with a record is left alone. `renderer/level-editor.js`: `writeRecord` (the write Save edits and the review share), `editorRegion` (enterLevelEditor's region rule), `writeReviewRecord(studyId)` → `'written' \| 'skipped' \| 'failed'`, the latch `saving` shared and naming its holder; `renderer/screens/analysis.js` `toggleReviewed` calls it after marking. One guard beyond the brief: a model result with no prediction snapshot once the film is read is refused (`the model's prediction is not loaded.`), never recorded as placed by hand. The full design is in "Gate feedback (2026-10-11)" above. `ad2b70b`. Unit 940 → **948/948** (level-editor-wiring +8). `smoke-levels.mjs` section 18 (+7 dom) on `SP-9304`: dom **112/112** on a fresh `%TEMP%` profile (CDP port 9333, DOM, store and file reads only, no screenshots); the film phase and the other suites not re-run. `smoke-persist.mjs` 11b marks a study whose record 11 has just saved, so its click writes nothing (unchanged). |
 | 2026-10-12 | gate | **Rulings R40 and R41** (controller, with D19). **R40:** no review write while an editor for the study is open or stashed (`state.levelEditor?.studyId === studyId` or `hasStashedEditor(studyId)`), checked before the write and again once the film has been read; those unsaved level edits are the annotator's to save or discard, and the mark still applies. A Save edits clicked while a review write reads the film waits for it, so it is never dropped. *Cost if wrong:* a film marked reviewed while its stashed edits wait gets no record until the annotator saves (which writes one) or discards and marks again; and a Save edits can be delayed by a film read. **R41:** the mark never waits for or depends on the write: `reviewedAt` is set first, synchronously, and stands whatever happens; a failure toasts `Marked reviewed. The label record could not be written: <reason>` and sets nothing; a success toasts `Saved the label record.` and sets `labelFile`. Nothing is written for a demo, a study with no result, one whose own run is in flight, or one deleted, re-added or unmarked while the film was read. *Cost if wrong:* a reviewed film can lack its record after a failed write (the toast says so; unmarking and marking again, or a zero-change Save edits, writes it), and a record can be written for a film whose mark is then withdrawn (unmarking deletes nothing). |
+| 2026-10-12 | gate | **Review round 1 of G6** (one important finding): the review write read its image facts through `imageInfo` → `ensureFilm`, which for a model result not yet decoded also ran `POST /decode` on the original; the next film opened meanwhile replaced the single image cache, the read came back superseded and the failure toast landed over the next film, no record written. **Ruling R42:** the review write reads the stored image only: `imageInfo(studyId, { storedOnly: true })` takes a model result (`hasStoredImage`, new in `data/predictions.js`, also `loadFilm`'s step-1 test now) from the image cache, or from its own sidecar for that call alone (`readStoredImages`: no decode, nothing cached, no restore started or superseded), and returns `sidecarGeometry` when it read the sidecar, the model's geometry `writeReviewRecord` falls back to when no prediction snapshot is in memory; `writeRecord` takes `imageOptions` and hands `info` to `editorOf`. Save edits is unchanged; a hand-placed film still decodes its original (its stored image). The full account is "Review round 1" under G6 above. Unit 948 → **953/953** (predictions +2, level-editor-wiring +3). `smoke-levels.mjs` dom **114/114** (112 + 2; section 18 opens `SP-9301` straight after the click, and reads `SP-9304` stored-only while `SP-9301` holds the cache) on a fresh `%TEMP%` profile, CDP 9333, DOM, store and file reads only, no screenshots; the film phase and the other suites not re-run. *Cost if wrong:* a click before a segmented film reaches the stage reads its sidecar twice; a hand-placed film's review write can still fail if another film is opened before that film's decode ends (the toast says so). |

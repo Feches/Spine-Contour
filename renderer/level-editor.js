@@ -52,8 +52,9 @@ const deps = { commitGeometry: null, getPrediction: null, ensureFilm: null, imag
  * @param {{commitGeometry: (studyId: string, geometry: object) => void,
  *   getPrediction: (studyId: string) => ({measurements: object, geometry: object, qc: object|null}|undefined),
  *   ensureFilm: (studyId: string) => Promise<{images: object|null, raw: object|null, reason: string|null, superseded: boolean}>,
- *   imageInfo: (studyId: string) => Promise<{file: string, sha256: string, width: number, height: number,
- *     maskPixels: Uint8ClampedArray|null, labels: object|null}>}} wiring
+ *   imageInfo: (studyId: string, options?: {storedOnly?: boolean}) => Promise<{file: string, sha256: string,
+ *     width: number, height: number, maskPixels: Uint8ClampedArray|null, labels: object|null,
+ *     sidecarGeometry?: object|null}>}} wiring
  */
 export function configureLevelEditor({ commitGeometry, getPrediction, ensureFilm, imageInfo }) {
   Object.assign(deps, { commitGeometry, getPrediction, ensureFilm, imageInfo });
@@ -303,20 +304,20 @@ function savedText(n) {
 
 /**
  * The write Save edits and Mark reviewed share (D19), so their records can never drift. The film's image facts first
- * (deps.imageInfo); then, read across that await, the study, which must still be the same record (`addedAt`), and the
- * editor `editorOf(state, study)` gives for it (null: nothing is written; a throw is the caller's to report). The
- * record goes to the study's own label file, else a new name from its stem (D3), with the model's mask outline for
- * each level still segmented (R10). Resolves with `{ file, editor, kept, state }` (`kept` the study and `state` the
- * store once the file is written), or null when nothing was written or the study went while the file was written:
- * the delete could not see that file, so it is removed here unless another study has taken the name since. Rejects
- * with a display-ready message.
+ * (deps.imageInfo, with `imageOptions`: Mark reviewed's `{ storedOnly: true }`, R42); then, read across that await, the
+ * study, which must still be the same record (`addedAt`), and the editor `editorOf(state, study, info)` gives for it
+ * (null: nothing is written; a throw is the caller's to report). The record goes to the study's own label file, else a
+ * new name from its stem (D3), with the model's mask outline for each level still segmented (R10). Resolves with
+ * `{ file, editor, kept, state }` (`kept` the study and `state` the store once the file is written), or null when
+ * nothing was written or the study went while the file was written: the delete could not see that file, so it is
+ * removed here unless another study has taken the name since. Rejects with a display-ready message.
  */
-async function writeRecord(studyId, addedAt, editorOf) {
-  const info = await deps.imageInfo(studyId);
+async function writeRecord(studyId, addedAt, editorOf, imageOptions) {
+  const info = await deps.imageInfo(studyId, imageOptions);
   const live = getState();
   const owner = studyOf(live, studyId);
   if (!owner || owner.addedAt !== addedAt) return null;
-  const editor = editorOf(live, owner);
+  const editor = editorOf(live, owner, info);
   if (!editor) return null;
   const others = live.studies.filter((item) => item.id !== studyId && item.labelFile).map((item) => item.labelFile);
   const file = owner.labelFile ?? labelFileName(fileStem(owner.fileName), others);
@@ -419,6 +420,13 @@ function reviewWritable(state, study) {
  * `editing` and the stash are left alone, and so is the mark, which the caller has already set and which stands
  * whatever happens here (R41). The write is writeRecord's, as Save edits' is, after any write in flight.
  *
+ * (2026-10-12, review round 1 of G6; ruling R42) The film is read for its stored image only (`{ storedOnly: true }`):
+ * a model result's image facts come from the stored image in memory, else from its sidecar, with no /decode of the
+ * original, which the record never needs, so another film opened straight after the click cannot take the image from
+ * under the read. The model's geometry is the prediction snapshot's, else the sidecar's that read loaded
+ * (`info.sidecarGeometry`, the same geometry a restore would have recorded as the snapshot). A film placed by hand
+ * still has its original decoded: that decode is its stored image.
+ *
  * Skipped, nothing written and nothing said, when reviewWritable says no before the write or once the film has been
  * read, or the study was deleted or re-added meanwhile. Written: `Saved the label record.` and `labelFile` on the
  * study. Failed (no image facts, a model result with no prediction in memory, no file name, a refused file): `Marked
@@ -436,13 +444,13 @@ export async function writeReviewRecord(studyId) {
   const { addedAt } = study;
   const release = holdWrite('review');
   try {
-    const written = await writeRecord(studyId, addedAt, (live, owner) => {
+    const written = await writeRecord(studyId, addedAt, (live, owner, info) => {
       if (!reviewWritable(live, owner)) return null;
-      const modelGeometry = deps.getPrediction?.(studyId)?.geometry ?? null;
+      const modelGeometry = deps.getPrediction?.(studyId)?.geometry ?? info?.sidecarGeometry ?? null;
       // A model result read with no prediction in memory would record every placed level as placed by hand.
       if (!modelGeometry && !isHandPlaced(owner)) throw new Error(NO_PREDICTION);
       return openEditor({ study: owner, region: editorRegion(owner), modelGeometry, saved: null });
-    });
+    }, { storedOnly: true });
     if (!written) return 'skipped';
     const { file, kept } = written;
     if (kept.labelFile !== file) setState((s) => ({ studies: withLabelFile(s.studies, studyId, addedAt, file) }));

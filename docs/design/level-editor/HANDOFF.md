@@ -336,7 +336,9 @@ Store everything in **image pixels of the stored image, origin top-left**. Conve
   entry, unless the stored geometry already differs from the prediction). Unmarking writes nothing; a study that
   already has a record is left alone; no write while the study's level edits are open or stashed (R40); the mark is
   set first and stands whatever happens to the write, a failure toasting `Marked reviewed. The label record could not
-  be written:` and the reason (R41). A zero-change Save edits still writes a first record (D10).
+  be written:` and the reason (R41). A zero-change Save edits still writes a first record (D10). The write reads the
+  segmented film's stored image only, never decoding its original, so opening the next film straight after the click
+  does not stop it (R42, review round 1 of G6).
 - **Where:** one file per film, `<study>.label.json`, beside the study's saved results. ~~Location to confirm.~~
   (Decided 2026-10-10, D3 in section 12: `userData/labels/<stem>.label.json`, `-2`, `-3` on a clash, the name kept on
   the study.)
@@ -417,7 +419,7 @@ The design artboard doesn't show `model_centroid` or `model_circle`. The schema 
 
 The open questions this section held were answered by the owner on 2026-10-10, together with the questions the code
 forced. They are the Decisions table of `docs/superpowers/plans/2026-10-10-level-editor.md`, which wins over this spec
-where the two differ; that plan's Ledger also records the execution rulings R1–R41. Built on branch
+where the two differ; that plan's Ledger also records the execution rulings R1–R42. Built on branch
 `worktree-level-editor`; the user doc is `docs/level-editor.md`. D15–D17 were added on 2026-10-11 from the owner's
 gate feedback (G3, G4), D18 the same day from G5, and D19 on 2026-10-12 from G6.
 

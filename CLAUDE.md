@@ -11,7 +11,10 @@ rim points for a head), gives only the selected level handles, and nudges with t
 the record. Save edits writes `userData/labels/<stem>.label.json` (schema `docs/design/level-editor/label-record.schema.json`;
 `labelFile` on the study; deleted and quarantined with it), and since gate feedback G6 (2026-10-12, D19, R40/R41) Mark
 reviewed writes the zero-change record of a film that has none (`writeReviewRecord`, sharing `writeRecord` with Save
-edits; `ad2b70b` and a records commit, unit 948/948, `smoke-levels.mjs` dom 112/112; both after the push, not pushed).
+edits; `ad2b70b` and a records commit, unit 948/948, `smoke-levels.mjs` dom 112/112; both after the push, not pushed);
+its review round 1 (R42) reads a segmented film's stored image only for that record (`imageInfo(id, { storedOnly:
+true })`, the cache or the sidecar, never `/decode`), so opening the next film straight after the click cannot fail
+it: unit 953/953, `smoke-levels.mjs` dom 114/114, not pushed.
 Window / level decodes the original film through a new
 `POST /decode` and windows the film layer only, display only (D1, D11); since gate feedback G3/G4 it works in every
 mode and belongs to the view like zoom and pan (`state.filmWindow`, written only by `renderer/film-window.js`;
