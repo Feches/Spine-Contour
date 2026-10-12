@@ -134,6 +134,41 @@ jobs:
             Stop-Process -Id $backend.Id -Force -ErrorAction SilentlyContinue
           }
 
+      # Private benchmarks are never exposed to pull-request code. PRs still run
+      # the scoring tests; publication on main requires this real-inference gate.
+      - name: Validate pinned private benchmark revision
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
+        env:
+          BENCHMARK_REF: ${{ vars.SPINE_ACCURACY_REF }}
+        run: python -c "import os,re; assert re.fullmatch('[0-9a-f]{40}', os.environ.get('BENCHMARK_REF','')), 'Set SPINE_ACCURACY_REF to the approved private benchmark commit SHA'"
+
+      - name: Fetch private accuracy benchmark
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ vars.SPINE_ACCURACY_REPOSITORY }}
+          ref: ${{ vars.SPINE_ACCURACY_REF }}
+          token: ${{ secrets.SPINE_ACCURACY_READ_TOKEN }}
+          path: build/accuracy-private
+          persist-credentials: false
+          lfs: true
+
+      - name: Gate release on reference measurement accuracy
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
+        run: python tools/accuracy/run.py --archive build/accuracy-private/dataset.zip --baseline-dir build/accuracy-private/baselines
+
+      - name: Upload accuracy report
+        if: always() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
+        uses: actions/upload-artifact@v7
+        with:
+          name: accuracy-report-${{ runner.os }}
+          path: build/accuracy-report.json
+          if-no-files-found: error
+
+      - name: Remove private benchmark files
+        if: always()
+        run: python -c "import shutil; shutil.rmtree('build/accuracy-private', ignore_errors=True); shutil.rmtree('build/accuracy-data', ignore_errors=True)"
+
       - name: Install desktop dependencies
         run: npm install --no-audit --no-fund
 
@@ -304,6 +339,41 @@ jobs:
           kill "$backend" 2>/dev/null || true
           if [ "$ready" -ne 1 ]; then echo "The bundled backend did not become ready." >&2; exit 1; fi
           echo "OK: bundled backend answered /health"
+
+      # Private benchmarks are never exposed to pull-request code. PRs still run
+      # the scoring tests; publication on main requires this real-inference gate.
+      - name: Validate pinned private benchmark revision
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
+        env:
+          BENCHMARK_REF: ${{ vars.SPINE_ACCURACY_REF }}
+        run: python -c "import os,re; assert re.fullmatch('[0-9a-f]{40}', os.environ.get('BENCHMARK_REF','')), 'Set SPINE_ACCURACY_REF to the approved private benchmark commit SHA'"
+
+      - name: Fetch private accuracy benchmark
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ vars.SPINE_ACCURACY_REPOSITORY }}
+          ref: ${{ vars.SPINE_ACCURACY_REF }}
+          token: ${{ secrets.SPINE_ACCURACY_READ_TOKEN }}
+          path: build/accuracy-private
+          persist-credentials: false
+          lfs: true
+
+      - name: Gate release on reference measurement accuracy
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
+        run: python tools/accuracy/run.py --archive build/accuracy-private/dataset.zip --baseline-dir build/accuracy-private/baselines
+
+      - name: Upload accuracy report
+        if: always() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
+        uses: actions/upload-artifact@v7
+        with:
+          name: accuracy-report-${{ runner.os }}
+          path: build/accuracy-report.json
+          if-no-files-found: error
+
+      - name: Remove private benchmark files
+        if: always()
+        run: python -c "import shutil; shutil.rmtree('build/accuracy-private', ignore_errors=True); shutil.rmtree('build/accuracy-data', ignore_errors=True)"
 
       - name: Install desktop dependencies
         run: npm install --no-audit --no-fund

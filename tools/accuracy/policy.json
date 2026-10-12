@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "approved": false,
+  "dataset_id": "cody-fullspine-50-end-to-end-v1",
+  "dataset_sha256": "ac4cbd2bd31a0e459315786a24250402fc2fd6e5d96d8ff29548c59c26d35af4",
+  "case_count": 250,
+  "baseline_commit": "20fd4c5e8d3c1ffc4ce4bbf298d4e4e8457f5aa6",
+  "metrics": {
+    "full-spine|LL.L1-S1": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "full-spine|SS": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "full-spine|PI": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "full-spine|PT": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "auto-landmarks|LL.L1-S1": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "auto-landmarks|SS": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "auto-landmarks|PI": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "auto-landmarks|PT": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "auto-classifier|LL.L1-S1": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "auto-classifier|SS": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "auto-classifier|PI": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "auto-classifier|PT": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "lumbar-unet|LL.L1-S1": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "lumbar-unet|SS": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "lumbar-unet|PI": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "lumbar-unet|PT": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "lumbar-hrnet|LL.L1-S1": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "lumbar-hrnet|SS": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "lumbar-hrnet|PI": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    },
+    "lumbar-hrnet|PT": {
+      "unit": "degrees",
+      "missing_error": 90,
+      "max_mae": 89,
+      "max_mae_increase": 0.5,
+      "max_case_error_increase": 2,
+      "min_availability": 0,
+      "reference_count": 50
+    }
+  },
+  "baselines": {}
+}
