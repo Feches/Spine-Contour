@@ -11,7 +11,7 @@ import { toCsv } from '../data/csv.js';
 import { loadStudyImages, disposeStudyImages, thumbnailDataUri, bitmapFromBase64, imagesFromRaw } from '../viewer/canvas.js';
 import { cropRaw, defaultWindow, rawFromDecoded } from '../viewer/window-level.js';
 import { mountViewer, recordPrediction, forgetPrediction, getPrediction, commitGeometry } from '../components/viewer.js';
-import { configureLevelEditor, forgetLevelEditor, requestExit } from '../level-editor.js';
+import { configureLevelEditor, forgetLevelEditor, requestExit, writeReviewRecord } from '../level-editor.js';
 import { configureFilmWindow, forgetFilmWindow, windowNeedsDecode, redecodeKeptWindow } from '../film-window.js';
 import { describeModels } from '../data/models.js';
 import { describeProcessor, processorTitle } from '../data/processing.js';
@@ -844,7 +844,8 @@ export function render(state) {
 
   // Mark reviewed (studies-table spec 2026-09-10, section 8.3): one button that toggles the record's review
   // mark, with the reason it is disabled shown beside it -- Chromium shows no tooltip on a
-  // disabled control, and the Parameters bar already renders its reason as a visible note.
+  // disabled control, and the Parameters bar already renders its reason as a visible note. Marking also
+  // writes the label record of a film that has none (2026-10-12, D19; toggleReviewed below).
   const reviewButton = el('button', {
     type: 'button', class: 'btn btn-small analysis-review', 'aria-pressed': 'false',
     onClick: () => toggleReviewed(),
@@ -953,6 +954,10 @@ export function render(state) {
   // activation of a disabled-looking button cannot slip through. One new-array write; the saver
   // subscribed in renderer/main.js persists it. Every write that changes the numbers clears it
   // again (spec 8.4) -- none of that is here.
+  // (2026-10-12, gate feedback G6; plan D19) Marking -- never unmarking -- also writes the film's label record when it
+  // has none yet: the zero-change record of the stored state (renderer/level-editor.js writeReviewRecord, which skips a
+  // study with a record or with level edits open or stashed, R40). The mark is set first and neither waits for nor
+  // depends on the write (R41); the write says how it went in a toast.
   function toggleReviewed() {
     const live = getState();
     const open = currentStudy(live);
@@ -963,6 +968,7 @@ export function render(state) {
     setState((state) => ({
       studies: state.studies.map((study) => (study.id === open.id ? { ...study, reviewedAt } : study)),
     }));
+    if (reviewedAt) writeReviewRecord(open.id);
   }
 
   // What the header badge last showed; update() runs on every notification, pan frames included,

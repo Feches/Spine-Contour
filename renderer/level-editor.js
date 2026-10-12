@@ -15,6 +15,9 @@
  * (2026-10-11, gate feedback G3; plan D15) The window / level is no longer the editor's: it belongs to the view
  * (`state.filmWindow`, renderer/film-window.js) and outlives entering and leaving edit mode. The editor only reads
  * whether its panel is open, to pause placement while it is.
+ *
+ * (2026-10-12, gate feedback G6; plan D19) The label record has a second writer beside Save edits: Mark reviewed on a
+ * film with no record yet (writeReviewRecord). Both go through one write, writeRecord, so the two records never drift.
  */
 import { getState, setState, subscribe } from './store.js';
 import { loadLabelRecord, saveLabelRecord, deleteLabelRecord } from './api.js';
@@ -29,11 +32,16 @@ import { toLabelRecord, recordLevels, labelFileName, appVersion } from './data/l
 import { levelContours } from './data/contours.js';
 import { studyRegion, validAnteriorSide } from './data/cervical.js';
 import { isHandPlaced } from './data/predictions.js';
+import { isReviewed } from './data/status.js';
 import { fileStem } from './data/labels.js';
 import { windowFor, forgetFilmWindow } from './film-window.js';
 
 const DEMO_NOTE = 'Demo studies are not exported';
 const SAVE_FAILED = 'Could not save the label record: ';
+const NO_FILE_NAME = 'the study has no file name.';
+// (D19, R41) Mark reviewed's own wording: the mark stands whatever happened to the record.
+const REVIEW_WRITE_FAILED = 'Marked reviewed. The label record could not be written: ';
+const NO_PREDICTION = 'the model\'s prediction is not loaded.';
 
 // ---------------------------------------------------------------------------
 // What the screen supplies.
@@ -160,6 +168,14 @@ function update(step, { edit = false, commit = true } = {}) {
 
 let entering = null; // the study whose label record is being read, so a second click does not open twice
 
+// (R20) The film type an editor opens with: an Auto film with no model run opens as Auto (every level visible, D6) even
+// after a commit has written a region into its geometry: its region follows the placed levels, so that region is no
+// film type to default to. Shared by enterLevelEditor and writeReviewRecord (D19), so the review record is the one a
+// save right after entering edit mode would write.
+function editorRegion(study) {
+  return regionFollowsLevels(null, study) ? 'auto' : studyRegion(study);
+}
+
 /**
  * Edit mode for the open study: a stashed editor for it when there is one (its exit prompt reset), else a fresh one
  * from the study, the model's own geometry (the viewer's prediction snapshot) and the label record on disk. Then the
@@ -195,12 +211,7 @@ export async function enterLevelEditor(studyId) {
         || live.running === studyId || live.screen !== 'analysis') return;
     }
     editor = openEditor({
-      study: source,
-      // (R20) An Auto film with no model run opens as Auto (every level visible, D6) even after a commit has written
-      // a region into its geometry: its region follows the placed levels, so that region is no film type to default to.
-      region: regionFollowsLevels(null, source) ? 'auto' : studyRegion(source),
-      modelGeometry: deps.getPrediction?.(studyId)?.geometry ?? null,
-      saved,
+      study: source, region: editorRegion(source), modelGeometry: deps.getPrediction?.(studyId)?.geometry ?? null, saved,
     });
   }
   // Entering edit mode drops the pan toggle (a primary drag would pan, and no handle press would ever land).
@@ -265,9 +276,25 @@ export function forgetLevelEditor(studyId) {
 }
 
 // ---------------------------------------------------------------------------
-// Save and discard.
+// Save and discard, and the record Mark reviewed writes (D19).
 
-let saving = false;
+// The label-record write in flight, 'edits' (Save edits) or 'review' (writeReviewRecord), else null, and a promise
+// that settles when it ends. One at a time, so a review write and a save never interleave: a second Save edits while
+// one is writing is dropped (the re-entrancy latch), a Save edits waits for a review write to end, and a review write
+// for either.
+let saving = null;
+let writeEnded = Promise.resolve();
+
+// Takes the latch for `kind`; the function returned releases it.
+function holdWrite(kind) {
+  let release;
+  saving = kind;
+  writeEnded = new Promise((resolve) => { release = resolve; });
+  return () => {
+    saving = null;
+    release();
+  };
+}
 
 function savedText(n) {
   if (n <= 0) return 'Saved the label record.';
@@ -275,12 +302,62 @@ function savedText(n) {
 }
 
 /**
+ * The write Save edits and Mark reviewed share (D19), so their records can never drift. The film's image facts first
+ * (deps.imageInfo); then, read across that await, the study, which must still be the same record (`addedAt`), and the
+ * editor `editorOf(state, study)` gives for it (null: nothing is written; a throw is the caller's to report). The
+ * record goes to the study's own label file, else a new name from its stem (D3), with the model's mask outline for
+ * each level still segmented (R10). Resolves with `{ file, editor, kept, state }` (`kept` the study and `state` the
+ * store once the file is written), or null when nothing was written or the study went while the file was written:
+ * the delete could not see that file, so it is removed here unless another study has taken the name since. Rejects
+ * with a display-ready message.
+ */
+async function writeRecord(studyId, addedAt, editorOf) {
+  const info = await deps.imageInfo(studyId);
+  const live = getState();
+  const owner = studyOf(live, studyId);
+  if (!owner || owner.addedAt !== addedAt) return null;
+  const editor = editorOf(live, owner);
+  if (!editor) return null;
+  const others = live.studies.filter((item) => item.id !== studyId && item.labelFile).map((item) => item.labelFile);
+  const file = owner.labelFile ?? labelFileName(fileStem(owner.fileName), others);
+  const record = toLabelRecord({
+    editor,
+    study: owner,
+    image: { file: owner.fileName, sha256: info.sha256, width: info.width, height: info.height },
+    model: { name: owner.qc?.models?.vertebrae ?? 'none', version: owner.qc?.model_versions?.vertebrae ?? 'unknown' },
+    appVersion: appVersion(),
+    savedAt: new Date().toISOString(),
+    // The model's mask outline for each level still segmented now (R10); all null for a film with no mask.
+    contours: levelContours(info.maskPixels, info.width, info.height, info.labels, editor),
+  });
+  await saveLabelRecord(file, record);
+  const after = getState();
+  const kept = studyOf(after, studyId);
+  if (!kept || kept.addedAt !== addedAt) {
+    // Deleted while the file was written: the delete could not see this file, so it is removed here unless another
+    // study has taken the name since.
+    const name = file.toLowerCase();
+    if (!after.studies.some((item) => typeof item.labelFile === 'string' && item.labelFile.toLowerCase() === name)) {
+      deleteLabelRecord(file).catch(() => {});
+    }
+    return null;
+  }
+  return { file, editor, kept, state: after };
+}
+
+// The studies with `file` named on the one record it was written for (that id and that `addedAt`).
+function withLabelFile(studies, studyId, addedAt, file) {
+  return studies.map((item) => (item.id === studyId && item.addedAt === addedAt ? { ...item, labelFile: file } : item));
+}
+
+/**
  * Save edits: writes userData/labels/<file> (D3), makes the written levels the baseline and records the file on
  * the study. Resolves after the toast. A demo study never writes one. The record is built from the editor as it
  * stands once the film has been read, and only those levels become the baseline, so a change made while the file
- * is being written stays unsaved.
+ * is being written stays unsaved. (D19) A review write in flight ends first, so a save clicked meanwhile is not lost.
  */
 export async function saveLevelEdits() {
+  while (saving === 'review') await writeEnded;
   const state = getState();
   const editor = currentEditor(state);
   if (!editor || saving) return;
@@ -292,52 +369,27 @@ export async function saveLevelEdits() {
   }
   if (!canSave(editor)) return;
   if (!fileStem(study.fileName ?? '')) {
-    showToast(`${SAVE_FAILED}the study has no file name.`);
+    showToast(`${SAVE_FAILED}${NO_FILE_NAME}`);
     return;
   }
   const { studyId } = editor;
   const { addedAt } = study;
-  saving = true;
+  const release = holdWrite('edits');
   try {
-    const info = await deps.imageInfo(studyId);
-    const live = getState();
-    const current = currentEditor(live);
-    const owner = studyOf(live, studyId);
     // Left, closed or deleted while the film was read: nothing is written.
-    if (!current || current.studyId !== studyId || !owner || owner.addedAt !== addedAt) return;
-    const n = unsavedCount(current);
-    const others = live.studies.filter((item) => item.id !== studyId && item.labelFile).map((item) => item.labelFile);
-    const file = owner.labelFile ?? labelFileName(fileStem(owner.fileName), others);
-    const record = toLabelRecord({
-      editor: current,
-      study: owner,
-      image: { file: owner.fileName, sha256: info.sha256, width: info.width, height: info.height },
-      model: { name: owner.qc?.models?.vertebrae ?? 'none', version: owner.qc?.model_versions?.vertebrae ?? 'unknown' },
-      appVersion: appVersion(),
-      savedAt: new Date().toISOString(),
-      // The model's mask outline for each level still segmented now (R10); all null for a film with no mask.
-      contours: levelContours(info.maskPixels, info.width, info.height, info.labels, current),
+    const written = await writeRecord(studyId, addedAt, (live) => {
+      const current = currentEditor(live);
+      return current && current.studyId === studyId ? current : null;
     });
-    await saveLabelRecord(file, record);
-    const after = getState();
-    const kept = studyOf(after, studyId);
-    if (!kept || kept.addedAt !== addedAt) {
-      // Deleted while the file was written: the delete could not see this file, so it is removed here unless
-      // another study has taken the name since.
-      const name = file.toLowerCase();
-      if (!after.studies.some((item) => typeof item.labelFile === 'string' && item.labelFile.toLowerCase() === name)) {
-        deleteLabelRecord(file).catch(() => {});
-      }
-      return;
-    }
-    const written = markSaved(current, file);
+    if (!written) return;
+    const { file, editor: current, kept, state: after } = written;
+    const n = unsavedCount(current);
+    const saved = markSaved(current, file);
     const latest = currentEditor(after);
     const open = latest && latest.studyId === studyId ? latest : null;
     setState((s) => ({
-      ...(kept.labelFile === file ? {} : {
-        studies: s.studies.map((item) => (item.id === studyId && item.addedAt === addedAt ? { ...item, labelFile: file } : item)),
-      }),
-      ...(open ? { levelEditor: { ...open, baseline: written.baseline, record: written.record } } : {}),
+      ...(kept.labelFile === file ? {} : { studies: withLabelFile(s.studies, studyId, addedAt, file) }),
+      ...(open ? { levelEditor: { ...open, baseline: saved.baseline, record: saved.record } } : {}),
     }));
     stash.delete(studyId);
     showToast(savedText(n));
@@ -345,7 +397,62 @@ export async function saveLevelEdits() {
   } catch (error) {
     showToast(`${SAVE_FAILED}${error.message}`);
   } finally {
-    saving = false;
+    release();
+  }
+}
+
+// (D19; R40) Whether Mark reviewed may write this study's label record now: a real study, marked reviewed, with a
+// result (a model run's or levels placed by hand: a film with neither has nothing to label), no record yet (Save edits
+// keeps owning a record that exists), no run of its own in flight, and no editor open or stashed for it (those unsaved
+// level edits are the annotator's to save or discard).
+function reviewWritable(state, study) {
+  return Boolean(study) && study.source !== 'demo' && isReviewed(study) && !study.labelFile
+    && Boolean(study.measurements && study.geometry) && state.running !== study.id
+    && state.levelEditor?.studyId !== study.id && !stash.has(study.id);
+}
+
+/**
+ * (2026-10-12, gate feedback G6; plan D19) Mark reviewed on a study with no label record writes one: the zero-change
+ * record of the stored state, exactly what Save edits writes right after entering edit mode with nothing changed.
+ * The editor is built in memory once the film has been read (openEditor with enterLevelEditor's region rule, the
+ * model's geometry from the prediction snapshot and no saved record) and is never put in the store: `levelEditor`,
+ * `editing` and the stash are left alone, and so is the mark, which the caller has already set and which stands
+ * whatever happens here (R41). The write is writeRecord's, as Save edits' is, after any write in flight.
+ *
+ * Skipped, nothing written and nothing said, when reviewWritable says no before the write or once the film has been
+ * read, or the study was deleted or re-added meanwhile. Written: `Saved the label record.` and `labelFile` on the
+ * study. Failed (no image facts, a model result with no prediction in memory, no file name, a refused file): `Marked
+ * reviewed. The label record could not be written: ` and the reason. Never rejects.
+ * @returns {Promise<'written'|'skipped'|'failed'>}
+ */
+export async function writeReviewRecord(studyId) {
+  while (saving) await writeEnded;
+  const study = studyOf(getState(), studyId);
+  if (!reviewWritable(getState(), study)) return 'skipped';
+  if (!fileStem(study.fileName ?? '')) {
+    showToast(`${REVIEW_WRITE_FAILED}${NO_FILE_NAME}`);
+    return 'failed';
+  }
+  const { addedAt } = study;
+  const release = holdWrite('review');
+  try {
+    const written = await writeRecord(studyId, addedAt, (live, owner) => {
+      if (!reviewWritable(live, owner)) return null;
+      const modelGeometry = deps.getPrediction?.(studyId)?.geometry ?? null;
+      // A model result read with no prediction in memory would record every placed level as placed by hand.
+      if (!modelGeometry && !isHandPlaced(owner)) throw new Error(NO_PREDICTION);
+      return openEditor({ study: owner, region: editorRegion(owner), modelGeometry, saved: null });
+    });
+    if (!written) return 'skipped';
+    const { file, kept } = written;
+    if (kept.labelFile !== file) setState((s) => ({ studies: withLabelFile(s.studies, studyId, addedAt, file) }));
+    showToast(savedText(0));
+    return 'written';
+  } catch (error) {
+    showToast(`${REVIEW_WRITE_FAILED}${error.message}`);
+    return 'failed';
+  } finally {
+    release();
   }
 }
 

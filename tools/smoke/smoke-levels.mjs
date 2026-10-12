@@ -15,6 +15,12 @@
 // level nothing, every entry carries a list, and the summary agrees with the entries, computed here from the record
 // alone); the film phase reads them on the level edited by the SA handle drag and the nudge (that corner only, and
 // `edits.points_moved` the sum of the edited lists).
+// Gate feedback G6 (2026-10-12, plan D19, rulings R40 and R41): Mark reviewed writes the label record of a film that
+// has none. Section 18, last in the dom phase, injects SP-9304, a fresh copy of the segmented fixture with all five
+// lumbar bodies (its own file name, sidecar and prediction id), and outside edit mode clicks the Analysis panel's Mark
+// reviewed: within 10 s the study names `levels-review-check.label.json`, the file is under <userData>/labels/ and
+// validates, every entry reads segmented or not visible with no edited points, and `Saved the label record.` is
+// toasted; then unmark and mark again leave that one file, unwritten, with no second toast.
 //
 //   node tools/smoke/launch.mjs                                     (SPINE_CONTOUR_USER_DATA under %TEMP%)
 //   node tools/smoke/smoke-levels.mjs                               phase `dom` (the default)
@@ -24,7 +30,8 @@
 // Phase `dom`: no model run and no real film. Two synthetic, canvas-drawn films: SP-9300, a segmented fixture whose
 // geometry is the prototype's (L1, L2, L4, L5, S1 and two heads; L3 missing) with an all-zero mask, measured by the
 // real /measure; and SP-9301, an unsegmented film written to %TEMP% and placed by hand, decoded by the real /decode.
-// Section 17 adds SP-9303, a study with no film, only so that another study can be opened and left.
+// Section 17 adds SP-9303, a study with no film, only so that another study can be opened and left; section 18 adds
+// SP-9304, the second copy of the segmented fixture, for Mark reviewed.
 // Phase `film`: one real lateral lumbar film, segmented by the real models as SP-9302 (backend/onnx must hold the
 // graphs). A REAL FILM IS ON SCREEN IN THAT PHASE: this suite takes no screenshots in either phase, and every check
 // is a DOM, store or file read.
@@ -52,7 +59,12 @@ const SEG = 'SP-9300';   // the segmented fixture (dom)
 const HAND = 'SP-9301';  // the unsegmented synthetic film, placed by hand (dom)
 const REAL = 'SP-9302';  // the real film (film)
 const OTHER = 'SP-9303'; // a study with no film, opened and left in section 17 (dom)
+const REVIEW = 'SP-9304'; // a second copy of the segmented fixture, marked reviewed in section 18 (dom; G6)
 const SEG_FILE = 'levels-ui-check.png';
+const REVIEW_FILE = 'levels-review-check.png';
+const REVIEW_RECORD = 'levels-review-check.label.json';
+const REVIEW_BUTTON = '.analysis-review';
+const SAVED_TOAST = 'Saved the label record.';
 const HAND_FILE = 'levels-hand-placed.png';
 const HAND_PATH = path.join(FILM_DIR, HAND_FILE);
 const PREDICTION_ID = 'smoke-levels-fixture';
@@ -492,6 +504,76 @@ async function windowOutsideEditChecks(windowInEdit) {
     { windowed: windowed && { pair: pairOf(windowed), defaults: [windowed.defaultWidth, windowed.defaultLevel] }, chip: await chip() });
 }
 
+// 18 (gate feedback G6, 2026-10-12; plan D19, rulings R40 and R41). Mark reviewed, outside edit mode, writes the label
+// record of a film that has none: the zero-change record of the stored state. On SP-9304, a fresh copy of the segmented
+// fixture with all five lumbar bodies (L3 included), so every entry reads segmented or not visible; its sidecar and
+// prediction id make it a model result that restores from the sidecar (R16). `films` is the dom phase's drawn films.
+async function reviewRecordChecks(films) {
+  fs.rmSync(path.join(LABELS, REVIEW_RECORD), { force: true });   // a crashed run's leftover, never this run's
+  const injected = await ev(`(async () => {
+    const store = await import('./renderer/store.js');
+    const api = await import('./renderer/api.js');
+    const quad = (c) => ({ superior: [c[0], c[1]], inferior: [c[2], c[3]], quadrilateral: [c[0], c[1], c[3], c[2]] });
+    const bodies = ${js({ ...BODIES, L3 })};
+    const vertebrae = Object.fromEntries(Object.entries(bodies).map(([code, c]) => [code, quad(c)]));
+    const result = await api.measure({ vertebrae, s1_superior: ${js(S1)}, femoral_circles: ${js(CIRCLES)} });
+    await api.savePrediction(${js(REVIEW)}, { ...result, image_png: ${js(films.image)}, mask_png: ${js(films.mask)},
+      labels: { L1: 20, L2: 21, L3: 22, L4: 23, L5: 24 }, prediction_id: ${js(PREDICTION_ID)} });
+    const study = { id: ${js(REVIEW)}, source: 'real', fileName: ${js(REVIEW_FILE)}, filePath: '/test/levels-review-check.png',
+      name: 'Levels review check', addedAt: new Date().toISOString(), view: 'Standing lateral', clinical: {},
+      predictionId: ${js(PREDICTION_ID)}, labelFile: null, reviewedAt: null,
+      measurements: result.measurements, geometry: result.geometry, qc: result.qc ?? null };
+    store.setState((s) => ({ studies: [study, ...s.studies.filter((x) => x.id !== ${js(REVIEW)})] }));
+    return { vertebrae: Object.keys(result.geometry?.vertebrae ?? {}) };
+  })()`);
+  await openFromList(REVIEW);
+  // The restore records the prediction snapshot the record's segmented states are read against.
+  const restored = await until(`import('./renderer/components/viewer.js').then((m) => Boolean(m.getPrediction(${js(REVIEW)})))`, 15000);
+  const button = () => ev(`(() => { const b = document.querySelector(${js(REVIEW_BUTTON)}); return b ? { text: b.textContent.trim(), disabled: b.disabled, pressed: b.getAttribute('aria-pressed') } : null; })()`);
+  const before = await studyOf(REVIEW);
+  const offered = await button();
+  check('18. precondition: SP-9304 opens on its restored film outside edit mode, with no label record and Mark reviewed enabled',
+    restored && (await editingNow()) === false && before?.labelFile === null && !fs.existsSync(path.join(LABELS, REVIEW_RECORD))
+      && offered?.text === 'Mark reviewed' && offered.disabled === false,
+    { injected, restored, labelFile: before?.labelFile, offered });
+
+  await clearToasts();
+  await clickSelector(REVIEW_BUTTON);
+  const named = await until(`window.__lv.study(${js(REVIEW)})?.labelFile === ${js(REVIEW_RECORD)}`, 10000);
+  const written = await untilNode(() => fs.existsSync(path.join(LABELS, REVIEW_RECORD)), 10000);
+  const marked = await studyOf(REVIEW);
+  check(`18. Mark reviewed stamps the study and within 10 s names ${REVIEW_RECORD} on it and writes it under <userData>/labels/ (D19)`,
+    named && written && typeof marked?.reviewedAt === 'string', { labelFile: marked?.labelFile, reviewedAt: marked?.reviewedAt, written });
+  check(`18. the toast reads ${SAVED_TOAST}`, await toastSeen(SAVED_TOAST), await ev('window.__lv.toasts'));
+  let record = null;
+  try { record = readRecord(REVIEW_RECORD); } catch (_error) { record = null; }
+  const valid = record ? validateAgainst(SCHEMA, record) : { ok: false, errors: ['unreadable'] };
+  check('18. the record validates against the label record schema', valid.ok, valid.errors.slice(0, 5));
+  const entries = recordEntries(record);
+  check('18. the zero-change record: every level and head segmented or not_visible with no edited points, edits.edited 0 and edits.manual 0',
+    entries.length === 16 && entries.every((e) => ['segmented', 'not_visible'].includes(e.state) && Array.isArray(e.edited_points) && e.edited_points.length === 0)
+      && record.edits?.edited === 0 && record.edits?.manual === 0 && js(record.edits) === js(editsFromEntries(record)),
+    record && { states: entries.map((e) => e.state), edits: record.edits });
+  const after = await ev(`(async () => { const s = (await import('./renderer/store.js')).getState(); return { editing: s.editing, editor: s.levelEditor }; })()`);
+  check('18. no edit mode was entered: editing false and no level editor in the store', after.editing === false && after.editor === null, after);
+
+  // Unmark, then mark again, once the first toast has gone (the toast log records a change of text, not a repeat).
+  await until(`import('./renderer/store.js').then((m) => m.getState().toast === '')`, 10000);
+  await clickSelector(REVIEW_BUTTON);
+  const unmarked = await until(`window.__lv.study(${js(REVIEW)})?.reviewedAt === null`, 3000);
+  await clickSelector(REVIEW_BUTTON);
+  const remarked = await until(`typeof window.__lv.study(${js(REVIEW)})?.reviewedAt === 'string'`, 3000);
+  await cdp.settle(1500);
+  const files = fs.existsSync(LABELS) ? fs.readdirSync(LABELS).filter((name) => name.startsWith('levels-review-check')) : [];
+  let again = null;
+  try { again = readRecord(REVIEW_RECORD); } catch (_error) { again = null; }
+  const savedToasts = await ev(`window.__lv.toasts.filter((t) => t === ${js(SAVED_TOAST)}).length`);
+  check('18. unmark and mark again: still one record, the same name, not written again, and no second toast',
+    unmarked && remarked && js(files) === js([REVIEW_RECORD]) && (await studyOf(REVIEW))?.labelFile === REVIEW_RECORD
+      && Boolean(again) && again.saved_at === record?.saved_at && savedToasts === 1,
+    { unmarked, remarked, files, savedAt: [record?.saved_at ?? null, again?.saved_at ?? null], toasts: await ev('window.__lv.toasts') });
+}
+
 // ---------------------------------------------------------------------------
 // Phase `dom`.
 
@@ -533,7 +615,7 @@ async function domPhase() {
       name: 'Levels UI check', addedAt: new Date().toISOString(), view: 'Standing lateral', clinical: {},
       predictionId: ${js(PREDICTION_ID)}, labelFile: null, measurements: result.measurements, geometry: result.geometry, qc: result.qc ?? null };
     const hand = { ...newStudy({ id: ${js(HAND)}, fileName: ${js(HAND_FILE)}, filePath: ${js(HAND_PATH)} }), labelFile: null };
-    const ours = new Set([${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}]);
+    const ours = new Set([${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}, ${js(REVIEW)}]);
     store.setState((s) => ({ ack: true, studies: [seg, hand, ...s.studies.filter((x) => !ours.has(x.id))], screen: 'studies',
       studiesTab: 'find', query: '', openId: null, editing: false, levelEditor: null, selection: null, measurementDrafts: {},
       running: null, batch: null, tab: 'meas', overlays: true }));
@@ -918,6 +1000,9 @@ async function domPhase() {
     refused.length === 2 && refused.every((m) => m !== 'fulfilled' && m.endsWith('Invalid label file name.')), refused);
   const cleaned = await ev(`import('./renderer/api.js').then((api) => api.saveLabelRecord('..', {}).then(() => 'fulfilled', (e) => e.message))`);
   check('13. the api wrapper hands the rejection on as the display-ready Invalid label file name.', cleaned === 'Invalid label file name.', cleaned);
+
+  // 18 (gate feedback G6, D19). Last: it opens a study of its own and leaves the rest of the run as it was.
+  await reviewRecordChecks(films);
 }
 
 // ---------------------------------------------------------------------------
@@ -935,7 +1020,7 @@ async function filmPhase() {
     const store = await import('./renderer/store.js');
     const { newStudy } = await import('./renderer/screens/studies.js');
     const study = { ...newStudy({ id: ${js(REAL)}, fileName: ${js(fileName)}, filePath: ${js(film)} }), region: 'lumbar', labelFile: null };
-    const ours = new Set([${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}]);
+    const ours = new Set([${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}, ${js(REVIEW)}]);
     store.setState((s) => ({ ack: true, studies: [study, ...s.studies.filter((x) => !ours.has(x.id))], screen: 'studies',
       studiesTab: 'find', query: '', openId: null, editing: false, levelEditor: null, selection: null, measurementDrafts: {},
       running: null, batch: null, tab: 'meas' }));
@@ -1046,7 +1131,7 @@ try {
       const store = await import('./renderer/store.js');
       const api = await import('./renderer/api.js');
       const wiring = await import('./renderer/level-editor.js');
-      const ids = [${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}];
+      const ids = [${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}, ${js(REVIEW)}];
       const s = store.getState();
       const names = s.studies.filter((x) => ids.includes(x.id) && x.labelFile).map((x) => x.labelFile);
       store.setState({ editing: false, levelEditor: null, filmWindow: null, selection: null, screen: 'studies', openId: null, measurementDrafts: {} });
@@ -1057,7 +1142,7 @@ try {
       delete window.__lv; delete window.__lvRun; delete window.__lvRunOutcome;
       return names;
     })()`);
-    for (const name of ['levels-ui-check.label.json', 'levels-hand-placed.label.json', ...(leftovers ?? [])]) {
+    for (const name of ['levels-ui-check.label.json', 'levels-hand-placed.label.json', REVIEW_RECORD, ...(leftovers ?? [])]) {
       fs.rmSync(path.join(LABELS, name), { force: true });
     }
     if (PHASE !== 'film') fs.rmSync(HAND_PATH, { force: true });
