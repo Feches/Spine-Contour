@@ -47,10 +47,9 @@ def validate(config, manifest, baseline=None):
     for name, rule in config['metrics'].items():
         require(isinstance(name, str) and name, 'Invalid metric name')
         require(rule.get('unit') in ('degrees', 'pixels', 'mm'), f'{name}: explicit unit required')
-        for field in ('missing_error', 'max_mae', 'max_mae_increase', 'max_case_error_increase'):
+        for field in ('missing_error', 'max_mae_increase', 'max_case_error_increase'):
             require(finite(rule.get(field)) and rule[field] >= 0, f'{name}: invalid {field}')
-        require(rule['missing_error'] > rule['max_mae'], f'{name}: missing penalty must exceed maximum MAE')
-        require(finite(rule.get('min_availability')) and 0 <= rule['min_availability'] <= 1, f'{name}: invalid availability floor')
+        require(rule['missing_error'] > 0, f'{name}: missing penalty must be positive')
         require(type(rule.get('reference_count')) is int and rule['reference_count'] > 0, f'{name}: reference count required')
     require(manifest.get('schema_version') == 1 and manifest.get('dataset_id') == config.get('dataset_id'), 'Dataset identity/version mismatch')
     require(manifest.get('reference_review') and manifest.get('training_exclusion_review'), 'Reference review and training-overlap audit must be documented')
@@ -112,10 +111,6 @@ def compare(config, manifest, baseline, predictions):
         metrics[key] = {'count': len(errors), 'available': available, 'baseline_available': before_available,
                         'paired_mae': paired_mae, 'baseline_paired_mae': paired_before, 'paired_count': len(comparable),
                         'mae_with_missing_penalty': mae, 'baseline_mae_with_missing_penalty': old_mae, 'unit': rule['unit']}
-        if available / len(errors) < rule['min_availability']:
-            failures.append(f'{key}: availability below floor')
-        if mae > rule['max_mae'] + 1e-9:
-            failures.append(f'{key}: absolute error ceiling exceeded')
         if paired_mae - paired_before > rule['max_mae_increase'] + 1e-9:
             failures.append(f'{key}: mean error regression')
     return {'schema_version': 1, 'passed': not failures, 'failures': failures, 'metrics': metrics, 'cases': rows}

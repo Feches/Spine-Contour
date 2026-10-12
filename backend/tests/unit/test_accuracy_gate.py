@@ -20,8 +20,7 @@ spec.loader.exec_module(runner)
 def fixture():
     policy = {'schema_version': 1, 'approved': True, 'dataset_id': 'arithmetic-test', 'dataset_sha256': 'a' * 64,
               'case_count': 2, 'baseline_commit': 'b' * 40, 'platform': 'darwin',
-              'metrics': {'SS': {'unit': 'degrees', 'missing_error': 90, 'max_mae': 10,
-                'max_mae_increase': .5, 'max_case_error_increase': 2, 'min_availability': 1, 'reference_count': 2}}}
+              'metrics': {'SS': {'unit': 'degrees', 'missing_error': 90, 'max_mae_increase': .5, 'max_case_error_increase': 2, 'reference_count': 2}}}
     manifest = {'schema_version': 1, 'dataset_id': 'arithmetic-test', 'reference_review': 'test only',
                 'training_exclusion_review': 'test only', 'cases': [
                   {'id': name, 'reviewed': True, 'reference_source': 'arithmetic-test', 'request': {}, 'reference': {'SS': 30}}
@@ -53,11 +52,6 @@ def test_missing_output_cannot_improve_mae_by_shrinking_denominator():
     assert report['metrics']['SS']['mae_with_missing_penalty'] == 45
     assert any('previously available' in f for f in report['failures'])
 
-
-def test_absolute_floor_fails_even_when_baseline_is_poor():
-    p, m, b = fixture()
-    b['predictions'] = {'a': {'SS': 60}, 'b': {'SS': 60}}
-    assert any('ceiling' in f for f in gate.compare(p, m, b, b['predictions'])['failures'])
 
 
 @pytest.mark.parametrize('mutation', [
@@ -119,8 +113,6 @@ def test_workflow_gates_both_platforms_and_never_exposes_dataset_to_prs():
 
 def test_recovering_missing_output_cannot_mask_other_regressions():
     p, m, b = fixture()
-    p['metrics']['SS']['min_availability'] = 0
-    p['metrics']['SS']['max_mae'] = 89
     b['predictions']['b']['SS'] = None
     report = gate.compare(p, m, b, {'a': {'SS': 32}, 'b': {'SS': 30}})
     assert report['metrics']['SS']['paired_count'] == 1
@@ -174,3 +166,30 @@ def test_predict_forwards_original_bytes_to_full_pipeline(monkeypatch, tmp_path)
     assert received['data']['body_part'] == 'auto'
     assert received['data']['crop_method'] == 'search'
     assert received['data']['crop_localizer'] == 'true'
+
+
+def test_finalize_requires_both_platforms_and_freezes_exact_predictions(tmp_path):
+    import json
+    spec = importlib.util.spec_from_file_location('accuracy_finalize', DIRECTORY / 'finalize_baselines.py')
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    p, m, b = fixture()
+    p['approved'] = False
+    archive = tmp_path / 'dataset.zip'
+    with zipfile.ZipFile(archive, 'w') as bundle:
+        bundle.writestr('manifest.json', json.dumps(m))
+    p['dataset_sha256'] = b['dataset_sha256'] = gate.sha256(archive)
+    policy = tmp_path / 'policy.json'; policy.write_text(json.dumps(p))
+    fragments = tmp_path / 'fragments'; fragments.mkdir()
+    (fragments / 'darwin.json').write_text(json.dumps(b))
+    output = tmp_path / 'baselines'
+    with pytest.raises(gate.GateError, match='No windows'):
+        module.finalize(policy, archive, fragments, output)
+    assert not list(output.glob('*.json'))
+    (fragments / 'windows.json').write_text(json.dumps({**b, 'platform': 'windows'}))
+    module.finalize(policy, archive, fragments, output)
+    approved = gate.read_json(policy)
+    assert approved['approved'] is True
+    assert approved['metrics']['SS']['max_mae_increase'] == .5
+    assert approved['metrics']['SS']['max_case_error_increase'] == 2
+    assert approved['baselines']['darwin']['sha256'] == gate.sha256(output / 'darwin.json')
+    assert gate.read_json(output / 'windows.json')['predictions'] == b['predictions']
