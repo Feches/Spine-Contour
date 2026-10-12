@@ -329,7 +329,14 @@ Store everything in **image pixels of the stored image, origin top-left**. Conve
 
 ## 9. Label record
 
-- **When:** written on **Save edits**.
+- **When:** written on **Save edits**. *Amended 2026-10-12 (the owner's gate feedback G6 in the plan; D19, rulings R40
+  and R41):* also on **Mark reviewed** (the Analysis panel's button, outside edit mode) when the study has no record
+  yet: the zero-change record of the stored state, exactly what Save edits writes right after entering edit mode with
+  nothing changed (every level the model placed `segmented`, no `edited_points`, `edits` counting no edited or manual
+  entry, unless the stored geometry already differs from the prediction). Unmarking writes nothing; a study that
+  already has a record is left alone; no write while the study's level edits are open or stashed (R40); the mark is
+  set first and stands whatever happens to the write, a failure toasting `Marked reviewed. The label record could not
+  be written:` and the reason (R41). A zero-change Save edits still writes a first record (D10).
 - **Where:** one file per film, `<study>.label.json`, beside the study's saved results. ~~Location to confirm.~~
   (Decided 2026-10-10, D3 in section 12: `userData/labels/<stem>.label.json`, `-2`, `-3` on a clash, the name kept on
   the study.)
@@ -371,6 +378,8 @@ The design artboard doesn't show `model_centroid` or `model_circle`. The schema 
   - `edited` gives a (model, corrected) pair for measuring model error per level
   - (2026-10-11, D18) `edited_points` says which points of an `edited` pair moved, and `edits` how many entries
     needed correcting across the film, so a folder of records can be counted without comparing corners
+  - (2026-10-12, D19) a film accepted without an edit gets its record from Mark reviewed, or from a zero-change Save
+    edits; both write the same record, its placed levels `segmented` with no edited points
 
 ---
 
@@ -408,9 +417,9 @@ The design artboard doesn't show `model_centroid` or `model_circle`. The schema 
 
 The open questions this section held were answered by the owner on 2026-10-10, together with the questions the code
 forced. They are the Decisions table of `docs/superpowers/plans/2026-10-10-level-editor.md`, which wins over this spec
-where the two differ; that plan's Ledger also records the execution rulings R1–R39. Built on branch
+where the two differ; that plan's Ledger also records the execution rulings R1–R41. Built on branch
 `worktree-level-editor`; the user doc is `docs/level-editor.md`. D15–D17 were added on 2026-10-11 from the owner's
-gate feedback (G3, G4), and D18 the same day from G5.
+gate feedback (G3, G4), D18 the same day from G5, and D19 on 2026-10-12 from G6.
 
 | # | Question | Decision |
 |---|---|---|
@@ -432,6 +441,7 @@ gate feedback (G3, G4), and D18 the same day from G5.
 | D16 | A right-button drag (2026-10-11, gate feedback G4) | Windows the film in every mode, without opening the panel: horizontal = width, vertical = level, four units per screen pixel. The chip shows the live W and L. |
 | D17 | A double right-click (2026-10-11, gate feedback G4) | Resets the window to the film's default; the panel's RESET stays. |
 | D18 | Which points an edit moved (2026-10-11, gate feedback G5) | Every level and femoral head in the record lists `edited_points` (its own geometry keys: what moved when `edited`, every key when `manual`, none otherwise; `edited` exactly when the list is not empty, R38), and the record carries a top-level `edits` summary (entries per state, `points_moved`, `points_placed`). Both additive: the schema keeps its id and accepts records saved before them (R39). Section 9 amended. |
+| D19 | Accepting a film without editing it (2026-10-12, gate feedback G6) | **Mark reviewed** also writes the film's label record when the study has none yet: the zero-change record of the stored state, what Save edits writes right after entering edit mode with nothing changed. Unmarking writes nothing; a study with a record is left alone (Save edits keeps owning it); not while the study's level edits are open or stashed (R40); the mark never waits for or depends on the write (R41). A zero-change Save edits still works (D10). Section 9 amended. |
 
 ---
 

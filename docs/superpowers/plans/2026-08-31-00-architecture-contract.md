@@ -110,7 +110,9 @@ renderer/                         (new)
                                   panel and stage action, the per-study stash; the ONLY writer of a non-null
                                   state.levelEditor; never imports components/viewer.js or screens/analysis.js (they hand it their
                                   parts through configureLevelEditor); module scope; verified by smoke. (2026-10-11, G3) The
-                                  window / level state moved out to film-window.js
+                                  window / level state moved out to film-window.js. (2026-10-12, G6, D19) writeReviewRecord:
+                                  the label record Mark reviewed writes for a film with none, through writeRecord, the one
+                                  write it shares with Save edits
   film-window.js                  (2026-10-11, gate feedback G3/G4, plan D15–D17) the view's window / level, the pattern of
                                   level-editor.js: configureFilmWindow({ensureFilm}), windowFor(state, study), openWindowPanel(),
                                   ensureWindowLoaded(), closeWindowPanel(), setWindow({width, level}), resetWindow(),
@@ -292,7 +294,8 @@ The single record type. Demo and real studies share it exactly.
  * @property {Object|null}       calibration  compact original-image scale record (2026-09-09 amendment below)
  * @property {string|null} labelFile  (2026-10-10, level editor) the bare file name of this film's label record under
  *                                    userData/labels/ (`<stem>.label.json`, `-2`/`-3` on a clash), set by its first
- *                                    Save edits and kept across saves; null until then
+ *                                    Save edits (or, 2026-10-12, D19, by Mark reviewed on a film with none) and
+ *                                    kept across saves; null until then
  * @property {Object<string,string>} clinical   field name → value
  */
 ```
@@ -1370,9 +1373,10 @@ workstation with `--verify-models`, which exercises each listed GPU.
 ## 2026-10-10 amendment: vertebral level editor, window / level, label record
 
 Spec `docs/design/level-editor/HANDOFF.md` (`594a982`); plan `plans/2026-10-10-level-editor.md`, whose Decisions
-table (D1–D18, the owner's answers; D15–D18 from the gate feedback of 2026-10-11) wins over the spec and whose Ledger
-holds the execution rulings R1–R39 (R26 and R27 from the gate feedback of 2026-10-11, the plan's "Gate feedback"
-section, R28 from its review, R29–R34 from G3 and G4, R35–R37 from their review, R38 and R39 from G5); user doc
+table (D1–D19, the owner's answers; D15–D18 from the gate feedback of 2026-10-11, D19 from G6 on 2026-10-12) wins
+over the spec and whose Ledger holds the execution rulings R1–R41 (R26 and R27 from the gate feedback of 2026-10-11,
+the plan's "Gate feedback" section, R28 from its review, R29–R34 from G3 and G4, R35–R37 from their review, R38 and
+R39 from G5, R40 and R41 from G6); user doc
 `docs/level-editor.md`; label record schema `docs/design/level-editor/label-record.schema.json`. Edit mode is the
 level editor: the Analysis screen's right panel becomes the Vertebral levels panel (sixteen levels in five groups:
 C2–C7, T1 · T4, L1–L5, S1, two femoral heads), the stage places, selects and adjusts levels, a display-only window /
@@ -1627,6 +1631,33 @@ over the kind's enum) and `edits` (`$defs/edits`, seven required non-negative in
 The re-review of the window change, folded into G5: `renderer/level-editor.js` `showFilm` (entering edit mode) forgets
 a READY window of the film (`forgetFilmWindow`) when `ensureFilm`'s outcome carries no decoded original, the rule of
 `redecodeKeptWindow` (a loading window is left to its own decode; a superseded outcome changes nothing).
+
+**Gate feedback G6 (2026-10-12; D19, `ad2b70b`).** Mark reviewed also writes the label record when the study has none
+yet. `renderer/level-editor.js` gains **`writeReviewRecord(studyId)`** → `Promise<'written' | 'skipped' | 'failed'>`,
+never rejecting: once the film has been read it builds an editor in memory, `openEditor({ study, region:
+editorRegion(study), modelGeometry: deps.getPrediction(studyId)?.geometry ?? null, saved: null })` (`editorRegion` is
+`enterLevelEditor`'s region rule, R20, now one private function both call), never puts it in the store and never
+touches `state.levelEditor`, `editing` or the stash; it writes that editor's record, sets `labelFile` on the study and
+toasts `Saved the label record.`, or toasts `Marked reviewed. The label record could not be written: <reason>` on a
+failure. It skips (writes and says nothing) a study that is gone or re-added, a demo, one not marked reviewed, one with
+no `measurements`/`geometry`, one with a `labelFile`, one whose own run is in flight, and one with an editor open or
+stashed (R40), checked before the write and again once the film has been read; it refuses a model result whose
+prediction snapshot is missing then (`the model's prediction is not loaded.`), which would otherwise record every
+placed level `manual`. **The shared core** is the private `writeRecord(studyId, addedAt, editorOf)`: `deps.imageInfo`,
+the same-record check across that await (`addedAt`), the editor `editorOf(state, study)` returns (null: nothing
+written), the file (`labelFile`, else `labelFileName` of the stem over the other studies' names), `toLabelRecord` with
+`levelContours`, `api.saveLabelRecord`, and the removal of a file written for a study deleted meanwhile; it resolves
+`{file, editor, kept, state}` or null. `saveLevelEdits` is that core plus its baseline, editor and toast, so the two
+records cannot drift. The re-entrancy latch `saving` is shared and holds `'edits'`, `'review'` or null, with a promise
+that settles when the write ends: a second Save edits while one writes is dropped (as before), a Save edits waits for a
+review write, and a review write waits for either. `screens/analysis.js` `toggleReviewed` calls
+`writeReviewRecord(open.id)` after the `setState` that marks the study, never when unmarking; `reviewBlockedReason` is
+unchanged.
+
+- R40 (G6): no review write while an editor for the study is open or stashed (`state.levelEditor?.studyId ===
+  studyId` or `hasStashedEditor(studyId)`); the mark still applies.
+- R41 (G6): the mark never waits for or depends on the write: `reviewedAt` is set first, synchronously, and stands
+  whatever the write does.
 
 No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet file (rules in
 `styles/screens/analysis.css` section `05 — LEVEL EDITOR` and `styles/components.css`), no Python package.

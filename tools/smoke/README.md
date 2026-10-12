@@ -411,7 +411,8 @@ Baseline: 16/16 (2026-10-01; 9/16 before the fix, the logo at opacity 0.07 40 ms
 Task 14; user doc `docs/level-editor.md`) against the real app: the Vertebral levels panel, placing a level,
 unchecking one, Save edits and the label record on disk, Discard and the exit prompt, femoral rim points and FIT,
 window / level (in edit mode, and since 2026-10-11 outside it, with the right-button drag and the double right-click),
-the keyboard, the per-study stash, and the main process's label-file name check. Two phases:
+the keyboard, the per-study stash, the main process's label-file name check, and (since 2026-10-12, gate feedback G6)
+the label record Mark reviewed writes for a film that has none. Two phases:
 
 ```
 SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-levels-smoke SPINE_CONTOUR_PYTHON=<main checkout>/.venv/Scripts/python.exe node tools/smoke/launch.mjs
@@ -435,8 +436,10 @@ node tools/smoke/cdp.mjs --quit
   commit). Pass a COPY of the film, made under `%TEMP%`, never the original: the record names the copy. **A real film
   is on screen in this phase: the suite takes no screenshots, and none may be added; every check is a DOM, store or
   file read.** About a minute on the CPU.
-- **Ids** `SP-9300`–`SP-9303`, reserved for this suite (`SP-9303`, a study with no film, only for section 17 to open
-  and leave). `finally` removes the studies, their sidecars, their label records and any stashed editor, deletes the
+- **Ids** `SP-9300`–`SP-9304`, reserved for this suite (`SP-9303`, a study with no film, only for section 17 to open
+  and leave; `SP-9304`, a second copy of the segmented fixture with all five lumbar bodies, its own file name
+  `levels-review-check.png`, sidecar and prediction id, for section 18). `finally` removes the studies, their sidecars,
+  their label records (`levels-review-check.label.json` among them) and any stashed editor, deletes the
   synthetic film, and resets `editing`, `levelEditor`, `filmWindow`, `selection`, `screen`, `openId` and
   `measurementDrafts`. The dom phase prepends its studies and leaves the rest alone, so it may
   follow other suites on one launch; never run it between `smoke-persist.mjs --phase run` and `--phase restart`.
@@ -489,7 +492,17 @@ panel open a left drag windows and does not pan (R36), and with Pan pressed and 
 and does not pan (Pan unpressed after). The no-window right drag is now two checks: the drag decodes the film once it
 moves and leaves it at its default window, then the next right drag windows from its press by (−80, −40). (The first
 version asserted a window change within one drag whose start waits for the decode; under R37 the decode starts at the
-first move, so that would depend on how many separate moves Chromium delivers.)
+first move, so that would depend on how many separate moves Chromium delivers.) (18, dom, last; gate feedback G6,
+2026-10-12, plan D19, rulings R40 and R41) Mark reviewed writes the label record of a film that has none: `SP-9304`,
+opened from the list and restored from its sidecar (the precondition reads the prediction snapshot through the page's
+own `components/viewer.js` `getPrediction`), with no record and Mark reviewed enabled; outside edit mode a click on the
+Analysis panel's `.analysis-review` stamps `reviewedAt` and within 10 s names `levels-review-check.label.json` on the
+study and writes it under `<userData>/labels/`; the toast `Saved the label record.`; the record valid against the
+schema; every level and head `segmented` or `not_visible`, every `edited_points` empty, `edits.edited` and
+`edits.manual` 0 and `edits` equal to the summary computed from the entries; still no edit mode and no level editor;
+then, once the toast has gone, unmark and mark again leave one record of that name, not written again (the same
+`saved_at`), and no second toast. Nothing else in the suite clicks Mark reviewed; `smoke-persist.mjs` phase 1 clicks
+it in 11b on a study whose record section 11 has just saved, so that click writes nothing (unchanged, no check added).
 The film phase also saves a record whose `image.sha256` is 64 hex characters and whose `model.version` is the run's,
 and (G5, D18) whose edited level, moved by the SA handle drag and the ArrowRight nudge, lists `edited_points` `['sa']`,
 exactly the corners whose value differs from its `model_corners`, with `edits.points_moved` the sum of the edited
@@ -505,7 +518,10 @@ on the same launch. (2026-10-11, the review of G3/G4, `8332dfb`) Eight more dom 
 right drag split in two): dom **102/102**, measured on a fresh `%TEMP%` profile (DOM, store and file reads only, no
 screenshots); the film phase and the other suites not re-run. (2026-10-11, gate feedback G5, plan D18) Section 6 gains
 three dom checks and the film phase two. Measured on one fresh `%TEMP%` profile (DOM, store and file reads only, no
-screenshots): dom **105/105** (102 + 3) and film **25/25** (23 + 2, one copied OLIF lumbar film).
+screenshots): dom **105/105** (102 + 3) and film **25/25** (23 + 2, one copied OLIF lumbar film). (2026-10-12, gate
+feedback G6, plan D19) Section 18 adds seven dom checks: dom **112/112** (105 + 7), measured when it was written on a
+fresh `%TEMP%` profile (CDP port 9333; DOM, store and file reads only, no screenshots); the film phase is unchanged
+and was not re-run, nor were the other suites.
 
 ## The landmark-editor suites after the level editor (2026-10-10)
 

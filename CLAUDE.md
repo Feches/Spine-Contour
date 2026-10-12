@@ -9,7 +9,10 @@ only writer of `state.levelEditor`). The stage places a missed level by clicks (
 rim points for a head), gives only the selected level handles, and nudges with the arrows; projected levels reach
 `study.geometry` through `/measure` as before, while T1, T4, visibility and rim points live only in the level model and
 the record. Save edits writes `userData/labels/<stem>.label.json` (schema `docs/design/level-editor/label-record.schema.json`;
-`labelFile` on the study; deleted and quarantined with it). Window / level decodes the original film through a new
+`labelFile` on the study; deleted and quarantined with it), and since gate feedback G6 (2026-10-12, D19, R40/R41) Mark
+reviewed writes the zero-change record of a film that has none (`writeReviewRecord`, sharing `writeRecord` with Save
+edits; `ad2b70b` and a records commit, unit 948/948, `smoke-levels.mjs` dom 112/112; both after the push, not pushed).
+Window / level decodes the original film through a new
 `POST /decode` and windows the film layer only, display only (D1, D11); since gate feedback G3/G4 it works in every
 mode and belongs to the view like zoom and pan (`state.filmWindow`, written only by `renderer/film-window.js`;
 FRESH_VIEW resets it, Back and edit mode keep it), a right-button drag windows once it moves and a double right-click
@@ -17,7 +20,7 @@ resets (D15–D17, R37);
 `qc.model_versions` names each graph. A film
 with no result opens in edit mode on its original and can be placed by hand (`isHandPlaced`, R16); Re-run is disabled
 while editing (R17). The old edit bar's RETRACE / ADD / DELETE CIRCLE and the landmark Tab, nudge and hit-test code are
-retired. Plan `docs/superpowers/plans/2026-10-10-level-editor.md` (Decisions D1–D18; its Ledger holds R1–R39 and every
+retired. Plan `docs/superpowers/plans/2026-10-10-level-editor.md` (Decisions D1–D19; its Ledger holds R1–R41 and every
 deferred minor); spec `docs/design/level-editor/HANDOFF.md`; user doc `docs/level-editor.md`; the contract's 2026-10-10
 amendment; HANDOFF's first "Where things stand" section. The final whole-branch review ("With fixes") landed `7e9d502`
 and `e3d5df7`: an Auto film with no model run takes its region from its placed levels on every projection (R20), Region

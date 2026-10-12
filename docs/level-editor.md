@@ -3,8 +3,9 @@
 Edit mode on the Analysis screen is a level editor (2026-10-10). It lists every vertebral level the app knows, lets the
 annotator place the levels the model missed, mark the ones that are not on the film, and adjust the rest; it came with
 a display-only window / level for the stage, which since the gate feedback of 2026-10-11 works outside edit mode too;
-and **Save edits** writes one JSON label record per film, whose job is retraining the segmentation models. Design:
-`docs/design/level-editor/HANDOFF.md`. Plan, decisions D1–D18 and the execution rulings R1–R39:
+and **Save edits** writes one JSON label record per film, whose job is retraining the segmentation models (since
+2026-10-12 **Mark reviewed** writes it too, for a film accepted without an edit). Design:
+`docs/design/level-editor/HANDOFF.md`. Plan, decisions D1–D19 and the execution rulings R1–R41:
 `docs/superpowers/plans/2026-10-10-level-editor.md`. Contract: the 2026-10-10 amendment of
 `docs/superpowers/plans/2026-08-31-00-architecture-contract.md`.
 
@@ -163,7 +164,8 @@ and its markers outside edit mode.
 - **Save edits** writes the label record and makes the current levels the baseline. Toast: `Saved 2 edits to the label
   record.` (`Saved the label record.` for a first save with nothing changed, which is allowed: it confirms the model's
   output, D10). Save is disabled, with `NOTHING TO SAVE`, only when a record already exists and nothing has changed
-  since.
+  since. Since 2026-10-12 **Mark reviewed** writes that same zero-change record for a film that has none, without
+  entering edit mode (D19, under "The label record" below); the zero-change Save edits still works.
 
 ### The label record
 
@@ -185,6 +187,29 @@ edited level also carries the model's original (`model_corners`, `model_centroid
 level carries the model's mask outline as `contour` (a polygon of at least three points, R10), null for edited and
 manual levels and for films with no mask. Coordinates are pixels of the stored image, origin top-left. Window / level
 is never recorded (D11).
+
+**Mark reviewed writes it too** (gate feedback G6, 2026-10-12, D19). The record has two writers: Save edits in edit
+mode, and **Mark reviewed** on the Analysis panel for a film that has no record yet. Marking a study reviewed (the
+panel's button; there is no bulk mark from the list) writes the zero-change record of the stored state, exactly what
+Save edits would write right after entering edit mode with nothing changed, so a film accepted as the model segmented
+it becomes a human-accepted label without a trip through edit mode: every level the model placed reads `segmented`,
+the rest their film-type default (`not_visible`, or `not_placed` for a visible level the model missed), every
+`edited_points` is empty and `edits` counts no edited or manual entry. A level corrected earlier (its geometry stored,
+the record never saved) reads `edited`, and a level placed by hand `manual`, as Save edits would write them; a film
+placed by hand with no model run gets a record naming model `none`. The toast is `Saved the label record.`, and the
+study names the file in `labelFile`, so a later Save edits writes the same file.
+
+- **Unmarking writes nothing**, and deletes nothing. A study that **already has a record** is left alone: Mark reviewed
+  never rewrites it, and Save edits keeps owning it. A zero-change Save edits still writes a first record too (D10).
+- **Unsaved level edits come first** (R40): while the study's editor is open, or holds unsaved changes left by opening
+  another study, Mark reviewed writes no record; those edits are the annotator's to save or discard. The mark applies.
+- **The mark never waits for the record** (R41): it is set at once and stays whatever happens to the write. If the
+  record cannot be written (the stored image is missing, the file name is refused), the toast says `Marked reviewed.
+  The label record could not be written:` and the reason, and the study keeps no `labelFile`; unmark and mark again
+  (or Save edits) to try again.
+- Nothing is written for a demo study, a film with no result (nothing to label), or a film whose segmentation is
+  running. Writing the record reads the stored image (and, on first use, decodes the original for window / level),
+  so it can take a moment after the click.
 
 **Edited points and the edits summary** (gate feedback G5, 2026-10-11, D18). So a folder of records can be counted
 without comparing corners, every level and both femoral heads carry `edited_points`, a list of the entry's own geometry
@@ -284,8 +309,10 @@ write a label record; the save path refuses with `Demo studies are not exported`
 
 `tools/smoke/smoke-levels.mjs` (phases `dom` and `film`; see `tools/smoke/README.md`) covers the panel, placing,
 unchecking, Save edits and the record on disk (its `edited_points` and `edits` included), Discard and the exit prompt, femoral rim points, window / level in edit
-mode and (section 17) outside it, with the right-button drag and the double right-click, the keyboard and the stash;
+mode and (section 17) outside it, with the right-button drag and the double right-click, the keyboard and the stash,
+and (section 18) the record Mark reviewed writes for a film with none;
 the pure modules have unit tests (`test/levels`, `level-projection`, `level-handles`, `window-level`, `label-record`,
 `contours`, and `interactions` for the double right-click), `test/level-editor-wiring.test.js` drives the wiring
-through the real store and measure queue (R20), and `test/film-window.test.js` drives the view's window
+through the real store and measure queue (R20) and Mark reviewed's record (`writeReviewRecord`, D19), and
+`test/film-window.test.js` drives the view's window
 (`renderer/film-window.js`) through the real store. The human gate (plan Task 15) is the owner's.

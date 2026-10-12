@@ -58,6 +58,7 @@ assumes these.
 | D16 | A right-button drag (gate feedback G4, 2026-10-11) | A RIGHT-button drag on the stage windows the film in every mode, without opening the panel: horizontal = width, vertical = level, four units per screen pixel (`dragWindow`'s rule). The chip shows the live W and L. |
 | D17 | A double right-click (gate feedback G4, 2026-10-11) | Resets the window to the film's default (the panel's RESET stays). |
 | D18 | Which points an edit moved (gate feedback G5, 2026-10-11) | Every level and femoral head entry in the label record gets `edited_points`, the entry's own geometry keys the annotator gave it (an edited entry's moved points, every key of a manual one, none otherwise), and the record gets a top-level `edits` summary (entries per state, `points_moved`, `points_placed`), so a folder of records can be counted without diffing corners. Both additive: records saved before them stay valid (R39; R38 ties the list to the Edited state). |
+| D19 | Accepting a film without editing it (gate feedback G6, 2026-10-12) | **Mark reviewed** on the Analysis panel (there is no bulk mark) also writes the film's label record when the study has none yet: the zero-change record of the stored state, exactly what Save edits writes right after entering edit mode with nothing changed, so a film accepted as the model segmented it becomes a human-accepted label without a trip through edit mode. Unmarking writes nothing; a study that already has a record is left alone (Save edits keeps owning that file); a zero-change Save edits (D10) still works. Not while level edits for the study are open or stashed (R40); the mark never waits for or depends on the write (R41). |
 
 ## Global Constraints
 
@@ -1281,6 +1282,15 @@ Added by the gate feedback G5 (2026-10-11; D18, rulings R38 and R39):
   `edits` (after `complete`) counts the entries per state with `points_moved` 1 and `points_placed` the manual levels'
   keys.
 
+Added by the gate feedback G6 (2026-10-12; D19, rulings R40 and R41):
+
+- [ ] G6: on a segmented film with no label record (no `<stem>.label.json` under `<userData>/labels/`), outside edit
+  mode, click **Mark reviewed**: `Saved the label record.` is toasted and the file appears, every level reading
+  `segmented` (or `not_visible`, or `not_placed` for a visible level the model missed) with `edited_points` `[]` and
+  `edits.edited` and `edits.manual` 0. Unmark and mark again: still one file of that name, not written again (the same
+  `saved_at`), and no second toast. On a film that already has a record, Mark reviewed leaves the file as it was; a
+  zero-change Save edits from edit mode on a film with no record still writes it (D10).
+
 ---
 
 ## Gate feedback (2026-10-11)
@@ -1289,8 +1299,9 @@ The owner's requests from the human gate (Task 15), with the automatic ruler OCR
 than the old cap, and choose which point the next click places from the step chips in the edit bar (G1, G2); then,
 after those, window / level outside edit mode and a right-button shortcut for it (G3, G4: "I want windowing available
 not in editing screen as well. I also want to be able to right click and window as shortcut"); then the label record
-listing which points each level's edit moved, with a summary (G5). Each is built, unit-tested and recorded in the
-Ledger; the owner re-checks them at the gate. This section is the spec of record for all five.
+listing which points each level's edit moved, with a summary (G5); then, on 2026-10-12, Mark reviewed writing the
+label record of a film accepted without an edit (G6). Each is built, unit-tested and recorded in the Ledger; the owner
+re-checks them at the gate. This section is the spec of record for all six.
 
 ### G1: zoom to 8x (`9e2deec`)
 
@@ -1592,6 +1603,75 @@ line now reads as the behaviour since R37 (a right drag decodes once it moves).
 
 Unit 925 → **939/939**.
 
+### G6: Mark reviewed writes the label record when the film has none yet (2026-10-12; `ad2b70b`)
+
+**What the owner asked for.** That Mark reviewed also write a label record when the film has none yet. A film the
+owner accepts as the model segmented it is the human-accepted positive label retraining wants, and until now the only
+way to record it was to enter edit mode and Save edits with no change (D10). Decision D19.
+
+**The rule.** Marking a study reviewed with the Analysis panel's button (there is no bulk mark: studies-table spec
+§8.3) also writes its label record when the study has no `labelFile`. Unmarking writes nothing. A study that already
+has a record is left alone: Save edits keeps owning that file, and a later Save edits from edit mode writes the same
+file. The record is the zero-change record of the stored state, exactly what Save edits writes right after entering
+edit mode with nothing changed: an editor built in memory by `openEditor({ study, region, modelGeometry, saved: null })`
+with enterLevelEditor's region rule (`editorRegion`: Auto for an Auto film with no model run, R20, else
+`studyRegion`) and the prediction snapshot's geometry, never put in the store, no edit mode entered; the same image
+facts, contours, model name and version, app version and file-name rule. So every entry reads `segmented` (or its
+film-type default: `not_visible`, or `not_placed` for a visible level the model missed), `edited_points` is empty and
+the `edits` counts are zero, unless the stored geometry already differs from the prediction (an earlier correction
+reads `edited`, a level placed by hand `manual`, as Save edits would write them). A film placed by hand with no model
+run (R16) gets its record too, model `none`. Nothing is written for a demo study, for a study with no result (nothing
+to label), for one whose own run is in flight, or for one deleted, re-added (`addedAt`) or unmarked while the film was
+read; the checks run before the write and again once the film has been read, as Save edits' do.
+
+- **R40.** No write while an editor for the study is open or stashed (`state.levelEditor?.studyId === studyId` or
+  `hasStashedEditor(studyId)`): those unsaved level edits are the annotator's to save or discard. The mark still
+  applies. The panel's button is not reachable in edit mode, so in practice this is the stash (an editor left with
+  unsaved changes by opening another study), and an editor opened while the film was read.
+- **R41.** The mark never waits for or depends on the write. `reviewedAt` is set first, synchronously, as before; the
+  write runs after it; a failure (no image facts, the film missing, a refused file name, no file name) leaves the mark
+  in place and toasts `Marked reviewed. The label record could not be written: <reason>`. A success toasts `Saved the
+  label record.` (the zero-change save's own text) and sets `labelFile`.
+
+**Code.** `renderer/level-editor.js`: `writeRecord(studyId, addedAt, editorOf)`, the one write Save edits and the
+review share (the image facts through `deps.imageInfo`, the same-record check across that await, the editor
+`editorOf` picks, the file name, `toLabelRecord` with contours, `saveLabelRecord`, and the cleanup of a file written
+for a study deleted meanwhile), so the two records can never drift; `saveLevelEdits` is the shared core plus its
+baseline, editor and toast. `writeReviewRecord(studyId)` → `'written' | 'skipped' | 'failed'` implements the rule and
+never touches `state.levelEditor`, `editing` or the stash. The re-entrancy latch `saving` is shared and now names its
+holder (`'edits'` or `'review'`): a second Save edits while one is writing is dropped as before, a Save edits clicked
+while a review write reads the film waits for it (and the review write then defers to the open editor, R40), and a
+review write waits for either. One guard beyond the brief: a model result whose prediction snapshot is not in memory
+once the film has been read is refused (`the model's prediction is not loaded.`) rather than recorded with every placed
+level `manual`; the read restores the sidecar, which records the snapshot, so the guard is defensive.
+`renderer/screens/analysis.js` `toggleReviewed`: after the setState that marks the study, and only when marking,
+`writeReviewRecord(open.id)`; `reviewBlockedReason` is unchanged.
+
+**Tests.** `test/level-editor-wiring.test.js` +8 (the real store and wiring, stubs for the image facts and the
+prediction snapshot, the label-record channels stubbed on `window.spineContour`): a segmented study with no record
+writes one named from its stem that validates, every placed level `segmented`, `edits` zero, the mask outline as L1's
+contour, `labelFile` set, `Saved the label record.`, no editor and no edit mode; the review record equals the one
+`saveLevelEdits` writes after `enterLevelEditor` with no change, apart from `saved_at` (the stored geometry differing
+from the prediction at L2's SA, so both read L2 `edited` `['sa']`); a hand-placed film's record (L3 `manual`, model
+`none`); skipped for a study with a record, a demo, no result, no mark, its own run, an open editor and a stashed one
+(R40); failed for no image facts, no prediction in memory, a refused save and no file name, each leaving the study
+reviewed with no `labelFile` and the toast naming the reason (R41); deleted, re-added and unmarked while the film was
+read (nothing written or set), and deleted while the file was written (the file removed again); the shared latch both
+ways.
+
+**Smoke.** `tools/smoke/smoke-levels.mjs` section 18 (+7 dom), last in the dom phase, on `SP-9304`, a fresh copy of the
+segmented fixture with all five lumbar bodies (`levels-review-check.png`, its own sidecar): outside edit mode a click on
+Mark reviewed names `levels-review-check.label.json` on the study within 10 s, the file is under `<userData>/labels/`
+and validates, every entry reads `segmented` or `not_visible` with no edited points, `edits.edited` and `edits.manual`
+are 0, the toast is `Saved the label record.`, and no editor reached the store; unmark and mark again leave one file of
+that name, not written again, and no second toast. `finally` removes the study, its sidecar and its record.
+`smoke-persist.mjs` phase 1 clicks Mark reviewed in 11b on a study whose record section 11 has just saved, so that
+click writes nothing; unchanged, no check added. No other suite clicks it (`smoke-studies.mjs` 16c sets `reviewedAt`
+through the store).
+
+Unit 940 → **948/948**. `smoke-levels.mjs` dom **112/112** (105 + 7) on a fresh `%TEMP%` profile, DOM, store and file
+reads only, no screenshots.
+
 ---
 
 ## Ledger
@@ -1639,3 +1719,5 @@ already state.
 | 2026-10-11 | gate | **Gate feedback G5** (the owner, D18): the label record lists each level's and head's `edited_points` (its own geometry keys: an edited entry's moved points, every key of a manual one, `[]` otherwise) and carries a top-level `edits` summary after `complete` (entries per state over the sixteen, `points_moved`, `points_placed`). `pointKeys` and `changedPoints` (pure, `data/levels.js`, sharing `near` and `SAME_EPS` with `sameGeometry`); `levelRecord`, `headRecord` and `toLabelRecord` write them; the schema's per-kind `edited_points` definitions, `editedPointsRule`, per-kind manual rules and `$defs/edits`; the example lists every entry's points and its Head 2 became an edited head; `schema-check.js` gains `uniqueItems`. The full design is in "Gate feedback (2026-10-11)" above. `3e552e6`. Unit 925 → **939/939** (levels +6, label-record +6, level-editor-wiring +2, the folded minor's two included). `smoke-levels.mjs`: section 6 +3 dom checks, the film phase +2; not run when written (dom 102 + 3, film 23 + 2 to be measured). |
 | 2026-10-11 | gate | **Rulings R38 and R39** (controller, with D18). **R38:** an entry's `edited_points` is computed by the per-value test `levelState` uses (`near`, eps 10⁻⁶ px, per point and per number, a head's centre then radius and never its rim), so `state === 'edited'` exactly when the list is not empty; segmented, not placed and not visible list nothing, manual every key. The schema states it too (when the field is present). A rim-only change lists nothing and leaves the head segmented, as before. *Cost if wrong:* a script that wants rim edits counted needs the rim compared (a `rim` key, and `comparable` keeping the rim, which would also turn rim-only changes into Edited badges); the agreement itself is pinned by a test over every single-number perturbation of each kind. **R39:** both fields are additive and optional in the schema, whose id stays `spinecontour.segmentation-label/1`; the app always writes them from this version on, and records saved before it (no `edits`, no `edited_points`) still validate (the stripped example, the stripped app record and a literal pre-D18 record are pinned by tests) and the app record reads the same through `recordLevels`, which ignores both. *Cost if wrong:* a consumer cannot tell from the schema id whether a record carries the fields and must test for them; a `/2` id with both required would make that explicit at the price of failing every earlier record. |
 | 2026-10-11 | gate | **Two minors from the re-review of the window change, folded into G5.** 1: entering edit mode (`level-editor.js` `showFilm`) kept a READY window when `ensureFilm` came back with no decoded original (another study's run took the image cache), so the chip could claim a window the film layer does not draw; `showFilm` now forgets it (`forgetFilmWindow`), the rule of `film-window.js` `redecodeKeptWindow` (a loading window is left to its own decode; a superseded outcome changes nothing). `test/level-editor-wiring.test.js` +2; `test/film-window.test.js`'s edit-mode test stubs the editor's `ensureFilm` with the original its window was decoded from (the old stub returned none, which now forgets). *Cost if wrong:* a ready window is forgotten when the decode fails on entering edit mode; the W/L button decodes again. 2: HANDOFF decision 121 still said a right press decodes; reworded to the behaviour since R37 (a right drag decodes once it moves). Both in `3e552e6` and the G5 records commit. |
+| 2026-10-12 | gate | **Gate feedback G6** (the owner, D19): Mark reviewed also writes the label record when the study has none yet, the zero-change record of the stored state (what Save edits writes right after entering edit mode with nothing changed); unmarking writes nothing; a study with a record is left alone. `renderer/level-editor.js`: `writeRecord` (the write Save edits and the review share), `editorRegion` (enterLevelEditor's region rule), `writeReviewRecord(studyId)` → `'written' \| 'skipped' \| 'failed'`, the latch `saving` shared and naming its holder; `renderer/screens/analysis.js` `toggleReviewed` calls it after marking. One guard beyond the brief: a model result with no prediction snapshot once the film is read is refused (`the model's prediction is not loaded.`), never recorded as placed by hand. The full design is in "Gate feedback (2026-10-11)" above. `ad2b70b`. Unit 940 → **948/948** (level-editor-wiring +8). `smoke-levels.mjs` section 18 (+7 dom) on `SP-9304`: dom **112/112** on a fresh `%TEMP%` profile (CDP port 9333, DOM, store and file reads only, no screenshots); the film phase and the other suites not re-run. `smoke-persist.mjs` 11b marks a study whose record 11 has just saved, so its click writes nothing (unchanged). |
+| 2026-10-12 | gate | **Rulings R40 and R41** (controller, with D19). **R40:** no review write while an editor for the study is open or stashed (`state.levelEditor?.studyId === studyId` or `hasStashedEditor(studyId)`), checked before the write and again once the film has been read; those unsaved level edits are the annotator's to save or discard, and the mark still applies. A Save edits clicked while a review write reads the film waits for it, so it is never dropped. *Cost if wrong:* a film marked reviewed while its stashed edits wait gets no record until the annotator saves (which writes one) or discards and marks again; and a Save edits can be delayed by a film read. **R41:** the mark never waits for or depends on the write: `reviewedAt` is set first, synchronously, and stands whatever happens; a failure toasts `Marked reviewed. The label record could not be written: <reason>` and sets nothing; a success toasts `Saved the label record.` and sets `labelFile`. Nothing is written for a demo, a study with no result, one whose own run is in flight, or one deleted, re-added or unmarked while the film was read. *Cost if wrong:* a reviewed film can lack its record after a failed write (the toast says so; unmarking and marking again, or a zero-change Save edits, writes it), and a record can be written for a film whose mark is then withdrawn (unmarking deletes nothing). |

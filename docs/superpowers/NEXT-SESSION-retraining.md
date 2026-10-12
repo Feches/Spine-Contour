@@ -27,6 +27,7 @@ merged. Retraining needs no change to the app, so it is its own branch: off `mai
 otherwise off `worktree-level-editor` so the record format is in reach. Never start work on `main` itself.
 
 **The records.** Save edits in the level editor writes one JSON file per film at `<userData>/labels/<stem>.label.json`
+(and, since 2026-10-12, Mark reviewed writes it for a film that has none: decision D19, below)
 (schema id `spinecontour.segmentation-label/1`). Per film: the image file name, its SHA-256, width and height; the
 film type; the model name and version that produced the prediction; the app version; a `complete` flag; one entry per
 level (C2–C7, T1, T4, L1–L5, S1) and per femoral head with `state` (`segmented` = the model's, `edited` = corrected,
@@ -34,10 +35,18 @@ level (C2–C7, T1, T4, L1–L5, S1) and per femoral head with `state` (`segment
 corners `sa sp ia ip`; C2 `ia ip` + `centroid`; endplates `sa sp`; T4 `centroid`; heads `center`, `radius`, `rim`),
 the model's original geometry when edited, the model's mask outline (`contour`) only for a level still the model's,
 and `edited_points` (the keys the annotator moved; every key for manual; empty otherwise); and a top-level `edits`
-summary (counts per state, `points_moved`, `points_placed`). A film saved with no change is a human-accepted
-prediction: every entry `segmented`, the counts zero. Records written before 2026-10-11 lack `edited_points` and
+summary (counts per state, `points_moved`, `points_placed`). Records written before 2026-10-11 lack `edited_points` and
 `edits`. Window / level is never in the record. During the gate the records are in a scratch profile under `%TEMP%`
 (`spine-contour-gate\labels`); in normal use they are in `%APPDATA%\spine-contour\labels`.
+
+**Acceptances** (settled by the owner on 2026-10-12, gate feedback G6, decision D19 of
+`docs/superpowers/plans/2026-10-10-level-editor.md`; no separate Verified action). An acceptance is **Mark reviewed on
+a film that has no record yet**, or **a zero-change Save edits** in the level editor; both write the same record, the
+zero-change record of the stored state, so an accepted prediction reads every placed entry `segmented`, the rest their
+film-type default (`not_visible`, or `not_placed` for a visible level the model missed), every `edited_points` empty
+and `edits.edited`, `edits.manual`, `points_moved` and `points_placed` zero. Mark reviewed never rewrites an existing
+record, and unmarking deletes nothing. A film whose levels were corrected before it was marked reviewed records those
+corrections (`edited`, `manual`) as Save edits would.
 
 **The models** (ONNX graphs in `backend/onnx/`, checkpoints in `backend/weights/` under LFS, all inference on a
 located crop letterboxed into a 768-pixel frame; the crop each run used is in the study's sidecar
@@ -78,17 +87,15 @@ view or send screenshots of them, verify by reading values; datasets built from 
 2. Masks for the vertebra U-Net: rasterised quads, the model's own contour for untouched levels, or skip the U-Net?
 3. The dataset builder: inputs (records, films, sidecars), how the frame is reproduced, output format, where datasets
    live on disk, how patient data is kept out of git and out of cloud sync.
-4. Acceptances: is "saved with no change" enough as a verified label, or does the editor need an explicit Verified
-   action? (That would be an app change on the level-editor branch.)
-5. The benchmark: how the held-out films are chosen and frozen, the metrics (corner error in px and mm, Dice for
+4. The benchmark: how the held-out films are chosen and frozen, the metrics (corner error in px and mm, Dice for
    heads, downstream measurement error), the per-stratum tolerances, and who signs off a release.
-6. Training recipe: learning rate, epochs, what is frozen, the regulariser, augmentation, loss weighting by
+5. Training recipe: learning rate, epochs, what is frozen, the regulariser, augmentation, loss weighting by
    `edited_points`, and where it runs (the 4070).
-7. Versioning and shipping: graph naming, sidecar hashes, how a fine-tuned graph is offered in Settings, how results
+6. Versioning and shipping: graph naming, sidecar hashes, how a fine-tuned graph is offered in Settings, how results
    record it, and the rollback path.
-8. The feedback metric: the exact script over a labels folder that reports correction rates per model version.
-9. Data volume: how many corrected and accepted films before the first retrain is worth running.
-10. Whether a sample of the original training data is available for rehearsal, and under what terms.
+7. The feedback metric: the exact script over a labels folder that reports correction rates per model version.
+8. Data volume: how many corrected and accepted films before the first retrain is worth running.
+9. Whether a sample of the original training data is available for rehearsal, and under what terms.
 
 ## Constraints that carry over
 
