@@ -17,7 +17,7 @@ resets (D15–D17, R37);
 `qc.model_versions` names each graph. A film
 with no result opens in edit mode on its original and can be placed by hand (`isHandPlaced`, R16); Re-run is disabled
 while editing (R17). The old edit bar's RETRACE / ADD / DELETE CIRCLE and the landmark Tab, nudge and hit-test code are
-retired. Plan `docs/superpowers/plans/2026-10-10-level-editor.md` (Decisions D1–D17; its Ledger holds R1–R37 and every
+retired. Plan `docs/superpowers/plans/2026-10-10-level-editor.md` (Decisions D1–D18; its Ledger holds R1–R39 and every
 deferred minor); spec `docs/design/level-editor/HANDOFF.md`; user doc `docs/level-editor.md`; the contract's 2026-10-10
 amendment; HANDOFF's first "Where things stand" section. The final whole-branch review ("With fixes") landed `7e9d502`
 and `e3d5df7`: an Auto film with no model run takes its region from its placed levels on every projection (R20), Region
@@ -53,7 +53,10 @@ window is decoded again at the mount when another study's run took the film's ca
 be (R35, `windowNeedsDecode` / `redecodeKeptWindow`); the open W/L panel outranks Pan for the left button (R36); a right
 press windows only once it has moved 3 CSS px (R37, `exceedsSlop`); D15 worded as the behaviour (Back and the
 sidebar's return keep the window); unit 925/925, `smoke-levels.mjs` dom 102/102 (the film phase and the other suites
-not re-run). Releases as 1.0.18 or later; nothing pushed.
+not re-run). Then G5 (D18, R38/R39, HANDOFF decisions 129–131): the label record lists each level's and head's
+`edited_points` (`changedPoints`, `edited` exactly when not empty) and an `edits` summary, both optional under the same
+schema id, with the window re-review's two minors folded in; `3e552e6` and a records commit, unit 939/939
+(`smoke-levels.mjs` +3 dom and +2 film checks, not yet run). Releases as 1.0.18 or later; nothing pushed.
 
 **2026-10-07 release 1.0.16 (crop search restored):** branch `ccr-af336f0e-7wacoa` off `main` @ `f2e39e0`, the merge
 of Michael's PR #57 (`0bd01c5`), which retires 1.0.13's trained crop method: Settings shows Crop search only,

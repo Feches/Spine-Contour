@@ -57,6 +57,7 @@ assumes these.
 | D15 | Window / level outside edit mode (gate feedback G3, 2026-10-11) | Available outside edit mode too. The window belongs to the VIEW, like zoom and pan: it resets where zoom and pan reset (FRESH_VIEW: another film opened from the list, or the open study closed); Back and the sidebar's return keep it, as they keep zoom and pan; entering and leaving edit mode keeps it. Still never persisted, never in the record. Supersedes D11's reset on entering edit mode; D11's "not persisted, not recorded" stands. (Wording amended 2026-10-11 by the review of G3/G4, finding 2, to follow the behaviour the owner chose, "while the film is open, like zoom and pan"; see R29.) |
 | D16 | A right-button drag (gate feedback G4, 2026-10-11) | A RIGHT-button drag on the stage windows the film in every mode, without opening the panel: horizontal = width, vertical = level, four units per screen pixel (`dragWindow`'s rule). The chip shows the live W and L. |
 | D17 | A double right-click (gate feedback G4, 2026-10-11) | Resets the window to the film's default (the panel's RESET stays). |
+| D18 | Which points an edit moved (gate feedback G5, 2026-10-11) | Every level and femoral head entry in the label record gets `edited_points`, the entry's own geometry keys the annotator gave it (an edited entry's moved points, every key of a manual one, none otherwise), and the record gets a top-level `edits` summary (entries per state, `points_moved`, `points_placed`), so a folder of records can be counted without diffing corners. Both additive: records saved before them stay valid (R38, R39). |
 
 ## Global Constraints
 
@@ -1272,6 +1273,14 @@ Added by the review of G3 and G4 (2026-10-11; rulings R35–R37):
   chip); a window set on a film, then Back and the sidebar's OPEN STUDY card after another film's run finished, is
   still drawn when the film comes back (or gone from the chip, if the original can no longer be read).
 
+Added by the gate feedback G5 (2026-10-11; D18, rulings R38 and R39):
+
+- [ ] G5: on a segmented film, drag one corner of one level (say L3's SA) and Save edits; open
+  `<userData>/labels/<stem>.label.json`: that level reads `"state": "edited"` with `"edited_points": ["sa"]`, the
+  untouched levels `[]`, a level placed by hand every key (`["sa", "sp", "ia", "ip"]`), a level unchecked `[]`; and
+  `edits` (after `complete`) counts the entries per state with `points_moved` 1 and `points_placed` the manual levels'
+  keys.
+
 ---
 
 ## Gate feedback (2026-10-11)
@@ -1279,9 +1288,9 @@ Added by the review of G3 and G4 (2026-10-11; rulings R35–R37):
 The owner's requests from the human gate (Task 15), with the automatic ruler OCR confirmed working: zoom in further
 than the old cap, and choose which point the next click places from the step chips in the edit bar (G1, G2); then,
 after those, window / level outside edit mode and a right-button shortcut for it (G3, G4: "I want windowing available
-not in editing screen as well. I also want to be able to right click and window as shortcut"). Each is built,
-unit-tested and recorded in the Ledger; the owner re-checks them at the gate. This section is the spec of record for
-all four.
+not in editing screen as well. I also want to be able to right click and window as shortcut"); then the label record
+listing which points each level's edit moved, with a summary (G5). Each is built, unit-tested and recorded in the
+Ledger; the owner re-checks them at the gate. This section is the spec of record for all five.
 
 ### G1: zoom to 8x (`9e2deec`)
 
@@ -1513,6 +1522,76 @@ phase and the other suites (no app path they read changed except the right press
 any move), a packaged build. R35's mount call is covered by the unit tests of its two helpers, not in the app (it needs
 a completed run on another study).
 
+### G5: the record lists each level's edited points and carries an edits summary (`3e552e6`)
+
+**What the owner asked for.** To count, over a folder of label records, how many levels needed correcting and which
+points moved, without diffing `corners` against `model_corners` in a script. Decision D18: every level and head entry
+gets `edited_points`, and the record gets a top-level `edits` summary; both additive, so records saved before this
+change stay valid.
+
+**The rule.** `edited_points` is an array of the entry's own geometry keys, so a script indexes `corners[name]` (or
+`centroid`, `center`, `radius`) directly. Per kind, in this order: a body (C3–C7, L1–L5) `sa`, `sp`, `ia`, `ip`; C2
+`ia`, `ip`, `centroid`; an endplate (T1, S1) `sa`, `sp`; T4 `centroid`; a femoral head `center`, `radius`.
+
+- `segmented` → `[]`.
+- `edited` → the keys whose current value differs from the model's by the same test `levelState` uses (`sameGeometry`'s
+  per-value comparison, eps 10⁻⁶ px, per point and per number). **R38:** `state === 'edited'` exactly when
+  `edited_points` is not empty; the two never disagree. A head's rim is not a point (`comparable` drops it), so a
+  rim-only change lists nothing and the head stays segmented, as before.
+- `manual` → every key of the kind.
+- `not_placed`, `not_visible` → `[]` (a hidden level keeps its geometry in the editor; the record holds none of it).
+
+The top-level `edits`, written after `complete`: `{ segmented, edited, manual, not_placed, not_visible, points_moved,
+points_placed }`, integer counts of the sixteen entries (levels and heads together) per state, `points_moved` the sum
+of the edited entries' list lengths and `points_placed` the sum over the manual entries. It is computed from the
+entries as written, so it always agrees with them.
+
+**The schema (R39).** The id stays `spinecontour.segmentation-label/1`. Both fields are optional in the schema and
+always written by the app from now on. `edited_points` is a per-kind array (`$defs/editedPointsBody`, `editedPointsC2`,
+`editedPointsEndplate`, `editedPointsCentroid`, `editedPointsHead`) with `uniqueItems` over the kind's enum; R38 is in
+the schema too, applying only when the field is present: `editedPointsRule` (segmented, not_placed and not_visible
+`maxItems` 0; edited `minItems` 1) and, per kind, manual `minItems` equal to the kind's key count. `edits` (`$defs/edits`)
+requires all seven fields, each a non-negative integer (`$defs/count`), and allows no other. The order of the keys is
+the app's convention, not a schema rule. The example record lists every entry's points (L2 edited `["ia", "ip"]`, L3
+manual every corner) and Head 2 became an edited head (centre and radius moved, three rim points), so both shapes show;
+its `edits` block agrees with its entries.
+
+**Code.** `renderer/data/levels.js`: `pointKeys(code)` and `changedPoints(code, geometry, modelGeometry)`, pure, over
+one table of each kind's keys and where each sits in the editor's geometry; `changedPoints` compares with `near` and the
+shared `SAME_EPS` (1e-6, now `sameGeometry`'s default too), returns every key when the model geometry is null and `[]`
+when the geometry is. The table holds every value `sameGeometry` compares for the kind's shape, which is what makes R38
+hold for the geometry the editor holds (`levelsFromGeometry`, `geometryFromPoints`, `moveHandle` and `recordLevels`
+all produce those shapes). `renderer/data/label-record.js`: `levelRecord` and `headRecord` write `edited_points` right
+after `source` on every entry; `toLabelRecord` adds `edits` after `complete`. `recordLevels` ignores both.
+`test/fixtures/schema-check.js` gains `uniqueItems` (items compared deeply; a non-boolean throws).
+
+**Tests.** `test/levels.test.js` +6: `pointKeys`; `changedPoints` per kind; a rim-only change and a 1e-7 wobble list
+nothing (and stay segmented), 1e-5 lists `['sa']`; agreement with `levelState` over every single-number perturbation of
+each kind (0 to 3 px, eight deltas); purity. `test/label-record.test.js` +6: the checker's `uniqueItems` (and an enum
+and a minimum inside items); a record with a segmented, an edited (one corner moved, `['ia']`), a manual level and an
+edited head (`['center']`) and its summary; a rim-only head, a hidden edit and the full-spine fixture's lists and sums;
+R39 pinned (the example and an app record with both fields stripped, and a literal pre-D18 record, validate and read
+the same); the schema's per-kind enums equal `pointKeys` and the R38 conditionals reject a disagreeing entry; the
+example's summary agrees with its entries. The existing exact-shape tests carry the new field, the envelope's key list
+gains `edits`, and the every-record-validates loop checks the agreement and the summary on every fixture.
+
+**Smoke.** `tools/smoke/smoke-levels.mjs`: section 6 (+3 dom) reads the saved record's L3 (manual) `['sa','sp','ia','ip']`,
+S1 (not visible) `[]` and L1 (segmented) `[]`, a list on every entry, and `edits` against the summary the suite computes
+from the record's own entries; the film phase (+2) reads the level edited by the SA handle drag and the nudge as
+`['sa']`, exactly the corners that differ from its `model_corners`, and `edits.points_moved` as the sum of the edited
+lists. Baselines to be re-measured by a later stage: dom 102 + 3, film 23 + 2.
+
+**Folded in from the re-review of the window change** (two minors). `renderer/level-editor.js` `showFilm` (entering
+edit mode): an `ensureFilm` outcome with no decoded original forgets a READY window of that film, the rule of
+`film-window.js` `redecodeKeptWindow` (a loading one is left to its own decode; a superseded outcome changes nothing),
+so the chip never claims a window the film layer does not draw after another study's run took the image cache.
+`test/level-editor-wiring.test.js` +2 (a ready window forgotten without an original; kept with one, and a loading one
+and another film's left alone); `test/film-window.test.js`'s edit-mode test now stubs the editor's `ensureFilm` with
+the original the window was decoded from, as the real one returns it from the cache. And HANDOFF decision 121's R30
+line now reads as the behaviour since R37 (a right drag decodes once it moves).
+
+Unit 925 → **939/939**.
+
 ---
 
 ## Ledger
@@ -1557,3 +1636,6 @@ already state.
 | 2026-10-11 | gate | **Rulings for G3 and G4.** **R29:** the window resets exactly where zoom and pan reset, FRESH_VIEW: another film opened from the list (this one too, reopened from the list), and the open study closed by a delete or the demo toggle. Back to the Studies list and the sidebar's OPEN STUDY card keep it, as they keep zoom and pan; a writer that changes `openId` without FRESH_VIEW (the calibration screen's return) leaves a window `windowFor` will not show, since its `studyId` names another film. A film whose images change or go (deleted, a run completed on it, its Region changed) forgets it. *Cost if wrong:* one `filmWindow: null` in Back's write, if leaving the screen should reset it even when the same film is returned to through the sidebar. **R30:** a right press decodes a film with no window yet but does not retry one whose decode came back unavailable; opening the panel does (and its note says why). *Cost if wrong:* a film whose source returns (a drive reconnected) needs the panel opened once before the right-button drag works again. **R31:** a right-button drag over an unavailable film with the panel closed toasts `Window / level is unavailable. <reason>` once per drag, at its first move; a right-first chord whose left button joins before the pointer moves never gets that far (one that moves first does). *Cost if wrong:* one toast per attempt; three lines to remove. **R32:** the double right-click compares the two presses only (button, 400 ms, 6 px, the events' `timeStamp`s), on the film and the black surround alike; the second press resets and starts no drag and is forgotten (a third press begins a new pair); a chord forgets the right press before it (never a click); the first press of a double right-click is an ordinary right press, so its drag may move the window a few units before the reset. *Cost if wrong:* a quick right-drag that ends where it began, followed within 400 ms by another press there, resets the window; a movement test in `viewer.js` would tighten it. **R33:** copy. The toolbar button's tooltip reads `Window / level — or right-drag on the film; double right-click resets` (its accessible name stays `Window / level`, the suites' selector); outside edit mode, where no edit bar carries its help line, the panel shows `Drag on the film: left–right sets width, up–down sets level. With the panel closed, right-drag; double right-click resets.` above its display-only sentence. *Cost if wrong:* copy. **R34:** windowing is not gated on a run: the panel and the right-button drag work on the film on the stage while that study's run is in flight (display only; the RUNNING card covers the middle of the stage, and the completed run forgets the window), so the left press with the panel open now windows before the busy check that guards placement and handles; with the panel open outside edit mode a press on the construction's label chip still drags the chip, its own target. *Cost if wrong:* a busy guard in `handleRightPress` and in the left press's window branch. |
 | 2026-10-11 | gate | **Review of G3 and G4** (`8cf213d`, `106042a`): approved, five minor findings, all fixed in one wave (the full account is "The review of G3 and G4" under "Gate feedback (2026-10-11)"). 1: a kept window could outlive the decoded original it windows (another study's run took the cache entry; Back and the sidebar's return then drew the stored image under a ready window): R35. 2: D15's wording said the window reset when the Analysis screen was left; reworded to the behaviour (it resets where zoom and pan reset, FRESH_VIEW; Back and the sidebar's return keep it) in the Decisions row, G3, the design handoff's D15 row and HANDOFF decision 117; R29 and its cost stand. 3: with Pan on, the left button panned with the panel open: R36. 4: a right press decoded the original before it moved: R37. 5: coverage, smoke section 17 and two unit tests. The wave: `8332dfb` (code, tests, smoke) and the records commit (this row and the next, the review subsection, Task 15's R35–R37 item, D15 in four records, the contract amendment, `docs/level-editor.md`, the design handoff, HANDOFF incl. decisions 126–128, CLAUDE.md, `tools/smoke/README.md`). Unit 918 → **925/925**. `smoke-levels.mjs` dom 94 → **102/102** on a fresh `%TEMP%` profile (DOM reads only, no screenshots); not run: the film phase, the other suites, a packaged build. |
 | 2026-10-11 | gate | **Rulings R35–R37** (controller, the review's findings 1, 3 and 4). **R35:** at the mount (`screens/analysis.js` `render()`), when the open film's window is ready or loading and its cached images have no `raw` (`windowNeedsDecode`), the mount calls `redecodeKeptWindow(study.id)` instead of the plain restore: `ensureFilm` restores the stored image when the film has a result, attaches the decode and hands both to the viewer, so the window is drawn again; when no original comes back a READY window is forgotten (`forgetFilmWindow`), so the chip and the panel never claim a window that is not drawn, while a loading one is left to its own decode (it lands unavailable with its reason). *Cost if wrong:* a kept window's film is decoded again on the sidebar's return after another study's run (one `/decode`), or forgotten when its source has gone; R29's cost line stands if the owner wants every exit to reset instead. **R36:** the open W/L panel outranks the Pan toggle for the LEFT button, in both modes: in `handlePointerDown` the panel's branch comes before Pan's; the middle button and the chord still pan; the panel's hint and the user doc's input rows stay true; the `is-windowing` cursor rule follows the pan-mode rules so the cursor says the same. *Cost if wrong:* with the panel open and Pan on, the left button cannot pan; the middle button, the chord and closing the panel can. **R37:** a right press alone starts nothing: the drag is pending (`drag = { kind: 'window', pending: true, … }` with capture) and becomes a window drag only once the pointer has moved 3 CSS px (`exceedsSlop(start, point, px = 3)`, pure, tested), calling `ensureWindowLoaded()` then if the window is not ready and applying `dragWindow` from the press point when it is; a chord formed first dismantles the pending drag in `startChordPan` and the film never switches to its decoded original; a stray right click does nothing but count toward a double right-click, which still compares presses (R32; its first press now moves the window only past 3 px). R31's toast comes at the move that begins the drag. *Cost if wrong:* a right drag shorter than 3 px windows nothing, and the move that crosses 3 px applies the whole distance from the press at once (no movement lost; about 12 units for a 3 px move). |
+| 2026-10-11 | gate | **Gate feedback G5** (the owner, D18): the label record lists each level's and head's `edited_points` (its own geometry keys: an edited entry's moved points, every key of a manual one, `[]` otherwise) and carries a top-level `edits` summary after `complete` (entries per state over the sixteen, `points_moved`, `points_placed`). `pointKeys` and `changedPoints` (pure, `data/levels.js`, sharing `near` and `SAME_EPS` with `sameGeometry`); `levelRecord`, `headRecord` and `toLabelRecord` write them; the schema's per-kind `edited_points` definitions, `editedPointsRule`, per-kind manual rules and `$defs/edits`; the example lists every entry's points and its Head 2 became an edited head; `schema-check.js` gains `uniqueItems`. The full design is in "Gate feedback (2026-10-11)" above. `3e552e6`. Unit 925 → **939/939** (levels +6, label-record +6, level-editor-wiring +2, the folded minor's two included). `smoke-levels.mjs`: section 6 +3 dom checks, the film phase +2; not run when written (dom 102 + 3, film 23 + 2 to be measured). |
+| 2026-10-11 | gate | **Rulings R38 and R39** (controller, with D18). **R38:** an entry's `edited_points` is computed by the per-value test `levelState` uses (`near`, eps 10⁻⁶ px, per point and per number, a head's centre then radius and never its rim), so `state === 'edited'` exactly when the list is not empty; segmented, not placed and not visible list nothing, manual every key. The schema states it too (when the field is present). A rim-only change lists nothing and leaves the head segmented, as before. *Cost if wrong:* a script that wants rim edits counted needs the rim compared (a `rim` key, and `comparable` keeping the rim, which would also turn rim-only changes into Edited badges); the agreement itself is pinned by a test over every single-number perturbation of each kind. **R39:** both fields are additive and optional in the schema, whose id stays `spinecontour.segmentation-label/1`; the app always writes them from this version on, and records saved before it (no `edits`, no `edited_points`) still validate and read the same (`recordLevels` ignores both). *Cost if wrong:* a consumer cannot tell from the schema id whether a record carries the fields and must test for them; a `/2` id with both required would make that explicit at the price of failing every earlier record. |
+| 2026-10-11 | gate | **Two minors from the re-review of the window change, folded into G5.** 1: entering edit mode (`level-editor.js` `showFilm`) kept a READY window when `ensureFilm` came back with no decoded original (another study's run took the image cache), so the chip could claim a window the film layer does not draw; `showFilm` now forgets it (`forgetFilmWindow`), the rule of `film-window.js` `redecodeKeptWindow` (a loading window is left to its own decode; a superseded outcome changes nothing). `test/level-editor-wiring.test.js` +2; `test/film-window.test.js`'s edit-mode test stubs the editor's `ensureFilm` with the original its window was decoded from (the old stub returned none, which now forgets). *Cost if wrong:* a ready window is forgotten when the decode fails on entering edit mode; the W/L button decodes again. 2: HANDOFF decision 121 still said a right press decodes; reworded to the behaviour since R37 (a right drag decodes once it moves). Both in `3e552e6` and the G5 records commit. |

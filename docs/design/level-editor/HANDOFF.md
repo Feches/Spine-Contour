@@ -348,7 +348,9 @@ Store everything in **image pixels of the stored image, origin top-left**. Conve
 | `model.name`, `model.version` | The model whose output was reviewed |
 | `app_version`, `saved_at` | Provenance |
 | `complete` | True when no level or femoral head is `not_placed` |
+| `edits` | (Added 2026-10-11, D18; optional in the schema, R39, always written by the app) Seven counts over the fourteen levels and two femoral heads together: `segmented`, `edited`, `manual`, `not_placed`, `not_visible` (entries per state), `points_moved` (the `edited` entries' `edited_points` added up) and `points_placed` (the `manual` entries'). Written after `complete`; computed from the entries, so it always agrees with them. |
 | `levels.<code>.state`, `source` | As in section 2 |
+| `levels.<code>.edited_points`, `femoral_heads[].edited_points` | (Added 2026-10-11, D18; optional in the schema, R39, always written by the app) The entry's own geometry keys the annotator gave it, in this order: a body `sa`, `sp`, `ia`, `ip`; C2 `ia`, `ip`, `centroid`; T1 and S1 `sa`, `sp`; T4 `centroid`; a femoral head `center`, `radius` (never its rim). `segmented`, `not_placed`, `not_visible`: `[]`. `edited`: the keys whose value differs from the model's by the test that derives the state (10⁻⁶ px), so `edited` exactly when the list is not empty (R38). `manual`: every key of the kind. |
 | `levels.<C3–C7, L1–L5>.corners` | `{sa, sp, ia, ip}`. Absent when `not_visible` or `not_placed`. |
 | `levels.C2.corners`, `levels.C2.centroid` | `{ia, ip}` (the inferior endplate) and `[x, y]` (amended 2026-10-10, D8: C2 has no superior endplate in the app's geometry; schema `$defs/c2`). Absent when `not_visible` or `not_placed`. |
 | `levels.<T1, S1>.corners` | `{sa, sp}`: superior endplate only |
@@ -367,6 +369,8 @@ The design artboard doesn't show `model_centroid` or `model_circle`. The schema 
   - `not_visible` is a negative label
   - `not_placed` is ignored
   - `edited` gives a (model, corrected) pair for measuring model error per level
+  - (2026-10-11, D18) `edited_points` says which points of an `edited` pair moved, and `edits` how many entries
+    needed correcting across the film, so a folder of records can be counted without comparing corners
 
 ---
 
@@ -404,9 +408,9 @@ The design artboard doesn't show `model_centroid` or `model_circle`. The schema 
 
 The open questions this section held were answered by the owner on 2026-10-10, together with the questions the code
 forced. They are the Decisions table of `docs/superpowers/plans/2026-10-10-level-editor.md`, which wins over this spec
-where the two differ; that plan's Ledger also records the execution rulings R1–R37. Built on branch
+where the two differ; that plan's Ledger also records the execution rulings R1–R39. Built on branch
 `worktree-level-editor`; the user doc is `docs/level-editor.md`. D15–D17 were added on 2026-10-11 from the owner's
-gate feedback (G3, G4).
+gate feedback (G3, G4), and D18 the same day from G5.
 
 | # | Question | Decision |
 |---|---|---|
@@ -427,6 +431,7 @@ gate feedback (G3, G4).
 | D15 | Window / level outside edit mode (2026-10-11, gate feedback G3) | Available outside edit mode too. The window belongs to the view, like zoom and pan: it resets where zoom and pan reset (FRESH_VIEW: another film opened from the list, or the open study closed); Back and the sidebar's return keep it, as they keep zoom and pan; entering and leaving edit mode keeps it. Still never persisted, never in the record. (Wording amended 2026-10-11 by the review of G3/G4 to follow the behaviour; R29.) |
 | D16 | A right-button drag (2026-10-11, gate feedback G4) | Windows the film in every mode, without opening the panel: horizontal = width, vertical = level, four units per screen pixel. The chip shows the live W and L. |
 | D17 | A double right-click (2026-10-11, gate feedback G4) | Resets the window to the film's default; the panel's RESET stays. |
+| D18 | Which points an edit moved (2026-10-11, gate feedback G5) | Every level and femoral head in the record lists `edited_points` (its own geometry keys: what moved when `edited`, every key when `manual`, none otherwise; `edited` exactly when the list is not empty, R38), and the record carries a top-level `edits` summary (entries per state, `points_moved`, `points_placed`). Both additive: the schema keeps its id and accepts records saved before them (R39). Section 9 amended. |
 
 ---
 

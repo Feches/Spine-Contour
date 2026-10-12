@@ -3,7 +3,7 @@
 **Last updated:** 2026-10-11
 **Branch:** `worktree-level-editor` in the worktree `.claude\worktrees\level-editor` of the main checkout, off
 `origin/main` @ `20fd4c5` (v1.0.17): the vertebral level editor, window / level and the label record — BUILT, human
-gate IN PROGRESS since 2026-10-11 (G1–G4 are its findings so far), nothing pushed (first section under "Where
+gate IN PROGRESS since 2026-10-11 (G1–G5 are its findings so far), nothing pushed (first section under "Where
 things stand").
 **2026-10-02 branch (historical):** `claude/issue-39-failed-status-port` (the Failed-status additions on 1.0.13, issue
 #39 follow-up; DONE, merged with v1.0.14, release 1.0.15 committed and awaiting the PR)
@@ -62,9 +62,9 @@ label record per film for retraining, at `userData/labels/<stem>.label.json`. A 
 in edit mode on its original and can be placed by hand.
 
 - Spec: `docs/design/level-editor/HANDOFF.md` (`594a982`; its §12 now lists the decisions). Plan:
-  `docs/superpowers/plans/2026-10-10-level-editor.md` (`3a4019a`), 15 tasks; its Decisions table D1–D17 and its
-  `## Ledger` (every task's commits and counts, rulings R1–R37 with their costs, every deferred minor) and its
-  `## Gate feedback (2026-10-11)` section (G1–G4, the spec of record for all four). User doc:
+  `docs/superpowers/plans/2026-10-10-level-editor.md` (`3a4019a`), 15 tasks; its Decisions table D1–D18 and its
+  `## Ledger` (every task's commits and counts, rulings R1–R39 with their costs, every deferred minor) and its
+  `## Gate feedback (2026-10-11)` section (G1–G5, the spec of record for all five). User doc:
   `docs/level-editor.md`. Contract: the 2026-10-10 amendment. SDD ledger
   `.superpowers/sdd/2026-10-10-level-editor/progress.md` (local, untracked).
 - What was built, by commit (`594a982..` this branch's tip): the level model `77c8e5a`; the projection into
@@ -102,11 +102,16 @@ in edit mode on its original and can be placed by hand.
   outranks the Pan toggle for the left button; R37 a right press windows only once it has moved 3 CSS px,
   `exceedsSlop`, so a stray right click or a right-first chord decodes nothing; smoke section 17's missing cases) and
   the records commit (D15 worded as the behaviour: it resets where zoom and pan reset, and Back and the sidebar's
-  return keep it; Task 15 gains an R35–R37 item).
-- Counts: unit 925/925 after the review of G3 and G4 (918 after G3 and G4, 901 after the gate feedback's review wave,
+  return keep it; Task 15 gains an R35–R37 item). Then G5 (D18, decisions 129–131 below): the label record lists each
+  level's and head's `edited_points` and carries an `edits` summary, `edited` exactly when the list is not empty (R38),
+  both fields optional under the same schema id (R39), with the window re-review's two minors folded in (entering edit
+  mode forgets a ready window its film comes back without an original for; decision 121 reworded): `3e552e6` and the
+  records commit, unit 939/939.
+- Counts: unit 939/939 after G5 (925 after the review of G3 and G4, 918 after G3 and G4, 901 after the gate feedback's review wave,
   898 after G2, 888 after the final review's wave and R25, 887 after the wave, 879/879 before it; 615 at the base; 905
   before Task 13 retired 26 tests of removed code); `smoke-levels.mjs` dom 102/102 after that review (fresh `%TEMP%`
-  profile, DOM reads only, no screenshots; the film phase and the other suites not re-run); after G3 and G4 on a fresh
+  profile, DOM reads only, no screenshots; the film phase and the other suites not re-run), and G5 adds three dom
+  checks and two film checks not yet run (dom 102 + 3, film 23 + 2 to be measured); after G3 and G4 on a fresh
   `%TEMP%` profile: dom 94/94 (79 before section 17; G2's four checks pass among them) and film 23/23, then on the same
   launch parity 15/15, gate1 25/25, gate2 26/26, gate3 26/26, chip 20/20, chord 28/28 (DOM reads only, no
   screenshots). Backend `pytest
@@ -126,9 +131,10 @@ in edit mode on its original and can be placed by hand.
 
 **Next.** The owner's human gate (plan Task 15): real films from their library, both themes, including the items the
 final review added (a cervical film, a full-spine film, a DICOM film, a failed Auto film with C and L levels placed, a
-double-click while placing a head), the re-check of G1 to G4 (800% on a large and a small film with the overlay crisp,
+double-click while placing a head), the re-check of G1 to G5 (800% on a large and a small film with the overlay crisp,
 R28; the step chips, re-placing and UNDO; window / level outside edit mode, the right-button drag and the double
-right-click, a chord still panning; R35–R37 from their review) and the owner's decision R24 (a hand-placed film that had failed still reads
+right-click, a chord still panning; R35–R37 from their review; a record saved after one corner drag lists that corner
+in `edited_points` and counts it in `edits`) and the owner's decision R24 (a hand-placed film that had failed still reads
 Failed). Then a release commit (1.0.18 or later; `docs/release-main.md`) and a PR, all on the owner's say-so (memory:
 test before release). Nothing is pushed.
 
@@ -1877,8 +1883,9 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
      the open study closed by a delete or the demo toggle); Back and the sidebar's open-study card keep it, as they keep
      zoom and pan; a delete, a completed run or a Region change forgets it. *Cost if wrong:* one `filmWindow: null` in
      Back's write.
-121. **R30 — A right press decodes a film with no window yet, but does not retry an unavailable one**; opening the
-     panel does. *Cost if wrong:* a film whose source comes back needs the panel opened once before the right drag works.
+121. **R30 — A right drag decodes a film with no window yet once it moves (R37) and does not retry an unavailable
+     one**; opening the panel does. *Cost if wrong:* a film whose source comes back needs the panel opened once before
+     the right drag works. (Worded as the behaviour since R37 on 2026-10-11; it first said a right press decodes.)
 122. **R31 — A right-button drag over an undecodable film says why** in a toast (`Window / level is unavailable.` and
      the reason), once per drag, with the panel closed. *Cost if wrong:* one toast per attempt.
 123. **R32 — The double right-click compares the two presses only** (400 ms, 6 px, the events' timestamps), on the film
@@ -1905,6 +1912,20 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
      leaves a never-windowed film on its stored image with no W / L on the chip; the double right-click still compares
      presses. *Cost if wrong:* a right drag under 3 px does nothing; the crossing move applies the whole distance from
      the press at once.
+129. **D18 (owner, 2026-10-11, gate feedback G5) — The label record lists each entry's edited points and carries an
+     edits summary**, so a folder of records can be counted without diffing corners. Every level and femoral head gets
+     `edited_points`, its own geometry keys (a body `sa, sp, ia, ip`; C2 `ia, ip, centroid`; T1/S1 `sa, sp`; T4
+     `centroid`; a head `center, radius`): the moved ones when `edited`, every key when `manual`, none otherwise; the
+     record gets `edits` after `complete` (entries per state over the sixteen, `points_moved`, `points_placed`).
+     `data/levels.js` `pointKeys` / `changedPoints` (pure), written by `data/label-record.js` (`3e552e6`).
+130. **R38 — `edited` exactly when `edited_points` is not empty.** The list is computed by the per-value test the state
+     uses (`sameGeometry`'s `near`, 10⁻⁶ px), so the two never disagree; a head's rim is not a point, so a rim-only
+     change lists nothing and the head stays segmented; the schema states it too. *Cost if wrong:* counting rim edits
+     needs the rim compared, which would also badge rim-only changes Edited.
+131. **R39 — Both fields are additive.** The schema keeps `spinecontour.segmentation-label/1` and requires neither, so
+     records saved before them validate and read the same; the app writes both on every save from now on. *Cost if
+     wrong:* a consumer tests for the fields instead of reading a schema version; a `/2` with both required would fail
+     every earlier record.
 
 ## Release prerequisites — v1.0.0 main promotion
 

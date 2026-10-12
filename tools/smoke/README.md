@@ -451,7 +451,10 @@ CANCEL mid-placement, and UNDO after the out-of-order IP clears it (`4 OF 4` aga
 unchecking S1, its note `LL, PI, PT, SS, PI–LL, L1PA and L5–S1 will show —`, `s1_superior` and PI null; (6) Save
 edits, the toast
 `Saved 2 edits to the label record.`, `labels/levels-ui-check.label.json` valid against the schema (through
-`test/fixtures/schema-check.js`), no SP id in it, `labelFile` on the study; (7) the exit prompt, Keep editing, Discard
+`test/fixtures/schema-check.js`), no SP id in it, `labelFile` on the study, and (gate feedback G5, 2026-10-11, plan
+D18) each level's `edited_points`: L3 (manual) `['sa','sp','ia','ip']`, S1 (not visible) and L1 (segmented) `[]`, every
+level and both heads carrying a list (empty unless edited or manual), and the record's `edits` equal to the summary the
+suite computes from the record's own entries (one manual level, 4 points placed, none moved); (7) the exit prompt, Keep editing, Discard
 and `Discarded 1 change.`, the Measurements panel back with PI `—`; (8) Head 1 re-placed from two rim points, FIT, then
 a rim-point drag refits it; (9) the W/L panel on a film whose source is gone says `The source film could not be
 found.`; (10) Escape cancels a placement and stays, Escape with nothing open and nothing unsaved leaves with no prompt;
@@ -487,7 +490,10 @@ and does not pan (Pan unpressed after). The no-window right drag is now two chec
 moves and leaves it at its default window, then the next right drag windows from its press by (−80, −40). (The first
 version asserted a window change within one drag whose start waits for the decode; under R37 the decode starts at the
 first move, so that would depend on how many separate moves Chromium delivers.)
-The film phase also saves a record whose `image.sha256` is 64 hex characters and whose `model.version` is the run's.
+The film phase also saves a record whose `image.sha256` is 64 hex characters and whose `model.version` is the run's,
+and (G5, D18) whose edited level, moved by the SA handle drag and the ArrowRight nudge, lists `edited_points` `['sa']`,
+exactly the corners whose value differs from its `model_corners`, with `edits.points_moved` the sum of the edited
+entries' lists and the whole `edits` block equal to the summary computed from the entries.
 
 **Known baseline** (2026-10-10, branch `worktree-level-editor`, a fresh scratch profile, Windows 11, CPU processor):
 phase `dom` 75/75, phase `film` 23/23 (one copied OLIF lumbar film; L1, L2, L4 and L5 segmented with contours of 9 to
@@ -497,7 +503,9 @@ gate feedback G3 and G4, `8cf213d`) Section 17 adds fifteen dom checks: dom **94
 them) and film **23/23**, measured on one fresh `%TEMP%` profile, with parity, gate1–3, chip and chord green after it
 on the same launch. (2026-10-11, the review of G3/G4, `8332dfb`) Eight more dom checks (seven new, and the no-window
 right drag split in two): dom **102/102**, measured on a fresh `%TEMP%` profile (DOM, store and file reads only, no
-screenshots); the film phase and the other suites not re-run.
+screenshots); the film phase and the other suites not re-run. (2026-10-11, gate feedback G5, plan D18) Section 6 gains
+three dom checks and the film phase two: dom 102 + 3, film 23 + 2, not re-run when they were written (a later stage
+measures them).
 
 ## The landmark-editor suites after the level editor (2026-10-10)
 

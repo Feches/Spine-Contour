@@ -221,12 +221,14 @@ renderer/                         (new)
   data/demo-visibility.js         (2026-09-10, §9) demoStudiesShown(state), demoVisibilityPatch(state, shown) — pure
   data/levels.js                  (2026-10-10) the level model: sixteen codes in five groups, kinds, names, film-type defaults, state
                                   derivation, placement steps, visibility, the unsaved count, summary and training status, the
-                                  measurement-to-level table behind the dependency notes; the LevelEditor and WindowState typedefs; pure
+                                  measurement-to-level table behind the dependency notes; the LevelEditor and WindowState typedefs;
+                                  (2026-10-11, D18) pointKeys and changedPoints, the record's edited points; pure
   data/level-projection.js        (2026-10-10) the level model into study.geometry per region (projectGeometry, projectionRegion,
                                   regionFollowsLevels, projectsLevel, anteriorSideFrom, quadrilateral); the reverse direction is
                                   levels.js levelsFromGeometry; pure
   data/label-record.js            (2026-10-10) the label record: toLabelRecord, recordLevels, labelFileName (a safe stem, -2/-3 on a
-                                  clash), viewSlug, appVersion, LABEL_SCHEMA; pure
+                                  clash), viewSlug, appVersion, LABEL_SCHEMA; (2026-10-11, D18) each entry's edited_points and the
+                                  record's edits summary; pure
   data/contours.js                (2026-10-10) a level's outline in the label mask (traceLabel, simplify, levelContours), for the
                                   record's contour; pure
 
@@ -1368,9 +1370,9 @@ workstation with `--verify-models`, which exercises each listed GPU.
 ## 2026-10-10 amendment: vertebral level editor, window / level, label record
 
 Spec `docs/design/level-editor/HANDOFF.md` (`594a982`); plan `plans/2026-10-10-level-editor.md`, whose Decisions
-table (D1–D17, the owner's answers; D15–D17 from the gate feedback of 2026-10-11) wins over the spec and whose Ledger
-holds the execution rulings R1–R37 (R26 and R27 from the gate feedback of 2026-10-11, the plan's "Gate feedback"
-section, R28 from its review, R29–R34 from G3 and G4, R35–R37 from their review); user doc
+table (D1–D18, the owner's answers; D15–D18 from the gate feedback of 2026-10-11) wins over the spec and whose Ledger
+holds the execution rulings R1–R39 (R26 and R27 from the gate feedback of 2026-10-11, the plan's "Gate feedback"
+section, R28 from its review, R29–R34 from G3 and G4, R35–R37 from their review, R38 and R39 from G5); user doc
 `docs/level-editor.md`; label record schema `docs/design/level-editor/label-record.schema.json`. Edit mode is the
 level editor: the Analysis screen's right panel becomes the Vertebral levels panel (sixteen levels in five groups:
 C2–C7, T1 · T4, L1–L5, S1, two femoral heads), the stage places, selects and adjusts levels, a display-only window /
@@ -1599,6 +1601,32 @@ pending press. The left press's window branch comes before the Pan toggle's.
 - R37 (finding 4): a right press alone starts nothing; the drag begins, and decodes a film with no window yet, once the
   pointer has moved 3 CSS px; a stray right click or a chord formed before any movement decodes nothing; the double
   right-click still compares presses (R32); R31's toast comes at the move that begins the drag.
+
+**Gate feedback G5 (2026-10-11; D18, `3e552e6`).** The label record lists which points each entry was given and sums
+them. `renderer/data/levels.js` gains **`pointKeys(code)`** (the record's geometry keys of the code's kind, in record
+order: a body `sa, sp, ia, ip`; C2 `ia, ip, centroid`; T1/S1 `sa, sp`; T4 `centroid`; a femoral head `center, radius`;
+`[]` for an unknown code; a fresh array) and **`changedPoints(code, geometry, modelGeometry)`** (pure: the keys whose
+value in `geometry` differs from `modelGeometry`'s by the per-value test `sameGeometry` uses, the private `near` with the
+shared `SAME_EPS`, 1e-6, now also `sameGeometry`'s default eps; a head compares centre then radius, never its rim; every
+key when `modelGeometry` is null, `[]` when `geometry` is). `renderer/data/label-record.js` `levelRecord` and
+`headRecord` write **`edited_points`** right after `source` on every level and head: `changedPoints` for `edited`, every
+key for `manual`, `[]` for `segmented`, `not_placed` and `not_visible`; `toLabelRecord` writes **`edits`** after
+`complete`: `{segmented, edited, manual, not_placed, not_visible, points_moved, points_placed}`, entries per state over
+the fourteen levels and two heads together, `points_moved` the edited entries' list lengths summed, `points_placed` the
+manual entries'. `recordLevels` reads neither. The schema keeps its id; `edited_points` (per-kind `$defs`, `uniqueItems`
+over the kind's enum) and `edits` (`$defs/edits`, seven required non-negative integers, nothing else) are optional;
+`test/fixtures/schema-check.js` supports `uniqueItems`.
+
+- R38 (G5): `state === 'edited'` exactly when `edited_points` is not empty: both read the same per-value comparison
+  over the same values (the kind's points; a circle's rim is not one, so a rim-only change lists nothing and the head
+  stays segmented). Pinned by a unit test over every single-number perturbation of each kind, and stated in the schema
+  (`editedPointsRule` and a per-kind manual `minItems`) for records that carry the field.
+- R39 (G5): both fields are additive; the schema id stays `spinecontour.segmentation-label/1` and neither field is
+  required, so records saved before them validate and read the same; the app writes both on every save from now on.
+
+The re-review of the window change, folded into G5: `renderer/level-editor.js` `showFilm` (entering edit mode) forgets
+a READY window of the film (`forgetFilmWindow`) when `ensureFilm`'s outcome carries no decoded original, the rule of
+`redecodeKeptWindow` (a loading window is left to its own decode; a superseded outcome changes nothing).
 
 No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet file (rules in
 `styles/screens/analysis.css` section `05 — LEVEL EDITOR` and `styles/components.css`), no Python package.

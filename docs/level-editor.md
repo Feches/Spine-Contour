@@ -4,7 +4,7 @@ Edit mode on the Analysis screen is a level editor (2026-10-10). It lists every 
 annotator place the levels the model missed, mark the ones that are not on the film, and adjust the rest; it came with
 a display-only window / level for the stage, which since the gate feedback of 2026-10-11 works outside edit mode too;
 and **Save edits** writes one JSON label record per film, whose job is retraining the segmentation models. Design:
-`docs/design/level-editor/HANDOFF.md`. Plan, decisions D1–D17 and the execution rulings R1–R37:
+`docs/design/level-editor/HANDOFF.md`. Plan, decisions D1–D18 and the execution rulings R1–R39:
 `docs/superpowers/plans/2026-10-10-level-editor.md`. Contract: the 2026-10-10 amendment of
 `docs/superpowers/plans/2026-08-31-00-architecture-contract.md`.
 
@@ -186,6 +186,30 @@ level carries the model's mask outline as `contour` (a polygon of at least three
 manual levels and for films with no mask. Coordinates are pixels of the stored image, origin top-left. Window / level
 is never recorded (D11).
 
+**Edited points and the edits summary** (gate feedback G5, 2026-10-11, D18). So a folder of records can be counted
+without comparing corners, every level and both femoral heads carry `edited_points`, a list of the entry's own geometry
+keys, so a script can read `corners[name]` (or `centroid`, `center`, `radius`) directly:
+
+| Kind | Keys, in this order |
+|---|---|
+| C3–C7, L1–L5 | `sa`, `sp`, `ia`, `ip` (in `corners`) |
+| C2 | `ia`, `ip` (in `corners`), `centroid` |
+| T1, S1 | `sa`, `sp` (in `corners`) |
+| T4 | `centroid` |
+| Femoral head | `center`, `radius` |
+
+A `segmented` entry lists nothing; an `edited` one lists the keys whose value differs from the model's original, by the
+same test that decides the state (a difference over 10⁻⁶ px), so an entry is `edited` exactly when its list is not
+empty (R38); a `manual` one lists every key of its kind; `not_placed` and `not_visible` list nothing (a hidden level's
+geometry is not in the record). A femoral head's rim is how its circle was fitted, not a point of it: moving a rim
+point that leaves the centre and radius where they were lists nothing, and the head stays segmented. The record also
+carries `edits`, after `complete`: how many of the sixteen entries (fourteen levels and two heads together) are in
+each state (`segmented`, `edited`, `manual`, `not_placed`, `not_visible`), `points_moved` (the edited entries' lists
+added up) and `points_placed` (the manual entries'). Dragging L3's SA corner and nudging it, for example, saves L3 with
+`"edited_points": ["sa"]` and `points_moved` 1. Both fields are always written from this version on; records saved
+before it lack them, and the schema accepts them either way (R39, same schema id), so a script should treat a missing
+`edited_points` as unknown, not as empty.
+
 ## Window / level
 
 Window / level works in every mode, on any film on the stage (gate feedback G3 and G4, 2026-10-11). The toolbar's
@@ -259,7 +283,7 @@ write a label record; the save path refuses with `Demo studies are not exported`
 ## Verification
 
 `tools/smoke/smoke-levels.mjs` (phases `dom` and `film`; see `tools/smoke/README.md`) covers the panel, placing,
-unchecking, Save edits and the record on disk, Discard and the exit prompt, femoral rim points, window / level in edit
+unchecking, Save edits and the record on disk (its `edited_points` and `edits` included), Discard and the exit prompt, femoral rim points, window / level in edit
 mode and (section 17) outside it, with the right-button drag and the double right-click, the keyboard and the stash;
 the pure modules have unit tests (`test/levels`, `level-projection`, `level-handles`, `window-level`, `label-record`,
 `contours`, and `interactions` for the double right-click), `test/level-editor-wiring.test.js` drives the wiring
