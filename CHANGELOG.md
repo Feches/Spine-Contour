@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.18
+
+- Add missed cervical and lumbar vertebrae, S1 endplate points, and C2/C7 body centroids from the existing landmark edit bar.
+- Guided point placement includes a preview, Undo point, Cancel, and Apply landmarks. Existing model landmarks are preserved.
+- Applied landmarks recalculate measurements and save through the existing correction workflow.
+
+[Release notes](docs/releases/1.0.18.md)
+
 ## 1.0.17
 
 - Adds an optional **Fast classifier** under **Settings → Automatic view selection**

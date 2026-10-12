@@ -410,3 +410,14 @@ low-memory settings across reload. Pass de-identified local examples; no images 
 screenshots are written into the repository. Results are ignored under
 `tools/smoke/out/processing/`. The CPU resource comparison is separately reproducible
 with `tools/benchmark_processing.py`; see `docs/low-memory-processing.md`.
+
+## Missing vertebra placement
+
+`node tools/smoke/smoke-missing-vertebrae.mjs /path/to/real-radiograph.png cervical`
+(or `lumbar`) runs actual inference, removes C7 (or L3) only from a scratch
+study, and places the original model corners through trusted mouse events. It
+checks Cancel, Undo, measurement recalculation, manual-edit provenance, preservation
+of an adjacent vertebra, and persistence after page reload. Use anterior-image-left
+for cervical input. Screenshots are saved under `out/missing-vertebrae-<region>/`.
+This is an interaction regression check, not a measurement-accuracy assessment.
+Run each smoke suite sequentially against its scratch app.

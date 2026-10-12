@@ -1,3 +1,4 @@
+import { annotationTargets, applyAnnotation, POINT_NAMES } from '../viewer/annotation.js';
 import { segmentalValues } from '../data/segmental.js';
 import { globalSvaMeasurements } from '../data/global-sva.js';
 import { cervicalMeasurements, studyRegion, requiresAnteriorSide, regionRunReason } from '../data/cervical.js';
@@ -195,15 +196,44 @@ export function mountViewer(container) {
     rerunButton);
 
   // Shown only while editing: RETRACE, FIT and RESET TO PREDICTION alongside DONE.
+  let annotation = null;
+  const missingLevel = el('select', { class: 'viewer-tool viewer-tool-text', 'aria-label': 'Missing vertebra or landmark' });
+  const addVertebraButton = textButton('ADD LANDMARKS', () => {
+    const study = currentStudy();
+    const target = annotationTargets(study?.geometry).find(item => item.id === missingLevel.value);
+    if (!target || getState().running === study.id) return;
+    cancelRetrace();
+    annotation = { target, points: [], studyId: study.id, geometry: study.geometry };
+    clearHover();
+    setState({ panMode: false, selection: null });
+    updateEditBar(getState(), study);
+    redrawDynamic(liveGeometry());
+  });
+  const undoAnnotation = textButton('UNDO POINT', () => {
+    annotation?.points.pop(); updateEditBar(getState(), currentStudy()); redrawDynamic(liveGeometry());
+  });
+  const applyAnnotationButton = textButton('APPLY LANDMARKS', () => {
+    const study = currentStudy();
+    if (!annotation || annotation.studyId !== study?.id) return;
+    try {
+      const geometry = applyAnnotation(study.geometry, annotation.target, annotation.points);
+      annotation = null;
+      commitGeometry(study.id, geometry);
+    } catch (error) { showToast(error.message); }
+  });
+  const cancelAnnotation = textButton('CANCEL', () => {
+    annotation = null; updateEditBar(getState(), currentStudy()); redrawDynamic(liveGeometry());
+  });
   const addCircleButton = textButton('ADD CIRCLE', () => addCircle(), { title: 'Place at least 3 points around the head, then Fit' });
   const deleteCircleButton = textButton('DELETE CIRCLE', () => deleteCircle(), { disabled: true, title: 'Delete selected head (Delete / Backspace)' });
-  const editHelp = el('div', { class: 'viewer-edit-help' });
+  const editHelp = el('div', { class: 'viewer-edit-help', role: 'status', 'aria-live': 'polite' });
   const retraceButton = textButton('RETRACE', () => toggleRetrace(), { 'aria-pressed': 'false', disabled: true });
   const fitButton = textButton('FIT', () => applyFit(), { disabled: true });
   const resetButton = textButton('RESET TO PREDICTION', () => resetToPrediction(), { disabled: true });
   const doneButton = textButton('DONE', () => exitEditMode());
   const editBar = el('div', { class: 'viewer-editbar is-hidden' },
     el('div', { class: 'viewer-editbar-label' }, 'EDITING LANDMARKS'),
+    missingLevel, addVertebraButton, undoAnnotation, applyAnnotationButton, cancelAnnotation,
     addCircleButton,
     deleteCircleButton,
     retraceButton,
@@ -279,6 +309,16 @@ export function mountViewer(container) {
       retracing,
       pixelRatio: pixelRatio(),
     });
+    if (annotation) {
+      dynamicCtx.save();
+      dynamicCtx.fillStyle = '#ffe08a';
+      dynamicCtx.font = `${12 * pixelRatio()}px sans-serif`;
+      annotation.points.forEach(([x, y], i) => {
+        dynamicCtx.beginPath(); dynamicCtx.arc(x, y, 4 * pixelRatio(), 0, Math.PI * 2); dynamicCtx.fill();
+        dynamicCtx.fillText(`${annotation.target.level} ${annotation.target.corners[i]}`, x + 8 * pixelRatio(), y - 8 * pixelRatio());
+      });
+      dynamicCtx.restore();
+    }
     placeLabel(geometry);
   }
 
@@ -471,6 +511,7 @@ export function mountViewer(container) {
     // freeze this one's handles (state.running is that study's id, not a boolean).
     const busy = state.running === study.id;
     if (state.editing && !busy) {
+      if (annotation) return; // Place on click, after a possible chord-pan has finished.
       if (retracing) {
         event.preventDefault();
         suppressClick = true;
@@ -515,7 +556,7 @@ export function mountViewer(container) {
     }
     if (!drag) {
       const state = getState();
-      if (!state.editing || retracing) return;
+      if (!state.editing || retracing || annotation) return;
       const study = currentStudy();
       if (!study || !study.geometry) return;
       setHover(hitTestHandle(study.geometry, event));
@@ -623,6 +664,14 @@ export function mountViewer(container) {
     }
     const study = currentStudy();
     if (!study || !study.geometry) return;
+    if (annotation) {
+      const state = getState();
+      if (state.editing && !state.panMode && state.running !== study.id && annotation.points.length < annotation.target.corners.length) {
+        annotation.points.push(clientToImage(event, dynamicCanvas));
+        updateEditBar(state, study); redrawDynamic(liveGeometry());
+      }
+      return;
+    }
     const level = vertebraAt(study.geometry, clientToImage(event, dynamicCanvas));
     // Clicking the selected vertebra again, or empty stage, clears the construction.
     const state = getState();
@@ -633,6 +682,7 @@ export function mountViewer(container) {
   // Retrace is bound to the selected femoral side (Task 14). Any selection change, and
   // every exit from edit mode, ends it.
   function cancelRetrace() {
+    annotation = null;
     retracing = false;
     tracePoints = [];
     tracePointPointer = null;
@@ -717,20 +767,36 @@ export function mountViewer(container) {
   // Edit-bar button states. Called from updateViewer on every notification and directly by
   // the retrace handlers; it only writes DOM, never the store.
   function updateEditBar(state, study) {
-    for (const button of [addCircleButton, deleteCircleButton, retraceButton, fitButton]) button.classList.toggle('is-hidden', studyRegion(study) === 'cervical');
+    for (const button of [addCircleButton, deleteCircleButton, retraceButton, fitButton]) button.classList.toggle('is-hidden', studyRegion(study) === 'cervical' || !!annotation);
     // Only a run on THIS study disables the edit bar; a run on another study leaves it alone.
     // A null study is never busy -- toggleRetrace passes currentStudy(), which may be null.
     const busy = Boolean(study) && state.running === study.id;
     const femoralSelected = Boolean(state.selection && state.selection.kind === 'femoral');
     const geometry = state.measurementDrafts?.[study?.id] ?? study?.geometry;
     const hasSelectedCircle = femoralSelected && femoralCircle(geometry, state.selection.side);
-    addCircleButton.disabled = busy || !geometry || (geometry.femoral_circles?.length ?? 0) >= 2 || retracing;
-    deleteCircleButton.disabled = busy || !hasSelectedCircle;
-    retraceButton.disabled = busy || !hasSelectedCircle;
+    const targets = annotationTargets(geometry);
+    const previousTarget = missingLevel.value;
+    missingLevel.replaceChildren(...targets.map(target => el('option', { value: target.id }, target.label)));
+    if (targets.some(target => target.id === previousTarget)) missingLevel.value = previousTarget;
+    if (!targets.length) missingLevel.append(el('option', { value: '' }, 'No missing landmarks'));
+    missingLevel.disabled = busy || !!annotation || retracing || !targets.length;
+    addVertebraButton.disabled = missingLevel.disabled;
+    for (const button of [undoAnnotation, applyAnnotationButton, cancelAnnotation]) button.classList.toggle('is-hidden', !annotation);
+    undoAnnotation.disabled = busy || !annotation?.points.length;
+    applyAnnotationButton.disabled = busy || !annotation || annotation.points.length !== annotation.target.corners.length;
+    addCircleButton.disabled = !!annotation || busy || !geometry || (geometry.femoral_circles?.length ?? 0) >= 2 || retracing;
+    deleteCircleButton.disabled = !!annotation || busy || !hasSelectedCircle;
+    retraceButton.disabled = !!annotation || busy || !hasSelectedCircle;
     editHelp.textContent = studyRegion(study) === 'full_spine' ? 'Drag a landmark, or use Tab and arrow keys. Review the cervical and lumbar endplates, C7 centroid, S1 and femoral heads.'
       : studyRegion(study) === 'cervical' ? 'Drag a landmark, or use Tab and arrow keys. C2 centroid and C2/C7 endplates define these measurements.'
       : retracing ? 'Click at least 3 points around the head, then Fit. Escape cancels.'
       : 'Drag a centre to move; drag its rim to resize. The diamond marks the hip midpoint.';
+    if (annotation) {
+      const { target, points } = annotation;
+      editHelp.textContent = points.length < target.corners.length
+        ? `${target.level}: click ${POINT_NAMES[target.corners[points.length]]} (${points.length + 1}/${target.corners.length}). Anterior/posterior refer to anatomy. Escape cancels.`
+        : `${target.level}: review the placed points, then Apply landmarks. Undo point to correct.`;
+    }
     retraceButton.setAttribute('aria-pressed', String(retracing));
     retraceButton.classList.toggle('is-active', retracing);
     fitButton.disabled = busy || !retracing || tracePoints.length < 3;
@@ -856,6 +922,13 @@ export function mountViewer(container) {
       return;
     }
     if (busy || drag) return;
+    if (annotation && (event.key === 'Escape' || event.key === 'Backspace' || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z'))) {
+      event.preventDefault();
+      if (event.key === 'Escape') annotation = null;
+      else annotation.points.pop();
+      updateEditBar(state, study); redrawDynamic(liveGeometry()); return;
+    }
+    if (annotation) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       exitEditMode();
@@ -907,6 +980,7 @@ export function mountViewer(container) {
     labelChip.removeEventListener('pointerup', handleLabelPointerUp);
     labelChip.removeEventListener('pointercancel', handleLabelPointerUp);
     resizeObserver.disconnect();
+    annotation = null;
     drag = null;
     suppressClick = false;
     hover = null;
@@ -965,6 +1039,7 @@ export function mountViewer(container) {
     // state.running is the id of the study whose /predict is in flight, so "busy" is only
     // true for the study on screen. A run on another study leaves this one alone.
     const busy = state.running === study.id;
+    if (annotation && (annotation.studyId !== study.id || !state.editing || busy || annotation.geometry !== liveGeometry())) annotation = null;
     applyTransform(state);
     if (study.id !== labelStudyId) {
       labelStudyId = study.id;
