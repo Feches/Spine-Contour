@@ -137,3 +137,40 @@ def test_public_report_omits_references_case_details_paths_and_error_text():
     text = str(report)
     assert 'private-case' not in text and '/private/scan.png' not in text
     assert 'predictions' not in report and 'cases' not in report
+
+
+def test_processing_scenarios_cannot_cancel_each_others_regression():
+    p, m, b = fixture()
+    rule = copy.deepcopy(p['metrics']['SS'])
+    rule['reference_count'] = 1
+    p['metrics'] = {'full-spine|SS': copy.deepcopy(rule), 'auto-landmarks|SS': copy.deepcopy(rule)}
+    m['cases'][0]['reference'] = {'full-spine|SS': 30}
+    m['cases'][1]['reference'] = {'auto-landmarks|SS': 30}
+    b['predictions'] = {'a': {'full-spine|SS': 31}, 'b': {'auto-landmarks|SS': 35}}
+    result = gate.compare(p, m, b, {'a': {'full-spine|SS': 32}, 'b': {'auto-landmarks|SS': 30}})
+    assert not result['passed']
+    assert any('full-spine|SS: mean error regression' == reason for reason in result['failures'])
+
+
+def test_predict_forwards_original_bytes_to_full_pipeline(monkeypatch, tmp_path):
+    # IO contract test only: the byte string is not a scan or evidence of inference accuracy.
+    import types
+    path = tmp_path / 'original.bin'
+    path.write_bytes(b'original byte payload')
+    received = {}
+    class Response:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return {'measurements': {'SS': 30}}
+    def post(url, data, files, timeout):
+        received.update(url=url, data=data, payload=files['file'][1].read())
+        return Response()
+    monkeypatch.setitem(sys.modules, 'httpx', types.SimpleNamespace(post=post))
+    case = {'image': 'original.bin', 'request': {'modality': 'xray', 'body_part': 'auto', 'crop_localizer': True,
+        'crop_method': 'search', 'view_selection': 'classifier'}, 'reference': {'auto-classifier|SS': 29}}
+    assert runner.predict('http://127.0.0.1:1234', case, tmp_path) == {'auto-classifier|SS': 30}
+    assert received['url'].endswith('/predict')
+    assert received['payload'] == path.read_bytes()
+    assert received['data']['body_part'] == 'auto'
+    assert received['data']['crop_method'] == 'search'
+    assert received['data']['crop_localizer'] == 'true'
