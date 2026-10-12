@@ -253,7 +253,7 @@ test('the schema check enforces the keywords the label record relies on', () => 
   assert.throws(() => ok({ additionalProperties: { type: 'string' } }, {}), /additionalProperties/);
 });
 
-test('the schema check enforces uniqueItems, and enum and minimum inside items (D18)', () => {
+test('the schema check enforces uniqueItems, an enum inside items, and an integer minimum (D18)', () => {
   const ok = (schema, value) => validateAgainst(schema, value);
   const keys = { type: 'array', uniqueItems: true, items: { enum: ['sa', 'sp'] } };
   assert.equal(ok(keys, []).ok, true);

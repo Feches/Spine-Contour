@@ -320,6 +320,19 @@ test('entering edit mode forgets a ready window when the film comes back without
   });
 });
 
+test('entering edit mode leaves a ready window alone when the film outcome is superseded', async () => {
+  const study = failedAutoFilm('SP-9509');
+  wire([], async () => ({ images: null, raw: null, reason: null, superseded: true }));
+  await withStore(study, async () => {
+    const kept = readyWindow(study.id);
+    setState({ filmWindow: kept });
+    await enterLevelEditor(study.id);
+    await settle();
+    assert.equal(getState().editing, true);
+    assert.equal(getState().filmWindow, kept, 'a superseded outcome says nothing about the film: the same window');
+  });
+});
+
 test('entering edit mode keeps a ready window when the film comes back with its decoded original, and a loading one either way', async () => {
   const study = failedAutoFilm('SP-9507');
   const raw = { width: IMAGE.width, height: IMAGE.height, valueMin: 0, valueMax: 255 };
