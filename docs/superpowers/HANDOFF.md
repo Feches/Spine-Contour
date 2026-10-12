@@ -136,7 +136,9 @@ R28; the step chips, re-placing and UNDO; window / level outside edit mode, the 
 right-click, a chord still panning; R35–R37 from their review; a record saved after one corner drag lists that corner
 in `edited_points` and counts it in `edits`) and the owner's decision R24 (a hand-placed film that had failed still reads
 Failed). Then a release commit (1.0.18 or later; `docs/release-main.md`) and a PR, all on the owner's say-so (memory:
-test before release). Nothing is pushed.
+test before release). Nothing is pushed. After the merge, the next piece of work is retraining the models from the
+label records: `docs/superpowers/NEXT-SESSION-retraining.md` is the prompt for that brainstorm (its own branch; no app
+change).
 
 **Follow-ups (deferred; see `docs/ROADMAP.md` §8):** the handoff's row keys (↑/↓, Space, P); a batch started from the
 Find tab can still overtake an open or stashed editor; a hand-placed film whose
