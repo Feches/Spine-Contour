@@ -3,8 +3,8 @@
 **Last updated:** 2026-10-11
 **Branch:** `worktree-level-editor` in the worktree `.claude\worktrees\level-editor` of the main checkout, off
 `origin/main` @ `20fd4c5` (v1.0.17): the vertebral level editor, window / level and the label record — BUILT, human
-gate IN PROGRESS since 2026-10-11 (G1–G5 are its findings so far), nothing pushed (first section under "Where
-things stand").
+gate IN PROGRESS since 2026-10-11 (G1–G5 are its findings so far), pushed to `origin` on 2026-10-12 for the owner's
+PR to `main` (first section under "Where things stand").
 **2026-10-02 branch (historical):** `claude/issue-39-failed-status-port` (the Failed-status additions on 1.0.13, issue
 #39 follow-up; DONE, merged with v1.0.14, release 1.0.15 committed and awaiting the PR)
 **Checkout:** `C:\Users\codyj\Spine Contour Desktop\Spine-Contour`, the main checkout on this workstation (no
@@ -136,7 +136,9 @@ R28; the step chips, re-placing and UNDO; window / level outside edit mode, the 
 right-click, a chord still panning; R35–R37 from their review; a record saved after one corner drag lists that corner
 in `edited_points` and counts it in `edits`) and the owner's decision R24 (a hand-placed film that had failed still reads
 Failed). Then a release commit (1.0.18 or later; `docs/release-main.md`) and a PR, all on the owner's say-so (memory:
-test before release). Nothing is pushed. After the merge, the next piece of work is retraining the models from the
+test before release). The branch was pushed to `origin` on 2026-10-12 at the owner's choice; the PR to `main` is the
+owner's to open and merge, and merging publishes nothing until the release commit lands (`package.json` still says
+1.0.17). After the merge, the next piece of work is retraining the models from the
 label records: `docs/superpowers/NEXT-SESSION-retraining.md` is the prompt for that brainstorm (its own branch; no app
 change).
 

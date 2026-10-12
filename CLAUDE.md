@@ -56,7 +56,10 @@ sidebar's return keep the window); unit 925/925, `smoke-levels.mjs` dom 102/102 
 not re-run). Then G5 (D18, R38/R39, HANDOFF decisions 129–131): the label record lists each level's and head's
 `edited_points` (`changedPoints`, `edited` exactly when not empty) and an `edits` summary, both optional under the same
 schema id, with the window re-review's two minors folded in; `3e552e6` and a records commit, unit 939/939
-(`smoke-levels.mjs` +3 dom and +2 film checks, not yet run). Releases as 1.0.18 or later; nothing pushed.
+(`smoke-levels.mjs` dom 105/105 and film 25/25 after it; the G5 review's three minors `c31ce66`, unit 940/940). The
+retraining brainstorm's prompt is `docs/superpowers/NEXT-SESSION-retraining.md`. Pushed to `origin` (Feches) at the
+owner's choice on 2026-10-12; the PR to `main` is the owner's to open and merge. Merging publishes nothing: the 1.0.18
+release commit (`docs/release-main.md`) is separate work.
 
 **2026-10-07 release 1.0.16 (crop search restored):** branch `ccr-af336f0e-7wacoa` off `main` @ `f2e39e0`, the merge
 of Michael's PR #57 (`0bd01c5`), which retires 1.0.13's trained crop method: Settings shows Crop search only,
