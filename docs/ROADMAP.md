@@ -358,7 +358,8 @@ import, in `renderer/components/clinical-data.js`, `renderer/components/measurem
 `renderer/components/viewer.js`, `renderer/screens/studies.js` and `renderer/screens/parameters.js`. It
 belongs in `renderer/dom.js` as one export — the contract already lists `dom.js` as "el() helper, tiny
 render utilities" — but consolidating touches five files and the contract's `dom.js` block, so it waits
-for its own small change rather than riding on a feature task.
+for its own small change rather than riding on a feature task. (2026-10-10: a sixth copy came with the level
+editor's panel, `renderer/components/level-editor.js`.)
 
 ---
 
@@ -373,3 +374,47 @@ checklist over two hundred unique filenames is worse than the search box. A filt
 reads `Showing 5 of 9 · Clear filters`; the empty state offers the same link. The Find list's filters would then be a
 session-only store key of its own (`findFilters`, multi-value per column), and the grid's bar would be rebuilt over the same
 popover. Decide first whether the two tabs share one filter state or each keeps its own.
+
+---
+
+## 8. The level editor's deferred items (2026-10-10)
+
+From the level editor (plan `docs/superpowers/plans/2026-10-10-level-editor.md`, whose Ledger lists every deferred
+minor by task; user doc `docs/level-editor.md`). None blocks the human gate; each wants the owner's call before it is
+built.
+
+- **Row keys.** The handoff's suggested keyboard for the panel (↑/↓ between level rows, Space to toggle visible, P for
+  Place…) is not built (plan Global Constraints). Tab, the arrows and Escape work on the stage today.
+- **Window / level beyond the view.** ~~The W/L tool shows only while editing; reading a film at another window outside
+  edit mode is unbuilt.~~ Built 2026-10-11 (gate feedback G3 and G4, D15–D17: the tool in every mode, the window kept
+  for the view like zoom and pan, a right-button drag and a double right-click). Still unbuilt: remembering a window per
+  study across opens or sessions, and recording it in the label record (D11 keeps it display only and unsaved).
+- **A batch can overtake an open or stashed editor.** Ruling R17 disables a run from the stage while editing, but a
+  batch started from the Find tab that reaches a film with an open or stashed level editor drops that editor, and its
+  unsaved level state, when the film's run completes.
+- **A hand-placed film whose source moved** opens outside edit mode to a black stage with no card; the reason (`The
+  source film could not be found.`) is toasted only when Edit is pressed. A card with a relocate would say why up front.
+  Related: a very old record with a sidecar but neither a prediction id nor `qc.models` reads as hand-placed (R16).
+- **A hand-placed film that had failed still reads Failed (R24, the owner's decision).** A film whose segmentation
+  failed and whose levels were then placed by hand keeps its `processingError`: it reads Failed, sorts first and blocks
+  Mark reviewed until a run succeeds. Clear `processingError` on the first hand-placed commit, or give such a film a
+  status of its own? On the human gate's checklist (plan Task 15); nothing changed in code.
+- **Stage layout.** The edit bar's help line makes it taller: in a small window it covers the film's upper landmarks
+  (the smoke suites now run at 1600x1100), and the W/L panel at top 116 px may overlap a two-row edit bar. A level's
+  label plate is fixed to the right of its posterior corner and not clamped to the canvas, so it can run off an
+  anterior-right film; labels are drawn interleaved with fills, so a later level can cover an earlier plate (Task 9).
+- **Placement edges.** Clicks on the black surround miss beyond the film at zoom < 1 (listen on `.viewer-stage`); a
+  FRESH_VIEW in the middle of a save drops the edits made after the save's snapshot from the stash (Task 10).
+- **Cost.** `imageInfo` decodes the original of a segmented film just to hash the stored image for Save edits (since
+  2026-10-12, R42, Mark reviewed's record reads the stored image only, `{ storedOnly: true }`), and `imagesFromRaw`
+  keeps a shared scratch buffer of up to 100 MB alive for a decoded film even without W/L (Tasks 8 and 10); the contour
+  simplifier's farthest-pair split is O(n²) (Task 12).
+- **Copy and dead code.** The quarantine notice names `labels.corrupt` even for a library that never had labels, and
+  the delete toast names the sidecar when it was the label delete that failed (Task 6); the exit prompt's copy lives
+  untested in the DOM module, and CLEAR/CANCEL get no hover feedback on a selected row (Task 11); after Task 13 the
+  canvas's non-editor femoral selected stroke, `selection` in the viewer's dynamic key and a few "retrace" comments are
+  dead. The decode logic is adapted from `server._decode_grayscale` rather than shared; a MONOCHROME1 parity test would
+  guard drift (Task 7).
+- **Smoke coverage.** `smoke-cervical.mjs` and `smoke-segmental.mjs` need a lateral cervical film this workstation does
+  not have, and both screenshot the real film they run on, against the rule that no screenshot of a real film is taken;
+  their screenshots should go before they run again.

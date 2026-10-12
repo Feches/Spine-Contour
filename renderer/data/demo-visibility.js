@@ -8,10 +8,12 @@ import { merge } from './persistence.js';
 import { withIds } from './parameters.js';
 
 // Every path that changes openId resets the per-study view state, so a study never inherits the
-// previous one's zoom, pan, selection or edit mode. The same seven keys as screens/studies.js's
+// previous one's zoom, pan, selection, edit mode or window / level. The same nine keys as screens/studies.js's
 // FRESH_VIEW, repeated here because data/ never imports from screens/. Exported so
 // test/demo-visibility.test.js can pin the two copies equal.
-export const FRESH_VIEW = { selectedLevel: null, zoom: 1, panX: 0, panY: 0, panMode: false, editing: false, selection: null };
+export const FRESH_VIEW = {
+  selectedLevel: null, zoom: 1, panX: 0, panY: 0, panMode: false, editing: false, selection: null, levelEditor: null, filmWindow: null,
+};
 
 export function demoStudiesShown(state) {
   return (state?.studies ?? []).some((study) => study.source === 'demo');

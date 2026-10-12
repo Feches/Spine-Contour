@@ -1,7 +1,5 @@
-import { LEVELS, CORNERS, landmarkAt, setLandmarkAt, femoralCircle, setFemoralCircle, FEMORAL_SIDES, landmarkHandles } from './geometry.js';
-
 export const ZOOM_MIN = 0.6;
-export const ZOOM_MAX = 2.4;
+export const ZOOM_MAX = 8;
 export const ZOOM_STEP = 1.25;
 
 export function clampZoom(zoom) {
@@ -31,6 +29,38 @@ export function isChordHeld(buttons) {
 }
 
 /**
+ * (Gate feedback G4, 2026-10-11; plan D17) Whether a press completes a double click with the press before it.
+ * Browsers fire `dblclick` for the primary button only, so the stage's double right-click (the window / level reset)
+ * is detected here: the same button, no more than `withinMs` after the first press and no more than `withinPx` from
+ * it. The caller passes the presses' own times (a pointer event's `timeStamp`); nothing here reads a clock.
+ *
+ * @param {{time:number, clientX:number, clientY:number, button:number}|null} previous the press before, or null
+ * @param {{time:number, clientX:number, clientY:number, button:number}|null} next the press now
+ * @param {{withinMs?:number, withinPx?:number}} [limits]
+ * @returns {boolean}
+ */
+export function isDoubleClick(previous, next, { withinMs = 400, withinPx = 6 } = {}) {
+  if (!previous || !next || previous.button !== next.button) return false;
+  const elapsed = next.time - previous.time;
+  return elapsed >= 0 && elapsed <= withinMs
+    && Math.hypot(next.clientX - previous.clientX, next.clientY - previous.clientY) <= withinPx;
+}
+
+/**
+ * (2026-10-11, ruling R37) Whether the pointer has moved far enough from its press to begin a drag: at least `px` CSS
+ * pixels in a straight line (3 by default). The stage's right press windows the film only once this is true, so a
+ * stray right click, or a right-first chord whose left button joins before the pointer moves, decodes nothing.
+ *
+ * @param {{clientX:number, clientY:number}} start the press
+ * @param {{clientX:number, clientY:number}} point the pointer now
+ * @param {number} [px] the distance, CSS px
+ * @returns {boolean}
+ */
+export function exceedsSlop(start, point, px = 3) {
+  return Math.hypot(point.clientX - start.clientX, point.clientY - start.clientY) >= px;
+}
+
+/**
  * Zoom about a point rather than the film's centre.
  *
  * components/viewer.js writes `translate(panX,panY) scale(zoom)` on .viewer-host, which is
@@ -47,7 +77,7 @@ export function isChordHeld(buttons) {
  *
  * The step and the clamp happen INSIDE and k comes from the CLAMPED result, so a tick at
  * ZOOM_MIN/ZOOM_MAX gives k === 1 and leaves the pan alone. Deriving k from the REQUESTED zoom
- * instead makes the film creep further every tick while the zoom label sits frozen at 240%.
+ * instead makes the film creep further every tick while the zoom label sits frozen at 800%.
  *
  * Takes a DIRECTION, not a factor, so the wheel and the toolbar buttons agree bit-for-bit:
  * `zoom * (1/ZOOM_STEP)` is not `zoom / ZOOM_STEP` in binary floating point.
@@ -113,93 +143,6 @@ export function vertebraAt(geometry, point, radius = 20) {
  * @property {'left'|'right'} [side]   present when kind === 'femoral'
  * @property {'center'|'rim'} [part]   present when kind === 'femoral'
  */
-
-// The 22 landmark stops in anatomical order: L1 SA,SP,IA,IP · L2 … · L5 · S1 SA,SP.
-export const TAB_ORDER = [
-  ...LEVELS.flatMap((level) => CORNERS.map((corner) => ({ kind: 'landmark', level, corner }))),
-  { kind: 'landmark', level: 'S1', corner: 'SA' },
-  { kind: 'landmark', level: 'S1', corner: 'SP' },
-];
-
-// What Tab / Shift+Tab actually cycle: the landmarks plus the two femoral-head centres. The
-// heads are not landmarks, so they are not in TAB_ORDER, but the spec requires them to be
-// reachable by keyboard. Rim handles are not stops of their own -- see nextSelection.
-export const FULL_ORDER = [
-  ...TAB_ORDER,
-  { kind: 'femoral', side: 'left', part: 'center' },
-  { kind: 'femoral', side: 'right', part: 'center' },
-];
-
-// Exact handle identity. The canvas uses it to decide which handle is selected or hovered,
-// and the viewer uses it to skip a hover redraw when nothing changed.
-export function sameHandle(a, b) {
-  if (!a || !b || a.kind !== b.kind) return false;
-  if (a.kind === 'landmark') return a.level === b.level && a.corner === b.corner;
-  return a.side === b.side && a.part === b.part;
-}
-
-// Tab stops are per femoral SIDE: the rim handle is not a stop of its own, so a rim
-// selection resolves to its side's centre stop for cycling purposes.
-function sameStop(stop, current) {
-  if (stop.kind !== current.kind) return false;
-  if (stop.kind === 'landmark') return stop.level === current.level && stop.corner === current.corner;
-  return stop.side === current.side;
-}
-
-export function nextSelection(current, direction, geometry) {
-  const full = geometry?.region === 'cervical' ? landmarkHandles(geometry)
-    : geometry?.region === 'full_spine' ? [...landmarkHandles(geometry), ...FULL_ORDER.filter(stop => stop.kind === 'femoral')] : FULL_ORDER;
-  const order = geometry ? full.filter(stop => stop.kind === 'landmark'
-    ? landmarkAt(geometry, stop.level, stop.corner) : femoralCircle(geometry, stop.side)) : full;
-  if (!order.length) return null;
-  const step = direction < 0 ? -1 : 1;
-  const last = order.length - 1;
-  const index = current ? order.findIndex((stop) => sameStop(stop, current)) : -1;
-  if (index === -1) return step > 0 ? order[0] : order[last];
-  return order[(index + step + order.length) % order.length];
-}
-
-// Moves the selected handle by (dx, dy) image pixels. Mutates `geometry` -- callers hand it
-// a working copy, never the store's object (see components/viewer.js).
-export function nudge(geometry, selection, dx, dy) {
-  if (selection.kind === 'landmark') {
-    if (!landmarkAt(geometry, selection.level, selection.corner)) return geometry;
-    const [x, y] = landmarkAt(geometry, selection.level, selection.corner);
-    setLandmarkAt(geometry, selection.level, selection.corner, [x + dx, y + dy]);
-    return geometry;
-  }
-  const circle = femoralCircle(geometry, selection.side);
-  if (!circle) return geometry;
-  const [cx, cy, r] = circle;
-  if (selection.part === 'center') {
-    return setFemoralCircle(geometry, selection.side, [cx + dx, cy + dy, r]);
-  }
-  // The rim has one degree of freedom. Right/up grow the radius, left/down shrink it,
-  // floored at 1px: the backend rejects a non-positive radius (backend/utils.py:296).
-  return setFemoralCircle(geometry, selection.side, [cx, cy, r + dx - dy]);
-}
-
-// Coordinate-space agnostic: operates on whatever space `circles` and (x, y) share. The
-// viewer feeds it circles mapped into client space so the hit radius is 14 CSS pixels at
-// any zoom, the same convention nearestLandmark uses.
-export function hitTestFemoral(circles, x, y, radius = 14) {
-  let best = null;
-  let bestDistance = Infinity;
-  circles.forEach(([cx, cy, r], index) => {
-    const side = FEMORAL_SIDES[index];
-    const centerDistance = Math.hypot(x - cx, y - cy);
-    if (centerDistance <= radius && centerDistance < bestDistance) {
-      best = { kind: 'femoral', side, part: 'center' };
-      bestDistance = centerDistance;
-    }
-    const rimDistance = Math.abs(centerDistance - r);
-    if (rimDistance <= radius && rimDistance < bestDistance) {
-      best = { kind: 'femoral', side, part: 'rim' };
-      bestDistance = rimDistance;
-    }
-  });
-  return best;
-}
 
 // 1px per press, 10px with Shift (spec section 12).
 export function arrowKeyDelta(key, shiftKey) {

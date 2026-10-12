@@ -73,12 +73,18 @@ try {
     return Math.abs(m.C2C7_SVA_MM-m.C2C7_SVA_PX*.2)<1e-8
       &&document.querySelector('[data-row-key="C2C7_SVA"] .meas-value').textContent.endsWith('mm');
   })()`));
-  await cdp.setState('{editing:true,selectedLevel:null,selection:null,panMode:false}');
+  // (2026-10-10) Edit mode is the level editor's: the Edit segmentation button, then C2 selected and its centroid
+  // handle focused through the page's renderer/level-editor.js (C2 is an inferior endplate plus a centroid, D8).
+  await cdp.setState('{selectedLevel:null,selection:null,panMode:false}');
   await cdp.send('Page.bringToFront');
+  await cdp.evaluate("document.querySelector('[aria-label=\"Edit segmentation\"]').click()");
+  await until("import('./renderer/store.js').then(m=>Boolean(m.getState().levelEditor))");
   const centroid = await cdp.evaluate("import('./renderer/store.js').then(m=>m.getState().studies[0].geometry.c2_centroid)");
-  const location = await cdp.toClient(...centroid);
-  await cdp.click(location.x, location.y);
-  check('C2 centroid is an editable handle', await cdp.evaluate("import('./renderer/store.js').then(m=>m.getState().selection?.corner==='CENTROID')"));
+  await cdp.evaluate("import('./renderer/level-editor.js').then(m=>{m.selectLevelRow('C2');m.setFocusedHandle({code:'C2',handle:'CENTROID'});const a=document.activeElement;if(a&&a.blur)a.blur();return true;})");
+  check('C2 centroid is an editable handle', await cdp.evaluate(`import('./renderer/viewer/level-handles.js').then(async h=>{
+    const e=(await import('./renderer/store.js')).getState().levelEditor;const p=h.handleAt('C2',e.levels.C2.geometry,'CENTROID');
+    return e.handle?.code==='C2'&&e.handle?.handle==='CENTROID'&&p&&p[0]===${centroid[0]}&&p[1]===${centroid[1]};
+  })`));
   await cdp.key('ArrowRight');
   await until(`import('./renderer/store.js').then(m=>{const s=m.getState();return !s.measurementDrafts['SP-9801']&&Math.abs(s.studies[0].geometry.c2_centroid[0]-${centroid[0]+1})<1e-7;})`);
   check('centroid nudge recalculates SVA through the real backend', await cdp.evaluate(`import('./renderer/store.js').then(m=>{
@@ -96,7 +102,9 @@ try {
     (await import('./renderer/calibration.js')).rememberCalibration(s.filePath,{...s.calibration,status:'cleared',spacing:null,selected_index:null});
   })()`);
   check('clearing scale restores explicitly uncalibrated pixel SVA', await cdp.evaluate("document.querySelector('[data-row-key=\"C2C7_SVA\"]').textContent.includes('UNCALIBRATED')&&document.querySelector('[data-row-key=\"C2C7_SVA\"] .meas-value').textContent.endsWith('px')"));
-  await cdp.setState('{editing:false}');
+  // After the reset nothing is unsaved, so DONE leaves edit mode at once.
+  await cdp.evaluate("document.querySelector('.viewer-editbar > button:last-of-type').click()");
+  await until("import('./renderer/store.js').then(m=>!m.getState().editing&&!m.getState().levelEditor)");
   await cdp.settle(500);
   await cdp.send('Page.reload', { ignoreCache: true });
   await cdp.settle(700);

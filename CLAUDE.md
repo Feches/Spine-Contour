@@ -1,5 +1,73 @@
 # Spine Contour
 
+**2026-10-10 vertebral level editor, window / level, label record (BUILT, human gate IN PROGRESS since 2026-10-11):** branch
+`worktree-level-editor` in worktree `.claude/worktrees/level-editor`, off `origin/main` @ `20fd4c5` (v1.0.17). Edit mode
+is a level editor: the right panel becomes the Vertebral levels panel, sixteen levels in five groups (C2–C7, T1 · T4,
+L1–L5, S1, two femoral heads) with a visibility checkbox, a state badge and Place… / CLEAR / CANCEL each
+(`renderer/components/level-editor.js`, the model `renderer/data/levels.js`, the wiring `renderer/level-editor.js`, the
+only writer of `state.levelEditor`). The stage places a missed level by clicks (4, 3 for C2, 2 for T1/S1, 1 for T4, 2–4
+rim points for a head), gives only the selected level handles, and nudges with the arrows; projected levels reach
+`study.geometry` through `/measure` as before, while T1, T4, visibility and rim points live only in the level model and
+the record. Save edits writes `userData/labels/<stem>.label.json` (schema `docs/design/level-editor/label-record.schema.json`;
+`labelFile` on the study; deleted and quarantined with it), and since gate feedback G6 (2026-10-12, D19, R40/R41) Mark
+reviewed writes the zero-change record of a film that has none (`writeReviewRecord`, sharing `writeRecord` with Save
+edits; `ad2b70b` and a records commit, unit 948/948, `smoke-levels.mjs` dom 112/112; both after the push, not pushed);
+its review round 1 (R42) reads a segmented film's stored image only for that record (`imageInfo(id, { storedOnly:
+true })`, the cache or the sidecar, never `/decode`), so opening the next film straight after the click cannot fail
+it: unit 953/953, `smoke-levels.mjs` dom 114/114, not pushed.
+Window / level decodes the original film through a new
+`POST /decode` and windows the film layer only, display only (D1, D11); since gate feedback G3/G4 it works in every
+mode and belongs to the view like zoom and pan (`state.filmWindow`, written only by `renderer/film-window.js`;
+FRESH_VIEW resets it, Back and edit mode keep it), a right-button drag windows once it moves and a double right-click
+resets (D15–D17, R37);
+`qc.model_versions` names each graph. A film
+with no result opens in edit mode on its original and can be placed by hand (`isHandPlaced`, R16); Re-run is disabled
+while editing (R17). The old edit bar's RETRACE / ADD / DELETE CIRCLE and the landmark Tab, nudge and hit-test code are
+retired. Plan `docs/superpowers/plans/2026-10-10-level-editor.md` (Decisions D1–D19; its Ledger holds R1–R41 and every
+deferred minor); spec `docs/design/level-editor/HANDOFF.md`; user doc `docs/level-editor.md`; the contract's 2026-10-10
+amendment; HANDOFF's first "Where things stand" section. The final whole-branch review ("With fixes") landed `7e9d502`
+and `e3d5df7`: an Auto film with no model run takes its region from its placed levels on every projection (R20), Region
+and Orientation are disabled while editing (R21), a femoral head needs a radius of 0.5 px (R22); a hand-placed film
+that had failed still reads Failed, the owner's call at the gate (R24). The wave's re-review was clean; its one residual,
+a rim-point drag or nudge that would leave a head under 0.5 px, is refused (`f3a3a32`, R25). Unit 925/925 after the
+review of G3/G4 (918 after G3/G4, 901 after the gate feedback's review wave, 898 after G2, 888 after R25, 887 after the
+wave, 879 before it); `smoke-levels.mjs` dom 102/102 after that review (film 23/23 after G3/G4, not re-run); backend
+pytest 762 passed, 3 skipped. The pre-gate
+smoke run of 2026-10-11 on the final tree (`9287473`), every suite on its own fresh `%TEMP%` profile, one app at a time,
+DOM reads only: landing 16/16, parameters 58/58, studies 151/151, workspace 100/100, persist 42/42 then 55/55, parity
+15/15, gate1 25/25, gate2 26/26, gate3 26/26, chip 20/20, chord 28/28, femoral-confidence 16/16 then 5/5, disc-heights
+13/13, partial-segmentation 8/8, accuracy 17/17, global-sva 21/21, levels dom 75/75 and film 23/23, processing 15/15,
+onnx-localizer 10/10; two suites were stale since before the branch base and read 34/36 (seeding: the export's region
+and segmental columns and 1.0.14's header line) and a 240 s batch timeout (manual-calibration: Auto detection takes
+about 275 s for two films on this CPU) — fixed in `f610a8d`, after which seeding reads 36/36 and manual-calibration
+5/5, 7/7, 5/5 (retired checks and baselines in `tools/smoke/README.md`). The film phases need the ONNX graphs: this
+worktree's `backend/onnx/` holds hard links to the main checkout's (gitignored). Not run: a packaged build, the human
+gate (Task 15, checklist prepared in the plan), `smoke-cervical.mjs` and `smoke-segmental.mjs` (no cervical film here),
+`smoke-calibration.mjs` (no Tesseract binary and no ruler films here). The owner's gate feedback of 2026-10-11 (the
+plan's "Gate feedback" section, Ledger rows G1 and G2) is built: G1 zoom to 8x (`9e2deec`), and G2 the step chips choose
+which point the next click places, in any order, with UNDO clearing the most recently set point (`placing` is
+`{code, points, current, history}`, `setPlacingStep` / `selectPlacingStep`, rulings R26 and R27; `068c8e2`, unit
+898/898, `smoke-levels.mjs` dom expected 79/79 but not re-run). Their review (approved, four minors) landed `dcd0cb5`
+and a records commit: past 1:1 the overlay keeps its image-pixel size and magnifies with the film (R28), a LEFT-first
+chord's take-back of a re-placing press restores the placing from before it (`restorePlacing`), ROADMAP §8's fixed
+chord clause struck, HANDOFF decisions 114–116; unit 901/901. Then G3 and G4 (D15–D17, rulings R29–R34, HANDOFF
+decisions 117–125): window / level outside edit mode as the view's (`filmWindow`; the level editor carries no window),
+the right-button drag and the double right-click (`isDoubleClick`), `8cf213d` and its records commit; unit 918/918,
+`smoke-levels.mjs` dom 94/94 (section 17 new) and film 23/23, parity, gate1–3, chip and chord green on the same
+launch. Their review (approved, five minors; HANDOFF decisions 126–128) landed `8332dfb` and a records commit: a kept
+window is decoded again at the mount when another study's run took the film's cache entry, and forgotten when it cannot
+be (R35, `windowNeedsDecode` / `redecodeKeptWindow`); the open W/L panel outranks Pan for the left button (R36); a right
+press windows only once it has moved 3 CSS px (R37, `exceedsSlop`); D15 worded as the behaviour (Back and the
+sidebar's return keep the window); unit 925/925, `smoke-levels.mjs` dom 102/102 (the film phase and the other suites
+not re-run). Then G5 (D18, R38/R39, HANDOFF decisions 129–131): the label record lists each level's and head's
+`edited_points` (`changedPoints`, `edited` exactly when not empty) and an `edits` summary, both optional under the same
+schema id, with the window re-review's two minors folded in; `3e552e6` and a records commit, unit 939/939
+(`smoke-levels.mjs` dom 105/105 and film 25/25 after it; the G5 review's three minors `c31ce66`, unit 940/940). The
+retraining brainstorm's prompt is `docs/superpowers/NEXT-SESSION-retraining.md`. Pushed to `origin` (Feches) at the
+owner's choice on 2026-10-12; the PR to `main` is the owner's to open and merge. The 1.1.0 release commit (`package.json`,
+`version.js`, CHANGELOG, `docs/releases/1.1.0.md`, the README link) is on the branch: merging the PR with Create a merge
+commit publishes v1.1.0.
+
 **2026-10-07 release 1.0.16 (crop search restored):** branch `ccr-af336f0e-7wacoa` off `main` @ `f2e39e0`, the merge
 of Michael's PR #57 (`0bd01c5`), which retires 1.0.13's trained crop method: Settings shows Crop search only,
 `normalizePerformance` (backend-client.cjs) and `runtime.parse_options` route a saved or requested `model` to `search`,

@@ -262,6 +262,12 @@ them would hide the reason the study was worth a look.
   measurements to finish updating`).
 - Marking writes `reviewedAt: new Date().toISOString()`; unmarking writes `null`. One new-array
   `setState`; the saver writes it.
+- *Amended 2026-10-12 (the level editor's gate feedback G6, decision D19 of
+  `docs/superpowers/plans/2026-10-10-level-editor.md`):* Mark reviewed also writes the label record when the film has
+  none yet (`<userData>/labels/<stem>.label.json`, the zero-change record of the stored state; see
+  `docs/level-editor.md`). The mark is still set first by the same `setState` and never waits for or depends on the
+  write (R41); unmarking writes nothing; a film with a record, or with level edits open or stashed (R40), gets no
+  write. There is still no bulk Mark reviewed from the list, so no bulk record writing either.
 
 ### 8.4 The clearing rule
 

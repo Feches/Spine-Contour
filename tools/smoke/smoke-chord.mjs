@@ -6,9 +6,14 @@
 // mouseMoved with `button: 'none'`, which reads as "capture is lost during a chord" and is a
 // false negative. cdp.click and cdp.drag hardcode one button, so this drives the raw `mouse`
 // primitive throughout.
+//
+// (2026-10-10, level editor) Edit mode is entered through the Edit segmentation button, so a level editor exists,
+// and only the SELECTED level has handles: section 2 selects L3 through the page's renderer/level-editor.js before
+// starting its chord on L3's SA handle. A 1600x1100 viewport keeps the sample film clear of the edit bar.
 import { connect } from './cdp-lib.mjs';
 
 const cdp = await connect();
+await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1100, deviceScaleFactor: 1, mobile: false });
 let passed = 0;
 let failed = 0;
 function check(name, ok, detail) {
@@ -22,8 +27,15 @@ const RIGHT = 2;
 const BOTH = 3;
 
 async function resetView() {
-  await cdp.setState("{ zoom: 1, panX: 0, panY: 0, panMode: false, editing: false, selection: null, selectedLevel: null }");
+  await cdp.setState("{ zoom: 1, panX: 0, panY: 0, panMode: false, editing: false, levelEditor: null, selection: null, selectedLevel: null }");
   await cdp.settle(120);
+}
+
+// Edit mode as the user enters it: the toolbar's Edit segmentation button (renderer/level-editor.js enterLevelEditor).
+async function enterEdit() {
+  const pencil = await cdp.rect('.viewer-tool[aria-label="Edit segmentation"]');
+  await cdp.click(Math.round(pencil.cx), Math.round(pencil.cy));
+  await cdp.settle(250);
 }
 
 // One chord gesture. `order` is the press order; `release` is which button lifts first.
@@ -73,10 +85,11 @@ for (const order of ['left-first', 'right-first']) {
 
 // ---- 2. the chord outranks a handle drag while editing ----
 await resetView();
-await cdp.setState('{ editing: true }');
+await enterEdit();
+await cdp.evaluate("import('./renderer/level-editor.js').then((m) => { m.selectLevelRow('L3'); return true; })");
 await cdp.settle(150);
 // Geometry is { vertebrae: { L1..L5: { superior: [[x,y],[x,y]], inferior: [...] } }, ... }.
-// L3's first superior corner is a real, draggable landmark handle.
+// L3's first superior corner is a real, draggable handle while L3 is the selected level.
 const READ_L3 = "(async () => { const m = await import('./renderer/store.js'); const s = m.getState(); const g = s.studies.find(x => x.id === s.openId).geometry; return g.vertebrae.L3.superior[0]; })()";
 const geom = await cdp.evaluate("(async () => { const s = (await import('./renderer/store.js')).getState(); const g = s.studies.find(x => x.id === s.openId).geometry; return Object.keys(g.vertebrae); })()");
 const handle = await cdp.evaluate(READ_L3);
@@ -93,7 +106,7 @@ if (handle) {
 } else {
   check('editing: found an L3 landmark to test against', false, { keys: geom });
 }
-await cdp.setState('{ editing: false }');
+await cdp.setState('{ editing: false, levelEditor: null }');
 
 // ---- 3. zoom anchors at the cursor ----
 await resetView();
@@ -130,7 +143,7 @@ await cdp.settle(120);
 
 // ---- 5. the zoom clamp must not drift the pan ----
 await resetView();
-await cdp.setState('{ zoom: 2.4 }');
+await cdp.setState('{ zoom: 8 }');
 await cdp.settle(80);
 {
   const beforeClamp = await cdp.state();
@@ -170,9 +183,9 @@ await resetView();
 await cdp.setState('{ panMode: true }');
 await cdp.settle(100);
 {
-  const pencil = await cdp.rect('.viewer-tool[aria-label="Edit landmarks"]');
+  const pencil = await cdp.rect('.viewer-tool[aria-label="Edit segmentation"]');
   await cdp.click(Math.round(pencil.cx), Math.round(pencil.cy));
-  await cdp.settle(180);
+  await cdp.settle(250);
   const s = await cdp.state();
   check('clicking Edit turns edit mode on', s.editing === true, { editing: s.editing });
   check('clicking Edit clears pan mode', s.panMode === false, { panMode: s.panMode });
@@ -185,12 +198,16 @@ await cdp.settle(100);
   check('the chord still pans with pan mode off and edit mode on',
     near(r.after.panX, -45) && near(r.after.panY, 20), { panX: r.after.panX, panY: r.after.panY });
 }
-await cdp.setState('{ editing: false, panMode: false }');
+await cdp.setState('{ editing: false, levelEditor: null, panMode: false }');
 
 // ---- 8. pan still wins over edit when the toggle is pressed AFTER entering edit ----
 await resetView();
-await cdp.setState('{ editing: true, panMode: true }');
-await cdp.settle(120);
+await enterEdit();
+{
+  const pan = await cdp.rect('.viewer-tool[aria-label="Pan"]');
+  await cdp.click(Math.round(pan.cx), Math.round(pan.cy));
+  await cdp.settle(120);
+}
 {
   const s = await cdp.state();
   check('pressing Pan while already editing keeps both on (signed-off behaviour, unchanged)',

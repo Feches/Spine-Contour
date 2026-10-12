@@ -1,15 +1,18 @@
-import { predictionMatchesStudy } from '../data/predictions.js';
+import { predictionMatchesStudy, isHandPlaced, hasStoredImage } from '../data/predictions.js';
 import { studyRegion, requestedRegion, studyRegionLabel, requiresAnteriorSide, regionRunReason, validAnteriorSide } from '../data/cervical.js';
 import { imageConfidence, scorePercent } from '../data/confidence.js';
 import { el, mount } from '../dom.js';
 import { getState, setState, subscribe } from '../store.js';
 import {
-  predict, calibrate, saveCsv, savePrediction, loadPrediction, persistenceDisabledReason, readFile, selectFile,
+  predict, calibrate, saveCsv, savePrediction, loadPrediction, persistenceDisabledReason, readFile, selectFile, decodeFilm,
 } from '../api.js';
 import { showToast } from '../components/toast.js';
 import { toCsv } from '../data/csv.js';
-import { loadStudyImages, disposeStudyImages, thumbnailDataUri, bitmapFromBase64 } from '../viewer/canvas.js';
-import { mountViewer, recordPrediction, forgetPrediction } from '../components/viewer.js';
+import { loadStudyImages, disposeStudyImages, thumbnailDataUri, bitmapFromBase64, imagesFromRaw } from '../viewer/canvas.js';
+import { cropRaw, defaultWindow, rawFromDecoded } from '../viewer/window-level.js';
+import { mountViewer, recordPrediction, forgetPrediction, getPrediction, commitGeometry } from '../components/viewer.js';
+import { configureLevelEditor, forgetLevelEditor, requestExit, writeReviewRecord } from '../level-editor.js';
+import { configureFilmWindow, forgetFilmWindow, windowNeedsDecode, redecodeKeptWindow } from '../film-window.js';
 import { describeModels } from '../data/models.js';
 import { describeProcessor, processorTitle } from '../data/processing.js';
 import { WAIT_FOR_BATCH } from '../data/batch.js';
@@ -19,6 +22,7 @@ import { displayStatus, isReviewed, reviewedLabel, reviewBlockedReason } from '.
 import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
 import { failureReason, failureTitle } from '../data/failure.js';
 import { mountMeasurements } from '../components/measurements.js';
+import { mountLevelEditor } from '../components/level-editor.js';
 import { mountClinicalData } from '../components/clinical-data.js';
 import { calibrationForStudy } from '../calibration.js';
 import { preferReviewedCalibration } from '../data/calibration.js';
@@ -79,7 +83,9 @@ function cacheImages(studyId, images) {
   // holding the OLD cache entry -- disposing it here would detach bitmaps it still draws,
   // and ctx.drawImage on a detached ImageBitmap throws inside a store subscriber, which
   // stops every subscriber after it. Same identity check as the hand-off gate.
-  if (outgoing && outgoing.images !== images
+  // (2026-10-10) ensureFilm replaces an entry with a copy that carries the decoded original and
+  // SHARES the outgoing bitmaps; closing them would detach the copy's film.
+  if (outgoing && outgoing.images !== images && outgoing.images.image !== images.image
       && !(mounted && mounted.studyId === outgoing.studyId)) {
     disposeStudyImages(outgoing.images);
   }
@@ -94,6 +100,10 @@ let mounted = null;
 export function releaseStudy(studyId) {
   filePayloads.delete(studyId);
   runsByStudy.delete(studyId);
+  // (2026-10-10) Its level editor too, open or stashed: a reused id must never inherit this film's levels.
+  forgetLevelEditor(studyId);
+  // (2026-10-11, gate feedback G3) And its window / level: the decoded original goes with the cache entry below.
+  forgetFilmWindow(studyId);
   if (imageCache && imageCache.studyId === studyId) {
     // The entry always goes -- the next film can reuse this id. The bitmaps are CLOSED only
     // when no live viewer draws them (the same identity check cacheImages makes); a viewer
@@ -398,7 +408,19 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     const onScreen = Boolean(mounted && mounted.studyId === studyId);
     if (!batch || onScreen) cacheImages(studyId, images);
     if (onScreen) mounted.viewer.setImages(images);
-    else if (batch) disposeStudyImages(images);
+    else if (batch) {
+      disposeStudyImages(images);
+      // This study's OWN cache entry predates the result: an original-film preview (previewOriginal),
+      // a film decoded from its original (ensureFilm) or an earlier run's images. Left in place, the
+      // next open re-hands it instead of restoring the new sidecar (render()'s needsRestore is false
+      // while an entry exists) and ensureFilm returns it as this result's film. Dropped and closed
+      // here; no viewer draws it, since the study is not on screen (cacheImages' identity check).
+      if (imageCache && imageCache.studyId === studyId && !(mounted && mounted.studyId === studyId)) {
+        const stale = imageCache.images;
+        imageCache = null;
+        disposeStudyImages(stale);
+      }
+    }
 
     recordPrediction(studyId, response);
 
@@ -408,11 +430,14 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
     // Studies list the user may have opened study B and entered edit mode while A's /predict
     // was in flight: the viewer disables Edit only for the running study itself. A's completion
     // must not drop B out of edit mode. The error path below never touched either key.
+    // (2026-10-10) The study's level editor goes with its edit mode, and forgetLevelEditor below drops a
+    // stashed one: the levels it holds describe geometry this result has just replaced.
     setState((state) => ({
       running: null,
       runStage: null,
       editing: state.openId === studyId ? false : state.editing,
       selection: state.openId === studyId ? null : state.selection,
+      levelEditor: state.levelEditor?.studyId === studyId ? null : state.levelEditor,
       studies: state.studies.map((s) => (s.id === studyId
         ? { ...s, predictionId: requestId, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
           calibration: preferReviewedCalibration(response.calibration, calibrationForStudy(s)), thumbnail,
@@ -420,6 +445,10 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
           reviewedAt: null, processingError: null, processingErrorAt: null }
         : s)),
     }));
+    forgetLevelEditor(studyId);
+    // (2026-10-11, gate feedback G3) The result's images carry no decoded original: the window goes with the old
+    // film, and the next W/L press or right-button drag decodes again.
+    forgetFilmWindow(studyId);
     return warning ? { ok: true, warning } : { ok: true };
   } catch (error) {
     if (revision === runRevision) {
@@ -442,6 +471,8 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
 // STORED geometry as the measured one. Guarded like segmentStudy but per study: a newer
 // restore, a run for THIS study, or its deletion drops this one's result; navigation does not,
 // and `imageCache` deliberately survives it.
+// Resolves to its outcome, which render() ignores and ensureFilm reads: {status: 'restored', images},
+// {status: 'superseded'}, {status: 'missing'} (no sidecar for this result) or {status: 'failed', reason}.
 async function restoreFilm(studyId) {
   const revision = ++restoreRevision;
   // Per study, not runRevision: a batch bumps the global counter at every film's turn (batch spec
@@ -463,10 +494,10 @@ async function restoreFilm(studyId) {
     // missing sidecar, which already has a defined outcome (FILM UNAVAILABLE; a re-run
     // recreates it) rather than a wrong one.
     const sidecar = persistenceDisabledReason() ? null : await loadPrediction(studyId);
-    if (revision !== restoreRevision || runMoved()) return;
+    if (revision !== restoreRevision || runMoved()) return { status: 'superseded' };
     if (!predictionMatchesStudy(getState().studies.find(s => s.id === studyId), sidecar)) {
       if (live()) mounted.viewer.setFilmStatus('missing');
-      return;
+      return { status: 'missing' };
     }
     const images = await loadStudyImages(sidecar);
     const study = getState().studies.find((s) => s.id === studyId);
@@ -480,7 +511,7 @@ async function restoreFilm(studyId) {
     if (!study || study.addedAt !== addedAt || revision !== restoreRevision || runMoved()
         || !predictionMatchesStudy(study, sidecar)) {
       disposeStudyImages(images);
-      return;
+      return { status: 'superseded' };
     }
     cacheImages(studyId, images);
     recordPrediction(studyId, sidecar, study.geometry ? study.geometry : sidecar.geometry);
@@ -489,12 +520,215 @@ async function restoreFilm(studyId) {
       mounted.viewer.setImages(images);
       mounted.update();
     }
+    return { status: 'restored', images };
   } catch (error) {
-    if (revision !== restoreRevision) return;
+    if (revision !== restoreRevision) return { status: 'superseded' };
     if (live()) mounted.viewer.setFilmStatus('missing');
     showToast(`Could not load the film for ${studyId}: ${error.message}`);
+    return { status: 'failed', reason: error.message };
   }
 }
+
+// ---------------------------------------------------------------------------
+// (2026-10-10, level editor, Task 8) The film for the stage and its decoded original for the
+// display-only window / level (plan D1, D11). The decoded original lives on the cached images
+// object as `images.raw`, never in the store; releaseStudy drops it with the cache entry.
+
+const FILM_NOT_FOUND = 'The source film could not be found.';
+const FILM_MISMATCH = 'The original film does not match the stored image.';
+const SAVED_FILM_MISSING = 'The saved segmentation was not found.';
+
+function filmOutcome(images, raw, reason, superseded = false) {
+  return { images, raw, reason, superseded };
+}
+
+function cachedImages(studyId) {
+  return imageCache && imageCache.studyId === studyId ? imageCache.images : null;
+}
+
+// The ensureFilm in flight, so two callers (entering edit mode, then opening the W/L panel) share one
+// decode. Keyed by the record's identity and its run count, like every guard below.
+let filmLoad = null; // { studyId, addedAt, runs, promise } | null
+
+/**
+ * The open study's images and its decoded original. Never throws.
+ *
+ * `images`: the cache entry; else, for a study with a model result (not isHandPlaced), its restored sidecar
+ * (restoreFilm, every one of its guards kept); else -- a film with no result, the main case, or one whose
+ * levels were placed by hand with no model run (R16, isHandPlaced) -- built from the decoded original at its default
+ * window, cached and handed to the live viewer so the stage shows the film.
+ * `raw`: the RawFilm, decoded at most once per study and cached on `images.raw` (a NEW images object,
+ * so the viewer's reference-keyed static gate repaints); cropped to a toolbar-cropped stored image's
+ * height, refused on a width mismatch.
+ *
+ * @param {string} studyId
+ * @returns {Promise<{images: object|null, raw: import('../viewer/window-level.js').RawFilm|null,
+ *   reason: string|null, superseded: boolean}>}
+ *   `reason`: display-ready, set when `raw` is null and the call was not superseded; null otherwise.
+ *   `superseded`: true when the study was deleted, re-run, had its Region changed or its cache entry
+ *   replaced while this call was in flight; then `images`, `raw` and `reason` are null and nothing was
+ *   written. Not a failure to show: the caller may simply call again.
+ */
+export async function ensureFilm(studyId) {
+  const study = getState().studies.find((s) => s.id === studyId);
+  const runs = runsByStudy.get(studyId) ?? 0;
+  if (study && filmLoad && filmLoad.studyId === studyId && filmLoad.addedAt === study.addedAt && filmLoad.runs === runs) {
+    return filmLoad.promise;
+  }
+  const promise = loadFilm(studyId).catch((error) => filmOutcome(null, null, error?.message || 'The original film could not be loaded.'));
+  const entry = { studyId, addedAt: study?.addedAt, runs, promise };
+  filmLoad = entry;
+  promise.then(() => { if (filmLoad === entry) filmLoad = null; });
+  return promise;
+}
+
+async function loadFilm(studyId) {
+  const start = getState().studies.find((s) => s.id === studyId);
+  if (!start) return filmOutcome(null, null, 'The study is no longer in the library.');
+  // The record's identity and its run count at the start, checked after every await below: ids are
+  // max+1, so a deleted id is reused by the next film, and a run or a Region change (changeRegion
+  // bumps the count too) replaces the film this call is resolving.
+  const addedAt = start.addedAt;
+  const runAtStart = runsByStudy.get(studyId) ?? 0;
+  const current = () => {
+    const study = getState().studies.find((s) => s.id === studyId);
+    return study && study.addedAt === addedAt && (runsByStudy.get(studyId) ?? 0) === runAtStart ? study : null;
+  };
+  const superseded = () => filmOutcome(null, null, null, true);
+
+  // (1) The stored image. Only a model run writes one (a sidecar). A study whose geometry came from the level
+  // editor alone (isHandPlaced: no prediction id and no qc.models, ruling R16 as amended) has none: it is a film
+  // with no result here, shown from its decoded original, never FILM UNAVAILABLE. R-a below still holds for every
+  // model result that lost its sidecar, a pre-v1.0.10 one (qc.models, no id) included. (2026-10-12) The test is
+  // data/predictions.js hasStoredImage, which imageInfo's stored-only read shares (R42).
+  let images = cachedImages(studyId);
+  if (!images && hasStoredImage(start)) {
+    const restored = await restoreFilm(studyId);
+    if (!current() || restored.status === 'superseded') return superseded();
+    // The result's geometry is in the stored image's pixels and FILM UNAVAILABLE (re-run to restore
+    // it) is that film's defined outcome: the original is not swapped in under it.
+    if (restored.status !== 'restored') return filmOutcome(null, null, restored.reason || SAVED_FILM_MISSING);
+    images = restored.images;
+  }
+  // The cache must still hold what this call resolved: a replaced entry may already be closed.
+  const unchanged = () => current() && cachedImages(studyId) === images;
+  if (!unchanged()) return superseded();
+  if (images?.raw) return filmOutcome(images, images.raw, null);
+
+  // (2) The decoded original. The bytes are not parked: the decode is cached instead, and a read that
+  // lands after a delete must not leave bytes under an id the next film can reuse.
+  const study = current();
+  let raw;
+  try {
+    const data = await filmBytes(study, { park: false });
+    if (!unchanged()) return superseded();
+    if (!data) return filmOutcome(images, null, FILM_NOT_FOUND);
+    raw = rawFromDecoded(await decodeFilm({ name: study.fileName, data }));
+    if (!unchanged()) return superseded();
+    if (images && raw.width !== images.width) return filmOutcome(images, null, FILM_MISMATCH);
+    if (images) raw = cropRaw(raw, images.height);
+  } catch (error) {
+    if (!unchanged()) return superseded();
+    return filmOutcome(images, null, error?.message || 'The original film could not be decoded.');
+  }
+
+  // (3) Attach. A new images object either way; the cached one is never changed in place.
+  const next = images ? { ...images, raw } : imagesFromRaw(raw, defaultWindow(raw));
+  cacheImages(studyId, next);
+  if (mounted && mounted.studyId === studyId) {
+    mounted.viewer.setImages(next);
+    mounted.update();
+  }
+  return filmOutcome(next, raw, null);
+}
+
+/**
+ * (2026-10-10, level editor) What the label record says about the stored image (plan Task 10): the film's file
+ * name, the stored image's size and the hex SHA-256 of its grayscale bytes -- the red channel of every pixel,
+ * row by row -- which ties a record to the exact pixels with no identifier. For a film with no result the
+ * "stored image" is the decoded original at its default window, the image every point was placed on.
+ * `maskPixels` is the label mask's RGBA (red channel = label id) read from the cached mask bitmap, and `labels` the
+ * prediction's `{ L1: 20, ... }` map, for the record's contours (data/contours.js); both are null for a film shown
+ * from its decoded original, which has no mask. Rejects with a display-ready message when there is no film.
+ *
+ * (2026-10-12, review round 1 of gate feedback G6; ruling R42) `storedOnly`, the label record Mark reviewed writes:
+ * for a model result (data/predictions.js hasStoredImage) the stored image is read without its decoded original, which
+ * the record never needs: the cache entry when it holds this film, read at once with no await before its pixels, else
+ * the study's own sidecar read for this call alone (readStoredImages). No /decode runs, nothing is cached, no viewer is
+ * handed anything and no restore is started or superseded, so another film opened straight after the click can
+ * neither take the image from under the read nor be held up by it. The facts are the ones the full read gives: the
+ * decode only ever adds `raw` beside the same stored image, mask and labels (loadFilm step 3). A film whose stored
+ * image is its decoded original (no result, or placed by hand, R16) still goes through ensureFilm.
+ * `sidecarGeometry` is the model's own geometry from the sidecar such a private read loaded, else null: a restore
+ * records it as the viewer's prediction snapshot, which a private read does not do, so a caller that needs the model's
+ * geometry has it even when no restore ever lands (another film opened before it did).
+ * @param {string} studyId
+ * @param {{storedOnly?: boolean}} [options]
+ * @returns {Promise<{file: string, sha256: string, width: number, height: number,
+ *   maskPixels: Uint8ClampedArray|null, labels: object|null, sidecarGeometry: object|null}>}
+ */
+export async function imageInfo(studyId, { storedOnly = false } = {}) {
+  const start = getState().studies.find((s) => s.id === studyId);
+  let images;
+  let own = null; // images read for this call alone (readStoredImages): closed once their pixels are read
+  let sidecarGeometry = null;
+  if (storedOnly && hasStoredImage(start)) {
+    images = cachedImages(studyId);
+    if (!images) {
+      const read = await readStoredImages(start);
+      images = own = read.images;
+      sidecarGeometry = read.geometry;
+    }
+  } else {
+    const outcome = await ensureFilm(studyId);
+    if (outcome.superseded) throw new Error('The film changed while it was being read. Try again.');
+    if (!outcome.images) throw new Error(outcome.reason || SAVED_FILM_MISSING);
+    images = outcome.images;
+  }
+  try {
+    const study = getState().studies.find((s) => s.id === studyId);
+    if (!study) throw new Error('The study is no longer in the library.');
+    const { width, height } = images;
+    const scratch = document.createElement('canvas');
+    scratch.width = width;
+    scratch.height = height;
+    const context = scratch.getContext('2d', { willReadFrequently: true });
+    context.drawImage(images.image, 0, 0);
+    const rgba = context.getImageData(0, 0, width, height).data;
+    const grey = new Uint8Array(width * height);
+    for (let i = 0, o = 0; i < grey.length; i += 1, o += 4) grey[i] = rgba[o];
+    // The mask is read before the digest's await, while the cached bitmap is certainly open.
+    let maskPixels = null;
+    if (images.mask) {
+      context.clearRect(0, 0, width, height);
+      context.drawImage(images.mask, 0, 0);
+      maskPixels = context.getImageData(0, 0, width, height).data;
+    }
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', grey));
+    const sha256 = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+    return { file: study.fileName, sha256, width, height, maskPixels, labels: images.labels ?? null, sidecarGeometry };
+  } finally {
+    disposeStudyImages(own);
+  }
+}
+
+// (2026-10-12, R42) A model result's stored image read from its sidecar for one caller alone (imageInfo's stored-only
+// read when the cache does not hold the film, as when Mark reviewed is clicked before the restore has put it on the
+// stage), with the sidecar's geometry, the model's own: restoreFilm's two sidecar guards (persistence off reads as no
+// sidecar; the sidecar must belong to this record's result) and none of its side effects. The caller closes the images.
+async function readStoredImages(study) {
+  const sidecar = persistenceDisabledReason() ? null : await loadPrediction(study.id);
+  const live = getState().studies.find((s) => s.id === study.id);
+  if (!live || live.addedAt !== study.addedAt) throw new Error('The study is no longer in the library.');
+  if (!predictionMatchesStudy(live, sidecar)) throw new Error(SAVED_FILM_MISSING);
+  return { images: await loadStudyImages(sidecar), geometry: sidecar.geometry };
+}
+
+// The level editor's wiring (renderer/level-editor.js) gets the viewer's measure queue and prediction snapshots,
+// and this screen's film loader and image facts. Once, at import, like the subscription above.
+configureLevelEditor({ commitGeometry, getPrediction, ensureFilm, imageInfo });
+// (2026-10-11, gate feedback G3) The view's window / level (renderer/film-window.js) decodes through the same loader.
+configureFilmWindow({ ensureFilm });
 
 
 let previewRevision = 0;
@@ -561,7 +795,11 @@ export function render(state) {
     title: 'Back to studies',
     'aria-label': 'Back to studies',
     innerHTML: BACK_SVG,
-    onClick: () => setState({ screen: 'studies', editing: false, selection: null }),
+    // (2026-10-10) While editing, Back asks first when level edits are unsaved (D7), then returns to the list.
+    onClick: () => {
+      if (getState().editing) requestExit({ then: 'back' });
+      else setState({ screen: 'studies', editing: false, selection: null });
+    },
   });
 
   // The name is an input, not text: it is the one field on the header the user owns. It defaults
@@ -619,6 +857,9 @@ export function render(state) {
   // says: Processing while this study's run is in flight, Reviewed once marked. Rebuilt by update()
   // only when it would change.
   const statusHost = el('div', { class: 'analysis-status' });
+  // (2026-10-10, level editor Task 11) The header's eyebrow while editing (handoff §3), before the status badge;
+  // update() shows it only in edit mode.
+  const editingEyebrow = el('div', { class: 'analysis-meta analysis-editing', hidden: true }, 'EDITING SEGMENTATION');
 
   // The same DEMO pill the Studies list puts beside the patient. A demo study's numbers are
   // fabricated for exploring the interface; the header is where the user is looking when they
@@ -629,6 +870,7 @@ export function render(state) {
     headerMeta,
     study.source === 'demo' ? el('span', { class: 'pill-demo' }, 'DEMO') : null,
     el('div', { class: 'analysis-spacer' }),
+    editingEyebrow,
     statusHost,
     confidenceBadge);
 
@@ -645,7 +887,8 @@ export function render(state) {
 
   // Mark reviewed (studies-table spec 2026-09-10, section 8.3): one button that toggles the record's review
   // mark, with the reason it is disabled shown beside it -- Chromium shows no tooltip on a
-  // disabled control, and the Parameters bar already renders its reason as a visible note.
+  // disabled control, and the Parameters bar already renders its reason as a visible note. Marking also
+  // writes the label record of a film that has none (2026-10-12, D19; toggleReviewed below).
   const reviewButton = el('button', {
     type: 'button', class: 'btn btn-small analysis-review', 'aria-pressed': 'false',
     onClick: () => toggleReviewed(),
@@ -655,13 +898,20 @@ export function render(state) {
   const measurementsHost = el('div', { class: 'analysis-panel-host' });
   const similarHost = el('div', { class: 'analysis-similar is-hidden' },
     'Find similar arrives in a later build.');
+  // (2026-10-10, level editor Task 11) The Vertebral levels panel. In edit mode it replaces the tabs, the actions
+  // row and both tab bodies; update() swaps them. Its class is in the stage keyboard's own-Tab-order list
+  // (components/viewer.js OWN_TAB_ORDER), so Tab moves focus normally inside it.
+  const levelHost = el('div', { class: 'analysis-level-host is-hidden' });
 
+  const tabsRow = el('div', { class: 'analysis-tabs' },
+    el('div', { class: 'analysis-tabgroup' }, tabMeas, tabSim));
+  const actionsRow = el('div', { class: 'analysis-actions' }, exportButton, reviewButton, reviewNote);
   const panel = el('aside', { class: 'analysis-panel' },
-    el('div', { class: 'analysis-tabs' },
-      el('div', { class: 'analysis-tabgroup' }, tabMeas, tabSim)),
-    el('div', { class: 'analysis-actions' }, exportButton, reviewButton, reviewNote),
+    tabsRow,
+    actionsRow,
     measurementsHost,
-    similarHost);
+    similarHost,
+    levelHost);
 
   const viewerHost = el('div', { class: 'analysis-viewer-host' });
   const body = el('div', { class: 'analysis-body' }, viewerHost, panel);
@@ -674,7 +924,9 @@ export function render(state) {
   const clinicalHost = el('section', { class: 'clinical-data' });
   function changeRegion(patch) {
     const live = getState(), open = currentStudy(live);
-    if (!open || live.running || live.batch || open.source !== 'real') return;
+    // (2026-10-10, ruling R21) Not while editing: the change wipes the study's levels and drops the open editor
+    // without the exit prompt. Both selects are disabled then (update() below); this covers a keyboard activation.
+    if (!open || live.running || live.batch || live.editing || open.source !== 'real') return;
     // Invalidate any sidecar restoration already awaiting I/O as well as pending edits.
     runsByStudy.set(open.id, (runsByStudy.get(open.id) ?? 0) + 1);
     forgetPrediction(open.id);
@@ -682,10 +934,14 @@ export function render(state) {
     if (outgoing) imageCache = null;
     mounted?.viewer.setImages(null);
     if (outgoing) disposeStudyImages(outgoing.images);
-    setState({ editing: false, selection: null, selectedLevel: null,
+    setState({ editing: false, selection: null, selectedLevel: null, levelEditor: null,
       studies: live.studies.map(s => s.id === open.id ? { ...s, ...patch,
         geometry: null, measurements: null, qc: null, reviewedAt: null, predictionId: null,
         processingError: null, processingErrorAt: null } : s) });
+    // (2026-10-10) The film type the levels were opened for is gone; a stashed editor goes too.
+    forgetLevelEditor(open.id);
+    // (2026-10-11, gate feedback G3) So does the film on the stage, and its window with it.
+    forgetFilmWindow(open.id);
     mounted?.viewer.setFilmStatus(null);
     previewOriginal(open.id);
   }
@@ -701,13 +957,15 @@ export function render(state) {
   const regionNote = el('span', { class: 'meas-note' });
   const previewButton = el('button', { type: 'button', class: 'btn btn-small',
     onClick: () => previewOriginal(getState().openId) }, 'View original');
+  // (2026-10-10, ruling R17) No run starts while editing, from here either: see the stage's run handler below.
   const alignmentRunButton = el('button', { type: 'button', class: 'btn btn-small btn-primary',
-    onClick: () => segmentStudy(getState().openId) }, 'Run segmentation');
+    onClick: () => { if (!getState().editing) segmentStudy(getState().openId); } }, 'Run segmentation');
   const regionBar = el('div', { class: 'analysis-region-bar' }, el('label', {}, 'Region ', regionSelect), anteriorLabel, previewButton, alignmentRunButton, regionNote);
   const root = el('main', { class: 'analysis-screen' }, header, regionBar, body, clinicalHost);
 
   const viewer = mountViewer(viewerHost);
   const measurementsPanel = mountMeasurements(measurementsHost);
+  const levelPanel = mountLevelEditor(levelHost);
   const clinical = mountClinicalData(clinicalHost);
 
   viewer.setRunHandler(() => {
@@ -716,7 +974,10 @@ export function render(state) {
     // second click must not raise a second native dialog. It is not a run, so it never claims one.
     // `batch` (batch spec 8.3): no single run starts while a batch is up, including in the window
     // between two films where `running` is null.
-    if (live.running || live.batch || locating) return;
+    // (2026-10-10, ruling R17) `editing`: a run would replace the levels under the open level editor and drop its
+    // unsaved edits without the exit prompt, while edit mode hides the RUNNING card and its Cancel. The Re-run
+    // tool is disabled while editing; this covers every other way onto this handler.
+    if (live.running || live.batch || locating || live.editing) return;
     segmentStudy(live.openId);
   });
 
@@ -725,14 +986,21 @@ export function render(state) {
   if (imageCache && imageCache.studyId === study.id) viewer.setImages(imageCache.images);
   // Only DECIDED here; the restore itself starts after the first paint, because restoreFilm's
   // live() reads `mounted`. A demo study has no film to restore and no sidecar to read.
-  const needsRestore = !(imageCache && imageCache.studyId === study.id)
-    && study.source === 'real' && Boolean(study.measurements && study.geometry);
+  // (2026-10-10, ruling R16 as amended) Nor does a study no model run ever produced (isHandPlaced): its geometry
+  // came from the level editor, placed on the decoded original, so it is shown from that original (below).
+  const hasGeometry = study.source === 'real' && Boolean(study.measurements && study.geometry);
+  const needsRestore = !(imageCache && imageCache.studyId === study.id) && hasGeometry && !isHandPlaced(study);
+  const handPlaced = hasGeometry && isHandPlaced(study);
 
   // The mark is a timestamp on the record (spec 8.1); unmarking writes null. Refused for the reasons
   // reviewBlockedReason lists, which update() also shows beside the button, so a keyboard
   // activation of a disabled-looking button cannot slip through. One new-array write; the saver
   // subscribed in renderer/main.js persists it. Every write that changes the numbers clears it
   // again (spec 8.4) -- none of that is here.
+  // (2026-10-12, gate feedback G6; plan D19) Marking -- never unmarking -- also writes the film's label record when it
+  // has none yet: the zero-change record of the stored state (renderer/level-editor.js writeReviewRecord, which skips a
+  // study with a record or with level edits open or stashed, R40). The mark is set first and neither waits for nor
+  // depends on the write (R41); the write says how it went in a toast.
   function toggleReviewed() {
     const live = getState();
     const open = currentStudy(live);
@@ -743,6 +1011,7 @@ export function render(state) {
     setState((state) => ({
       studies: state.studies.map((study) => (study.id === open.id ? { ...study, reviewedAt } : study)),
     }));
+    if (reviewedAt) writeReviewRecord(open.id);
   }
 
   // What the header badge last showed; update() runs on every notification, pan frames included,
@@ -780,11 +1049,14 @@ export function render(state) {
     anteriorSelect.options[0].textContent = requestedRegion(open) === 'cervical' ? 'Choose anterior side…' : 'Auto detect';
     anteriorSelect.setAttribute('aria-label', requestedRegion(open) === 'auto' ? 'Anterior image side'
       : studyRegion(open) === 'full_spine' ? 'Full spine anterior image side' : 'Cervical anterior image side');
-    regionSelect.disabled = anteriorSelect.disabled = Boolean(live.running || live.batch || open.source === 'demo');
+    regionSelect.disabled = anteriorSelect.disabled = Boolean(live.running || live.batch || open.source === 'demo' || live.editing);
+    // (2026-10-10, ruling R21) Changing either wipes the study, levels included, so it waits for edit mode to end.
+    regionSelect.title = live.editing ? 'Finish editing before changing the region' : '';
+    anteriorSelect.title = live.editing ? 'Finish editing before changing the orientation' : '';
     const alignmentSetup = requiresAnteriorSide(open) && !open.measurements;
     previewButton.hidden = alignmentRunButton.hidden = !alignmentSetup;
     previewButton.disabled = Boolean(live.running || live.batch);
-    alignmentRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view));
+    alignmentRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view) || live.editing);
     // The preview message shows only during alignment setup: it is not cleared when a preview is
     // abandoned, so its being set is not enough.
     const previewNote = mounted?.previewMessage && alignmentSetup ? mounted.previewMessage : '';
@@ -866,11 +1138,22 @@ export function render(state) {
 
     tabMeas.classList.toggle('is-active', live.tab === 'meas');
     tabSim.classList.toggle('is-active', live.tab === 'sim');
-    measurementsHost.classList.toggle('is-hidden', live.tab !== 'meas');
-    similarHost.classList.toggle('is-hidden', live.tab !== 'sim');
+    // (2026-10-10, level editor Task 11) Edit mode swaps the panel: the tabs, the actions row and both tab bodies
+    // hide and the Vertebral levels panel shows; DONE brings them back on the tab that was active. A real
+    // boolean: classList.toggle with an undefined force toggles instead of setting.
+    const editing = Boolean(live.editing);
+    panel.classList.toggle('is-editing', editing);
+    tabsRow.classList.toggle('is-hidden', editing);
+    actionsRow.classList.toggle('is-hidden', editing);
+    measurementsHost.classList.toggle('is-hidden', editing || live.tab !== 'meas');
+    similarHost.classList.toggle('is-hidden', editing || live.tab !== 'sim');
+    levelHost.classList.toggle('is-hidden', !editing);
+    editingEyebrow.hidden = !editing;
 
     viewer.updateViewer(open);
     measurementsPanel.updateMeasurements(open);
+    // Same contract: every notification, and the panel's own gate decides whether to rebuild.
+    levelPanel.update(live, open);
     // Same contract as updateMeasurements: this runs on EVERY store notification, pan frames
     // included, and the component's own reference-keyed gate decides whether to rebuild. It
     // reads the store itself, so it takes no argument.
@@ -886,7 +1169,18 @@ export function render(state) {
   // update(), before writing such a caller.
   mounted = { viewer, update, studyId: study.id };
   update();
-  if (needsRestore) restoreFilm(study.id);
+  // (2026-10-11, ruling R35) A window the view kept for this film (Back, then the sidebar's OPEN STUDY card) over images
+  // with no decoded original -- another study's run took the single cache entry meanwhile, so the restore below would
+  // hand the viewer the stored image alone -- would read W / L on the chip while the film layer draws the stored image.
+  // ensureFilm (through redecodeKeptWindow) restores the stored image, attaches the decode and hands both to this
+  // viewer, so the window is drawn again; if no original comes back the window is forgotten.
+  if (windowNeedsDecode(getState(), study, cachedImages(study.id))) redecodeKeptWindow(study.id);
+  else if (needsRestore) restoreFilm(study.id);
   else if (!study.geometry && requiresAnteriorSide(study) && !(imageCache?.studyId === study.id && imageCache.images?.preview)) previewOriginal(study.id);
+  // (2026-10-10) Back on the screen still editing (the sidebar's OPEN STUDY card keeps the level editor) with
+  // no film cached for this study: load it, as entering edit mode did.
+  // (2026-10-10, ruling R16) A study whose geometry came from the level editor alone has no sidecar and is shown
+  // from its decoded original, the image its levels were placed on.
+  else if ((handPlaced || getState().levelEditor?.studyId === study.id) && !(imageCache?.studyId === study.id)) ensureFilm(study.id);
   return root;
 }

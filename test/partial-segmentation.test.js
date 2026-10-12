@@ -7,8 +7,8 @@ import { discRows } from '../renderer/data/disc-heights.js';
 import { toCsv, toPairedCsv, parse } from '../renderer/data/csv.js';
 import { pairStudies } from '../renderer/data/pairing.js';
 import { planBatch } from '../renderer/data/batch.js';
-import { landmarkAt, nearestLandmark } from '../renderer/viewer/geometry.js';
-import { nextSelection, nudge, vertebraAt } from '../renderer/viewer/interactions.js';
+import { landmarkAt, setLandmarkAt } from '../renderer/viewer/geometry.js';
+import { vertebraAt } from '../renderer/viewer/interactions.js';
 import { drawDynamicLayer, constructionLabel } from '../renderer/viewer/canvas.js';
 import { createMeasureQueue } from '../renderer/viewer/measure-queue.js';
 
@@ -120,23 +120,15 @@ test('an L1-only completed study stays out of the unsegmented batch queue', () =
   assert.deepEqual(plan.ids, ['SP-9902']);
 });
 
-test('picking, tabbing and nudging only visit present anatomy', () => {
+test('lookups and landmark edits only visit present anatomy', () => {
   const g = study().geometry;
-  const canvas = { width: 400, height: 400, getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 400 }) };
   assert.equal(landmarkAt(g, 'S1', 'SA'), null);
   assert.equal(landmarkAt(g, 'L2', 'SA'), null);
-  assert.equal(nearestLandmark(g, 40, 30, canvas).level, 'L1');
-  assert.equal(nearestLandmark(g, 300, 300, canvas), null);
   assert.equal(vertebraAt(g, [80, 40]), 'L1');
   assert.equal(vertebraAt(g, [80, 80]), null);
-  let selected = null;
-  const corners = [];
-  for (let i = 0; i < 5; i++) { selected = nextSelection(selected, 1, g); corners.push(selected.corner); }
-  assert.deepEqual(corners, ['SA', 'SP', 'IA', 'IP', 'SA']);
-  assert.equal(nextSelection(null, -1, g).corner, 'IP');
-  nudge(g, selected, 2, 3);
+  setLandmarkAt(g, 'L1', 'SA', [42, 33]);
   assert.deepEqual(g.vertebrae.L1.superior[0], [42, 33]);
-  nudge(g, { kind: 'landmark', level: 'L2', corner: 'SA' }, 1, 1);
+  setLandmarkAt(g, 'L2', 'SA', [1, 1]);
   assert.equal(g.vertebrae.L2, undefined);
 });
 
@@ -168,7 +160,7 @@ test('a corrected partial result commits atomically and survives the actual stud
     debounceMs: 1 });
   saver.notify(state); await saver.flush();
   const corrected = structuredClone(original.geometry);
-  nudge(corrected, { kind: 'landmark', level: 'L1', corner: 'SA' }, 2, 3);
+  setLandmarkAt(corrected, 'L1', 'SA', [42, 33]);
   queue.commitGeometry(original.id, corrected);
   await waiting;
   assert.deepEqual(reload(persisted[0]).geometry, original.geometry);

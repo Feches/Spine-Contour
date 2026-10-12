@@ -56,3 +56,36 @@ test('after disablePersistence, deletePrediction rejects without touching the br
   });
   assert.equal(touched, 0);
 });
+
+// Appended by the level editor's Task 6. The label record is a write like any other: after
+// disablePersistence the save and the delete reject without touching the bridge, while the load is a
+// read and still reaches it (loadPrediction is the precedent). Runs after the tests above, so
+// persistence is already off.
+test('after disablePersistence, saveLabelRecord and deleteLabelRecord reject without touching the bridge; loadLabelRecord still reads', async () => {
+  const { saveLabelRecord, deleteLabelRecord, loadLabelRecord, persistenceDisabledReason } = await import('../renderer/api.js');
+  const reason = persistenceDisabledReason();
+  assert.ok(reason, 'precondition: persistence is already disabled by the first test');
+  let writes = 0;
+  const reads = [];
+  await withWindow({
+    spineContour: {
+      saveLabelRecord: async () => { writes += 1; },
+      deleteLabelRecord: async () => { writes += 1; },
+      loadLabelRecord: async (name) => { reads.push(name); return null; },
+    },
+  }, async () => {
+    await assert.rejects(saveLabelRecord('a.label.json', {}), (err) => {
+      assert.match(err.message, /not being saved/);
+      assert.ok(err.message.includes(reason));
+      return true;
+    });
+    await assert.rejects(deleteLabelRecord('a.label.json'), (err) => {
+      assert.match(err.message, /not being saved/);
+      assert.ok(err.message.includes(reason));
+      return true;
+    });
+    assert.equal(await loadLabelRecord('a.label.json'), null);
+  });
+  assert.equal(writes, 0);
+  assert.deepEqual(reads, ['a.label.json']);
+});

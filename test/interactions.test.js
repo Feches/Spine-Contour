@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ZOOM_MIN, ZOOM_MAX, clampZoom, zoomIn, zoomOut, zoomAbout, isChordHeld, vertebraAt, TAB_ORDER, FULL_ORDER, sameHandle, nextSelection, nudge, hitTestFemoral, arrowKeyDelta, debounce } from '../renderer/viewer/interactions.js';
+import {
+  ZOOM_MIN, ZOOM_MAX, clampZoom, zoomIn, zoomOut, zoomAbout, isChordHeld, isDoubleClick, exceedsSlop, vertebraAt, arrowKeyDelta,
+  debounce,
+} from '../renderer/viewer/interactions.js';
 
 // The transform is `translate(pan) scale(zoom)` about the stage CENTRE, so a host-local point
 // p lands at C + P + z*(p - C). Working in centre-relative coordinates (offset = p - C) that is
@@ -74,8 +77,8 @@ test('zoomAbout leaves the pan untouched when the clamp bites, so repeated ticks
 });
 
 test('zoomAbout uses the POST-clamp zoom, so a partly-clamped step still anchors exactly', () => {
-  // 2.2 * 1.25 would be 2.75; the clamp cuts it to 2.4, so k is 1.0909..., not 1.25.
-  const view = { zoom: 2.2, panX: 30, panY: 0 };
+  // 7.2 * 1.25 would be 9; the clamp cuts it to 8, so k is 8/7.2 = 1.111..., not 1.25.
+  const view = { zoom: 7.2, panX: 30, panY: 0 };
   const anchored = pointUnder(view, [200, 0]);
   const next = zoomAbout(view, 1, 200, 0);
   assert.equal(next.zoom, ZOOM_MAX);
@@ -100,16 +103,19 @@ test('zoomAbout does not mutate the view it is given', () => {
   assert.notEqual(next.panX, 30);
 });
 
-test('clampZoom clamps to the 0.6..2.4 range and passes through in between', () => {
+test('clampZoom clamps to the 0.6..8 range and passes through in between', () => {
   assert.equal(clampZoom(0.1), ZOOM_MIN);
   assert.equal(clampZoom(9), ZOOM_MAX);
+  assert.equal(clampZoom(8), 8);
+  assert.equal(clampZoom(2.5), 2.5);
   assert.equal(clampZoom(1.2), 1.2);
 });
 
 test('zoomIn and zoomOut step by 1.25x and clamp at the bounds', () => {
   assert.ok(Math.abs(zoomIn(1) - 1.25) < 1e-9);
   assert.ok(Math.abs(zoomOut(1) - 0.8) < 1e-9);
-  assert.equal(zoomIn(2.4), ZOOM_MAX);
+  assert.equal(zoomIn(ZOOM_MAX), ZOOM_MAX);
+  assert.equal(zoomIn(7.2), ZOOM_MAX);
   assert.equal(zoomOut(0.6), ZOOM_MIN);
 });
 
@@ -136,183 +142,6 @@ test('vertebraAt returns S1 near the S1 superior segment and null elsewhere', ()
   const geometry = fakeGeometry();
   assert.equal(vertebraAt(geometry, [5, 102], 20), 'S1');
   assert.equal(vertebraAt(geometry, [5000, 5000]), null);
-});
-
-test('TAB_ORDER has 22 entries in anatomical order', () => {
-  assert.equal(TAB_ORDER.length, 22);
-  assert.deepEqual(TAB_ORDER[0], { kind: 'landmark', level: 'L1', corner: 'SA' });
-  assert.deepEqual(TAB_ORDER[1], { kind: 'landmark', level: 'L1', corner: 'SP' });
-  assert.deepEqual(TAB_ORDER[2], { kind: 'landmark', level: 'L1', corner: 'IA' });
-  assert.deepEqual(TAB_ORDER[3], { kind: 'landmark', level: 'L1', corner: 'IP' });
-  assert.deepEqual(TAB_ORDER[4], { kind: 'landmark', level: 'L2', corner: 'SA' });
-  assert.deepEqual(TAB_ORDER[19], { kind: 'landmark', level: 'L5', corner: 'IP' });
-  assert.deepEqual(TAB_ORDER[20], { kind: 'landmark', level: 'S1', corner: 'SA' });
-  assert.deepEqual(TAB_ORDER[21], { kind: 'landmark', level: 'S1', corner: 'SP' });
-});
-
-test('TAB_ORDER never contains an S1 IA or IP corner', () => {
-  const s1Entries = TAB_ORDER.filter((entry) => entry.level === 'S1');
-  assert.equal(s1Entries.length, 2);
-  assert.ok(s1Entries.every((entry) => entry.corner === 'SA' || entry.corner === 'SP'));
-});
-
-test('FULL_ORDER is TAB_ORDER followed by the left and right femoral-head centres', () => {
-  assert.equal(FULL_ORDER.length, 24);
-  assert.deepEqual(FULL_ORDER.slice(0, 22), TAB_ORDER);
-  assert.deepEqual(FULL_ORDER[22], { kind: 'femoral', side: 'left', part: 'center' });
-  assert.deepEqual(FULL_ORDER[23], { kind: 'femoral', side: 'right', part: 'center' });
-});
-
-test('FULL_ORDER contains no rim stops', () => {
-  assert.ok(FULL_ORDER.every((entry) => entry.kind !== 'femoral' || entry.part === 'center'));
-});
-
-test('sameHandle is exact identity, including the femoral part', () => {
-  assert.ok(sameHandle({ kind: 'landmark', level: 'L3', corner: 'IA' }, { kind: 'landmark', level: 'L3', corner: 'IA' }));
-  assert.ok(!sameHandle({ kind: 'landmark', level: 'L3', corner: 'IA' }, { kind: 'landmark', level: 'L3', corner: 'IP' }));
-  assert.ok(sameHandle({ kind: 'femoral', side: 'left', part: 'rim' }, { kind: 'femoral', side: 'left', part: 'rim' }));
-  assert.ok(!sameHandle({ kind: 'femoral', side: 'left', part: 'rim' }, { kind: 'femoral', side: 'left', part: 'center' }));
-});
-
-test('sameHandle is false when either side is null or the kinds differ', () => {
-  assert.ok(!sameHandle(null, { kind: 'landmark', level: 'L1', corner: 'SA' }));
-  assert.ok(!sameHandle({ kind: 'landmark', level: 'L1', corner: 'SA' }, null));
-  assert.ok(!sameHandle(null, null));
-  assert.ok(!sameHandle({ kind: 'landmark', level: 'L1', corner: 'SA' }, { kind: 'femoral', side: 'left', part: 'center' }));
-});
-
-test('nextSelection steps forward through landmarks in anatomical order', () => {
-  const l1sa = { kind: 'landmark', level: 'L1', corner: 'SA' };
-  assert.deepEqual(nextSelection(l1sa, 1), { kind: 'landmark', level: 'L1', corner: 'SP' });
-});
-
-test('nextSelection steps backward through landmarks', () => {
-  const l1sp = { kind: 'landmark', level: 'L1', corner: 'SP' };
-  assert.deepEqual(nextSelection(l1sp, -1), { kind: 'landmark', level: 'L1', corner: 'SA' });
-});
-
-test('nextSelection reaches the femoral heads after S1 SP', () => {
-  const s1sp = { kind: 'landmark', level: 'S1', corner: 'SP' };
-  const leftHead = nextSelection(s1sp, 1);
-  assert.deepEqual(leftHead, { kind: 'femoral', side: 'left', part: 'center' });
-  assert.deepEqual(nextSelection(leftHead, 1), { kind: 'femoral', side: 'right', part: 'center' });
-});
-
-test('nextSelection wraps from the right head back to L1 SA', () => {
-  const rightHead = { kind: 'femoral', side: 'right', part: 'center' };
-  assert.deepEqual(nextSelection(rightHead, 1), { kind: 'landmark', level: 'L1', corner: 'SA' });
-});
-
-test('nextSelection wraps backward from L1 SA to the right head', () => {
-  const l1sa = { kind: 'landmark', level: 'L1', corner: 'SA' };
-  assert.deepEqual(nextSelection(l1sa, -1), { kind: 'femoral', side: 'right', part: 'center' });
-});
-
-test('nextSelection with null current returns the first stop forward and the last stop backward', () => {
-  assert.deepEqual(nextSelection(null, 1), { kind: 'landmark', level: 'L1', corner: 'SA' });
-  assert.deepEqual(nextSelection(null, -1), { kind: 'femoral', side: 'right', part: 'center' });
-});
-
-test('nextSelection treats a selection that is not a stop like null', () => {
-  assert.deepEqual(nextSelection({ kind: 'landmark', level: 'S1', corner: 'IA' }, 1), { kind: 'landmark', level: 'L1', corner: 'SA' });
-  assert.deepEqual(nextSelection({ kind: 'landmark', level: 'S1', corner: 'IA' }, -1), { kind: 'femoral', side: 'right', part: 'center' });
-});
-
-test('nextSelection resolves a rim selection to its side and steps from there', () => {
-  const rim = { kind: 'femoral', side: 'left', part: 'rim' };
-  assert.deepEqual(nextSelection(rim, 1), { kind: 'femoral', side: 'right', part: 'center' });
-  assert.deepEqual(nextSelection(rim, -1), { kind: 'landmark', level: 'S1', corner: 'SP' });
-});
-
-function sampleGeometry() {
-  return {
-    vertebrae: {
-      L1: { superior: [[10, 10], [20, 10]], inferior: [[10, 20], [20, 20]], quadrilateral: [[10, 10], [20, 10], [20, 20], [10, 20]] },
-      L2: { superior: [[10, 30], [20, 30]], inferior: [[10, 40], [20, 40]], quadrilateral: [[10, 30], [20, 30], [20, 40], [10, 40]] },
-      L3: { superior: [[10, 50], [20, 50]], inferior: [[10, 60], [20, 60]], quadrilateral: [[10, 50], [20, 50], [20, 60], [10, 60]] },
-      L4: { superior: [[10, 70], [20, 70]], inferior: [[10, 80], [20, 80]], quadrilateral: [[10, 70], [20, 70], [20, 80], [10, 80]] },
-      L5: { superior: [[10, 90], [20, 90]], inferior: [[10, 100], [20, 100]], quadrilateral: [[10, 90], [20, 90], [20, 100], [10, 100]] },
-    },
-    s1_superior: [[10, 110], [20, 110]],
-    l1_center: [15, 15],
-    hip_midpoint: [100, 150],
-    femoral_circles: [[50, 150, 20], [150, 150, 25]],
-  };
-}
-
-test('nudge moves a landmark by dx, dy', () => {
-  const geometry = sampleGeometry();
-  nudge(geometry, { kind: 'landmark', level: 'L1', corner: 'SA' }, 3, -2);
-  assert.deepEqual(geometry.vertebrae.L1.superior[0], [13, 8]);
-});
-
-test('nudge on a landmark keeps the quadrilateral in sync', () => {
-  const geometry = sampleGeometry();
-  nudge(geometry, { kind: 'landmark', level: 'L2', corner: 'IP' }, 1, 1);
-  assert.deepEqual(geometry.vertebrae.L2.quadrilateral[2], geometry.vertebrae.L2.inferior[1]);
-  assert.deepEqual(geometry.vertebrae.L2.inferior[1], [21, 41]);
-});
-
-test('nudge moves S1 SA and SP through s1_superior', () => {
-  const geometry = sampleGeometry();
-  nudge(geometry, { kind: 'landmark', level: 'S1', corner: 'SA' }, 5, 5);
-  assert.deepEqual(geometry.s1_superior[0], [15, 115]);
-  nudge(geometry, { kind: 'landmark', level: 'S1', corner: 'SP' }, -1, 0);
-  assert.deepEqual(geometry.s1_superior[1], [19, 110]);
-});
-
-test('nudge on a femoral centre translates cx, cy and resyncs hip_midpoint', () => {
-  const geometry = sampleGeometry();
-  nudge(geometry, { kind: 'femoral', side: 'left', part: 'center' }, 4, -3);
-  assert.deepEqual(geometry.femoral_circles[0], [54, 147, 20]);
-  assert.deepEqual(geometry.hip_midpoint, [102, 148.5]);
-});
-
-test('nudge on a femoral centre uses index 1 for the right side', () => {
-  const geometry = sampleGeometry();
-  nudge(geometry, { kind: 'femoral', side: 'right', part: 'center' }, 1, 1);
-  assert.deepEqual(geometry.femoral_circles[1], [151, 151, 25]);
-  assert.deepEqual(geometry.femoral_circles[0], [50, 150, 20]);
-});
-
-test('nudge on a femoral rim grows the radius on right/up, shrinks on left/down, and leaves the centre alone', () => {
-  const geometry = sampleGeometry();
-  nudge(geometry, { kind: 'femoral', side: 'left', part: 'rim' }, 1, 0);
-  assert.equal(geometry.femoral_circles[0][2], 21);
-  nudge(geometry, { kind: 'femoral', side: 'left', part: 'rim' }, 0, -1);
-  assert.equal(geometry.femoral_circles[0][2], 22);
-  nudge(geometry, { kind: 'femoral', side: 'left', part: 'rim' }, -1, 0);
-  assert.equal(geometry.femoral_circles[0][2], 21);
-  nudge(geometry, { kind: 'femoral', side: 'left', part: 'rim' }, 0, 1);
-  assert.equal(geometry.femoral_circles[0][2], 20);
-  assert.deepEqual(geometry.femoral_circles[0].slice(0, 2), [50, 150]);
-  assert.deepEqual(geometry.hip_midpoint, [100, 150]);
-});
-
-test('nudge on a femoral rim never drops the radius below 1', () => {
-  const geometry = sampleGeometry();
-  geometry.femoral_circles[0] = [50, 150, 0.5];
-  nudge(geometry, { kind: 'femoral', side: 'left', part: 'rim' }, -10, 0);
-  assert.equal(geometry.femoral_circles[0][2], 1);
-});
-
-test('hitTestFemoral finds the left centre when the point is inside the hit radius', () => {
-  const circles = [[50, 150, 20], [150, 150, 25]];
-  assert.deepEqual(hitTestFemoral(circles, 52, 151, 14), { kind: 'femoral', side: 'left', part: 'center' });
-});
-
-test('hitTestFemoral finds the right rim when the point sits near the circumference', () => {
-  const circles = [[50, 150, 20], [150, 150, 25]];
-  assert.deepEqual(hitTestFemoral(circles, 174, 150, 14), { kind: 'femoral', side: 'right', part: 'rim' });
-});
-
-test('hitTestFemoral returns null outside every hit radius', () => {
-  const circles = [[50, 150, 20], [150, 150, 25]];
-  assert.equal(hitTestFemoral(circles, 400, 400, 14), null);
-});
-
-test('hitTestFemoral prefers the closer of centre and rim when both are within radius', () => {
-  assert.deepEqual(hitTestFemoral([[0, 0, 8]], 2, 0, 14), { kind: 'femoral', side: 'left', part: 'center' });
 });
 
 test('arrowKeyDelta maps arrow keys to 1px deltas', () => {
@@ -350,4 +179,52 @@ test('debounce.cancel prevents a pending call from firing', async () => {
   debounced.cancel();
   await new Promise((resolve) => setTimeout(resolve, 60));
   assert.deepEqual(calls, []);
+});
+
+// (Gate feedback G4, 2026-10-11; plan D17) Browsers fire no dblclick for the secondary button, so the stage asks
+// isDoubleClick of two right presses: the same button, within 400 ms and 6 px of the first.
+test('isDoubleClick: the same button within the time and the distance is a double click', () => {
+  const first = { time: 1000, clientX: 200, clientY: 300, button: 2 };
+  assert.equal(isDoubleClick(first, { time: 1250, clientX: 203, clientY: 298, button: 2 }), true);
+  assert.equal(isDoubleClick(first, { time: 1400, clientX: 200, clientY: 300, button: 2 }), true, 'exactly 400 ms');
+  assert.equal(isDoubleClick(first, { time: 1001, clientX: 206, clientY: 300, button: 2 }), true, 'exactly 6 px');
+  assert.equal(isDoubleClick({ ...first, button: 0 }, { time: 1100, clientX: 200, clientY: 300, button: 0 }), true, 'any button, matched');
+});
+
+test('isDoubleClick: a different button, a press too late, too far or out of order is not', () => {
+  const first = { time: 1000, clientX: 200, clientY: 300, button: 2 };
+  assert.equal(isDoubleClick(first, { time: 1100, clientX: 200, clientY: 300, button: 0 }), false, 'another button');
+  assert.equal(isDoubleClick(first, { time: 1401, clientX: 200, clientY: 300, button: 2 }), false, 'too late');
+  assert.equal(isDoubleClick(first, { time: 1100, clientX: 205, clientY: 305, button: 2 }), false, 'too far (7.07 px)');
+  assert.equal(isDoubleClick(first, { time: 999, clientX: 200, clientY: 300, button: 2 }), false, 'earlier than the first');
+  assert.equal(isDoubleClick(null, first), false, 'no first press');
+  assert.equal(isDoubleClick(first, null), false, 'no second press');
+});
+
+test('isDoubleClick takes its limits as options', () => {
+  const first = { time: 0, clientX: 0, clientY: 0, button: 2 };
+  const second = { time: 500, clientX: 10, clientY: 0, button: 2 };
+  assert.equal(isDoubleClick(first, second), false);
+  assert.equal(isDoubleClick(first, second, { withinMs: 500, withinPx: 10 }), true);
+  assert.equal(isDoubleClick(first, second, { withinMs: 499, withinPx: 10 }), false, 'one millisecond too late');
+  assert.equal(isDoubleClick(first, second, { withinMs: 500 }), false, 'the other limit keeps its default');
+});
+
+// (Ruling R37, 2026-10-11) A right press windows the film only once the pointer has moved 3 CSS px from it, so a
+// stray right click or a right-first chord formed before any movement decodes nothing.
+test('exceedsSlop: 3 CSS px or more from the press, in a straight line', () => {
+  const press = { clientX: 200, clientY: 300 };
+  assert.equal(exceedsSlop(press, { clientX: 200, clientY: 300 }), false, 'no movement');
+  assert.equal(exceedsSlop(press, { clientX: 202.9, clientY: 300 }), false, '2.9 px');
+  assert.equal(exceedsSlop(press, { clientX: 197.9, clientY: 302.1 }), false, '2.97 px on the diagonal');
+  assert.equal(exceedsSlop(press, { clientX: 203, clientY: 300 }), true, 'exactly 3 px');
+  assert.equal(exceedsSlop(press, { clientX: 200, clientY: 297 }), true, 'up 3 px');
+  assert.equal(exceedsSlop(press, { clientX: 197.8, clientY: 302.2 }), true, '3.11 px on the diagonal');
+});
+
+test('exceedsSlop takes its distance as an option and reads only clientX and clientY', () => {
+  const press = { clientX: 0, clientY: 0, button: 2, time: 5 };
+  assert.equal(exceedsSlop(press, { clientX: 4, clientY: 0 }, 5), false);
+  assert.equal(exceedsSlop(press, { clientX: 3, clientY: 4 }, 5), true, '5 px, the 3-4-5 triangle');
+  assert.equal(exceedsSlop(press, { clientX: 1, clientY: 0, buttons: 2 }, 1), true);
 });

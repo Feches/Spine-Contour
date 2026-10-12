@@ -1,10 +1,5 @@
 import { boundCalibration, studyRegion, validAnteriorSide } from './cervical.js';
 
-export const GLOBAL_SVA_HANDLES = [
-  { kind: 'landmark', level: 'C7', corner: 'CENTROID' },
-  { kind: 'landmark', level: 'S1', corner: 'SA' },
-  { kind: 'landmark', level: 'S1', corner: 'SP' },
-];
 export const GLOBAL_SVA_COLUMNS = [
   { key: 'GLOBAL_SVA_MM', label: 'C7–S1 SVA (mm)', unit: 'mm' },
   { key: 'GLOBAL_SVA_PX', label: 'C7–S1 SVA (px)', unit: 'px' },

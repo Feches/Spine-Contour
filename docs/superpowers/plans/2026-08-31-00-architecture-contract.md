@@ -106,6 +106,19 @@ renderer/                         (new)
                                   createBatchDriver to the store, the toast, persistenceDisabledReason and segmentStudy; module scope
   demo-studies.js                 (2026-09-10, studies-table spec §9) demoToggleAvailable(), setDemoStudiesShown(shown) — the one wiring of
                                   data/demo-visibility.js to the store, the toast and api.setDemoStudiesHidden; module scope
+  level-editor.js                 (2026-10-10) the level editor's wiring, the pattern of batch.js: enter/exit, save, discard, every
+                                  panel and stage action, the per-study stash; the ONLY writer of a non-null
+                                  state.levelEditor; never imports components/viewer.js or screens/analysis.js (they hand it their
+                                  parts through configureLevelEditor); module scope; verified by smoke. (2026-10-11, G3) The
+                                  window / level state moved out to film-window.js. (2026-10-12, G6, D19) writeReviewRecord:
+                                  the label record Mark reviewed writes for a film with none, through writeRecord, the one
+                                  write it shares with Save edits
+  film-window.js                  (2026-10-11, gate feedback G3/G4, plan D15–D17) the view's window / level, the pattern of
+                                  level-editor.js: configureFilmWindow({ensureFilm}), windowFor(state, study), openWindowPanel(),
+                                  ensureWindowLoaded(), closeWindowPanel(), setWindow({width, level}), resetWindow(),
+                                  forgetFilmWindow(studyId), and (the review of G3/G4, R35) windowNeedsDecode(state, study,
+                                  images) and redecodeKeptWindow(studyId); the ONLY writer of state.filmWindow; no subscriber;
+                                  never imports components/viewer.js or screens/analysis.js; module scope; test/film-window.test.js
   dom.js                          el() helper, tiny render utilities
 
   screens/landing.js
@@ -154,9 +167,17 @@ renderer/                         (new)
                                   — the tick box both Studies tabs build; keyAttr is data-param-key (grid) or data-find-key (list)
   components/status-badge.js      (2026-09-10) statusBadge(status, title), unsupportedViewBadge(view) — the one badge both screens
                                   show; (2026-10-01) `title`, when a non-empty string, is the pill's tooltip (failureTitle for Failed)
+  components/level-editor.js      (2026-10-10) the Vertebral levels panel that replaces the tabs and Measurements in edit mode:
+                                  mountLevelEditor(host) → {update(state, study)}; DOM only; every control carries a data-level-key
+                                  (each group a data-group-key, each row a data-level-row); every handler calls renderer/level-editor.js
 
   viewer/canvas.js                layered rendering
-  viewer/interactions.js          pure interaction logic: zoom steps, hit tests, Tab order, nudge, debounce (no DOM)
+  viewer/interactions.js          pure interaction logic: zoom steps, ~~hit tests, Tab order, nudge~~ (superseded 2026-10-10 by
+                                  viewer/level-handles.js), arrow deltas, chord, debounce (no DOM)
+  viewer/level-handles.js         (2026-10-10) a level's handles, client-space hit testing, moving and nudging a handle (rim points
+                                  refit the head, never under 0.5 px), the Tab order across the editor; pure
+  viewer/window-level.js          (2026-10-10) display-only window / level: range, default, clamp, drag rule, chip text, crop to the
+                                  stored image height, the decoded film as a RawFilm, the linear LUT; pure
   viewer/measure-queue.js         (plan 04) createMeasureQueue({measure, getState, setState, showToast, debounceMs})
                                   → {commitGeometry, replaceMeasured}: per-study revisions, one owner-tracked
                                   debounce, flush on study switch; session-only drafts, atomic geometry/measurement commit
@@ -200,6 +221,23 @@ renderer/                         (new)
                                   sortFindRows(studies, sort, runningId, batch), (2026-10-01) summaryCounts(studies, runningId,
                                   batch) — the Find list's sort and the Studies summary's counts; pure
   data/demo-visibility.js         (2026-09-10, §9) demoStudiesShown(state), demoVisibilityPatch(state, shown) — pure
+  data/levels.js                  (2026-10-10) the level model: sixteen codes in five groups, kinds, names, film-type defaults, state
+                                  derivation, placement steps, visibility, the unsaved count, summary and training status, the
+                                  measurement-to-level table behind the dependency notes; the LevelEditor and WindowState typedefs;
+                                  (2026-10-11, D18) pointKeys and changedPoints, the record's edited points; pure
+  data/level-projection.js        (2026-10-10) the level model into study.geometry per region (projectGeometry, projectionRegion,
+                                  regionFollowsLevels, projectsLevel, anteriorSideFrom, quadrilateral); the reverse direction is
+                                  levels.js levelsFromGeometry; pure
+  data/label-record.js            (2026-10-10) the label record: toLabelRecord, recordLevels, labelFileName (a safe stem, -2/-3 on a
+                                  clash), viewSlug, appVersion, LABEL_SCHEMA; (2026-10-11, D18) each entry's edited_points and the
+                                  record's edits summary; pure
+  data/contours.js                (2026-10-10) a level's outline in the label mask (traceLabel, simplify, levelContours), for the
+                                  record's contour; pure
+
+backend/decode.py                 (2026-10-10) decode_film(payload): the original film's 16-bit pixels, value range and DICOM window
+                                  defaults for window / level; stateless, runs no model
+test/fixtures/schema-check.js     (2026-10-10) a hand-written JSON Schema (draft 2020-12 subset) checker for the label record; test
+                                  only, not matched by the unit-test glob (the app takes no JSON Schema library)
 
 test/                             (new) mirrors renderer/ — node --test
   geometry.test.js  similarity.test.js  status.test.js
@@ -254,6 +292,10 @@ The single record type. Demo and real studies share it exactly.
  * @property {Geometry|null}     geometry
  * @property {Qc|null}           qc
  * @property {Object|null}       calibration  compact original-image scale record (2026-09-09 amendment below)
+ * @property {string|null} labelFile  (2026-10-10, level editor) the bare file name of this film's label record under
+ *                                    userData/labels/ (`<stem>.label.json`, `-2`/`-3` on a clash), set by its first
+ *                                    Save edits (or, 2026-10-12, D19, by Mark reviewed on a film with none) and
+ *                                    kept across saves; null until then
  * @property {Object<string,string>} clinical   field name → value
  */
 ```
@@ -387,7 +429,17 @@ a draw function must blank a layer, never freeze the application.
   showAllLordosis: false,
 
   editing: false,
-  selection: null,          // Selection — see viewer/interactions.js
+  selection: null,          // Selection — see viewer/interactions.js; (2026-10-10) always null in edit mode, the level editor
+                            // holds the focused handle instead
+  levelEditor: null,        // (2026-10-10) LevelEditor | null — the level editor's state while editing (typedef in
+                            // renderer/data/levels.js); renderer/level-editor.js is the only writer of a non-null value;
+                            // session-only, never persisted; reset to null by FRESH_VIEW, a run's completion and changeRegion
+  filmWindow: null,         // (2026-10-11, gate feedback G3, plan D15) FilmWindow | null — the open film's window / level,
+                            // part of the VIEW like zoom and pan, in every mode: {studyId, open, status: 'loading'|'ready'|
+                            // 'unavailable', reason, width, level, defaultWidth, defaultLevel, min, max, range} (typedef in
+                            // renderer/film-window.js, its ONLY writer); display only, session-only, never persisted, never in
+                            // the label record; reset to null by FRESH_VIEW and by forgetFilmWindow (delete, a run's
+                            // completion, changeRegion); entering and leaving edit mode keep it
   running: null,            // string | null — the id of the study whose /predict is in flight (plan 05);
                             // one run at a time. `if (state.running)` still means "a run is in flight";
                             // the viewer and the Studies list compare it with a study's id.
@@ -755,7 +807,8 @@ never rounded or reformatted.
 export function fitCircle(points)        // → [cx,cy,r] | null  (needs ≥3, null if collinear)
 export function imageToClient(pt, rect, canvas)   // → [x,y]
 export function clientToImage(ev, canvas)          // → [x,y]  clamped to bounds
-export function nearestLandmark(geometry, clientX, clientY, canvas, radius = 14)
+// ~~export function nearestLandmark(geometry, clientX, clientY, canvas, radius = 14)~~   superseded 2026-10-10
+//   (viewer/level-handles.js hitTestLevelHandles); ~~landmarkHandles~~ superseded 2026-10-10 (levelHandles)
 export function landmarkAt(geometry, level, corner)   // → [x,y]
 export function setLandmarkAt(geometry, level, corner, point)   // mutates, keeps quadrilateral in sync
 export const LEVELS = ['L1','L2','L3','L4','L5']
@@ -777,24 +830,29 @@ S1 has only `SA` and `SP`. `landmarkAt(g,'S1','SA')` is `g.s1_superior[0]`,
 /** @typedef {{kind:'landmark', level:string, corner:string}
  *          | {kind:'femoral', side:'left'|'right', part:'center'|'rim'}} Selection */
 
-// 22 landmark stops, anatomical order:
-//   L1 SA,SP,IA,IP · L2 … · L5 SA,SP,IA,IP · S1 SA,SP
-export const TAB_ORDER = [...]
-
-// TAB_ORDER plus the two femoral-head centre stops = 24 stops.
-// This is what Tab/Shift+Tab actually cycles; the spec requires the heads to be
-// reachable by keyboard, and they are not landmarks so they are not in TAB_ORDER.
-export const FULL_ORDER = [...]
-
-export function nextSelection(current, direction)   // → Selection, cycles FULL_ORDER
-export function nudge(geometry, selection, dx, dy)  // mutates geometry
-export function sameHandle(a, b)                    // (plan 04) → boolean, exact identity incl. femoral part
-export function hitTestFemoral(circles, x, y, radius = 14)   // (plan 04) → Selection|null, coordinate-space agnostic
+// Superseded 2026-10-10 and removed (plan 2026-10-10 Task 13): the level editor's Tab order, nudge and hit test live in
+// viewer/level-handles.js (handleOrder/nextLevelHandle, nudgeHandle, hitTestLevelHandles). The Selection typedef above
+// is kept unchanged but unused in edit mode (state.selection is always null there).
+// ~~export const TAB_ORDER = [...]~~                    superseded 2026-10-10 (22 landmark stops)
+// ~~export const FULL_ORDER = [...]~~                   superseded 2026-10-10 (TAB_ORDER plus the two femoral centres)
+// ~~export function nextSelection(current, direction)~~ superseded 2026-10-10
+// ~~export function nudge(geometry, selection, dx, dy)~~ superseded 2026-10-10
+// ~~export function sameHandle(a, b)~~                 superseded 2026-10-10
+// ~~export function hitTestFemoral(circles, x, y, radius = 14)~~   superseded 2026-10-10
 export function arrowKeyDelta(key, shiftKey)        // (plan 04) → {dx,dy}|null — 1px, 10px with Shift
 export function debounce(fn, ms)                    // (plan 04) → fn with .cancel()
 
 export const CHORD_MASK = 0b11                      // primary|secondary bits of PointerEvent.buttons
 export function isChordHeld(buttons)                // → boolean — BOTH primary and secondary held
+export function isDoubleClick(previous, next, { withinMs = 400, withinPx = 6 } = {})
+//   → boolean — (2026-10-11, gate feedback G4, D17) `next` completes a double click with `previous`: both
+//   {time, clientX, clientY, button}, the same button, 0..withinMs apart, within withinPx. Browsers fire no
+//   dblclick for the secondary button; the stage's double right-click (the window reset) asks this. The caller
+//   passes the events' own timeStamps; nothing here reads a clock.
+export function exceedsSlop(start, point, px = 3)
+//   → boolean — (2026-10-11, the review of G3/G4, ruling R37) `point` is at least `px` CSS px from `start` in a
+//   straight line; both {clientX, clientY} (a pointer event or the stage's pending drag will do). The stage's right
+//   press becomes a window drag only once this is true.
 export function zoomAbout(view, direction, offsetX, offsetY)
 //   → {zoom, panX, panY} — a zoom step anchored at a point instead of the film's centre.
 //   `direction` is a SIGN, not a factor, so the wheel and the toolbar buttons reach
@@ -1310,3 +1368,308 @@ model change. `backend/requirements.txt` selects `onnxruntime-directml==1.24.4` 
 Windows and `onnxruntime==1.24.4` elsewhere; the Windows bundle check requires
 `DmlExecutionProvider` and `DirectML.dll`. CI has no GPU: the GPU path is verified on a
 workstation with `--verify-models`, which exercises each listed GPU.
+
+
+## 2026-10-10 amendment: vertebral level editor, window / level, label record
+
+Spec `docs/design/level-editor/HANDOFF.md` (`594a982`); plan `plans/2026-10-10-level-editor.md`, whose Decisions
+table (D1–D19, the owner's answers; D15–D18 from the gate feedback of 2026-10-11, D19 from G6 on 2026-10-12) wins
+over the spec and whose Ledger holds the execution rulings R1–R41 (R26 and R27 from the gate feedback of 2026-10-11,
+the plan's "Gate feedback" section, R28 from its review, R29–R34 from G3 and G4, R35–R37 from their review, R38 and
+R39 from G5, R40 and R41 from G6); user doc
+`docs/level-editor.md`; label record schema `docs/design/level-editor/label-record.schema.json`. Edit mode is the
+level editor: the Analysis screen's right panel becomes the Vertebral levels panel (sixteen levels in five groups:
+C2–C7, T1 · T4, L1–L5, S1, two femoral heads), the stage places, selects and adjusts levels, a display-only window /
+level acts on the film layer, and **Save edits** writes one label record per film for retraining.
+
+**File structure.** New: `renderer/level-editor.js`, `renderer/components/level-editor.js`, `renderer/data/levels.js`,
+`renderer/data/level-projection.js`, `renderer/data/label-record.js`, `renderer/data/contours.js`,
+`renderer/viewer/level-handles.js`, `renderer/viewer/window-level.js`, `backend/decode.py`,
+`test/fixtures/schema-check.js` (one line each in the File structure block above), with their unit tests
+(`test/levels`, `level-projection`, `level-handles`, `window-level`, `label-record`, `contours` `.test.js`;
+`backend/tests/unit/test_decode.py`, `backend/tests/integration/test_decode_server.py`) and
+`tools/smoke/smoke-levels.mjs`. No root module was added, so neither electron-builder allowlist changed. New exports
+on existing modules: `api.js` `decodeFilm`, `loadLabelRecord`, `saveLabelRecord`, `deleteLabelRecord` (preload
+`decodeFilm`, `loadLabelRecord`, `saveLabelRecord`, `deleteLabelRecord`); `screens/analysis.js` `ensureFilm(studyId)`
+and `imageInfo(studyId)`; `components/viewer.js` `commitGeometry` (the measure queue's) and `getPrediction(studyId)`;
+`data/predictions.js` `isHandPlaced(study)`; `viewer/canvas.js` `imagesFromRaw`, `colorFor` and the level editor's
+draw path in `drawDynamicLayer` (`opts.editor`, `handle`, `dragGeometry`, `overlays`, `overlayOpacity`) and
+`drawStaticLayer` (`opts.editing`, `opts.window`).
+
+**`state.levelEditor`** (store block above): `LevelEditor | null`, typedef in `renderer/data/levels.js` (studyId,
+region, levels, model, baseline, record, selected, handle, placing, open, exitPrompt; the `window` it held until
+2026-10-11 is the store's own `filmWindow` now, see "Gate feedback" below). `renderer/level-editor.js`
+is the only writer of a non-null value; the other writers only ever reset it to null: `FRESH_VIEW` (its keys in
+`screens/studies.js` and `data/demo-visibility.js` gain `levelEditor: null`), a run's completion for that study
+(`segmentStudy`), and `changeRegion`. Session-only, never persisted, never mutated in place: every action builds a new
+editor, which the viewer's dynamic key and the panel's rebuild key compare by reference. An editor with unsaved changes
+that leaves the store through a navigation is kept for the session in the wiring module's stash, keyed by study id,
+and brought back by the next Edit on that study (D7); a delete, a re-run or a Region change drops it
+(`forgetLevelEditor`). `state.selection` and the `Selection` typedef are unchanged but unused in edit mode
+(`state.selection` is always null there; the focused handle is `state.levelEditor.handle`).
+
+**`Study.labelFile: string|null`** (Study typedef above): optional and default null like the other optional fields, no
+`STORE_VERSION` bump, listed in `validateStudy`'s returned object. The renderer picks the name (`labelFileName`, D3)
+and keeps it on the record across saves; the main process only validates it.
+
+**Persistence.** A third kind of file: **`userData/labels/<stem>.label.json`**, one per film, named for the film's
+filename stem (`lateral_lumbar_001.dcm` → `lateral_lumbar_001`), `-2`, `-3` … when another study's `labelFile`
+already holds the name (D3). The stem is made safe first (R12: `\ / : * ? " < > |` and control characters become `_`,
+leading dots go, the stem is capped at 180 characters, a Windows device name takes a `_`); the main process accepts
+only a bare `<name>.label.json` (`main.js` `LABEL_FILE`) and rejects anything else with `Invalid label file name.`.
+Written atomically through `main.js` (`writeJsonAtomic`, IPC `save-label-record`, which creates `labels/`), read with
+`load-label-record` (null when absent or unparseable), deleted with the study (`deleteStudy` and the bulk
+`deleteStudyBatch`, inside the same try as the sidecar), and quarantined with the rest: a corrupt `studies.json` moves
+`labels/` aside as `labels.corrupt-<stamp>` under the same stamp as `predictions.corrupt-<stamp>`; a non-ENOENT failure
+to move it takes the existing `persistenceUnsafe` path, nothing written for the session (R11). Writes are gated by
+`assertWritable` like every other write. The record never names the SP id; the study is named by its stem. Demo
+studies never write one.
+
+**Backend API.** `POST /decode` (multipart `file`, no model): `{width, height, bits_stored, value_min, value_max,
+window: {center, width}|null, photometric, scaled, pixels_base64}`, the original film's pixels as little-endian uint16
+of `round(value − value_min)` (RescaleSlope/Intercept applied; a MONOCHROME1 film inverted with its WindowCenter), the
+25-megapixel cap and the 50 MB upload limit; 422 with a display-ready `detail` for a file it cannot read. A value
+range wider than 65535 is scaled into 0..65535 and `scaled` is true; the renderer's `RawFilm` (`viewer/window-level.js`
+`rawFromDecoded`) carries the factor as `scale` (value = pixel × scale + valueMin, 1 when unscaled). Both are a
+deviation from the plan, which had neither (R23). IPC
+`decode-film` hands the renderer bytes, not base64. Every `/predict` result's `qc` gains `model_versions`
+(`backend/models/models.py` `model_versions(models)`: per structure the graph's `onnx_sha256`, two joined with `+`,
+null when unknown), which the label record writes as `model.version`.
+
+**Geometry.** T1, T4, per-level visibility, `source` and femoral rim points never enter `study.geometry`: they live in
+the level model and the label record only. The levels a film's region measures are projected into `study.geometry`
+through the existing measure queue (`projectGeometry` → `commitGeometry` → `/measure`), so measurements, the em-dash
+rule and `studies.json` work as before (D2: drags keep auto-committing; Save edits writes only the record). C2 in the
+level model is an inferior endplate plus a centroid (D8), projected as `vertebrae.C2.inferior` and `c2_centroid`.
+**`isHandPlaced(study)`** (R16 as amended, `data/predictions.js`): true when `predictionId == null && !qc?.models`. It
+gates the film: such a study has no sidecar, so `needsRestore` is false, `restoreFilm` never runs for it, and
+`ensureFilm` decodes its original for the stage (never FILM UNAVAILABLE); a study with a prediction id or `qc.models`
+(a pre-v1.0.10 result included) keeps the sidecar path. `LEVEL_RGB` gains `T1`, `T4` and `S1` (D9, the shipped colours
+kept); `buildLabelColorMap` iterates a private `MASK_LEVELS` list (the original eleven keys) so S1's entry never colours
+a mask label (R15).
+
+**Removed by Task 13** (no live caller once the level editor drew its own handles), each superseded 2026-10-10:
+`viewer/interactions.js` ~~`TAB_ORDER`~~, ~~`FULL_ORDER`~~, ~~`nextSelection`~~, ~~`nudge`~~, ~~`sameHandle`~~,
+~~`hitTestFemoral`~~; `viewer/geometry.js` ~~`nearestLandmark`~~, ~~`landmarkHandles`~~; `viewer/canvas.js`
+~~`drawHandle`~~, ~~`drawHandles`~~, ~~`drawTracePoints`~~, ~~`HANDLE_HOVER_RADIUS_PX`~~, ~~`HANDLE_RADIUS_PX`~~,
+~~`HANDLE_LABEL_PX`~~; `data/cervical.js` ~~`CERVICAL_HANDLES`~~; `data/global-sva.js` ~~`GLOBAL_SVA_HANDLES`~~. Their
+replacements are in `viewer/level-handles.js` (handleOrder/nextLevelHandle, nudgeHandle, hitTestLevelHandles,
+levelHandles) and the canvas's `drawLevelHandles`. The old edit bar's RETRACE, FIT (as a retrace), ADD CIRCLE and
+DELETE CIRCLE are gone: a femoral head is re-placed from 2–4 rim points with the panel's Place… and the edit bar's FIT,
+refitted by a rim-point drag, and hidden with its checkbox; Delete and Backspace do nothing in the level editor.
+
+**Behavioural rulings** (plan Ledger):
+
+- R4: a group's header count omits a zero PLACED clause (the prototype's rule); the panel summary always writes PLACED.
+- R5: `fitFrom` equals `need` for every kind but a femoral head (FIT from 2); `geometryFromPoints(code, points,
+  imageSize)` caps a femoral fit at the image diagonal; disc heights add no dependency entries (their pairs are pinned
+  equal to the lumbar segmental pairs by a test).
+- R6: the projection computes `l1_center` (the mean of L1's corners) and `hip_midpoint` (the mean of two centres)
+  rather than nulls, because the validator rejects null with L1 or two circles present; `/measure` overwrites both.
+- R7: a cervical or full-spine projection with no orientation keeps `anterior_side: null` and is not committed until an
+  orientation exists (`/measure` and the validator refuse it).
+- R8: anterior side precedence in the projection: the film's stored `anterior_side`, then `study.anteriorSide`, then
+  the side read from placed levels, then null. An annotator dragging SA past SP never flips a film's sign conventions.
+- R9 (amended): with a saved record, the study's femoral circles are matched to Head 1/Head 2 by the record's head
+  geometry (centre and radius); a matched head takes the saved geometry, rim included; unmatched circles fill the free
+  heads FH1 then FH2, preferring a head the record does not mark not visible.
+- R10: the record's `contour` is written only for a `segmented` body level; edited and manual levels write null (their
+  `model_corners` carry the model's quad).
+- R13: the 8-bit window rule is `valueMin >= 0 && valueMax <= 255 && (bitsStored === 8 || exactly 0..255)`, so an
+  8-bit DICOM with a rescale takes the general range.
+- R14: `ensureFilm` reports `superseded: true` as its own flag; `reason` stays display-ready (null when superseded).
+- R17: Re-run (the toolbar's and the region bar's Run segmentation) is disabled while editing, titled `Finish editing
+  before re-running segmentation`; a batch reaching a film with an open or stashed editor still drops that editor on
+  completion.
+- R18: a level row with two actions stacks them in its 70px column (Place… above CLEAR, `.lv-actions.is-stacked`).
+- R20 (final review): a film's region follows its placed levels while `data/level-projection.js`
+  `regionFollowsLevels(editor, study)` holds: the editor opened as Auto, or `requestedRegion(study) === 'auto'` and the
+  study is `isHandPlaced` (or its result names no region). Then `projectionRegion` derives the region from the visible
+  placed levels on every projection (C only → cervical, L/S1/head only → lumbar, both → full spine, neither → lumbar),
+  never from the `geometry.region` a commit wrote; `projectsLevel(code, editor, study)` decides which level changes
+  commit (every code but T1/T4 while the region follows); `enterLevelEditor` opens such a film with `region: 'auto'`
+  (D6's defaults). R7 still holds a cervical or full-spine projection with no anterior side.
+- R21 (final review): the region bar's Region and Orientation selects are disabled while editing, titled `Finish
+  editing before changing the region` / `Finish editing before changing the orientation`, and `changeRegion` returns
+  early while editing; outside edit mode it still drops a stashed editor (`forgetLevelEditor`).
+- R22 (final review): `data/levels.js` `canFinishPlacing(editor, imageSize)` is false while a femoral head's fit would
+  have a radius under 0.5 px (or below `fitFrom` clicks); `finishPlacing` is a no-op then, FIT's enabled state reads
+  it, and `addPoint` drops a head's click within 1 px of any of its rim points.
+- R24 (final review): a hand-placed film whose run had failed keeps `processingError` and its Failed status; whether
+  the first hand-placed commit should clear it, or the film get a status of its own, is the owner's decision (plan
+  Task 15, ROADMAP §8).
+- R25 (the wave's re-review): `viewer/level-handles.js` `moveHandle` refuses a rim-point move (a drag or an arrow nudge)
+  whose refit would have a radius under `MIN_RADIUS` (0.5 px, exported by `data/levels.js`) and returns the geometry
+  unchanged, so no path leaves a femoral head the label record's schema rejects.
+- R26 (gate feedback G2): `addPoint` drops a click within 1 px of ANY other placed point of the placement, for every
+  kind (it generalises the previous-point rule and keeps R22's rule for a head; a slot's own earlier point is not
+  another point, and a double-click counts once).
+- R27 (G2): a re-placed point counts once in `placing.history` and moves to its end, so UNDO after a re-place clears
+  the point instead of restoring its earlier position.
+- R28 (the review of the gate feedback): `viewer/canvas.js` `drawLevelEditor` and `drawDynamicLayer` floor the drawing
+  ratio at 1 image pixel per CSS pixel (`Math.max(1, opts.pixelRatio ?? 1)`; `opts.pixelRatio` is still image pixels
+  per CSS pixel). Below 1:1 every screen-sized part of the overlay holds its size on screen; past 1:1 it keeps its
+  image-pixel size and magnifies with the film instead of falling under one image pixel. Hit testing
+  (`viewer/level-handles.js` `hitTestLevelHandles`) is in client space; `components/viewer.js` passes it a grab radius
+  of `Math.max(14, LEVEL_HANDLE_RADIUS_PX / Math.min(1, pixelRatio))` CSS px (`LEVEL_HANDLE_RADIUS_PX`, 6, is now
+  exported by `viewer/canvas.js`), so a handle drawn larger than 14 px past 1:1 is grabbable over its whole disc.
+
+**Gate feedback (2026-10-11).** G1: `viewer/interactions.js` `ZOOM_MAX` is 8 (was 2.4). G2: the step chips choose which
+point the next placement click sets. `state.levelEditor.placing` is `{code, points, current, history} | null` for every
+kind (typedef `Placing` in `renderer/data/levels.js`): `points` holds one slot per step (`placementSteps(code).need`),
+null until set; `current` is the slot the next film click sets (a femoral head's first empty slot); `history` lists the
+set slots in the order they were last set, each once. New exports: `data/levels.js`
+**`setPlacingStep(editor, index)`** (every kind but a femoral head; an out-of-range or non-integer index, a head or no
+placement returns the editor unchanged) and `renderer/level-editor.js` **`selectPlacingStep(index)`** (the chips'
+click; no edit flag, nothing committed, paused while the window / level panel is open). `addPoint` sets the point in
+slot `current` (a head: in its first empty slot), then moves `current` to the next empty slot after it, wrapping, and
+finishes when none is empty; `undoPoint` clears the last `history` entry and makes it current; `finishPlacing`/`canFinishPlacing` count the
+placed points; `placingLabel` reads `current + 1` (a head still counts its placed rim points) and `placingHelp` the
+current step's help. While placing every kind but a head, each step chip in `components/viewer.js` is a `<button>`
+(`viewer-step`, `is-done`, `is-current`, `aria-current="step"`); a head's chips stay spans. The review of the gate
+feedback added `renderer/level-editor.js` **`restorePlacing(prior, pressed)`**: a LEFT-first chord's take-back of its
+placement press (`components/viewer.js` `placeAt` keeps the placing from before the press and the one it left, only
+when the press set a point and left the placement open; `startChordPan` calls it). It puts `prior` back while
+`editor.placing` is still `pressed`, and is a no-op otherwise (the placing has moved on, or `pressed` is null); no edit
+flag, nothing committed. UNDO is no longer the take-back: under R27 it clears the slot, so a press that re-placed a
+point would lose the point's earlier position.
+
+**Gate feedback G3 and G4 (2026-10-11; D15–D17).** Window / level works outside edit mode and belongs to the view.
+**`state.filmWindow`** (store block above) replaces `state.levelEditor.window`: `FilmWindow | null`, the old window
+state plus `studyId` (a decode for a film no longer open lands nowhere), typedef in the new **`renderer/film-window.js`**,
+its only writer (File structure block above). FRESH_VIEW gains `filmWindow: null` in both copies (nine keys; pinned
+equal, and to their content, by `test/demo-visibility.test.js`); entering and leaving edit mode keep the window.
+Exports: **`configureFilmWindow({ensureFilm})`** (`screens/analysis.js` hands it `ensureFilm`, beside
+`configureLevelEditor`); **`windowFor(state, study)`** (the store's window when its `studyId` is that study's, else
+null; every reader in `components/viewer.js` and the level editor's placement guards go through it);
+**`openWindowPanel()`** (a window loading or ready opens; none, or an unavailable one, starts a loading window with the
+panel open and the decode); **`ensureWindowLoaded()`** (the same decode with the panel closed, for the right-button
+drag, only when the open film has no window yet); **`closeWindowPanel()`**; **`setWindow({width, level})`** (clamped by
+`clampWindow` to the window's `range`, only when ready, an unchanged window writes nothing); **`resetWindow()`**;
+**`forgetFilmWindow(studyId)`** (`screens/analysis.js` calls it wherever it calls `forgetLevelEditor(studyId)` for a film
+whose images change or go: `releaseStudy`, a run's completion, `changeRegion`). The two open functions return the
+decode's promise. The decode is the level editor's former `loadWindow` (up to three attempts on a superseded outcome;
+ready at `defaultWindow(raw)` with `windowRange(raw)`, or unavailable with a display-ready reason); only the newest
+decode lands, on the loading window it was started for, while that film is open. **Removed** from
+`renderer/level-editor.js`: ~~`openWindowPanel`~~, ~~`closeWindowPanel`~~, ~~`setWindow`~~, ~~`resetWindow`~~ (moved to
+`film-window.js`) and the private `loadWindow`; `openEditor` writes no `window` and the stash no longer resets one; the
+`WindowState` typedef left `data/levels.js`. `placePoint`, `selectPlacingStep` and `fitPlacing` pause while the view's
+panel is open over the editor's film. `viewer/interactions.js` gains **`isDoubleClick`** (block above).
+
+The stage, in every mode: the Window / level tool is always shown (disabled for a demo study and with no film on the
+stage); the panel opens outside edit mode under the toolbar (`.viewer-stage:not(.is-editing) .viewer-wl`) with a hint
+line; the chip reads the window whenever it is ready; `drawStaticLayer` gets `opts.window` from the view's window in
+both modes (outside edit mode the overlay is drawn over the windowed film); a LEFT press with the panel open starts a
+window drag in both modes (outside edit mode it outranks construction selection). A RIGHT press (`button === 2`, not a
+chord) on the film (`handlePointerDown`) or the black surround (`handleHostPointerDown`) starts a window drag in every
+mode, Pan on or off (D16), calling `ensureWindowLoaded()` and waiting with `start: null` until the window is ready; a
+second right press that `isDoubleClick` accepts resets the window and starts no drag (D17); `startChordPan` dismantles a
+window drag as it dismantles a label drag. A live window drag carries `is-window-drag` (its `all-scroll` cursor beats
+the pan-mode cursor). Escape outside edit mode closes the panel before it clears the construction; in edit mode the
+order is unchanged. Still display only: no measurement, geometry, record or persisted value depends on the window.
+
+- R29 (G3): the window resets where zoom and pan reset, FRESH_VIEW; Back to the list and the sidebar's open-study card
+  keep it as they keep zoom and pan; a writer that changes `openId` without FRESH_VIEW (the calibration screen's return)
+  leaves a window `windowFor` refuses, its `studyId` being another film's.
+- R30 (G4): `ensureWindowLoaded` does not retry an unavailable window; `openWindowPanel` does.
+- R31 (G4): a right-button drag over an unavailable film with the panel closed toasts `Window / level is unavailable.`
+  and the reason, once per drag at its first move.
+- R32 (G4): the double right-click compares the two presses only (button, 400 ms, 6 px, the events' `timeStamp`s), on
+  the film and the black surround alike; its second press is forgotten (a third begins a new pair); a chord forgets the
+  right press before it; its first press is an ordinary right press.
+- R33 (G3, G4): copy. The tool's tooltip `Window / level — or right-drag on the film; double right-click resets` (its
+  accessible name stays `Window / level`); the panel's hint outside edit mode.
+- R34 (G3, G4): windowing is not gated on the study's own run (display only; the completed run forgets the window), so
+  a left press with the panel open windows before the busy check that guards placement and handles; with the panel
+  open outside edit mode the construction label chip still takes its own left press.
+
+**The review of G3 and G4 (2026-10-11; `8332dfb`).** D15's wording follows the behaviour: the window resets where zoom
+and pan reset (FRESH_VIEW: another film opened from the list, or the open study closed); Back and the sidebar's return
+keep it (R29). `renderer/film-window.js` gains **`windowNeedsDecode(state, study, images)`** (pure: `study`'s window is
+ready or loading and `images`, the film's cached images or null, carry no `raw`) and **`redecodeKeptWindow(studyId)`**
+(the deps' `ensureFilm` again, through the private `askFilm` the decode now shares, superseded outcomes asked again; no
+original forgets a READY window of that film, a loading one is left to its own decode); `screens/analysis.js` `render()`
+asks the first, with `cachedImages(study.id)`, ahead of its restore, preview and `ensureFilm` branches, and when it is
+true calls the second in their place. `viewer/interactions.js` gains **`exceedsSlop`** (block above). In `components/viewer.js`
+a right press starts a PENDING window drag (`{kind: 'window', pending: true, …}`, capture, the press point, no classes,
+no decode) that `handlePointerMove` makes a window drag at the first move 3 CSS px from the press (`exceedsSlop`):
+then, and not at the press, `ensureWindowLoaded()` runs for a film with no window yet, and a ready window starts the
+drag with the press point as origin; `startChordPan` dismantles a pending drag as a live one; `is-windowing` ignores a
+pending press. The left press's window branch comes before the Pan toggle's.
+
+- R35 (review, finding 1): a kept window never outlives the decoded original it windows; at the mount a ready or loading
+  window over cached images without `raw` (another study's run took the single cache entry) is decoded again through
+  `ensureFilm`, which restores the stored image too, and a ready window whose re-decode brings no original is forgotten.
+- R36 (finding 3): the open W/L panel outranks the Pan toggle for the left button, in both modes; the middle button and
+  the chord still pan; the `.is-windowing` cursor rule follows the pan-mode rules.
+- R37 (finding 4): a right press alone starts nothing; the drag begins, and decodes a film with no window yet, once the
+  pointer has moved 3 CSS px; a stray right click or a chord formed before any movement decodes nothing; the double
+  right-click still compares presses (R32); R31's toast comes at the move that begins the drag.
+
+**Gate feedback G5 (2026-10-11; D18, `3e552e6`).** The label record lists which points each entry was given and sums
+them. `renderer/data/levels.js` gains **`pointKeys(code)`** (the record's geometry keys of the code's kind, in record
+order: a body `sa, sp, ia, ip`; C2 `ia, ip, centroid`; T1/S1 `sa, sp`; T4 `centroid`; a femoral head `center, radius`;
+`[]` for an unknown code; a fresh array) and **`changedPoints(code, geometry, modelGeometry)`** (pure: the keys whose
+value in `geometry` differs from `modelGeometry`'s by the per-value test `sameGeometry` uses, the private `near` with the
+shared `SAME_EPS`, 1e-6, now also `sameGeometry`'s default eps; a head compares centre then radius, never its rim; every
+key when `modelGeometry` is null, `[]` when `geometry` is). `renderer/data/label-record.js` `levelRecord` and
+`headRecord` write **`edited_points`** right after `source` on every level and head: `changedPoints` for `edited`, every
+key for `manual`, `[]` for `segmented`, `not_placed` and `not_visible`; `toLabelRecord` writes **`edits`** after
+`complete`: `{segmented, edited, manual, not_placed, not_visible, points_moved, points_placed}`, entries per state over
+the fourteen levels and two heads together, `points_moved` the edited entries' list lengths summed, `points_placed` the
+manual entries'. `recordLevels` reads neither. The schema keeps its id; `edited_points` (per-kind `$defs`, `uniqueItems`
+over the kind's enum) and `edits` (`$defs/edits`, seven required non-negative integers, nothing else) are optional;
+`test/fixtures/schema-check.js` supports `uniqueItems`.
+
+- R38 (G5): `state === 'edited'` exactly when `edited_points` is not empty: both read the same per-value comparison
+  over the same values (the kind's points; a circle's rim is not one, so a rim-only change lists nothing and the head
+  stays segmented). Pinned by a unit test over every single-number perturbation of each kind, and stated in the schema
+  (`editedPointsRule` and a per-kind manual `minItems`) for records that carry the field.
+- R39 (G5): both fields are additive; the schema id stays `spinecontour.segmentation-label/1` and neither field is
+  required, so records saved before them validate and read the same; the app writes both on every save from now on.
+
+The re-review of the window change, folded into G5: `renderer/level-editor.js` `showFilm` (entering edit mode) forgets
+a READY window of the film (`forgetFilmWindow`) when `ensureFilm`'s outcome carries no decoded original, the rule of
+`redecodeKeptWindow` (a loading window is left to its own decode; a superseded outcome changes nothing).
+
+**Gate feedback G6 (2026-10-12; D19, `ad2b70b`).** Mark reviewed also writes the label record when the study has none
+yet. `renderer/level-editor.js` gains **`writeReviewRecord(studyId)`** → `Promise<'written' | 'skipped' | 'failed'>`,
+never rejecting: once the film has been read it builds an editor in memory, `openEditor({ study, region:
+editorRegion(study), modelGeometry: deps.getPrediction(studyId)?.geometry ?? null, saved: null })` (`editorRegion` is
+`enterLevelEditor`'s region rule, R20, now one private function both call), never puts it in the store and never
+touches `state.levelEditor`, `editing` or the stash; it writes that editor's record, sets `labelFile` on the study and
+toasts `Saved the label record.`, or toasts `Marked reviewed. The label record could not be written: <reason>` on a
+failure. It skips (writes and says nothing) a study that is gone or re-added, a demo, one not marked reviewed, one with
+no `measurements`/`geometry`, one with a `labelFile`, one whose own run is in flight, and one with an editor open or
+stashed (R40), checked before the write and again once the film has been read; it refuses a model result whose
+prediction snapshot is missing then (`the model's prediction is not loaded.`), which would otherwise record every
+placed level `manual`. **The shared core** is the private `writeRecord(studyId, addedAt, editorOf)`: `deps.imageInfo`,
+the same-record check across that await (`addedAt`), the editor `editorOf(state, study)` returns (null: nothing
+written), the file (`labelFile`, else `labelFileName` of the stem over the other studies' names), `toLabelRecord` with
+`levelContours`, `api.saveLabelRecord`, and the removal of a file written for a study deleted meanwhile; it resolves
+`{file, editor, kept, state}` or null. `saveLevelEdits` is that core plus its baseline, editor and toast, so the two
+records cannot drift. The re-entrancy latch `saving` is shared and holds `'edits'`, `'review'` or null, with a promise
+that settles when the write ends: a second Save edits while one writes is dropped (as before), a Save edits waits for a
+review write, and a review write waits for either. `screens/analysis.js` `toggleReviewed` calls
+`writeReviewRecord(open.id)` after the `setState` that marks the study, never when unmarking; `reviewBlockedReason` is
+unchanged.
+
+- R40 (G6): no review write while an editor for the study is open or stashed (`state.levelEditor?.studyId ===
+  studyId` or `hasStashedEditor(studyId)`); the mark still applies.
+- R41 (G6): the mark never waits for or depends on the write: `reviewedAt` is set first, synchronously, and stands
+  whatever the write does.
+- R42 (G6, review round 1): the review write reads the stored image only. `screens/analysis.js` is now
+  **`imageInfo(studyId, { storedOnly = false } = {})`**, its result gaining `sidecarGeometry` (object or null): with
+  `storedOnly`, a model result (**`data/predictions.js` `hasStoredImage(study)`**, new: a real study with `measurements`
+  and `geometry` that `isHandPlaced` does not claim, also `loadFilm`'s step-1 test now) is read from the image cache
+  when it holds the film, else from its own sidecar for that call alone (restoreFilm's sidecar guards, none of its side
+  effects: no `/decode`, nothing cached, no viewer handed anything, no restore started or superseded), and
+  `sidecarGeometry` is that sidecar's geometry when it was read (else null). Without `storedOnly`, or for a film whose
+  stored image is its decoded original (no result, or placed by hand), `imageInfo` reads through `ensureFilm` as before.
+  The private core is now `writeRecord(studyId, addedAt, editorOf, imageOptions)`: `imageOptions` goes to
+  `deps.imageInfo` and the facts to `editorOf(state, study, info)`. `writeReviewRecord` passes `{ storedOnly: true }`
+  and takes the model's geometry from `deps.getPrediction(studyId)?.geometry`, else `info.sidecarGeometry`;
+  `saveLevelEdits` passes no options.
+
+No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet file (rules in
+`styles/screens/analysis.css` section `05 — LEVEL EDITOR` and `styles/components.css`), no Python package.

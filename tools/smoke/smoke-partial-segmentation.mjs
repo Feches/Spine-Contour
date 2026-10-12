@@ -35,10 +35,12 @@ try {
     const result=await api.measure({vertebrae,s1_superior:null,femoral_circles:[]});
     window.partialOriginal=structuredClone(result);
     window.partialImages={image_png,mask_png,femoral_mask_png:mask_png,labels:{BACKGROUND:0}};
-    await api.savePrediction('SP-9901',{...result,...window.partialImages});
+    // (2026-10-10) A prediction id on the sidecar and the record: with neither an id nor qc.models a study reads as
+    // placed by hand in the level editor (ruling R16) and opens on its original, which this fixture does not have.
+    await api.savePrediction('SP-9901',{...result,...window.partialImages,prediction_id:'partial-software-fixture'});
     const study={id:'SP-9901',source:'real',fileName:'partial-software-fixture.png',
       filePath:'/test/partial-software-fixture.png',name:'Partial software regression',
-      addedAt:new Date().toISOString(),view:'Standing lateral',clinical:{},...result};
+      addedAt:new Date().toISOString(),view:'Standing lateral',clinical:{},...result,predictionId:'partial-software-fixture'};
     store.setState({studies:[study],ack:true,screen:'studies',openId:null,batch:null,running:null,measurementDrafts:{}});
     store.setState({screen:'analysis',openId:study.id,editing:false,selectedLevel:'L1',tab:'meas'});
   })()`);
@@ -48,12 +50,20 @@ try {
   await cdp.send('Page.bringToFront');
   const point = await cdp.toClient(160, 105);
   await cdp.click(point.x, point.y);
-  await cdp.setState('{editing:true,selection:null,selectedLevel:null}');
+  // (2026-10-10) Edit mode is the level editor's (the Edit segmentation button); Tab walks the handles of the placed
+  // levels only, so on this L1-only film five presses come back to L1 SA. The focused handle is
+  // state.levelEditor.handle.
+  await cdp.setState('{selection:null,selectedLevel:null}');
+  await cdp.evaluate("document.querySelector('[aria-label=\"Edit segmentation\"]').click()");
+  await until("import('./renderer/store.js').then(m=>Boolean(m.getState().levelEditor))");
+  await cdp.evaluate('(()=>{const a=document.activeElement;if(a&&a.blur)a.blur();return true;})()');
   for (let i = 0; i < 5; i++) await cdp.key('Tab');
-  check('trusted Tab cycles only the four L1 handles', await cdp.evaluate("import('./renderer/store.js').then(m=>{const s=m.getState().selection;return s.level==='L1'&&s.corner==='SA';})"));
+  check('trusted Tab cycles only the four L1 handles', await cdp.evaluate("import('./renderer/store.js').then(m=>{const h=m.getState().levelEditor?.handle;return h?.code==='L1'&&h?.handle==='SA';})"));
   await cdp.key('ArrowRight');
   await until("import('./renderer/store.js').then(m=>{const s=m.getState();return !s.measurementDrafts['SP-9901']&&s.studies[0].geometry.vertebrae.L1.superior[0][0]===61;})");
-  check('partial correction passes the real backend and preserves absent anatomy', await cdp.evaluate("import('./renderer/store.js').then(m=>{const s=m.getState().studies[0];return s.geometry.s1_superior===null&&s.geometry.femoral_circles.length===0&&s.geometry.vertebrae.L1.anterior_confirmed===false&&s.measurements.PI===null;})"));
+  // An annotator's edit confirms the level's anterior side: the projection keeps anterior_confirmed: false only
+  // while the level is still the model's (plan 2026-10-10 Task 2).
+  check('partial correction passes the real backend and preserves absent anatomy', await cdp.evaluate("import('./renderer/store.js').then(m=>{const s=m.getState().studies[0];return s.geometry.s1_superior===null&&s.geometry.femoral_circles.length===0&&s.geometry.vertebrae.L1.anterior_confirmed!==false&&Object.keys(s.geometry.vertebrae).join(',')==='L1'&&s.measurements.PI===null;})"));
   await cdp.settle(250);
   check('corrected partial result survives disk validation', await cdp.evaluate(`(async()=>{
     const api=await import('./renderer/api.js'),{validate}=await import('./renderer/data/persistence.js');
@@ -62,7 +72,9 @@ try {
   })()`));
   await cdp.evaluate("[...document.querySelectorAll('.viewer-editbar button')].find(b=>b.textContent.trim()==='RESET TO PREDICTION').click()");
   check('reset restores the original partial prediction', await cdp.evaluate("import('./renderer/store.js').then(m=>m.getState().studies[0].geometry.vertebrae.L1.superior[0][0]===60)"));
-  await cdp.setState('{editing:false}');
+  // After the reset nothing is unsaved, so DONE leaves edit mode at once.
+  await cdp.evaluate("document.querySelector('.viewer-editbar > button:last-of-type').click()");
+  await until("import('./renderer/store.js').then(m=>!m.getState().editing&&!m.getState().levelEditor)");
   await cdp.send('Page.reload', { ignoreCache: true });
   await cdp.settle(700);
   await cdp.setState("{ack:true,screen:'analysis',openId:'SP-9901',editing:false,selectedLevel:'L1',tab:'meas'}");

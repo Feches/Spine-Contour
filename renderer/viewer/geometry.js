@@ -1,5 +1,3 @@
-import { CERVICAL_LEVELS } from '../data/cervical.js';
-import { GLOBAL_SVA_HANDLES } from '../data/global-sva.js';
 export const LEVELS = ['L1', 'L2', 'L3', 'L4', 'L5'];
 export const CORNERS = ['SA', 'SP', 'IA', 'IP'];
 
@@ -97,21 +95,6 @@ export function imageToClient(pt, rect, canvas) {
   ];
 }
 
-export function nearestLandmark(geometry, clientX, clientY, canvas, radius = 14) {
-  const rect = canvas.getBoundingClientRect();
-  let nearest = null;
-  for (const { level, corner } of landmarkHandles(geometry)) {
-    const point = landmarkAt(geometry, level, corner);
-    if (!point) continue;
-    const [x, y] = imageToClient(point, rect, canvas);
-    const distance = Math.hypot(clientX - x, clientY - y);
-    if (distance <= radius && (!nearest || distance < nearest.distance)) {
-      nearest = { level, corner, distance };
-    }
-  }
-  return nearest;
-}
-
 // Legacy side keys identify array slots, not anatomical laterality. UI calls them Head 1/2.
 export const FEMORAL_SIDES = ['left', 'right'];
 
@@ -142,18 +125,4 @@ export function removeFemoralCircle(geometry, side) {
     geometry.manually_cleared = true;
   }
   return updateHipMidpoint(geometry);
-}
-
-export function landmarkHandles(geometry) {
-  const lumbar = [
-    ...LEVELS.flatMap(level => CORNERS.map(corner => ({ kind: 'landmark', level, corner }))),
-    ...['SA', 'SP'].map(corner => ({ kind: 'landmark', level: 'S1', corner })),
-  ];
-  return geometry?.region === 'cervical' ? [
-    { kind: 'landmark', level: 'C2', corner: 'CENTROID' },
-    ...CERVICAL_LEVELS.flatMap(level => CORNERS.map(corner => ({ kind: 'landmark', level, corner }))),
-  ] : geometry?.region === 'full_spine'
-    ? [{ kind: 'landmark', level: 'C2', corner: 'CENTROID' },
-      ...CERVICAL_LEVELS.flatMap(level => CORNERS.map(corner => ({ kind: 'landmark', level, corner }))),
-      ...GLOBAL_SVA_HANDLES.slice(0, 1), ...lumbar] : lumbar;
 }

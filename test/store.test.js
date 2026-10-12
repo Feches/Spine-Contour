@@ -33,6 +33,8 @@ test('getState returns the documented initial shape', () => {
   assert.deepEqual(state.models, { vertebrae: 'unet', femoral: 'unet', s1: 'keypointrcnn' });
   assert.equal(state.editing, false);
   assert.equal(state.selection, null);
+  assert.equal(state.levelEditor, null);
+  assert.equal(state.filmWindow, null);
   assert.equal(state.running, null);
   assert.equal(state.runStage, null);
   assert.equal(state.batch, null);

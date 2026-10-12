@@ -21,6 +21,9 @@ try {
   // Re-import the app after source changes; no live library is used by this suite.
   await cdp.send('Page.reload');
   await cdp.settle(700);
+  // (2026-10-10) A 1600x1100 viewport, as the disc-height suite uses: in a small window the level editor's edit bar
+  // covers the film's upper landmarks and the L2 SP press lands on the bar.
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1100, deviceScaleFactor: 1, mobile: false });
   await cdp.evaluate(`(async () => {
     const store = await import('./renderer/store.js');
     const api = await import('./renderer/api.js');
@@ -40,9 +43,11 @@ try {
     const mask_png=canvas.toDataURL('image/png').split(',')[1];
     const result=await api.measure({vertebrae,s1_superior,femoral_circles});
     const qc={femoral:{confidence:.95},framing:{s1_confidence:.01,search_confidence:.95,searched:true}};
-    const response={...result,image_png,mask_png,femoral_mask_png:mask_png,labels:{BACKGROUND:0},qc};
+    // (2026-10-10) A prediction id on the sidecar and the record: with neither an id nor qc.models a study reads as
+    // placed by hand in the level editor (ruling R16) and opens on its original, which this fixture does not have.
+    const response={...result,image_png,mask_png,femoral_mask_png:mask_png,labels:{BACKGROUND:0},qc,prediction_id:'synthetic-accuracy'};
     await api.savePrediction('SP-8801',response);
-    const study={id:'SP-8801',source:'real',fileName:'synthetic-lateral.png',filePath:null,name:'Synthetic lateral · review example',addedAt:new Date().toISOString(),view:'Standing lateral',thumbnail:null,clinical:{},...result,qc};
+    const study={id:'SP-8801',source:'real',fileName:'synthetic-lateral.png',filePath:null,name:'Synthetic lateral · review example',addedAt:new Date().toISOString(),view:'Standing lateral',thumbnail:null,clinical:{},...result,qc,predictionId:'synthetic-accuracy'};
     window.accuracyOriginal=structuredClone(study);
     store.setState({studies:[study],ack:true,screen:'analysis',openId:study.id,editing:false,selectedLevel:'SS',tab:'meas',batch:null,running:null,measurementDrafts:{}});
   })()`);
@@ -53,12 +58,18 @@ try {
   await cdp.screenshot(path.join(out,'s1-review.png'));
 
   // Trusted input drives the production viewer queue and real /measure endpoint.
-  await cdp.setState("{editing:true,selection:null,selectedLevel:null,panMode:false}");
+  // (2026-10-10) Through the level editor: the Edit segmentation button, then L2 selected (only the selected level
+  // has handles) and later L3 SA focused, both through the page's renderer/level-editor.js.
+  await cdp.setState("{selection:null,selectedLevel:null,panMode:false}");
+  await cdp.evaluate("document.querySelector('[aria-label=\"Edit segmentation\"]').click()");
+  await until("import('./renderer/store.js').then(m=>Boolean(m.getState().levelEditor))");
+  await cdp.evaluate("import('./renderer/level-editor.js').then(m=>{m.selectLevelRow('L2');return true;})");
+  await cdp.settle(120);
   const corner = await cdp.toClient(360,250);
   await cdp.drag(corner.x,corner.y,corner.x+12,corner.y+9);
   await until("import('./renderer/store.js').then(m=>{const s=m.getState();return !s.measurementDrafts['SP-8801'] && s.studies[0].geometry.vertebrae.L2.superior[1][0]!==360;})");
   check('trusted landmark drag recalculates and commits the corrected pair', await cdp.evaluate("import('./renderer/store.js').then(m=>m.getState().studies[0].measurements.LL['L2-S1']!==window.accuracyOriginal.measurements.LL['L2-S1'])"));
-  await cdp.setState("{selection:{kind:'landmark',level:'L3',corner:'SA'}}");
+  await cdp.evaluate("import('./renderer/level-editor.js').then(m=>{m.selectLevelRow('L3');m.setFocusedHandle({code:'L3',handle:'SA'});return true;})");
   await cdp.evaluate("document.activeElement.blur()");
   for(let i=0;i<5;i++) await cdp.key('ArrowRight');
   await cdp.key('ArrowUp',{shift:true});
@@ -67,7 +78,10 @@ try {
   check('keyboard correction commits after real recalculation', await cdp.evaluate("import('./renderer/store.js').then(m=>m.getState().studies[0].geometry.vertebrae.L3.superior[0][0]===215)"));
   await cdp.evaluate("[...document.querySelectorAll('.viewer-editbar button')].find(b=>b.textContent.trim()==='RESET TO PREDICTION').click()");
   check('reset restores the original matched pair', await cdp.evaluate("import('./renderer/store.js').then(m=>JSON.stringify(m.getState().studies[0].geometry)===JSON.stringify(window.accuracyOriginal.geometry))"));
-  await cdp.setState("{editing:false,selectedLevel:'SS'}");
+  // After the reset nothing is unsaved, so DONE leaves edit mode at once.
+  await cdp.evaluate("document.querySelector('.viewer-editbar > button:last-of-type').click()");
+  await until("import('./renderer/store.js').then(m=>!m.getState().editing&&!m.getState().levelEditor)");
+  await cdp.setState("{selectedLevel:'SS'}");
 
   // Deliberately hold a correction while the actual saver writes a metadata edit.
   await cdp.evaluate(`(async()=>{

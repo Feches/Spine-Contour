@@ -55,6 +55,16 @@ function predictionPath(id) {
   return path.join(app.getPath('userData'), 'predictions', `${id}.json`);
 }
 
+// (2026-10-10, level editor) The label record: one JSON file per film under userData/labels/. The
+// renderer picks the name (<stem>.label.json, stored on the study as labelFile) and this process only
+// validates it. No path separators and no leading dot, so '.' and '..' cannot form and nothing
+// outside labels/ is reachable.
+const LABEL_FILE = /^(?!\.)[^\\/:*?"<>|\u0000-\u001f]{1,200}\.label\.json$/;
+function labelPath(name) {
+  if (typeof name !== 'string' || !LABEL_FILE.test(name)) throw new Error('Invalid label file name.');
+  return path.join(app.getPath('userData'), 'labels', name);
+}
+
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const APP_ICON = path.join(__dirname, 'assets', 'branding', 'spinecontour-mark-dark.png');
 
@@ -126,6 +136,31 @@ ipcMain.handle('classify-view', async (_event, request) => {
   const body = await response.json();
   if (!response.ok) throw new Error(body.detail || 'Could not identify the film.');
   return body;
+});
+
+// (2026-10-10, level editor) The original film's own pixels for the stage's display-only window /
+// level (backend/decode.py). The base64 becomes bytes here, so the renderer receives a Uint8Array of
+// little-endian uint16 (structured-clonable) instead of a string a third larger.
+ipcMain.handle('decode-film', async (_event, request) => {
+  if (!backendBaseUrl) throw new Error('The backend is not ready.');
+  const bytes = request?.data instanceof Uint8Array ? request.data : Uint8Array.from(request?.data?.data || request?.data || []);
+  if (!bytes.byteLength || bytes.byteLength > MAX_UPLOAD_BYTES) throw new Error('Select an image smaller than 50 MB.');
+  const form = new FormData();
+  form.append('file', new Blob([bytes]), request.name || 'image');
+  const response = await fetch(`${backendBaseUrl}/decode`, { method: 'POST', body: form, signal: AbortSignal.timeout(60000) });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.detail || 'Could not decode the film.');
+  const pixels = Buffer.from(body.pixels_base64, 'base64');
+  return {
+    width: body.width,
+    height: body.height,
+    bitsStored: body.bits_stored ?? null,
+    valueMin: body.value_min,
+    valueMax: body.value_max,
+    window: body.window ?? null,
+    scaled: body.scaled === true,
+    pixels: new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength),
+  };
 });
 
 ipcMain.handle('calibrate', async (_event, request) => {
@@ -251,23 +286,30 @@ ipcMain.handle('save-csv', async (_event, request) => {
 // irreversibly. Moving both aside under ONE timestamp makes the pair a single recoverable unit
 // and leaves nothing a reused id can clobber, so persistence stays on.
 //
+// (2026-10-10, level editor) labels/ moves under the same stamp: the label records are named for the
+// film, not the study id, so a fresh library's first film of the same name would write over the
+// previous library's record.
+//
 // The notices below are display-ready: renderer/api.js hands them to showToast verbatim, so they
-// name the two files and nothing else about the profile.
-function quarantineNotice(storeFile, sidecarDir) {
+// name the files and nothing else about the profile.
+function quarantineNotice(storeFile, sidecarDir, labelsDir) {
   // The second sentence has to match what the user is actually looking at. With demos gated off
   // in a packaged build, a quarantined store leaves an EMPTY list, and promising demo studies
   // over it would be the app describing a state it is not in.
   const running = SHOW_DEMO_STUDIES
     ? 'Spine-Contour is running on the demo studies.'
     : 'Spine-Contour is running on an empty library.';
-  return `Your saved studies could not be read and were moved aside as ${storeFile} (with ${sidecarDir}). `
-    + `${running} To recover, quit and rename both back.`;
+  return `Your saved studies could not be read and were moved aside as ${storeFile} (with ${sidecarDir} and ${labelsDir}). `
+    + `${running} To recover, quit and rename them back.`;
 }
 
-function sidecarMoveFailedNotice(storeFile) {
+// `stuck` names the folders that could not be moved: 'predictions', 'labels' or both.
+function sidecarMoveFailedNotice(storeFile, stuck) {
+  const saved = stuck.map((folder) => (folder === 'labels' ? 'label records' : 'segmentation images')).join(' and ');
+  const folders = `${stuck.join(' and ')} ${stuck.length === 1 ? 'folder' : 'folders'}`;
   return `Your saved studies could not be read and were moved aside as ${storeFile}, but the saved `
-    + 'segmentation images could not be moved with them. Nothing is being saved this session, so none '
-    + 'of them can be overwritten. Quit and move the predictions folder aside to recover.';
+    + `${saved} could not be moved with them. Nothing is being saved this session, so none `
+    + `of them can be overwritten. Quit and move the ${folders} aside to recover.`;
 }
 
 ipcMain.handle('demo-studies-hidden', async () => {
@@ -290,24 +332,33 @@ ipcMain.handle('load-studies', async () => {
   const store = await readStudyStore(storePath());
   if (!store.quarantined) return { ...store, notice: null, demoStudies: SHOW_DEMO_STUDIES };
 
-  // Share the store's own timestamp so the two names pair up on sight.
+  // Share the store's own timestamp so the names pair up on sight.
   const stamp = /\.corrupt-(\d+)$/.exec(store.quarantined);
-  const sidecarDir = `predictions.corrupt-${stamp ? stamp[1] : Date.now()}`;
+  const suffix = stamp ? stamp[1] : Date.now();
+  const sidecarDir = `predictions.corrupt-${suffix}`;
+  const labelsDir = `labels.corrupt-${suffix}`;
   const root = app.getPath('userData');
-  try {
-    await fsPromises.rename(path.join(root, 'predictions'), path.join(root, sidecarDir));
-  } catch (error) {
-    // A fresh profile has no predictions/ at all. That is the normal case, not a failure.
-    if (error.code !== 'ENOENT') {
-      return {
-        ...store,
-        notice: sidecarMoveFailedNotice(store.quarantined),
-        persistenceUnsafe: true,
-        demoStudies: SHOW_DEMO_STUDIES,
-      };
+  // Both folders are tried even when the first fails, and either failure takes the one unsafe path
+  // below: a record left behind can be overwritten by a reused id or a same-named film.
+  const stuck = [];
+  for (const [folder, aside] of [['predictions', sidecarDir], ['labels', labelsDir]]) {
+    try {
+      await fsPromises.rename(path.join(root, folder), path.join(root, aside));
+    } catch (error) {
+      // A fresh profile has no predictions/ at all, and a library never edited has no labels/.
+      // That is the normal case, not a failure.
+      if (error.code !== 'ENOENT') stuck.push(folder);
     }
   }
-  return { ...store, notice: quarantineNotice(store.quarantined, sidecarDir), demoStudies: SHOW_DEMO_STUDIES };
+  if (stuck.length > 0) {
+    return {
+      ...store,
+      notice: sidecarMoveFailedNotice(store.quarantined, stuck),
+      persistenceUnsafe: true,
+      demoStudies: SHOW_DEMO_STUDIES,
+    };
+  }
+  return { ...store, notice: quarantineNotice(store.quarantined, sidecarDir, labelsDir), demoStudies: SHOW_DEMO_STUDIES };
 });
 
 ipcMain.handle('save-studies', async (_event, studies) => {
@@ -331,6 +382,29 @@ ipcMain.handle('delete-prediction', async (_event, id) => {
   // (an antivirus scan, a synced profile, a read-only file) raises EPERM/EBUSY, and re-throwing
   // it puts an errno string and an absolute path containing the user's account name in a toast.
   const file = predictionPath(id);
+  try {
+    await fsPromises.unlink(file);
+  } catch (error) {
+    if (error.code === 'ENOENT') return;
+    throw new Error('The file is locked or the folder is not writable. Close anything that may be using it, then try again.');
+  }
+});
+
+// (2026-10-10, level editor) The label record, one file per film (see labelPath). The load resolves
+// null for a record that was never written or cannot be parsed, like a sidecar. writeJsonAtomic
+// creates labels/ on the first save.
+ipcMain.handle('load-label-record', (_event, name) => readJsonOrNull(labelPath(name)));
+
+ipcMain.handle('save-label-record', async (_event, name, record) => {
+  if (!record || typeof record !== 'object') throw new Error('Nothing to save.');
+  await writeJsonAtomic(labelPath(name), record);
+});
+
+// Same terms as delete-prediction: a record that is already gone is the outcome the caller wanted
+// (a film never edited has none), labelPath validates the name before the try, and the unlink's own
+// failure is mapped to the same display-ready sentence rather than an errno string and a path.
+ipcMain.handle('delete-label-record', async (_event, name) => {
+  const file = labelPath(name);
   try {
     await fsPromises.unlink(file);
   } catch (error) {

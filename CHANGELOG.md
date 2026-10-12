@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0
+
+- Replaces the landmark editor with a **vertebral level editor**: sixteen levels in five groups, each placed by
+  clicks when the model missed it, with step chips that choose the next point, handles on the selected level only,
+  and an exit prompt for unsaved level edits.
+- **Save edits** writes a per-film label record (`labels/<stem>.label.json`) for retraining: every level's state and
+  points, the model's original points for edited levels, `edited_points` and an `edits` summary. **Mark reviewed**
+  writes the record for a film that has none yet.
+- **Window / level** on the stage in and out of edit mode, from the original film through the new `POST /decode`;
+  a right-button drag windows, a double right-click resets. Display only.
+- Zoom to 800% with the overlay kept crisp past 1:1; a film with no result can be placed by hand; Re-run and the
+  Region / Orientation selects wait for edit mode to end; `qc.model_versions` names each model's graph.
+
+[Release notes](docs/releases/1.1.0.md)
+
 ## 1.0.17
 
 - Adds an optional **Fast classifier** under **Settings → Automatic view selection**

@@ -201,6 +201,22 @@
   color: var(--on-accent);
 }
 .checkbox-row input[type="checkbox"]:checked ~ .checkbox-box svg { display: block; }
+/* Indeterminate (some, not all): the platform's dash on the filled ground the tick uses, for every tick box.
+   Without it a mixed box reads as an empty one. The same look as studies.css's .param-pick rule (select-all),
+   which it now also covers; the tick is hidden so a box that is both checked and indeterminate shows the dash. */
+.checkbox-row input[type="checkbox"]:indeterminate ~ .checkbox-box {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.checkbox-row input[type="checkbox"]:indeterminate ~ .checkbox-box svg { display: none; }
+.checkbox-row input[type="checkbox"]:indeterminate ~ .checkbox-box::after {
+  content: '';
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--on-accent);
+}
 .checkbox-row input[type="checkbox"]:focus-visible ~ .checkbox-box {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

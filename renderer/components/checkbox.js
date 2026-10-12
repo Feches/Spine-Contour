@@ -16,7 +16,10 @@ const CHECK_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" s
 // name in every row. The hidden input stays inside the <label> so a click anywhere on the box --
 // including a synthetic click at the 1x1 input's own rect, which is how the smoke suites drive it
 // -- lands on the label and toggles the control.
-export function checkbox({ key, keyAttr = 'data-param-key', label, checked, note, ariaLabel, indeterminate, onChange, onClick }) {
+// `variant: 'level'` (2026-10-10, the level editor's panel) gives the label 'checkbox-row level-check' and none
+// of the param-* classes, so the Studies screen's sizing and placement rules never reach it; with no variant
+// the output is exactly what it always was.
+export function checkbox({ key, keyAttr = 'data-param-key', label, checked, note, ariaLabel, indeterminate, onChange, onClick, variant }) {
   const input = el('input', {
     type: 'checkbox', checked, [keyAttr]: key, onChange,
     ...(ariaLabel ? { 'aria-label': ariaLabel } : {}),
@@ -24,7 +27,7 @@ export function checkbox({ key, keyAttr = 'data-param-key', label, checked, note
   // A property, not an attribute, and it has no markup form: it must be assigned on the node.
   if (indeterminate === true) input.indeterminate = true;
   return el('label', {
-    class: `checkbox-row param-check${label === null ? ' param-pick' : ''}`,
+    class: variant === 'level' ? 'checkbox-row level-check' : `checkbox-row param-check${label === null ? ' param-pick' : ''}`,
     ...(onClick ? { onClick } : {}),
   },
     input,

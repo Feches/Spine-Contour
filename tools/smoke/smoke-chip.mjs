@@ -110,8 +110,13 @@ try {
   await cdp.setState('{ panX: 0, panY: 0 }');
   await cdp.settle(100);
 
-  // 6. Inert and faded while editing; a handle under it can be grabbed.
-  await cdp.setState('{ editing: true }');
+  // 6. Inert and faded while editing; a handle under it can be grabbed. (2026-10-10) Edit mode is entered through
+  // the Edit segmentation button, and only the selected level has handles: L4 is selected through the page's
+  // renderer/level-editor.js. The press is a level-editor handle drag, so the editor's focused handle names it.
+  const pencil = await cdp.rect('.viewer-tool[aria-label="Edit segmentation"]');
+  await cdp.click(pencil.cx, pencil.cy);
+  await cdp.settle(250);
+  await cdp.evaluate("import('./renderer/level-editor.js').then((m) => { m.selectLevelRow('L4'); return true; })");
   await cdp.settle(150);
   const ce = await chip();
   check('while editing the chip is pointer-transparent and faded', ce.pointerEvents === 'none' && ce.opacity < 0.9, [ce.pointerEvents, ce.opacity]);
@@ -122,9 +127,15 @@ try {
   await cdp.settle(300);
   s = await cdp.state();
   const g2 = await geometry();
-  check('a handle press while editing drags the handle', s.selection && s.selection.level === 'L4' && s.selection.corner === 'SA' && (g2.vertebrae.L4.superior[0][0] !== sa[0] || g2.vertebrae.L4.superior[0][1] !== sa[1]), [s.selection, sa, g2.vertebrae.L4.superior[0]]);
-  await cdp.setState('{ editing: false, selection: null }');
-  await cdp.settle(120);
+  const focused = s.levelEditor?.handle ?? null;
+  check('a handle press while editing drags the handle', focused && focused.code === 'L4' && focused.handle === 'SA' && (g2.vertebrae.L4.superior[0][0] !== sa[0] || g2.vertebrae.L4.superior[0][1] !== sa[1]), [focused, sa, g2.vertebrae.L4.superior[0]]);
+  // Leaving with the drag unsaved asks first; the prompt's Discard leaves edit mode and puts L4 back.
+  const done = await cdp.rect('.viewer-editbar > button:last-of-type');
+  await cdp.click(done.cx, done.cy);
+  await cdp.settle(150);
+  const discard = await cdp.rect('.lv-prompt-discard');
+  if (discard) await cdp.click(discard.cx, discard.cy);
+  await cdp.settle(400);
   const cx = await chip();
   check('leaving edit mode makes the chip interactive again', cx.pointerEvents !== 'none' && cx.opacity >= 0.9, [cx.pointerEvents, cx.opacity]);
 

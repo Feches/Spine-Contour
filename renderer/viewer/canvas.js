@@ -1,7 +1,10 @@
 import { segmentalColumns, segmentalEndplates } from '../data/segmental.js';
 import { CERVICAL_LEVELS } from '../data/cervical.js';
-import { LEVELS, landmarkAt, femoralCircle, FEMORAL_SIDES, landmarkHandles } from './geometry.js';
-import { sameHandle } from './interactions.js';
+import { LEVELS, FEMORAL_SIDES } from './geometry.js';
+import { applyWindow } from './window-level.js';
+import { LEVEL_CODES, kindOf, levelState, placementSteps, fitRim } from '../data/levels.js';
+import { quadrilateral } from '../data/level-projection.js';
+import { levelHandles } from './level-handles.js';
 
 export const LEVEL_RGB = {
   C2: [183, 139, 244],
@@ -15,6 +18,10 @@ export const LEVEL_RGB = {
   L3: [255, 205, 86],
   L4: [75, 192, 192],
   L5: [54, 162, 235],
+  // (2026-10-10, level editor, D9) The three levels the editor adds that the mask overlay never painted.
+  T1: [255, 159, 64],
+  T4: [255, 205, 86],
+  S1: [255, 99, 132],
 };
 export const FEMORAL_OVERLAY_COLOR = [98, 210, 111];
 // Baked into the overlay pixel data once per prediction. The static layer scales this by
@@ -23,9 +30,13 @@ export const FEMORAL_OVERLAY_COLOR = [98, 210, 111];
 // That file was deleted by this plan's Task 11; the reference is historical.
 export const BASE_OVERLAY_ALPHA = 116;
 
+// The levels the backend's mask paints. LEVEL_RGB also holds T1, T4 and S1 for the level editor's
+// outlines; the stored image has never coloured S1 and has no T1 or T4, and still does not.
+const MASK_LEVELS = ['C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'L1', 'L2', 'L3', 'L4', 'L5'];
+
 export function buildLabelColorMap(labels) {
   const map = {};
-  for (const level of Object.keys(LEVEL_RGB)) {
+  for (const level of MASK_LEVELS) {
     const id = labels?.[level];
     if (typeof id === 'number') map[id] = LEVEL_RGB[level];
   }
@@ -68,13 +79,38 @@ export async function loadStudyImages(predictResponse) {
   const overlayPixels = buildOverlayPixels(maskPixels, null, colorByLabel, BASE_OVERLAY_ALPHA);
   context.clearRect(0, 0, image.width, image.height);
   context.putImageData(new ImageData(overlayPixels, image.width, image.height), 0, 0);
-  return { image, mask, overlayCanvas: scratch, width: image.width, height: image.height };
+  // `labels` ({ L1: 20, ... }) rides with `mask` so the label record can trace a level's outline from it later
+  // (Task 12). The RGBA buffer read above is not kept: `mask` is the source and a film's buffer is 4 bytes a pixel.
+  return { image, mask, overlayCanvas: scratch, width: image.width, height: image.height, labels: predictResponse.labels ?? null };
 }
 
+// `image` is an ImageBitmap, except for a film shown from its decoded original (imagesFromRaw),
+// whose `image` is a canvas: nothing to close.
 export function disposeStudyImages(images) {
   if (!images) return;
-  images.image.close();
+  images.image.close?.();
   images.mask?.close();
+}
+
+// (2026-10-10, level editor) The windowed film's RGBA, reused while the film size is unchanged, so a
+// slider tick or a drag frame on a 25-megapixel film does not allocate 100 MB.
+let windowScratch = null;
+
+function windowedPixels(raw, window) {
+  const size = raw.width * raw.height * 4;
+  if (!windowScratch || windowScratch.length !== size) windowScratch = new Uint8ClampedArray(size);
+  return applyWindow(raw, window, windowScratch);
+}
+
+// A film with no stored image (no segmentation result, or none yet) shown from its decoded original
+// at `window`: the same shape loadStudyImages returns, with no mask and no overlay, `raw` attached
+// and `preview: true` -- it is never a prediction. A canvas is a valid drawImage source.
+export function imagesFromRaw(raw, window) {
+  const image = document.createElement('canvas');
+  image.width = raw.width;
+  image.height = raw.height;
+  image.getContext('2d').putImageData(new ImageData(windowedPixels(raw, window), raw.width, raw.height), 0, 0);
+  return { image, mask: null, overlayCanvas: null, width: raw.width, height: raw.height, raw, preview: true };
 }
 
 // Spec 13: a thumbnail is at most 128 px on its long edge, JPEG, inline as a data URI. Pure size
@@ -118,11 +154,20 @@ export function sizeCanvases(canvases, width, height) {
   canvases.dynamicCanvas.height = height;
 }
 
+// The film, then the mask overlay. (2026-10-10, level editor) `opts.window` ({width, level}) with a
+// decoded original on `images.raw` puts the windowed original instead of the stored image -- the
+// LUT touches the film layer only -- and `opts.editing` leaves the overlay off. With neither set,
+// the calls are exactly what they were.
 export function drawStaticLayer(ctx, canvas, images, opts) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!images) return;
-  ctx.drawImage(images.image, 0, 0);
-  if (opts.overlays && images.overlayCanvas) {
+  if (opts.window && images.raw) {
+    const { raw } = images;
+    ctx.putImageData(new ImageData(windowedPixels(raw, opts.window), raw.width, raw.height), 0, 0);
+  } else {
+    ctx.drawImage(images.image, 0, 0);
+  }
+  if (opts.overlays && images.overlayCanvas && !opts.editing) {
     ctx.globalAlpha = Math.max(0, Math.min(1, opts.overlayOpacity / 100));
     ctx.drawImage(images.overlayCanvas, 0, 0);
     ctx.globalAlpha = 1;
@@ -148,17 +193,15 @@ const CANVAS_MONO = "'Chivo Mono', monospace";
 // editor's four per-corner colours (renderer.js:43, historical); the femoral handle colour,
 // which is the overlay's own femoral green; and the retrace point colour.
 const STAGE_BG_COLOR = '#0B0A09';
-const CORNER_COLORS = { SA: '#32d4ff', SP: '#64e19a', IA: '#ffb259', IP: '#fa78d4' };
+export const CORNER_COLORS = { SA: '#32d4ff', SP: '#64e19a', IA: '#ffb259', IP: '#fa78d4' };
 const FEMORAL_HANDLE_COLOR = `rgb(${FEMORAL_OVERLAY_COLOR.join(',')})`;
-const TRACE_COLOR = '#ffe071';
+export const TRACE_COLOR = '#ffe071';
 
-// Handles keep a constant size ON SCREEN, unlike the outlines, which scale with the image.
+// Handles keep a constant size ON SCREEN up to 1:1 (past it they magnify with the film, R28), unlike the
+// outlines, which scale with the image.
 // Every handle dimension below is in CSS pixels and is multiplied by opts.pixelRatio
-// (image pixels per CSS pixel at the current fit and zoom) at draw time.
-const HANDLE_RADIUS_PX = 5;
-const HANDLE_HOVER_RADIUS_PX = 8;
+// (image pixels per CSS pixel at the current fit and zoom, floored at 1 by ruling R28) at draw time.
 const HANDLE_RING_RADIUS_PX = 10;
-const HANDLE_LABEL_PX = 11;
 
 function midpoint(a, b) {
   return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
@@ -394,86 +437,275 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
   }
 }
 
-function drawHandle(ctx, canvas, point, color, { selected, hovered, label, pixelRatio }) {
-  const radius = (hovered ? HANDLE_HOVER_RADIUS_PX : HANDLE_RADIUS_PX) * pixelRatio;
-  if (selected) {
-    ctx.beginPath();
-    ctx.arc(point[0], point[1], HANDLE_RING_RADIUS_PX * pixelRatio, 0, 2 * Math.PI);
-    ctx.strokeStyle = STAGE_SELECTED_COLOR;
-    ctx.lineWidth = 2 * pixelRatio;
+// ---- Level editor (2026-10-10) ----
+//
+// What the level editor draws on the dynamic layer while editing (handoff §5; plan Task 9): every visible
+// placed level filled and outlined, the selected level's handles, the model's own geometry dashed under an
+// edited level, a plate naming each level, and the placement in progress. Every size is in CSS pixels times
+// `opts.pixelRatio` floored at 1 (ruling R28), so it holds its size on screen at any fit and zoom up to 1:1 and
+// magnifies with the film past it. The editor state is read, never written.
+
+const LEVEL_STROKE_ALPHA = 0.85;
+const LEVEL_STROKE_PX = 1.25;
+const SELECTED_STROKE_PX = 2;
+const GHOST_COLOR = 'rgba(250,247,242,.7)';
+const INK_COLOR = '#FAF7F2';
+export const LEVEL_HANDLE_RADIUS_PX = 6;   // exported for the stage's grab radius past 1:1 (R28)
+const LEVEL_HANDLE_OUTLINE_PX = 2;
+const CENTRE_DOT_RADIUS_PX = 3.5;
+const C2_CENTROID_RADIUS_PX = 3;
+const T4_CENTROID_RADIUS_PX = 5;
+const PLACEMENT_LINE_PX = 1.5;
+const EDITOR_DASH_PX = [6, 5];
+const LABEL_FONT_PX = 11;
+const LABEL_HEIGHT_PX = 18;
+const LABEL_PAD_PX = 6;
+const LABEL_RADIUS_PX = 4;
+const LABEL_OFFSET_PX = 14;
+
+const isPoint = (p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]);
+const isPair = (pair) => Array.isArray(pair) && pair.length === 2 && isPoint(pair[0]) && isPoint(pair[1]);
+const rgba = (color, alpha) => `rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
+const dashFor = (pixelRatio) => EDITOR_DASH_PX.map(length => length * pixelRatio);
+
+// A level's overlay colour; the femoral heads share the femoral green.
+function levelColor(code) {
+  return kindOf(code) === 'circle' ? FEMORAL_OVERLAY_COLOR : LEVEL_RGB[code];
+}
+
+/**
+ * The canvas colour a handle or a placement step is drawn in: SA SP IA IP are the corner colours, `trace` is
+ * the rim-point colour, `level` is the level's own overlay colour (the femoral green for a head).
+ */
+export function colorFor(colorKey, code) {
+  if (Object.hasOwn(CORNER_COLORS, colorKey)) return CORNER_COLORS[colorKey];
+  if (colorKey === 'trace') return TRACE_COLOR;
+  const rgb = levelColor(code);
+  return rgb ? `rgb(${rgb.join(',')})` : STAGE_SELECTED_COLOR;
+}
+
+// A level's shape as drawable parts: a polyline (`line`, `closed`) or a circle (`arc`, `radius`). `area` parts
+// can be filled; `dot` parts are the centroid marks, which stay filled when the level is selected. A two-point
+// endplate has no area. Geometry that is not what its kind says gives no parts: a bad record draws nothing.
+function shapeParts(code, geometry, pixelRatio) {
+  if (!geometry) return [];
+  switch (kindOf(code)) {
+    case 'body':
+      return isPair(geometry.superior) && isPair(geometry.inferior)
+        ? [{ line: quadrilateral(geometry), closed: true, area: true }] : [];
+    case 'c2':
+      return isPair(geometry.inferior) && isPoint(geometry.centroid)
+        ? [{ line: geometry.inferior }, { arc: geometry.centroid, radius: C2_CENTROID_RADIUS_PX * pixelRatio, area: true, dot: true }] : [];
+    case 'endplate':
+      return isPair(geometry.superior) ? [{ line: geometry.superior }] : [];
+    case 'centroid':
+      return isPoint(geometry.centroid)
+        ? [{ arc: geometry.centroid, radius: T4_CENTROID_RADIUS_PX * pixelRatio, area: true, dot: true }] : [];
+    case 'circle':
+      return isPoint(geometry.center) && geometry.radius >= 0
+        ? [{ arc: geometry.center, radius: geometry.radius, area: true }] : [];
+    default:
+      return [];
+  }
+}
+
+function tracePart(ctx, part) {
+  ctx.beginPath();
+  if (part.line) {
+    part.line.forEach((point, index) => (index ? ctx.lineTo(point[0], point[1]) : ctx.moveTo(point[0], point[1])));
+    if (part.closed) ctx.closePath();
+  } else {
+    ctx.arc(part.arc[0], part.arc[1], part.radius, 0, 2 * Math.PI);
+  }
+}
+
+// The model's own geometry, dashed, under the current one.
+function drawGhost(ctx, code, modelGeometry, pixelRatio) {
+  ctx.save();
+  ctx.setLineDash(dashFor(pixelRatio));
+  ctx.strokeStyle = GHOST_COLOR;
+  ctx.lineWidth = LEVEL_STROKE_PX * pixelRatio;
+  for (const part of shapeParts(code, modelGeometry, pixelRatio)) {
+    tracePart(ctx, part);
     ctx.stroke();
   }
-  ctx.beginPath();
-  ctx.arc(point[0], point[1], radius, 0, 2 * Math.PI);
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.strokeStyle = STAGE_BG_COLOR;
-  ctx.lineWidth = pixelRatio;
-  ctx.stroke();
-  if (!(selected || hovered) || !label) return;
-  const fontSize = HANDLE_LABEL_PX * pixelRatio;
-  const pad = 4 * pixelRatio;
-  ctx.font = `600 ${fontSize}px ${CANVAS_MONO}`;
-  const width = ctx.measureText(label).width + 2 * pad;
-  const height = fontSize + 2 * pad;
-  // Keep the plate inside the canvas.
-  const x = Math.max(0, Math.min(point[0] + radius + 2 * pad, canvas.width - width));
-  const y = Math.max(0, Math.min(point[1] - radius - height, canvas.height - height));
+  ctx.restore();
+}
+
+// The label plate's anchor: the posterior corner (the middle of the posterior edge for a body).
+function labelAnchor(code, geometry) {
+  switch (kindOf(code)) {
+    case 'body': return midpoint(geometry.superior[1], geometry.inferior[1]);
+    case 'c2': return geometry.inferior[1];
+    case 'endplate': return geometry.superior[1];
+    case 'centroid': return geometry.centroid;
+    default: return null;
+  }
+}
+
+function drawLevelLabel(ctx, code, anchor, selected, pixelRatio) {
+  ctx.font = `500 ${LABEL_FONT_PX * pixelRatio}px ${CANVAS_MONO}`;
+  const width = ctx.measureText(code).width + 2 * LABEL_PAD_PX * pixelRatio;
+  const height = LABEL_HEIGHT_PX * pixelRatio;
+  const x = anchor[0] + LABEL_OFFSET_PX * pixelRatio;
+  const y = anchor[1] - height / 2;
   ctx.fillStyle = LABEL_PLATE_FILL;
-  ctx.fillRect(x, y, width, height);
-  ctx.fillStyle = STAGE_LABEL_FILL;
-  ctx.textBaseline = 'top';
-  ctx.fillText(label, x + pad, y + pad);
-  ctx.textBaseline = 'alphabetic';
-}
-
-// Lumbar: 22 landmarks and centre/rim handles for femoral heads. Cervical:
-// all available endplate corners and the C2 centroid. Order matters for labels: a selected or
-// hovered handle's label is drawn with it, so later handles can overlap it.
-function drawHandles(ctx, canvas, geometry, { selection, hover, pixelRatio }) {
-  const handleOpts = (handle, label) => ({
-    selected: sameHandle(selection, handle),
-    hovered: sameHandle(hover, handle),
-    label,
-    pixelRatio,
-  });
-  for (const { level, corner } of landmarkHandles(geometry)) {
-    const handle = { kind: 'landmark', level, corner };
-    const point = landmarkAt(geometry, level, corner);
-    if (!point) continue;
-    const label = geometry.vertebrae?.[level]?.anterior_confirmed === false
-      ? `${level} ${corner.startsWith('S') ? 'upper' : 'lower'} ${corner.endsWith('A') ? '1' : '2'}`
-      : `${level} ${corner === 'CENTROID' ? 'centroid' : corner}`;
-    drawHandle(ctx, canvas, point, CORNER_COLORS[corner] ?? STAGE_SELECTED_COLOR, handleOpts(handle, label));
-  }
-  for (const side of FEMORAL_SIDES) {
-    const circle = femoralCircle(geometry, side);
-    if (!circle) continue;
-    const [cx, cy, r] = circle;
-    const name = side === 'left' ? 'Head 1' : 'Head 2';
-    drawHandle(ctx, canvas, [cx, cy], FEMORAL_HANDLE_COLOR, handleOpts({ kind: 'femoral', side, part: 'center' }, name));
-    drawHandle(ctx, canvas, [cx + r, cy], FEMORAL_HANDLE_COLOR, handleOpts({ kind: 'femoral', side, part: 'rim' }, `${name} \u00B7 resize`));
-  }
-}
-
-function drawTracePoints(ctx, tracePoints, pixelRatio) {
-  const fontSize = HANDLE_LABEL_PX * pixelRatio;
-  ctx.font = `600 ${fontSize}px ${CANVAS_MONO}`;
-  tracePoints.forEach((point, index) => {
+  if (typeof ctx.roundRect === 'function') {
     ctx.beginPath();
-    ctx.arc(point[0], point[1], HANDLE_RADIUS_PX * pixelRatio, 0, 2 * Math.PI);
-    ctx.fillStyle = TRACE_COLOR;
+    ctx.roundRect(x, y, width, height, LABEL_RADIUS_PX * pixelRatio);
+    ctx.fill();
+  } else {
+    ctx.fillRect(x, y, width, height);
+  }
+  ctx.fillStyle = selected ? STAGE_SELECTED_COLOR : STAGE_LABEL_FILL;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(code, x + LABEL_PAD_PX * pixelRatio, anchor[1]);
+}
+
+// The selected level's draggable points (and a head's fixed centre dot). The focused handle also gets the ring;
+// a focus that names another level, or a handle this level does not have, draws nothing extra.
+function drawLevelHandles(ctx, code, geometry, focused, pixelRatio) {
+  if (kindOf(code) === 'circle' && isPoint(geometry.center)) {
+    ctx.beginPath();
+    ctx.arc(geometry.center[0], geometry.center[1], CENTRE_DOT_RADIUS_PX * pixelRatio, 0, 2 * Math.PI);
+    ctx.fillStyle = INK_COLOR;
+    ctx.fill();
+  }
+  for (const { handle, point, colorKey } of levelHandles(code, geometry)) {
+    if (focused && focused.code === code && focused.handle === handle) {
+      ctx.beginPath();
+      ctx.arc(point[0], point[1], HANDLE_RING_RADIUS_PX * pixelRatio, 0, 2 * Math.PI);
+      ctx.strokeStyle = STAGE_SELECTED_COLOR;
+      ctx.lineWidth = SELECTED_STROKE_PX * pixelRatio;
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(point[0], point[1], LEVEL_HANDLE_RADIUS_PX * pixelRatio, 0, 2 * Math.PI);
+    ctx.fillStyle = colorFor(colorKey, code);
     ctx.fill();
     ctx.strokeStyle = STAGE_BG_COLOR;
-    ctx.lineWidth = pixelRatio;
+    ctx.lineWidth = LEVEL_HANDLE_OUTLINE_PX * pixelRatio;
     ctx.stroke();
-    ctx.fillStyle = STAGE_LABEL_FILL;
-    ctx.fillText(String(index + 1), point[0] + 8 * pixelRatio, point[1] - 8 * pixelRatio);
+  }
+}
+
+// One placed level: ghost, fill, outline, label. True when it was drawn (its handles are drawn by the caller, last).
+function drawPlacedLevel(ctx, editor, code, geometry, { overlays, fillAlpha, pixelRatio }) {
+  const selected = editor.selected === code;
+  // Overlays off hides every level but the selected one: no fill, no outline, no label.
+  if (!overlays && !selected) return false;
+  const parts = shapeParts(code, geometry, pixelRatio);
+  if (parts.length === 0) return false;
+  if (selected && levelState({ ...editor.levels[code], geometry }, editor.model?.[code]) === 'edited') {
+    drawGhost(ctx, code, editor.model[code], pixelRatio);
+  }
+  const rgb = levelColor(code);
+  for (const part of parts) {
+    tracePart(ctx, part);
+    if (part.area && (part.dot || overlays)) {
+      ctx.fillStyle = rgba(rgb, part.dot && selected ? 1 : fillAlpha);
+      ctx.fill();
+    }
+    ctx.strokeStyle = selected ? STAGE_SELECTED_COLOR : rgba(rgb, LEVEL_STROKE_ALPHA);
+    ctx.lineWidth = (selected ? SELECTED_STROKE_PX : LEVEL_STROKE_PX) * pixelRatio;
+    ctx.stroke();
+  }
+  const anchor = labelAnchor(code, geometry);
+  if (anchor) drawLevelLabel(ctx, code, anchor, selected, pixelRatio);
+  return true;
+}
+
+// The placement in progress: each placed point as a dot in its step's colour, then either a dashed line through them
+// in step order or, for a femoral head with two points or more, the dashed circle they fit and its centre. `points`
+// holds one slot per step, null until set (gate feedback G2: the steps may be set in any order).
+function drawPlacement(ctx, canvas, placing, pixelRatio) {
+  const placed = (placing.points ?? []).flatMap((point, index) => (point ? [{ point, index }] : []));
+  if (placed.length === 0) return;
+  const points = placed.map(({ point }) => point);
+  const { steps } = placementSteps(placing.code);
+  const circle = kindOf(placing.code) === 'circle';
+  const fit = circle && points.length >= 2 ? fitRim(points, Math.hypot(canvas.width, canvas.height)) : null;
+  if (circle ? fit : points.length >= 2) {
+    ctx.save();
+    ctx.setLineDash(dashFor(pixelRatio));
+    ctx.strokeStyle = STAGE_SELECTED_COLOR;
+    ctx.lineWidth = PLACEMENT_LINE_PX * pixelRatio;
+    ctx.beginPath();
+    if (fit) {
+      ctx.arc(fit.center[0], fit.center[1], fit.radius, 0, 2 * Math.PI);
+    } else {
+      points.forEach((point, index) => (index ? ctx.lineTo(point[0], point[1]) : ctx.moveTo(point[0], point[1])));
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+  placed.forEach(({ point, index }) => {
+    ctx.beginPath();
+    ctx.arc(point[0], point[1], LEVEL_HANDLE_RADIUS_PX * pixelRatio, 0, 2 * Math.PI);
+    ctx.fillStyle = colorFor(steps[index]?.colorKey ?? 'trace', placing.code);
+    ctx.fill();
+    ctx.strokeStyle = STAGE_BG_COLOR;
+    ctx.lineWidth = LEVEL_HANDLE_OUTLINE_PX * pixelRatio;
+    ctx.stroke();
   });
+  if (fit) {
+    ctx.beginPath();
+    ctx.arc(fit.center[0], fit.center[1], CENTRE_DOT_RADIUS_PX * pixelRatio, 0, 2 * Math.PI);
+    ctx.fillStyle = STAGE_SELECTED_COLOR;
+    ctx.fill();
+  }
+}
+
+/**
+ * Draws the level editor (`state.levelEditor`) over the film. `opts`: `overlays` and `overlayOpacity` (the toolbar's
+ * fill toggle and 0-100 slider), `pixelRatio` (image pixels per CSS pixel), `handle` (the focused handle,
+ * `{code, handle}` or null) and `dragGeometry` (`{code, geometry}` or null: one level's geometry for this frame, a
+ * drag in progress, in place of the stored one). Every visible level with geometry is drawn except the one being
+ * placed; only the selected level has handles.
+ */
+export function drawLevelEditor(ctx, canvas, editor, opts) {
+  const { overlays = true, overlayOpacity = 50, handle = null, dragGeometry = null } = opts ?? {};
+  // Ruling R28: the drawing ratio is floored at 1 image pixel per CSS pixel. The canvas is drawn at the stored
+  // image's resolution and CSS-scaled with the film, so past 1:1 on screen (pixelRatio < 1, reachable on every film
+  // since the zoom cap is 8x) a CSS-sized stroke, dash, handle or label would fall under one image pixel, be
+  // anti-aliased away and then be magnified: faint lines, unreadable labels. Past 1:1 the overlay therefore keeps its
+  // image-pixel size and magnifies with the film, crisp; below 1:1 it holds its size on screen, as before.
+  const pixelRatio = Math.max(1, opts?.pixelRatio ?? 1);
+  const fillAlpha = (BASE_OVERLAY_ALPHA / 255) * (Math.max(0, Math.min(100, overlayOpacity)) / 100);
+  ctx.save();
+  ctx.lineJoin = 'round';
+  let selected = null;
+  for (const code of LEVEL_CODES) {
+    const entry = editor.levels?.[code];
+    if (!entry?.visible || editor.placing?.code === code) continue;
+    const geometry = dragGeometry?.code === code ? dragGeometry.geometry : entry.geometry;
+    if (!geometry) continue;
+    if (drawPlacedLevel(ctx, editor, code, geometry, { overlays, fillAlpha, pixelRatio }) && editor.selected === code) {
+      selected = { code, geometry };
+    }
+  }
+  // The selected level's handles go above every level, so a later level's fill or outline never covers one.
+  if (selected) drawLevelHandles(ctx, selected.code, selected.geometry, handle, pixelRatio);
+  if (editor.placing) drawPlacement(ctx, canvas, editor.placing, pixelRatio);
+  ctx.restore();
 }
 
 export function drawDynamicLayer(ctx, canvas, geometry, opts) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (opts?.editor) {
+    // (2026-10-10, level editor) The editor draws every level itself, so the region outlines, the S1 line, the C7
+    // cross and the femoral circles are skipped. The selected measurement's construction stays
+    // (under the editor), and a film with no geometry (a failed run) still has an editor to draw.
+    if (geometry) drawSelectedMeasurement(ctx, canvas, geometry, opts.selectedLevel ?? null, opts.measurements);
+    drawLevelEditor(ctx, canvas, opts.editor, {
+      overlays: opts.overlays ?? true,
+      overlayOpacity: opts.overlayOpacity ?? 50,
+      pixelRatio: opts.pixelRatio ?? 1,
+      handle: opts.handle ?? null,
+      dragGeometry: opts.dragGeometry ?? null,
+    });
+    return;
+  }
   if (!geometry) return;
   const selectedLevel = opts.selectedLevel ?? null;
   const lineWidth = Math.max(2, canvas.width / 600);
@@ -512,7 +744,9 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
     drawSelectedStageLabel(ctx, 'C7', geometry.c7_centroid, selectedLevel === 'GLOBAL_SVA', canvas.width);
   }
 
-  const pixelRatio = opts.pixelRatio ?? 1;
+  // Ruling R28, as in drawLevelEditor: past 1:1 the hip line, its dash and the markers keep their image-pixel size
+  // and magnify with the film instead of shrinking under one image pixel; below 1:1 they hold their screen size.
+  const pixelRatio = Math.max(1, opts.pixelRatio ?? 1);
   (geometry.femoral_circles ?? []).forEach(([x, y, r], index) => {
     const selectedCircle = Boolean(opts.editing) && opts.selection?.kind === 'femoral'
       && opts.selection.side === FEMORAL_SIDES[index];
@@ -547,10 +781,4 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
   }
 
   drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, opts.measurements);
-
-  // Handles exist only in edit mode -- outside it the stage is exactly plan 03's
-  // user-verified rendering -- and are drawn LAST so they sit above the construction lines.
-  if (!opts.editing) return;
-  drawHandles(ctx, canvas, geometry, { selection: opts.selection ?? null, hover: opts.hover ?? null, pixelRatio });
-  if (opts.retracing) drawTracePoints(ctx, opts.tracePoints ?? [], pixelRatio);
 }

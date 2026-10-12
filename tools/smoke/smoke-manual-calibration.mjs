@@ -77,7 +77,9 @@ try {
     // Main must load the durable reference by source bytes even when the renderer
     // has no cache or study calibration for the second image after the restart.
     await c.evaluate("document.querySelector('[data-find-key=segment]').click()");
-    await until("import('./renderer/store.js').then(m=>!m.getState().batch && !m.getState().running && m.getState().studies.every(s=>s.geometry))", 240000);
+    // An Auto-region batch searches both orientations per film and takes about 270 s for two films on the CPU with
+    // cpuThreads 2 (2026-10-11), as smoke-onnx-localizer.mjs already allows.
+    await until("import('./renderer/store.js').then(m=>!m.getState().batch && !m.getState().running && m.getState().studies.every(s=>s.geometry))", 600000);
     const results = (await c.state()).studies;
     check('real batch segmentation retains each saved manual reference', results.every(s => {
       const i = files.indexOf(s.filePath); return s.calibration.status === 'corrected'

@@ -39,11 +39,14 @@ try {
     fs.writeFileSync(path.join(out, `${region}.json`), JSON.stringify({rows,...evidence},null,2));
     // Middle levels keep the handle clear of the floating edit toolbar.
     const editable = rows.find(r => r.kind === 'lordosis' && !r.absent && r.upper === (region === 'cervical' ? 'C4' : 'L3'));
-    await cdp.setState('{editing:true,selectedLevel:null,selection:null,panMode:false,panY:180}');
+    // (2026-10-10) Edit mode is the level editor's: the Edit segmentation button, then the level selected and its SA
+    // focused through the page's renderer/level-editor.js; the arrow nudges the focused handle.
+    await cdp.setState('{selectedLevel:null,selection:null,panMode:false,panY:180}');
+    await cdp.evaluate("document.querySelector('[aria-label=\"Edit segmentation\"]').click()");
+    for (let attempt = 0; attempt < 50 && !(await cdp.evaluate("import('./renderer/store.js').then(m=>Boolean(m.getState().levelEditor))")); attempt++) await cdp.settle(100);
     const point = evidence.geometry.vertebrae[editable.upper].superior[0];
-    const client = await cdp.toClient(...point);
-    await cdp.click(client.x, client.y);
-    assert.ok(await cdp.evaluate(`import('./renderer/store.js').then(m=>m.getState().selection?.level==='${editable.upper}'&&m.getState().selection?.corner==='SA')`), 'segmental superior corner is editable');
+    await cdp.evaluate(`import('./renderer/level-editor.js').then(m=>{m.selectLevelRow('${editable.upper}');m.setFocusedHandle({code:'${editable.upper}',handle:'SA'});const a=document.activeElement;if(a&&a.blur)a.blur();return true;})`);
+    assert.ok(await cdp.evaluate(`import('./renderer/store.js').then(m=>{const h=m.getState().levelEditor?.handle;return h?.code==='${editable.upper}'&&h?.handle==='SA';})`), 'segmental superior corner is editable');
     await cdp.key('ArrowDown');
     let updated = false;
     for (let attempt = 0; attempt < 150; attempt++) {
@@ -53,7 +56,12 @@ try {
     assert.ok(updated, 'corner edit completes through /measure');
     const corrected = await cdp.evaluate(`(async()=>{const s=(await import('./renderer/store.js')).getState().studies[0];return (await import('./renderer/data/segmental.js')).segmentalValues(s)['${editable.key}'];})()`);
     assert.notEqual(corrected, editable.value);
-    await cdp.setState('{editing:false}'); await cdp.settle(700);
+    // The nudge is an unsaved level edit, so DONE asks; Save edits keeps it (and writes the label record), which the
+    // reload below expects.
+    await cdp.evaluate("document.querySelector('.lv-save').click()");
+    for (let attempt = 0; attempt < 80 && !(await cdp.evaluate("document.querySelector('.lv-unsaved')?.textContent==='NOTHING TO SAVE'")); attempt++) await cdp.settle(100);
+    await cdp.evaluate("document.querySelector('.viewer-editbar > button:last-of-type').click()");
+    await cdp.settle(700);
     await cdp.send('Page.reload'); await cdp.settle(800);
     await cdp.setState(`{ack:true,screen:'analysis',openId:'${id}',tab:'meas',selectedLevel:'${editable.key}'}`);
     const restored = await cdp.evaluate(`(async()=>{const s=(await import('./renderer/store.js')).getState().studies.find(s=>s.id==='${id}');return (await import('./renderer/data/segmental.js')).segmentalValues(s)['${editable.key}'];})()`);

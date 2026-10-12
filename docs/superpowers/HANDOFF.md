@@ -1,8 +1,12 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-10-02
-**Branch:** `claude/issue-39-failed-status-port` (the Failed-status additions on 1.0.13, issue #39 follow-up; DONE,
-merged with v1.0.14, release 1.0.15 committed and awaiting the PR — first section under "Where things stand")
+**Last updated:** 2026-10-12
+**Branch:** `worktree-level-editor` in the worktree `.claude\worktrees\level-editor` of the main checkout, off
+`origin/main` @ `20fd4c5` (v1.0.17): the vertebral level editor, window / level and the label record — BUILT, human
+gate IN PROGRESS since 2026-10-11 (G1–G6 are its findings so far), pushed to `origin` on 2026-10-12 for the owner's
+PR to `main` (first section under "Where things stand"); G6's two commits came after that push and are not pushed.
+**2026-10-02 branch (historical):** `claude/issue-39-failed-status-port` (the Failed-status additions on 1.0.13, issue
+#39 follow-up; DONE, merged with v1.0.14, release 1.0.15 committed and awaiting the PR)
 **Checkout:** `C:\Users\codyj\Spine Contour Desktop\Spine-Contour`, the main checkout on this workstation (no
 worktree). The `C:\Users\codyj\spine contour\…` worktree paths below are the 2026-09 layout of another workstation
 and do not exist here.
@@ -46,6 +50,113 @@ the newest architecture amendment for controls and null rules. No model or calib
 algorithm changed; no screenshots were added.
 
 ## Where things stand
+
+### Vertebral level editor, window / level, label record — BUILT, human gate IN PROGRESS (branch `worktree-level-editor`, worktree `.claude/worktrees/level-editor`, off `origin/main` @ `20fd4c5`, v1.0.17)
+
+2026-10-10. Edit mode on the Analysis screen is now a level editor. In edit mode the right panel is the **Vertebral
+levels** panel: sixteen levels in five groups (C2–C7, T1 · T4, L1–L5, S1, two femoral heads), each with a visibility
+checkbox, a state badge (Segmented, Edited, Manual, Not placed, Not visible) and Place… / CLEAR / CANCEL; the stage
+places a missed level by clicks, gives the selected level its handles, and refits a femoral head from 2–4 rim points;
+a display-only window / level decodes the original film and windows the film layer only; **Save edits** writes one
+label record per film for retraining, at `userData/labels/<stem>.label.json` (and, since G6, **Mark reviewed** writes
+the zero-change record of a film that has none). A film whose segmentation failed opens in edit mode on its original
+and can be placed by hand.
+
+- Spec: `docs/design/level-editor/HANDOFF.md` (`594a982`; its §12 now lists the decisions). Plan:
+  `docs/superpowers/plans/2026-10-10-level-editor.md` (`3a4019a`), 15 tasks; its Decisions table D1–D19 and its
+  `## Ledger` (every task's commits and counts, rulings R1–R41 with their costs, every deferred minor) and its
+  `## Gate feedback (2026-10-11)` section (G1–G6, the spec of record for all six). User doc:
+  `docs/level-editor.md`. Contract: the 2026-10-10 amendment. SDD ledger
+  `.superpowers/sdd/2026-10-10-level-editor/progress.md` (local, untracked).
+- What was built, by commit (`594a982..` this branch's tip): the level model `77c8e5a`; the projection into
+  `study.geometry` `fb07447`, `725e114` (R8); handles and Tab order `15f289a`; `state.levelEditor` `c5d8771`; the label
+  record and the C2 schema amendment `7d8663d`, `25f4c69`; `labels/` on disk with `labelFile`, IPC, delete and
+  quarantine `2aebe22`; `POST /decode` and `qc.model_versions` `868e99e`; window / level in the renderer `6c3ee93`,
+  `daa8380`; drawing the level editor `eff7f6b`; the stage wiring `ffbac68`, `1ca16a9`, `9b099e9`, `0aef002` (R16, R17);
+  the panel `38dcccf`, `276c437` (R18); contours from the label mask `2051715`; the old landmark editor's handle code
+  retired `ccee104`; the smoke suite `3b5ab3b`; the landmark-editor smoke suites rewritten `c37c112`; the records
+  `0d5d629`, `871b475` (R19). The final whole-branch review ("With fixes": I1–I4) and its wave: `7e9d502` (R20 an Auto
+  film with no model run takes its region from its placed levels on every projection; R21 Region and Orientation
+  disabled while editing; R22 no femoral head under 0.5 px), `e3d5df7` (version-derived test expectations; the panel's
+  rebuild key), and the records (R23, R24, the gate checklist). The wave's re-review was clean; its one residual, a
+  rim-point drag or nudge that would leave a head under 0.5 px, is refused: `f3a3a32` (R25). The pre-gate smoke run of
+  2026-10-11 found two suites stale since before the branch base (seeding's export columns and header line;
+  manual-calibration's 240 s batch wait against Auto detection), fixed in `f610a8d` with the README's baselines.
+- The owner's gate feedback of 2026-10-11 (asked for at the human gate, which has not passed yet; the plan's "Gate
+  feedback" section and its Ledger): G1 zoom to 8x, `ZOOM_MAX` 2.4 → 8 (`9e2deec`); G2 the step chips choose which
+  point the next click places, in any order, a placed point is re-placed from its chip, and UNDO clears the most recently
+  set point (`placing` is `{code, points, current, history}`, `setPlacingStep` / `selectPlacingStep`; R26 a click within
+  1 px of any other point of the placement is dropped, R27 a re-placed point counts once, so UNDO clears it; `068c8e2`);
+  the records `8fddcea`. Their review was approved with four minors, fixed in one wave: `dcd0cb5` (R28 past 1:1 the
+  overlay keeps its image-pixel size and magnifies with the film instead of shrinking under a pixel; a LEFT-first
+  chord's take-back of a placement press restores the placing from before the press, `restorePlacing(prior, pressed)`,
+  so a press that re-placed a point no longer loses it) and the records commit (ROADMAP §8's fixed chord clause struck;
+  decisions 114–116 below; Task 15 gains a G1 and a G2 item). Then G3 and G4 (the owner: "windowing available not in
+  editing screen as well", and "right click and window as shortcut"; D15–D17, decisions 117–125 below): window / level
+  works outside edit mode and belongs to the view like zoom and pan (`state.filmWindow`, written only by the new
+  `renderer/film-window.js`; FRESH_VIEW resets it, edit mode keeps it; the level editor carries no window any more), a
+  right-button drag windows the film in every mode without the panel, and a double right-click (`isDoubleClick`, pure)
+  restores the default; rulings R29–R34. `8cf213d` (code, tests, smoke section 17) and the records commit `106042a`.
+  Their review was approved with five minors, fixed in one wave (decisions 126–128 below): `8332dfb` (R35 a window
+  kept across Back and the sidebar's return is decoded again at the mount when another study's run took the film's
+  cache entry, `windowNeedsDecode` / `redecodeKeptWindow`, and forgotten when it cannot be; R36 the open W/L panel
+  outranks the Pan toggle for the left button; R37 a right press windows only once it has moved 3 CSS px,
+  `exceedsSlop`, so a stray right click or a right-first chord decodes nothing; smoke section 17's missing cases) and
+  the records commit (D15 worded as the behaviour: it resets where zoom and pan reset, and Back and the sidebar's
+  return keep it; Task 15 gains an R35–R37 item). Then G5 (D18, decisions 129–131 below): the label record lists each
+  level's and head's `edited_points` and carries an `edits` summary, `edited` exactly when the list is not empty (R38),
+  both fields optional under the same schema id (R39), with the window re-review's two minors folded in (entering edit
+  mode forgets a ready window its film comes back without an original for; decision 121 reworded): `3e552e6` and the
+  records commit, unit 939/939. Then G6 on 2026-10-12 (D19, decisions 132–134 below): Mark reviewed also writes the
+  label record when the study has none yet, the zero-change record of the stored state (what Save edits writes right
+  after entering edit mode with nothing changed); unmarking writes nothing, a study with a record is left alone, R40
+  no write while the study's level edits are open or stashed, R41 the mark never waits for or depends on the write.
+  `renderer/level-editor.js` `writeReviewRecord` over `writeRecord`, the one write it shares with Save edits (the
+  latch `saving` shared, naming its holder); `toggleReviewed` calls it after marking. `ad2b70b` (code, tests, smoke
+  section 18) and the records commit; unit 948/948. Its review round 1 (R42, decision 135): the review write reads the
+  segmented film's stored image only (`imageInfo(studyId, { storedOnly: true })`, from the image cache or the sidecar,
+  never `/decode`), so opening the next film straight after the click can no longer fail it; unit 953/953.
+- Counts: unit 953/953 after G6's review round 1 (948 after G6, 940 before it, 939 after G5; 925 after the review of G3 and G4, 918 after G3 and G4, 901 after the gate feedback's review wave,
+  898 after G2, 888 after the final review's wave and R25, 887 after the wave, 879/879 before it; 615 at the base; 905
+  before Task 13 retired 26 tests of removed code); `smoke-levels.mjs` dom 114/114 after G6's review round 1 (section
+  18 opens the next film straight after the click and reads stored-only; fresh `%TEMP%` profile, CDP 9333, DOM, store
+  and file reads only, no screenshots; the film phase and the other suites not re-run), dom 112/112 after G6 (section 18's seven checks;
+  fresh `%TEMP%` profile, DOM, store and file reads only, no screenshots; the film phase and the other suites not
+  re-run), dom 105/105 and film 25/25 after G5 (`tools/smoke/README.md`), dom 102/102 after the review of G3 and G4
+  (fresh `%TEMP%` profile, DOM reads only, no screenshots; the film phase and the other suites not re-run); after G3 and G4 on a fresh
+  `%TEMP%` profile: dom 94/94 (79 before section 17; G2's four checks pass among them) and film 23/23, then on the same
+  launch parity 15/15, gate1 25/25, gate2 26/26, gate3 26/26, chip 20/20, chord 28/28 (DOM reads only, no
+  screenshots). Backend `pytest
+  backend -q` 762 passed, 3 skipped (the sc-export venv; the main checkout's graphs hard-linked into the worktree's
+  gitignored `backend/onnx/`). The pre-gate smoke run of 2026-10-11 on `9287473`, every suite on its own fresh
+  `%TEMP%` profile, one app at a time, DOM reads only (one copied real lumbar film for the film phases, two for
+  processing, onnx-localizer and manual-calibration): landing 16/16; parameters 58/58; studies 151/151; workspace
+  100/100; persist 42/42 then 55/55; parity 15/15, gate1 25/25, gate2 26/26, gate3 26/26, chip 20/20, chord 28/28;
+  femoral-confidence 16/16 then 5/5; disc-heights 13/13; partial-segmentation 8/8; accuracy 17/17; global-sva 21/21;
+  levels dom 75/75 and film 23/23; processing 15/15; onnx-localizer 10/10; seeding 34/36 then 36/36 and
+  manual-calibration (timed out at 240 s) then 5/5, 7/7, 5/5 after `f610a8d`.
+- Not run: the human gate (plan Task 15; its checklist is prepared in the plan); a packaged build (no installer has
+  been built from this branch); `smoke-cervical.mjs` and `smoke-segmental.mjs` (no lateral cervical film on this
+  workstation, and both screenshot their film); `smoke-calibration.mjs` (no Tesseract binary and no ruler films on this
+  workstation, and it screenshots); a DICOM film's default window from its tags on a real DICOM (the unit and backend
+  tests cover it).
+
+**Next.** The owner's human gate (plan Task 15): real films from their library, both themes, including the items the
+final review added (a cervical film, a full-spine film, a DICOM film, a failed Auto film with C and L levels placed, a
+double-click while placing a head), the re-check of G1 to G6 (800% on a large and a small film with the overlay crisp,
+R28; the step chips, re-placing and UNDO; window / level outside edit mode, the right-button drag and the double
+right-click, a chord still panning; R35–R37 from their review; a record saved after one corner drag lists that corner
+in `edited_points` and counts it in `edits`; and G6, Mark reviewed on a film with no record writes it, and unmarking
+and marking again writes nothing more) and the owner's decision R24 (a hand-placed film that had failed still reads
+Failed). The branch was pushed to `origin` on 2026-10-12 at the owner's choice with the 1.1.0 release commit on it
+(`docs/release-main.md`: `package.json`, `version.js`, CHANGELOG, `docs/releases/1.1.0.md`, the README link); the PR
+to `main` is the owner's to open and merge with Create a merge commit, which publishes v1.1.0. After the merge, the next piece of work is retraining the models from the
+label records: `docs/superpowers/NEXT-SESSION-retraining.md` is the prompt for that brainstorm (its own branch; no app
+change).
+
+**Follow-ups (deferred; see `docs/ROADMAP.md` §8):** the handoff's row keys (↑/↓, Space, P); a batch started from the
+Find tab can still overtake an open or stashed editor; a hand-placed film whose
+source moved opens to a black stage outside edit mode; and the smaller items in the plan's Ledger.
 
 ### Failed-status additions on 1.0.13 (issue #39 follow-up) — DONE; release 1.0.15 awaiting the PR (branch `claude/issue-39-failed-status-port`, off `main` @ `9992b99`, v1.0.13, merged with `origin/main` @ `e7ae5a3`, v1.0.14)
 
@@ -1656,6 +1767,208 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
 74. **The final whole-branch code review runs BEFORE the human gate** (2026-09-10, controller ruling). *Why:* so the user
     gates the code the branch ships and no fix wave lands after the gate.
 
+**The vertebral level editor (2026-10-10).** 75–88 are the owner's decisions D1–D14 (the plan
+`docs/superpowers/plans/2026-10-10-level-editor.md`, its Decisions table, which wins over the handoff
+`docs/design/level-editor/HANDOFF.md`); 89–116 are the execution rulings R1–R28 from its Ledger, each with its cost
+(114–116, R26–R28, from the owner's gate feedback of 2026-10-11 and its review).
+
+75. **D1 — Window / level reads the original film.** A backend `POST /decode` returns the uploaded file's 16-bit pixels,
+    value range and DICOM window defaults; the renderer applies a linear LUT on the film layer only. No CSS filter and no
+    LUT on the stored 8-bit PNG. The same decode gives a failed film something to display.
+76. **D2 — Save semantics.** Drags keep auto-committing geometry through `/measure` to `studies.json`. **Save edits**
+    writes the label record and resets the baseline. **Discard** restores the baseline (the saved record when one
+    exists, else the state at entry) through the measure queue.
+77. **D3 — Label record location.** `userData/labels/<stem>.label.json`, the film's filename without its extension; a
+    second film with the same stem gets `-2`, the third `-3`; the chosen name is stored on the study as `labelFile`, so
+    it is stable and covered by delete and quarantine.
+78. **D4 — Branch base.** A new worktree off `origin/main` (v1.0.17), independent of the held similar-cases branch.
+79. **D5 — Film-type defaults.** lumbar → Lumbar, Sacral, Femoral heads; cervical → Cervical plus T1 only (T4 starts
+    not visible); full_spine → all five groups; everything else starts `not_visible` with `source: film_type`.
+80. **D6 — An Auto film with no result** starts with every one of the sixteen levels visible (not placed) until the
+    annotator unchecks it.
+81. **D7 — Leaving edit mode with unsaved changes** shows an inline prompt in the panel footer, `Discard 2 unsaved
+    changes? Saved edits are kept.`, with Save edits, Discard and Keep editing; it covers DONE, the Edit button, Escape
+    and Back. Sidebar navigation keeps the unsaved level state in memory for the session.
+82. **D8 — C2 is an inferior endplate (IA, IP) plus a centroid**, in the panel, the handles and the record: three clicks.
+    The schema gained a `c2` definition.
+83. **D9 — Overlay colours.** The shipped `LEVEL_RGB` is kept (C2 purple, C3–C7 = L1–L5's colours) and extended with T1,
+    T4 and S1; the handoff's L1-anchored cycle is not adopted.
+84. **D10 — Save with zero changes.** The first save is allowed; Save is disabled with `NOTHING TO SAVE` only when a
+    record already exists and nothing has changed since.
+85. **D11 — Window / level is not persisted and not recorded**: display only, reset when the study is reopened, not in
+    the label record.
+86. **D12 — T1 and T4** are placeable levels in the Thoracic group and written to the record; no measurement reads them,
+    so they get no dependency note. T1 slope and T4 angles are out of scope.
+87. **D13 — Clear** is kept on manual levels.
+88. **D14 — RESET TO PREDICTION** is kept in the edit bar as the whole-study revert to the model's output, beside
+    Discard.
+89. **R1 — Task 13 removes exports the contract named** (`TAB_ORDER`, `FULL_ORDER`, `nextSelection`, `nudge`,
+    `hitTestFemoral`, `sameHandle`, `nearestLandmark`, `landmarkHandles`, `CERVICAL_HANDLES`, `GLOBAL_SVA_HANDLES`);
+    the contract amendment strikes them as superseded. *Cost if wrong:* the amendment reworded.
+90. **R2 — `data/levels.js` imports `fitCircle` from `viewer/geometry.js`** (data → viewer), because geometry.js is pure
+    and the contract forbids reimplementing `fitCircle`. *Cost if wrong:* a one-line import move.
+91. **R3 — The wiring (Task 10) and the panel (Task 11) carry no unit tests**; their verification is the smoke suite and
+    the human gate. *Cost if wrong:* defects surface there.
+92. **R4 — A group's count omits a zero PLACED clause; the summary always writes PLACED.** *Cost if wrong:* one string
+    rule in one function.
+93. **R5 — `fitFrom` equals `need` for every kind but a head** (FIT from 2); `geometryFromPoints` caps a femoral fit at
+    the image diagonal; disc heights add no dependency entries (pinned by a test). *Cost if wrong:* trivial signature
+    churn.
+94. **R6 — The projection computes `l1_center` and `hip_midpoint`** (the validator rejects nulls beside L1 or two
+    circles); `/measure` overwrites both. *Cost if wrong:* two derived fields the backend recomputes anyway.
+95. **R7 — A cervical or full-spine projection with no orientation keeps `anterior_side: null`** and is not committed
+    until an orientation exists. *Cost if wrong:* a 422 toast from `/measure`.
+96. **R8 — Anterior side: the film's stored side, then `study.anteriorSide`, then the side read from placed levels.**
+    *Why:* an annotator dragging SA past SP must not flip a film's sign conventions silently. *Cost if wrong:* only
+    cervical/full-spine films with a stored side differ; a failed Auto film still derives.
+97. **R9 (amended) — With a saved record, the study's circles are matched to the heads by the record's geometry**, a
+    matched head takes the saved geometry with its rim, unmatched circles fill free heads preferring visible ones.
+    *Cost if wrong:* head attribution after a reopen differs in rare mixed cases; Discard clears it.
+98. **R10 — Only a `segmented` level writes `contour`**; edited and manual levels write null. *Cost if wrong:* an edited
+    level's record lacks the model outline (its `model_corners` keep the model's quad).
+99. **R11 — A non-ENOENT failure to move `labels/` aside during quarantine disables persistence for the session**, as a
+    `predictions/` failure does. *Cost if wrong:* a stuck folder stops saving where a notice would have done.
+100. **R12 — `labelFileName` makes the stem safe** (reserved and control characters to `_`, no leading dots, 180
+     characters at most, a Windows device name takes `_`); the main process's regex stays. *Cost if wrong:* such a film's
+     save fails with `Invalid label file name.`.
+101. **R13 — The 8-bit window rule** is `valueMin >= 0 && valueMax <= 255 && (bitsStored === 8 || exactly 0..255)`.
+     *Cost if wrong:* an odd default window on rare 8-bit DICOMs.
+102. **R14 — `ensureFilm` reports `superseded` as its own flag**; `reason` stays display-ready. *Cost if wrong:* none
+     visible.
+103. **R15 — The mask colour map iterates a private `MASK_LEVELS`** (the original eleven), so S1's new colour never
+     paints a mask label. *Cost if wrong:* a future level mask needs the list extended.
+104. **R16 (amended) — Hand-placed means `predictionId == null && !qc?.models`** (`isHandPlaced`): such a study has no
+     sidecar and is shown from its decoded original, never FILM UNAVAILABLE; a pre-v1.0.10 result keeps the sidecar
+     path. *Cost if wrong:* a legacy film with no qc at all would open on its original.
+105. **R17 — No run starts while editing** (Re-run and the region bar's Run segmentation are disabled, titled `Finish
+     editing before re-running segmentation`); a batch reaching a film with an open or stashed editor still drops that
+     editor on completion. *Cost if wrong:* a rare lost label edit when a batch overtakes a film being edited.
+106. **R18 — A row with two actions stacks them** (Place… above CLEAR) in the 70px column. *Cost if wrong:* one taller
+     row for hand-placed heads.
+107. **R19 — The records must be accurate**: Task 14's review fixed its record-accuracy minors in the same round (the
+     gate's edit-bar item, the handoff's contour row per R10, "Location to confirm." struck, the near-duplicate click
+     rule's scope). *Cost if wrong:* none; wording.
+108. **R20 — An Auto film with no model run takes its region from its placed levels on every projection** (an editor
+     opened as Auto, or `requestedRegion === 'auto'` and `isHandPlaced` or a result that names no region), never from
+     the `geometry.region` its last commit wrote; `projectionRegion`, `projectsLevel` (what commits) and the region the
+     editor opens with share `regionFollowsLevels`. *Why:* the first commit locked the region, so C + L levels could
+     never become a full spine. *Cost if wrong:* an Auto film's region flips as levels are placed (intended).
+109. **R21 — Region and Orientation are disabled while editing** (`Finish editing before changing the region` / `…
+     the orientation`), and `changeRegion` refuses while editing; outside edit mode it still drops a stashed editor.
+     *Cost if wrong:* a region change needs DONE first.
+110. **R22 — No femoral head under 0.5 px**: FIT is disabled and `finishPlacing` a no-op while the fit's radius would be
+     under 0.5 px (`canFinishPlacing`), and a head's click within 1 px of any of its rim points is dropped. *Cost if
+     wrong:* a deliberately tiny head cannot be placed.
+111. **R23 — `/decode`'s `scaled` and `RawFilm.scale`** (a range wider than 65535 packed into uint16) are a recorded
+     deviation from the plan, documented in the contract amendment. *Cost if wrong:* none.
+112. **R24 — A hand-placed film's Failed status is the owner's call** (clear `processingError` on the first hand-placed
+     commit, or a status of its own); on the gate's checklist and in ROADMAP §8, unchanged in code. *Cost if wrong:*
+     Failed films sort first and block Mark reviewed until the owner decides.
+113. **R25 — A rim-point drag or nudge that would leave a femoral head under 0.5 px is refused** (`moveHandle` returns
+     the geometry unchanged, so the handle stays where it was): the re-review of the final wave found the one path R22
+     left to a radius of 0, which the label record's schema rejects. *Cost if wrong:* a rim point cannot be dragged
+     within 1 px of the other point of a two-point rim.
+114. **R26 — A placement click within 1 px of ANY other point of the placement is dropped**, for every kind (gate
+     feedback G2, `068c8e2`): it generalises the previous-point rule for bodies, C2 and endplates and keeps R22's rule
+     for a head; a slot's own earlier point is not another point, and a double-click still counts once. *Cost if
+     wrong:* a body or endplate corner cannot be placed within 1 px of another of its points.
+115. **R27 — A re-placed point counts once in the placement's history** and moves to its end, so UNDO after a re-place
+     clears that point rather than restoring where it was (G2, `068c8e2`). *Cost if wrong:* re-placing a point loses
+     its earlier position to UNDO. (A LEFT-first chord's take-back of a re-placing press is not UNDO: it restores the
+     placing from before the press, `restorePlacing`, `dcd0cb5`.)
+116. **R28 — Past 1:1 the overlay keeps its image-pixel size**: `viewer/canvas.js` `drawLevelEditor` and
+     `drawDynamicLayer` floor the drawing ratio at 1 image pixel per CSS pixel (`dcd0cb5`). *Why:* the dynamic canvas is
+     drawn at the stored image's resolution and CSS-scaled with the film, so past 1:1 on screen (which the 8x cap makes
+     reachable) every CSS-sized stroke, dash, handle and label fell under one image pixel, was anti-aliased away and
+     then magnified (faint lines, unreadable plates). Below 1:1 the overlay holds its screen size as before; hit testing
+     is in client space, with a grab radius that follows the drawn handle past 1:1 (2df1373, the re-review's finding).
+     *Cost if wrong:* handles and labels look large at 8x on a film that is already at 1:1 at low zoom (a small film).
+117. **D15 (owner, 2026-10-11, gate feedback G3) — Window / level outside edit mode, and it belongs to the view.**
+     Like zoom and pan, the window resets where zoom and pan reset (FRESH_VIEW: another film opened from the list, or
+     the open study closed); Back and the sidebar's return keep it, as they keep zoom and pan; entering and leaving
+     edit mode keep it; never persisted, never in the record. It is `state.filmWindow`, written only by
+     `renderer/film-window.js`; the level editor carries no window (`8cf213d`). Supersedes D11's reset on entering edit
+     mode. (Worded so by the review of G3/G4: the first wording said leaving the Analysis screen reset it, which Back
+     does not do; the owner's choice was "while the film is open, like zoom and pan".)
+118. **D16 (owner, 2026-10-11, G4) — A right-button drag windows the film** in every mode, without opening the panel:
+     horizontal the width, vertical the level, four units per screen pixel; the chip shows the live W and L.
+119. **D17 (owner, 2026-10-11, G4) — A double right-click resets the window** to the film's default (the panel's RESET
+     stays). Browsers fire no `dblclick` for the right button, so `viewer/interactions.js` `isDoubleClick` (pure,
+     tested) detects it.
+120. **R29 — The window resets where zoom and pan reset**, FRESH_VIEW (another film opened from the list, this one too;
+     the open study closed by a delete or the demo toggle); Back and the sidebar's open-study card keep it, as they keep
+     zoom and pan; a delete, a completed run or a Region change forgets it. *Cost if wrong:* one `filmWindow: null` in
+     Back's write.
+121. **R30 — A right drag decodes a film with no window yet once it moves (R37) and does not retry an unavailable
+     one**; opening the panel does. *Cost if wrong:* a film whose source comes back needs the panel opened once before
+     the right drag works. (Worded as the behaviour since R37 on 2026-10-11; it first said a right press decodes.)
+122. **R31 — A right-button drag over an undecodable film says why** in a toast (`Window / level is unavailable.` and
+     the reason), once per drag, with the panel closed. *Cost if wrong:* one toast per attempt.
+123. **R32 — The double right-click compares the two presses only** (400 ms, 6 px, the events' timestamps), on the film
+     and the black surround; its second press starts no drag and is forgotten; a chord forgets the right press before
+     it. *Cost if wrong:* a quick right-drag ending where it began, then a press there within 400 ms, resets the window.
+124. **R33 — Copy**: the tool's tooltip names the right-button shortcuts (its accessible name stays `Window / level`),
+     and outside edit mode the panel carries the help line the edit bar gives in edit mode. *Cost if wrong:* copy.
+125. **R34 — Windowing is not gated on the study's own run** (display only; the completed run forgets the window), and
+     with the panel open outside edit mode the construction label chip still takes its own left press. *Cost if
+     wrong:* a busy guard in two places.
+126. **R35 — A kept window never outlives the decoded original it windows** (the review of G3/G4, finding 1; `8332dfb`).
+     At the mount, when the film's window is ready or loading and its cached images have no `raw` (another study's run
+     took the single image-cache entry while the film was off screen), `screens/analysis.js` calls
+     `redecodeKeptWindow` (`renderer/film-window.js`, beside the pure `windowNeedsDecode`) instead of the plain restore:
+     `ensureFilm` restores the stored image, attaches the decode and hands both to the viewer; when no original comes
+     back a ready window is forgotten, so the chip and the panel never claim a window the film layer does not draw.
+     *Cost if wrong:* one `/decode` on such a return, or a forgotten window when the source has gone.
+127. **R36 — The open W/L panel outranks the Pan toggle for the left button**, in both modes (finding 3). The middle
+     button and the chord still pan; the cursor over the film with the panel open is the window cursor. *Cost if
+     wrong:* with the panel open and Pan on, the left button cannot pan; the middle button, the chord and closing the
+     panel can.
+128. **R37 — A right press windows only once it moves** 3 CSS px (finding 4; `exceedsSlop`, pure): until then the drag
+     is pending and nothing is decoded, so a stray right click, or a right-first chord formed before any movement,
+     leaves a never-windowed film on its stored image with no W / L on the chip; the double right-click still compares
+     presses. *Cost if wrong:* a right drag under 3 px does nothing; the crossing move applies the whole distance from
+     the press at once.
+129. **D18 (owner, 2026-10-11, gate feedback G5) — The label record lists each entry's edited points and carries an
+     edits summary**, so a folder of records can be counted without diffing corners. Every level and femoral head gets
+     `edited_points`, its own geometry keys (a body `sa, sp, ia, ip`; C2 `ia, ip, centroid`; T1/S1 `sa, sp`; T4
+     `centroid`; a head `center, radius`): the moved ones when `edited`, every key when `manual`, none otherwise; the
+     record gets `edits` after `complete` (entries per state over the sixteen, `points_moved`, `points_placed`).
+     `data/levels.js` `pointKeys` / `changedPoints` (pure), written by `data/label-record.js` (`3e552e6`).
+130. **R38 — `edited` exactly when `edited_points` is not empty.** The list is computed by the per-value test the state
+     uses (`sameGeometry`'s `near`, 10⁻⁶ px), so the two never disagree; a head's rim is not a point, so a rim-only
+     change lists nothing and the head stays segmented; the schema states it too. *Cost if wrong:* counting rim edits
+     needs the rim compared, which would also badge rim-only changes Edited.
+131. **R39 — Both fields are additive.** The schema keeps `spinecontour.segmentation-label/1` and requires neither, so
+     records saved before them validate and read the same; the app writes both on every save from now on. *Cost if
+     wrong:* a consumer tests for the fields instead of reading a schema version; a `/2` with both required would fail
+     every earlier record.
+132. **D19 (owner, 2026-10-12, gate feedback G6) — Mark reviewed writes the label record when the film has none
+     yet.** Marking a study reviewed on the Analysis panel (no bulk mark) also writes the zero-change record of the
+     stored state, exactly what Save edits writes right after entering edit mode with nothing changed, so a film accepted
+     as the model segmented it is a human-accepted label without a trip through edit mode. Unmarking writes nothing; a
+     study with a record is left alone (Save edits keeps owning it); a zero-change Save edits still works (D10).
+     `renderer/level-editor.js` `writeReviewRecord` over `writeRecord`, the write it shares with Save edits, called by
+     `screens/analysis.js` `toggleReviewed` after the mark (`ad2b70b`).
+133. **R40 — Unsaved level edits come first.** No review write while an editor for the study is open or stashed
+     (`state.levelEditor?.studyId === studyId` or `hasStashedEditor(studyId)`), checked before the write and once the
+     film has been read; the mark still applies. A Save edits clicked while a review write reads the film waits for it.
+     *Cost if wrong:* a film marked reviewed while its stashed edits wait gets no record until the annotator saves or
+     discards and marks again.
+134. **R41 — The mark never waits for or depends on the write.** `reviewedAt` is set first, synchronously, and stands;
+     a failure toasts `Marked reviewed. The label record could not be written: <reason>` and sets nothing; a success
+     toasts `Saved the label record.` and sets `labelFile`. *Cost if wrong:* a reviewed film can lack its record after
+     a failed write (the toast says so; unmark and mark again, or Save edits, writes it), and unmarking never deletes a
+     record already written.
+135. **R42 (review round 1 of G6) — The review write reads the stored image only.** `screens/analysis.js`
+     `imageInfo(studyId, { storedOnly: true })` takes a segmented film's stored image (`data/predictions.js`
+     `hasStoredImage`) from the image cache, else from its sidecar for that call alone, with no `/decode` of the
+     original and nothing cached or restored, and hands back the sidecar's geometry when it read it (the model's
+     geometry when no prediction snapshot is in memory). Before it, a review write could decode the original, and the
+     next film opened meanwhile superseded the read: the failure toast landed over the next film and no record was
+     written. Save edits reads as before; a hand-placed film still decodes its original (its stored image). *Cost if
+     wrong:* a click before a segmented film reaches the stage reads its sidecar twice; a hand-placed film's review
+     write can still fail if another film is opened before that film's decode ends (the toast says so).
+
 ## Release prerequisites — v1.0.0 main promotion
 
 Current instructions: [main release](../release-main.md). The earlier statements that
@@ -1770,7 +2083,7 @@ plan 06 had never been packaged, or that installed previews contain demos, are s
   top-left formula is wrong by `(1-z)*C` — 500px at 2× on a 1000px stage: nearly right in the middle
   and grossly wrong at the edges, which is where a quick manual check does not look. And `k` must
   come from the **post-clamp** zoom, or the film creeps every tick at `ZOOM_MAX` while the label
-  sits frozen at 240%.
+  sits frozen at 800%.
 - **Before believing a canvas/pointer suite's FAILURE, re-run it alone on a freshly launched
   instance.** On 2026-09-06 a batched re-run reported `gate1` 22/25 and `gate2` 28/32 — pan-vs-edit
   precedence, Escape-exits-edit, and a landmark drag all "failing". Run alone against the same

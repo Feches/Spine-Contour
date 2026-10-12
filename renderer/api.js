@@ -54,6 +54,10 @@ export async function predict(request) {
 }
 
 export async function classifyView(request) { return invoke('classifyView', request); }
+// (2026-10-10, level editor) The original film, decoded for the display-only window / level:
+// {width, height, bitsStored, valueMin, valueMax, window, scaled, pixels: Uint8Array of LE uint16}.
+// A read like classifyView, so it is not gated on persistence.
+export async function decodeFilm({ name, data }) { return invoke('decodeFilm', { name, data }); }
 export async function loadPerformance() { return invoke('loadPerformance'); }
 export async function savePerformance(settings) { return invoke('savePerformance', settings); }
 export async function listProcessors() { return invoke('listProcessors'); }
@@ -160,6 +164,25 @@ export async function savePrediction(id, response) {
 export async function deletePrediction(id) {
   assertWritable();
   return invoke('deletePrediction', id);
+}
+
+// (2026-10-10, level editor) The label record, userData/labels/<name>. The main process validates
+// the name (it must be a bare <stem>.label.json) and the renderer picks it. The load is a read,
+// like loadPrediction: null when there is no record. The save and the delete are writes, gated like
+// every other: after disablePersistence nothing on disk is touched.
+export async function loadLabelRecord(name) {
+  return invoke('loadLabelRecord', name);
+}
+
+export async function saveLabelRecord(name, record) {
+  assertWritable();
+  return invoke('saveLabelRecord', name, record);
+}
+
+// A missing record resolves, as deletePrediction's missing sidecar does.
+export async function deleteLabelRecord(name) {
+  assertWritable();
+  return invoke('deleteLabelRecord', name);
 }
 
 // Uint8Array of the file's bytes, or null when the file no longer exists.

@@ -20,7 +20,8 @@ from PIL import Image, UnidentifiedImageError
 try:
     from . import processors, runtime
     from .progress import stream_job
-    from .models.models import release_models
+    from .models.models import model_versions, release_models
+    from .decode import decode_film
     from .calibration import calibration_from_payload, learn_profile, validate_profile
     from .cervical_measurements import cervical_measurements_from_geometry
     from .global_sva_measurements import global_sva_measurements_from_geometry
@@ -33,7 +34,8 @@ except ImportError:  # Support `uvicorn server:app` from backend/.
     import processors
     import runtime
     from progress import stream_job
-    from models.models import release_models
+    from models.models import model_versions, release_models
+    from decode import decode_film
     from calibration import calibration_from_payload, learn_profile, validate_profile
     from cervical_measurements import cervical_measurements_from_geometry
     from global_sva_measurements import global_sva_measurements_from_geometry
@@ -239,6 +241,19 @@ async def classify_view(file: UploadFile = File(...)):
     return await run_in_threadpool(classify)
 
 
+@app.post("/decode", summary="Decode the original film for display windowing")
+async def decode(file: UploadFile = File(...)) -> dict:
+    payload = await file.read(MAX_UPLOAD_BYTES + 1)
+    if not payload or len(payload) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=422, detail="Select an image smaller than 50 MB.")
+    def decode_original():
+        try:
+            return decode_film(payload)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+    return await run_in_threadpool(decode_original)
+
+
 @app.post("/predict", summary="Find landmarks and measure a lateral spine radiograph")
 async def predict(request=Depends(prediction_request)):
     return await run_in_threadpool(run_prediction, request)
@@ -357,7 +372,8 @@ def _analyze(payload, modality, body_part, view, laterality,
             raise HTTPException(status_code=422, detail=str(error)) from error
     # Store model, crop, scale and resource provenance alongside the measurements.
     qc = {**prediction.get("qc", {}), **analysis.get("qc", {}),
-          "models": prediction["models"], "framing": prediction["framing"],
+          "models": prediction["models"], "model_versions": model_versions(prediction["models"]),
+          "framing": prediction["framing"],
           "processing": {"view_selection": runtime.options().view_selection,
                          "mode": runtime.options().mode,
                          "cpu_threads": runtime.options().inference_threads,

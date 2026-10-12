@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { predict, measure, loadStudies, readFile, pathForFile, storeLoadNotice, persistenceDisabledReason, chooseFolder, scanFolder, chooseCsv, readCsv, deletePrediction } from '../renderer/api.js';
+import { predict, measure, loadStudies, readFile, pathForFile, storeLoadNotice, persistenceDisabledReason, chooseFolder, scanFolder, chooseCsv, readCsv, deletePrediction, loadLabelRecord, saveLabelRecord, deleteLabelRecord } from '../renderer/api.js';
 
 const GENERIC_FALLBACK_MESSAGE = 'The application encountered an unexpected error.';
 const BRIDGE_UNAVAILABLE_MESSAGE =
@@ -312,5 +312,46 @@ test('deletePrediction hands the id to the bridge and strips the IPC prefix from
       assert.equal(err.message, 'Invalid study id.');
       return true;
     });
+  });
+});
+
+test('the label-record wrappers hand the name (and record) to the bridge and strip the IPC prefix from a rejection', async () => {
+  const calls = [];
+  const record = { schema_version: 1 };
+  await withWindow({
+    spineContour: {
+      loadLabelRecord: async (name) => { calls.push(['load', name]); return record; },
+      saveLabelRecord: async (name, value) => { calls.push(['save', name, value]); },
+      deleteLabelRecord: async (name) => { calls.push(['delete', name]); },
+    },
+  }, async () => {
+    assert.equal(await loadLabelRecord('a.label.json'), record);
+    assert.equal(await saveLabelRecord('a.label.json', record), undefined);
+    assert.equal(await deleteLabelRecord('a.label.json'), undefined);
+    assert.deepEqual(calls, [['load', 'a.label.json'], ['save', 'a.label.json', record], ['delete', 'a.label.json']]);
+  });
+  await withWindow({
+    spineContour: {
+      saveLabelRecord: async () => {
+        throw new Error("Error invoking remote method 'save-label-record': Error: Invalid label file name.");
+      },
+    },
+  }, async () => {
+    await assert.rejects(saveLabelRecord('..', {}), (err) => {
+      assert.equal(err.message, 'Invalid label file name.');
+      return true;
+    });
+  });
+});
+
+test('without the bridge, the label-record wrappers reject with the bridge-unavailable message', async () => {
+  await withWindow({}, async () => {
+    const calls = [() => loadLabelRecord('a.label.json'), () => saveLabelRecord('a.label.json', {}), () => deleteLabelRecord('a.label.json')];
+    for (const call of calls) {
+      await assert.rejects(call, (err) => {
+        assert.equal(err.message, BRIDGE_UNAVAILABLE_MESSAGE);
+        return true;
+      });
+    }
   });
 });
