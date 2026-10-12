@@ -148,10 +148,9 @@ R28; the step chips, re-placing and UNDO; window / level outside edit mode, the 
 right-click, a chord still panning; R35–R37 from their review; a record saved after one corner drag lists that corner
 in `edited_points` and counts it in `edits`; and G6, Mark reviewed on a film with no record writes it, and unmarking
 and marking again writes nothing more) and the owner's decision R24 (a hand-placed film that had failed still reads
-Failed). Then a release commit (1.0.18 or later; `docs/release-main.md`) and a PR, all on the owner's say-so (memory:
-test before release). The branch was pushed to `origin` on 2026-10-12 at the owner's choice; the PR to `main` is the
-owner's to open and merge, and merging publishes nothing until the release commit lands (`package.json` still says
-1.0.17). After the merge, the next piece of work is retraining the models from the
+Failed). The branch was pushed to `origin` on 2026-10-12 at the owner's choice with the 1.1.0 release commit on it
+(`docs/release-main.md`: `package.json`, `version.js`, CHANGELOG, `docs/releases/1.1.0.md`, the README link); the PR
+to `main` is the owner's to open and merge with Create a merge commit, which publishes v1.1.0. After the merge, the next piece of work is retraining the models from the
 label records: `docs/superpowers/NEXT-SESSION-retraining.md` is the prompt for that brainstorm (its own branch; no app
 change).
 

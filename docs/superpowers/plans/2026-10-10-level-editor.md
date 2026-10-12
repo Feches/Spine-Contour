@@ -31,7 +31,7 @@ Task 5) and the example `label-record.example.json`. Where the handoff and this 
 (v1.0.17). `node_modules` is a junction to the main checkout's. The backend venv is the main checkout's
 `.venv\Scripts\python.exe`; the ONNX graphs are in the main checkout's `backend/onnx/` (gitignored; the backend tests
 that need them skip without them). Nothing is pushed and no PR is opened until the user says so (memory:
-test-before-release). The release commit (1.0.18 or later) is separate, later work.
+test-before-release). The 1.1.0 release commit is on the branch (2026-10-12).
 
 ## Decisions (owner, 2026-10-10)
 

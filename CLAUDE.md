@@ -64,8 +64,9 @@ not re-run). Then G5 (D18, R38/R39, HANDOFF decisions 129–131): the label reco
 schema id, with the window re-review's two minors folded in; `3e552e6` and a records commit, unit 939/939
 (`smoke-levels.mjs` dom 105/105 and film 25/25 after it; the G5 review's three minors `c31ce66`, unit 940/940). The
 retraining brainstorm's prompt is `docs/superpowers/NEXT-SESSION-retraining.md`. Pushed to `origin` (Feches) at the
-owner's choice on 2026-10-12; the PR to `main` is the owner's to open and merge. Merging publishes nothing: the 1.0.18
-release commit (`docs/release-main.md`) is separate work.
+owner's choice on 2026-10-12; the PR to `main` is the owner's to open and merge. The 1.1.0 release commit (`package.json`,
+`version.js`, CHANGELOG, `docs/releases/1.1.0.md`, the README link) is on the branch: merging the PR with Create a merge
+commit publishes v1.1.0.
 
 **2026-10-07 release 1.0.16 (crop search restored):** branch `ccr-af336f0e-7wacoa` off `main` @ `f2e39e0`, the merge
 of Michael's PR #57 (`0bd01c5`), which retires 1.0.13's trained crop method: Settings shows Crop search only,
