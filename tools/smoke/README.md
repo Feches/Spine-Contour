@@ -504,8 +504,8 @@ them) and film **23/23**, measured on one fresh `%TEMP%` profile, with parity, g
 on the same launch. (2026-10-11, the review of G3/G4, `8332dfb`) Eight more dom checks (seven new, and the no-window
 right drag split in two): dom **102/102**, measured on a fresh `%TEMP%` profile (DOM, store and file reads only, no
 screenshots); the film phase and the other suites not re-run. (2026-10-11, gate feedback G5, plan D18) Section 6 gains
-three dom checks and the film phase two: dom 102 + 3, film 23 + 2, not re-run when they were written (a later stage
-measures them).
+three dom checks and the film phase two. Measured on one fresh `%TEMP%` profile (DOM, store and file reads only, no
+screenshots): dom **105/105** (102 + 3) and film **25/25** (23 + 2, one copied OLIF lumbar film).
 
 ## The landmark-editor suites after the level editor (2026-10-10)
 
