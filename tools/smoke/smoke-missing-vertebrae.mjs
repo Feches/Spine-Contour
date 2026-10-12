@@ -52,7 +52,7 @@ try {
   await button('APPLY LANDMARKS');
   await until(`import('./renderer/store.js').then(m=>!!m.getState().studies[0].geometry.vertebrae[${JSON.stringify(level)}]&&!m.getState().measurementDrafts['SP-9808'])`);
   assert.ok(await cdp.evaluate(`import('./renderer/store.js').then(m=>{
-    const s=m.getState().studies[0];return Number.isFinite(${region === 'cervical' ? 's.measurements.C2C7_COBB' : "s.measurements.LL['L3-S1']"})&&s.qc.manual_edits.landmarks&&JSON.stringify(s.geometry.vertebrae[${JSON.stringify(region === "cervical" ? "C6" : "L2")}])===JSON.stringify(window.actualPrediction.geometry.vertebrae[${JSON.stringify(region === "cervical" ? "C6" : "L2")}]);
+    const s=m.getState().studies[0];return Number.isFinite(${region === 'cervical' ? 's.measurements.C2C7_COBB' : "s.measurements.LL['L3-S1']"})&&s.qc.manual_edits.landmarks&&!!s.geometry.vertebrae[${JSON.stringify(region === "cervical" ? "C6" : "L4")}]&&JSON.stringify(s.geometry.vertebrae[${JSON.stringify(region === "cervical" ? "C6" : "L4")}])===JSON.stringify(window.actualPrediction.geometry.vertebrae[${JSON.stringify(region === "cervical" ? "C6" : "L4")}]);
   })`));
   await cdp.screenshot(path.join(out, 'applied.png'));
   await cdp.settle(800);
