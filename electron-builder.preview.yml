@@ -14,6 +14,7 @@ files:
   - assets/**/*
   - index.html
   - main.js
+  - training-manager.cjs
   - backend-client.cjs
   - calibration-io.js
   - preload.js
@@ -28,6 +29,14 @@ extraResources:
     to: backend-runtime
     filter:
       - "**/*"
+
+  - from: backend
+    to: training-source/backend
+    filter:
+      - "**/*.py"
+      - "requirements*.txt"
+      - "!tests/**/*"
+      - "!__pycache__/**/*"
 
 # Injected into the packaged package.json. main.js reads buildChannel to decide
 # whether to brand the window as a preview build. productName is what Electron's

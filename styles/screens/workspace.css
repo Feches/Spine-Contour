@@ -280,3 +280,15 @@
 .workspace-chip-dest {
   font-weight: 600;
 }
+
+.training-studies { max-height: 300px; overflow: auto; margin-top: 12px; }
+.training-study { display: flex; gap: 10px; align-items: center; padding: 8px 0; }
+.training-page input[type="number"] { width: 120px; }
+.training-page progress { width: 100%; margin-top: 16px; }
+.training-page pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.training-page .calibration { margin-top: 24px; }
+
+.training-page .training-study { display: flex; font-size: 13px; }
+.training-page input[type="checkbox"] { width: 18px; min-height: 18px; padding: 0; }
+.training-page #training-target { max-width: 440px; width: 100%; }
+.training-page #training-checkpoint-path { overflow-wrap: anywhere; }

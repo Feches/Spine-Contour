@@ -64,6 +64,32 @@ let backendStartupError = null;
 let mainWindow = null;
 let quitting = false;
 const predictions = new Map();
+const { TrainingManager } = require('./training-manager.cjs');
+const trainingRoot = app.isPackaged ? path.join(process.resourcesPath, 'training-source') : __dirname;
+const training = new TrainingManager({ root: trainingRoot,
+  outputRoot: path.join(app.getPath('userData'), 'training'),
+  python: process.env.SPINE_CONTOUR_TRAINING_PYTHON || developmentPython() });
+ipcMain.handle('training-status', () => training.status);
+ipcMain.handle('training-probe', () => training.probe());
+ipcMain.handle('training-python', async () => {
+  if (training.child || training.starting) throw new Error('Wait for training to finish before changing Python.');
+  const result = await dialog.showOpenDialog({ title: 'Choose training Python executable', properties: ['openFile'] });
+  if (result.canceled) return null;
+  const checked = await training.probe(result.filePaths[0]);
+  training.python = checked.python;
+  return checked;
+});
+ipcMain.handle('training-checkpoint', async () => {
+  const result = await dialog.showOpenDialog({ title: 'Choose starting model checkpoint', properties: ['openFile'],
+    filters: [{ name: 'PyTorch checkpoint', extensions: ['pt', 'pth'] }] });
+  return result.canceled ? null : result.filePaths[0];
+});
+ipcMain.handle('training-start', (_event, config) => training.start(config));
+ipcMain.handle('training-cancel', () => training.cancel());
+ipcMain.handle('training-results', async () => {
+  if (training.status.output) return shell.openPath(training.status.output);
+});
+
 let performanceWrites = Promise.resolve();
 
 ipcMain.handle('load-performance', async () => normalizePerformance(
@@ -545,6 +571,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   quitting = true;
+  training.cancel();
   stopBackend();
 });
 

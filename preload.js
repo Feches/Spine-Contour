@@ -1,6 +1,14 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('spineContour', {
+  trainingStatus: () => ipcRenderer.invoke('training-status'),
+  trainingProbe: () => ipcRenderer.invoke('training-probe'),
+  trainingPython: () => ipcRenderer.invoke('training-python'),
+  trainingCheckpoint: () => ipcRenderer.invoke('training-checkpoint'),
+  trainingStart: (config) => ipcRenderer.invoke('training-start', config),
+  trainingCancel: () => ipcRenderer.invoke('training-cancel'),
+  trainingResults: () => ipcRenderer.invoke('training-results'),
+
   calibrate: (request) => ipcRenderer.invoke('calibrate', request),
   saveCalibration: (reference) => ipcRenderer.invoke('save-calibration', reference),
   learnCalibrationProfile: (request) => ipcRenderer.invoke('calibration-profile', request),

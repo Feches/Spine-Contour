@@ -33,7 +33,8 @@
       "scan-folder.js",
       "renderer/**/*",
       "styles/**/*",
-      "package.json"
+      "package.json",
+      "training-manager.cjs"
     ],
     "extraResources": [
       {
@@ -41,6 +42,16 @@
         "to": "backend-runtime",
         "filter": [
           "**/*"
+        ]
+      },
+      {
+        "from": "backend",
+        "to": "training-source/backend",
+        "filter": [
+          "**/*.py",
+          "requirements*.txt",
+          "!tests/**/*",
+          "!__pycache__/**/*"
         ]
       }
     ],

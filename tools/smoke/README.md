@@ -410,3 +410,15 @@ low-memory settings across reload. Pass de-identified local examples; no images 
 screenshots are written into the repository. Results are ignored under
 `tools/smoke/out/processing/`. The CPU resource comparison is separately reproducible
 with `tools/benchmark_processing.py`; see `docs/low-memory-processing.md`.
+
+
+## Training
+
+`TRAINING_SMOKE_CONFIG=/absolute/config.json CDP_PORT=9337 node tools/smoke/smoke-training.mjs`
+runs the optional training workflow on a scratch profile. Supply a config containing
+real images and reference/reviewed annotations in the documented training format;
+the smoke never invents images, landmarks, masks or successful model outputs. It
+checks runtime discovery, target choices, single-run exclusion, one epoch of training,
+page reattachment, results and cancellation. Use `SPINE_CONTOUR_TRAINING_PYTHON` when
+launching to select the optional runtime. Inspect the saved target and prediction
+overlays; passing this smoke is not evidence of accuracy or generalization.

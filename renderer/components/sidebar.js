@@ -278,6 +278,11 @@ export function render(state) {
       onClick: () => setState({ screen: 'calibration' }),
     }),
     navRow({
+      icon: ICONS.studies, label: 'Training',
+      active: state.screen === 'training', collapsed,
+      onClick: () => setState({ screen: 'training' }),
+    }),
+    navRow({
       icon: ICONS.settings,
       label: 'Settings',
       active: state.settingsOpen,

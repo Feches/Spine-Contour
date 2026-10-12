@@ -213,3 +213,11 @@ export async function demoStudiesHidden() { return invoke('demoStudiesHidden'); 
 // (2026-09-10, studies-table spec 9) true when the preference was written; false when the main
 // process refused (a packaged build). The persistence-disabled guard applies, as it did to hiding.
 export async function setDemoStudiesHidden(hidden) { assertWritable(); return invoke('setDemoStudiesHidden', hidden); }
+
+export async function trainingStatus() { return invoke('trainingStatus'); }
+export async function trainingProbe() { return invoke('trainingProbe'); }
+export async function trainingPython() { return invoke('trainingPython'); }
+export async function trainingCheckpoint() { return invoke('trainingCheckpoint'); }
+export async function trainingStart(config) { return invoke('trainingStart', config); }
+export async function trainingCancel() { return invoke('trainingCancel'); }
+export async function trainingResults() { return invoke('trainingResults'); }

@@ -1,3 +1,4 @@
+import { render as renderTraining } from './screens/training.js';
 import { render as renderCalibration } from './screens/calibration.js';
 import { el, mount } from './dom.js';
 import { render as renderLanding } from './screens/landing.js';
@@ -8,6 +9,7 @@ import { render as renderSidebar, updateProcessing } from './components/sidebar.
 import { render as renderToast } from './components/toast.js';
 
 const SCREENS = {
+  training: renderTraining,
   calibration: renderCalibration,
   workspace: renderWorkspace,
   studies: renderStudies,

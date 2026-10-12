@@ -47,6 +47,14 @@ reference**. Wait for **Reference saved for this image**. That scale is retained
 across restarts and used for anterior, middle and posterior disc heights after
 segmentation, including when the reference was saved before loading the workspace.
 
+## Training
+
+Open **Training** to fine-tune lumbar landmarks, lumbar segmentation from reviewed
+corner polygons, or cervical landmarks. Runs include subject-separated validation
+and held-out regression checks. Training requires an optional Python/PyTorch environment
+and a starting checkpoint; see [local training](docs/training.md). Candidates are saved
+for review and do not replace the active models.
+
 ## Slower computers
 
 **Settings → Processing → Toolbar removal** can remove detected bottom PACS
