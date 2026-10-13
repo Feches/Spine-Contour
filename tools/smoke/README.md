@@ -411,8 +411,9 @@ Baseline: 16/16 (2026-10-01; 9/16 before the fix, the logo at opacity 0.07 40 ms
 Task 14; user doc `docs/level-editor.md`) against the real app: the Vertebral levels panel, placing a level,
 unchecking one, Save edits and the label record on disk, Discard and the exit prompt, femoral rim points and FIT,
 window / level (in edit mode, and since 2026-10-11 outside it, with the right-button drag and the double right-click),
-the keyboard, the per-study stash, the main process's label-file name check, and (since 2026-10-12, gate feedback G6)
-the label record Mark reviewed writes for a film that has none. Two phases:
+the keyboard, the per-study stash, the main process's label-file name check, (since 2026-10-12, gate feedback G6)
+the label record Mark reviewed writes for a film that has none, and (since 2026-10-13, gate feedback G7) where the
+level plates sit and their drag. Two phases:
 
 ```
 SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-levels-smoke SPINE_CONTOUR_PYTHON=<main checkout>/.venv/Scripts/python.exe node tools/smoke/launch.mjs
@@ -440,8 +441,8 @@ node tools/smoke/cdp.mjs --quit
   and leave; `SP-9304`, a second copy of the segmented fixture with all five lumbar bodies, its own file name
   `levels-review-check.png`, sidecar and prediction id, for section 18). `finally` removes the studies, their sidecars,
   their label records (`levels-review-check.label.json` among them) and any stashed editor, deletes the
-  synthetic film, and resets `editing`, `levelEditor`, `filmWindow`, `selection`, `screen`, `openId` and
-  `measurementDrafts`. The dom phase prepends its studies and leaves the rest alone, so it may
+  synthetic film, and resets `editing`, `levelEditor`, `filmWindow`, `platePositions`, `selection`, `screen`, `openId`
+  and `measurementDrafts`. The dom phase prepends its studies and leaves the rest alone, so it may
   follow other suites on one launch; never run it between `smoke-persist.mjs --phase run` and `--phase restart`.
 
 What it checks (numbers as in the plan's Task 14 brief): (1) Edit opens the panel, hides the tabs and the run card, and
@@ -511,6 +512,19 @@ that the review write asks for the stored image only.) Then `SP-9304` is opened 
 unmark and mark again leave one record of that name, not written again (the same `saved_at`), and no second toast.
 Nothing else in the suite clicks Mark reviewed; `smoke-persist.mjs` phase 1 clicks it in 11b on a study whose record
 section 11 has just saved, so that click writes nothing (unchanged, no check added).
+(19, dom; gate feedback G7, 2026-10-13, plan D20, rulings R43 and R44) The level plates, on `SP-9300` in edit mode
+straight after section 3 (L3 just placed by hand and selected). The plates are read as the stage last drew them, in
+image px, through the page's own `components/viewer.js` `drawnPlates()`. Seven checks: every plate drawn (L1–L5 and
+S1, none for a head) lies outside its level on the posterior side — the fixture faces left, so a body's plate meets
+none of its quad (a separating-axis test) and starts right of its anchor, S1's right of SP; over a plate the stage
+carries `is-over-plate` and a press on it `is-dragging-plate`; a left drag on L3's plate by (40, 20) client px sets
+`platePositions.L3` to that travel in image px (the canvas's own ratio on each axis) and nothing else; the rect moves
+by the same, its size unchanged, with L3's geometry and the unsaved count untouched and the drag class gone after the
+release; with L3's plate dragged over its SA handle the handle wins (the hover is `is-over-handle`, and a press starts
+the handle's drag with SA focused, the offsets unchanged); a double-click on the plate, clear of the handle's grab,
+puts it back where it was first drawn (`platePositions` `{}`); and after L1's plate is dragged, opening `SP-9301` from
+the list resets `platePositions` to `{}` (FRESH_VIEW), and back on `SP-9300` (Edit, its stash restoring L3) every plate
+is where it was first drawn. Section 5 then goes on from section 3's state.
 The film phase also saves a record whose `image.sha256` is 64 hex characters and whose `model.version` is the run's,
 and (G5, D18) whose edited level, moved by the SA handle drag and the ArrowRight nudge, lists `edited_points` `['sa']`,
 exactly the corners whose value differs from its `model_corners`, with `edits.points_moved` the sum of the edited
@@ -535,7 +549,10 @@ straight after the click and adds two dom checks for the stored-only read: dom *
 round 1) Re-measured on fresh `%TEMP%` profiles, one app at a time, DOM, store and file reads only, no screenshots:
 levels dom **114/114** and film **25/25** (one launch); persist **42/42** then **55/55** (the first run of the run phase
 read 41/42, its 5 s wait for `studies.json` to hold the seeded SP-9010 timing out; the re-run on a fresh launch read
-42/42); studies **151/151**.
+42/42); studies **151/151**. (2026-10-13, gate feedback G7, plan D20, branch `claude/level-plates`) Section 19 adds
+seven dom checks: dom **121/121** (114 + 7), measured when it was written, twice on one launch, on a fresh `%TEMP%`
+profile (CDP port 9341; DOM, store and file reads only, no screenshots); the film phase and the other suites were not
+re-run.
 
 ## The landmark-editor suites after the level editor (2026-10-10)
 

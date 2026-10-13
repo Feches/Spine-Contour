@@ -35,6 +35,8 @@ test('getState returns the documented initial shape', () => {
   assert.equal(state.selection, null);
   assert.equal(state.levelEditor, null);
   assert.equal(state.filmWindow, null);
+  // (Gate feedback G7, 2026-10-13; ruling R44) Where the user has dragged each level's plate: none yet.
+  assert.deepEqual(state.platePositions, {});
   assert.equal(state.running, null);
   assert.equal(state.runStage, null);
   assert.equal(state.batch, null);

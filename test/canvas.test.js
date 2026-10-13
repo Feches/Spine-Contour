@@ -388,7 +388,8 @@ test('labels name each visible placed level that is not a circle, in level order
   assert.deepEqual(labelsOf(drawEditor(all).calls), LEVEL_CODES.filter(code => !code.startsWith('FH')));
 });
 
-test('a label plate sits 14 px right of the posterior corner, centred on it, in the label font', () => {
+test('on a left-facing body a label plate sits 14 px right of the posterior corner, outside the body, centred on it, in the label font', () => {
+  // BODY faces left (SA [30,20] and IA [30,50] are anterior): its posterior edge is on the right.
   const body = drawEditor(setLevelGeometry(emptyEditor(), 'L3', BODY));
   // SP [60,20] and IP [60,50]: the posterior edge's middle is [60,35]; text width 10 -> plate 22 x 18.
   assert.deepEqual(body.calls.filter(([name]) => name === 'roundRect').map(([, args]) => args), [[74, 26, 22, 18, 4]]);
@@ -414,6 +415,83 @@ test('a label plate falls back to fillRect without roundRect, and scales with th
   const scaled = drawEditor(setLevelGeometry(emptyEditor(), 'L3', BODY), { pixelRatio: 2 });
   assert.deepEqual(scaled.calls.filter(([name]) => name === 'roundRect').map(([, args]) => args), [[88, 17, 34, 36, 8]]);
   assert.equal(scaled.painted.find(p => p.name === 'fillText').font, "500 22px 'Chivo Mono', monospace");
+});
+
+// (Gate feedback G7, 2026-10-13; plan D20, ruling R43) The mirror: a film facing right, as the owner's does.
+const MIRRORED = { superior: [[90, 20], [60, 20]], inferior: [[90, 50], [60, 50]] };
+const rectsOf = (calls, name = 'roundRect') => calls.filter(([n]) => n === name).map(([, args]) => args);
+const textAt = (rec) => rec.painted.find(p => p.name === 'fillText').args;
+
+test('on a right-facing body the plate\'s right edge sits 14 px left of the posterior corner, outside the body (R43)', () => {
+  // SA [90,20] and IA [90,50] are anterior; SP [60,20] and IP [60,50] posterior: the anchor is [60,35] and the
+  // 22 x 18 plate runs from x = 60 - 14 - 22 = 24 to 46, left of the body's posterior edge at x 60.
+  const body = drawEditor(setLevelGeometry(emptyEditor(), 'L3', MIRRORED));
+  assert.deepEqual(rectsOf(body.calls), [[24, 26, 22, 18, 4]]);
+  assert.deepEqual(textAt(body), ['L3', 30, 35], 'the text starts one pad inside the plate, centred on the anchor');
+  const plain = drawEditor(setLevelGeometry(emptyEditor(), 'L3', MIRRORED), {}, { without: ['roundRect'] });
+  assert.deepEqual(rectsOf(plain.calls, 'fillRect'), [[24, 26, 22, 18]], 'the fillRect fallback, mirrored too');
+  const scaled = drawEditor(setLevelGeometry(emptyEditor(), 'L3', MIRRORED), { pixelRatio: 2 });
+  assert.deepEqual(rectsOf(scaled.calls), [[60 - 28 - 34, 17, 34, 36, 8]], 'the gap and the plate scale with the pixel ratio');
+
+  const where = (code, geometry, extra) => textAt(drawEditor(setLevelGeometry(emptyEditor(), code, geometry), extra));
+  assert.deepEqual(where('C2', { inferior: [[90, 50], [60, 54]], centroid: [75, 30] }), ['C2', 30, 54], 'C2: IP left of the centroid');
+  assert.deepEqual(where('S1', { superior: [[90, 50], [60, 56]] }), ['S1', 30, 56], 'S1: SP left of SA');
+  assert.deepEqual(where('T4', { centroid: [45, 30] }, { anteriorSide: 'right' }), ['T4', 15, 30], 'T4 on a film facing right: left');
+  assert.deepEqual(where('T4', { centroid: [45, 30] }, { anteriorSide: 'left' }), ['T4', 65, 30], 'T4 on a film facing left: right');
+  assert.deepEqual(where('L3', BODY, { anteriorSide: 'right' }), ['L3', 80, 35], 'a body says its own side, whatever the film');
+});
+
+test('a plate moves by its level\'s drag offset in image px; a missing or bad offset moves nothing (R44)', () => {
+  const editor = setLevelGeometry(setLevelGeometry(emptyEditor(), 'L3', BODY), 'S1', { superior: [[30, 70], [60, 76]] });
+  const moved = drawEditor(editor, { platePositions: { L3: [5, -4], S1: ['a', 2] } });
+  assert.deepEqual(rectsOf(moved.calls), [[79, 22, 22, 18, 4], [74, 67, 22, 18, 4]]);
+  assert.deepEqual(moved.painted.filter(p => p.name === 'fillText').map(p => p.args), [['L3', 85, 31], ['S1', 80, 76]]);
+  const scaled = drawEditor(editor, { platePositions: { L3: [5, -4] }, pixelRatio: 2 });
+  assert.deepEqual(rectsOf(scaled.calls)[0], [88 + 5, 17 - 4, 34, 36, 8], 'the offset is image px, not scaled by the ratio');
+  const mirrored = drawEditor(setLevelGeometry(emptyEditor(), 'L3', MIRRORED), { platePositions: { L3: [-10, 6] } });
+  assert.deepEqual(rectsOf(mirrored.calls), [[14, 32, 22, 18, 4]]);
+  for (const platePositions of [null, {}, { L3: [NaN, 1] }, { L3: [1] }]) {
+    assert.deepEqual(rectsOf(drawEditor(setLevelGeometry(emptyEditor(), 'L3', BODY), { platePositions }).calls), [[74, 26, 22, 18, 4]], JSON.stringify(platePositions));
+  }
+});
+
+test('drawLevelEditor returns the plates it drew, in image px after the offset, in level order (R43, R44)', () => {
+  const one = drawEditor(setLevelGeometry(emptyEditor(), 'L3', BODY), { platePositions: { L3: [5, -4] } });
+  const rec = recordingContext();
+  const plates = drawLevelEditor(rec.ctx, EDITOR_CANVAS, setLevelGeometry(emptyEditor(), 'L3', BODY), { pixelRatio: 1, platePositions: { L3: [5, -4] } });
+  assert.deepEqual(plates, [{ code: 'L3', x: 79, y: 22, width: 22, height: 18 }]);
+  assert.deepEqual(rec.calls, one.calls, 'returning the plates changes nothing drawn');
+
+  const lumbar = recordingContext();
+  const all = drawLevelEditor(lumbar.ctx, EDITOR_CANVAS, lumbarEditor('L3'), { pixelRatio: 1 });
+  assert.deepEqual(all.map(p => p.code), ['L1', 'L2', 'L3', 'L4', 'L5', 'S1'], 'no plate for a head');
+  // fakeGeometry's L1 faces left: SP [20,10] and IP [20,20], the anchor [20,15].
+  assert.deepEqual(all[0], { code: 'L1', x: 34, y: 6, width: 22, height: 18 });
+  const mirrored = recordingContext();
+  assert.deepEqual(drawLevelEditor(mirrored.ctx, EDITOR_CANVAS, setLevelGeometry(emptyEditor(), 'L3', MIRRORED), {}),
+    [{ code: 'L3', x: 24, y: 26, width: 22, height: 18 }]);
+
+  const off = recordingContext();
+  assert.deepEqual(drawLevelEditor(off.ctx, EDITOR_CANVAS, lumbarEditor(), { overlays: false, pixelRatio: 1 }), [], 'overlays off, nothing selected: no plate');
+  const selectedOnly = recordingContext();
+  assert.deepEqual(drawLevelEditor(selectedOnly.ctx, EDITOR_CANVAS, lumbarEditor('L2'), { overlays: false, pixelRatio: 1 }).map(p => p.code), ['L2']);
+  const placing = recordingContext();
+  assert.deepEqual(drawLevelEditor(placing.ctx, EDITOR_CANVAS, startPlacing(lumbarEditor(), 'L3'), { pixelRatio: 1 }).map(p => p.code),
+    ['L1', 'L2', 'L4', 'L5', 'S1'], 'the level being placed has no plate');
+  const empty = recordingContext();
+  assert.deepEqual(drawLevelEditor(empty.ctx, EDITOR_CANVAS, emptyEditor(), { pixelRatio: 1 }), []);
+});
+
+test('drawDynamicLayer returns the editor\'s plates in edit mode and none outside it, passing the side and the offsets', () => {
+  const inEdit = recordingContext();
+  const plates = drawDynamicLayer(inEdit.ctx, EDITOR_CANVAS, null, {
+    editor: setLevelGeometry(emptyEditor(), 'T4', { centroid: [45, 30] }), pixelRatio: 1, anteriorSide: 'right', platePositions: { T4: [1, 2] },
+  });
+  assert.deepEqual(plates, [{ code: 'T4', x: 45 - 14 - 22 + 1, y: 21 + 2, width: 22, height: 18 }]);
+  const outside = recordingContext();
+  assert.deepEqual(drawDynamicLayer(outside.ctx, EDITOR_CANVAS, fakeGeometry(), { selectedLevel: 'L3', measurements: fullMeasurements(), editing: false }), []);
+  const bare = recordingContext();
+  assert.deepEqual(drawDynamicLayer(bare.ctx, EDITOR_CANVAS, null, { editing: false }), []);
 });
 
 test('sizes that are screen sizes scale with the pixel ratio', () => {

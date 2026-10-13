@@ -90,6 +90,14 @@ test('clientToImage maps a client point into image space and clamps to bounds', 
   assert.equal(cy, 100);
 });
 
+// (Gate feedback G7, ruling R44) A plate drag follows the pointer past the film's edge, so its travel is read unclamped.
+test('clientToImage with clamp false maps a point outside the canvas without clamping it', () => {
+  const canvas = fakeCanvas(200, 100, { left: 50, top: 20, width: 100, height: 50 });
+  assert.deepEqual(clientToImage({ clientX: 40, clientY: 80 }, canvas, { clamp: false }), [-20, 120]);
+  assert.deepEqual(clientToImage({ clientX: 100, clientY: 45 }, canvas, { clamp: false }), [100, 50], 'inside: as clamped');
+  assert.deepEqual(clientToImage({ clientX: 40, clientY: 80 }, canvas, { clamp: true }), [0, 100]);
+});
+
 test('imageToClient is the inverse of clientToImage at interior points', () => {
   const canvas = fakeCanvas(200, 100, { left: 50, top: 20, width: 100, height: 50 });
   const rect = canvas.getBoundingClientRect();

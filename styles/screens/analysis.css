@@ -687,6 +687,9 @@ button.viewer-step:disabled { opacity: .35; cursor: not-allowed; }
 .viewer-stage.is-editing .viewer-canvas-dynamic { cursor: crosshair; }
 .viewer-stage.is-editing.is-over-handle .viewer-canvas-dynamic { cursor: grab; }
 .viewer-stage.is-editing.is-dragging-handle .viewer-canvas-dynamic { cursor: grabbing; }
+/* (2026-10-13, gate feedback G7, ruling R44) A level's label plate drags like a handle. */
+.viewer-stage.is-editing.is-over-plate .viewer-canvas-dynamic { cursor: grab; }
+.viewer-stage.is-editing.is-dragging-plate .viewer-canvas-dynamic { cursor: grabbing; }
 .viewer-stage.is-pan-mode .viewer-canvas-dynamic { cursor: grab; }
 .viewer-stage.is-pan-mode:active .viewer-canvas-dynamic { cursor: grabbing; }
 /* (2026-10-10) While the window / level panel is open a drag on the film sets the window. (2026-10-11, ruling R36)

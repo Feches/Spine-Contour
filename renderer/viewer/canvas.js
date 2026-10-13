@@ -5,6 +5,7 @@ import { applyWindow } from './window-level.js';
 import { LEVEL_CODES, kindOf, levelState, placementSteps, fitRim } from '../data/levels.js';
 import { quadrilateral } from '../data/level-projection.js';
 import { levelHandles } from './level-handles.js';
+import { labelPlacement, plateOffset } from './level-labels.js';
 
 export const LEVEL_RGB = {
   C2: [183, 139, 244],
@@ -532,23 +533,20 @@ function drawGhost(ctx, code, modelGeometry, pixelRatio) {
   ctx.restore();
 }
 
-// The label plate's anchor: the posterior corner (the middle of the posterior edge for a body).
-function labelAnchor(code, geometry) {
-  switch (kindOf(code)) {
-    case 'body': return midpoint(geometry.superior[1], geometry.inferior[1]);
-    case 'c2': return geometry.inferior[1];
-    case 'endplate': return geometry.superior[1];
-    case 'centroid': return geometry.centroid;
-    default: return null;
-  }
-}
-
-function drawLevelLabel(ctx, code, anchor, selected, pixelRatio) {
+// A level's label plate (gate feedback G7, 2026-10-13; plan D20, rulings R43 and R44). `placement` is labelPlacement's
+// (renderer/viewer/level-labels.js): the anchor, the posterior corner, and the side the plate extends to, away from the
+// level, so the plate sits outside its body on the posterior side. Side +1: the plate's left edge LABEL_OFFSET_PX right
+// of the anchor; side -1: its right edge LABEL_OFFSET_PX left of it. Centred on the anchor vertically, then moved by
+// the level's drag offset (`offset`, image px, from state.platePositions). Returns the plate's rect in image pixels,
+// after the offset, for the stage's hit test.
+function drawLevelLabel(ctx, code, placement, offset, selected, pixelRatio) {
+  const { anchor, side } = placement;
   ctx.font = `500 ${LABEL_FONT_PX * pixelRatio}px ${CANVAS_MONO}`;
   const width = ctx.measureText(code).width + 2 * LABEL_PAD_PX * pixelRatio;
   const height = LABEL_HEIGHT_PX * pixelRatio;
-  const x = anchor[0] + LABEL_OFFSET_PX * pixelRatio;
-  const y = anchor[1] - height / 2;
+  const gap = LABEL_OFFSET_PX * pixelRatio;
+  const x = (side < 0 ? anchor[0] - gap - width : anchor[0] + gap) + offset[0];
+  const y = anchor[1] - height / 2 + offset[1];
   ctx.fillStyle = LABEL_PLATE_FILL;
   if (typeof ctx.roundRect === 'function') {
     ctx.beginPath();
@@ -559,7 +557,8 @@ function drawLevelLabel(ctx, code, anchor, selected, pixelRatio) {
   }
   ctx.fillStyle = selected ? STAGE_SELECTED_COLOR : STAGE_LABEL_FILL;
   ctx.textBaseline = 'middle';
-  ctx.fillText(code, x + LABEL_PAD_PX * pixelRatio, anchor[1]);
+  ctx.fillText(code, x + LABEL_PAD_PX * pixelRatio, anchor[1] + offset[1]);
+  return { code, x, y, width, height };
 }
 
 // The selected level's draggable points (and a head's fixed centre dot). The focused handle also gets the ring;
@@ -590,7 +589,8 @@ function drawLevelHandles(ctx, code, geometry, focused, pixelRatio) {
 }
 
 // One placed level: ghost, fill, outline, label. True when it was drawn (its handles are drawn by the caller, last).
-function drawPlacedLevel(ctx, editor, code, geometry, { overlays, fillAlpha, pixelRatio }) {
+// Its label plate's rect, when it has one, is pushed onto `plates`.
+function drawPlacedLevel(ctx, editor, code, geometry, { overlays, fillAlpha, pixelRatio, anteriorSide, platePositions, plates }) {
   const selected = editor.selected === code;
   // Overlays off hides every level but the selected one: no fill, no outline, no label.
   if (!overlays && !selected) return false;
@@ -610,8 +610,8 @@ function drawPlacedLevel(ctx, editor, code, geometry, { overlays, fillAlpha, pix
     ctx.lineWidth = (selected ? SELECTED_STROKE_PX : LEVEL_STROKE_PX) * pixelRatio;
     ctx.stroke();
   }
-  const anchor = labelAnchor(code, geometry);
-  if (anchor) drawLevelLabel(ctx, code, anchor, selected, pixelRatio);
+  const placement = labelPlacement(code, geometry, anteriorSide);
+  if (placement) plates.push(drawLevelLabel(ctx, code, placement, plateOffset(platePositions, code), selected, pixelRatio));
   return true;
 }
 
@@ -661,10 +661,18 @@ function drawPlacement(ctx, canvas, placing, pixelRatio) {
  * fill toggle and 0-100 slider), `pixelRatio` (image pixels per CSS pixel), `handle` (the focused handle,
  * `{code, handle}` or null) and `dragGeometry` (`{code, geometry}` or null: one level's geometry for this frame, a
  * drag in progress, in place of the stored one). Every visible level with geometry is drawn except the one being
- * placed; only the selected level has handles.
+ * placed; only the selected level has handles. (Gate feedback G7, 2026-10-13; plan D20) `anteriorSide` (the film's,
+ * plateAnteriorSide in renderer/viewer/level-labels.js) is the plates' fallback side (R43), and `platePositions`
+ * (`state.platePositions`, code -> [dx, dy] in image px) moves each dragged plate (R44).
+ *
+ * Returns the label plates it drew, `[{code, x, y, width, height}]` in image pixels after the offsets, in drawing
+ * order (the last on top), so the stage can hit-test them without measuring text again. A caller that ignores it
+ * is unaffected.
  */
 export function drawLevelEditor(ctx, canvas, editor, opts) {
-  const { overlays = true, overlayOpacity = 50, handle = null, dragGeometry = null } = opts ?? {};
+  const {
+    overlays = true, overlayOpacity = 50, handle = null, dragGeometry = null, anteriorSide = null, platePositions = null,
+  } = opts ?? {};
   // Ruling R28: the drawing ratio is floored at 1 image pixel per CSS pixel. The canvas is drawn at the stored
   // image's resolution and CSS-scaled with the film, so past 1:1 on screen (pixelRatio < 1, reachable on every film
   // since the zoom cap is 8x) a CSS-sized stroke, dash, handle or label would fall under one image pixel, be
@@ -675,12 +683,14 @@ export function drawLevelEditor(ctx, canvas, editor, opts) {
   ctx.save();
   ctx.lineJoin = 'round';
   let selected = null;
+  const plates = [];
+  const level = { overlays, fillAlpha, pixelRatio, anteriorSide, platePositions, plates };
   for (const code of LEVEL_CODES) {
     const entry = editor.levels?.[code];
     if (!entry?.visible || editor.placing?.code === code) continue;
     const geometry = dragGeometry?.code === code ? dragGeometry.geometry : entry.geometry;
     if (!geometry) continue;
-    if (drawPlacedLevel(ctx, editor, code, geometry, { overlays, fillAlpha, pixelRatio }) && editor.selected === code) {
+    if (drawPlacedLevel(ctx, editor, code, geometry, level) && editor.selected === code) {
       selected = { code, geometry };
     }
   }
@@ -688,8 +698,11 @@ export function drawLevelEditor(ctx, canvas, editor, opts) {
   if (selected) drawLevelHandles(ctx, selected.code, selected.geometry, handle, pixelRatio);
   if (editor.placing) drawPlacement(ctx, canvas, editor.placing, pixelRatio);
   ctx.restore();
+  return plates;
 }
 
+// Returns the label plates drawn (drawLevelEditor's return value) in edit mode, and none (an empty array) outside it,
+// where no plate is drawn.
 export function drawDynamicLayer(ctx, canvas, geometry, opts) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (opts?.editor) {
@@ -697,16 +710,17 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
     // cross and the femoral circles are skipped. The selected measurement's construction stays
     // (under the editor), and a film with no geometry (a failed run) still has an editor to draw.
     if (geometry) drawSelectedMeasurement(ctx, canvas, geometry, opts.selectedLevel ?? null, opts.measurements);
-    drawLevelEditor(ctx, canvas, opts.editor, {
+    return drawLevelEditor(ctx, canvas, opts.editor, {
       overlays: opts.overlays ?? true,
       overlayOpacity: opts.overlayOpacity ?? 50,
       pixelRatio: opts.pixelRatio ?? 1,
       handle: opts.handle ?? null,
       dragGeometry: opts.dragGeometry ?? null,
+      anteriorSide: opts.anteriorSide ?? null,
+      platePositions: opts.platePositions ?? null,
     });
-    return;
   }
-  if (!geometry) return;
+  if (!geometry) return [];
   const selectedLevel = opts.selectedLevel ?? null;
   const lineWidth = Math.max(2, canvas.width / 600);
   ctx.lineJoin = 'round';
@@ -781,4 +795,5 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
   }
 
   drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, opts.measurements);
+  return [];
 }

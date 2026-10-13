@@ -23,6 +23,13 @@
 // toasted; then unmark and mark again leave that one file, unwritten, with no second toast. Review round 1 of G6
 // (R42): the click is followed at once by opening SP-9301, whose load takes the single image cache, and the write still
 // lands; with SP-9301 cached, the page's own imageInfo(SP-9304, { storedOnly: true }) reads SP-9304's sidecar, twice.
+// Gate feedback G7 (2026-10-13, plan D20, rulings R43 and R44): the level plates sit outside their level on the
+// posterior side and can be dragged. Section 19 runs on SP-9300 in edit mode straight after section 3 (L3 just placed),
+// reading the plates the stage last drew through the page's own components/viewer.js `drawnPlates()` (image px): every
+// plate outside its level on the posterior side (rightward: the fixture faces left), the grab hover and the drag class,
+// a left drag on L3's plate by (40, 20) client px setting `platePositions.L3` to that travel in image px and moving the
+// rect by it, L3's SA handle under the plate still winning the press, a double-click putting the plate back, and another
+// study opened from the list resetting `platePositions` to {} (SP-9300 then reopened, its stash bringing L3 back).
 //
 //   node tools/smoke/launch.mjs                                     (SPINE_CONTOUR_USER_DATA under %TEMP%)
 //   node tools/smoke/smoke-levels.mjs                               phase `dom` (the default)
@@ -620,6 +627,150 @@ async function reviewRecordChecks(films) {
 }
 
 // ---------------------------------------------------------------------------
+// 19 (gate feedback G7, 2026-10-13; plan D20, rulings R43 and R44). The level plates.
+
+// The plates the stage's last redraw drew, `[{code, x, y, width, height}]` in image px, from the page's own
+// components/viewer.js; the store's plate offsets; the canvas's image px per CSS px on each axis.
+const drawnPlates = () => ev(`import('./renderer/components/viewer.js').then((m) => m.drawnPlates())`);
+const platePositions = () => ev(`import('./renderer/store.js').then((m) => m.getState().platePositions)`);
+const canvasRatio = () => ev(`(() => { const c = document.querySelector('.viewer-canvas-dynamic'); const r = c.getBoundingClientRect(); return { rx: c.width / r.width, ry: c.height / r.height }; })()`);
+const stageHas = (name) => ev(`document.querySelector('.viewer-stage')?.classList.contains(${js(name)}) ?? null`);
+const plateOf = (plates, code) => plates.find((plate) => plate.code === code) ?? null;
+const middleOf = (rect) => [rect.x + rect.width / 2, rect.y + rect.height / 2];
+const inRect = (rect, [x, y]) => x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
+const near = (a, b, tolerance = 0.01) => Math.abs(a - b) <= tolerance;
+const geometryText = (code) => ev(`JSON.stringify(window.__lv.editor()?.levels?.${code}?.geometry ?? null)`);
+
+// Whether a rect and a convex polygon share any point: the separating-axis test, image px.
+function rectMeetsPolygon(rect, polygon) {
+  const box = [[rect.x, rect.y], [rect.x + rect.width, rect.y], [rect.x + rect.width, rect.y + rect.height], [rect.x, rect.y + rect.height]];
+  const axes = [box, polygon].flatMap((shape) => shape.map((a, i) => { const b = shape[(i + 1) % shape.length]; return [b[1] - a[1], a[0] - b[0]]; }));
+  return axes.every(([ax, ay]) => {
+    const along = (shape) => shape.map(([x, y]) => x * ax + y * ay);
+    const p = along(box);
+    const q = along(polygon);
+    return Math.max(...p) >= Math.min(...q) && Math.max(...q) >= Math.min(...p);
+  });
+}
+
+// On SP-9300 in edit mode straight after section 3: L3 placed by hand and selected, L1, L2, L4, L5 and S1 segmented,
+// the two heads (which have no plate). The fixture faces LEFT (every SA left of its SP), so its posterior side is
+// rightward. Seven checks: where the plates sit; the hover and the press; a left drag's offset; the rect it moves; a
+// handle under a plate still winning; a double-click putting the plate back; another study resetting the offsets.
+async function plateChecks() {
+  const LEVEL_PLATES = ['L1', 'L2', 'L3', 'L4', 'L5', 'S1'];
+  await until(`import('./renderer/components/viewer.js').then((m) => m.drawnPlates().length === ${LEVEL_PLATES.length})`, 5000);
+  const first = await drawnPlates();
+  const geometries = await ev(`(() => { const e = window.__lv.editor(); return Object.fromEntries(${js(LEVEL_PLATES)}.map((c) => [c, e?.levels?.[c]?.geometry ?? null])); })()`);
+  // R43: a body's plate meets none of its quad (SA SP IP IA) and starts right of its anchor, the posterior edge's
+  // middle, its middle right of the body's; S1's starts right of SP.
+  const placed = first.map((plate) => {
+    const g = geometries[plate.code];
+    if (!g?.superior) return { code: plate.code, ok: false };
+    if (plate.code === 'S1') return { code: 'S1', ok: plate.x >= g.superior[1][0] };
+    const [sa, sp] = g.superior;
+    const [ia, ip] = g.inferior;
+    const outside = !rectMeetsPolygon(plate, [sa, sp, ip, ia]);
+    const posterior = plate.x >= (sp[0] + ip[0]) / 2 && middleOf(plate)[0] > (sa[0] + sp[0] + ia[0] + ip[0]) / 4;
+    return { code: plate.code, ok: outside && posterior, outside, posterior };
+  });
+  check('19. every drawn plate (L1-L5 and S1; no head has one) lies outside its level on the posterior side, right on this left-facing fixture (R43)',
+    js(first.map((plate) => plate.code)) === js(LEVEL_PLATES) && placed.every((p) => p.ok), { first, placed });
+
+  // R44: a left drag on L3's plate by (40, 20) client px, its press and release dispatched as `drag` does them.
+  const before = plateOf(first, 'L3');
+  const l3Before = await geometryText('L3');
+  const unsavedBefore = await ev('window.__lv.unsaved()');
+  const { rx, ry } = await canvasRatio();
+  const start = await cdp.toClient(...middleOf(before));
+  const x0 = Math.round(start.x);
+  const y0 = Math.round(start.y);
+  await cdp.mouse('mouseMoved', x0, y0);
+  await cdp.settle(60);
+  const hover = await stageHas('is-over-plate');
+  await cdp.mouse('mousePressed', x0, y0, { button: 'left', buttons: 1, clickCount: 1 });
+  await cdp.settle(40);
+  const pressing = await stageHas('is-dragging-plate');
+  const move = cdp.mouse('mouseMoved', x0 + 40, y0 + 20, { button: 'left', buttons: 1 });
+  await cdp.settle(60);
+  await Promise.all([move, cdp.mouse('mouseReleased', x0 + 40, y0 + 20, { button: 'left', buttons: 0, clickCount: 1 })]);
+  await cdp.settle(80);
+  check('19. over a plate the stage shows grab (is-over-plate), and a press on it starts the plate drag (is-dragging-plate)',
+    hover === true && pressing === true, { hover, pressing });
+  const moved = await platePositions();
+  check('19. a left drag on L3\'s plate by (40, 20) client px sets platePositions.L3 to that travel in image px, and nothing else (R44)',
+    Array.isArray(moved?.L3) && near(moved.L3[0], 40 * rx) && near(moved.L3[1], 20 * ry) && js(Object.keys(moved)) === js(['L3']),
+    { moved, expected: [40 * rx, 20 * ry] });
+  const after = plateOf(await drawnPlates(), 'L3');
+  const released = await stageHas('is-dragging-plate');
+  check('19. the drag moves L3\'s rect by the same image px, its size unchanged; L3\'s geometry and the unsaved count are untouched, and the release ends the drag',
+    Boolean(after) && near(after.x - before.x, 40 * rx) && near(after.y - before.y, 20 * ry) && after.width === before.width && after.height === before.height
+      && (await geometryText('L3')) === l3Before && (await ev('window.__lv.unsaved()')) === unsavedBefore && released === false,
+    { before, after, released });
+
+  // Handles win: L3 (re)selected from its row, its plate dragged so that the SA handle sits 3 CSS px inside the plate's
+  // left edge at its middle height; then the pointer over SA and a press there.
+  await clickSelector('[data-level-key="L3"]');
+  const sa = await ev('window.__lv.editor()?.levels?.L3?.geometry?.superior?.[0] ?? null');
+  const from = await cdp.toClient(...middleOf(after));
+  const fx = Math.round(from.x);
+  const fy = Math.round(from.y);
+  await drag(fx, fy, fx + Math.round((sa[0] - 3 * rx - after.x) / rx), fy + Math.round((sa[1] - after.height / 2 - after.y) / ry));
+  const over = plateOf(await drawnPlates(), 'L3');
+  const positionsOver = await platePositions();
+  const saClient = await cdp.toClient(sa[0], sa[1]);
+  const sx = Math.round(saClient.x);
+  const sy = Math.round(saClient.y);
+  await cdp.mouse('mouseMoved', sx, sy);
+  await cdp.settle(60);
+  const hovered = { handle: await stageHas('is-over-handle'), plate: await stageHas('is-over-plate') };
+  await cdp.mouse('mousePressed', sx, sy, { button: 'left', buttons: 1, clickCount: 1 });
+  await cdp.settle(60);
+  const pressed = { handle: await stageHas('is-dragging-handle'), plate: await stageHas('is-dragging-plate'), focus: await ev('window.__lv.editor()?.handle ?? null') };
+  await cdp.mouse('mouseReleased', sx, sy, { button: 'left', buttons: 0, clickCount: 1 });
+  await cdp.settle(80);
+  check('19. with L3\'s plate over its SA handle the handle wins: the hover is the handle\'s, and a press there starts the handle\'s drag, not the plate\'s',
+    Boolean(over) && inRect(over, sa) && hovered.handle === true && hovered.plate === false && pressed.handle === true && pressed.plate === false
+      && pressed.focus?.code === 'L3' && pressed.focus.handle === 'SA' && js(await platePositions()) === js(positionsOver) && (await geometryText('L3')) === l3Before,
+    { over, sa, hovered, pressed, positionsOver });
+
+  // A double-click on the plate, 3 CSS px inside its right edge (clear of the handle's 14 px grab), puts it back.
+  const spot = await cdp.toClient(over.x + over.width - 3 * rx, over.y + over.height / 2);
+  const qx = Math.round(spot.x);
+  const qy = Math.round(spot.y);
+  const clear = Math.hypot(qx - sx, qy - sy);
+  await cdp.mouse('mouseMoved', qx, qy);
+  for (const clickCount of [1, 2]) {
+    await cdp.mouse('mousePressed', qx, qy, { button: 'left', buttons: 1, clickCount });
+    await cdp.mouse('mouseReleased', qx, qy, { button: 'left', buttons: 0, clickCount });
+  }
+  await cdp.settle(120);
+  const reset = await platePositions();
+  const back = plateOf(await drawnPlates(), 'L3');
+  check('19. a double-click on L3\'s plate puts it back: platePositions holds no L3 and the plate is where it was first drawn (R44)',
+    clear > 15 && js(reset) === '{}' && Boolean(back) && near(back.x, before.x, 1e-6) && near(back.y, before.y, 1e-6),
+    { clear, reset, back, before });
+
+  // Another study opened from the list resets the offsets (FRESH_VIEW); back on SP-9300 the stash brings L3 back
+  // (as section 11 shows) and every plate is drawn where it was first.
+  const l1 = plateOf(await drawnPlates(), 'L1');
+  const l1From = await cdp.toClient(...middleOf(l1));
+  await drag(Math.round(l1From.x), Math.round(l1From.y), Math.round(l1From.x) + 20, Math.round(l1From.y));
+  const l1Moved = await platePositions();
+  await openFromList(HAND);
+  const away = await platePositions();
+  await openFromList(SEG);
+  await enterEdit();
+  await until(`import('./renderer/components/viewer.js').then((m) => m.drawnPlates().length === ${LEVEL_PLATES.length})`, 10000);
+  const again = await drawnPlates();
+  const unsavedBack = await ev('window.__lv.unsaved()');
+  check('19. opening another study resets platePositions to {} (FRESH_VIEW); back on SP-9300, L3 restored from the stash, every plate is where it was first drawn',
+    Array.isArray(l1Moved?.L1) && js(away) === '{}' && js(await platePositions()) === '{}' && (await badge('L3')) === 'Manual' && unsavedBack === unsavedBefore
+      && again.length === first.length && again.every((plate) => { const was = plateOf(first, plate.code); return Boolean(was) && near(plate.x, was.x, 1e-6) && near(plate.y, was.y, 1e-6); }),
+    { l1Moved, away, unsavedBack, again });
+}
+
+// ---------------------------------------------------------------------------
 // Phase `dom`.
 
 async function domPhase() {
@@ -807,6 +958,10 @@ async function domPhase() {
   const afterL3 = await studyOf(SEG);
   check("3. once measured the study has L3 and LL['L3-S1'] is a number",
     l3Measured && Boolean(afterL3?.geometry?.vertebrae?.L3) && Number.isFinite(afterL3?.measurements?.LL?.['L3-S1']), { measured: l3Measured, ll: afterL3?.measurements?.LL });
+
+  // 19 (gate feedback G7, D20). The level plates, here where L3 has just been placed; it leaves SP-9300 in edit mode
+  // with the same one unsaved change, so section 5 goes on from where section 3 left it.
+  await plateChecks();
 
   // 5. Uncheck S1.
   await clickSelector(checkboxOf('S1'));
@@ -1179,7 +1334,7 @@ try {
       const ids = [${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}, ${js(REVIEW)}];
       const s = store.getState();
       const names = s.studies.filter((x) => ids.includes(x.id) && x.labelFile).map((x) => x.labelFile);
-      store.setState({ editing: false, levelEditor: null, filmWindow: null, selection: null, screen: 'studies', openId: null, measurementDrafts: {} });
+      store.setState({ editing: false, levelEditor: null, filmWindow: null, platePositions: {}, selection: null, screen: 'studies', openId: null, measurementDrafts: {} });
       for (const id of ids) { wiring.forgetLevelEditor(id); try { await api.deletePrediction(id); } catch (_e) {} }
       for (const name of names) { try { await api.deleteLabelRecord(name); } catch (_e) {} }
       store.setState((st) => ({ studies: st.studies.filter((x) => !ids.includes(x.id)), paramSelected: (st.paramSelected ?? []).filter((id) => !ids.includes(id)) }));
