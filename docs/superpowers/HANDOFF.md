@@ -66,7 +66,7 @@ and can be placed by hand.
 
 - Spec: `docs/design/level-editor/HANDOFF.md` (`594a982`; its §12 now lists the decisions). Plan:
   `docs/superpowers/plans/2026-10-10-level-editor.md` (`3a4019a`), 15 tasks; its Decisions table D1–D20 and its
-  `## Ledger` (every task's commits and counts, rulings R1–R44 with their costs, every deferred minor) and its
+  `## Ledger` (every task's commits and counts, rulings R1–R45 with their costs, every deferred minor) and its
   `## Gate feedback (2026-10-11)` section (G1–G7, the spec of record for all seven). User doc:
   `docs/level-editor.md`. Contract: the 2026-10-10 amendment. SDD ledger
   `.superpowers/sdd/2026-10-10-level-editor/progress.md` (local, untracked).
@@ -124,7 +124,7 @@ and can be placed by hand.
   owner's to tick on the released build; R24 is still open.
 - **Gate feedback G7 (2026-10-13, D20, decisions 136–138 below; branch `claude/level-plates` off `cbbeb4e`).** The
   owner: "the vertebral body labeling gets in the way. Is there a way to move them?" On a film facing right every
-  level's plate sat inside its body (Task 9 fixed it 14 px right of the posterior corner). Each plate now sits outside
+  level's plate sat inside its body (Task 9 fixed it 14 px right of the posterior edge). Each plate now sits outside
   its level on the posterior side (R43: `labelPlacement` in the new pure `renderer/viewer/level-labels.js`; a body by
   its posterior edge against its corners' mean x, C2 by IP against its centroid, an endplate by SP against SA, and under
   1 px, always for T4, the side opposite the film's anterior side, `plateAnteriorSide`; `drawLevelLabel` draws a side
@@ -177,7 +177,7 @@ the plates now take left presses in edit mode that used to do nothing. Still ope
   such a film its own status? (Task 15's checklist; ROADMAP §8.)
 - **Michael's PR #61** (a missing-vertebra annotation in the old edit bar) was closed unmerged, as superseded by the
   level editor.
-- **PR #62** (a release accuracy gate) is open, and blocks publication until its variables and token are set.
+- **PR #62** (a release accuracy gate) is open; once merged, it blocks publication until its variables and token are set.
 - **PR #63** (in-app training from reviewed annotations) is open and overlaps the retraining brainstorm,
   `docs/superpowers/NEXT-SESSION-retraining.md` (its own branch; no app change): read #63 before that brainstorm starts,
   so the two do not build the same pipeline twice.
@@ -2011,7 +2011,8 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
      the placed levels', else +1). Side −1 puts the plate's right edge 14 px left of the anchor. `labelPlacement`,
      pure, in `renderer/viewer/level-labels.js`; `drawLevelEditor` returns the plates drawn. *Cost if wrong:* a level
      whose own shape reads the wrong way (a crushed or wedged body) gets its plate on the anterior side for that level,
-     and the drag moves it; a plate beside a body at the film's edge can be clipped until dragged.
+     and the drag moves it; the plate stays wholly on the film (R45), so one beside a body at the film's edge is pushed
+     inward rather than clipped.
 138. **R44 — Any plate drags; a double-click puts it back.** `state.platePositions` (code → `[dx, dy]` image px),
      written only by `components/viewer.js`, always as a new object. In edit mode a left press past the selected
      level's handles (handles win), not while placing, with the W/L panel open, with Pan on or during the study's own
@@ -2020,6 +2021,10 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
      double-click (`isDoubleClick`) resets it. `dynamicKey` includes `platePositions`. *Cost if wrong:* a plate dragged
      onto the selected level's handle is grabbed only outside the handle's 14 px circle; the offsets are lost when
      another film opens and are not kept across sessions (keeping them would mean a field on the study record).
+139. **R45 — A plate stays wholly on the film** however far it is dragged: `drawLevelLabel` clamps the plate's rect to
+     the canvas (the G7 review's finding), so it can always be seen and grabbed back, and a plate beside a body at the
+     film's edge is pushed inward rather than clipped; the returned rect is the clamped one, so hit-testing follows.
+     *Cost if wrong:* a plate cannot be parked off the film; a double-click puts it back where it belongs.
 
 ## Release prerequisites — v1.0.0 main promotion
 

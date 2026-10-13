@@ -409,6 +409,20 @@ test('on a left-facing body a label plate sits 14 px right of the posterior corn
   assert.equal(selected.fillStyle, ACCENT);
 });
 
+test('a plate stays wholly on the film however far it is dragged, pushed inward at the edge (R45)', () => {
+  const [w, h] = [22, 18];
+  const rects = (rec) => rec.calls.filter(([name]) => name === 'roundRect').map(([, args]) => args);
+  const text = (rec) => rec.painted.find(p => p.name === 'fillText').args;
+  const far = drawEditor(setLevelGeometry(emptyEditor(), 'L3', BODY), { platePositions: { L3: [5000, 5000] } });
+  assert.deepEqual(rects(far), [[EDITOR_CANVAS.width - w, EDITOR_CANVAS.height - h, w, h, 4]], 'held at the bottom-right corner');
+  assert.deepEqual(text(far), ['L3', EDITOR_CANVAS.width - w + 6, EDITOR_CANVAS.height - h / 2], 'the text follows the clamped plate');
+  const back = drawEditor(setLevelGeometry(emptyEditor(), 'L3', BODY), { platePositions: { L3: [-5000, -5000] } });
+  assert.deepEqual(rects(back), [[0, 0, w, h, 4]], 'held at the top-left corner');
+  assert.deepEqual(text(back), ['L3', 6, h / 2]);
+  const returned = (() => { const rec = recordingContext(); return drawLevelEditor(rec.ctx, EDITOR_CANVAS, setLevelGeometry(emptyEditor(), 'L3', BODY), { pixelRatio: 1, platePositions: { L3: [5000, 5000] } }); })();
+  assert.deepEqual(returned, [{ code: 'L3', x: EDITOR_CANVAS.width - w, y: EDITOR_CANVAS.height - h, width: w, height: h }], 'the returned rect is the clamped one');
+});
+
 test('a label plate falls back to fillRect without roundRect, and scales with the pixel ratio', () => {
   const plain = drawEditor(setLevelGeometry(emptyEditor(), 'L3', BODY), {}, { without: ['roundRect'] });
   assert.deepEqual(plain.calls.filter(([name]) => name === 'fillRect').map(([, args]) => args), [[74, 26, 22, 18]]);
@@ -431,7 +445,8 @@ test('on a right-facing body the plate\'s right edge sits 14 px left of the post
   const plain = drawEditor(setLevelGeometry(emptyEditor(), 'L3', MIRRORED), {}, { without: ['roundRect'] });
   assert.deepEqual(rectsOf(plain.calls, 'fillRect'), [[24, 26, 22, 18]], 'the fillRect fallback, mirrored too');
   const scaled = drawEditor(setLevelGeometry(emptyEditor(), 'L3', MIRRORED), { pixelRatio: 2 });
-  assert.deepEqual(rectsOf(scaled.calls), [[60 - 28 - 34, 17, 34, 36, 8]], 'the gap and the plate scale with the pixel ratio');
+  // 60 - 28 - 34 = -2 would start off the film's left edge; the plate is held at 0 instead (R45).
+  assert.deepEqual(rectsOf(scaled.calls), [[0, 17, 34, 36, 8]], 'the gap and the plate scale with the pixel ratio, clamped to the film');
 
   const where = (code, geometry, extra) => textAt(drawEditor(setLevelGeometry(emptyEditor(), code, geometry), extra));
   assert.deepEqual(where('C2', { inferior: [[90, 50], [60, 54]], centroid: [75, 30] }), ['C2', 30, 54], 'C2: IP left of the centroid');

@@ -402,9 +402,8 @@ built.
 - **Stage layout.** The edit bar's help line makes it taller: in a small window it covers the film's upper landmarks
   (the smoke suites now run at 1600x1100), and the W/L panel at top 116 px may overlap a two-row edit bar. ~~A level's
   label plate is fixed to the right of its posterior corner~~ (gate feedback G7, 2026-10-13, D20: each plate sits
-  outside its level on the posterior side and can be dragged, R43 and R44); a plate is still not clamped to the canvas,
-  so one beside a body at the film's edge can be clipped until dragged back, and labels are still drawn interleaved
-  with fills, so a later level can cover an earlier plate (Task 9).
+  outside its level on the posterior side and can be dragged, R43 and R44, and stays wholly on the film, R45); labels
+  are still drawn interleaved with fills, so a later level can cover an earlier plate (Task 9).
 - **Placement edges.** Clicks on the black surround miss beyond the film at zoom < 1 (listen on `.viewer-stage`); a
   FRESH_VIEW in the middle of a save drops the edits made after the save's snapshot from the stash (Task 10).
 - **Cost.** `imageInfo` decodes the original of a segmented film just to hash the stored image for Save edits (since

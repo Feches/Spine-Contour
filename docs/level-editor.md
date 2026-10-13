@@ -6,7 +6,7 @@ a display-only window / level for the stage, which since the gate feedback of 20
 and **Save edits** writes one JSON label record per film, whose job is retraining the segmentation models (since
 2026-10-12 **Mark reviewed** writes it too, for a film accepted without an edit). Since 2026-10-13 (gate feedback G7)
 each level's label plate sits outside its body on the posterior side and can be dragged. Design:
-`docs/design/level-editor/HANDOFF.md`. Plan, decisions D1–D20 and the execution rulings R1–R44:
+`docs/design/level-editor/HANDOFF.md`. Plan, decisions D1–D20 and the execution rulings R1–R45:
 `docs/superpowers/plans/2026-10-10-level-editor.md`. Contract: the 2026-10-10 amendment of
 `docs/superpowers/plans/2026-08-31-00-architecture-contract.md`.
 
@@ -172,7 +172,8 @@ Any plate can be **dragged** (R44): press on it and move; the cursor reads grab 
 drag, and the plate follows the pointer at any zoom. A **double-click** on a plate puts it back. A selected level's
 handle under a plate is grabbed first (handles win), so a plate dragged onto a handle is moved again from its other
 end. Plates do not move while placing (a click places), with the W/L panel open (a drag windows) or with Pan pressed (a
-drag pans); a right press on a plate still windows the film. Where the plates were dragged is part of the view, like
+drag pans); a right press on a plate still windows the film. A plate never leaves the film: however far it is
+dragged it stays wholly on the film, pushed inward at the edge (R45). Where the plates were dragged is part of the view, like
 zoom, pan and the window: it survives DONE and Edit again, resets when another film is opened from the list (or this
 one again), and is never saved — not in `studies.json` and not in the label record. Moving a plate changes no level,
 no measurement and nothing unsaved.

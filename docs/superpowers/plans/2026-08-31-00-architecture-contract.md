@@ -1381,7 +1381,7 @@ workstation with `--verify-models`, which exercises each listed GPU.
 
 Spec `docs/design/level-editor/HANDOFF.md` (`594a982`); plan `plans/2026-10-10-level-editor.md`, whose Decisions
 table (D1–D20, the owner's answers; D15–D18 from the gate feedback of 2026-10-11, D19 from G6 on 2026-10-12, D20
-from G7 on 2026-10-13) wins over the spec and whose Ledger holds the execution rulings R1–R44 (R26 and R27 from the
+from G7 on 2026-10-13) wins over the spec and whose Ledger holds the execution rulings R1–R45 (R26 and R27 from the
 gate feedback of 2026-10-11, the plan's "Gate feedback" section, R28 from its review, R29–R34 from G3 and G4, R35–R37
 from their review, R38 and R39 from G5, R40 and R41 from G6, R42 from its review, R43 and R44 from G7); released as
 v1.1.0 (PR #60, `cbbeb4e`, 2026-10-12), G7 after it; user doc
@@ -1712,6 +1712,9 @@ construction chip's drag is unchanged.
   chord dismantles the drag; the second press of a double-click on the same plate (`isDoubleClick`) resets it and starts
   no drag; a right press on a plate still windows. View state: FRESH_VIEW resets it, edit mode keeps it, nothing
   persists or records it.
+- R45 (the G7 review): `drawLevelLabel` clamps the plate's rect to the canvas (`drawLevelEditor` passes the canvas size
+  as `bounds`), so a plate stays wholly on the film however far it is dragged and a plate beside a body at the film's
+  edge is pushed inward rather than clipped; the returned rect is the clamped one, so `plateAt` finds it.
 
 No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet file (rules in
 `styles/screens/analysis.css` section `05 — LEVEL EDITOR` and `styles/components.css`), no Python package.

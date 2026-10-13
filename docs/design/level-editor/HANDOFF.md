@@ -419,7 +419,7 @@ The design artboard doesn't show `model_centroid` or `model_circle`. The schema 
 
 The open questions this section held were answered by the owner on 2026-10-10, together with the questions the code
 forced. They are the Decisions table of `docs/superpowers/plans/2026-10-10-level-editor.md`, which wins over this spec
-where the two differ; that plan's Ledger also records the execution rulings R1–R44. Built on branch
+where the two differ; that plan's Ledger also records the execution rulings R1–R45. Built on branch
 `worktree-level-editor` and released as v1.1.0 (2026-10-12); the user doc is `docs/level-editor.md`. D15–D17 were
 added on 2026-10-11 from the owner's gate feedback (G3, G4), D18 the same day from G5, D19 on 2026-10-12 from G6, and
 D20 on 2026-10-13 from G7 (branch `claude/level-plates`).

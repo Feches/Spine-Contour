@@ -539,14 +539,20 @@ function drawGhost(ctx, code, modelGeometry, pixelRatio) {
 // of the anchor; side -1: its right edge LABEL_OFFSET_PX left of it. Centred on the anchor vertically, then moved by
 // the level's drag offset (`offset`, image px, from state.platePositions). Returns the plate's rect in image pixels,
 // after the offset, for the stage's hit test.
-function drawLevelLabel(ctx, code, placement, offset, selected, pixelRatio) {
+function drawLevelLabel(ctx, code, placement, offset, selected, pixelRatio, bounds) {
   const { anchor, side } = placement;
   ctx.font = `500 ${LABEL_FONT_PX * pixelRatio}px ${CANVAS_MONO}`;
   const width = ctx.measureText(code).width + 2 * LABEL_PAD_PX * pixelRatio;
   const height = LABEL_HEIGHT_PX * pixelRatio;
   const gap = LABEL_OFFSET_PX * pixelRatio;
-  const x = (side < 0 ? anchor[0] - gap - width : anchor[0] + gap) + offset[0];
-  const y = anchor[1] - height / 2 + offset[1];
+  let x = (side < 0 ? anchor[0] - gap - width : anchor[0] + gap) + offset[0];
+  let y = anchor[1] - height / 2 + offset[1];
+  // (R45) The plate stays wholly on the film however far it is dragged, so it can always be seen and grabbed back;
+  // a plate beside a body at the film's edge is pushed inward rather than clipped.
+  if (bounds) {
+    x = Math.min(Math.max(0, x), Math.max(0, bounds.width - width));
+    y = Math.min(Math.max(0, y), Math.max(0, bounds.height - height));
+  }
   ctx.fillStyle = LABEL_PLATE_FILL;
   if (typeof ctx.roundRect === 'function') {
     ctx.beginPath();
@@ -557,7 +563,7 @@ function drawLevelLabel(ctx, code, placement, offset, selected, pixelRatio) {
   }
   ctx.fillStyle = selected ? STAGE_SELECTED_COLOR : STAGE_LABEL_FILL;
   ctx.textBaseline = 'middle';
-  ctx.fillText(code, x + LABEL_PAD_PX * pixelRatio, anchor[1] + offset[1]);
+  ctx.fillText(code, x + LABEL_PAD_PX * pixelRatio, y + height / 2);
   return { code, x, y, width, height };
 }
 
@@ -590,7 +596,7 @@ function drawLevelHandles(ctx, code, geometry, focused, pixelRatio) {
 
 // One placed level: ghost, fill, outline, label. True when it was drawn (its handles are drawn by the caller, last).
 // Its label plate's rect, when it has one, is pushed onto `plates`.
-function drawPlacedLevel(ctx, editor, code, geometry, { overlays, fillAlpha, pixelRatio, anteriorSide, platePositions, plates }) {
+function drawPlacedLevel(ctx, editor, code, geometry, { overlays, fillAlpha, pixelRatio, anteriorSide, platePositions, plates, bounds }) {
   const selected = editor.selected === code;
   // Overlays off hides every level but the selected one: no fill, no outline, no label.
   if (!overlays && !selected) return false;
@@ -611,7 +617,7 @@ function drawPlacedLevel(ctx, editor, code, geometry, { overlays, fillAlpha, pix
     ctx.stroke();
   }
   const placement = labelPlacement(code, geometry, anteriorSide);
-  if (placement) plates.push(drawLevelLabel(ctx, code, placement, plateOffset(platePositions, code), selected, pixelRatio));
+  if (placement) plates.push(drawLevelLabel(ctx, code, placement, plateOffset(platePositions, code), selected, pixelRatio, bounds));
   return true;
 }
 
@@ -684,7 +690,7 @@ export function drawLevelEditor(ctx, canvas, editor, opts) {
   ctx.lineJoin = 'round';
   let selected = null;
   const plates = [];
-  const level = { overlays, fillAlpha, pixelRatio, anteriorSide, platePositions, plates };
+  const level = { overlays, fillAlpha, pixelRatio, anteriorSide, platePositions, plates, bounds: { width: canvas.width, height: canvas.height } };
   for (const code of LEVEL_CODES) {
     const entry = editor.levels?.[code];
     if (!entry?.visible || editor.placing?.code === code) continue;

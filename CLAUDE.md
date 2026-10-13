@@ -15,8 +15,8 @@ never persisted or recorded; `drawLevelEditor` returns the plates drawn; `client
 1.1.1 release commit (`package.json`, `version.js`, CHANGELOG, `docs/releases/1.1.1.md`, the README link). Unit
 974/974 (953 before); `smoke-levels.mjs` dom 121/121 on a fresh `%TEMP%` profile, twice, DOM reads only. Not run: the
 film phase, the gate chain and the other suites, a packaged build, backend pytest (no backend change). Nothing pushed;
-merging its PR to `main` with a merge commit publishes v1.1.1. Open: the owner's R24; PR #62 (release accuracy gate)
-blocks publication until its variables and token are set; PR #63 (in-app training) overlaps the retraining
+merging its PR to `main` with a merge commit publishes v1.1.1. Open: the owner's R24; PR #62 (release accuracy gate) is open and,
+once merged, blocks publication until its variables and token are set; PR #63 (in-app training) overlaps the retraining
 brainstorm; PR #61 closed unmerged as superseded (HANDOFF's first section, Next).
 
 **2026-10-10 vertebral level editor, window / level, label record (RELEASED as v1.1.0 on 2026-10-12: PR #60, merge `cbbeb4e`):** branch
@@ -42,7 +42,7 @@ resets (D15–D17, R37);
 `qc.model_versions` names each graph. A film
 with no result opens in edit mode on its original and can be placed by hand (`isHandPlaced`, R16); Re-run is disabled
 while editing (R17). The old edit bar's RETRACE / ADD / DELETE CIRCLE and the landmark Tab, nudge and hit-test code are
-retired. Plan `docs/superpowers/plans/2026-10-10-level-editor.md` (Decisions D1–D20; its Ledger holds R1–R44 and every
+retired. Plan `docs/superpowers/plans/2026-10-10-level-editor.md` (Decisions D1–D20; its Ledger holds R1–R45 and every
 deferred minor); spec `docs/design/level-editor/HANDOFF.md`; user doc `docs/level-editor.md`; the contract's 2026-10-10
 amendment; HANDOFF's first "Where things stand" section. The final whole-branch review ("With fixes") landed `7e9d502`
 and `e3d5df7`: an Auto film with no model run takes its region from its placed levels on every projection (R20), Region

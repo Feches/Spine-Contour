@@ -3,7 +3,7 @@
 ## 1.1.1
 
 - In edit mode each level's name plate now sits **outside its vertebra, on the posterior side**, whichever way the
-  film faces. Before, every plate went to the right of the posterior corner, which on a film facing right put it
+  film faces. Before, every plate went to the right of the posterior edge, which on a film facing right put it
   inside the body, over the anatomy being checked.
 - Any plate can be **dragged** out of the way, and a double-click puts it back. Where the plates were dragged lasts
   while the film is open, like zoom and pan; it is never saved and never in the label record. Handles under a plate
