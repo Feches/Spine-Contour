@@ -551,8 +551,11 @@ levels dom **114/114** and film **25/25** (one launch); persist **42/42** then *
 read 41/42, its 5 s wait for `studies.json` to hold the seeded SP-9010 timing out; the re-run on a fresh launch read
 42/42); studies **151/151**. (2026-10-13, gate feedback G7, plan D20, branch `claude/level-plates`) Section 19 adds
 seven dom checks: dom **121/121** (114 + 7), measured when it was written, twice on one launch, on a fresh `%TEMP%`
-profile (CDP port 9341; DOM, store and file reads only, no screenshots); the film phase and the other suites were not
-re-run.
+profile (CDP port 9341; DOM, store and file reads only, no screenshots). (2026-10-13, after G7, release commit
+`27ae4b0`) Re-measured on fresh `%TEMP%` profiles, one app at a time, DOM, store and file reads only, no screenshots:
+levels dom **121/121** and film **25/25** (one launch, one copied OLIF lumbar film); on a second fresh launch the
+plan-04 chain in README order: parity **15/15**, gate1 **25/25**, gate2 **26/26** (handle drags still win over
+plates), gate3 **26/26**, chip **20/20**, chord **28/28**; no FAIL line in any of the eight runs.
 
 ## The landmark-editor suites after the level editor (2026-10-10)
 
