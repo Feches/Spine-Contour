@@ -1,6 +1,25 @@
 # Spine Contour
 
-**2026-10-10 vertebral level editor, window / level, label record (BUILT, human gate IN PROGRESS since 2026-10-11):** branch
+**2026-10-13 level plates, gate feedback G7 (BUILT, release 1.1.1 committed, not pushed):** branch `claude/level-plates`
+in worktree `.claude/worktrees/level-plates`, off `origin/main` @ `cbbeb4e` (the merge of PR #60, v1.1.0). The owner's
+film faces right, and the level editor's fixed rightward label plate sat inside every body. Now each plate sits outside
+its level on the posterior side (D20, R43: `labelPlacement` in the new pure `renderer/viewer/level-labels.js`; a body
+by its posterior edge against its corners' mean x, C2 by IP against its centroid, an endplate by SP against SA, and
+under 1 px, always for T4, the side opposite the film's anterior side; a side −1 plate's right edge 14 px left of the
+anchor) and any plate can be dragged in edit mode, a double-click putting it back (R44: `state.platePositions`, code →
+`[dx, dy]` image px, in the store and both FRESH_VIEW copies, written only by `components/viewer.js`; handles win;
+never persisted or recorded; `drawLevelEditor` returns the plates drawn; `clientToImage` gains `{ clamp: false }`).
+`6463f63` (code, tests, `smoke-levels.mjs` section 19) and a records commit (the plan's D20, G7 and Ledger rows, Task
+15's item; `docs/level-editor.md`; the contract; HANDOFF decisions 136–138; the design handoff's §5 and D20; ROADMAP
+§8's plate clause struck), then the
+1.1.1 release commit (`package.json`, `version.js`, CHANGELOG, `docs/releases/1.1.1.md`, the README link). Unit
+974/974 (953 before); `smoke-levels.mjs` dom 121/121 on a fresh `%TEMP%` profile, twice, DOM reads only. Not run: the
+film phase, the gate chain and the other suites, a packaged build, backend pytest (no backend change). Nothing pushed;
+merging its PR to `main` with a merge commit publishes v1.1.1. Open: the owner's R24; PR #62 (release accuracy gate)
+blocks publication until its variables and token are set; PR #63 (in-app training) overlaps the retraining
+brainstorm; PR #61 closed unmerged as superseded (HANDOFF's first section, Next).
+
+**2026-10-10 vertebral level editor, window / level, label record (RELEASED as v1.1.0 on 2026-10-12: PR #60, merge `cbbeb4e`):** branch
 `worktree-level-editor` in worktree `.claude/worktrees/level-editor`, off `origin/main` @ `20fd4c5` (v1.0.17). Edit mode
 is a level editor: the right panel becomes the Vertebral levels panel, sixteen levels in five groups (C2–C7, T1 · T4,
 L1–L5, S1, two femoral heads) with a visibility checkbox, a state badge and Place… / CLEAR / CANCEL each
@@ -11,10 +30,10 @@ rim points for a head), gives only the selected level handles, and nudges with t
 the record. Save edits writes `userData/labels/<stem>.label.json` (schema `docs/design/level-editor/label-record.schema.json`;
 `labelFile` on the study; deleted and quarantined with it), and since gate feedback G6 (2026-10-12, D19, R40/R41) Mark
 reviewed writes the zero-change record of a film that has none (`writeReviewRecord`, sharing `writeRecord` with Save
-edits; `ad2b70b` and a records commit, unit 948/948, `smoke-levels.mjs` dom 112/112; both after the push, not pushed);
+edits; `ad2b70b` and a records commit, unit 948/948, `smoke-levels.mjs` dom 112/112);
 its review round 1 (R42) reads a segmented film's stored image only for that record (`imageInfo(id, { storedOnly:
 true })`, the cache or the sidecar, never `/decode`), so opening the next film straight after the click cannot fail
-it: unit 953/953, `smoke-levels.mjs` dom 114/114, not pushed.
+it: unit 953/953, `smoke-levels.mjs` dom 114/114; both are in v1.1.0.
 Window / level decodes the original film through a new
 `POST /decode` and windows the film layer only, display only (D1, D11); since gate feedback G3/G4 it works in every
 mode and belongs to the view like zoom and pan (`state.filmWindow`, written only by `renderer/film-window.js`;
@@ -23,7 +42,7 @@ resets (D15–D17, R37);
 `qc.model_versions` names each graph. A film
 with no result opens in edit mode on its original and can be placed by hand (`isHandPlaced`, R16); Re-run is disabled
 while editing (R17). The old edit bar's RETRACE / ADD / DELETE CIRCLE and the landmark Tab, nudge and hit-test code are
-retired. Plan `docs/superpowers/plans/2026-10-10-level-editor.md` (Decisions D1–D19; its Ledger holds R1–R41 and every
+retired. Plan `docs/superpowers/plans/2026-10-10-level-editor.md` (Decisions D1–D20; its Ledger holds R1–R44 and every
 deferred minor); spec `docs/design/level-editor/HANDOFF.md`; user doc `docs/level-editor.md`; the contract's 2026-10-10
 amendment; HANDOFF's first "Where things stand" section. The final whole-branch review ("With fixes") landed `7e9d502`
 and `e3d5df7`: an Auto film with no model run takes its region from its placed levels on every projection (R20), Region
@@ -64,9 +83,9 @@ not re-run). Then G5 (D18, R38/R39, HANDOFF decisions 129–131): the label reco
 schema id, with the window re-review's two minors folded in; `3e552e6` and a records commit, unit 939/939
 (`smoke-levels.mjs` dom 105/105 and film 25/25 after it; the G5 review's three minors `c31ce66`, unit 940/940). The
 retraining brainstorm's prompt is `docs/superpowers/NEXT-SESSION-retraining.md`. Pushed to `origin` (Feches) at the
-owner's choice on 2026-10-12; the PR to `main` is the owner's to open and merge. The 1.1.0 release commit (`package.json`,
-`version.js`, CHANGELOG, `docs/releases/1.1.0.md`, the README link) is on the branch: merging the PR with Create a merge
-commit publishes v1.1.0.
+owner's choice on 2026-10-12 with the 1.1.0 release commit `54c2511` (`package.json`, `version.js`, CHANGELOG,
+`docs/releases/1.1.0.md`, the README link); PR #60 merged it to `main` as `cbbeb4e` the same day, tagged `v1.1.0`,
+which published v1.1.0. The human gate's checklist (Task 15) stays the owner's on the released build.
 
 **2026-10-07 release 1.0.16 (crop search restored):** branch `ccr-af336f0e-7wacoa` off `main` @ `f2e39e0`, the merge
 of Michael's PR #57 (`0bd01c5`), which retires 1.0.13's trained crop method: Settings shows Crop search only,

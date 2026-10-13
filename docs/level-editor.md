@@ -4,8 +4,9 @@ Edit mode on the Analysis screen is a level editor (2026-10-10). It lists every 
 annotator place the levels the model missed, mark the ones that are not on the film, and adjust the rest; it came with
 a display-only window / level for the stage, which since the gate feedback of 2026-10-11 works outside edit mode too;
 and **Save edits** writes one JSON label record per film, whose job is retraining the segmentation models (since
-2026-10-12 **Mark reviewed** writes it too, for a film accepted without an edit). Design:
-`docs/design/level-editor/HANDOFF.md`. Plan, decisions D1–D19 and the execution rulings R1–R41:
+2026-10-12 **Mark reviewed** writes it too, for a film accepted without an edit). Since 2026-10-13 (gate feedback G7)
+each level's label plate sits outside its body on the posterior side and can be dragged. Design:
+`docs/design/level-editor/HANDOFF.md`. Plan, decisions D1–D20 and the execution rulings R1–R44:
 `docs/superpowers/plans/2026-10-10-level-editor.md`. Contract: the 2026-10-10 amendment of
 `docs/superpowers/plans/2026-08-31-00-architecture-contract.md`.
 
@@ -153,6 +154,28 @@ size on screen at every zoom. Past 1:1 it keeps its size in image pixels and mag
 shrinking under a pixel, so the lines stay crisp and the plates legible (R28); at 800% on a small film the handles and
 plates are correspondingly large, and a handle can be grabbed anywhere on its disc. The same holds for the hip line
 and its markers outside edit mode.
+
+### The level plates
+
+In edit mode every visible, placed level but a femoral head carries a small plate with its name (with the overlay
+toggle off, only the selected level keeps its plate). Since gate feedback G7 (2026-10-13, D20) the plate sits
+**outside its level, on the posterior side**, so it never covers the anatomy being checked (R43). It is anchored where
+it always was — a body's posterior-edge midpoint, C2's IP, an endplate's SP, T4's centroid — 14 px (on screen, up to
+1:1) beyond that point, away from the level: each level reads its side from its own shape (a body from its posterior
+edge against its middle, C2 from IP against its centroid, an endplate from SP against SA), so on a film facing right
+the plates sit left of the posterior edges and on a film facing left right of them. Where a level cannot say (its
+points within 1 px of each other across, and always for T4's single point) the film's anterior side decides — the
+stored one, then the one chosen for the study, then what the placed levels show — and the plate goes the other way,
+rightward when nothing says.
+
+Any plate can be **dragged** (R44): press on it and move; the cursor reads grab over a plate and grabbing during the
+drag, and the plate follows the pointer at any zoom. A **double-click** on a plate puts it back. A selected level's
+handle under a plate is grabbed first (handles win), so a plate dragged onto a handle is moved again from its other
+end. Plates do not move while placing (a click places), with the W/L panel open (a drag windows) or with Pan pressed (a
+drag pans); a right press on a plate still windows the film. Where the plates were dragged is part of the view, like
+zoom, pan and the window: it survives DONE and Edit again, resets when another film is opened from the list (or this
+one again), and is never saved — not in `studies.json` and not in the label record. Moving a plate changes no level,
+no measurement and nothing unsaved.
 
 ## Discard, RESET TO PREDICTION, Save edits
 
@@ -315,9 +338,11 @@ write a label record; the save path refuses with `Demo studies are not exported`
 `tools/smoke/smoke-levels.mjs` (phases `dom` and `film`; see `tools/smoke/README.md`) covers the panel, placing,
 unchecking, Save edits and the record on disk (its `edited_points` and `edits` included), Discard and the exit prompt, femoral rim points, window / level in edit
 mode and (section 17) outside it, with the right-button drag and the double right-click, the keyboard and the stash,
-and (section 18) the record Mark reviewed writes for a film with none;
-the pure modules have unit tests (`test/levels`, `level-projection`, `level-handles`, `window-level`, `label-record`,
-`contours`, and `interactions` for the double right-click), `test/level-editor-wiring.test.js` drives the wiring
+and (section 18) the record Mark reviewed writes for a film with none, and (section 19) where the level plates sit,
+their drag, the double-click and their reset;
+the pure modules have unit tests (`test/levels`, `level-projection`, `level-handles`, `level-labels` for the plates,
+`window-level`, `label-record`, `contours`, and `interactions` for the double right-click; `canvas` draws the plates),
+`test/level-editor-wiring.test.js` drives the wiring
 through the real store and measure queue (R20) and Mark reviewed's record (`writeReviewRecord`, D19), and
 `test/film-window.test.js` drives the view's window
 (`renderer/film-window.js`) through the real store. The human gate (plan Task 15) is the owner's.

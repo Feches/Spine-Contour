@@ -59,6 +59,7 @@ assumes these.
 | D17 | A double right-click (gate feedback G4, 2026-10-11) | Resets the window to the film's default (the panel's RESET stays). |
 | D18 | Which points an edit moved (gate feedback G5, 2026-10-11) | Every level and femoral head entry in the label record gets `edited_points`, the entry's own geometry keys the annotator gave it (an edited entry's moved points, every key of a manual one, none otherwise), and the record gets a top-level `edits` summary (entries per state, `points_moved`, `points_placed`), so a folder of records can be counted without diffing corners. Both additive: records saved before them stay valid (R39; R38 ties the list to the Edited state). |
 | D19 | Accepting a film without editing it (gate feedback G6, 2026-10-12) | **Mark reviewed** on the Analysis panel (there is no bulk mark) also writes the film's label record when the study has none yet: the zero-change record of the stored state, exactly what Save edits writes right after entering edit mode with nothing changed, so a film accepted as the model segmented it becomes a human-accepted label without a trip through edit mode. Unmarking writes nothing; a study that already has a record is left alone (Save edits keeps owning that file); a zero-change Save edits (D10) still works. Not while level edits for the study are open or stashed (R40); the mark never waits for or depends on the write (R41). |
+| D20 | Where the level plates sit, and moving them (gate feedback G7, 2026-10-13) | Both fixes the owner was offered. Each level's label plate sits **outside its level, on the posterior side**, the side read from the level's own geometry and, only where it cannot say, from the film's anterior side (R43); and **any plate can be dragged** in edit mode, a double-click putting it back (R44). Where a plate was dragged is view state, like zoom, pan and the window (D15): it resets when another film opens (FRESH_VIEW), survives entering and leaving edit mode, and is never persisted and never in the label record. Supersedes Task 9's "14 px right of the posterior corner" for a level that faces right. |
 
 ## Global Constraints
 
@@ -1208,7 +1209,8 @@ pushed, no PR is opened and no release is cut until the owner says so.
 
 **Checklist prepared 2026-10-10 (Task 14); the owner ticks it.** Not yet run. Two things to look at on the way, from
 the Ledger: whether `.viewer-wl` (top 116 px) overlaps an edit bar that wraps to two rows, and whether a level's label
-plate fixed to the right of the posterior corner runs off a film whose anterior is on the right. Launch from the
+plate fixed to the right of the posterior corner runs off a film whose anterior is on the right (it did: it sat
+inside the body; gate feedback G7, D20, moves it outside on the posterior side). Launch from the
 worktree with a scratch `SPINE_CONTOUR_USER_DATA` or on the owner's library, at the owner's choice.
 
 - [ ] The panel appears only in edit mode, replaces Measurements, and Measurements return on exit.
@@ -1294,6 +1296,15 @@ Added by the gate feedback G6 (2026-10-12; D19, rulings R40 and R41):
   and open the next film: `Saved the label record.` is toasted (never `Marked reviewed. The label record could not be
   written: …`) and the first film's file appears.
 
+Added by the gate feedback G7 (2026-10-13; D20, rulings R43 and R44):
+
+- [ ] G7: on a film facing right (the owner's), in edit mode, every level's plate sits outside its body on the
+  posterior side (left of the posterior edge), and on a film facing left right of it; nothing is covered by a plate.
+  Drag a plate: the cursor reads grab over it and grabbing during the drag, the plate follows the pointer (also zoomed
+  in), and no level, measurement or unsaved count changes; a selected level's handle under a plate is grabbed first; a
+  double-click on a plate puts it back. The dragged plates stay where they were through DONE and Edit again, and are
+  all back in place after opening another film from the list (or this one again).
+
 ---
 
 ## Gate feedback (2026-10-11)
@@ -1303,8 +1314,10 @@ than the old cap, and choose which point the next click places from the step chi
 after those, window / level outside edit mode and a right-button shortcut for it (G3, G4: "I want windowing available
 not in editing screen as well. I also want to be able to right click and window as shortcut"); then the label record
 listing which points each level's edit moved, with a summary (G5); then, on 2026-10-12, Mark reviewed writing the
-label record of a film accepted without an edit (G6). Each is built, unit-tested and recorded in the Ledger; the owner
-re-checks them at the gate. This section is the spec of record for all six.
+label record of a film accepted without an edit (G6); then, on 2026-10-13, after the release of v1.1.0, the level
+plates moved out of the body and made draggable (G7: "the vertebral body labeling gets in the way. Is there a way to
+move them?"). Each is built, unit-tested and recorded in the Ledger; the owner re-checks them at the gate. This section
+is the spec of record for all seven.
 
 ### G1: zoom to 8x (`9e2deec`)
 
@@ -1721,6 +1734,96 @@ sidecar too, so the first cached nothing, with `SP-9301` still open and no toast
 Unit 948 → **953/953**. `smoke-levels.mjs` dom **114/114** (112 + 2) on a fresh `%TEMP%` profile (CDP port 9333; DOM,
 store and file reads only, no screenshots); the film phase and the other suites not re-run.
 
+### G7: the level plates sit outside the body on the posterior side and can be dragged (2026-10-13; `6463f63`)
+
+**What the owner asked for.** "I need to update annotations because the vertebral body labeling gets in the way. Is
+there a way to move them?" The owner's film faces right, so each body's posterior edge is on the left, and Task 9's
+fixed rightward plate (14 px right of the posterior corner) put every plate inside its body, over the anatomy being
+checked: the film the second of Task 15's two look-ats named (a plate fixed to the right on a film whose anterior is
+on the right). The owner chose both fixes offered: automatic
+placement outside the body on the posterior side, and dragging any plate. Decision D20. Built on branch
+`claude/level-plates` off `origin/main` @ `cbbeb4e` (the merge of PR #60, v1.1.0).
+
+**Placement (R43, the controller's rule).** A pure function, `labelPlacement(code, geometry, anteriorSide)` in the new
+module `renderer/viewer/level-labels.js` (imported by `canvas.js`), returns `{ anchor: [x, y], side: 1 | -1 }` or null.
+The anchor is what `labelAnchor` gave before (it moved to the same module and returns a fresh point): a body's
+posterior-edge midpoint (SP and IP), C2's IP, an endplate's SP, T4's centroid. `side` is the direction the plate
+extends from the anchor, away from the level: for a body, the sign of (the posterior-edge midpoint x − the mean of its
+four corners' x); for C2, the sign of (IP x − the centroid x); for an endplate, the sign of (SP x − SA x). When that
+difference is under 1 px, and always for T4's centroid, the film decides: the plate goes opposite `anteriorSide`
+(`'right'` → −1, `'left'` → +1), and +1 when the side is unknown. The femoral heads keep what they had: no plate. A
+geometry that is not what its kind says gives null (no plate), as `shapeParts` already drew nothing for it. The stage
+passes the film's side in `projectGeometry`'s order, `plateAnteriorSide(study, editor)` (same module): the stored
+geometry's `anterior_side`, then the study's chosen `anteriorSide` (each only when `left` or `right`), then what the
+editor's placed levels show (`anteriorSideFrom`), else null — a side is never guessed.
+
+`drawLevelLabel(ctx, code, placement, offset, selected, pixelRatio)` puts a side −1 plate's RIGHT edge
+`LABEL_OFFSET_PX` (14 CSS px times the R28-floored ratio) left of the anchor (x = anchor x − offset − width); side +1
+as before (its left edge that far right of it). The vertical position stays centred on the anchor. The plate is then
+moved by the level's drag offset, in image px; the text keeps its pad inside the plate. `drawLevelEditor` returns the
+plates it drew, `[{ code, x, y, width, height }]` in image pixels after the offsets, in drawing order (the last on top),
+so the stage hit-tests them without measuring text again; its signature is otherwise unchanged (new options
+`anteriorSide` and `platePositions`) and a caller that ignores the return value is unaffected. `drawDynamicLayer`
+passes both options through and returns the editor's plates in edit mode, `[]` outside it (where no plate is drawn).
+
+**Dragging (R44).** New view state **`platePositions: {}`**, a map from level code to `[dx, dy]` in image pixels, in
+`renderer/store.js`'s initial state and in BOTH FRESH_VIEW copies (`screens/studies.js`, `data/demo-visibility.js`;
+ten keys now, pinned equal and by shape in `test/demo-visibility.test.js`), so it resets when another film opens and
+survives entering and leaving edit mode; never persisted, never in the record. `components/viewer.js` is its only
+writer, through `setState` with a new object each time, as it writes zoom and pan.
+
+- In edit mode, a LEFT press that is not on the W/L panel's drag, not with Pan on, not a placement click and not on
+  the selected level's handle (handles win) is hit-tested against the plates the last redraw drew (`clientToImage` →
+  `plateAt`, the last drawn wins where two overlap) and starts `drag = { kind: 'plate', code, pointerId, start: [dx,
+  dy], origin, clientX, clientY }` with pointer capture and the stage class `is-dragging-plate` (cursor grabbing);
+  `updateHover` sets `is-over-plate` (cursor grab) over a plate where no handle is (`styles/screens/analysis.css`).
+- Each pointermove sets `platePositions[code]` to `start` plus the pointer's travel since the press in image px
+  (`movePlate`). The travel is the press's and the move's image points through `clientToImage(event, canvas, { clamp:
+  false })` (the new option: the plate keeps following past the film's edge), which is the client movement times the
+  ratio `clientToImage` uses with the layout of the move — the brief's `[start.dx + Δx·ratio, start.dy + Δy·ratio]`
+  whenever the layout has not changed, and the plate stays under the pointer through a wheel zoom mid-drag too.
+  pointerup ends it and keeps the offset; so does pointercancel (display only, nothing to discard). A chord dismantles
+  it in `startChordPan`, as it dismantles a construction-label drag: the offset stays, the classes go.
+- The second press of a double-click on the same plate (`isDoubleClick`, D17's 400 ms and 6 px) resets that plate's
+  offset (`resetPlate`: the key deleted on a new object; no write when there was none) and starts no drag. Any other
+  press in between, a chord and the mount's detach forget the first press.
+- Plates do not drag while placing (the press places), with the W/L panel open (it windows), with Pan on (it pans) or
+  while this study's run is in flight; a right press on a plate still windows (G4); the middle button and the chord
+  still pan.
+- `dynamicKey` includes `state.platePositions`, so each move repaints through the store-driven
+  `redrawDynamic(liveGeometry())`, the level editor's own redraw path. `redrawDynamic` keeps the plates
+  `drawDynamicLayer` returned (`lastPlates`, module scope, emptied without a film and by detach); `drawnPlates()`,
+  exported, hands them to `smoke-levels.mjs`.
+- The construction chip's drag (`labelOffsets`, `handleLabelPointerDown`) is untouched.
+
+**Tests (written first).** `test/level-labels.test.js` (new, 15): `labelPlacement` for a body facing left (+1) and
+facing right (−1), a tilted body, a body under 1 px falling back to the film's side, an endplate and its mirror, a
+near-vertical endplate falling back (and exactly ±1 px read from the endplate), T4 with `'right'` (−1), `'left'` (+1)
+and unknown (+1), C2 and its mirror and fallback, no plate for a head or a bad geometry, a fresh anchor; `labelAnchor`'s
+anchors as before; `plateAnteriorSide`'s order; `plateOffset`, `plateAt` (edges, the last on top), `movePlate` and
+`resetPlate` (new objects, the old ones unchanged, the same map back for nothing to reset). `test/canvas.test.js`: the
+pinned "14 px right of the posterior corner" test renamed to its left-facing fixture, values unchanged; +4: the mirror
+(the plate's right edge 14 px left of the posterior corner, roundRect and fillRect x and the fillText x; C2, S1, T4 by
+the film's side; a body's own side over the film's), the offsets (image px, not scaled; a bad offset moves nothing),
+`drawLevelEditor`'s return value (level order, no head, none with the overlays off and nothing selected, none for the
+level being placed) and `drawDynamicLayer`'s. `test/store.test.js`: `platePositions` `{}` in the initial shape.
+`test/demo-visibility.test.js`: the pinned FRESH_VIEW shape gains `platePositions: {}`; +1, hiding an open demo resets
+it. `test/geometry.test.js` +1: `clientToImage`'s `{ clamp: false }`.
+
+**Smoke (`smoke-levels.mjs` section 19, dom, no screenshots).** On `SP-9300` in edit mode straight after section 3 (L3
+placed by hand and selected; the fixture faces left), reading the plates through the page's own `drawnPlates()`: every
+plate (L1–L5 and S1) lies outside its level on the posterior side (a body's plate meets none of its quad, by a
+separating-axis test, and starts right of its anchor; S1's right of SP); `is-over-plate` over a plate and
+`is-dragging-plate` on the press; a left drag on L3's plate by (40, 20) client px sets `platePositions.L3` to that
+travel in image px and nothing else; the rect moves by the same, its size, L3's geometry and the unsaved count
+unchanged; with L3's plate dragged over its SA handle, the handle wins the hover and the press; a double-click on the
+plate puts it back; after L1's plate is dragged, opening `SP-9301` from the list resets `platePositions` to `{}`, and
+back on `SP-9300` (Edit, its stash restoring L3) every plate is where it was first drawn. Section 5 goes on from
+section 3's state.
+
+Unit 953 → **974/974**. `smoke-levels.mjs` dom **121/121** (114 + 7), twice on one launch on a fresh `%TEMP%` profile
+(CDP port 9341; DOM, store and file reads only, no screenshots); the film phase and the other suites not re-run.
+
 ---
 
 ## Ledger
@@ -1771,3 +1874,6 @@ already state.
 | 2026-10-12 | gate | **Gate feedback G6** (the owner, D19): Mark reviewed also writes the label record when the study has none yet, the zero-change record of the stored state (what Save edits writes right after entering edit mode with nothing changed); unmarking writes nothing; a study with a record is left alone. `renderer/level-editor.js`: `writeRecord` (the write Save edits and the review share), `editorRegion` (enterLevelEditor's region rule), `writeReviewRecord(studyId)` → `'written' \| 'skipped' \| 'failed'`, the latch `saving` shared and naming its holder; `renderer/screens/analysis.js` `toggleReviewed` calls it after marking. One guard beyond the brief: a model result with no prediction snapshot once the film is read is refused (`the model's prediction is not loaded.`), never recorded as placed by hand. The full design is in "Gate feedback (2026-10-11)" above. `ad2b70b`. Unit 940 → **948/948** (level-editor-wiring +8). `smoke-levels.mjs` section 18 (+7 dom) on `SP-9304`: dom **112/112** on a fresh `%TEMP%` profile (CDP port 9333, DOM, store and file reads only, no screenshots); the film phase and the other suites not re-run. `smoke-persist.mjs` 11b marks a study whose record 11 has just saved, so its click writes nothing (unchanged). |
 | 2026-10-12 | gate | **Rulings R40 and R41** (controller, with D19). **R40:** no review write while an editor for the study is open or stashed (`state.levelEditor?.studyId === studyId` or `hasStashedEditor(studyId)`), checked before the write and again once the film has been read; those unsaved level edits are the annotator's to save or discard, and the mark still applies. A Save edits clicked while a review write reads the film waits for it, so it is never dropped. *Cost if wrong:* a film marked reviewed while its stashed edits wait gets no record until the annotator saves (which writes one) or discards and marks again; and a Save edits can be delayed by a film read. **R41:** the mark never waits for or depends on the write: `reviewedAt` is set first, synchronously, and stands whatever happens; a failure toasts `Marked reviewed. The label record could not be written: <reason>` and sets nothing; a success toasts `Saved the label record.` and sets `labelFile`. Nothing is written for a demo, a study with no result, one whose own run is in flight, or one deleted, re-added or unmarked while the film was read. *Cost if wrong:* a reviewed film can lack its record after a failed write (the toast says so; unmarking and marking again, or a zero-change Save edits, writes it), and a record can be written for a film whose mark is then withdrawn (unmarking deletes nothing). |
 | 2026-10-12 | gate | **Review round 1 of G6** (one important finding): the review write read its image facts through `imageInfo` → `ensureFilm`, which for a model result not yet decoded also ran `POST /decode` on the original; the next film opened meanwhile replaced the single image cache, the read came back superseded and the failure toast landed over the next film, no record written. **Ruling R42:** the review write reads the stored image only: `imageInfo(studyId, { storedOnly: true })` takes a model result (`hasStoredImage`, new in `data/predictions.js`, also `loadFilm`'s step-1 test now) from the image cache, or from its own sidecar for that call alone (`readStoredImages`: no decode, nothing cached, no restore started or superseded), and returns `sidecarGeometry` when it read the sidecar, the model's geometry `writeReviewRecord` falls back to when no prediction snapshot is in memory; `writeRecord` takes `imageOptions` and hands `info` to `editorOf`. Save edits is unchanged; a hand-placed film still decodes its original (its stored image). The full account is "Review round 1" under G6 above. Unit 948 → **953/953** (predictions +2, level-editor-wiring +3). `smoke-levels.mjs` dom **114/114** (112 + 2; section 18 opens `SP-9301` straight after the click, and reads `SP-9304` stored-only while `SP-9301` holds the cache) on a fresh `%TEMP%` profile, CDP 9333, DOM, store and file reads only, no screenshots; the film phase and the other suites not re-run. *Cost if wrong:* a click before a segmented film reaches the stage reads its sidecar twice; a hand-placed film's review write can still fail if another film is opened before that film's decode ends (the toast says so). |
+| 2026-10-12 | release | **Released as v1.1.0.** The release commit `54c2511` (`chore(release): 1.1.0 — the vertebral level editor, window / level and the label record`) on `worktree-level-editor`, merged to `main` by PR #60 as `cbbeb4e` (2026-10-12), which carries the tag `v1.1.0`. The human gate's checklist (Task 15) stays the owner's; R24 is still the owner's open decision. |
+| 2026-10-13 | gate | **Gate feedback G7** (the owner, D20): "the vertebral body labeling gets in the way. Is there a way to move them?" On the owner's right-facing film every plate sat inside its body. Branch `claude/level-plates` off `origin/main` @ `cbbeb4e`. Each plate now sits outside its level on the posterior side (`labelPlacement`, new pure module `renderer/viewer/level-labels.js`; `drawLevelLabel` draws a side −1 plate with its right edge 14 px left of the anchor and applies the drag offset; `drawLevelEditor` and `drawDynamicLayer` return the plates drawn in image px) and can be dragged in edit mode (`state.platePositions`, in the store and both FRESH_VIEW copies, written only by `components/viewer.js`: the plate hit test after the handles, the drag with capture and `is-over-plate` / `is-dragging-plate`, the double-click reset, the chord's take-over; `dynamicKey` includes it; `clientToImage` gains `{ clamp: false }`). The full design is "G7" under "Gate feedback (2026-10-11)" above. `6463f63`. Unit 953 → **974/974** (level-labels +15, canvas +4, demo-visibility +1, geometry +1). `smoke-levels.mjs` section 19 (+7 dom) on `SP-9300`: dom **121/121** (114 + 7), twice on one launch on a fresh `%TEMP%` profile (CDP port 9341, DOM, store and file reads only, no screenshots); the film phase and the other suites not re-run. |
+| 2026-10-13 | gate | **Rulings R43 and R44** (controller, with D20). **R43:** a plate's anchor is unchanged and its side is read from its own level — a body by the sign of (the posterior-edge midpoint x − its four corners' mean x), C2 by (IP x − the centroid x), an endplate by (SP x − SA x) — and only when that difference is under 1 px, and always for T4's centroid, from the film: opposite its anterior side (`plateAnteriorSide`: the stored geometry's, then the study's chosen one, then the placed levels', else unknown, which is +1). The heads have no plate. A plate is not clamped to the film. *Cost if wrong:* a level whose own shape reads the wrong way (a crushed or wedged body whose posterior edge sits across its middle, a C2 IP left of its centroid on a left-facing film) gets its plate on the anterior side, as wrong as before G7 for that one level, and the drag moves it; a film whose stored anterior side is wrong moves only T4's plate and those of degenerate levels; a plate beside a body at the film's edge can be clipped by the edge until dragged back. **R44:** `platePositions` (code → `[dx, dy]` image px) is view state: FRESH_VIEW resets it, entering and leaving edit mode keep it, a drag's release or cancel keeps what it set, nothing persists or records it; the press is hit-tested against the rects the last redraw drew, after the selected level's handles (handles win) and never while placing, with the W/L panel open, with Pan on or while the study's own run is in flight; the drag's travel is read in image points through the canvas's live rect (unclamped), which equals the brief's client delta times `clientToImage`'s ratio while the layout holds and keeps the plate under the pointer through a wheel zoom mid-drag; the second press of a double-click on the same plate resets it and starts no drag. *Cost if wrong:* a plate dragged onto the selected level's handle can be grabbed only outside that handle's 14 px grab circle (or after selecting another level); the offsets are lost when another film opens and are not kept across sessions — keeping them per film would mean a field on the study record and a persistence change; the first press of a double-click starts a drag, so a jitter between its two presses moves the plate for a moment before the reset. |

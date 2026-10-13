@@ -178,6 +178,9 @@ renderer/                         (new)
                                   refit the head, never under 0.5 px), the Tab order across the editor; pure
   viewer/window-level.js          (2026-10-10) display-only window / level: range, default, clamp, drag rule, chip text, crop to the
                                   stored image height, the decoded film as a RawFilm, the linear LUT; pure
+  viewer/level-labels.js          (2026-10-13, gate feedback G7, plan D20) where a level's label plate sits (labelAnchor,
+                                  labelPlacement, plateAnteriorSide; R43) and the plate drag's pure parts (plateOffset, plateAt,
+                                  movePlate, resetPlate; R44); pure
   viewer/measure-queue.js         (plan 04) createMeasureQueue({measure, getState, setState, showToast, debounceMs})
                                   → {commitGeometry, replaceMeasured}: per-study revisions, one owner-tracked
                                   debounce, flush on study switch; session-only drafts, atomic geometry/measurement commit
@@ -440,6 +443,10 @@ a draw function must blank a layer, never freeze the application.
                             // renderer/film-window.js, its ONLY writer); display only, session-only, never persisted, never in
                             // the label record; reset to null by FRESH_VIEW and by forgetFilmWindow (delete, a run's
                             // completion, changeRegion); entering and leaving edit mode keep it
+  platePositions: {},       // (2026-10-13, gate feedback G7, plan D20, R44) { [levelCode]: [dx, dy] } in image px — where the
+                            // user has dragged each level's label plate in edit mode; view state like zoom and pan: reset to
+                            // {} by FRESH_VIEW, kept through entering and leaving edit mode; written ONLY by
+                            // components/viewer.js, always a new object; session-only, never persisted, never in the record
   running: null,            // string | null — the id of the study whose /predict is in flight (plan 05);
                             // one run at a time. `if (state.running)` still means "a run is in flight";
                             // the viewer and the Studies list compare it with a study's id.
@@ -1373,10 +1380,11 @@ workstation with `--verify-models`, which exercises each listed GPU.
 ## 2026-10-10 amendment: vertebral level editor, window / level, label record
 
 Spec `docs/design/level-editor/HANDOFF.md` (`594a982`); plan `plans/2026-10-10-level-editor.md`, whose Decisions
-table (D1–D19, the owner's answers; D15–D18 from the gate feedback of 2026-10-11, D19 from G6 on 2026-10-12) wins
-over the spec and whose Ledger holds the execution rulings R1–R41 (R26 and R27 from the gate feedback of 2026-10-11,
-the plan's "Gate feedback" section, R28 from its review, R29–R34 from G3 and G4, R35–R37 from their review, R38 and
-R39 from G5, R40 and R41 from G6); user doc
+table (D1–D20, the owner's answers; D15–D18 from the gate feedback of 2026-10-11, D19 from G6 on 2026-10-12, D20
+from G7 on 2026-10-13) wins over the spec and whose Ledger holds the execution rulings R1–R44 (R26 and R27 from the
+gate feedback of 2026-10-11, the plan's "Gate feedback" section, R28 from its review, R29–R34 from G3 and G4, R35–R37
+from their review, R38 and R39 from G5, R40 and R41 from G6, R42 from its review, R43 and R44 from G7); released as
+v1.1.0 (PR #60, `cbbeb4e`, 2026-10-12), G7 after it; user doc
 `docs/level-editor.md`; label record schema `docs/design/level-editor/label-record.schema.json`. Edit mode is the
 level editor: the Analysis screen's right panel becomes the Vertebral levels panel (sixteen levels in five groups:
 C2–C7, T1 · T4, L1–L5, S1, two femoral heads), the stage places, selects and adjusts levels, a display-only window /
@@ -1670,6 +1678,40 @@ unchanged.
   `deps.imageInfo` and the facts to `editorOf(state, study, info)`. `writeReviewRecord` passes `{ storedOnly: true }`
   and takes the model's geometry from `deps.getPrediction(studyId)?.geometry`, else `info.sidecarGeometry`;
   `saveLevelEdits` passes no options.
+
+**Gate feedback G7 (2026-10-13; D20, `6463f63`).** The level plates sit outside their level on the posterior side and
+can be dragged. New pure module **`renderer/viewer/level-labels.js`** (File structure block above; `test/level-labels.test.js`):
+**`labelAnchor(code, geometry)`** (moved from `canvas.js`, a fresh point or null), **`labelPlacement(code, geometry,
+anteriorSide)`** → `{ anchor: [x, y], side: 1 | -1 } | null` (null for a femoral head or a geometry not of its kind),
+**`plateAnteriorSide(study, editor)`** → `'left' | 'right' | null`, **`plateOffset(positions, code)`** → `[dx, dy]`,
+**`plateAt(plates, point)`**, **`movePlate(positions, code, start, from, to)`** and **`resetPlate(positions, code)`**
+(new objects; `resetPlate` hands back the same map when there is nothing to reset). `viewer/canvas.js`:
+`drawLevelEditor(ctx, canvas, editor, opts)` takes `opts.anteriorSide` and `opts.platePositions` and **returns the
+plates it drew**, `[{ code, x, y, width, height }]` in image px after the offsets, in drawing order; `drawDynamicLayer`
+passes both options through and returns the editor's plates in edit mode, `[]` otherwise; a caller that ignores the
+return value is unaffected. `viewer/geometry.js` `clientToImage(ev, canvas, { clamp = true } = {})`: `clamp: false`
+maps a point outside the canvas without clamping. **`state.platePositions`** (store block above) is in the initial
+state and in both FRESH_VIEW copies (ten keys now; pinned equal, and to their content, by
+`test/demo-visibility.test.js`). `components/viewer.js` is its only writer and gains the plate drag (`drag.kind
+'plate'`), the stage classes `is-over-plate` and `is-dragging-plate` (cursor rules in `styles/screens/analysis.css`),
+`state.platePositions` in `dynamicKey`, and **`drawnPlates()`**, an export that returns the plates the last redraw drew
+(read by its own hit test and by `smoke-levels.mjs`). All the plate wiring is in `components/viewer.js`; the
+construction chip's drag is unchanged.
+
+- R43 (G7): a plate's anchor is unchanged (a body's posterior-edge midpoint, C2's IP, an endplate's SP, T4's centroid)
+  and `side` is the direction away from the level: a body the sign of (the posterior-edge midpoint x − the mean of its
+  four corners' x), C2 of (IP x − the centroid x), an endplate of (SP x − SA x); under 1 px, and always for T4, opposite
+  the film's anterior side (`'right'` → −1, `'left'` → +1, unknown +1), the side the stage passes being
+  `plateAnteriorSide` (the stored geometry's, the study's chosen one, the placed levels', else null). Side −1 puts the
+  plate's right edge `LABEL_OFFSET_PX` (14 CSS px times the R28-floored ratio) left of the anchor; side +1 its left edge
+  that far right; centred vertically; then moved by the level's offset in image px.
+- R44 (G7): in edit mode a left press that is not on the W/L panel's drag, with Pan off, not a placement click and not
+  on the selected level's handle (handles win), and not during the study's own run, is hit-tested against the drawn
+  plates and drags one (pointer capture); each move writes `platePositions[code]` as the offset at the press plus the
+  pointer's travel since in image px (`movePlate` over unclamped `clientToImage` points); release and cancel keep it; a
+  chord dismantles the drag; the second press of a double-click on the same plate (`isDoubleClick`) resets it and starts
+  no drag; a right press on a plate still windows. View state: FRESH_VIEW resets it, edit mode keeps it, nothing
+  persists or records it.
 
 No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet file (rules in
 `styles/screens/analysis.css` section `05 — LEVEL EDITOR` and `styles/components.css`), no Python package.
