@@ -1,10 +1,12 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-10-12
-**Branch:** `worktree-level-editor` in the worktree `.claude\worktrees\level-editor` of the main checkout, off
-`origin/main` @ `20fd4c5` (v1.0.17): the vertebral level editor, window / level and the label record — BUILT, human
-gate IN PROGRESS since 2026-10-11 (G1–G6 are its findings so far), pushed to `origin` on 2026-10-12 for the owner's
-PR to `main` (first section under "Where things stand"); G6's two commits came after that push and are not pushed.
+**Last updated:** 2026-10-13
+**Branch:** `claude/level-plates` in the worktree `.claude\worktrees\level-plates` of the main checkout, off
+`origin/main` @ `cbbeb4e` (v1.1.0): gate feedback G7, the level plates outside the body and draggable — BUILT, the
+1.1.1 release commit on it, not pushed (first section under "Where things stand").
+**2026-10-12 branch (released):** `worktree-level-editor` in the worktree `.claude\worktrees\level-editor`, off
+`origin/main` @ `20fd4c5` (v1.0.17): the vertebral level editor, window / level and the label record, G1–G6
+included — RELEASED as v1.1.0 on 2026-10-12 (PR #60, merged as `cbbeb4e`, tagged `v1.1.0`).
 **2026-10-02 branch (historical):** `claude/issue-39-failed-status-port` (the Failed-status additions on 1.0.13, issue
 #39 follow-up; DONE, merged with v1.0.14, release 1.0.15 committed and awaiting the PR)
 **Checkout:** `C:\Users\codyj\Spine Contour Desktop\Spine-Contour`, the main checkout on this workstation (no
@@ -51,7 +53,7 @@ algorithm changed; no screenshots were added.
 
 ## Where things stand
 
-### Vertebral level editor, window / level, label record — BUILT, human gate IN PROGRESS (branch `worktree-level-editor`, worktree `.claude/worktrees/level-editor`, off `origin/main` @ `20fd4c5`, v1.0.17)
+### Vertebral level editor, window / level, label record — RELEASED as v1.1.0 on 2026-10-12 (PR #60, merge `cbbeb4e`; branch `worktree-level-editor`, worktree `.claude/worktrees/level-editor`, off `origin/main` @ `20fd4c5`, v1.0.17); gate feedback G7 BUILT after it, release 1.1.1 committed, not pushed (branch `claude/level-plates`, worktree `.claude/worktrees/level-plates`, off `origin/main` @ `cbbeb4e`)
 
 2026-10-10. Edit mode on the Analysis screen is now a level editor. In edit mode the right panel is the **Vertebral
 levels** panel: sixteen levels in five groups (C2–C7, T1 · T4, L1–L5, S1, two femoral heads), each with a visibility
@@ -63,9 +65,9 @@ the zero-change record of a film that has none). A film whose segmentation faile
 and can be placed by hand.
 
 - Spec: `docs/design/level-editor/HANDOFF.md` (`594a982`; its §12 now lists the decisions). Plan:
-  `docs/superpowers/plans/2026-10-10-level-editor.md` (`3a4019a`), 15 tasks; its Decisions table D1–D19 and its
-  `## Ledger` (every task's commits and counts, rulings R1–R41 with their costs, every deferred minor) and its
-  `## Gate feedback (2026-10-11)` section (G1–G6, the spec of record for all six). User doc:
+  `docs/superpowers/plans/2026-10-10-level-editor.md` (`3a4019a`), 15 tasks; its Decisions table D1–D20 and its
+  `## Ledger` (every task's commits and counts, rulings R1–R45 with their costs, every deferred minor) and its
+  `## Gate feedback (2026-10-11)` section (G1–G7, the spec of record for all seven). User doc:
   `docs/level-editor.md`. Contract: the 2026-10-10 amendment. SDD ledger
   `.superpowers/sdd/2026-10-10-level-editor/progress.md` (local, untracked).
 - What was built, by commit (`594a982..` this branch's tip): the level model `77c8e5a`; the projection into
@@ -116,7 +118,28 @@ and can be placed by hand.
   section 18) and the records commit; unit 948/948. Its review round 1 (R42, decision 135): the review write reads the
   segmented film's stored image only (`imageInfo(studyId, { storedOnly: true })`, from the image cache or the sidecar,
   never `/decode`), so opening the next film straight after the click can no longer fail it; unit 953/953.
-- Counts: unit 953/953 after G6's review round 1 (948 after G6, 940 before it, 939 after G5; 925 after the review of G3 and G4, 918 after G3 and G4, 901 after the gate feedback's review wave,
+- **Released as v1.1.0 on 2026-10-12.** The branch was pushed to `origin` (Feches) at the owner's choice with the
+  1.1.0 release commit `54c2511` on it (G6 and R42 included); PR #60 merged it to `main` as `cbbeb4e` the same day,
+  which carries the tag `v1.1.0` and published the installers. The human gate's checklist (plan Task 15) stays the
+  owner's to tick on the released build; R24 is still open.
+- **Gate feedback G7 (2026-10-13, D20, decisions 136–138 below; branch `claude/level-plates` off `cbbeb4e`).** The
+  owner: "the vertebral body labeling gets in the way. Is there a way to move them?" On a film facing right every
+  level's plate sat inside its body (Task 9 fixed it 14 px right of the posterior edge). Each plate now sits outside
+  its level on the posterior side (R43: `labelPlacement` in the new pure `renderer/viewer/level-labels.js`; a body by
+  its posterior edge against its corners' mean x, C2 by IP against its centroid, an endplate by SP against SA, and under
+  1 px, always for T4, the side opposite the film's anterior side, `plateAnteriorSide`; `drawLevelLabel` draws a side
+  −1 plate with its right edge 14 px left of the anchor; `drawLevelEditor` and `drawDynamicLayer` return the plates
+  drawn in image px), and any plate can be dragged in edit mode, a double-click putting it back (R44:
+  `state.platePositions`, code → `[dx, dy]` image px, in the store and both FRESH_VIEW copies, written only by
+  `components/viewer.js`; hit-tested after the selected level's handles, which win; not while placing, with the W/L
+  panel open or with Pan on; a chord dismantles the drag; never persisted or recorded; `clientToImage` gains
+  `{ clamp: false }`; `drawnPlates()` exported for the smoke). `6463f63` (code, tests, smoke section 19) and the
+  records commit, then the 1.1.1 release commit (`docs/release-main.md`: `package.json`, `version.js`, CHANGELOG,
+  `docs/releases/1.1.1.md`, the README link). Unit 974/974.
+- Counts: unit 974/974 after G7 (level-labels +15, canvas +4, demo-visibility +1, geometry +1); `smoke-levels.mjs` dom
+  121/121 after G7 (section 19's seven checks; twice on one launch on a fresh `%TEMP%` profile, CDP 9341, DOM, store
+  and file reads only, no screenshots; the film phase and the other suites not re-run). Before G7: unit 953/953 after
+  G6's review round 1 (948 after G6, 940 before it, 939 after G5; 925 after the review of G3 and G4, 918 after G3 and G4, 901 after the gate feedback's review wave,
   898 after G2, 888 after the final review's wave and R25, 887 after the wave, 879/879 before it; 615 at the base; 905
   before Task 13 retired 26 tests of removed code); `smoke-levels.mjs` dom 114/114 after G6's review round 1 (section
   18 opens the next film straight after the click and reads stored-only; fresh `%TEMP%` profile, CDP 9333, DOM, store
@@ -135,24 +158,32 @@ and can be placed by hand.
   femoral-confidence 16/16 then 5/5; disc-heights 13/13; partial-segmentation 8/8; accuracy 17/17; global-sva 21/21;
   levels dom 75/75 and film 23/23; processing 15/15; onnx-localizer 10/10; seeding 34/36 then 36/36 and
   manual-calibration (timed out at 240 s) then 5/5, 7/7, 5/5 after `f610a8d`.
-- Not run: the human gate (plan Task 15; its checklist is prepared in the plan); a packaged build (no installer has
-  been built from this branch); `smoke-cervical.mjs` and `smoke-segmental.mjs` (no lateral cervical film on this
+- Not run: the human gate (plan Task 15; its checklist is prepared in the plan, G7's item added); a packaged build of
+  `claude/level-plates` (v1.1.0's installers were built by its merge; 1.1.1's will be built by its PR's merge); after
+  G7, the film phase of `smoke-levels.mjs`, the gate chain (parity, gate1–3, chip, chord) and the other suites, and
+  backend pytest (G7 changes no backend file); `smoke-cervical.mjs` and `smoke-segmental.mjs` (no lateral cervical film on this
   workstation, and both screenshot their film); `smoke-calibration.mjs` (no Tesseract binary and no ruler films on this
   workstation, and it screenshots); a DICOM film's default window from its tags on a real DICOM (the unit and backend
   tests cover it).
 
-**Next.** The owner's human gate (plan Task 15): real films from their library, both themes, including the items the
-final review added (a cervical film, a full-spine film, a DICOM film, a failed Auto film with C and L levels placed, a
-double-click while placing a head), the re-check of G1 to G6 (800% on a large and a small film with the overlay crisp,
-R28; the step chips, re-placing and UNDO; window / level outside edit mode, the right-button drag and the double
-right-click, a chord still panning; R35–R37 from their review; a record saved after one corner drag lists that corner
-in `edited_points` and counts it in `edits`; and G6, Mark reviewed on a film with no record writes it, and unmarking
-and marking again writes nothing more) and the owner's decision R24 (a hand-placed film that had failed still reads
-Failed). The branch was pushed to `origin` on 2026-10-12 at the owner's choice with the 1.1.0 release commit on it
-(`docs/release-main.md`: `package.json`, `version.js`, CHANGELOG, `docs/releases/1.1.0.md`, the README link); the PR
-to `main` is the owner's to open and merge with Create a merge commit, which publishes v1.1.0. After the merge, the next piece of work is retraining the models from the
-label records: `docs/superpowers/NEXT-SESSION-retraining.md` is the prompt for that brainstorm (its own branch; no app
-change).
+**Next.** The owner checks G7 on their right-facing film (plan Task 15's new item: the plates outside the bodies on
+the posterior side, the drag, the double-click, the reset on opening another film) and says whether to push
+`claude/level-plates`; its PR to `main`, merged with Create a merge commit, publishes v1.1.1. Before the push its smoke
+baseline (dom 121/121 when written) is worth re-measuring with the gate chain (parity, gate1–3, chip, chord), since
+the plates now take left presses in edit mode that used to do nothing. Still open on the released editor:
+
+- **R24, the owner's decision:** a film whose segmentation failed and whose levels were then placed by hand still
+  reads Failed, sorts first and blocks Mark reviewed; clear `processingError` on the first hand-placed commit, or give
+  such a film its own status? (Task 15's checklist; ROADMAP §8.)
+- **Michael's PR #61** (a missing-vertebra annotation in the old edit bar) was closed unmerged, as superseded by the
+  level editor.
+- **PR #62** (a release accuracy gate) is open; once merged, it blocks publication until its variables and token are set.
+- **PR #63** (in-app training from reviewed annotations) is open and overlaps the retraining brainstorm,
+  `docs/superpowers/NEXT-SESSION-retraining.md` (its own branch; no app change): read #63 before that brainstorm starts,
+  so the two do not build the same pipeline twice.
+- The human gate's checklist (Task 15) on the released build: real films from the owner's library, both themes, the
+  items the final review added (a cervical film, a full-spine film, a DICOM film, a failed Auto film with C and L levels
+  placed, a double-click while placing a head) and the re-check of G1 to G7.
 
 **Follow-ups (deferred; see `docs/ROADMAP.md` §8):** the handoff's row keys (↑/↓, Space, P); a batch started from the
 Find tab can still overtake an open or stashed editor; a hand-placed film whose
@@ -1968,6 +1999,32 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
      written. Save edits reads as before; a hand-placed film still decodes its original (its stored image). *Cost if
      wrong:* a click before a segmented film reaches the stage reads its sidecar twice; a hand-placed film's review
      write can still fail if another film is opened before that film's decode ends (the toast says so).
+136. **D20 (owner, 2026-10-13, gate feedback G7) — The level plates sit outside the body on the posterior side and can
+     be dragged.** Both fixes the owner was offered, after their right-facing film showed every plate inside its body
+     (Task 9's fixed rightward plate). Where a plate was dragged is view state like zoom, pan and the window: FRESH_VIEW
+     resets it, entering and leaving edit mode keep it, it is never persisted and never in the label record. Built on
+     `claude/level-plates` off `cbbeb4e` (v1.1.0): `6463f63`, the records commit, the 1.1.1 release commit.
+137. **R43 — A plate's side is read from its own level.** The anchor is unchanged (a body's posterior-edge midpoint,
+     C2's IP, an endplate's SP, T4's centroid); the plate extends away from the level: a body by the sign of (the
+     posterior-edge midpoint x − its corners' mean x), C2 by (IP x − the centroid x), an endplate by (SP x − SA x);
+     under 1 px, and always for T4, opposite the film's anterior side (the stored geometry's, the study's chosen one,
+     the placed levels', else +1). Side −1 puts the plate's right edge 14 px left of the anchor. `labelPlacement`,
+     pure, in `renderer/viewer/level-labels.js`; `drawLevelEditor` returns the plates drawn. *Cost if wrong:* a level
+     whose own shape reads the wrong way (a crushed or wedged body) gets its plate on the anterior side for that level,
+     and the drag moves it; the plate stays wholly on the film (R45), so one beside a body at the film's edge is pushed
+     inward rather than clipped.
+138. **R44 — Any plate drags; a double-click puts it back.** `state.platePositions` (code → `[dx, dy]` image px),
+     written only by `components/viewer.js`, always as a new object. In edit mode a left press past the selected
+     level's handles (handles win), not while placing, with the W/L panel open, with Pan on or during the study's own
+     run, drags the plate under it; the travel is read in image points (unclamped `clientToImage`), so the plate follows
+     the pointer at any zoom; release and cancel keep the offset; a chord dismantles the drag; the second press of a
+     double-click (`isDoubleClick`) resets it. `dynamicKey` includes `platePositions`. *Cost if wrong:* a plate dragged
+     onto the selected level's handle is grabbed only outside the handle's 14 px circle; the offsets are lost when
+     another film opens and are not kept across sessions (keeping them would mean a field on the study record).
+139. **R45 — A plate stays wholly on the film** however far it is dragged: `drawLevelLabel` clamps the plate's rect to
+     the canvas (the G7 review's finding), so it can always be seen and grabbed back, and a plate beside a body at the
+     film's edge is pushed inward rather than clipped; the returned rect is the clamped one, so hit-testing follows.
+     *Cost if wrong:* a plate cannot be parked off the film; a double-click puts it back where it belongs.
 
 ## Release prerequisites — v1.0.0 main promotion
 

@@ -195,7 +195,7 @@ All are in the Spine Contour design system. Use the app's CSS variables, not hex
   - T4: one handle
   - femoral: rim-point handles in `trace` plus a non-draggable centre dot in `stage-ink`
 - **Edited level:** when selected, the model's original geometry is drawn dashed (6 / 5) in `stage-ink` at `opacity-reference`, under the current geometry.
-- **Labels on the film:** mono 11px in `canvas-label` on a `canvas-label-plate`, to the right of the posterior edge. The selected level's label is in `stage-accent`. No label on femoral heads.
+- **Labels on the film:** mono 11px in `canvas-label` on a `canvas-label-plate`, to the right of the posterior edge. The selected level's label is in `stage-accent`. No label on femoral heads. *Amended 2026-10-13 (the owner's gate feedback G7 in the plan; D20, rulings R43 and R44):* the plate sits outside its level on the posterior side, which each level reads from its own geometry (on a film facing right, left of the posterior edge), the film's anterior side deciding only where the level cannot say (T4's centroid); and in edit mode any plate can be dragged, a double-click putting it back. Where the plates were dragged is view state like zoom and pan: reset when another film opens, kept through leaving and entering edit mode, never saved or recorded.
 - **Placement in progress:**
   - placed points are drawn with the step colours
   - points are joined by a dashed `stage-accent` line, except for femoral heads
@@ -419,9 +419,10 @@ The design artboard doesn't show `model_centroid` or `model_circle`. The schema 
 
 The open questions this section held were answered by the owner on 2026-10-10, together with the questions the code
 forced. They are the Decisions table of `docs/superpowers/plans/2026-10-10-level-editor.md`, which wins over this spec
-where the two differ; that plan's Ledger also records the execution rulings R1–R42. Built on branch
-`worktree-level-editor`; the user doc is `docs/level-editor.md`. D15–D17 were added on 2026-10-11 from the owner's
-gate feedback (G3, G4), D18 the same day from G5, and D19 on 2026-10-12 from G6.
+where the two differ; that plan's Ledger also records the execution rulings R1–R45. Built on branch
+`worktree-level-editor` and released as v1.1.0 (2026-10-12); the user doc is `docs/level-editor.md`. D15–D17 were
+added on 2026-10-11 from the owner's gate feedback (G3, G4), D18 the same day from G5, D19 on 2026-10-12 from G6, and
+D20 on 2026-10-13 from G7 (branch `claude/level-plates`).
 
 | # | Question | Decision |
 |---|---|---|
@@ -444,6 +445,7 @@ gate feedback (G3, G4), D18 the same day from G5, and D19 on 2026-10-12 from G6.
 | D17 | A double right-click (2026-10-11, gate feedback G4) | Resets the window to the film's default; the panel's RESET stays. |
 | D18 | Which points an edit moved (2026-10-11, gate feedback G5) | Every level and femoral head in the record lists `edited_points` (its own geometry keys: what moved when `edited`, every key when `manual`, none otherwise; `edited` exactly when the list is not empty, R38), and the record carries a top-level `edits` summary (entries per state, `points_moved`, `points_placed`). Both additive: the schema keeps its id and accepts records saved before them (R39). Section 9 amended. |
 | D19 | Accepting a film without editing it (2026-10-12, gate feedback G6) | **Mark reviewed** also writes the film's label record when the study has none yet: the zero-change record of the stored state, what Save edits writes right after entering edit mode with nothing changed. Unmarking writes nothing; a study with a record is left alone (Save edits keeps owning it); not while the study's level edits are open or stashed (R40); the mark never waits for or depends on the write (R41). A zero-change Save edits still works (D10). Section 9 amended. |
+| D20 | Where the level plates sit, and moving them (2026-10-13, gate feedback G7) | Each level's label plate sits outside its level on the posterior side, read from the level's own geometry and, only where it cannot say, from the film's anterior side (R43); any plate can be dragged in edit mode and a double-click puts it back (R44). The offsets are view state, like zoom, pan and the window: reset when another film opens, kept through leaving and entering edit mode, never persisted, never in the label record. Section 5's labels amended. |
 
 ---
 

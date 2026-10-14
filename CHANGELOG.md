@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.1
+
+- In edit mode each level's name plate now sits **outside its vertebra, on the posterior side**, whichever way the
+  film faces. Before, every plate went to the right of the posterior edge, which on a film facing right put it
+  inside the body, over the anatomy being checked.
+- Any plate can be **dragged** out of the way, and a double-click puts it back. Where the plates were dragged lasts
+  while the film is open, like zoom and pan; it is never saved and never in the label record. Handles under a plate
+  are still grabbed first.
+
+[Release notes](docs/releases/1.1.1.md)
+
 ## 1.1.0
 
 - Replaces the landmark editor with a **vertebral level editor**: sixteen levels in five groups, each placed by

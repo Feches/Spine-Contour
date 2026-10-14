@@ -80,12 +80,14 @@ export function setLandmarkAt(geometry, level, corner, point) {
   return geometry;
 }
 
-export function clientToImage(ev, canvas) {
+// Clamped to the canvas unless `clamp` is false: a level-plate drag (gate feedback G7, ruling R44) reads the pointer's
+// travel past the film's edge too, so the plate keeps following it there.
+export function clientToImage(ev, canvas, { clamp = true } = {}) {
   const rect = canvas.getBoundingClientRect();
-  return [
-    Math.max(0, Math.min(canvas.width, ((ev.clientX - rect.left) * canvas.width) / rect.width)),
-    Math.max(0, Math.min(canvas.height, ((ev.clientY - rect.top) * canvas.height) / rect.height)),
-  ];
+  const x = ((ev.clientX - rect.left) * canvas.width) / rect.width;
+  const y = ((ev.clientY - rect.top) * canvas.height) / rect.height;
+  if (!clamp) return [x, y];
+  return [Math.max(0, Math.min(canvas.width, x)), Math.max(0, Math.min(canvas.height, y))];
 }
 
 export function imageToClient(pt, rect, canvas) {

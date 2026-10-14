@@ -19,6 +19,7 @@ import { progressTitle, progressDetail } from '../data/processing.js';
 import { cancelProcessing } from '../processing.js';
 import { kindOf, rowName, placementSteps, placingLabel, placingHelp, canFinishPlacing } from '../data/levels.js';
 import { levelHandles, hitTestLevelHandles, moveHandle, nudgeHandle, nextLevelHandle, handleAt } from '../viewer/level-handles.js';
+import { plateAnteriorSide, plateAt, plateOffset, movePlate, resetPlate } from '../viewer/level-labels.js';
 import { dragWindow, windowText } from '../viewer/window-level.js';
 import {
   enterLevelEditor, requestExit, keepEditing, placePoint, undoPlacedPoint, restorePlacing, selectPlacingStep, cancelPlace,
@@ -70,9 +71,9 @@ const OWN_TAB_ORDER = '.viewer-editbar, .viewer-wl, .level-editor, .analysis-lev
 // contract's viewer/interactions.js section: only committed geometry reaches the store.
 //
 // One `drag` for every kind of gesture -- pan, a level's handle, the window / level drag, the
-// construction label -- so two gestures can never be live at once and there is one place to look for
-// what the pointer is doing. detach() resets all of it.
-let drag = null;           // {kind:'pan', ...} | {kind:'levelHandle', ...} | {kind:'window', ...} | {kind:'label', ...} | null
+// construction label, a level's label plate -- so two gestures can never be live at once and there is one place to
+// look for what the pointer is doing. detach() resets all of it.
+let drag = null;           // {kind:'pan'} | {kind:'levelHandle'} | {kind:'window'} | {kind:'label'} | {kind:'plate'} (each with more) | null
 let suppressClick = false; // a pointerdown that started a gesture eats the click that follows it
 // (Gate feedback G4, D17) The last right-button press that could begin a double right-click, as isDoubleClick reads
 // it ({time, clientX, clientY, button}), or null. A chord forgets it: its right press was never a click.
@@ -95,6 +96,24 @@ function forgetPlacePress() {
 // Where the user has dragged each construction's label, in image pixels, for the open study.
 let labelOffsets = new Map(); // construction key ('L3', 'PI', ...) -> {dx, dy}
 let labelStudyId = null;
+
+// (2026-10-13, gate feedback G7; plan D20, ruling R44) The level editor's label plates as the last redraw drew them,
+// `[{code, x, y, width, height}]` in image pixels after their drag offsets (drawLevelEditor's return value); empty
+// outside edit mode and without a film. What a press is hit-tested against, so the text is never measured twice.
+let lastPlates = [];
+// The last left press that started a plate drag ({time, clientX, clientY, button, code}), as isDoubleClick reads it:
+// a second press on the same plate within its limits resets the plate instead of dragging it. Any other press, a
+// chord and detach() forget it.
+let lastPlatePress = null;
+
+/**
+ * The label plates the last redraw drew, in image pixels (see `lastPlates`). Read by the stage's own hit test and by
+ * tools/smoke/smoke-levels.mjs, which checks where they sit; nothing else.
+ * @returns {{code: string, x: number, y: number, width: number, height: number}[]}
+ */
+export function drawnPlates() {
+  return lastPlates;
+}
 
 const measureQueue = createMeasureQueue({ measure, getState, setState, showToast, debounceMs: MEASURE_DEBOUNCE_MS });
 // The level editor's projection reaches the store through here (renderer/level-editor.js, wired by
@@ -398,12 +417,14 @@ export function mountViewer(container) {
     if (!currentImages) {
       dynamicCtx.clearRect(0, 0, dynamicCanvas.width, dynamicCanvas.height);
       labelChip.classList.add('is-hidden');
+      lastPlates = [];
       return;
     }
     const state = getState();
     const study = currentStudy();
     const editor = editorFor(state, study);
-    drawDynamicLayer(dynamicCtx, dynamicCanvas, geometry, {
+    // The plates drawn are kept for the hit test (none outside edit mode).
+    lastPlates = drawDynamicLayer(dynamicCtx, dynamicCanvas, geometry, {
       selectedLevel: state.selectedLevel,
       measurements: study && !state.measurementDrafts?.[study.id]
         ? { ...segmentalValues(study), ...(studyRegion(study) === 'cervical' ? cervicalMeasurements(study)
@@ -418,8 +439,11 @@ export function mountViewer(container) {
         dragGeometry: dragGeometryFor(editor),
         overlays: state.overlays,
         overlayOpacity: state.overlayOpacity,
+        // (Gate feedback G7, D20) The plates' fallback side (R43) and their drag offsets (R44).
+        anteriorSide: plateAnteriorSide(study, editor),
+        platePositions: state.platePositions,
       } : {}),
-    });
+    }) ?? [];
     placeLabel(geometry);
   }
 
@@ -474,14 +498,24 @@ export function mountViewer(container) {
     return handle ? { code, handle, geometry: entry.geometry } : null;
   }
 
-  // The grab cursor over a handle. No redraw: the editor draws no hover state.
+  // (Gate feedback G7, ruling R44) The label plate under the pointer, as the last redraw drew it, or null: the plates
+  // are hit-tested in image space against their drawn rects. Not while placing (a press places a point).
+  function plateAtPointer(editor, event) {
+    if (!editor || editor.placing || lastPlates.length === 0) return null;
+    return plateAt(lastPlates, clientToImage(event, dynamicCanvas));
+  }
+
+  // The grab cursor over a handle, and over a label plate where no handle is (handles win, as a press does). No
+  // redraw: the editor draws no hover state.
   function updateHover(event) {
     const state = getState();
     const study = currentStudy();
     const editor = editorFor(state, study);
-    const over = Boolean(editor && currentImages && !editor.placing && !windowFor(state, study)?.open
-      && state.running !== editor.studyId && selectedHandleAt(editor, event));
-    stage.classList.toggle('is-over-handle', over);
+    const live = Boolean(editor && currentImages && !editor.placing && !windowFor(state, study)?.open
+      && state.running !== editor.studyId);
+    const overHandle = live && Boolean(selectedHandleAt(editor, event));
+    stage.classList.toggle('is-over-handle', overHandle);
+    stage.classList.toggle('is-over-plate', live && !overHandle && Boolean(plateAtPointer(editor, event)));
   }
 
   // NOTE ON COORDINATES, because this looks like a missing correction and is not.
@@ -563,6 +597,10 @@ export function mountViewer(container) {
     // Either way the chord takes over, the window keeps whatever the drag set before the left button joined, and the
     // right press is no double right-click's first.
     if (previous && previous.kind === 'window') endWindowDragClasses();
+    // (Gate feedback G7, R44) A plate drag ends where the chord found it: the offset it set stays (display only, like a
+    // label drag), and its press is no double-click's first. Its capture is on the canvas, where the pan keeps it.
+    stage.classList.remove('is-dragging-plate', 'is-over-plate');
+    lastPlatePress = null;
     lastRightPress = null;
     // A LEFT-first chord while placing has already placed a point with its first press. Take that press back by
     // putting the placing from before it back (restorePlacing), not by UNDO: UNDO clears the slot (R27), so a press
@@ -678,8 +716,9 @@ export function mountViewer(container) {
   // mode it outranks construction selection; ruling R36: the open panel outranks Pan for the primary
   // button); the primary button pans when the pan toggle is on; while editing (level editor, handoff §6)
   // a press while placing places the next point, and a press on the selected level's handle starts a
-  // handle drag. A second pointer while a gesture is live is ignored. The construction label has its own
-  // drag -- see handleLabelPointerDown below.
+  // handle drag; past the handles (they win), a press on a level's label plate drags the plate (gate feedback G7,
+  // ruling R44), and the second press of a double-click on it puts it back. A second pointer while a gesture is live
+  // is ignored. The construction label has its own drag -- see handleLabelPointerDown below.
   //
   // The chord test is FIRST, above `if (drag) return`, because outranking a live handle drag
   // is the point. It is also, for a real mouse, dead code: Chromium fires pointerdown only on
@@ -696,6 +735,9 @@ export function mountViewer(container) {
     if (drag) return;
     suppressClick = false;
     forgetPlacePress();
+    // Only the press straight after a plate press can make a double-click on that plate.
+    const platePress = lastPlatePress;
+    lastPlatePress = null;
     const state = getState();
     if (event.button === 2) {
       handleRightPress(event);
@@ -734,7 +776,12 @@ export function mountViewer(container) {
       return;
     }
     const hit = selectedHandleAt(editor, event);
-    if (!hit) return;
+    if (!hit) {
+      // (Gate feedback G7, R44) No handle under the press: a label plate there is dragged, or reset by a double-click.
+      const plate = plateAtPointer(editor, event);
+      if (plate) startPlateDrag(event, plate.code, platePress);
+      return;
+    }
     event.preventDefault();
     suppressClick = true;
     // Drag a WORKING COPY. The editor is never mutated in place: the copy is committed as a
@@ -744,6 +791,32 @@ export function mountViewer(container) {
     dynamicCanvas.setPointerCapture(event.pointerId);
     stage.classList.add('is-dragging-handle');
     setFocusedHandle({ code: hit.code, handle: hit.handle });
+  }
+
+  // (2026-10-13, gate feedback G7; plan D20, ruling R44) A left press on a level's label plate in edit mode, once
+  // handlePointerDown has ruled out the window / level panel, Pan, a placement and the selected level's handles (which
+  // win over a plate on top of them). The plate's offset follows the pointer in image pixels from the press (movePlate,
+  // read unclamped so it follows past the film's edge and through a zoom), written to state.platePositions on each
+  // move as a new object -- this file is its only writer -- and repainted through dynamicKey. Nothing is committed,
+  // measured or recorded: the plates are display only. The second press of a double-click on the same plate
+  // (isDoubleClick, as the double right-click of D17) puts the plate back (resetPlate) and starts no drag.
+  function startPlateDrag(event, code, previousPress) {
+    event.preventDefault();
+    suppressClick = true;
+    const press = { time: event.timeStamp, clientX: event.clientX, clientY: event.clientY, button: event.button };
+    const positions = getState().platePositions;
+    if (previousPress?.code === code && isDoubleClick(previousPress, press)) {
+      const next = resetPlate(positions, code);
+      if (next !== positions) setState({ platePositions: next });
+      return;
+    }
+    lastPlatePress = { ...press, code };
+    drag = {
+      kind: 'plate', code, pointerId: event.pointerId, start: plateOffset(positions, code),
+      origin: clientToImage(event, dynamicCanvas, { clamp: false }), clientX: event.clientX, clientY: event.clientY,
+    };
+    dynamicCanvas.setPointerCapture(event.pointerId);
+    stage.classList.add('is-dragging-plate');
   }
 
   // A placement click on the black surround around the film (handoff §11: clamped to the image bounds), and
@@ -823,6 +896,13 @@ export function mountViewer(container) {
       setWindow(dragWindow(drag.start, event.clientX - drag.clientX, event.clientY - drag.clientY, wl.range));
       return;
     }
+    if (drag.kind === 'plate') {
+      // (G7, R44) The offset at the press plus the pointer's travel since, in image px; the write repaints (dynamicKey).
+      const { code, start, origin } = drag;
+      const to = clientToImage(event, dynamicCanvas, { clamp: false });
+      setState((s) => ({ platePositions: movePlate(s.platePositions, code, start, origin, to) }));
+      return;
+    }
     if (drag.kind !== 'levelHandle') return;
     // moveHandle does not clamp; the stage does, to the stored image (rim points refit the head live).
     drag.geometry = moveHandle(drag.code, drag.geometry, drag.handle, clampToImage(clientToImage(event, dynamicCanvas)));
@@ -831,7 +911,7 @@ export function mountViewer(container) {
   }
 
   function handlePointerLeave() {
-    if (!drag) stage.classList.remove('is-over-handle');
+    if (!drag) stage.classList.remove('is-over-handle', 'is-over-plate');
   }
 
   function handlePointerUp(event) {
@@ -841,6 +921,8 @@ export function mountViewer(container) {
     drag = null;
     forgetPlacePress();
     stage.classList.remove('is-dragging-handle');
+    // (G7, R44) A plate drag keeps the offset it set, released or cancelled: display only, nothing to discard.
+    stage.classList.remove('is-dragging-plate');
     // Covers the ordinary pan, a chord released as one simultaneous pointerup, and pointercancel.
     stage.classList.remove('is-panning');
     // A window drag keeps what it set, released or cancelled (display only; nothing to discard). A right press released
@@ -1237,12 +1319,15 @@ export function mountViewer(container) {
     labelChip.removeEventListener('pointerup', handleLabelPointerUp);
     labelChip.removeEventListener('pointercancel', handleLabelPointerUp);
     resizeObserver.disconnect();
-    // Every gesture kind ends with the mount: pan, level handle, window drag, label.
+    // Every gesture kind ends with the mount: pan, level handle, window drag, label, plate.
     drag = null;
     suppressClick = false;
     forgetPlacePress();
     lastRightPress = null;
-    stage.classList.remove('is-panning', 'is-windowing', 'is-window-drag', 'is-dragging-handle', 'is-over-handle');
+    lastPlatePress = null;
+    lastPlates = [];
+    stage.classList.remove('is-panning', 'is-windowing', 'is-window-drag', 'is-dragging-handle', 'is-over-handle',
+      'is-dragging-plate', 'is-over-plate');
     labelOffsets = new Map();
     labelStudyId = null;
   }
@@ -1328,7 +1413,7 @@ export function mountViewer(container) {
     editButton.setAttribute('aria-label', editButtonLabel);
     editBar.classList.toggle('is-hidden', !state.editing);
     stage.classList.toggle('is-editing', state.editing);
-    if (!editor) stage.classList.remove('is-over-handle');
+    if (!editor) stage.classList.remove('is-over-handle', 'is-over-plate');
     updateEditBar(state, study);
     updateWindow(state, study);
 
@@ -1351,9 +1436,10 @@ export function mountViewer(container) {
     // editing, follow selection, and are sized in CSS pixels so zoom changes their image-
     // space size. panX/panY are deliberately NOT here -- a pan moves the host, not the pixels.
     // The level editor is in it (every action builds a new one), and so are the overlay toggle
-    // and the fill while editing: the editor's level fills follow both.
+    // and the fill while editing: the editor's level fills follow both. So are the plates' drag offsets
+    // (gate feedback G7, R44): a plate drag writes a new map on every move, and this is what repaints it.
     const dynamicKey = [study.calibration, study.geometry, state.measurementDrafts?.[study.id], state.selectedLevel, study.measurements, state.editing, state.selection, state.zoom,
-      state.levelEditor, editor ? state.overlays : null, editor ? state.overlayOpacity : null];
+      state.levelEditor, editor ? state.overlays : null, editor ? state.overlayOpacity : null, state.platePositions];
     if (!sameKey(dynamicKey, lastDynamic)) {
       lastDynamic = dynamicKey;
       redrawDynamic(liveGeometry());

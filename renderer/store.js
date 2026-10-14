@@ -54,6 +54,11 @@ let state = {
   // like zoom and pan. FRESH_VIEW resets it; entering and leaving edit mode keep it. See the FilmWindow typedef in
   // renderer/film-window.js, its only writer. Session-only, never persisted, never in the label record.
   filmWindow: null,
+  // (2026-10-13, gate feedback G7; plan D20, ruling R44) Where the user has dragged each level's label plate in edit
+  // mode: level code -> [dx, dy] in image pixels. View state like zoom and pan: FRESH_VIEW resets it, entering and
+  // leaving edit mode keep it. Written only by components/viewer.js, always as a new object; session-only, never
+  // persisted, never in the label record.
+  platePositions: {},
   running: null, // string|null — the id of the study whose /predict is in flight; one run at a time
   runStage: null,
   // (2026-09-08, batch spec 8.1) The running batch, or null: { ids, done, failed, warnings, skipped,

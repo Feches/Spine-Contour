@@ -6,7 +6,7 @@ import { DEMO_STUDIES } from '../renderer/data/demo-studies.js';
 
 const real = [{ id: 'SP-1000', source: 'real' }, { id: 'SP-1001', source: 'real' }];
 
-// The nine per-study view keys are written out twice -- here and in screens/studies.js -- because
+// The ten per-study view keys are written out twice -- here and in screens/studies.js -- because
 // data/ never imports from screens/. Nothing else keeps the two copies equal, and a key that drifts
 // would leave one path resetting the viewer and the other not.
 test('the two FRESH_VIEW copies are identical', () => {
@@ -14,11 +14,17 @@ test('the two FRESH_VIEW copies are identical', () => {
 });
 
 // (Gate feedback G3, 2026-10-11; plan D15) The window / level belongs to the view, like zoom and pan.
-test('FRESH_VIEW resets the view: zoom, pan, selection, edit mode, the level editor and the window', () => {
+// (Gate feedback G7, 2026-10-13; plan D20, ruling R44) So do the level plates' drag offsets.
+test('FRESH_VIEW resets the view: zoom, pan, selection, edit mode, the level editor, the window and the plates', () => {
   assert.deepEqual(FRESH_VIEW, {
     selectedLevel: null, zoom: 1, panX: 0, panY: 0, panMode: false, editing: false, selection: null, levelEditor: null,
-    filmWindow: null,
+    filmWindow: null, platePositions: {},
   });
+});
+
+test('hiding an open demo resets the plates with the rest of the view', () => {
+  const patch = demoVisibilityPatch({ studies: [...real, ...DEMO_STUDIES], paramSelected: [], openId: DEMO_STUDIES[0].id, compareId: null, screen: 'analysis' }, false);
+  assert.deepEqual(patch.platePositions, {});
 });
 
 test('demoStudiesShown reads whether any demo record is in the library', () => {
