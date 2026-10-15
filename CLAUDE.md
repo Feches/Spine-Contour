@@ -20,7 +20,8 @@ the contract, the level editor plan's Ledger, this file, HANDOFF). Unit 1005/100
 pushed, no release note (the owner picks the number at the gate; 1.2.0 is the suggestion); the companion bundle spec
 (`specs/2026-10-15-annotation-bundle-export-import-design.md`) is built after this gate.
 
-**2026-10-13 level plates, gate feedback G7 (RELEASED as v1.1.1: PR #64, merge `06c8cdd`):** branch `claude/level-plates`
+**2026-10-13 level plates, gate feedback G7 (~~BUILT, release 1.1.1 committed, not pushed~~ RELEASED as v1.1.1: PR #64,
+merge `06c8cdd`):** branch `claude/level-plates`
 in worktree `.claude/worktrees/level-plates`, off `origin/main` @ `cbbeb4e` (the merge of PR #60, v1.1.0). The owner's
 film faces right, and the level editor's fixed rightward label plate sat inside every body. Now each plate sits outside
 its level on the posterior side (D20, R43: `labelPlacement` in the new pure `renderer/viewer/level-labels.js`; a body
@@ -37,7 +38,8 @@ never persisted or recorded; `drawLevelEditor` returns the plates drawn; `client
 film phase, the gate chain and the other suites, a packaged build, backend pytest (no backend change). Nothing pushed;
 merging its PR to `main` with a merge commit publishes v1.1.1. Open: ~~the owner's R24~~ (closed 2026-10-15 by E2, above); PR #62 (release accuracy gate) is open and,
 once merged, blocks publication until its variables and token are set; PR #63 (in-app training) overlaps the retraining
-brainstorm; PR #61 closed unmerged as superseded (HANDOFF's first section, Next).
+brainstorm; PR #61 closed unmerged as superseded (HANDOFF's first section, Next). (The body of this paragraph is as written
+on 2026-10-13, before PR #64 merged: its "Nothing pushed" and "Open" are history, not the state now.)
 
 **2026-10-10 vertebral level editor, window / level, label record (RELEASED as v1.1.0 on 2026-10-12: PR #60, merge `cbbeb4e`):** branch
 `worktree-level-editor` in worktree `.claude/worktrees/level-editor`, off `origin/main` @ `20fd4c5` (v1.0.17). Edit mode
