@@ -20,13 +20,14 @@ import { newStudy } from '../renderer/screens/studies.js';
 import {
   configureLevelEditor, enterLevelEditor, exitNow, startPlace, placePoint, toggleLevelVisible, selectPlacingStep,
   restorePlacing, fitPlacing, writeReviewRecord, saveLevelEdits, hasStashedEditor, forgetLevelEditor, commitHandleMove,
+  revertPlacedLevel,
 } from '../renderer/level-editor.js';
 import { deriveStatus } from '../renderer/data/status.js';
 // (Gate feedback G3, 2026-10-11; plan D15) The window / level belongs to the view: renderer/film-window.js.
 import { configureFilmWindow, openWindowPanel, closeWindowPanel } from '../renderer/film-window.js';
 import { createMeasureQueue } from '../renderer/viewer/measure-queue.js';
 import { toLabelRecord } from '../renderer/data/label-record.js';
-import { LEVEL_CODES } from '../renderer/data/levels.js';
+import { LEVEL_CODES, levelState } from '../renderer/data/levels.js';
 import { validateAgainst } from './fixtures/schema-check.js';
 
 const IMAGE = { width: 400, height: 600 };
@@ -837,5 +838,37 @@ test('a model result\'s commit carries clearFailure false and a failed re-run ke
     assert.equal(after.processingError, 'The last run failed.');
     assert.equal(after.processingErrorAt, '2026-10-10T08:00:00.000Z');
     assert.equal(deriveStatus(after), 'fail');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (2026-10-15, annotation editor round 2, spec section 5.2) REVERT per level: revertPlacedLevel runs revertLevel
+// through update with edit: true, so the model's geometry reaches the study through /measure like a handle drag.
+
+test('revertPlacedLevel commits the model geometry through /measure; the study takes it and the level reads segmented with source model (spec §5.2)', async () => {
+  const model = lumbarGeometry();
+  const study = segmentedFilm('SP-9540', { reviewedAt: null });
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(model) });
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    const nudge = (points) => points.map(([x, y]) => [x + 5, y]);
+    const { superior, inferior } = model.vertebrae.L1;
+    commitHandleMove('L1', { superior: nudge(superior), inferior: nudge(inferior) });
+    await settle();
+    assert.equal(commits.length, 1);
+    assert.deepEqual(studyOf(study.id).geometry.vertebrae.L1.superior, nudge(superior), 'the drag landed');
+    assert.equal(levelState(getState().levelEditor.levels.L1, getState().levelEditor.model.L1), 'edited');
+
+    revertPlacedLevel('L1');
+    await settle();
+    assert.equal(commits.length, 2, 'the revert commits like a handle drag');
+    const sent = commits[1].geometry.vertebrae.L1;
+    assert.deepEqual({ superior: sent.superior, inferior: sent.inferior }, model.vertebrae.L1, 'the model\'s L1 was sent');
+    const { L1 } = studyOf(study.id).geometry.vertebrae;
+    assert.deepEqual({ superior: L1.superior, inferior: L1.inferior }, model.vertebrae.L1, 'the study took the model\'s L1');
+    const editor = getState().levelEditor;
+    assert.equal(editor.levels.L1.source, 'model');
+    assert.equal(levelState(editor.levels.L1, editor.model.L1), 'segmented');
   });
 });

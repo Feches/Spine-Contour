@@ -20,7 +20,7 @@ import {
 import { LEVEL_RGB, FEMORAL_OVERLAY_COLOR } from '../viewer/canvas.js';
 import {
   toggleLevelVisible, toggleLevelGroup, toggleGroupOpen, selectLevelRow, startPlace, cancelPlace, clearPlacedLevel,
-  saveLevelEdits, discardLevelEdits, keepEditing,
+  revertPlacedLevel, saveLevelEdits, discardLevelEdits, keepEditing,
 } from '../level-editor.js';
 
 const TITLE = 'Vertebral levels';
@@ -79,9 +79,12 @@ function levelRow(editor, code) {
   // placed by hand; CANCEL alone while it is being placed, which also covers a head placed by hand being re-placed
   // (a CLEAR there would leave the placement running with nothing to clear). A head placed by hand takes both
   // Place… and CLEAR (ruling R18): `is-stacked` lays them out as a column, Place… above CLEAR, in the same 70px.
+  // (Annotation editor round 2, spec §5.3) REVERT for an Edited level returns it to the model's output; an edited
+  // head shows Place… and REVERT stacked the same way, Place… above. CLEAR (manual) and REVERT (edited) never meet.
   const canPlace = !placing && (state === 'not_placed' || (circle && entry.visible));
   const canClear = !placing && state === 'manual';
-  const actions = el('div', { class: `lv-actions${canPlace && canClear ? ' is-stacked' : ''}` },
+  const canRevert = !placing && state === 'edited';
+  const actions = el('div', { class: `lv-actions${canPlace && (canClear || canRevert) ? ' is-stacked' : ''}` },
     canPlace ? el('button', {
       type: 'button',
       class: 'btn btn-small lv-place',
@@ -97,6 +100,14 @@ function levelRow(editor, code) {
       'data-level-key': `clear:${code}`,
       onClick: () => clearPlacedLevel(code),
     }, 'CLEAR') : null,
+    canRevert ? el('button', {
+      type: 'button',
+      class: 'lv-text-btn lv-revert',
+      'aria-label': `Revert ${name} to the model's output`,
+      title: `Revert ${name} to the model's output`,
+      'data-level-key': `revert:${code}`,
+      onClick: () => revertPlacedLevel(code),
+    }, 'REVERT') : null,
     placing ? el('button', {
       type: 'button',
       class: 'lv-text-btn lv-cancel',
@@ -223,9 +234,10 @@ function footer(editor, study) {
 
 // ---------------------------------------------------------------------------
 // Focus after a rebuild. The same key first; when that control is gone or disabled (Place… becomes CANCEL, CLEAR
-// becomes Place…, the prompt closes, Save edits disables itself after a save), the nearest control that stands
-// for the same thing, then the selected row, then the first control, so focus never drops to <body> from inside
-// the panel: the stage's keyboard handler reads a Tab from <body> as "cycle the handles".
+// becomes Place…, REVERT goes once the level reads Segmented, the prompt closes, Save edits disables itself after a
+// save), the nearest control that stands for the same thing (for REVERT, the row's select button), then the selected
+// row, then the first control, so focus never drops to <body> from inside the panel: the stage's keyboard handler
+// reads a Tab from <body> as "cycle the handles".
 
 function fallbackKeys(key) {
   const colon = key.indexOf(':');
@@ -235,6 +247,7 @@ function fallbackKeys(key) {
     case 'place': return [`cancel:${rest}`, rest];
     case 'cancel': return [`place:${rest}`, rest];
     case 'clear': return [`place:${rest}`, rest];
+    case 'revert': return [rest];
     case 'visible': return [rest];
     case 'prompt': return ['save', 'discard'];
     case 'save': return ['discard'];

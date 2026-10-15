@@ -24,8 +24,8 @@ import { loadLabelRecord, saveLabelRecord, deleteLabelRecord } from './api.js';
 import { showToast } from './components/toast.js';
 import {
   LEVEL_CODES, openEditor, toggleVisible, toggleGroup, toggleOpen, selectLevel, startPlacing, addPoint, undoPoint,
-  setPlacingStep, cancelPlacing, finishPlacing, clearLevel, setLevelGeometry, unsavedCount, canSave, markSaved,
-  revertToBaseline, sameGeometry,
+  setPlacingStep, cancelPlacing, finishPlacing, clearLevel, revertLevel, setLevelGeometry, unsavedCount, canSave,
+  markSaved, revertToBaseline, sameGeometry,
 } from './data/levels.js';
 import { projectGeometry, projectsLevel, regionFollowsLevels } from './data/level-projection.js';
 import { toLabelRecord, recordLevels, labelFileName, appVersion } from './data/label-record.js';
@@ -521,6 +521,15 @@ export function startPlace(code) {
 
 export function clearPlacedLevel(code) {
   update((editor) => clearLevel(editor, code), { edit: true });
+}
+
+/**
+ * REVERT (annotation editor round 2, spec §5.2): an Edited level back to the model's output, committed like a handle
+ * drag, so the study takes the model's geometry through /measure and the measurements follow. The unsaved count needs
+ * nothing: the level returns to its baseline (the count falls) or leaves a saved edit (it rises).
+ */
+export function revertPlacedLevel(code) {
+  update((editor) => revertLevel(editor, code), { edit: true });
 }
 
 // ---------------------------------------------------------------------------

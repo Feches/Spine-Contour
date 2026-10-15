@@ -609,6 +609,29 @@ export function clearLevel(editor, code) {
   return editor.handle?.code === code ? { ...next, handle: null } : next;
 }
 
+// A copy of a level's geometry with every point array new, so nothing is shared with the source.
+const copyGeometry = value => (Array.isArray(value) ? value.map(copyGeometry)
+  : value && typeof value === 'object'
+    ? Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, copyGeometry(inner)])) : value);
+
+/**
+ * REVERT (annotation editor round 2, spec §5.1): a no-op unless `levelState(entry, editor.model[code]) === 'edited'`
+ * and no placement is running for `code`. Otherwise the entry's `geometry` becomes a copy of `editor.model[code]`
+ * (point arrays copied; a femoral head takes the model circle's `center` and `radius` with `rim: null`) and its
+ * `source` becomes `model` (E7). `visible`, the selection and the focused handle stay (the handle names a point that
+ * still exists); nothing else on the editor changes. The level then reads Segmented, by the same sameGeometry test
+ * that made it Edited. A no-op returns the editor itself.
+ */
+export function revertLevel(editor, code) {
+  const entry = editor.levels[code];
+  const model = editor.model[code];
+  if (!entry || !model || editor.placing?.code === code || levelState(entry, model) !== 'edited') return editor;
+  const geometry = kindOf(code) === 'circle'
+    ? { center: copyPoint(model.center), radius: model.radius, rim: null }
+    : copyGeometry(model);
+  return setEntry(editor, code, { geometry, source: 'model' });
+}
+
 export function setLevelGeometry(editor, code, geometry) {
   return setEntry(editor, code, { geometry, source: 'annotator' });
 }

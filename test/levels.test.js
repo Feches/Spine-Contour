@@ -7,7 +7,7 @@ import {
   toggleVisible, toggleGroup, toggleOpen, selectLevel, startPlacing, addPoint, undoPoint, cancelPlacing,
   finishPlacing, canFinishPlacing, clearLevel, setLevelGeometry, unsavedCount, canSave, unsavedText, summaryText,
   groupCountText, groupCheckState, trainingStatus, placingLabel, placingHelp, dependencyNote,
-  markSaved, revertToBaseline, setPlacingStep, changedPoints, pointKeys,
+  markSaved, revertToBaseline, setPlacingStep, changedPoints, pointKeys, revertLevel,
 } from '../renderer/data/levels.js';
 import { SEGMENTAL_PAIRS } from '../renderer/data/segmental.js';
 import { DISC_LEVEL_PAIRS } from '../renderer/data/disc-heights.js';
@@ -1181,6 +1181,72 @@ test('setLevelGeometry replaces the geometry and marks the annotator', () => {
   assert.equal(levelState(next.levels.L1, next.model.L1), 'edited');
   assert.equal(e.levels.L1.source, 'model');
   assert.equal(next.levels.L2, e.levels.L2);
+});
+
+// ---------- REVERT one level (annotation editor round 2, spec §5.1) ----------
+
+test('revertLevel returns an Edited level to the model geometry with source model, and reads Segmented (spec §5.1)', () => {
+  const e = deepFreeze(selectLevel(setLevelGeometry(lumbarEditor(), 'L4', body(10, 75)), 'L4'));
+  assert.equal(levelState(e.levels.L4, e.model.L4), 'edited');
+  const reverted = revertLevel(e, 'L4');
+  assert.notEqual(reverted, e);
+  const entry = reverted.levels.L4;
+  assert.ok(sameGeometry(entry.geometry, e.model.L4));
+  assert.deepEqual(entry.geometry, e.model.L4);
+  assert.equal(entry.source, 'model');
+  assert.equal(entry.visible, true);
+  assert.equal(levelState(entry, reverted.model.L4), 'segmented');
+  assert.equal(unsavedCount(reverted), 0);
+  assert.notEqual(entry.geometry, e.model.L4, 'the geometry is a copy');
+  assert.notEqual(entry.geometry.superior, e.model.L4.superior, 'no pair is shared with the model');
+  assert.notEqual(entry.geometry.superior[0], e.model.L4.superior[0], 'no point is shared with the model');
+  assert.notEqual(entry.geometry.inferior[1], e.model.L4.inferior[1], 'no point is shared with the model');
+  assert.equal(reverted.levels.L2, e.levels.L2, 'the other levels are untouched');
+  for (const key of Object.keys(e).filter(key => key !== 'levels')) assert.equal(reverted[key], e[key], `${key} is kept`);
+  assert.equal(e.levels.L4.source, 'annotator', 'the original is untouched');
+});
+
+test('revertLevel on a femoral head takes the model circle with rim null and keeps a focused handle (Review Focus 5)', () => {
+  let e = setLevelGeometry(lumbarEditor(), 'FH1', { center: [12, 140], radius: 5, rim: [[7, 140], [17, 140]] });
+  e = { ...e, handle: { code: 'FH1', handle: 'R0' } };
+  assert.equal(levelState(e.levels.FH1, e.model.FH1), 'edited');
+  const reverted = revertLevel(e, 'FH1');
+  assert.deepEqual(reverted.levels.FH1.geometry, { center: [10, 140], radius: 5, rim: null });
+  assert.equal(reverted.levels.FH1.source, 'model');
+  assert.equal(levelState(reverted.levels.FH1, reverted.model.FH1), 'segmented');
+  assert.equal(reverted.handle, e.handle, 'the handle names a point that still exists');
+  assert.notEqual(reverted.levels.FH1.geometry.center, e.model.FH1.center, 'the centre is a copy');
+});
+
+test('revertLevel is a no-op for segmented, manual, not placed, not visible and placing levels', () => {
+  const e = lumbarEditor();
+  assert.equal(revertLevel(e, 'L1'), e, 'segmented');
+  const manual = setLevelGeometry(e, 'L3', body(10, 50));
+  assert.equal(levelState(manual.levels.L3, manual.model.L3), 'manual');
+  assert.equal(revertLevel(manual, 'L3'), manual, 'manual: nothing to revert to');
+  assert.equal(levelState(e.levels.L3, e.model.L3), 'not_placed');
+  assert.equal(revertLevel(e, 'L3'), e, 'not placed');
+  assert.equal(revertLevel(e, 'C4'), e, 'not visible');
+  const hidden = toggleVisible(setLevelGeometry(e, 'L4', body(10, 75)), 'L4');
+  assert.equal(levelState(hidden.levels.L4, hidden.model.L4), 'not_visible');
+  assert.equal(revertLevel(hidden, 'L4'), hidden, 'an edited level that is hidden reads not visible');
+  const placing = startPlacing(setLevelGeometry(e, 'FH1', { center: [12, 140], radius: 5, rim: null }), 'FH1');
+  assert.equal(levelState(placing.levels.FH1, placing.model.FH1), 'edited');
+  assert.equal(revertLevel(placing, 'FH1'), placing, 'being placed');
+  assert.equal(revertLevel(e, 'XX'), e, 'no such level');
+  const other = startPlacing(setLevelGeometry(e, 'L4', body(10, 75)), 'FH1');
+  const reverted = revertLevel(other, 'L4');
+  assert.equal(levelState(reverted.levels.L4, reverted.model.L4), 'segmented', 'a placement of another level does not stop it');
+  assert.equal(reverted.placing, other.placing, 'and that placement runs on');
+});
+
+test('reverting a saved edit counts one unsaved change; reverting an unsaved one counts none', () => {
+  const saved = markSaved(setLevelGeometry(lumbarEditor(), 'L4', body(10, 75)), 'film.label.json');
+  assert.equal(unsavedCount(saved), 0);
+  assert.equal(unsavedCount(revertLevel(saved, 'L4')), 1, 'the level now differs from the saved edit');
+  const fresh = setLevelGeometry(lumbarEditor(), 'L4', body(10, 75));
+  assert.equal(unsavedCount(fresh), 1);
+  assert.equal(unsavedCount(revertLevel(fresh, 'L4')), 0, 'the level is back at its baseline');
 });
 
 // ---------- unsaved changes, save and revert ----------
