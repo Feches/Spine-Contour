@@ -7,7 +7,7 @@ import {
   toggleVisible, toggleGroup, toggleOpen, selectLevel, startPlacing, addPoint, undoPoint, cancelPlacing,
   finishPlacing, canFinishPlacing, clearLevel, setLevelGeometry, unsavedCount, canSave, unsavedText, summaryText,
   groupCountText, groupCheckState, trainingStatus, placingLabel, placingHelp, dependencyNote,
-  markSaved, revertToBaseline, setPlacingStep, changedPoints, pointKeys, revertLevel,
+  markSaved, revertToBaseline, setPlacingStep, changedPoints, pointKeys, revertLevel, setComment, commentChanged,
 } from '../renderer/data/levels.js';
 import { SEGMENTAL_PAIRS } from '../renderer/data/segmental.js';
 import { DISC_LEVEL_PAIRS } from '../renderer/data/disc-heights.js';
@@ -590,6 +590,34 @@ test('openEditor completes a saved record that lacks some codes', () => {
   assert.equal(e.levels.L2.visible, true, 'falls back to the film-type default');
   assert.deepEqual(e.baseline.T1, saved.levels.T1);
   assert.equal(unsavedCount(e), 0);
+});
+
+test('openEditor takes the comment from the saved record, else the study, else empty; savedComment matches (spec §3.3)', () => {
+  const geometry = lumbarGeometry();
+  const withSaved = lumbarEditor({ saved: { file: 'f.label.json', levels: {}, comment: 'x' } });
+  assert.equal(withSaved.comment, 'x');
+  assert.equal(withSaved.savedComment, 'x');
+  // A record that exists decides, even when its comment is empty: the study's display copy is not consulted.
+  const emptySaved = lumbarEditor({
+    saved: { file: 'f.label.json', levels: {}, comment: '' },
+    study: { id: 'SP-0001', geometry, labelFile: null, labelComment: 'stale copy' },
+  });
+  assert.equal(emptySaved.comment, '');
+  // A saved object without a comment key (the shape that predates the comment) reads empty.
+  const oldSaved = lumbarEditor({ saved: { file: 'f.label.json', levels: {} } });
+  assert.equal(oldSaved.comment, '');
+  assert.equal(oldSaved.savedComment, '');
+  const badSaved = lumbarEditor({ saved: { file: 'f.label.json', levels: {}, comment: 42 } });
+  assert.equal(badSaved.comment, '');
+  const fromStudy = lumbarEditor({ study: { id: 'SP-0001', geometry, labelFile: null, labelComment: 'y' } });
+  assert.equal(fromStudy.comment, 'y');
+  assert.equal(fromStudy.savedComment, 'y');
+  const neither = lumbarEditor();
+  assert.equal(neither.comment, '');
+  assert.equal(neither.savedComment, '');
+  const nullCopy = lumbarEditor({ study: { id: 'SP-0001', geometry, labelFile: null, labelComment: null } });
+  assert.equal(nullCopy.comment, '');
+  assert.equal(unsavedCount(withSaved), 0, 'a comment read from disk is the baseline, not a change');
 });
 
 // R9: study.geometry.femoral_circles is a compact array (a hidden Head 1 beside a placed Head 2 stores ONE
@@ -1318,6 +1346,58 @@ test('revertToBaseline restores visibility, source and geometry, and ends a plac
   assert.equal(reverted.record, e.record);
   assert.deepEqual(reverted.baseline, saved.baseline);
   assert.equal(unsavedCount(e) > 0, true, 'the original is untouched');
+});
+
+// ---------- the comment (annotation editor round 2, spec §3) ----------
+
+test('setComment changes only the comment; commentChanged ignores surrounding whitespace', () => {
+  const e = lumbarEditor({ saved: { file: 'f.label.json', levels: {}, comment: 'L5 sacralised' } });
+  const typed = setComment(e, 'L5 sacralised, S1 fused');
+  assert.equal(typed.comment, 'L5 sacralised, S1 fused');
+  assert.deepEqual({ ...typed, comment: e.comment }, e, 'nothing else on the editor changes');
+  assert.equal(e.comment, 'L5 sacralised', 'the original is untouched');
+  assert.equal(typed.savedComment, 'L5 sacralised');
+  assert.equal(commentChanged(e), false);
+  assert.equal(commentChanged(typed), true);
+  assert.equal(commentChanged(setComment(e, '  L5 sacralised \n')), false, 'surrounding whitespace is not a change');
+  assert.equal(commentChanged(setComment(e, 'L5  sacralised')), true, 'inner whitespace is');
+  assert.equal(setComment(e, undefined).comment, '');
+  assert.equal(setComment(e, null).comment, '');
+  assert.equal(commentChanged(setComment(lumbarEditor(), '   ')), false, 'blank over empty is no change');
+  assert.equal(commentChanged(setComment(e, '')), true, 'clearing a saved comment is a change');
+});
+
+test('a comment change alone counts one unsaved change; with a level change, two', () => {
+  const saved = markSaved(lumbarEditor(), 'film.label.json');
+  assert.equal(unsavedCount(saved), 0);
+  assert.equal(canSave(saved), false);
+  const commented = setComment(saved, 'sacralised');
+  assert.equal(unsavedCount(commented), 1);
+  assert.equal(canSave(commented), true, 'a comment alone enables Save');
+  assert.equal(unsavedCount(toggleVisible(commented, 'C3')), 2);
+  assert.equal(unsavedCount(setComment(commented, '  ')), 0, 'taking the text back out leaves nothing');
+  assert.equal(unsavedCount(toggleVisible(saved, 'C3')), 1, 'a level change alone still counts one');
+});
+
+test('markSaved trims the comment into savedComment; revertToBaseline restores the saved text', () => {
+  const typed = setComment(lumbarEditor(), '  L5 sacralised \n');
+  const saved = markSaved(typed, 'film.label.json');
+  assert.equal(saved.comment, 'L5 sacralised');
+  assert.equal(saved.savedComment, 'L5 sacralised');
+  assert.equal(commentChanged(saved), false);
+  assert.equal(unsavedCount(saved), 0);
+  assert.equal(typed.comment, '  L5 sacralised \n', 'the original is untouched');
+  const edited = setComment(saved, 'L5 is not sacralised');
+  assert.equal(unsavedCount(edited), 1);
+  const reverted = revertToBaseline(edited);
+  assert.equal(reverted.comment, 'L5 sacralised');
+  assert.equal(reverted.savedComment, 'L5 sacralised');
+  assert.equal(unsavedCount(reverted), 0);
+  assert.equal(edited.comment, 'L5 is not sacralised', 'the original is untouched');
+  const cleared = markSaved(setComment(saved, '   '));
+  assert.equal(cleared.comment, '');
+  assert.equal(cleared.savedComment, '');
+  assert.equal(revertToBaseline(setComment(lumbarEditor(), 'typed')).comment, '', 'a fresh editor reverts to no comment');
 });
 
 test('revertToBaseline of a fresh editor goes back to the state at entry', () => {

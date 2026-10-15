@@ -29,6 +29,8 @@
  *  @property {Placing|null} placing                                  the placement in progress
  *  @property {{cervical: boolean, thoracic: boolean, lumbar: boolean, sacral: boolean, femoral: boolean}} open
  *  @property {{then: 'exit'|'back'}|null} exitPrompt
+ *  @property {string} comment                                       the free-text comment as typed (annotation round 2, spec §3)
+ *  @property {string} savedComment                                  the comment as last saved or read from disk
  * (2026-10-11, gate feedback G3; plan D15) No window: the window / level belongs to the view, `state.filmWindow`
  * (the FilmWindow typedef in renderer/film-window.js), and outlives entering and leaving edit mode.
  */
@@ -417,6 +419,12 @@ export function openEditor({ study, region, modelGeometry, saved }) {
   const baseline = saved
     ? Object.fromEntries(LEVEL_CODES.map(code => [code, saved.levels?.[code] ?? levels[code]]))
     : snapshot(levels);
+  // (annotation editor round 2, spec §3.3) The record on disk is the source of the comment; the study's
+  // `labelComment` is only its display copy, read when no record was handed in. A saved object without a
+  // `comment` key (one that predates it) reads empty. Nothing is trimmed or capped here.
+  const comment = saved
+    ? (typeof saved.comment === 'string' ? saved.comment : '')
+    : (typeof study?.labelComment === 'string' ? study.labelComment : '');
   return {
     studyId: study?.id ?? null,
     region: REGIONS.includes(region) ? region : 'auto',
@@ -429,6 +437,8 @@ export function openEditor({ study, region, modelGeometry, saved }) {
     placing: null,
     open: Object.fromEntries(LEVEL_GROUPS.map(group => [group.key, group.codes.some(code => levels[code].visible)])),
     exitPrompt: null,
+    comment,
+    savedComment: comment,
   };
 }
 
@@ -638,13 +648,27 @@ export function setLevelGeometry(editor, code, geometry) {
 
 // ---------- unsaved changes, save and revert ----------
 
-/** Levels whose (visible, geometry) pair differs from the baseline; a source change alone does not count. */
+/** Replace the comment text, as typed. Nothing else on the editor changes (spec §3.3). */
+export function setComment(editor, text) {
+  return { ...editor, comment: String(text ?? '') };
+}
+
+/** True when the comment differs from the saved one, ignoring leading and trailing whitespace (the record trims it). */
+export function commentChanged(editor) {
+  return String(editor.comment ?? '').trim() !== String(editor.savedComment ?? '').trim();
+}
+
+/**
+ * Levels whose (visible, geometry) pair differs from the baseline, plus one while the comment differs from the
+ * saved one (annotation round 2, spec §3.3); a source change alone does not count.
+ */
 export function unsavedCount(editor) {
-  return LEVEL_CODES.filter(code => {
+  const levels = LEVEL_CODES.filter(code => {
     const entry = editor.levels[code];
     const base = editor.baseline?.[code];
     return entry.visible !== base?.visible || !sameGeometry(entry.geometry, base?.geometry);
   }).length;
+  return levels + (commentChanged(editor) ? 1 : 0);
 }
 
 /** Save is allowed with changes, or once with none when the study has no record yet (D10). */
@@ -657,18 +681,24 @@ export function unsavedText(n) {
   return n === 1 ? '1 UNSAVED CHANGE' : `${n} UNSAVED CHANGES`;
 }
 
-/** After a successful save: the levels become the baseline and the record exists. `file` defaults to the current one. */
+/**
+ * After a successful save: the levels become the baseline and the record exists. `file` defaults to the current one.
+ * The comment becomes its trimmed text, as the record holds it, and that text is the saved one.
+ */
 export function markSaved(editor, file) {
+  const comment = String(editor.comment ?? '').trim();
   return {
     ...editor,
     baseline: snapshot(editor.levels),
     record: { file: file ?? editor.record.file ?? null, exists: true },
+    comment,
+    savedComment: comment,
   };
 }
 
-/** Discard: every level back to the baseline, any placement and focused handle dropped. */
+/** Discard: every level back to the baseline and the comment to the saved text, any placement and focused handle dropped. */
 export function revertToBaseline(editor) {
-  return { ...editor, levels: snapshot(editor.baseline), placing: null, handle: null };
+  return { ...editor, levels: snapshot(editor.baseline), comment: editor.savedComment, placing: null, handle: null };
 }
 
 // ---------- counts and training status ----------

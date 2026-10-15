@@ -84,6 +84,8 @@ export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
     // (2026-09-11) the note: read from the filename by studyFromFile or the workspace load, or
     // typed in the drawer; null until then.
     note: null,
+    // (annotation round 2, spec §3.3) the display copy of the label record's comment; null until a save writes one.
+    labelComment: null,
     // (2026-09-10, studies-table spec 8.1) the review mark; set on the Analysis screen, cleared by every write that changes the numbers.
     reviewedAt: null,
     addedAt: new Date().toISOString(), view: DEFAULT_VIEW, thumbnail: null,

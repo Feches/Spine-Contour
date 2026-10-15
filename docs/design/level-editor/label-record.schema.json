@@ -49,6 +49,10 @@
       "description": "True when no level and no femoral head is not_placed."
     },
     "edits": { "$ref": "#/$defs/edits" },
+    "comment": {
+      "description": "The annotator's free-text note on this film (annotation editor round 2 spec, section 3.1): trimmed, null when blank. Optional, so a record saved before comments still validates; the app always writes it.",
+      "oneOf": [{ "type": "string" }, { "type": "null" }]
+    },
     "levels": {
       "type": "object",
       "additionalProperties": false,
