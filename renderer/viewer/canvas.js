@@ -4,7 +4,7 @@ import { LEVELS, FEMORAL_SIDES } from './geometry.js';
 import { applyWindow } from './window-level.js';
 import { LEVEL_CODES, kindOf, levelState, placementSteps, fitRim } from '../data/levels.js';
 import { quadrilateral } from '../data/level-projection.js';
-import { levelHandles } from './level-handles.js';
+import { levelHandles, HANDLE_RADIUS_CSS_PX, handleRadiusImagePx, handleScale } from './level-handles.js';
 import { labelPlacement, plateOffset } from './level-labels.js';
 
 export const LEVEL_RGB = {
@@ -199,7 +199,7 @@ const FEMORAL_HANDLE_COLOR = `rgb(${FEMORAL_OVERLAY_COLOR.join(',')})`;
 export const TRACE_COLOR = '#ffe071';
 
 // Handles keep a constant size ON SCREEN up to 1:1 (past it they magnify with the film, R28), unlike the
-// outlines, which scale with the image.
+// outlines, which scale with the image; the level handle itself shrinks with the film below 1:1 (G8, D21).
 // Every handle dimension below is in CSS pixels and is multiplied by opts.pixelRatio
 // (image pixels per CSS pixel at the current fit and zoom, floored at 1 by ruling R28) at draw time.
 const HANDLE_RING_RADIUS_PX = 10;
@@ -444,14 +444,16 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
 // placed level filled and outlined, the selected level's handles, the model's own geometry dashed under an
 // edited level, a plate naming each level, and the placement in progress. Every size is in CSS pixels times
 // `opts.pixelRatio` floored at 1 (ruling R28), so it holds its size on screen at any fit and zoom up to 1:1 and
-// magnifies with the film past it. The editor state is read, never written.
+// magnifies with the film past it; the one exception is the level handle, drawn 6 CSS px at 1:1 and shrinking with
+// the film below it to a floor of 3 CSS px, its outline and focus ring in step (gate feedback G8, decision D21;
+// `handleRadiusImagePx`, `handleScale`). The editor state is read, never written.
 
 const LEVEL_STROKE_ALPHA = 0.85;
 const LEVEL_STROKE_PX = 1.25;
 const SELECTED_STROKE_PX = 2;
 const GHOST_COLOR = 'rgba(250,247,242,.7)';
 const INK_COLOR = '#FAF7F2';
-export const LEVEL_HANDLE_RADIUS_PX = 6;   // exported for the stage's grab radius past 1:1 (R28)
+export const LEVEL_HANDLE_RADIUS_PX = HANDLE_RADIUS_CSS_PX;   // exported for the stage's grab radius past 1:1 (R28); the drawn radius is handleRadiusImagePx (G8)
 const LEVEL_HANDLE_OUTLINE_PX = 2;
 const CENTRE_DOT_RADIUS_PX = 3.5;
 const C2_CENTROID_RADIUS_PX = 3;
@@ -468,6 +470,8 @@ const isPoint = (p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFin
 const isPair = (pair) => Array.isArray(pair) && pair.length === 2 && isPoint(pair[0]) && isPoint(pair[1]);
 const rgba = (color, alpha) => `rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
 const dashFor = (pixelRatio) => EDITOR_DASH_PX.map(length => length * pixelRatio);
+// A handle's stroke in image pixels: its outline shrinks with the handle (G8, D21) but is never thinner than 1 CSS px.
+const handleOutlinePx = (pixelRatio) => Math.max(pixelRatio, LEVEL_HANDLE_OUTLINE_PX * pixelRatio * handleScale(pixelRatio));
 
 // A level's overlay colour; the femoral heads share the femoral green.
 function levelColor(code) {
@@ -579,17 +583,17 @@ function drawLevelHandles(ctx, code, geometry, focused, pixelRatio) {
   for (const { handle, point, colorKey } of levelHandles(code, geometry)) {
     if (focused && focused.code === code && focused.handle === handle) {
       ctx.beginPath();
-      ctx.arc(point[0], point[1], HANDLE_RING_RADIUS_PX * pixelRatio, 0, 2 * Math.PI);
+      ctx.arc(point[0], point[1], HANDLE_RING_RADIUS_PX * pixelRatio * handleScale(pixelRatio), 0, 2 * Math.PI);
       ctx.strokeStyle = STAGE_SELECTED_COLOR;
       ctx.lineWidth = SELECTED_STROKE_PX * pixelRatio;
       ctx.stroke();
     }
     ctx.beginPath();
-    ctx.arc(point[0], point[1], LEVEL_HANDLE_RADIUS_PX * pixelRatio, 0, 2 * Math.PI);
+    ctx.arc(point[0], point[1], handleRadiusImagePx(pixelRatio), 0, 2 * Math.PI);
     ctx.fillStyle = colorFor(colorKey, code);
     ctx.fill();
     ctx.strokeStyle = STAGE_BG_COLOR;
-    ctx.lineWidth = LEVEL_HANDLE_OUTLINE_PX * pixelRatio;
+    ctx.lineWidth = handleOutlinePx(pixelRatio);
     ctx.stroke();
   }
 }
@@ -647,11 +651,11 @@ function drawPlacement(ctx, canvas, placing, pixelRatio) {
   }
   placed.forEach(({ point, index }) => {
     ctx.beginPath();
-    ctx.arc(point[0], point[1], LEVEL_HANDLE_RADIUS_PX * pixelRatio, 0, 2 * Math.PI);
+    ctx.arc(point[0], point[1], handleRadiusImagePx(pixelRatio), 0, 2 * Math.PI);
     ctx.fillStyle = colorFor(steps[index]?.colorKey ?? 'trace', placing.code);
     ctx.fill();
     ctx.strokeStyle = STAGE_BG_COLOR;
-    ctx.lineWidth = LEVEL_HANDLE_OUTLINE_PX * pixelRatio;
+    ctx.lineWidth = handleOutlinePx(pixelRatio);
     ctx.stroke();
   });
   if (fit) {

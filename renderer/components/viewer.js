@@ -486,6 +486,7 @@ export function mountViewer(container) {
   // keeps its 6 image px and grows with the film (R28), so the grab area follows the drawn disc (the re-review
   // of the gate feedback: at 800% on a small film a press inside the drawn handle missed it).
   const HANDLE_GRAB_PX = 14;
+  // (G8, D21) The drawn handle may shrink to 3 CSS px on a zoomed-out film; the grab radius keeps its 14 CSS px floor whatever is drawn.
   function grabRadius() {
     return Math.max(HANDLE_GRAB_PX, LEVEL_HANDLE_RADIUS_PX / Math.min(1, pixelRatio()));
   }

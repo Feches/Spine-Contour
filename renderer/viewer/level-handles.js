@@ -15,6 +15,25 @@ import { imageToClient } from './geometry.js';
 
 export const RIM_HANDLES = ['R0', 'R1', 'R2', 'R3'];
 
+/** A handle's radius in CSS px at 1:1 and above, and the floor it shrinks to on a zoomed-out film (gate feedback G8, decision D21). */
+export const HANDLE_RADIUS_CSS_PX = 6;
+export const HANDLE_RADIUS_FLOOR_CSS_PX = 3;
+
+/**
+ * A handle's radius in IMAGE pixels for a draw whose `pixelRatio` is the R28-floored ratio (image px per CSS px):
+ * 6 on screen at 1:1 (and past it the handle grows with the film, as every size does), shrinking with the film
+ * below 1:1 to 3 CSS px at a ratio of 2 and beyond, so a handle on a zoomed-out film no longer covers a
+ * vertebra (G8, D21; R28).
+ */
+export function handleRadiusImagePx(pixelRatio) {
+  return Math.max(HANDLE_RADIUS_CSS_PX, HANDLE_RADIUS_FLOOR_CSS_PX * Math.max(1, pixelRatio));
+}
+
+/** The factor (1 down to 0.5) by which the handle shrank on screen at `pixelRatio`, for the outline and focus ring to shrink in step (G8, D21; R28). */
+export function handleScale(pixelRatio) {
+  return handleRadiusImagePx(pixelRatio) / (HANDLE_RADIUS_CSS_PX * Math.max(1, pixelRatio));
+}
+
 const isPoint = p => Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]);
 
 // Each corner handle names the pair it lives in and its place there: superior = [SA, SP], inferior = [IA, IP].
