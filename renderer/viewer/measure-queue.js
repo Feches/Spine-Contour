@@ -7,10 +7,14 @@ import { debounce } from './interactions.js';
 // committing on another study flushes the pending one instead of replacing it, replacing a
 // study's geometry (a prediction, a reset) discards its pending or in-flight correction, and a
 // failed round-trip discards its preview. Drafts live outside Study records:
-// persistence and exports always see the last successfully measured pair.
+// persistence and exports always see the last successfully measured pair. (2026-10-15, annotation editor round 2,
+// section 4.3) A commit made with `clearFailure` (the level editor's, on a film no model produced) marks its study:
+// the write that lands then nulls processingError and processingErrorAt in the same patch as the measurements, and
+// a call that fails writes nothing, so the failure stays until a later flagged commit lands.
 export function createMeasureQueue({ measure, getState, setState, showToast, debounceMs = 150 }) {
   const revisions = new Map(); // studyId -> latest revision issued
   const measured = new Map();  // studyId -> the geometry the study's current measurements describe
+  const clearing = new Set();  // studyIds whose pending commit asked to clear the failure
   let pendingId = null;        // the study whose call sits in the debounce, or null
 
   function bump(studyId) {
@@ -41,6 +45,7 @@ export function createMeasureQueue({ measure, getState, setState, showToast, deb
 
   async function recalculate(studyId) {
     pendingId = null;
+    const clear = clearing.delete(studyId);
     const revision = bump(studyId);
     const study = getState().studies.find((item) => item.id === studyId);
     const geometry = getState().measurementDrafts?.[studyId];
@@ -66,6 +71,7 @@ export function createMeasureQueue({ measure, getState, setState, showToast, deb
       // (studies-table spec 2026-09-10, section 8.4). On the write, not derived: one line, one test.
       // The same write records manual-edit provenance in qc -- landmarks always, femoral when the circles moved.
       writeStudy(studyId, { measurements: result.measurements, geometry: result.geometry, reviewedAt: null,
+        ...(clear ? { processingError: null, processingErrorAt: null } : {}),
         qc: { ...current.qc, ...(result.qc?.coverage ? { coverage: result.qc.coverage } : {}),
           manual_edits: { ...current.qc?.manual_edits, landmarks: true,
             femoral: Boolean(current.qc?.manual_edits?.femoral)
@@ -87,9 +93,11 @@ export function createMeasureQueue({ measure, getState, setState, showToast, deb
   // Previews an edited geometry as a NEW reference and schedules the re-measure. Every edit
   // path ends here: drag release, keyboard nudge, retrace fit. The bump supersedes any response
   // still in flight for this study -- after a commit, none of them describes the store's geometry.
-  function commitGeometry(studyId, geometry) {
+  // `clearFailure` rides the debounce: coalesced commits keep it once any of them set it.
+  function commitGeometry(studyId, geometry, { clearFailure = false } = {}) {
     bump(studyId);
     if (!getState().studies.some((item) => item.id === studyId)) return;
+    if (clearFailure) clearing.add(studyId);
     setState((current) => ({ measurementDrafts: { ...current.measurementDrafts, [studyId]: geometry } }));
     if (pendingId !== null && pendingId !== studyId) {
       schedule.cancel();
@@ -103,6 +111,7 @@ export function createMeasureQueue({ measure, getState, setState, showToast, deb
   // measurements now describe (a fresh prediction, a reset).
   function replaceMeasured(studyId, geometry) {
     bump(studyId);
+    clearing.delete(studyId);
     if (pendingId === studyId) {
       schedule.cancel();
       pendingId = null;

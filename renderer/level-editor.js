@@ -49,7 +49,7 @@ const NO_PREDICTION = 'the model\'s prediction is not loaded.';
 const deps = { commitGeometry: null, getPrediction: null, ensureFilm: null, imageInfo: null };
 
 /**
- * @param {{commitGeometry: (studyId: string, geometry: object) => void,
+ * @param {{commitGeometry: (studyId: string, geometry: object, options?: {clearFailure?: boolean}) => void,
  *   getPrediction: (studyId: string) => ({measurements: object, geometry: object, qc: object|null}|undefined),
  *   ensureFilm: (studyId: string) => Promise<{images: object|null, raw: object|null, reason: string|null, superseded: boolean}>,
  *   imageInfo: (studyId: string, options?: {storedOnly?: boolean}) => Promise<{file: string, sha256: string,
@@ -126,7 +126,10 @@ function sync(editor) {
   const geometry = projectGeometry(editor, study);
   if (!geometry) return;
   if ((geometry.region === 'cervical' || geometry.region === 'full_spine') && !validAnteriorSide(geometry.anterior_side)) return;
-  deps.commitGeometry(editor.studyId, geometry);
+  // (2026-10-15, annotation editor round 2, section 4.3) A film no model produced is the editor's alone: its first
+  // landed commit clears the failure the film carried. A model result's commit passes false, so a failed re-run over
+  // old numbers still reads Failed.
+  deps.commitGeometry(editor.studyId, geometry, { clearFailure: isHandPlaced(study) });
 }
 
 // A focused handle on a level that is hidden, unplaced or being placed is dropped here, in one place, whatever

@@ -19,8 +19,9 @@ import { getState, setState } from '../renderer/store.js';
 import { newStudy } from '../renderer/screens/studies.js';
 import {
   configureLevelEditor, enterLevelEditor, exitNow, startPlace, placePoint, toggleLevelVisible, selectPlacingStep,
-  restorePlacing, fitPlacing, writeReviewRecord, saveLevelEdits, hasStashedEditor, forgetLevelEditor,
+  restorePlacing, fitPlacing, writeReviewRecord, saveLevelEdits, hasStashedEditor, forgetLevelEditor, commitHandleMove,
 } from '../renderer/level-editor.js';
+import { deriveStatus } from '../renderer/data/status.js';
 // (Gate feedback G3, 2026-10-11; plan D15) The window / level belongs to the view: renderer/film-window.js.
 import { configureFilmWindow, openWindowPanel, closeWindowPanel } from '../renderer/film-window.js';
 import { createMeasureQueue } from '../renderer/viewer/measure-queue.js';
@@ -57,9 +58,9 @@ const PLAIN_IMAGE = async () => ({ file: 'x', sha256: SHA, width: IMAGE.width, h
 function wire(commits, ensureFilm = NO_FILM, { getPrediction = () => undefined, imageInfo = PLAIN_IMAGE } = {}) {
   const queue = createMeasureQueue({ measure, getState, setState, showToast: () => {}, debounceMs: 0 });
   configureLevelEditor({
-    commitGeometry: (studyId, geometry) => {
-      commits.push({ studyId, geometry });
-      queue.commitGeometry(studyId, geometry);
+    commitGeometry: (studyId, geometry, options) => {
+      commits.push({ studyId, geometry, options });
+      queue.commitGeometry(studyId, geometry, options);
     },
     getPrediction,
     ensureFilm,
@@ -789,4 +790,52 @@ test('G6 review round 1: with no prediction snapshot, the geometry of the sideca
   assert.deepEqual(sidecarRecord, snapshotRecord, 'the same record but for saved_at');
   assert.equal(sidecarRecord.levels.L1.state, 'segmented', 'a model level reads segmented, not manual');
   assert.equal(sidecarRecord.levels.L2.state, 'edited', 'the stored correction is still measured against the model');
+});
+
+// ---------------------------------------------------------------------------
+// (2026-10-15, annotation editor round 2, spec section 4.3) The first hand-placed commit clears the failure. sync
+// passes `clearFailure: isHandPlaced(study)`; the measure queue's write nulls the failure beside the measurements.
+
+test('the first hand-placed commit on a failed film carries clearFailure and the write clears the failure: the film reads Hand-placed (spec 4.3)', async () => {
+  const study = failedAutoFilm('SP-9534');
+  assert.equal(deriveStatus(study), 'fail');
+  const commits = [];
+  wire(commits);
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    placeBody('L3', [100, 100]);
+    await settle();
+    assert.equal(commits.length, 1);
+    assert.deepEqual(commits[0].options, { clearFailure: true });
+    const after = studyOf(study.id);
+    assert.equal(after.processingError, null);
+    assert.equal(after.processingErrorAt, null);
+    assert.notEqual(after.measurements, null, 'the same write brought the measurements');
+    assert.equal(deriveStatus(after), 'hand');
+  });
+});
+
+test('a model result\'s commit carries clearFailure false and a failed re-run keeps reading Failed (port spec P6)', async () => {
+  const model = lumbarGeometry();
+  const study = segmentedFilm('SP-9535', {
+    reviewedAt: null, predictionId: 'p-1', qc: { models: { vertebrae: 'x' } },
+    processingError: 'The last run failed.', processingErrorAt: '2026-10-10T08:00:00.000Z',
+  });
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(model) });
+  await withStore(study, async () => {
+    assert.equal(deriveStatus(study), 'fail');
+    await enterLevelEditor(study.id);
+    const nudge = (points) => points.map(([x, y]) => [x + 5, y]);
+    const { superior, inferior } = model.vertebrae.L1;
+    commitHandleMove('L1', { superior: nudge(superior), inferior: nudge(inferior) });
+    await settle();
+    assert.equal(commits.length, 1);
+    assert.deepEqual(commits[0].options, { clearFailure: false });
+    const after = studyOf(study.id);
+    assert.deepEqual(after.geometry.vertebrae.L1.superior, nudge(superior), 'the write landed');
+    assert.equal(after.processingError, 'The last run failed.');
+    assert.equal(after.processingErrorAt, '2026-10-10T08:00:00.000Z');
+    assert.equal(deriveStatus(after), 'fail');
+  });
 });
