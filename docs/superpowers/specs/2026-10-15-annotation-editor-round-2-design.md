@@ -2,7 +2,8 @@
 
 **Status:** approved in conversation 2026-10-15; this document is the written spec. Branch
 `worktree-annotation-round-2` in the worktree `.claude/worktrees/annotation-round-2`, off `origin/main` @ `06c8cdd`
-(v1.1.1, the merge of PR #64). Nothing here is implemented.
+(v1.1.1, the merge of PR #64). BUILT on that branch (plan `plans/2026-10-15-annotation-editor-round-2.md`, its eight
+tasks and the final review's fix wave), at the owner's gate, not pushed.
 
 **Builds on:** the vertebral level editor and the label record (released as v1.1.0 and v1.1.1; handoff
 `docs/design/level-editor/HANDOFF.md`, plan `plans/2026-10-10-level-editor.md`, user doc `docs/level-editor.md`), the
@@ -102,11 +103,17 @@ vertically only, with the placeholder `Anything the next reader or the trainer s
 
 Requirements, in order of weight:
 
-1. **Typing never loses the caret.** The panel rebuilds its DOM on every editor change. The text box is one node
-   created when the panel mounts and reattached on every rebuild, and its value is set from `editor.comment` only
-   while it is not the focused element. The panel's rebuild key carries `commentChanged(editor)` (a boolean), not the
-   text, so typing rebuilds the panel once when the comment first differs from the saved text and once when it
-   returns to it, never per keystroke.
+1. **Typing never loses the caret.** The panel rebuilds its DOM on every editor change, around a footer that
+   persists: the footer (`.lv-foot`) and its comment block (the label and the one text box) are created when the
+   panel mounts and are never detached while an editor is shown. A rebuild makes a new head and list and inserts them
+   before the footer, and a new status line and actions row (or exit prompt) inside it, after the comment block; only
+   the no-editor path (no editor, no study, another study) clears everything. So the box keeps its focus, caret,
+   selection, scroll, undo history and any composition in progress (a dead key, an IME) through every rebuild. Its
+   value is set from `editor.comment` only while it is not the focused element. The panel's rebuild key carries
+   `commentChanged(editor)` (a boolean), not the text, so typing rebuilds the panel once when the comment first
+   differs from the saved text and once when it returns to it, never per keystroke. *Amended 2026-10-15 (the final
+   review, I2):* the first build reattached the box to a new footer on every rebuild (plan P8), and the detach that
+   took lost Ctrl+Z across the rebuild and cancelled a dead-key or IME composition on the first differing keystroke.
 2. **The count and Save edits follow each keystroke.** Each `input` event calls the wiring's `setLevelComment(text)`,
    which runs `setComment` through `update` with `edit: true, commit: false`: an edit, no `/measure`. The footer's
    `N UNSAVED CHANGES` and the Save button's state are right after the rebuild the boolean triggers.
@@ -177,8 +184,8 @@ The level editor's commit path is `sync` in `renderer/level-editor.js` → `deps
 → the viewer's measure queue (`renderer/viewer/measure-queue.js`) → `/measure` → `writeStudy`. It becomes:
 
 - `commitGeometry(studyId, geometry, { clearFailure })`, the third argument new and optional. `sync` passes
-  `clearFailure: isHandPlaced(study)` for the study it commits: a film with no model result. A landmark drag on a
-  model result (the viewer's own commits) passes nothing, so a failed re-run over old numbers still reads Failed
+  `clearFailure: isHandPlaced(study)` for the study it commits: a film with no model result. A commit on a model
+  result passes `false` and any other commit passes nothing, so a failed re-run over old numbers still reads Failed
   (port spec P6).
 - The queue carries the flag through its debounce and coalescing: a study's pending commit is `true` once any
   coalesced commit set it.
@@ -191,6 +198,15 @@ note and the FAILED card go with the pill, and `reviewBlockedReason` returns nul
 whose projection measures nothing (a cervical reading with no anterior side, R7, which is not committed) stays Failed
 until something is committed. This is a third clearing site beside the two the port spec names (a successful run,
 `changeRegion`); §8 amends it.
+
+*Amended 2026-10-15 (the final review, I1):* the clear is undone when the annotator takes every level off again. A
+film no model produced whose projection then places nothing (Discard after placing, CLEAR on its only placed level,
+every level unchecked; `projectionIsEmpty` in `data/level-projection.js`) is not committed through `/measure`, which
+would answer all-null numbers and leave a Hand-placed film with nothing placed. `sync` calls the screen's
+`clearResult(studyId, patch)` instead: the queue's `replaceMeasured(studyId, null)` orphans any `/measure` pending or in
+flight for the study, then one `setState` writes `measurements`, `geometry`, `qc` and `reviewedAt` null with the
+failure the study carried when edit mode was entered (`editor.entryFailure`, stored by `openEditor`), so the film reads
+Failed again, or Unsegmented if it never ran. A model result keeps committing its empty projection through `/measure`.
 
 ### 4.4 What does not change
 

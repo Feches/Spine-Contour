@@ -1747,7 +1747,8 @@ No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet
 
 Spec `docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md` (E1–E7, the owner's rulings and the
 planner's); plan `plans/2026-10-15-annotation-editor-round-2.md` (rulings P1–P10); branch `worktree-annotation-round-2`
-off `origin/main` @ `06c8cdd` (v1.1.1), `9d5b4e6`..`fa0c181` and the records commit; user doc `docs/level-editor.md`.
+off `origin/main` @ `06c8cdd` (v1.1.1), `9d5b4e6`..`fa0c181` and the records commit, then the final review's fix wave
+(I1, I2); user doc `docs/level-editor.md`.
 Nothing the 2026-10-10 amendment says is removed; R24 closes with E2.
 
 **Status.** The 2026-10-15 amendment in the `data/status.js` section above: `'hand'`, `Hand-placed`, rank 4, TO REVIEW,
@@ -1762,9 +1763,20 @@ dropped at the start of `recalculate`, and dropped by `replaceMeasured` (plan P2
 `processingError: null, processingErrorAt: null` to the patch that sets the measurements, geometry, `reviewedAt: null`
 and qc, in the same `setState` (E6), so the film never reads Unsegmented in between. A `/measure` error writes nothing:
 the film stays Failed and the next commit tries again. The level editor's `sync` passes `clearFailure:
-isHandPlaced(study)`; the viewer's own commits (a landmark drag on a model result) pass nothing, so a failed re-run over
+isHandPlaced(study)`, which is `false` on a model result, and any other commit passes nothing, so a failed re-run over
 old numbers still reads Failed (port spec P6, which gains this third clearing site). `configureLevelEditor`'s
 `commitGeometry` dependency takes the optional third argument.
+
+**The empty hand-placed projection (the final review, I1; spec §4.3's amendment).** `components/viewer.js` exports the
+queue's `replaceMeasured` beside `commitGeometry`, and `configureLevelEditor` takes a fifth dependency,
+`clearResult(studyId, patch)`, supplied by `screens/analysis.js`: `replaceMeasured(studyId, null)` (any `/measure`
+pending or in flight for the study is orphaned and its draft dropped), then `patch` onto the study, matched by id and
+`addedAt`, in one `setState`. `sync`, for a study `isHandPlaced` whose projection `data/level-projection.js`
+`projectionIsEmpty(geometry)` reads as empty (`manually_cleared`, or no vertebra, S1 endplate, femoral circle or C2/C7
+centroid), calls `clearResult` with `measurements`, `geometry`, `qc` and `reviewedAt` null and the failure from
+`editor.entryFailure` instead of committing: the film reads Failed again, or Unsegmented if it never ran. The
+`LevelEditor` typedef gains `entryFailure: { processingError, processingErrorAt }`, read from the study by `openEditor`
+(nulls when it has none) and carried by every step; `markSaved` and `revertToBaseline` leave it.
 
 **Exports.** `data/levels.js`: `revertLevel(editor, code)`, `setComment(editor, text)`, `commentChanged(editor)`; the
 `LevelEditor` typedef gains the strings `comment` and `savedComment`; `openEditor`'s `saved` takes an optional `comment`
@@ -1780,9 +1792,12 @@ one patch and puts only `savedComment` into the stored editor (P3: the live `com
 reads `recordComment(record)`; `writeReviewRecord` needs no change, since `openEditor` with no record takes the study's
 `labelComment`. `screens/studies.js` `matchesQuery` searches `labelComment`.
 
-**Panel and Analysis.** `components/level-editor.js`: the footer's comment box, one `<textarea>` made at mount and
-re-appended on every rebuild with its selection restored (P8; the rebuild key carries `commentChanged(editor)`, not the
-text, and the viewer's key handler already ignores keys typed in a `textarea`, P9), and the REVERT button
+**Panel and Analysis.** `components/level-editor.js`: the footer's comment box, one `<textarea>` made at mount in a
+footer that persists (the final review, I2, superseding P8's re-append and selection restore): `.lv-foot` and its
+`.lv-comment` block are never detached while an editor is shown; the head and the list rebuild around them, inserted
+before the foot, and the status line and the actions row (or exit prompt) rebuild inside it, after the comment block;
+only the no-editor path clears everything (the rebuild key carries `commentChanged(editor)`, not the text, and the
+viewer's key handler already ignores keys typed in a `textarea`, P9), and the REVERT button
 (`data-level-key` `revert:<code>`, `lv-text-btn lv-revert`; an edited head stacks Place… over REVERT in `is-stacked`).
 `screens/analysis.js`: the read-only `analysis-comment` block under the actions row, written on every `update()` with no
 key of its own (P10) and hidden in edit mode. CSS: `.badge-hand` in `styles/components.css`; `.lv-comment*`,

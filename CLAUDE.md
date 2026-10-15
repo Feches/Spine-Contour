@@ -16,7 +16,12 @@ the same patch as the measurements, which CLOSES R24 (the owner's E2). An Edited
 `revertPlacedLevel`; `source` back to `model`, E7). `9d5b4e6`..`fa0c181` (eight commits) and a records commit (the design
 handoff's sections 2, 3, 6, 9, 11 and the new 12a, `docs/level-editor.md`, ROADMAP §8, the port and studies-table specs,
 the contract, the level editor plan's Ledger, this file, HANDOFF). Unit 1005/1005 (975 on the base);
-`smoke-levels.mjs` dom 141/141 and film 25/25 on a fresh `%TEMP%` profile, DOM, store and file reads only. Nothing
+`smoke-levels.mjs` dom 141/141 and film 25/25 on a fresh `%TEMP%` profile, DOM, store and file reads only. The final
+review's fix wave (`7be532f` and a records commit): I1, Place then Discard (or CLEAR, or unchecking the only placed
+level) on a failed film no longer reads Hand-placed with nothing placed (the editor keeps `entryFailure`; an empty
+hand-placed projection goes to the screen's `clearResult`, not `/measure`, and the film reads Failed again, or
+Unsegmented if it never ran); I2, the comment box's footer is never detached by a rebuild, so Ctrl+Z and composition
+survive it; unit 1014/1014, `smoke-levels.mjs` dom 145/145 and film 25/25, `smoke-studies.mjs` 151/151. Nothing
 pushed, no release note (the owner picks the number at the gate; 1.2.0 is the suggestion); the companion bundle spec
 (`specs/2026-10-15-annotation-bundle-export-import-design.md`) is built after this gate.
 

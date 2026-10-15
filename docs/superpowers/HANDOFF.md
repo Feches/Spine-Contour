@@ -70,7 +70,7 @@ why, a failed film placed by hand stayed Failed (the open ruling R24), and one e
   unchanged; a record saved before it validates and reads as no comment); the study gains `labelComment`, the display
   copy, written by the same save as `labelFile`. The editor carries `comment` and `savedComment`; `commentChanged` makes
   `unsavedCount` one higher, so the footer's count, Save edits, the exit prompt and the stash follow with no further
-  change. The Vertebral levels footer has a `COMMENT` textarea (one node kept across the panel's rebuilds, P8; 2,000
+  change. The Vertebral levels footer has a `COMMENT` textarea (its footer never detached by a rebuild, I2; 2,000
   characters, `max-height: 30vh`); Save edits writes the record and `labelComment` and keeps the live text in the box
   (P3); Mark reviewed's zero-change record carries the study's comment; the Analysis screen shows it read-only (six lines,
   scrollable, hidden in edit mode) and the Find search matches it.
@@ -78,8 +78,9 @@ why, a failed film placed by hand stayed Failed (the open ruling R24), and one e
   not failed, not reviewed, whose result no model produced (`isHandPlaced`; the real-study guard keeps demos Segmented,
   P1). Sort rank 4 (`fail 0, proc 1, unseg 2, rev 3, hand 4, seg 5, ok 6`), counted in TO REVIEW, `.badge-hand`. The
   level editor's `sync` passes `clearFailure: isHandPlaced(study)` and the measure queue's write nulls `processingError`
-  and `processingErrorAt` in the same patch as the measurements (a per-study flag that survives the debounce, P2); the
-  viewer's own commits pass nothing, so a failed re-run over old numbers still reads Failed.
+  and `processingErrorAt` in the same patch as the measurements (a per-study flag that survives the debounce, P2); a
+  model result's commit passes `false` and any other commit nothing, so a failed re-run over old numbers still reads
+  Failed.
 - **REVERT (E3, E7).** `revertLevel(editor, code)` returns an Edited level to the model's geometry (a head: the model
   circle, `rim: null`) with `source` back to `model`; `revertPlacedLevel` commits it through `/measure` like a drag. A
   mono `REVERT` button in the row's action column (`revert:<code>`); an edited head stacks Place… over REVERT.
@@ -92,11 +93,24 @@ why, a failed film placed by hand stayed Failed (the open ruling R24), and one e
 - Counts: unit 1005/1005 (975 on the base); `smoke-levels.mjs` dom 141/141 and film 25/25 (a fresh `%TEMP%` profile, one
   copied OLIF lumbar film, DOM, store and file reads only, no screenshots); the other suites this workstation runs were
   re-measured the same day, none with a FAIL line (`tools/smoke/README.md`).
+- The final review's fix wave (`7be532f`, then a records commit): I1, Place then Discard (or CLEAR, or unchecking the
+  only placed level) on a failed film read Hand-placed with nothing placed and its failure erased; now the editor keeps
+  the study's failure at entry (`entryFailure`) and `sync` sends an empty hand-placed projection to the screen's
+  `clearResult` (the queue's `replaceMeasured`, then one write) instead of `/measure`, so the film reads Failed again,
+  or Unsegmented if it never ran; I2, the comment box lost Ctrl+Z and composition because every rebuild detached it;
+  now the footer and its comment block persist and the head, list, status line and actions rebuild around them;
+  `.analysis-comment-text` wraps long runs (M5); counts after it: unit 1014/1014, `smoke-levels.mjs` dom 145/145 and
+  film 25/25, `smoke-studies.mjs` 151/151.
 - Not run: a packaged build; backend pytest (no backend change); `smoke-cervical.mjs`, `smoke-segmental.mjs` and
   `smoke-calibration.mjs` (no cervical film, no ruler films, no Tesseract binary here).
 
 **Next.** The owner's gate: the three features on real films from the workstation's films folder, on a `%TEMP%`
-profile with `TESSERACT_CMD` at the installed app's bundled OCR (no screenshot of a real film). Push, PR and release
+profile with `TESSERACT_CMD` at the installed app's bundled OCR (no screenshot of a real film). The fix wave added to
+the plan's Task 9 checklist: place then Discard on a failed film reads Failed again; type a comment, drag a handle,
+then press an arrow (the arrow must nudge the handle, not move the caret; unverified, since the handle press's
+`preventDefault` in `components/viewer.js` may leave the textarea focused); Ctrl+Z after the first keystroke; a
+dead-key accent as the first character; and, after upgrading, a look over the real library for old model results with
+neither `predictionId` nor `qc.models` reading Hand-placed (spec §9). Push, PR and release
 only on the owner's say-so; no release note is written yet (the owner picks the number; 1.2.0 is the suggestion).
 R24 is closed. Still open: the bundle spec's build, which follows this gate; PR #62 (release accuracy gate) and PR #63
 (in-app training); the retraining brainstorm (`docs/superpowers/NEXT-SESSION-retraining.md`, a new worktree off

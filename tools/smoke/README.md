@@ -531,7 +531,12 @@ is where it was first drawn. Section 5 then goes on from section 3's state.
 (Annotation editor round 2, 2026-10-15; spec `docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md`)
 Section 12 gains six dom checks on the failed `SP-9301`: its header pill (`.analysis-status .badge`) reads `Failed` before
 Edit; after the four clicks that place L1 by hand the study's `processingError` and `processingErrorAt` are null and the
-pill reads `Hand-placed` (§4.3: the measure queue's own write clears the failure); outside edit mode, after section 17's
+pill reads `Hand-placed` (§4.3: the measure queue's own write clears the failure). (The round's final review, I1; two
+more checks, eight in all) Discard (`.lv-discard`) then takes L1 off: the pill reads `Failed` again, the study's
+`processingError` and `processingErrorAt` are the fixture's again and its `measurements` and `geometry` are null (no
+`/measure` for an empty hand-placed film; the screen's `clearResult` puts back the failure the film carried at Edit);
+the same four clicks place L1 again and the pill reads `Hand-placed`, so Save edits still toasts `Saved 1 edit` and
+the rest of the section runs as before. Outside edit mode, after section 17's
 checks, Mark reviewed is enabled with its note hidden, a click makes the button read `Reviewed …` and the pill `Reviewed`
 (the film has a record already, so the mark writes nothing), a second click returns the pill to `Hand-placed` (§4.4), and
 the Find list's row reads `Hand-placed`; the film is then opened from the list again, so section 13 starts where it did.
@@ -550,10 +555,14 @@ toasts `Saved 1 edit to the label record.`, the record's `comment` and the study
 `Discarded 1 change.` with the box back to the saved text; Escape (focus first on L1's select button, since Discard is
 disabled with nothing unsaved) leaves edit mode and the Analysis panel's `.analysis-comment` shows the text read-only;
 Edit again reads it back into the box with the block hidden and `NOTHING TO SAVE`. Nine checks; section 21 leaves
-`SP-9300` in edit mode, and section 8 enters edit mode only when it is not already in it. Section 21 also tries Ctrl+Z
-once after the first keystroke and prints an `info` line, never a check: the first keystroke rebuilds the panel (the
-comment starts to differ from the saved text), and on 2026-10-15 the undo did not survive that rebuild (`"H" -> "H"`;
-a control on a throwaway textarea in the same app undid `H` to empty, and lost the undo once detached and reattached).
+`SP-9300` in edit mode, and section 8 enters edit mode only when it is not already in it. (The round's final review,
+I2; two more checks, eleven in all) The first keystroke, `H`, reads `1 UNSAVED CHANGE` and rebuilds the panel (the
+comment starts to differ from the saved text); Ctrl+Z (`cdp.key('z', { ctrl: true })`, the harness's key helper with
+its new `ctrl` modifier) undoes it to an empty box and `NOTHING TO SAVE`, since the panel's foot is never detached by a
+rebuild; and the thoracic rebuild leaves `.lv-foot` and `.lv-comment` the same nodes (a property set on each before it
+survives) with a new `.lv-list`, the panel's children `lv-head`, `lv-list`, `lv-foot` and the foot's `lv-comment`,
+`lv-status`, `lv-actions-row`. (Before the fix the Ctrl+Z step was an `info` line that read `"H" -> "H"`: the old
+rebuild detached the box and lost its undo.)
 The film phase also saves a record whose `image.sha256` is 64 hex characters and whose `model.version` is the run's,
 and (G5, D18) whose edited level, moved by the SA handle drag and the ArrowRight nudge, lists `edited_points` `['sa']`,
 exactly the corners whose value differs from its `model_corners`, with `edits.points_moved` the sum of the edited
@@ -601,7 +610,12 @@ manual-calibration save **5/5**, batch **7/7**, verify **5/5**; processing **15/
 seg 5, ok 6`; a `badge-hand` row ranked 9 before) and its TO REVIEW expectation in 16c treats a `badge-hand` row as it
 treats `badge-rev` (spec §4.2: Hand-placed counts in TO REVIEW); its count is unchanged. Not run: cervical and
 segmental (no lateral cervical film here, and both screenshot the film), and `smoke-calibration.mjs` (it needs ruler
-films reading 27.1, 35.8 and 41.5 mm, and screenshots them).
+films reading 27.1, 35.8 and 41.5 mm, and screenshots them). (2026-10-15, the round's final review fix wave, `7be532f`)
+Section 12 gains two dom checks (Discard on the hand-placed failed film reads Failed again; L1 placed again reads
+Hand-placed) and section 21 two (Ctrl+Z after the first keystroke, now a check; the foot and comment block kept as the
+same nodes through a rebuild): dom **145/145** (141 + 4) and film **25/25**, each phase pair run on its own fresh
+`%TEMP%` launch, twice (one copied OLIF lumbar film; DOM, store and file reads only, no screenshots); studies
+**151/151** on a separate fresh launch. The other suites were not re-run.
 
 ## The landmark-editor suites after the level editor (2026-10-10)
 

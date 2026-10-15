@@ -701,3 +701,15 @@ films folder (no screenshots):
       restores it; the Find search finds it.
 - [ ] The dark theme: the Hand-placed pill and the comment box read.
 - [ ] Demo studies still read Segmented or Needs review.
+- [ ] (The final review, I1) A failed real film: Edit, place one level by hand (the pill reads Hand-placed), then
+      Discard: the pill reads Failed again with its stored reason, and after DONE the `Last run failed` note and the
+      FAILED card are back and Mark reviewed is disabled again.
+- [ ] (The final review, M2; unverified) Type in the comment box, drag a handle on the film, then press an arrow: the
+      arrow must nudge the handle, not move the box's caret (the handle press's `preventDefault` in
+      `components/viewer.js` (~:787) may leave the textarea focused).
+- [ ] (The final review, I2) Ctrl+Z right after the first keystroke in the comment box takes it back (the box empty,
+      `NOTHING TO SAVE`).
+- [ ] (The final review, I2) A dead-key accent (or an IME character) as the comment's first character composes
+      normally.
+- [ ] (Spec §9) After upgrading, a look over the real library for old model results with neither `predictionId` nor
+      `qc.models` that now read Hand-placed.

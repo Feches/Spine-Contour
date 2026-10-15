@@ -67,9 +67,11 @@ it, and Save edits then writes the level `segmented` with its contour again.
 comment per film, not per level, three rows tall, 2,000 characters at most, resizable vertically up to 30% of the
 window's height, with the placeholder `Anything the next reader or the trainer should know about this film.`. Typing
 counts as one unsaved change while the text differs from the saved one (whitespace at either end ignored), so the
-footer's count and Save edits follow each keystroke; Tab, the arrows and Escape stay in the box and never reach the
-stage's handle keys. Outside edit mode the Analysis panel shows a saved comment read-only, as a `COMMENT` block under
-the Export / Mark reviewed row (capped at six lines, scrollable), and the Find list's search matches it (no column).
+footer's count and Save edits follow each keystroke; the arrows and Escape stay in the box, and Tab moves focus out of
+it as it does anywhere else; none of them ever reaches the stage's handle keys. The box is never rebuilt while the
+panel changes around it, so its caret and its undo (Ctrl+Z) are kept. Outside edit mode the Analysis panel shows a
+saved comment read-only, as a `COMMENT` block under the Export / Mark reviewed row (capped at six lines, scrollable),
+and the Find list's search matches it (no column).
 
 ### The five states, and what they mean for training
 
@@ -368,7 +370,10 @@ means no model ran). A Hand-placed film sorts after Needs review and before Segm
 Studies summary, and Mark reviewed turns it Reviewed; Unmark reviewed returns it to Hand-placed. A later failed re-run
 reads Failed again, and a successful re-run makes it a model result again (its record stays; the levels then compare
 to the new model). A demo study never reads Hand-placed. A projection that measures nothing (a cervical or full-spine
-reading with no anterior side, R7) is not committed, so a film stays Failed until one is.
+reading with no anterior side, R7) is not committed, so a film stays Failed until one is. Taking every level off again
+(Discard after placing, CLEAR on the only placed level, or unchecking it) leaves the film no result at all: nothing is
+sent to `/measure`, and the film returns to what it was when Edit was clicked, Failed with its stored reason, or
+Unsegmented if it never ran (the round's final review, I1).
 
 ~~A film whose segmentation failed keeps its Failed status after levels are placed on it by hand: it still sorts first
 and blocks Mark reviewed until a run succeeds or the owner decides otherwise (R24, on the human gate's checklist).~~
@@ -386,7 +391,8 @@ unchecking, Save edits and the record on disk (its `edited_points` and `edits` i
 mode and (section 17) outside it, with the right-button drag and the double right-click, the keyboard and the stash,
 and (section 18) the record Mark reviewed writes for a film with none, and (section 19) where the level plates sit,
 their drag, the double-click and their reset, and (2026-10-15, round 2) section 12's failed film, which now reads Failed
-before its first commit and Hand-placed after, section 20 (REVERT) and section 21 (the comment);
+before its first commit, Hand-placed after, and Failed again once Discard takes the level off, section 20 (REVERT) and
+section 21 (the comment, Ctrl+Z on its first keystroke included);
 the pure modules have unit tests (`test/levels`, `level-projection`, `level-handles`, `level-labels` for the plates,
 `window-level`, `label-record`, `contours`, and `interactions` for the double right-click; `canvas` draws the plates),
 `test/level-editor-wiring.test.js` drives the wiring
