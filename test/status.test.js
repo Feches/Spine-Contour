@@ -238,3 +238,18 @@ test('a manually edited study reads Needs review until it is marked, and the man
   assert.ok(after.some((reason) => reason.startsWith('Manually edited landmarks')),
     'the mark outranks the reason for the badge, it does not remove the reason');
 });
+
+// Hand-placed (annotation editor round 2, spec section 4.1): a real study whose levels the annotator placed and no model
+// produced. The real-study guard is on deriveStatus's own line; a demo has neither model field.
+test('a real hand-placed result reads Hand-placed until reviewed; a failure, no result, a demo and a model result do not (spec 4.1)', () => {
+  const hand = { source: 'real', measurements: { PI: 60, PT: 20, SS: 40 }, geometry: {}, qc: null, predictionId: null, reviewedAt: null, processingError: null };
+  assert.equal(deriveStatus(hand), 'hand');
+  assert.equal(displayStatus(hand, null, null), 'hand');
+  assert.equal(deriveStatus({ ...hand, reviewedAt: '2026-10-15T10:00:00.000Z' }), 'ok');
+  assert.equal(deriveStatus({ ...hand, processingError: 'No spine was found on this film.' }), 'fail');
+  assert.equal(deriveStatus({ ...hand, measurements: null }), 'unseg');
+  assert.equal(deriveStatus({ ...hand, source: 'demo' }), 'seg', 'a demo has neither model field and must not read Hand-placed');
+  assert.equal(deriveStatus({ ...hand, predictionId: 'p-1' }), 'seg');
+  assert.equal(deriveStatus({ ...hand, qc: { models: {} } }), 'seg');
+  assert.equal(statusLabel('hand'), 'Hand-placed');
+});

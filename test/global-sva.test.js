@@ -190,7 +190,9 @@ test('full-spine results require review and do not inherit cervical-only guidanc
   assert.equal(deriveStatus(s), 'rev');
   assert.ok(landmarkReviewReasons(s.qc).some(reason => reason.includes('C7 centroid')));
   assert.ok(!landmarkReviewReasons(s.qc).some(reason => reason.includes('C2/C7')));
-  assert.equal(deriveStatus({ ...s, qc: null }), 'rev');
+  // A model result with no qc record still needs review. `predictionId` marks it as a model's: a real study with neither it
+  // nor qc.models reads Hand-placed (data/status.js).
+  assert.equal(deriveStatus({ ...s, qc: null, predictionId: 'p-1' }), 'rev');
 });
 
 function combinedStudy() {

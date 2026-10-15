@@ -12,8 +12,11 @@ function study(id, overrides = {}) {
     measurements: null, geometry: null, qc: null, reviewedAt: null, clinical: {}, ...overrides,
   };
 }
-const SEG = { measurements: { PI: 50, PT: 10, SS: 40, LL: { 'L1-S1': 45 } }, qc: { femoral: { confidence: 0.9 } } };
-const REV = { measurements: { PI: 50, PT: 10, SS: 40, LL: { 'L1-S1': 45 } }, qc: { femoral: { confidence: 0.2 } } };
+// A model result: `predictionId` is what keeps a real study from reading Hand-placed (data/predictions.js isHandPlaced).
+const SEG = { measurements: { PI: 50, PT: 10, SS: 40, LL: { 'L1-S1': 45 } }, qc: { femoral: { confidence: 0.9 } }, predictionId: 'p-1' };
+const REV = { measurements: { PI: 50, PT: 10, SS: 40, LL: { 'L1-S1': 45 } }, qc: { femoral: { confidence: 0.2 } }, predictionId: 'p-1' };
+// A real study whose levels were placed by hand: measurements, no model run (no predictionId, no qc.models).
+const HAND = { measurements: { PI: 50, PT: 10, SS: 40, LL: { 'L1-S1': 45 } }, geometry: {}, qc: null, predictionId: null };
 const ids = (rows) => rows.map((s) => s.id);
 
 test('the default sort is newest first and the keys are the seven columns', () => {
@@ -72,21 +75,23 @@ test('by view, workspace and folder: the cell labels, em dash and blank last', (
   assert.deepEqual(ids(sortFindRows([hand, a, b], { key: 'view', dir: 'desc' })), ['SP-1000', 'SP-1001', 'SP-1002']);
 });
 
-test('by status: Failed, Processing, Unsegmented, Needs review, Segmented, Reviewed; running reads Processing', () => {
+test('by status: Failed, Processing, Unsegmented, Needs review, Hand-placed, Segmented, Reviewed; running reads Processing', () => {
   const rows = [
     study('SP-1000', SEG), study('SP-1001', REV), study('SP-1002'),
     study('SP-1003', { ...SEG, reviewedAt: '2026-09-10T12:00:00.000Z' }),
     study('SP-1004', { processingError: 'Orientation uncertain' }),
+    study('SP-1005', HAND),
   ];
-  assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'asc' })), ['SP-1004', 'SP-1002', 'SP-1001', 'SP-1000', 'SP-1003']);
-  assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'desc' })), ['SP-1003', 'SP-1000', 'SP-1001', 'SP-1002', 'SP-1004']);
-  assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'asc' }, 'SP-1003')), ['SP-1004', 'SP-1003', 'SP-1002', 'SP-1001', 'SP-1000']);
+  assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'asc' })), ['SP-1004', 'SP-1002', 'SP-1001', 'SP-1005', 'SP-1000', 'SP-1003']);
+  assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'desc' })), ['SP-1003', 'SP-1000', 'SP-1005', 'SP-1001', 'SP-1002', 'SP-1004']);
+  assert.deepEqual(ids(sortFindRows(rows, { key: 'status', dir: 'asc' }, 'SP-1003')), ['SP-1004', 'SP-1003', 'SP-1002', 'SP-1001', 'SP-1005', 'SP-1000']);
   assert.equal(statusRank('fail'), 0);
   assert.equal(statusRank('proc'), 1);
   assert.equal(statusRank('unseg'), 2);
   assert.equal(statusRank('rev'), 3);
-  assert.equal(statusRank('seg'), 4);
-  assert.equal(statusRank('ok'), 5);
+  assert.equal(statusRank('hand'), 4);
+  assert.equal(statusRank('seg'), 5);
+  assert.equal(statusRank('ok'), 6);
   assert.equal(statusRank('nonsense'), null);
 });
 
@@ -113,6 +118,16 @@ test('summaryCounts: UNSEGMENTED counts Unsegmented, Processing and Failed; TO R
   assert.deepEqual(summaryCounts(rows, 'SP-1000', newBatch(['SP-1000', 'SP-1003', 'SP-1005'])), { total: 6, unsegmented: 3, toReview: 1 });
   assert.deepEqual(summaryCounts([]), { total: 0, unsegmented: 0, toReview: 0 });
   assert.deepEqual(summaryCounts(null), { total: 0, unsegmented: 0, toReview: 0 });
+});
+
+// Annotation editor round 2, spec section 4.2: a Hand-placed film is waiting on a person, so it is TO REVIEW; it is not UNSEGMENTED.
+test('summaryCounts: a Hand-placed film counts in TO REVIEW and not in UNSEGMENTED', () => {
+  const rows = [study('SP-1000', SEG), study('SP-1001', HAND), study('SP-1002', REV)];
+  assert.deepEqual(summaryCounts(rows), { total: 3, unsegmented: 0, toReview: 2 });
+  // Marked reviewed, it reads Reviewed and leaves the count.
+  assert.deepEqual(summaryCounts([study('SP-1001', { ...HAND, reviewedAt: '2026-10-15T10:00:00.000Z' })]), { total: 1, unsegmented: 0, toReview: 0 });
+  // Re-running it reads Processing, so it moves to UNSEGMENTED while it runs.
+  assert.deepEqual(summaryCounts(rows, 'SP-1001'), { total: 3, unsegmented: 1, toReview: 1 });
 });
 
 test('an unknown key keeps the input order', () => {

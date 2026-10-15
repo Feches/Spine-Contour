@@ -18,7 +18,9 @@ export const FIND_SORT_KEYS = Object.freeze(['study', 'subject', 'view', 'worksp
 
 // Workflow order: what still needs doing sorts first. (2026-10-01, issue #39; port spec 3) A failure
 // needs a person first, then the films running or waiting in the batch, then films nobody has run.
-const STATUS_RANK = Object.freeze({ fail: 0, proc: 1, unseg: 2, rev: 3, seg: 4, ok: 5 });
+// (2026-10-15, annotation editor round 2, section 4.2) A Hand-placed film is a result nobody has checked yet,
+// so it sorts after Needs review and before Segmented.
+const STATUS_RANK = Object.freeze({ fail: 0, proc: 1, unseg: 2, rev: 3, hand: 4, seg: 5, ok: 6 });
 
 export function statusRank(status) {
   return STATUS_RANK[status] ?? null;
@@ -73,7 +75,7 @@ export function sortFindRows(studies, sort, runningId = null, batch = null) {
 
 // The Studies summary line's counts (2026-10-01, issue #39; port spec 3), over the list given, which
 // is the whole library. They follow the pills the rows show: UNSEGMENTED is every film shown as
-// Unsegmented, Processing or Failed, TO REVIEW every film shown as Needs review; Segmented and
+// Unsegmented, Processing or Failed, TO REVIEW every film shown as Needs review or Hand-placed; Segmented and
 // Reviewed films count in the total only. A film showing the Unsupported view pill derives
 // Unsegmented or Failed, so it is UNSEGMENTED too. `runningId` is state.running, `batch` state.batch.
 export function summaryCounts(studies, runningId = null, batch = null) {
@@ -82,7 +84,7 @@ export function summaryCounts(studies, runningId = null, batch = null) {
   for (const study of list) {
     const status = displayStatus(study, runningId, batch);
     if (status === 'unseg' || status === 'proc' || status === 'fail') counts.unsegmented += 1;
-    else if (status === 'rev') counts.toReview += 1;
+    else if (status === 'rev' || status === 'hand') counts.toReview += 1;
   }
   return counts;
 }
