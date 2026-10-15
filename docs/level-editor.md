@@ -374,8 +374,8 @@ reads Failed again, and a successful re-run makes it a model result again (its r
 to the new model). A demo study never reads Hand-placed. A projection that measures nothing (a cervical or full-spine
 reading with no anterior side, R7) is not committed, so a film stays Failed until one is. Taking every level off again
 (Discard after placing, CLEAR on the only placed level, or unchecking it) leaves the film no result at all: nothing is
-sent to `/measure`, and the film returns to what it was when Edit was clicked, Failed with its stored reason, or
-Unsegmented if it never ran (the round's final review, I1).
+sent to `/measure`, and the film returns to what the editor found when Edit was clicked: Failed with the failure it held then, or
+Unsegmented when it held none, as a film that never ran or a hand-placed film reopened in a later session (the round's final review, I1).
 
 ~~A film whose segmentation failed keeps its Failed status after levels are placed on it by hand: it still sorts first
 and blocks Mark reviewed until a run succeeds or the owner decides otherwise (R24, on the human gate's checklist).~~

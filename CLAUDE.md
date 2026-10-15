@@ -20,7 +20,7 @@ the contract, the level editor plan's Ledger, this file, HANDOFF). Unit 1005/100
 review's fix wave (`7be532f` and a records commit): I1, Place then Discard (or CLEAR, or unchecking the only placed
 level) on a failed film no longer reads Hand-placed with nothing placed (the editor keeps `entryFailure`; an empty
 hand-placed projection goes to the screen's `clearResult`, not `/measure`, and the film reads Failed again, or
-Unsegmented if it never ran); I2, the comment box's footer is never detached by a rebuild, so Ctrl+Z and composition
+Unsegmented when it held no failure at Edit, as a film that never ran or a hand-placed film reopened in a later session); I2, the comment box's footer is never detached by a rebuild, so Ctrl+Z and composition
 survive it; unit 1014/1014, `smoke-levels.mjs` dom 145/145 and film 25/25, `smoke-studies.mjs` 151/151. Gate feedback
 G8 (the owner, D21): the level handles shrink with the film below 1:1, from 6 px at 1:1 and above to a floor of 3 px
 (`handleRadiusImagePx`, `handleScale` in `renderer/viewer/level-handles.js`), their outline and focus ring in step, the

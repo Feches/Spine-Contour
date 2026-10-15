@@ -97,7 +97,7 @@ why, a failed film placed by hand stayed Failed (the open ruling R24), and one e
   only placed level) on a failed film read Hand-placed with nothing placed and its failure erased; now the editor keeps
   the study's failure at entry (`entryFailure`) and `sync` sends an empty hand-placed projection to the screen's
   `clearResult` (the queue's `replaceMeasured`, then one write) instead of `/measure`, so the film reads Failed again,
-  or Unsegmented if it never ran; I2, the comment box lost Ctrl+Z and composition because every rebuild detached it;
+  or Unsegmented when it held no failure at Edit (a film that never ran, or a hand-placed film reopened in a later session); I2, the comment box lost Ctrl+Z and composition because every rebuild detached it;
   now the footer and its comment block persist and the head, list, status line and actions rebuild around them;
   `.analysis-comment-text` wraps long runs (M5); counts after it: unit 1014/1014, `smoke-levels.mjs` dom 145/145 and
   film 25/25, `smoke-studies.mjs` 151/151.

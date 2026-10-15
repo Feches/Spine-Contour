@@ -1774,7 +1774,7 @@ pending or in flight for the study is orphaned and its draft dropped), then `pat
 `addedAt`, in one `setState`. `sync`, for a study `isHandPlaced` whose projection `data/level-projection.js`
 `projectionIsEmpty(geometry)` reads as empty (`manually_cleared`, or no vertebra, S1 endplate, femoral circle or C2/C7
 centroid), calls `clearResult` with `measurements`, `geometry`, `qc` and `reviewedAt` null and the failure from
-`editor.entryFailure` instead of committing: the film reads Failed again, or Unsegmented if it never ran. The
+`editor.entryFailure` instead of committing: the film reads Failed again, or Unsegmented when the editor found no failure at Edit (a film that never ran, or a hand-placed film reopened in a later session). The
 `LevelEditor` typedef gains `entryFailure: { processingError, processingErrorAt }`, read from the study by `openEditor`
 (nulls when it has none) and carried by every step; `markSaved` and `revertToBaseline` leave it.
 

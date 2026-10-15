@@ -206,7 +206,7 @@ would answer all-null numbers and leave a Hand-placed film with nothing placed. 
 `clearResult(studyId, patch)` instead: the queue's `replaceMeasured(studyId, null)` orphans any `/measure` pending or in
 flight for the study, then one `setState` writes `measurements`, `geometry`, `qc` and `reviewedAt` null with the
 failure the study carried when edit mode was entered (`editor.entryFailure`, stored by `openEditor`), so the film reads
-Failed again, or Unsegmented if it never ran. A model result keeps committing its empty projection through `/measure`.
+Failed again, or Unsegmented when the editor found no failure at Edit (a film that never ran, or a hand-placed film reopened in a later session, its failure cleared at its earlier first commit). A model result keeps committing its empty projection through `/measure`.
 
 ### 4.4 What does not change
 
