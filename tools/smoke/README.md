@@ -412,8 +412,9 @@ Task 14; user doc `docs/level-editor.md`) against the real app: the Vertebral le
 unchecking one, Save edits and the label record on disk, Discard and the exit prompt, femoral rim points and FIT,
 window / level (in edit mode, and since 2026-10-11 outside it, with the right-button drag and the double right-click),
 the keyboard, the per-study stash, the main process's label-file name check, (since 2026-10-12, gate feedback G6)
-the label record Mark reviewed writes for a film that has none, and (since 2026-10-13, gate feedback G7) where the
-level plates sit and their drag. Two phases:
+the label record Mark reviewed writes for a film that has none, (since 2026-10-13, gate feedback G7) where the
+level plates sit and their drag, and (since 2026-10-15, annotation editor round 2) the Hand-placed status on a failed
+film placed by hand, REVERT per level and the comment box. Two phases:
 
 ```
 SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-levels-smoke SPINE_CONTOUR_PYTHON=<main checkout>/.venv/Scripts/python.exe node tools/smoke/launch.mjs
@@ -429,7 +430,9 @@ node tools/smoke/cdp.mjs --quit
   segmented fixture with the prototype's geometry (L1, L2, L4, L5, S1 and two heads; L3 missing; an all-zero mask),
   measured by the real `/measure`, with a sidecar and a prediction id so it restores like a model result. `SP-9301`
   is an unsegmented film written to `%TEMP%\spine-contour-levels-films\levels-hand-placed.png` and decoded by the real
-  `/decode`; it is placed by hand. Neither endpoint needs the model graphs. About 40 s.
+  `/decode`; it is placed by hand. Since 2026-10-15 (annotation editor round 2) it is seeded as a film whose run failed:
+  `processingError` `No spine was found on this film.`, `processingErrorAt` `2026-10-10T08:00:00.000Z`, which the first
+  level placed by hand clears. Neither endpoint needs the model graphs. About 40 s.
 - **Phase `film`** segments ONE real lateral lumbar film as `SP-9302` with the real models (region Lumbar), so the
   backend needs the ONNX graphs. A worktree's `backend/onnx/` holds only the tracked `crop_detector` and
   `view_classifier` pairs, so the other graphs are linked in from the main checkout (hard links on 2026-10-10, since
@@ -525,6 +528,32 @@ the handle's drag with SA focused, the offsets unchanged); a double-click on the
 puts it back where it was first drawn (`platePositions` `{}`); and after L1's plate is dragged, opening `SP-9301` from
 the list resets `platePositions` to `{}` (FRESH_VIEW), and back on `SP-9300` (Edit, its stash restoring L3) every plate
 is where it was first drawn. Section 5 then goes on from section 3's state.
+(Annotation editor round 2, 2026-10-15; spec `docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md`)
+Section 12 gains six dom checks on the failed `SP-9301`: its header pill (`.analysis-status .badge`) reads `Failed` before
+Edit; after the four clicks that place L1 by hand the study's `processingError` and `processingErrorAt` are null and the
+pill reads `Hand-placed` (§4.3: the measure queue's own write clears the failure); outside edit mode, after section 17's
+checks, Mark reviewed is enabled with its note hidden, a click makes the button read `Reviewed …` and the pill `Reviewed`
+(the film has a record already, so the mark writes nothing), a second click returns the pill to `Hand-placed` (§4.4), and
+the Find list's row reads `Hand-placed`; the film is then opened from the list again, so section 13 starts where it did.
+(20, dom) REVERT, on `SP-9300` back in edit mode after section 7 with nothing unsaved: L4's geometry moved 5 px right
+through the page's own `renderer/level-editor.js` `commitHandleMove` reads `Edited`, with `[data-level-key="revert:L4"]`
+on its row and `1 UNSAVED CHANGE`; REVERT puts it back to `Segmented` with the button gone, focus on the row's select
+button (spec §5.3) and `NOTHING TO SAVE`, the editor's L4 `source` `model` and the study's L4 superior endplate equal to
+the model's after `/measure`; Head 1 moved 4 px reads `Edited` with its row's `.lv-actions.is-stacked` holding
+`place:FH1` then `revert:FH1`, and its REVERT leaves it `Segmented` with `rim` null and `NOTHING TO SAVE`. Five checks;
+the dashed model ghost is canvas-drawn and not asserted. (21, dom) The comment, straight after: typed into
+`textarea.lv-comment-input` (`Input.insertText`, the harness's `typeText`) it is `1 UNSAVED CHANGE` with Save edits
+enabled; a rebuild through the page (`toggleGroupOpen('thoracic')`) keeps the focus in the box, its text and its caret
+at 16; Escape typed in the box leaves edit mode alone (still editing, no prompt, the box still focused); Save edits
+toasts `Saved 1 edit to the label record.`, the record's `comment` and the study's `labelComment` read
+`Hardware over L4` and the footer `NOTHING TO SAVE`; ` more` typed after it is one unsaved change, and Discard toasts
+`Discarded 1 change.` with the box back to the saved text; Escape (focus first on L1's select button, since Discard is
+disabled with nothing unsaved) leaves edit mode and the Analysis panel's `.analysis-comment` shows the text read-only;
+Edit again reads it back into the box with the block hidden and `NOTHING TO SAVE`. Nine checks; section 21 leaves
+`SP-9300` in edit mode, and section 8 enters edit mode only when it is not already in it. Section 21 also tries Ctrl+Z
+once after the first keystroke and prints an `info` line, never a check: the first keystroke rebuilds the panel (the
+comment starts to differ from the saved text), and on 2026-10-15 the undo did not survive that rebuild (`"H" -> "H"`;
+a control on a throwaway textarea in the same app undid `H` to empty, and lost the undo once detached and reattached).
 The film phase also saves a record whose `image.sha256` is 64 hex characters and whose `model.version` is the run's,
 and (G5, D18) whose edited level, moved by the SA handle drag and the ArrowRight nudge, lists `edited_points` `['sa']`,
 exactly the corners whose value differs from its `model_corners`, with `edits.points_moved` the sum of the edited
@@ -555,7 +584,24 @@ profile (CDP port 9341; DOM, store and file reads only, no screenshots). (2026-1
 `27ae4b0`) Re-measured on fresh `%TEMP%` profiles, one app at a time, DOM, store and file reads only, no screenshots:
 levels dom **121/121** and film **25/25** (one launch, one copied OLIF lumbar film); on a second fresh launch the
 plan-04 chain in README order: parity **15/15**, gate1 **25/25**, gate2 **26/26** (handle drags still win over
-plates), gate3 **26/26**, chip **20/20**, chord **28/28**; no FAIL line in any of the eight runs.
+plates), gate3 **26/26**, chip **20/20**, chord **28/28**; no FAIL line in any of the eight runs. (2026-10-15, annotation
+editor round 2, branch `worktree-annotation-round-2`) Section 12 gains six dom checks, sections 20 and 21 five and nine:
+dom **141/141** (121 + 20) and film **25/25** (one launch, a fresh `%TEMP%` profile, one copied OLIF lumbar film; DOM,
+store and file reads only, no screenshots). Every other suite this workstation runs was re-measured the same day, one
+app at a time on fresh `%TEMP%` profiles, no FAIL line in any: landing **16/16** and parameters **58/58** first on one
+launch, then on it parity **15/15**, gate1 **25/25**, gate2 **26/26**, chip **20/20**, chord **28/28** and gate3
+**26/26** (run last, after its own fresh inject + run: its first attempt threw before connecting, because a PowerShell
+5.1 `>` redirect writes `out/last-run.json` with a UTF-8 BOM that `JSON.parse` refuses; write that file from a shell that
+adds none, as Git Bash's `>` does); studies **151/151**, workspace **100/100** and seeding **36/36** on one
+launch; persist **42/42** then **55/55**; femoral-confidence **16/16** then **5/5** (`SMOKE_PREDICTION` a copy of that
+day's sample-film `predictions/SP-9000.json`); disc-heights **13/13**, partial-segmentation **8/8** and accuracy
+**17/17** on one launch; global-sva **21/21** (its own app); onnx-localizer **10/10** (one copied lumbar film);
+manual-calibration save **5/5**, batch **7/7**, verify **5/5**; processing **15/15** (two copied lumbar films).
+`smoke-studies.mjs`'s own status rank follows `STATUS_RANK` with `hand` (`fail 0, proc 1, unseg 2, rev 3, hand 4,
+seg 5, ok 6`; a `badge-hand` row ranked 9 before) and its TO REVIEW expectation in 16c treats a `badge-hand` row as it
+treats `badge-rev` (spec §4.2: Hand-placed counts in TO REVIEW); its count is unchanged. Not run: cervical and
+segmental (no lateral cervical film here, and both screenshot the film), and `smoke-calibration.mjs` (it needs ruler
+films reading 27.1, 35.8 and 41.5 mm, and screenshots them).
 
 ## The landmark-editor suites after the level editor (2026-10-10)
 
