@@ -20,14 +20,14 @@ import { newStudy } from '../renderer/screens/studies.js';
 import {
   configureLevelEditor, enterLevelEditor, exitNow, startPlace, placePoint, toggleLevelVisible, selectPlacingStep,
   restorePlacing, fitPlacing, writeReviewRecord, saveLevelEdits, hasStashedEditor, forgetLevelEditor, commitHandleMove,
-  revertPlacedLevel,
+  revertPlacedLevel, setLevelComment, discardLevelEdits, resetLevelsToModel,
 } from '../renderer/level-editor.js';
 import { deriveStatus } from '../renderer/data/status.js';
 // (Gate feedback G3, 2026-10-11; plan D15) The window / level belongs to the view: renderer/film-window.js.
 import { configureFilmWindow, openWindowPanel, closeWindowPanel } from '../renderer/film-window.js';
 import { createMeasureQueue } from '../renderer/viewer/measure-queue.js';
 import { toLabelRecord } from '../renderer/data/label-record.js';
-import { LEVEL_CODES, levelState } from '../renderer/data/levels.js';
+import { LEVEL_CODES, levelState, unsavedCount } from '../renderer/data/levels.js';
 import { validateAgainst } from './fixtures/schema-check.js';
 
 const IMAGE = { width: 400, height: 600 };
@@ -870,5 +870,149 @@ test('revertPlacedLevel commits the model geometry through /measure; the study t
     const editor = getState().levelEditor;
     assert.equal(editor.levels.L1.source, 'model');
     assert.equal(levelState(editor.levels.L1, editor.model.L1), 'segmented');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (2026-10-15, annotation editor round 2, spec sections 3.3 and 3.5) The comment through the wiring: setLevelComment is
+// an edit with no /measure; Save edits writes it into the record and onto the study (labelComment) in one patch; the
+// record on disk is what edit mode reads back; Mark reviewed's zero-change record carries the study's copy.
+
+test('Save edits writes the comment into the record and labelComment onto the study in one patch; a blank comment writes null (spec §3.5)', async () => {
+  const study = segmentedFilm('SP-9550', { reviewedAt: null });
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(lumbarGeometry()) });
+  const bridge = labelBridge();
+  await withBridge(bridge, () => withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    assert.equal(getState().levelEditor.comment, '', 'a study with no comment opens with an empty box');
+    setLevelComment('  Hardware over L4 ');
+    await settle();
+    assert.equal(commits.length, 0, 'typing is an edit with no /measure');
+    assert.equal(getState().levelEditor.comment, '  Hardware over L4 ', 'the text as typed');
+    assert.equal(unsavedCount(getState().levelEditor), 1, 'the comment counts as one change');
+    assert.equal(studyOf(study.id).labelComment, null, 'nothing reaches the study before Save');
+
+    await saveLevelEdits();
+    assert.equal(bridge.saved.length, 1);
+    assert.equal(bridge.saved[0].record.comment, 'Hardware over L4', 'trimmed in the record');
+    const valid = validateAgainst(SCHEMA, bridge.saved[0].record);
+    assert.ok(valid.ok, valid.errors.join('; '));
+    const first = studyOf(study.id);
+    assert.equal(first.labelFile, 'lumbar_9550.label.json');
+    assert.equal(first.labelComment, 'Hardware over L4', 'the study carries the display copy');
+    const editor = getState().levelEditor;
+    assert.equal(editor.savedComment, 'Hardware over L4');
+    assert.equal(unsavedCount(editor), 0);
+    assert.equal(getState().toast, 'Saved 1 edit to the label record.', 'the comment is the one edit');
+
+    // Blanking the comment is a change; the record writes null and so does the study.
+    setLevelComment('   ');
+    assert.equal(unsavedCount(getState().levelEditor), 1);
+    await saveLevelEdits();
+    assert.equal(bridge.saved.length, 2);
+    assert.equal(bridge.saved[1].record.comment, null, 'a blank comment writes null');
+    assert.equal(studyOf(study.id).labelComment, null);
+    assert.equal(getState().levelEditor.savedComment, '');
+    assert.equal(unsavedCount(getState().levelEditor), 0);
+    assert.equal(first.labelComment, 'Hardware over L4', 'the earlier study object was not mutated in place');
+  }));
+});
+
+test('Discard restores the saved comment; typing during the write stays unsaved (plan P3)', async () => {
+  const study = segmentedFilm('SP-9551', { reviewedAt: null });
+  wire([], NO_FILM, { getPrediction: snapshotOf(lumbarGeometry()) });
+  // The last write waits on `gate`; `reached` settles once the file is being written, so the typing lands after the
+  // record was built from the editor and before the file is done.
+  let armed = false;
+  let reach;
+  let release;
+  const reached = new Promise((resolve) => { reach = resolve; });
+  const gate = new Promise((resolve) => { release = resolve; });
+  const bridge = labelBridge(() => {
+    if (!armed) return null;
+    reach();
+    return gate;
+  });
+  await withBridge(bridge, () => withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    setLevelComment('kept');
+    await saveLevelEdits();
+    assert.equal(getState().levelEditor.savedComment, 'kept');
+
+    // Discard puts the box back to the saved text, with the levels.
+    setLevelComment('scratch');
+    assert.equal(unsavedCount(getState().levelEditor), 1);
+    discardLevelEdits();
+    assert.equal(getState().levelEditor.comment, 'kept');
+    assert.equal(unsavedCount(getState().levelEditor), 0);
+    assert.equal(getState().toast, 'Discarded 1 change.');
+
+    // Typing while the file is written: the record holds 'written'; the editor keeps 'more' as unsaved.
+    setLevelComment('written');
+    armed = true;
+    const saving = saveLevelEdits();
+    await reached;
+    setLevelComment('more');
+    release();
+    await saving;
+    assert.equal(bridge.saved.length, 2);
+    assert.equal(bridge.saved[1].record.comment, 'written', 'the record holds what was typed when it was built');
+    const editor = getState().levelEditor;
+    assert.equal(editor.comment, 'more', 'the newer typing is kept');
+    assert.equal(editor.savedComment, 'written', 'the saved text is the written one');
+    assert.equal(unsavedCount(editor), 1, 'the typing during the write is still unsaved');
+    assert.equal(studyOf(study.id).labelComment, 'written', 'the study carries what the record holds');
+  }));
+});
+
+test('enterLevelEditor reads the record\'s comment; Mark reviewed\'s zero-change record carries the study\'s labelComment (spec §3.3, §3.5)', async () => {
+  // The record on disk is the source: the study's copy is stale and loses.
+  const reading = segmentedFilm('SP-9552', { reviewedAt: null, labelFile: 'lumbar_9552.label.json', labelComment: 'stale copy' });
+  wire([], NO_FILM, { getPrediction: snapshotOf(lumbarGeometry()) });
+  const read = labelBridge();
+  read.spineContour.loadLabelRecord = async (name) => (name === 'lumbar_9552.label.json' ? { comment: 'from disk' } : null);
+  await withBridge(read, () => withStore(reading, async () => {
+    await enterLevelEditor(reading.id);
+    const editor = getState().levelEditor;
+    assert.equal(editor.comment, 'from disk');
+    assert.equal(editor.savedComment, 'from disk');
+    assert.equal(unsavedCount(editor), 0);
+    assert.equal(studyOf(reading.id).labelComment, 'stale copy', 'reading the record does not rewrite the study');
+  }));
+
+  // Mark reviewed on a film with no record: the in-memory editor takes the study's labelComment; the study is untouched.
+  const reviewed = segmentedFilm('SP-9553', { labelComment: 'kept' });
+  wire([], NO_FILM, { getPrediction: snapshotOf(lumbarGeometry()) });
+  const review = labelBridge();
+  await withBridge(review, () => withStore(reviewed, async () => {
+    assert.equal(await writeReviewRecord(reviewed.id), 'written');
+    assert.equal(review.saved.length, 1);
+    assert.equal(review.saved[0].record.comment, 'kept', 'the zero-change record carries the study\'s comment');
+    assert.equal(studyOf(reviewed.id).labelFile, 'lumbar_9553.label.json');
+    assert.equal(studyOf(reviewed.id).labelComment, 'kept');
+  }));
+});
+
+test('RESET TO PREDICTION leaves the comment and savedComment alone (spec §3.3)', async () => {
+  const model = lumbarGeometry();
+  const study = segmentedFilm('SP-9554', { reviewedAt: null });
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(model) });
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    const nudge = (points) => points.map(([x, y]) => [x + 5, y]);
+    const { superior, inferior } = model.vertebrae.L1;
+    commitHandleMove('L1', { superior: nudge(superior), inferior: nudge(inferior) });
+    await settle();
+    setLevelComment('note');
+    assert.equal(unsavedCount(getState().levelEditor), 2, 'the moved level and the comment');
+
+    resetLevelsToModel();
+    const editor = getState().levelEditor;
+    assert.equal(editor.comment, 'note', 'the reset is about geometry');
+    assert.equal(editor.savedComment, '');
+    assert.equal(unsavedCount(editor), 1, 'the levels are back on the model; the comment remains the one change');
+    assert.equal(commits.length, 1, 'the reset commits nothing');
   });
 });

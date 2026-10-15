@@ -25,10 +25,10 @@ import { showToast } from './components/toast.js';
 import {
   LEVEL_CODES, openEditor, toggleVisible, toggleGroup, toggleOpen, selectLevel, startPlacing, addPoint, undoPoint,
   setPlacingStep, cancelPlacing, finishPlacing, clearLevel, revertLevel, setLevelGeometry, unsavedCount, canSave,
-  markSaved, revertToBaseline, sameGeometry,
+  markSaved, revertToBaseline, sameGeometry, setComment,
 } from './data/levels.js';
 import { projectGeometry, projectsLevel, regionFollowsLevels } from './data/level-projection.js';
-import { toLabelRecord, recordLevels, labelFileName, appVersion } from './data/label-record.js';
+import { toLabelRecord, recordLevels, recordComment, normalizeComment, labelFileName, appVersion } from './data/label-record.js';
 import { levelContours } from './data/contours.js';
 import { studyRegion, validAnteriorSide } from './data/cervical.js';
 import { isHandPlaced } from './data/predictions.js';
@@ -201,7 +201,8 @@ export async function enterLevelEditor(studyId) {
       entering = studyId;
       try {
         const record = await loadLabelRecord(study.labelFile);
-        if (record) saved = { file: study.labelFile, levels: recordLevels(record) };
+        // (spec §3.3) The record on disk is the source of the comment; the study's labelComment is only its display copy.
+        if (record) saved = { file: study.labelFile, levels: recordLevels(record), comment: recordComment(record) };
       } catch (error) {
         // Opened as if there were no record; Save writes the same file name again.
         showToast(`Could not read the label record: ${error.message}`);
@@ -349,16 +350,21 @@ async function writeRecord(studyId, addedAt, editorOf, imageOptions) {
   return { file, editor, kept, state: after };
 }
 
-// The studies with `file` named on the one record it was written for (that id and that `addedAt`).
-function withLabelFile(studies, studyId, addedAt, file) {
-  return studies.map((item) => (item.id === studyId && item.addedAt === addedAt ? { ...item, labelFile: file } : item));
+// The studies with `file` named on the one record it was written for (that id and that `addedAt`). (Spec §3.5) With
+// `labelComment` (a string, or null for none) the study's display copy of the record's comment is set in the same
+// patch; left out (undefined), it is left alone, which is what Mark reviewed's zero-change record does.
+function withLabelFile(studies, studyId, addedAt, file, labelComment) {
+  return studies.map((item) => (item.id === studyId && item.addedAt === addedAt
+    ? { ...item, labelFile: file, ...(labelComment === undefined ? {} : { labelComment }) }
+    : item));
 }
 
 /**
  * Save edits: writes userData/labels/<file> (D3), makes the written levels the baseline and records the file on
- * the study. Resolves after the toast. A demo study never writes one. The record is built from the editor as it
- * stands once the film has been read, and only those levels become the baseline, so a change made while the file
- * is being written stays unsaved. (D19) A review write in flight ends first, so a save clicked meanwhile is not lost.
+ * the study, with the comment it carries (spec §3.5). Resolves after the toast. A demo study never writes one. The record
+ * is built from the editor as it stands once the film has been read, and only those levels and that comment become the
+ * baseline and the saved text, so a change or typing made while the file is being written stays unsaved. (D19) A
+ * review write in flight ends first, so a save clicked meanwhile is not lost.
  */
 export async function saveLevelEdits() {
   while (saving === 'review') await writeEnded;
@@ -389,11 +395,17 @@ export async function saveLevelEdits() {
     const { file, editor: current, kept, state: after } = written;
     const n = unsavedCount(current);
     const saved = markSaved(current, file);
+    // (spec §3.5) The study's display copy of the comment is what the record was written with: the editor the record was
+    // built from (`current`), not `open`, which may hold newer typing.
+    const labelComment = normalizeComment(current.comment);
     const latest = currentEditor(after);
     const open = latest && latest.studyId === studyId ? latest : null;
     setState((s) => ({
-      ...(kept.labelFile === file ? {} : { studies: withLabelFile(s.studies, studyId, addedAt, file) }),
-      ...(open ? { levelEditor: { ...open, baseline: saved.baseline, record: saved.record } } : {}),
+      ...(kept.labelFile === file && kept.labelComment === labelComment
+        ? {} : { studies: withLabelFile(s.studies, studyId, addedAt, file, labelComment) }),
+      // (plan P3) Only the saved text moves to what was written: `comment` stays as typed, so text typed while the file
+      // was being written is still unsaved, as a level changed meanwhile is.
+      ...(open ? { levelEditor: { ...open, baseline: saved.baseline, record: saved.record, savedComment: saved.savedComment } } : {}),
     }));
     stash.delete(studyId);
     showToast(savedText(n));
@@ -505,6 +517,14 @@ export function toggleLevelVisible(code) {
 
 export function toggleLevelGroup(key) {
   update((editor) => toggleGroup(editor, key), { edit: true });
+}
+
+/**
+ * (2026-10-15, annotation editor round 2, spec §3.3) The comment box's text, as typed. An edit like every other (refused
+ * while the study's own run is in flight) that changes no level, so nothing is committed and /measure is not called.
+ */
+export function setLevelComment(text) {
+  update((editor) => setComment(editor, text), { edit: true, commit: false });
 }
 
 export function toggleGroupOpen(key) {
