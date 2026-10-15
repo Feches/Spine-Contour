@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.0
+
+- The Vertebral levels panel has a **COMMENT** box: whatever you type is saved with Save edits into the film's label
+  record as `comment`, counts as one unsaved change until saved, and shows read-only on the Analysis screen and in the
+  Studies search.
+- A real film placed by hand, with no model run behind it, reads **Hand-placed**: after Needs review in the sort,
+  counted in TO REVIEW, and Mark reviewed turns it Reviewed. The first level committed on a failed film clears its
+  failure; taking every level off again returns the film to what the editor found at Edit.
+- An Edited level's row shows **REVERT**, which returns that one level to the model's output and commits it like a
+  drag.
+- The selected level's handles shrink with the film below 1:1, to a floor of 3 px, instead of covering a zoomed-out
+  vertebra at a fixed 6 px.
+
+[Release notes](docs/releases/1.2.0.md)
+
 ## 1.1.1
 
 - In edit mode each level's name plate now sits **outside its vertebra, on the posterior side**, whichever way the
