@@ -179,8 +179,9 @@
 
 /* The label record's comment, read-only (annotation editor round 2, spec §3.6), under the actions row: shown only
    while the study has one, and hidden in edit mode, where the Vertebral levels panel's box takes over. The label is
-   .lv-status-label's mono type. */
-.analysis-comment { padding: 0 14px 10px; }
+   .lv-status-label's mono type. The text scrolls past six lines, and the block never shrinks, so a long comment
+   neither collapses the Measurements tab under it nor gets its own tail clipped. */
+.analysis-comment { padding: 0 14px 10px; flex-shrink: 0; }
 .analysis-comment-label {
   font-family: 'Chivo Mono', monospace;
   font-size: 9.5px;
@@ -190,6 +191,8 @@
 }
 .analysis-comment-text {
   margin: 2px 0 0;
+  max-height: calc(1.45em * 6);
+  overflow-y: auto;
   white-space: pre-wrap;
   font: 400 12.5px/1.45 'Source Sans 3', sans-serif;
   color: var(--body);
@@ -1382,6 +1385,8 @@ button.viewer-step:disabled { opacity: .35; cursor: not-allowed; }
 .lv-comment-input {
   width: 100%;
   min-height: 56px;
+  /* The foot never shrinks, so an uncapped drag would push Save edits, Discard and the exit prompt out of the panel. */
+  max-height: 30vh;
   resize: vertical;
   box-sizing: border-box;
   margin: 0;
