@@ -23,6 +23,12 @@ test('matchesQuery matches on id, patient, diagnosis, and view, case-insensitive
   assert.equal(matchesQuery(study, 'flexion'), false);
 });
 
+// (Annotation editor round 2, spec §3.6) The label record's comment, copied onto the study, is searchable.
+test('matchesQuery finds a study by its label comment', () => {
+  const study = { id: 'SP-0042', view: 'Standing lateral', labelComment: 'Hardware over L4' };
+  assert.equal(matchesQuery(study, 'hardware'), true);
+});
+
 test('matchesQuery tolerates studies with no patient or diagnosis fields', () => {
   const study = { id: 'SP-1000', view: 'Standing lateral' };
   assert.equal(matchesQuery(study, 'sp-1000'), true);

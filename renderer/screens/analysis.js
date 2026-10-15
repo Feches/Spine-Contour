@@ -906,9 +906,16 @@ export function render(state) {
   const tabsRow = el('div', { class: 'analysis-tabs' },
     el('div', { class: 'analysis-tabgroup' }, tabMeas, tabSim));
   const actionsRow = el('div', { class: 'analysis-actions' }, exportButton, reviewButton, reviewNote);
+  // (2026-10-15, annotation editor round 2, spec §3.6) The label record's comment, read-only, under the actions row.
+  // It shows only while the study has one and hides in edit mode, where the panel's own box takes over.
+  const commentText = el('p', { class: 'analysis-comment-text' });
+  const commentBlock = el('div', { class: 'analysis-comment is-hidden' },
+    el('span', { class: 'analysis-comment-label' }, 'COMMENT'),
+    commentText);
   const panel = el('aside', { class: 'analysis-panel' },
     tabsRow,
     actionsRow,
+    commentBlock,
     measurementsHost,
     similarHost,
     levelHost);
@@ -1127,6 +1134,14 @@ export function render(state) {
     reviewNote.textContent = reason ?? '';
     reviewNote.hidden = reason === null;
 
+    // (Annotation editor round 2, spec §3.6) The comment block, written every time like the review button: the
+    // study's label comment, shown while it has one and edit mode is off. `editing` is a real boolean, here and in the
+    // panel swap below: classList.toggle with an undefined force toggles instead of setting.
+    const editing = Boolean(live.editing);
+    const comment = typeof open.labelComment === 'string' && open.labelComment.trim() !== '' ? open.labelComment : null;
+    commentText.textContent = comment ?? '';
+    commentBlock.classList.toggle('is-hidden', editing || comment === null);
+
     // The list's badge, on the list's rule (screens/studies.js buildRow): headerBadge's `unsupported`,
     // `status` and `badgeKey`, read above for the region note. A Failed pill carries the dated reason
     // as its tooltip (2026-10-01, issue #39).
@@ -1139,9 +1154,8 @@ export function render(state) {
     tabMeas.classList.toggle('is-active', live.tab === 'meas');
     tabSim.classList.toggle('is-active', live.tab === 'sim');
     // (2026-10-10, level editor Task 11) Edit mode swaps the panel: the tabs, the actions row and both tab bodies
-    // hide and the Vertebral levels panel shows; DONE brings them back on the tab that was active. A real
-    // boolean: classList.toggle with an undefined force toggles instead of setting.
-    const editing = Boolean(live.editing);
+    // hide and the Vertebral levels panel shows; DONE brings them back on the tab that was active. `editing` is read
+    // above, beside the comment block.
     panel.classList.toggle('is-editing', editing);
     tabsRow.classList.toggle('is-hidden', editing);
     actionsRow.classList.toggle('is-hidden', editing);

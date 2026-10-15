@@ -15,18 +15,23 @@ import { el, clear } from '../dom.js';
 import { checkbox } from './checkbox.js';
 import {
   LEVEL_GROUPS, kindOf, rowName, fullName, levelState, badgeFor, summaryText, groupCountText, groupCheckState,
-  trainingStatus, unsavedCount, unsavedText, canSave, dependencyNote,
+  trainingStatus, unsavedCount, unsavedText, canSave, dependencyNote, commentChanged,
 } from '../data/levels.js';
 import { LEVEL_RGB, FEMORAL_OVERLAY_COLOR } from '../viewer/canvas.js';
 import {
   toggleLevelVisible, toggleLevelGroup, toggleGroupOpen, selectLevelRow, startPlace, cancelPlace, clearPlacedLevel,
-  revertPlacedLevel, saveLevelEdits, discardLevelEdits, keepEditing,
+  revertPlacedLevel, saveLevelEdits, discardLevelEdits, keepEditing, setLevelComment,
 } from '../level-editor.js';
 
 const TITLE = 'Vertebral levels';
 const HELP = "Uncheck a level you can't see on this film. It's saved as not visible, not as missing.";
 const DEMO_NOTE = 'Demo studies are not exported';
 const ELLIPSIS = '…';
+// (Annotation editor round 2, spec §3.4) The comment box's words and its cap.
+const COMMENT_LABEL = 'COMMENT';
+const COMMENT_PLACEHOLDER = 'Anything the next reader or the trainer should know about this film.';
+const COMMENT_ARIA = "Comment on this film's annotation";
+const COMMENT_MAX = 2000;
 
 // 12x12 chevron pointing down (open); .is-closed rotates it -90deg in CSS. The house construction of
 // sidebar.js's and clinical-data.js's chevrons, with the path the handoff's prototype uses.
@@ -182,10 +187,13 @@ function groupSection(editor, group) {
 }
 
 // ---------------------------------------------------------------------------
-// The footer (handoff §3 "Footer"; D7, D10): the training-label status, then the unsaved count with Discard and
-// Save edits, or, once leaving was asked for with changes unsaved, the three-button prompt in their place.
+// The footer (handoff §3 "Footer"; D7, D10): the comment box (annotation round 2, spec §3.4), the training-label
+// status, then the unsaved count with Discard and Save edits, or, once leaving was asked for with changes unsaved,
+// the three-button prompt in their place; the box stays above the prompt, so the text being kept or discarded shows.
+// `commentBox` is the panel's one textarea, made at mount; update() sets its text, this only places it. The visible
+// label is hidden from assistive tech: the box carries its own aria-label.
 
-function footer(editor, study) {
+function footer(editor, study, commentBox) {
   const status = trainingStatus(editor);
   const n = unsavedCount(editor);
   const statusLine = el('div', { class: 'lv-status' },
@@ -229,7 +237,11 @@ function footer(editor, study) {
         onClick: () => saveLevelEdits(),
       }, 'Save edits'));
 
-  return el('div', { class: 'lv-foot' }, statusLine, actions);
+  const comment = el('div', { class: 'lv-comment' },
+    el('span', { class: 'lv-comment-label', 'aria-hidden': 'true' }, COMMENT_LABEL),
+    commentBox);
+
+  return el('div', { class: 'lv-foot' }, comment, statusLine, actions);
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +296,19 @@ export function mountLevelEditor(container) {
   let lastStudyId = null;
   let promptShown = false;
 
+  // (Annotation editor round 2, spec §3.4) The comment box is one node for the life of the panel: every rebuild
+  // reattaches it rather than making a new one, so typing in it never loses the caret. Each keystroke goes to the
+  // wiring as an edit (no /measure); the count and Save edits follow through the rebuild key's commentChanged.
+  const commentBox = el('textarea', {
+    class: 'lv-comment-input',
+    rows: 3,
+    maxLength: COMMENT_MAX,
+    placeholder: COMMENT_PLACEHOLDER,
+    'aria-label': COMMENT_ARIA,
+    'data-level-key': 'comment',
+    onInput: (event) => setLevelComment(event.target.value),
+  });
+
   function update(state, study) {
     const editor = state.levelEditor;
     // Rebuild gate. screens/analysis.js calls this on every store notification, pan and window / level drag
@@ -292,10 +317,13 @@ export function mountLevelEditor(container) {
     // window / level drag no longer touches the editor at all: the window is the view's, `state.filmWindow`,
     // since gate feedback G3), and a rebuild between a press and its release would swallow the click that
     // press began. The study's geometry and its pending measurement are left out (the final review's minor 6):
-    // the panel reads neither, and keying on them rebuilt it twice per /measure round trip.
+    // the panel reads neither, and keying on them rebuilt it twice per /measure round trip. The comment's text is
+    // left out too (annotation round 2, spec §3.4): the box already shows what was typed, and keying on the text
+    // would rebuild the panel on every keystroke; `commentChanged` is in, since the unsaved count and Save edits
+    // read it, so typing rebuilds once when the comment first differs from the saved text and once when it returns.
     const key = [
       editor?.studyId, editor?.region, editor?.levels, editor?.model, editor?.baseline, editor?.record,
-      editor?.selected, editor?.placing, editor?.open, editor?.exitPrompt,
+      editor?.selected, editor?.placing, editor?.open, editor?.exitPrompt, editor ? commentChanged(editor) : null,
       study?.id, study?.source,
     ];
     if (sameKey(key, lastKey)) return;
@@ -307,6 +335,17 @@ export function mountLevelEditor(container) {
     const focusKey = active && root.contains(active) ? active.getAttribute('data-level-key') : null;
     const oldList = root.querySelector('.lv-list');
     const scrollTop = oldList && editor && editor.studyId === lastStudyId ? oldList.scrollTop : 0;
+    // The comment box is being typed in: read here, since clear(root) detaches the box and so blurs it. Its text is
+    // then left as it is (the editor's comment is what was just typed into it) and its selection is put back once
+    // the focus restore has found it by its key. A box on another study's editor is not being typed in.
+    const typing = active === commentBox && editor && editor.studyId === lastStudyId
+      ? {
+        start: commentBox.selectionStart,
+        end: commentBox.selectionEnd,
+        direction: commentBox.selectionDirection,
+        scrollTop: commentBox.scrollTop,
+      }
+      : null;
 
     clear(root);
     if (!editor || !study || editor.studyId !== study.id) {
@@ -315,6 +354,7 @@ export function mountLevelEditor(container) {
       return;
     }
     lastStudyId = editor.studyId;
+    if (!typing) commentBox.value = editor.comment ?? '';
 
     const list = el('div', { class: 'lv-list' }, ...LEVEL_GROUPS.map((group) => groupSection(editor, group)));
     root.append(
@@ -323,7 +363,7 @@ export function mountLevelEditor(container) {
         el('div', { class: 'lv-summary' }, summaryText(editor)),
         el('p', { class: 'lv-help' }, HELP)),
       list,
-      footer(editor, study));
+      footer(editor, study, commentBox));
     if (scrollTop) list.scrollTop = scrollTop;
 
     // `indeterminate` is a property with no markup form, so it is written on the live boxes after the rebuild.
@@ -339,6 +379,10 @@ export function mountLevelEditor(container) {
     promptShown = showPrompt;
     if (keep) keep.focus({ preventScroll: true });
     else if (focusKey !== null) restoreFocus(root, focusKey, editor);
+    if (typing && document.activeElement === commentBox) {
+      commentBox.setSelectionRange(typing.start, typing.end, typing.direction);
+      commentBox.scrollTop = typing.scrollTop;
+    }
   }
 
   return { update };

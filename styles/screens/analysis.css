@@ -177,6 +177,26 @@
   flex: 1 1 100%;
 }
 
+/* The label record's comment, read-only (annotation editor round 2, spec §3.6), under the actions row: shown only
+   while the study has one, and hidden in edit mode, where the Vertebral levels panel's box takes over. The label is
+   .lv-status-label's mono type. */
+.analysis-comment { padding: 0 14px 10px; }
+.analysis-comment-label {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+.analysis-comment-text {
+  margin: 2px 0 0;
+  white-space: pre-wrap;
+  font: 400 12.5px/1.45 'Source Sans 3', sans-serif;
+  color: var(--body);
+}
+.analysis-comment.is-hidden,
+.analysis-panel.is-editing .analysis-comment { display: none; }
+
 /* The list's status badge in the header, before the OVERALL CONFIDENCE badge. */
 .analysis-status {
   display: flex;
@@ -1342,6 +1362,40 @@ button.viewer-step:disabled { opacity: .35; cursor: not-allowed; }
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* The comment box (annotation editor round 2, spec §3.4), first in the footer: a mono label as .lv-status-label's,
+   then a three-row textarea, full width, resizable up and down only, with the house text field's look (the radius
+   is the handoff's radius-input, 10px, as .lv-group-btn has it) and the panel's accent ring, 2px out. */
+.lv-comment {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lv-comment-label {
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+.lv-comment-input {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  font: 400 12.5px/1.45 'Source Sans 3', sans-serif;
+  color: var(--ink);
+}
+.lv-comment-input::placeholder { color: var(--muted); }
+.lv-comment-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .lv-demo-note {
   font: 400 12px/1.45 'Source Sans 3', sans-serif;

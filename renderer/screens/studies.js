@@ -58,11 +58,12 @@ export function formatDate(iso) {
 // a visible column you cannot search reads as broken. The subject, timepoint and film date are
 // on the Parameters grid, which the box also filters; the note is in the drawer, and is what
 // tells two same-day films of one subject apart. The FULL file path is still not: only the two
-// folder names the cells actually display are matched.
+// folder names the cells actually display are matched. The label record's comment (`labelComment`,
+// annotation round 2) is searchable too, though no column shows it: it is what flags a film for a reader.
 export function matchesQuery(study, query) {
   const needle = (query ?? '').trim().toLowerCase();
   if (!needle) return true;
-  return [study.id, studyName(study), study.subjectId, study.timepoint, study.filmDate, study.note, workspaceLabel(study), folderLabel(study), study.pt, study.dx, study.view, ...Object.values(study.clinical ?? {})]
+  return [study.id, studyName(study), study.subjectId, study.timepoint, study.filmDate, study.note, study.labelComment, workspaceLabel(study), folderLabel(study), study.pt, study.dx, study.view, ...Object.values(study.clinical ?? {})]
     .filter((value) => typeof value === 'string')
     .join(' ')
     .toLowerCase()
