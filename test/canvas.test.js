@@ -769,11 +769,11 @@ test('drawDynamicLayer passes the overlay, opacity, handle and drag options to t
   const moved = { superior: [[5, 45], [20, 50]], inferior: [[10, 60], [20, 60]] };
   const { ctx, calls, painted } = recordingContext();
   drawDynamicLayer(ctx, EDITOR_CANVAS, fakeGeometry(), {
-    editor: lumbarEditor('L3'), overlays: false, overlayOpacity: 80, pixelRatio: 1.5, handle: { code: 'L3', handle: 'IP' }, dragGeometry: { code: 'L3', geometry: moved },
+    editor: lumbarEditor('L3'), overlays: false, overlayOpacity: 80, pixelRatio: 3, handle: { code: 'L3', handle: 'IP' }, dragGeometry: { code: 'L3', geometry: moved },
   });
-  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 6).length, 4, 'pixelRatio reaches the handles: 4 CSS px at 1.5, 6 image px (G8, D21)');
-  assert.equal(arcsOf(calls).filter(([, , radius]) => Math.abs(radius - 10) < 1e-9).length, 1, 'the focused handle ring: 10 image px at 1.5');
-  assert.ok(arcsOf(calls).some(([x, y, radius]) => x === 5 && y === 45 && radius === 6), 'the drag geometry');
+  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 9).length, 4, 'pixelRatio reaches the handles: 3 CSS px at 3, 9 image px (G8, D21); ratio 1 would draw 6');
+  assert.equal(arcsOf(calls).filter(([, , radius]) => Math.abs(radius - 15) < 1e-9).length, 1, 'the focused handle ring: 15 image px at 3; ratio 1 would draw 10');
+  assert.ok(arcsOf(calls).some(([x, y, radius]) => x === 5 && y === 45 && radius === 9), 'the drag geometry');
   assert.deepEqual(painted.filter(p => p.name === 'fill' && String(p.fillStyle).startsWith('rgba(') && p.fillStyle !== PLATE), [], 'overlays false: no level fill');
   const defaults = recordingContext();
   drawDynamicLayer(defaults.ctx, EDITOR_CANVAS, fakeGeometry(), { editor: lumbarEditor() });
