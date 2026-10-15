@@ -33,13 +33,15 @@
 // Annotation editor round 2 (2026-10-15; docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md): SP-9301
 // is seeded as a film whose run failed (`processingError` 'No spine was found on this film.'). Section 12 reads its header
 // pill Failed before Edit and Hand-placed once the first level placed by hand is committed (the measure queue's own write
-// clears the failure, §4.3); outside edit mode it marks and unmarks the film reviewed (Reviewed, then Hand-placed again)
-// and reads Hand-placed on the Find list's row. Section 20, on SP-9300 after section 7: REVERT returns an Edited level to
-// the model's output, L4 moved through the page's own commitHandleMove and then Head 1, whose row stacks Place… over
-// REVERT (§5). Section 21, straight after: the comment box in the panel's footer, typed, kept with its focus and caret
-// across a rebuild, Escape in it ignored by the stage, saved into the record's `comment` and the study's `labelComment`,
-// discarded, shown read-only on the Analysis panel outside edit mode and read back on Edit (§3); it leaves SP-9300 in
-// edit mode for section 8.
+// clears the failure, §4.3); Discard then takes that level off and the pill reads Failed again, the failure back and
+// the result gone (the round's final review, I1), and L1 is placed again; outside edit mode it marks and unmarks the
+// film reviewed (Reviewed, then Hand-placed again) and reads Hand-placed on the Find list's row. Section 20, on SP-9300
+// after section 7: REVERT returns an Edited level to the model's output, L4 moved through the page's own
+// commitHandleMove and then Head 1, whose row stacks Place… over REVERT (§5). Section 21, straight after: the comment
+// box in the panel's footer, its first keystroke undone by Ctrl+Z (I2: the foot is never detached), typed, kept with its
+// focus and caret across a rebuild that leaves the foot and the comment block the same nodes, Escape in it ignored by
+// the stage, saved into the record's `comment` and the study's `labelComment`, discarded, shown read-only on the
+// Analysis panel outside edit mode and read back on Edit (§3); it leaves SP-9300 in edit mode for section 8.
 //
 //   node tools/smoke/launch.mjs                                     (SPINE_CONTOUR_USER_DATA under %TEMP%)
 //   node tools/smoke/smoke-levels.mjs                               phase `dom` (the default)
@@ -89,6 +91,7 @@ const REVIEW_WRITE_FAILED = 'Marked reviewed. The label record could not be writ
 const HAND_FILE = 'levels-hand-placed.png';
 const HAND_PATH = path.join(FILM_DIR, HAND_FILE);
 const HAND_FAILURE = 'No spine was found on this film.';   // SP-9301's seeded failure (round 2, spec §4.3)
+const HAND_FAILED_AT = '2026-10-10T08:00:00.000Z';         // and when it was recorded
 const PREDICTION_ID = 'smoke-levels-fixture';
 const STATUS_PILL = '.analysis-status .badge';
 const COMMENT = 'Hardware over L4';
@@ -828,7 +831,7 @@ async function domPhase() {
       predictionId: ${js(PREDICTION_ID)}, labelFile: null, measurements: result.measurements, geometry: result.geometry, qc: result.qc ?? null };
     // (Annotation editor round 2, spec §4.3) A film whose run failed: the first hand-placed commit clears the failure.
     const hand = { ...newStudy({ id: ${js(HAND)}, fileName: ${js(HAND_FILE)}, filePath: ${js(HAND_PATH)} }), labelFile: null,
-      processingError: ${js(HAND_FAILURE)}, processingErrorAt: '2026-10-10T08:00:00.000Z' };
+      processingError: ${js(HAND_FAILURE)}, processingErrorAt: ${js(HAND_FAILED_AT)} };
     const ours = new Set([${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}, ${js(REVIEW)}]);
     store.setState((s) => ({ ack: true, studies: [seg, hand, ...s.studies.filter((x) => !ours.has(x.id))], screen: 'studies',
       studiesTab: 'find', query: '', openId: null, editing: false, levelEditor: null, selection: null, measurementDrafts: {},
@@ -1106,22 +1109,23 @@ async function domPhase() {
     (await badge('FH1')) === 'Segmented' && (await ev('window.__lv.editor()?.levels?.FH1?.geometry?.rim')) === null && (await text('.lv-unsaved')) === 'NOTHING TO SAVE',
     { FH1: await badge('FH1'), geometry: await ev('window.__lv.editor()?.levels?.FH1?.geometry ?? null'), unsaved: await text('.lv-unsaved') });
 
-  // 21 (round 2, spec §3). The comment, on SP-9300 straight after: typed into the panel's one textarea, kept with its
-  // focus and caret across a rebuild, Escape in it ignored by the stage (P9), saved into the record and onto the study,
-  // discarded back to the saved text, shown read-only outside edit mode, and read back on Edit.
+  // 21 (round 2, spec §3). The comment, on SP-9300 straight after: typed into the panel's one textarea, its first
+  // keystroke undone by Ctrl+Z, kept with its focus and caret across a rebuild, Escape in it ignored by the stage (P9),
+  // saved into the record and onto the study, discarded back to the saved text, shown read-only outside edit mode, and
+  // read back on Edit.
   const COMMENT_BOX = '.lv-comment-input';
   const boxValue = () => ev(`document.querySelector(${js(COMMENT_BOX)})?.value ?? null`);
   await clickSelector(COMMENT_BOX);
-  // (The Task 6 review) Tried once and reported, never checked: the first keystroke rebuilds the panel (the comment
-  // now differs from the saved text); does the textarea's own undo survive that rebuild?
+  // (The final review of round 2, I2) The first keystroke rebuilds the panel (the comment now differs from the saved
+  // text). The foot that holds the box is never detached by a rebuild, so the textarea's own undo takes it back.
   await cdp.typeText('H');
   await cdp.settle(80);
-  const typedOne = await boxValue();
-  await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: 2 });
-  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: 2 });
+  const typedOne = { value: await boxValue(), unsaved: await text('.lv-unsaved') };
+  await cdp.key('z', { ctrl: true });
   await cdp.settle(120);
-  const undone = await boxValue();
-  console.log(`info  21. Ctrl+Z after the first keystroke: ${js(typedOne)} -> ${js(undone)} (${undone === '' ? 'the undo survived the rebuild' : 'the undo did not survive the rebuild'})`);
+  const undone = { value: await boxValue(), unsaved: await text('.lv-unsaved') };
+  check('21. Ctrl+Z after the first keystroke (H, 1 UNSAVED CHANGE) undoes it: the box is empty and the footer reads NOTHING TO SAVE (I2)',
+    typedOne.value === 'H' && typedOne.unsaved === '1 UNSAVED CHANGE' && undone.value === '' && undone.unsaved === 'NOTHING TO SAVE', { typedOne, undone });
   // Whatever Ctrl+Z left, the box's text is selected and the comment typed over it.
   await ev(`(() => { const b = document.querySelector(${js(COMMENT_BOX)}); b.focus(); b.select(); return true; })()`);
   await cdp.typeText(COMMENT);
@@ -1131,12 +1135,21 @@ async function domPhase() {
     { value: await boxValue(), unsaved: await text('.lv-unsaved'), saveDisabled: await ev(`document.querySelector('.lv-save')?.disabled`) });
 
   // A rebuild from the keyboard-free path (a group opened through the page): the same node, focus and caret kept.
+  // (I2) The foot and its comment block are the same nodes after it; the list is a new one.
+  await ev(`(() => { for (const s of ['.lv-foot', '.lv-comment', '.lv-list']) document.querySelector(s).__lvProbe = true; return true; })()`);
   await viaWiring(`m.toggleGroupOpen('thoracic')`);
   await cdp.settle(80);
   const keptBox = await ev(`(() => { const a = document.activeElement; return { box: Boolean(a?.classList.contains('lv-comment-input')), value: a?.value ?? null,
     start: a?.selectionStart ?? null, thoracicOpen: Boolean(document.querySelector('[data-group-key="thoracic"] .lv-rows')) }; })()`);
   check(`21. a rebuild while typing (a group opened through the page) keeps the focus in the box, its text and its caret at ${COMMENT.length}`,
     keptBox.box && keptBox.value === COMMENT && keptBox.start === COMMENT.length && keptBox.thoracicOpen, keptBox);
+  const nodes = await ev(`(() => ({ foot: document.querySelector('.lv-foot')?.__lvProbe === true, comment: document.querySelector('.lv-comment')?.__lvProbe === true,
+    newList: Boolean(document.querySelector('.lv-list')) && document.querySelector('.lv-list').__lvProbe !== true,
+    order: [...document.querySelector('.lv-panel').children].map((n) => n.className),
+    footChildren: [...document.querySelector('.lv-foot').children].map((n) => n.className) }))()`);
+  check('21. the rebuild kept the foot and its comment block (the same nodes) and built a new list before them (I2)',
+    nodes.foot === true && nodes.comment === true && nodes.newList && js(nodes.order) === js(['lv-head', 'lv-list', 'lv-foot'])
+      && js(nodes.footChildren) === js(['lv-comment', 'lv-status', 'lv-actions-row']), nodes);
   await viaWiring(`m.toggleGroupOpen('thoracic')`);
   await cdp.settle(80);
 
@@ -1328,6 +1341,27 @@ async function domPhase() {
   check('12. the first hand-placed commit cleared the failure and the pill reads Hand-placed (spec §4.3)',
     handStudy?.processingError === null && handStudy?.processingErrorAt === null && (await text(STATUS_PILL)) === 'Hand-placed',
     handStudy && { processingError: handStudy.processingError, processingErrorAt: handStudy.processingErrorAt, pill: await text(STATUS_PILL) });
+  // (The final review of round 2, I1) Discard takes L1 off again: the film has no level placed and no result left, so
+  // nothing goes to /measure and the failure it carried at Edit comes back: the pill reads Failed again. L1 is then
+  // placed again by the same four clicks, so the rest of the section runs as it did.
+  await clickSelector('.lv-discard');
+  await settled(HAND);
+  await until(`document.querySelector(${js(STATUS_PILL)})?.textContent === 'Failed'`, 3000);
+  const discardedHand = await studyOf(HAND);
+  check('12. Discard after placing L1 by hand: the pill reads Failed again, the failure is back and the result gone (I1)',
+    (await text(STATUS_PILL)) === 'Failed' && discardedHand?.processingError === HAND_FAILURE && discardedHand?.processingErrorAt === HAND_FAILED_AT
+      && discardedHand?.measurements === null && discardedHand?.geometry === null && (await badge('L1')) !== 'Manual',
+    discardedHand && { pill: await text(STATUS_PILL), processingError: discardedHand.processingError, processingErrorAt: discardedHand.processingErrorAt,
+      measurements: discardedHand.measurements, geometry: discardedHand.geometry, L1: await badge('L1') });
+  await clickSelector('[data-level-key="place:L1"]');
+  for (const point of [[200, 150], [400, 160], [196, 232], [396, 242]]) await clickImage(...point);
+  await settled(HAND);
+  await until(`document.querySelector(${js(STATUS_PILL)})?.textContent === 'Hand-placed'`, 3000);
+  const replacedHand = await studyOf(HAND);
+  check('12. L1 placed again by hand: Manual, the pill reads Hand-placed and the failure is cleared again',
+    (await badge('L1')) === 'Manual' && (await text(STATUS_PILL)) === 'Hand-placed' && replacedHand?.processingError === null
+      && Boolean(replacedHand?.geometry?.vertebrae?.L1) && Boolean(replacedHand?.measurements),
+    replacedHand && { L1: await badge('L1'), pill: await text(STATUS_PILL), processingError: replacedHand.processingError });
   await clearToasts();
   await clickSelector('.lv-save');
   check('12. Save edits toasts Saved 1 edit to the label record.', await toastSeen('Saved 1 edit to the label record.'), await ev('window.__lv.toasts'));

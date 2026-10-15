@@ -620,6 +620,37 @@ test('openEditor takes the comment from the saved record, else the study, else e
   assert.equal(unsavedCount(withSaved), 0, 'a comment read from disk is the baseline, not a change');
 });
 
+test('openEditor stores the study\'s failure at entry as entryFailure, and every step carries it (the final review of round 2, I1)', () => {
+  const failure = { processingError: 'No spine was found on this film.', processingErrorAt: '2026-10-10T08:00:00.000Z' };
+  const failed = openEditor({ study: { id: 'SP-0004', geometry: null, labelFile: null, ...failure }, region: 'auto', modelGeometry: null, saved: null });
+  assert.deepEqual(failed.entryFailure, failure);
+  assert.deepEqual(blankEditor().entryFailure, { processingError: null, processingErrorAt: null }, 'a film with no failure stores nulls');
+  assert.deepEqual(lumbarEditor({ study: { id: 'SP-0001', geometry: lumbarGeometry(), labelFile: null, processingError: undefined } }).entryFailure,
+    { processingError: null, processingErrorAt: null }, 'an absent field reads null');
+  // Every step spreads the editor, so the entry failure rides through placing, clearing, the comment, save and Discard.
+  const steps = [
+    (e) => toggleVisible(e, 'L3'),
+    (e) => toggleGroup(e, 'cervical'),
+    (e) => toggleOpen(e, 'lumbar'),
+    (e) => selectLevel(e, 'L3'),
+    (e) => startPlacing(e, 'L3'),
+    (e) => addPoint(e, [20, 20], IMAGE),
+    (e) => undoPoint(e),
+    (e) => cancelPlacing(e),
+    (e) => setLevelGeometry(e, 'L3', body(15, 50)),
+    (e) => clearLevel(e, 'L3'),
+    (e) => setComment(e, 'typed'),
+    (e) => markSaved(e, 'f.label.json'),
+    (e) => setLevelGeometry(e, 'L4', body(15, 70)),
+    (e) => revertToBaseline(e),
+  ];
+  let e = deepFreeze(failed);
+  for (const step of steps) {
+    e = deepFreeze(step(e));
+    assert.equal(e.entryFailure, failed.entryFailure, `carried unchanged through ${step.toString()}`);
+  }
+});
+
 // R9: study.geometry.femoral_circles is a compact array (a hidden Head 1 beside a placed Head 2 stores ONE
 // circle at slot 0), so with a saved record the circles are matched to the heads before slot order applies.
 function headsRecord(fh1, fh2) {

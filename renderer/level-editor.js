@@ -9,8 +9,9 @@
  * resets it to null on every change of the open study, which is what the stash below relies on.
  *
  * The screen hands in what it owns through configureLevelEditor: the viewer's measure queue (`commitGeometry`)
- * and prediction snapshots (`getPrediction`), and the analysis screen's film loader (`ensureFilm`) and image facts
- * (`imageInfo`). This file never imports components/viewer.js or screens/analysis.js, which both import it.
+ * and prediction snapshots (`getPrediction`), and the analysis screen's film loader (`ensureFilm`), image facts
+ * (`imageInfo`) and result clear (`clearResult`, over the queue's replaceMeasured). This file never imports
+ * components/viewer.js or screens/analysis.js, which both import it.
  *
  * (2026-10-11, gate feedback G3; plan D15) The window / level is no longer the editor's: it belongs to the view
  * (`state.filmWindow`, renderer/film-window.js) and outlives entering and leaving edit mode. The editor only reads
@@ -27,7 +28,7 @@ import {
   setPlacingStep, cancelPlacing, finishPlacing, clearLevel, revertLevel, setLevelGeometry, unsavedCount, canSave,
   markSaved, revertToBaseline, sameGeometry, setComment,
 } from './data/levels.js';
-import { projectGeometry, projectsLevel, regionFollowsLevels } from './data/level-projection.js';
+import { projectGeometry, projectsLevel, regionFollowsLevels, projectionIsEmpty } from './data/level-projection.js';
 import { toLabelRecord, recordLevels, recordComment, normalizeComment, labelFileName, appVersion } from './data/label-record.js';
 import { levelContours } from './data/contours.js';
 import { studyRegion, validAnteriorSide } from './data/cervical.js';
@@ -46,18 +47,22 @@ const NO_PREDICTION = 'the model\'s prediction is not loaded.';
 // ---------------------------------------------------------------------------
 // What the screen supplies.
 
-const deps = { commitGeometry: null, getPrediction: null, ensureFilm: null, imageInfo: null };
+const deps = { commitGeometry: null, clearResult: null, getPrediction: null, ensureFilm: null, imageInfo: null };
 
 /**
+ * `clearResult(studyId, patch)` (the final review of round 2, I1): orphans any /measure pending or in flight for the
+ * study (the measure queue's replaceMeasured) and writes `patch` onto it in one setState; what sync calls when a film
+ * no model produced is left with nothing placed.
  * @param {{commitGeometry: (studyId: string, geometry: object, options?: {clearFailure?: boolean}) => void,
+ *   clearResult: (studyId: string, patch: object) => void,
  *   getPrediction: (studyId: string) => ({measurements: object, geometry: object, qc: object|null}|undefined),
  *   ensureFilm: (studyId: string) => Promise<{images: object|null, raw: object|null, reason: string|null, superseded: boolean}>,
  *   imageInfo: (studyId: string, options?: {storedOnly?: boolean}) => Promise<{file: string, sha256: string,
  *     width: number, height: number, maskPixels: Uint8ClampedArray|null, labels: object|null,
  *     sidecarGeometry?: object|null}>}} wiring
  */
-export function configureLevelEditor({ commitGeometry, getPrediction, ensureFilm, imageInfo }) {
-  Object.assign(deps, { commitGeometry, getPrediction, ensureFilm, imageInfo });
+export function configureLevelEditor({ commitGeometry, clearResult, getPrediction, ensureFilm, imageInfo }) {
+  Object.assign(deps, { commitGeometry, clearResult, getPrediction, ensureFilm, imageInfo });
 }
 
 // ---------------------------------------------------------------------------
@@ -120,15 +125,31 @@ function projectedChange(before, after, study) {
 // record (studies.json) takes the result. A cervical or full-spine projection with no anterior side is NOT
 // committed (rulings R7/R8): /measure and the persistence validator both refuse it. The level model keeps the
 // change, and the next change that gives an orientation commits the whole projection.
+//
+// (The final review of round 2, I1) A film no model produced whose projection now places nothing (Discard after
+// placing, CLEAR on its only level, every level unchecked) has no result left: nothing goes to /measure. The screen's
+// clearResult orphans any /measure still pending or in flight for it and, in one write, takes its result away and puts
+// back the failure it carried when edit mode was entered (`editor.entryFailure`), so it reads Failed again, or
+// Unsegmented if it never ran. Checked before the anterior side: an empty projection needs no orientation.
 function sync(editor) {
   const study = studyOf(getState(), editor.studyId);
-  if (!study || typeof deps.commitGeometry !== 'function') return;
+  if (!study) return;
   const geometry = projectGeometry(editor, study);
   if (!geometry) return;
+  if (isHandPlaced(study) && projectionIsEmpty(geometry)) {
+    if (typeof deps.clearResult !== 'function') return;
+    const failure = editor.entryFailure ?? {};
+    deps.clearResult(editor.studyId, {
+      measurements: null, geometry: null, qc: null, reviewedAt: null,
+      processingError: failure.processingError ?? null, processingErrorAt: failure.processingErrorAt ?? null,
+    });
+    return;
+  }
+  if (typeof deps.commitGeometry !== 'function') return;
   if ((geometry.region === 'cervical' || geometry.region === 'full_spine') && !validAnteriorSide(geometry.anterior_side)) return;
   // (2026-10-15, annotation editor round 2, section 4.3) A film no model produced is the editor's alone: its first
   // landed commit clears the failure the film carried. A model result's commit passes false, so a failed re-run over
-  // old numbers still reads Failed.
+  // old numbers still reads Failed; any other commit passes nothing.
   deps.commitGeometry(editor.studyId, geometry, { clearFailure: isHandPlaced(study) });
 }
 
@@ -479,7 +500,10 @@ export async function writeReviewRecord(studyId) {
   }
 }
 
-/** Discard: every level back to the baseline (the saved record, else the state at entry), committed through the measure queue. */
+/**
+ * Discard: every level back to the baseline (the saved record, else the state at entry), committed through the measure
+ * queue; on a film no model produced whose baseline places nothing, the result is cleared instead (sync, I1).
+ */
 export function discardLevelEdits() {
   const editor = currentEditor(getState());
   if (!editor) return;

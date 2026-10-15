@@ -31,6 +31,7 @@
  *  @property {{then: 'exit'|'back'}|null} exitPrompt
  *  @property {string} comment                                       the free-text comment as typed (annotation round 2, spec §3)
  *  @property {string} savedComment                                  the comment as last saved or read from disk
+ *  @property {{processingError: string|null, processingErrorAt: string|null}} entryFailure   the study's failure at entry
  * (2026-10-11, gate feedback G3; plan D15) No window: the window / level belongs to the view, `state.filmWindow`
  * (the FilmWindow typedef in renderer/film-window.js), and outlives entering and leaving edit mode.
  */
@@ -394,7 +395,8 @@ function assignHeads(fromStudy, saved) {
 }
 
 /**
- * Start editing a study. `study` is read for `geometry`, `labelFile` and (optionally) `id`.
+ * Start editing a study. `study` is read for `geometry`, `labelFile`, `labelComment`, the failure it carries
+ * (`processingError`, `processingErrorAt`) and (optionally) `id`.
  * `modelGeometry` is the prediction's study-shaped geometry (or null). `saved` is the label record on
  * disk converted to `{ file, levels }` (levels keyed by code with `{visible, source, geometry}`), or null;
  * with it, the study's femoral circles are matched to the heads by value, not by slot, and a match takes the
@@ -439,6 +441,13 @@ export function openEditor({ study, region, modelGeometry, saved }) {
     exitPrompt: null,
     comment,
     savedComment: comment,
+    // (The final review of round 2, I1) The failure the film carried at entry. The first hand-placed commit clears the
+    // study's failure (spec §4.3); emptying the film of every level again puts this one back, since nothing about the
+    // film's runs changed. Every step spreads the editor, so it rides along; markSaved and revertToBaseline leave it.
+    entryFailure: {
+      processingError: study?.processingError ?? null,
+      processingErrorAt: study?.processingErrorAt ?? null,
+    },
   };
 }
 

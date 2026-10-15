@@ -10,7 +10,7 @@ import { showToast } from '../components/toast.js';
 import { toCsv } from '../data/csv.js';
 import { loadStudyImages, disposeStudyImages, thumbnailDataUri, bitmapFromBase64, imagesFromRaw } from '../viewer/canvas.js';
 import { cropRaw, defaultWindow, rawFromDecoded } from '../viewer/window-level.js';
-import { mountViewer, recordPrediction, forgetPrediction, getPrediction, commitGeometry } from '../components/viewer.js';
+import { mountViewer, recordPrediction, forgetPrediction, getPrediction, commitGeometry, replaceMeasured } from '../components/viewer.js';
 import { configureLevelEditor, forgetLevelEditor, requestExit, writeReviewRecord } from '../level-editor.js';
 import { configureFilmWindow, forgetFilmWindow, windowNeedsDecode, redecodeKeptWindow } from '../film-window.js';
 import { describeModels } from '../data/models.js';
@@ -724,9 +724,22 @@ async function readStoredImages(study) {
   return { images: await loadStudyImages(sidecar), geometry: sidecar.geometry };
 }
 
+// (The final review of round 2, I1) The level editor's way to take a study's result away: a film no model produced
+// whose levels were all taken off again (renderer/level-editor.js sync). Whatever /measure it has pending or in flight
+// is orphaned first (the queue's replaceMeasured, which also drops its draft), so no late answer lands over the patch;
+// then the patch is written in one update, onto the record that was asked about (`addedAt`).
+function clearResult(studyId, patch) {
+  const study = getState().studies.find((s) => s.id === studyId);
+  replaceMeasured(studyId, null);
+  if (!study) return;
+  setState((state) => ({
+    studies: state.studies.map((s) => (s.id === studyId && s.addedAt === study.addedAt ? { ...s, ...patch } : s)),
+  }));
+}
+
 // The level editor's wiring (renderer/level-editor.js) gets the viewer's measure queue and prediction snapshots,
-// and this screen's film loader and image facts. Once, at import, like the subscription above.
-configureLevelEditor({ commitGeometry, getPrediction, ensureFilm, imageInfo });
+// and this screen's film loader, image facts and result clear. Once, at import, like the subscription above.
+configureLevelEditor({ commitGeometry, clearResult, getPrediction, ensureFilm, imageInfo });
 // (2026-10-11, gate feedback G3) The view's window / level (renderer/film-window.js) decodes through the same loader.
 configureFilmWindow({ ensureFilm });
 

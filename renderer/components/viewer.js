@@ -117,8 +117,10 @@ export function drawnPlates() {
 
 const measureQueue = createMeasureQueue({ measure, getState, setState, showToast, debounceMs: MEASURE_DEBOUNCE_MS });
 // The level editor's projection reaches the store through here (renderer/level-editor.js, wired by
-// screens/analysis.js): previewed as a draft, re-measured, then written to the study record.
-export const { commitGeometry } = measureQueue;
+// screens/analysis.js): previewed as a draft, re-measured, then written to the study record. (The final review of
+// round 2, I1) `replaceMeasured` too, for the screen's clearResult: a film placed by hand and emptied again orphans
+// whatever /measure it has pending or in flight before its result is taken away.
+export const { commitGeometry, replaceMeasured } = measureQueue;
 
 // ---------------------------------------------------------------------------
 // The raw /predict output per study: the target of RESET TO PREDICTION. Kept off the Study

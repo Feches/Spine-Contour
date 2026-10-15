@@ -20,8 +20,9 @@ import { newStudy } from '../renderer/screens/studies.js';
 import {
   configureLevelEditor, enterLevelEditor, exitNow, startPlace, placePoint, toggleLevelVisible, selectPlacingStep,
   restorePlacing, fitPlacing, writeReviewRecord, saveLevelEdits, hasStashedEditor, forgetLevelEditor, commitHandleMove,
-  revertPlacedLevel, setLevelComment, discardLevelEdits, resetLevelsToModel,
+  revertPlacedLevel, setLevelComment, discardLevelEdits, resetLevelsToModel, clearPlacedLevel, toggleLevelGroup,
 } from '../renderer/level-editor.js';
+import { projectionIsEmpty } from '../renderer/data/level-projection.js';
 import { deriveStatus } from '../renderer/data/status.js';
 // (Gate feedback G3, 2026-10-11; plan D15) The window / level belongs to the view: renderer/film-window.js.
 import { configureFilmWindow, openWindowPanel, closeWindowPanel } from '../renderer/film-window.js';
@@ -53,15 +54,22 @@ const studyOf = (id) => getState().studies.find((study) => study.id === id);
 // The wiring's dependencies, with every commit recorded before it reaches the real queue. `ensureFilm` may be
 // replaced (the window re-review's minor: what entering edit mode does to a kept window), and so may `getPrediction`
 // and `imageInfo` (G6: a model result's snapshot, a film read that fails or that the store changes under).
+// (The final review of round 2, I1) `clearResult` is recorded into `clears` and does what screens/analysis.js's does:
+// the real queue's replaceMeasured, then the patch onto the study in one write. `measureWith` replaces the /measure stub.
 const NO_FILM = async () => ({ images: null, raw: null, reason: null, superseded: false });
 const PLAIN_IMAGE = async () => ({ file: 'x', sha256: SHA, width: IMAGE.width, height: IMAGE.height, maskPixels: null, labels: null });
 
-function wire(commits, ensureFilm = NO_FILM, { getPrediction = () => undefined, imageInfo = PLAIN_IMAGE } = {}) {
-  const queue = createMeasureQueue({ measure, getState, setState, showToast: () => {}, debounceMs: 0 });
+function wire(commits, ensureFilm = NO_FILM, { getPrediction = () => undefined, imageInfo = PLAIN_IMAGE, clears = [], measureWith = measure } = {}) {
+  const queue = createMeasureQueue({ measure: measureWith, getState, setState, showToast: () => {}, debounceMs: 0 });
   configureLevelEditor({
     commitGeometry: (studyId, geometry, options) => {
       commits.push({ studyId, geometry, options });
       queue.commitGeometry(studyId, geometry, options);
+    },
+    clearResult: (studyId, patch) => {
+      clears.push({ studyId, patch });
+      queue.replaceMeasured(studyId, null);
+      setState((s) => ({ studies: s.studies.map((x) => (x.id === studyId ? { ...x, ...patch } : x)) }));
     },
     getPrediction,
     ensureFilm,
@@ -838,6 +846,172 @@ test('a model result\'s commit carries clearFailure false and a failed re-run ke
     assert.equal(after.processingError, 'The last run failed.');
     assert.equal(after.processingErrorAt, '2026-10-10T08:00:00.000Z');
     assert.equal(deriveStatus(after), 'fail');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (The final review of round 2, I1) A film no model produced whose levels are all taken off again (Discard after
+// placing, CLEAR on its only level, its only level unchecked) does not commit an empty projection through /measure:
+// sync calls clearResult, which orphans the study's /measure and puts back the failure it carried at entry
+// (`editor.entryFailure`), so it reads Failed again, or Unsegmented if it never ran. A model result still commits.
+
+// A /measure stub that counts its calls and, while `hold` is set, keeps each answer until `release()`.
+function countingMeasure() {
+  const held = [];
+  const stub = {
+    calls: 0,
+    hold: false,
+    measure: async (request) => {
+      stub.calls += 1;
+      const answer = await measure(request);
+      if (stub.hold) await new Promise((resolve) => { held.push(resolve); });
+      return answer;
+    },
+    release: () => held.splice(0).forEach((resolve) => resolve()),
+  };
+  return stub;
+}
+
+const FAILED_AT = '2026-10-10T08:00:00.000Z';
+const NO_SPINE = 'No spine was found on this film.';
+
+test('Place then Discard on a failed film reads Failed again: no /measure, the result taken away, a late answer orphaned (the final review of round 2, I1)', async () => {
+  const study = failedAutoFilm('SP-9560');
+  const commits = [];
+  const clears = [];
+  const stub = countingMeasure();
+  wire(commits, NO_FILM, { clears, measureWith: stub.measure });
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    placeBody('L3', [100, 100]);
+    await settle();
+    let now = studyOf(study.id);
+    assert.equal(deriveStatus(now), 'hand', 'the first hand-placed commit cleared the failure');
+    assert.equal(now.processingError, null);
+    assert.equal(stub.calls, 1);
+
+    // A second commit whose /measure answer is still in flight when Discard is clicked.
+    stub.hold = true;
+    const { superior, inferior } = getState().levelEditor.levels.L3.geometry;
+    const nudge = (points) => points.map(([x, y]) => [x + 5, y]);
+    commitHandleMove('L3', { superior: nudge(superior), inferior: nudge(inferior) });
+    await settle();
+    assert.equal(stub.calls, 2, 'precondition: the nudge\'s /measure is in flight');
+    assert.ok(getState().measurementDrafts[study.id], 'precondition: its draft is pending');
+
+    discardLevelEdits();
+    assert.equal(getState().toast, 'Discarded 1 change.');
+    assert.equal(commits.length, 2, 'Discard commits nothing');
+    assert.equal(clears.length, 1, 'Discard clears the result');
+    assert.deepEqual(clears[0], {
+      studyId: study.id,
+      patch: { measurements: null, geometry: null, qc: null, reviewedAt: null, processingError: NO_SPINE, processingErrorAt: FAILED_AT },
+    });
+    now = studyOf(study.id);
+    assert.equal(deriveStatus(now), 'fail', 'Failed again, as at entry');
+    assert.equal(now.processingError, NO_SPINE);
+    assert.equal(now.processingErrorAt, FAILED_AT);
+    assert.equal(now.measurements, null);
+    assert.equal(now.geometry, null);
+    assert.equal(getState().measurementDrafts[study.id], undefined, 'the pending draft is dropped');
+    assert.equal(unsavedCount(getState().levelEditor), 0);
+
+    // The answer in flight lands after the Discard: orphaned, it writes nothing.
+    stub.hold = false;
+    stub.release();
+    await settle();
+    assert.equal(stub.calls, 2, 'no /measure call for the Discard');
+    const late = studyOf(study.id);
+    assert.equal(late, now, 'the late answer did not land');
+    assert.equal(deriveStatus(late), 'fail');
+    assert.equal(getState().editing, true, 'still in edit mode');
+  });
+});
+
+test('a film that never ran, placed then discarded, reads Unsegmented again (I1)', async () => {
+  const study = newStudy({ id: 'SP-9561', fileName: 'SP-9561_full_spine.png', filePath: null });
+  assert.equal(deriveStatus(study), 'unseg');
+  const commits = [];
+  const clears = [];
+  wire(commits, NO_FILM, { clears });
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    assert.deepEqual(getState().levelEditor.entryFailure, { processingError: null, processingErrorAt: null });
+    placeBody('L3', [100, 100]);
+    await settle();
+    assert.equal(deriveStatus(studyOf(study.id)), 'hand');
+    discardLevelEdits();
+    await settle();
+    const now = studyOf(study.id);
+    assert.equal(deriveStatus(now), 'unseg');
+    assert.equal(now.processingError, null);
+    assert.equal(now.processingErrorAt, null);
+    assert.equal(now.measurements, null);
+    assert.equal(now.geometry, null);
+    assert.equal(commits.length, 1, 'only the placement committed');
+    assert.equal(clears.length, 1);
+  });
+});
+
+test('CLEAR on the only placed level, or unchecking it, reads Failed again the same way (I1)', async () => {
+  const study = failedAutoFilm('SP-9562');
+  const commits = [];
+  const clears = [];
+  wire(commits, NO_FILM, { clears });
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    placeBody('L3', [100, 100]);
+    await settle();
+    assert.equal(deriveStatus(studyOf(study.id)), 'hand');
+    clearPlacedLevel('L3');
+    await settle();
+    let now = studyOf(study.id);
+    assert.equal(deriveStatus(now), 'fail', 'CLEAR');
+    assert.equal(now.processingError, NO_SPINE);
+    assert.equal(now.processingErrorAt, FAILED_AT);
+    assert.equal(now.measurements, null);
+    assert.equal(now.geometry, null);
+    assert.equal(commits.length, 1, 'CLEAR commits nothing');
+    assert.equal(clears.length, 1);
+
+    // Placed again, then its row unchecked: the only placed level is no longer projected.
+    placeBody('L3', [100, 100]);
+    await settle();
+    assert.equal(deriveStatus(studyOf(study.id)), 'hand');
+    assert.equal(commits.length, 2);
+    toggleLevelVisible('L3');
+    await settle();
+    now = studyOf(study.id);
+    assert.equal(deriveStatus(now), 'fail', 'unchecked');
+    assert.equal(now.processingError, NO_SPINE);
+    assert.equal(now.measurements, null);
+    assert.equal(now.geometry, null);
+    assert.equal(commits.length, 2, 'the uncheck commits nothing');
+    assert.equal(clears.length, 2);
+  });
+});
+
+test('a model result with every level unchecked still commits through /measure (I1: today\'s behaviour)', async () => {
+  const model = lumbarGeometry();
+  const study = segmentedFilm('SP-9563', { reviewedAt: null });
+  const commits = [];
+  const clears = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(model), clears });
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    for (const group of ['lumbar', 'sacral', 'femoral']) toggleLevelGroup(group);
+    await settle();
+    const editor = getState().levelEditor;
+    assert.ok(LEVEL_CODES.every((code) => !editor.levels[code].visible), 'precondition: every level unchecked');
+    assert.equal(clears.length, 0, 'a model result is never cleared');
+    assert.equal(commits.length, 3, 'each group commits');
+    const last = commits[2];
+    assert.equal(projectionIsEmpty(last.geometry), true, 'the last projection places nothing');
+    assert.deepEqual(last.options, { clearFailure: false });
+    const now = studyOf(study.id);
+    assert.notEqual(now.measurements, null, '/measure answered and the queue wrote it');
+    assert.deepEqual(now.geometry.vertebrae, {});
+    assert.equal(now.predictionId, study.predictionId);
   });
 });
 

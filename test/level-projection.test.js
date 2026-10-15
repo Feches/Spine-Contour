@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   projectionRegion, anteriorSideFrom, quadrilateral, projectGeometry, regionFollowsLevels, projectsLevel,
+  projectionIsEmpty,
 } from '../renderer/data/level-projection.js';
 import {
   levelsFromGeometry, openEditor, setLevelGeometry, toggleVisible,
@@ -575,6 +576,53 @@ test('region auto with only cervical levels placed projects as a cervical film',
   assert.equal(geometry.region, 'cervical');
   assert.equal(geometry.anterior_side, 'left');
   assert.notEqual(reload(t, geometry, EMPTY_MEASUREMENTS.cervical).study.geometry, null);
+});
+
+// ---------- projectionIsEmpty (the final review of round 2, I1) ----------
+
+test('projectionIsEmpty: a lumbar projection with nothing placed is empty, whatever the stored geometry held; any lumbar level is not', () => {
+  const study = { region: 'lumbar', geometry: { ...fakeGeometry(), ...IMAGE_FIELDS } };
+  const empty = projectGeometry(editorWith({}, { region: 'lumbar' }), study);
+  assert.equal(empty.manually_cleared, true, 'precondition: the projection marks the clear');
+  assert.equal(projectionIsEmpty(empty), true);
+  const hidden = projectGeometry(editorWith({ L3: bodyAt(10, 190) }, { region: 'lumbar', hide: ['L3'] }), study);
+  assert.equal(projectionIsEmpty(hidden), true, 'a placed level that is unchecked places nothing');
+  for (const code of ['L1', 'L3', 'L5', 'S1', 'FH1', 'FH2']) {
+    const geometry = projectGeometry(editorWith({ [code]: LUMBAR_PLACEMENTS[code] }, { region: 'lumbar' }), study);
+    assert.equal(projectionIsEmpty(geometry), false, `${code} alone is a placed level`);
+  }
+  const auto = { region: 'auto' };
+  assert.equal(projectionIsEmpty(projectGeometry(editorWith({}, { region: 'auto', study: auto }), auto)), true, 'an Auto film with nothing placed');
+});
+
+test('projectionIsEmpty: a cervical projection with nothing placed is empty (no manual-clear mark); C2 or any body is not', () => {
+  const study = { region: 'cervical', geometry: { region: 'cervical', anterior_side: 'right', ...IMAGE_FIELDS, c2_centroid: [45, 12] } };
+  const empty = projectGeometry(editorWith({}, { region: 'cervical' }), study);
+  assert.equal(empty.region, 'cervical');
+  assert.equal('manually_cleared' in empty, false, 'precondition: a cervical projection never carries the mark');
+  assert.equal(projectionIsEmpty(empty), true);
+  for (const code of ['C2', 'C3', 'C7']) {
+    const geometry = projectGeometry(editorWith({ [code]: CERVICAL_PLACEMENTS[code] }, { region: 'cervical' }), study);
+    assert.equal(projectionIsEmpty(geometry), false, `${code} alone is a placed level`);
+  }
+});
+
+test('projectionIsEmpty: a full-spine projection with nothing placed is empty; a C level, an L level, S1 or a head is not', () => {
+  const stored = { region: 'full_spine', anterior_side: 'left', ...IMAGE_FIELDS, vertebrae: { C3: studyBody(10, 30) }, c7_centroid: [15, 115] };
+  const study = { region: 'full_spine', geometry: stored };
+  const empty = projectGeometry(editorWith({}), study);
+  assert.equal(empty.region, 'full_spine');
+  assert.equal(projectionIsEmpty(empty), true);
+  for (const code of ['C2', 'C7', 'L1', 'S1', 'FH2']) {
+    const geometry = projectGeometry(editorWith({ [code]: { ...CERVICAL_PLACEMENTS, ...LUMBAR_PLACEMENTS }[code] }), study);
+    assert.equal(projectionIsEmpty(geometry), false, `${code} alone is a placed level`);
+  }
+});
+
+test('projectionIsEmpty: null is empty, and so is anything marked manually_cleared', () => {
+  assert.equal(projectionIsEmpty(null), true);
+  assert.equal(projectionIsEmpty({ region: 'lumbar', manually_cleared: true }), true);
+  assert.equal(projectionIsEmpty({ region: 'cervical', vertebrae: {}, c2_centroid: [1, 2] }), false, 'a centroid is a landmark');
 });
 
 // ---------- purity ----------
