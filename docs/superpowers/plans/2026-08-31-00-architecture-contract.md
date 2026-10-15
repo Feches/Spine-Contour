@@ -112,7 +112,9 @@ renderer/                         (new)
                                   parts through configureLevelEditor); module scope; verified by smoke. (2026-10-11, G3) The
                                   window / level state moved out to film-window.js. (2026-10-12, G6, D19) writeReviewRecord:
                                   the label record Mark reviewed writes for a film with none, through writeRecord, the one
-                                  write it shares with Save edits
+                                  write it shares with Save edits. (2026-10-15, annotation editor round 2) setLevelComment(text)
+                                  and revertPlacedLevel(code); sync passes { clearFailure: isHandPlaced(study) } to commitGeometry;
+                                  saveLevelEdits writes the comment into the record and the study's labelComment
   film-window.js                  (2026-10-11, gate feedback G3/G4, plan D15–D17) the view's window / level, the pattern of
                                   level-editor.js: configureFilmWindow({ensureFilm}), windowFor(state, study), openWindowPanel(),
                                   ensureWindowLoaded(), closeWindowPanel(), setWindow({width, level}), resetWindow(),
@@ -183,7 +185,9 @@ renderer/                         (new)
                                   movePlate, resetPlate; R44); pure
   viewer/measure-queue.js         (plan 04) createMeasureQueue({measure, getState, setState, showToast, debounceMs})
                                   → {commitGeometry, replaceMeasured}: per-study revisions, one owner-tracked
-                                  debounce, flush on study switch; session-only drafts, atomic geometry/measurement commit
+                                  debounce, flush on study switch; session-only drafts, atomic geometry/measurement commit.
+                                  (2026-10-15, round 2, spec §4.3) commitGeometry(studyId, geometry, { clearFailure }): the
+                                  write that lands nulls processingError and processingErrorAt in the same patch
   viewer/geometry.js              circle fit, coordinate transforms
 
   data/demo-studies.js            the nine fabricated studies
@@ -227,13 +231,15 @@ renderer/                         (new)
   data/levels.js                  (2026-10-10) the level model: sixteen codes in five groups, kinds, names, film-type defaults, state
                                   derivation, placement steps, visibility, the unsaved count, summary and training status, the
                                   measurement-to-level table behind the dependency notes; the LevelEditor and WindowState typedefs;
-                                  (2026-10-11, D18) pointKeys and changedPoints, the record's edited points; pure
+                                  (2026-10-11, D18) pointKeys and changedPoints, the record's edited points; (2026-10-15, round 2)
+                                  revertLevel, setComment, commentChanged and the editor's comment / savedComment; pure
   data/level-projection.js        (2026-10-10) the level model into study.geometry per region (projectGeometry, projectionRegion,
                                   regionFollowsLevels, projectsLevel, anteriorSideFrom, quadrilateral); the reverse direction is
                                   levels.js levelsFromGeometry; pure
   data/label-record.js            (2026-10-10) the label record: toLabelRecord, recordLevels, labelFileName (a safe stem, -2/-3 on a
                                   clash), viewSlug, appVersion, LABEL_SCHEMA; (2026-10-11, D18) each entry's edited_points and the
-                                  record's edits summary; pure
+                                  record's edits summary; (2026-10-15, round 2) normalizeComment, recordComment and the record's
+                                  comment; pure
   data/contours.js                (2026-10-10) a level's outline in the label mask (traceLabel, simplify, levelContours), for the
                                   record's contour; pure
 
@@ -299,6 +305,9 @@ The single record type. Demo and real studies share it exactly.
  *                                    userData/labels/ (`<stem>.label.json`, `-2`/`-3` on a clash), set by its first
  *                                    Save edits (or, 2026-10-12, D19, by Mark reviewed on a film with none) and
  *                                    kept across saves; null until then
+ * @property {string|null} labelComment  (2026-10-15, annotation editor round 2) the display copy of the label record's
+ *                                    comment: its trimmed text, null for none; set with labelFile by Save edits (and by the
+ *                                    bundle import), kept by a re-run, a Region change and Unmark reviewed
  * @property {Object<string,string>} clinical   field name → value
  */
 ```
@@ -315,7 +324,9 @@ from `filePath`**, never stored, so it stays correct when a moved film is reloca
 must match `/^\d{4}-\d{2}-\d{2}$/` or `validateStudy` nulls it with a warning. (2026-10-01, issue #39) `processingError`
 (1.0.13) and `processingErrorAt` are optional-null on the same terms, with no `STORE_VERSION` bump, and are listed in
 `validateStudy` too; `processingErrorAt` is kept only when it parses as a date and `processingError` is set, and any
-other value that is present is nulled with a warning.
+other value that is present is nulled with a warning. (2026-10-15, annotation editor round 2, spec §3.2) `labelComment`
+is optional-null on the terms of `note` (`optionalText`), listed in `validateStudy`'s returned object so it survives a
+reload, with no `STORE_VERSION` bump; `newStudy` sets it null.
 
 Demo studies additionally carry `dx`, `plan`, `hx`, `outcome`, `pt`, `sex`, `age`,
 `bmi`, `odi`, `conf` for display. Real studies leave these absent; the UI renders `—`.
@@ -670,8 +681,8 @@ export const S1_CONFIDENCE_LIMIT = 0.6   // review threshold, not accuracy proba
 
 export function reviewReasons(study)    // → string[]; shared by status and Analysis warnings
 
-export function deriveStatus(study)      // → 'fail'|'unseg'|'ok'|'rev'|'seg'  (2026-10-01; see the amendment below)
-export function statusLabel(status)      // → 'Processing'|'Unsegmented'|'Failed'|'Segmented'|'Needs review'|'Reviewed'; '—' otherwise
+export function deriveStatus(study)      // → 'fail'|'unseg'|'ok'|'hand'|'rev'|'seg'  (2026-10-01; 2026-10-15 adds 'hand'; see the amendments below)
+export function statusLabel(status)      // → 'Processing'|'Unsegmented'|'Failed'|'Segmented'|'Needs review'|'Hand-placed'|'Reviewed'; '—' otherwise
 export function isReviewed(study)                // → boolean  (2026-09-10) a non-blank reviewedAt
 export function displayStatus(study, runningId, batch)  // → the status a row or header SHOWS: 'proc' while runningId === study.id
                                                         //   or (2026-10-01) the film waits in a running batch, else deriveStatus
@@ -706,9 +717,21 @@ running study and, given `state.batch`, for every film still waiting in a runnin
 (`data/batch.js isQueued`), and every caller passes `state.batch`. A batch's waiting films therefore read Processing by
 that rule, not by rule 1; a stopping batch's waiting films read their own status. The Studies summary keeps its three
 clauses and its UNSEGMENTED counts Unsegmented, Processing and Failed (`data/find.js summaryCounts`). The Find sort
-ranks fail 0 · proc 1 · unseg 2 · rev 3 · seg 4 · ok 5. `statusLabel` names all six keys and returns `—` for any
-other. A failed attempt stores `processingError` as `failureReason(message)` and `processingErrorAt` in the same
-update; the Failed pill's tooltip is `failureTitle(processingError, processingErrorAt)`.
+ranks fail 0 · proc 1 · unseg 2 · rev 3 · ~~seg 4 · ok 5~~ hand 4 · seg 5 · ok 6 (2026-10-15). `statusLabel` names all
+~~six~~ seven keys (2026-10-15: `hand`) and returns `—` for any other. A failed attempt stores `processingError` as
+`failureReason(message)` and `processingErrorAt` in the same update; the Failed pill's tooltip is `failureTitle(processingError, processingErrorAt)`.
+
+**2026-10-15 amendment (annotation editor round 2, E2;
+`docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md` §4).** `deriveStatus` gains one rule and its
+first-match order is now: no study → `'unseg'`; a non-blank `processingError` → `'fail'`; `measurements == null` →
+`'unseg'`; `isReviewed` → `'ok'`; **`study.source === 'real' && isHandPlaced(study)` → `'hand'`**; then `reviewReasons`
+non-empty → `'rev'`, else `'seg'`. `isHandPlaced` is `data/predictions.js`'s test (no prediction id and no
+`qc.models`, R16); the real-study guard is load-bearing, since a demo has neither field and keeps reading Segmented. A
+marked hand-placed film reads Reviewed and a failed re-run over it reads Failed. `displayStatus` and
+`reviewBlockedReason` are unchanged; `statusLabel('hand')` is `Hand-placed`. `data/find.js`: `STATUS_RANK` is fail 0 ·
+proc 1 · unseg 2 · rev 3 · hand 4 · seg 5 · ok 6, and `summaryCounts` counts `hand` in TO REVIEW beside `rev`. The
+pill is `.badge-hand` in `styles/components.css` (Needs review's tint with Unsegmented's hollow dot); every other
+surface calls `statusBadge` with the key and needed no change.
 
 **There is exactly one rule, and demo studies are not exempt from it.** All nine demo
 studies have internally consistent parameters (residual ≈ 0) and confidence 0.82–0.97,
@@ -1503,9 +1526,10 @@ refitted by a rim-point drag, and hidden with its checkbox; Delete and Backspace
 - R22 (final review): `data/levels.js` `canFinishPlacing(editor, imageSize)` is false while a femoral head's fit would
   have a radius under 0.5 px (or below `fitFrom` clicks); `finishPlacing` is a no-op then, FIT's enabled state reads
   it, and `addPoint` drops a head's click within 1 px of any of its rim points.
-- R24 (final review): a hand-placed film whose run had failed keeps `processingError` and its Failed status; whether
+- R24 (final review): ~~a hand-placed film whose run had failed keeps `processingError` and its Failed status; whether
   the first hand-placed commit should clear it, or the film get a status of its own, is the owner's decision (plan
-  Task 15, ROADMAP §8).
+  Task 15, ROADMAP §8).~~ Closed 2026-10-15 by E2 (annotation editor round 2, the amendment at the end of this file):
+  a status of its own, `hand`, and the first hand-placed commit clears the failure.
 - R25 (the wave's re-review): `viewer/level-handles.js` `moveHandle` refuses a rim-point move (a drag or an arrow nudge)
   whose refit would have a radius under `MIN_RADIUS` (0.5 px, exported by `data/levels.js`) and returns the geometry
   unchanged, so no path leaves a femoral head the label record's schema rejects.
@@ -1718,3 +1742,54 @@ construction chip's drag is unchanged.
 
 No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet file (rules in
 `styles/screens/analysis.css` section `05 — LEVEL EDITOR` and `styles/components.css`), no Python package.
+
+## 2026-10-15 amendment: annotation editor round 2 (a comment on the record, Hand-placed, REVERT)
+
+Spec `docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md` (E1–E7, the owner's rulings and the
+planner's); plan `plans/2026-10-15-annotation-editor-round-2.md` (rulings P1–P10); branch `worktree-annotation-round-2`
+off `origin/main` @ `06c8cdd` (v1.1.1), `9d5b4e6`..`fa0c181` and the records commit; user doc `docs/level-editor.md`.
+Nothing the 2026-10-10 amendment says is removed; R24 closes with E2.
+
+**Status.** The 2026-10-15 amendment in the `data/status.js` section above: `'hand'`, `Hand-placed`, rank 4, TO REVIEW,
+`.badge-hand`.
+
+**`Study.labelComment`** and the study field list: the Study typedef above and the paragraph under it. Written by exactly
+two paths, Save edits and the bundle spec's import (`specs/2026-10-15-annotation-bundle-export-import-design.md`).
+
+**`viewer/measure-queue.js`: `commitGeometry(studyId, geometry, { clearFailure = false } = {})`.** The queue keeps a
+per-study flag, set by any commit that passes `clearFailure`, kept through the debounce and coalescing, read and
+dropped at the start of `recalculate`, and dropped by `replaceMeasured` (plan P2). The write that lands adds
+`processingError: null, processingErrorAt: null` to the patch that sets the measurements, geometry, `reviewedAt: null`
+and qc, in the same `setState` (E6), so the film never reads Unsegmented in between. A `/measure` error writes nothing:
+the film stays Failed and the next commit tries again. The level editor's `sync` passes `clearFailure:
+isHandPlaced(study)`; the viewer's own commits (a landmark drag on a model result) pass nothing, so a failed re-run over
+old numbers still reads Failed (port spec P6, which gains this third clearing site). `configureLevelEditor`'s
+`commitGeometry` dependency takes the optional third argument.
+
+**Exports.** `data/levels.js`: `revertLevel(editor, code)`, `setComment(editor, text)`, `commentChanged(editor)`; the
+`LevelEditor` typedef gains the strings `comment` and `savedComment`; `openEditor`'s `saved` takes an optional `comment`
+(else the study's `labelComment`); `unsavedCount` adds one while `commentChanged`; `markSaved` sets both strings to the
+trimmed text and `revertToBaseline` sets `comment` back to `savedComment`; `resetLevelsToModel` leaves both alone
+(D14). `data/label-record.js`: `normalizeComment(text)` (trimmed, null when blank or not a string) and
+`recordComment(record)` (trimmed, `''` for none); `toLabelRecord` writes `comment` after `edits`. `renderer/level-editor.js`
+(the wiring, which stays the only writer of a non-null `state.levelEditor`): `setLevelComment(text)` (an edit that
+commits nothing) and `revertPlacedLevel(code)` (an edit that commits); the private `withLabelFile(studies, studyId,
+addedAt, file, labelComment)` gains a fifth, optional argument (P6: `undefined` leaves the field alone, as Mark reviewed's
+write does; a string or `null` sets it, as Save edits does); `saveLevelEdits` sets `labelComment` with `labelFile` in
+one patch and puts only `savedComment` into the stored editor (P3: the live `comment` stays as typed). `enterLevelEditor`
+reads `recordComment(record)`; `writeReviewRecord` needs no change, since `openEditor` with no record takes the study's
+`labelComment`. `screens/studies.js` `matchesQuery` searches `labelComment`.
+
+**Panel and Analysis.** `components/level-editor.js`: the footer's comment box, one `<textarea>` made at mount and
+re-appended on every rebuild with its selection restored (P8; the rebuild key carries `commentChanged(editor)`, not the
+text, and the viewer's key handler already ignores keys typed in a `textarea`, P9), and the REVERT button
+(`data-level-key` `revert:<code>`, `lv-text-btn lv-revert`; an edited head stacks Place… over REVERT in `is-stacked`).
+`screens/analysis.js`: the read-only `analysis-comment` block under the actions row, written on every `update()` with no
+key of its own (P10) and hidden in edit mode. CSS: `.badge-hand` in `styles/components.css`; `.lv-comment*`,
+`.analysis-comment*` and the `is-stacked` column in `styles/screens/analysis.css`.
+
+**Label record schema.** `docs/design/level-editor/label-record.schema.json` gains `comment`, optional and nullable the
+way `model_corners` is (`oneOf` string / null, P5), under the same schema id; the example gains one. A record written
+before it validates and reads as no comment.
+
+No `STORE_VERSION` bump, no IPC or CSP change, no runtime dependency, no new module file, no backend change.

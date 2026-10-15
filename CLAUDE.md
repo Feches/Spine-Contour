@@ -1,6 +1,26 @@
 # Spine Contour
 
-**2026-10-13 level plates, gate feedback G7 (BUILT, release 1.1.1 committed, not pushed):** branch `claude/level-plates`
+**2026-10-15 annotation editor round 2: a comment on the record, Hand-placed, REVERT (BUILT, at the owner's gate, not
+pushed):** branch `worktree-annotation-round-2` in worktree `.claude/worktrees/annotation-round-2`, off `origin/main` @
+`06c8cdd` (v1.1.1, the merge of PR #64). Three gaps the owner raised: nothing in the annotation said why, a failed film
+placed by hand stayed Failed (R24), and one edit could not be undone on its own. Spec
+`docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md` (E1–E7), plan
+`docs/superpowers/plans/2026-10-15-annotation-editor-round-2.md` (rulings P1–P10). The label record gains an optional
+`comment` (a `COMMENT` box in the Vertebral levels panel's footer, 2,000 characters, one more unsaved change while it
+differs; `labelComment` on the study is its display copy, shown read-only on the Analysis screen and searched by Find;
+`normalizeComment`, `recordComment`, `setComment`, `commentChanged`, `setLevelComment`). `deriveStatus` reads `hand`
+(`Hand-placed`) for a real study whose result no model produced (`isHandPlaced`): after Needs review in the sort, counted
+in TO REVIEW, `.badge-hand`. The level editor's commit passes `clearFailure` to the measure queue
+(`commitGeometry(studyId, geometry, { clearFailure })`), whose write nulls `processingError` and `processingErrorAt` in
+the same patch as the measurements, which CLOSES R24 (the owner's E2). An Edited level has REVERT (`revertLevel`,
+`revertPlacedLevel`; `source` back to `model`, E7). `9d5b4e6`..`fa0c181` (eight commits) and a records commit (the design
+handoff's sections 2, 3, 6, 9, 11 and the new 12a, `docs/level-editor.md`, ROADMAP §8, the port and studies-table specs,
+the contract, the level editor plan's Ledger, this file, HANDOFF). Unit 1005/1005 (975 on the base);
+`smoke-levels.mjs` dom 141/141 and film 25/25 on a fresh `%TEMP%` profile, DOM, store and file reads only. Nothing
+pushed, no release note (the owner picks the number at the gate; 1.2.0 is the suggestion); the companion bundle spec
+(`specs/2026-10-15-annotation-bundle-export-import-design.md`) is built after this gate.
+
+**2026-10-13 level plates, gate feedback G7 (RELEASED as v1.1.1: PR #64, merge `06c8cdd`):** branch `claude/level-plates`
 in worktree `.claude/worktrees/level-plates`, off `origin/main` @ `cbbeb4e` (the merge of PR #60, v1.1.0). The owner's
 film faces right, and the level editor's fixed rightward label plate sat inside every body. Now each plate sits outside
 its level on the posterior side (D20, R43: `labelPlacement` in the new pure `renderer/viewer/level-labels.js`; a body
@@ -15,7 +35,7 @@ never persisted or recorded; `drawLevelEditor` returns the plates drawn; `client
 1.1.1 release commit (`package.json`, `version.js`, CHANGELOG, `docs/releases/1.1.1.md`, the README link). Unit
 974/974 (953 before); `smoke-levels.mjs` dom 121/121 on a fresh `%TEMP%` profile, twice, DOM reads only. Not run: the
 film phase, the gate chain and the other suites, a packaged build, backend pytest (no backend change). Nothing pushed;
-merging its PR to `main` with a merge commit publishes v1.1.1. Open: the owner's R24; PR #62 (release accuracy gate) is open and,
+merging its PR to `main` with a merge commit publishes v1.1.1. Open: ~~the owner's R24~~ (closed 2026-10-15 by E2, above); PR #62 (release accuracy gate) is open and,
 once merged, blocks publication until its variables and token are set; PR #63 (in-app training) overlaps the retraining
 brainstorm; PR #61 closed unmerged as superseded (HANDOFF's first section, Next).
 
@@ -47,7 +67,8 @@ deferred minor); spec `docs/design/level-editor/HANDOFF.md`; user doc `docs/leve
 amendment; HANDOFF's first "Where things stand" section. The final whole-branch review ("With fixes") landed `7e9d502`
 and `e3d5df7`: an Auto film with no model run takes its region from its placed levels on every projection (R20), Region
 and Orientation are disabled while editing (R21), a femoral head needs a radius of 0.5 px (R22); a hand-placed film
-that had failed still reads Failed, the owner's call at the gate (R24). The wave's re-review was clean; its one residual,
+that had failed still read Failed, ~~the owner's call at the gate (R24)~~ (closed 2026-10-15 by E2: it reads Hand-placed).
+The wave's re-review was clean; its one residual,
 a rim-point drag or nudge that would leave a head under 0.5 px, is refused (`f3a3a32`, R25). Unit 925/925 after the
 review of G3/G4 (918 after G3/G4, 901 after the gate feedback's review wave, 898 after G2, 888 after R25, 887 after the
 wave, 879 before it); `smoke-levels.mjs` dom 102/102 after that review (film 23/23 after G3/G4, not re-run); backend

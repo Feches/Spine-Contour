@@ -395,10 +395,14 @@ built.
 - **A hand-placed film whose source moved** opens outside edit mode to a black stage with no card; the reason (`The
   source film could not be found.`) is toasted only when Edit is pressed. A card with a relocate would say why up front.
   Related: a very old record with a sidecar but neither a prediction id nor `qc.models` reads as hand-placed (R16).
-- **A hand-placed film that had failed still reads Failed (R24, the owner's decision).** A film whose segmentation
+- ~~**A hand-placed film that had failed still reads Failed (R24, the owner's decision).** A film whose segmentation
   failed and whose levels were then placed by hand keeps its `processingError`: it reads Failed, sorts first and blocks
   Mark reviewed until a run succeeds. Clear `processingError` on the first hand-placed commit, or give such a film a
-  status of its own? On the human gate's checklist (plan Task 15); nothing changed in code.
+  status of its own? On the human gate's checklist (plan Task 15); nothing changed in code.~~ Closed 2026-10-15
+  (annotation editor round 2, E2 and E6): the owner chose a status of its own, **Hand-placed**, and the first
+  hand-placed commit clears the failure in the measure queue's own write, so the film reads Hand-placed, sorts after
+  Needs review, counts as TO REVIEW and can be marked reviewed; built on `worktree-annotation-round-2`, spec
+  `docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md`.
 - **Stage layout.** The edit bar's help line makes it taller: in a small window it covers the film's upper landmarks
   (the smoke suites now run at 1600x1100), and the W/L panel at top 116 px may overlap a two-row edit bar. ~~A level's
   label plate is fixed to the right of its posterior corner~~ (gate feedback G7, 2026-10-13, D20: each plate sits

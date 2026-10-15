@@ -81,6 +81,12 @@ The state is **derived** from three things: the visibility flag, the current geo
 
 - **Segmented vertebral levels can't be redone individually.** There is no Reset, re-run or Place… for a level the model segmented. It can only be adjusted by dragging its handles, or unchecked. **Discard** reverts all unsaved edits at once.
 - **Manual levels** have **Clear**, which removes the geometry and sends the level back to `not_placed`, so it can be placed again.
+- **Edited levels** have **REVERT** (*added 2026-10-15, E3 and E7, round 2; spec section 5*): it returns that one level to the
+  model's output (the geometry becomes the model's, `source` goes back to `model`), so the level reads `segmented` again
+  and its record entry is indistinguishable from one never touched. It is the one individual undo the first rule above
+  did not have: that rule keeps its meaning for Place…, re-run and Reset, and the model's output is still not re-done
+  one level at a time. Manual levels have nothing to revert to and keep Clear. An edited femoral head shows Place… and
+  REVERT.
 - **Femoral heads are the exception.** They always show **Place…** while visible, including segmented ones. Placing rim points replaces the circle. If model output exists, the head becomes `edited` and the model circle is kept in `model_circle`.
 - **Unchecking keeps geometry in memory** for the session, so re-checking restores it. The saved record omits geometry for `not_visible`.
 - **Film-type defaults:**
@@ -118,9 +124,9 @@ The state is **derived** from three things: the visibility flag, the current geo
 | List | Scrolls (`overflow-y: auto`). Padding 4px 8px 10px. Groups separated by a 1px `border`. |
 | Group row | Tri-state checkbox (20px, `radius-check`) plus a disclosure `<button>` (flex 1, min-height 44px, `radius-input`, hover `well`). The button holds the title (14px / 650 `ink`), a range in mono 9.5px `muted` ("C2–C7", "T1 · T4", "L1–L5", "S1 ENDPLATE", "2–4 RIM POINTS"), a spacer, a count in mono 9px `muted` ("4 PLACED · 1 TO PLACE"), and a 12px chevron rotated −90° when closed. |
 | Level row | Indented 26px. Contains: checkbox; a select `<button>` (flex 1, min-height 40px) with an 8px swatch in the overlay colour, the name at 14px / 600 and the badge on the right; then a 70px action column. Selected row: `well` background and `accent` name. `not_visible` rows: `muted` name and a hollow swatch with a `border` outline. `not_placed` rows: hollow swatch in the level colour. |
-| Row actions | Place… is `btn btn-small` (padding 5×12, 13px). CLEAR and CANCEL are mono 9px text buttons in `accent` with a hover `well`. |
+| Row actions | Place… is `btn btn-small` (padding 5×12, 13px). CLEAR and CANCEL are mono 9px text buttons in `accent` with a hover `well`. *Amended 2026-10-15 (E3, spec section 5.3):* REVERT is a third such text button, shown for an Edited level; an edited femoral head stacks Place… above REVERT in the same 70px column (`is-stacked`, ruling R18's layout), and a level being placed shows CANCEL alone. |
 | Dependency note | Shown under an unchecked row: 12px in `body`, e.g. "LL and L1–L2 will show —". See section 6. |
-| Footer | Top 1px `border`, padding 12 / 16 / 14. Line 1 is the training-label status: a 7px dot (`sage` when complete, `accent` when not), a mono label (`TRAINING LABEL · COMPLETE` / `· INCOMPLETE`) and one sentence. Line 2 is the unsaved count in mono (`2 UNSAVED CHANGES` / `NOTHING TO SAVE`), then **Discard** (`btn btn-small`) and **Save edits** (`btn btn-primary btn-small`). |
+| Footer | Top 1px `border`, padding 12 / 16 / 14. Line 1 is the training-label status: a 7px dot (`sage` when complete, `accent` when not), a mono label (`TRAINING LABEL · COMPLETE` / `· INCOMPLETE`) and one sentence. Line 2 is the unsaved count in mono (`2 UNSAVED CHANGES` / `NOTHING TO SAVE`), then **Discard** (`btn btn-small`) and **Save edits** (`btn btn-primary btn-small`). *Amended 2026-10-15 (E1, spec section 3.4):* a comment block sits above line 1: a mono `COMMENT` label (`mono-section`, `muted`), then a three-row `<textarea>` at the panel's full width (2,000 characters, resizable vertically only, capped at 30vh) with the placeholder `Anything the next reader or the trainer should know about this film.`. The exit prompt replaces line 2's row as before and the comment stays above it. |
 
 ### Stage chrome
 
@@ -216,14 +222,16 @@ All are in the Spine Contour design system. Use the app's CSS variables, not hex
 | UNDO | Click | Removes the last placed point. Disabled at 0 points. *Amended 2026-10-11 (G2):* removes the most recently set point and makes its step the current one; a re-placed point is cleared, not returned to its earlier position (R27). |
 | CANCEL | Click | Exits placement with no change. Shown in the edit bar and in the row's action column. |
 | CLEAR | Click (manual rows only) | Removes the geometry; the level becomes `not_placed`. |
+| REVERT | Click (edited rows only) | *Added 2026-10-15 (E3, E7, spec section 5):* returns the level to the model's geometry and sets `source` back to `model`; the badge reads Segmented, the dashed model ghost goes with it, and the measurements follow through `/measure` like a handle drag. The unsaved count follows the level's baseline (reverting an unsaved edit lowers it; reverting a saved edit raises it). |
 | Handle | Drag | Moves that corner or point. A femoral rim point refits the circle live. Disabled while placing or while window / level is open. |
 | Save edits | Click | Writes the label record (section 9) and shows the toast "Saved N edits to the label record." Disabled with the visible reason `NOTHING TO SAVE` when there are 0 changes. |
 | Discard | Click | Reverts to the last save and cancels any placement. Toast: "Discarded N changes." |
+| Comment box | Type | *Added 2026-10-15 (E1, spec section 3.4):* the text is the film's one comment (not per level). It counts as one unsaved change while it differs from the saved text (leading and trailing whitespace ignored), so the footer's count and Save edits follow each keystroke; Discard puts the saved text back; Save edits writes it into the record (section 9). Tab, the arrows and Escape stay in the box; they never reach the stage's handle keys. |
 | Window / level tool | Click | Opens or closes the W/L panel (see below). *Amended 2026-10-11 (G3, D15):* in every mode. |
 | Film or its black surround | Right-drag | *Added 2026-10-11 (G4, D16):* windows the film in every mode, panel open or closed, Pan on or off, without opening the panel (see below). A left+right chord still pans. *Amended by the review (R37):* once the pointer has moved 3 px; a right press alone does nothing. |
 | Film or its black surround | Double right-click | *Added 2026-10-11 (G4, D17):* the film's default window, as RESET. |
 
-**Unsaved count** is the number of levels whose (visible, geometry) pair differs from the last save. A `source` change alone doesn't count.
+**Unsaved count** is the number of levels whose (visible, geometry) pair differs from the last save. A `source` change alone doesn't count. *(2026-10-15, E1)* A comment that differs from the saved one adds one.
 
 **Training-label status:** "complete" means no visible level lacks geometry. Otherwise the footer names the missing levels in `accent`, e.g. "T1 superior endplate and L3 are visible but not placed — place them or uncheck them."
 
@@ -358,6 +366,7 @@ Store everything in **image pixels of the stored image, origin top-left**. Conve
 | `app_version`, `saved_at` | Provenance |
 | `complete` | True when no level or femoral head is `not_placed` |
 | `edits` | (Added 2026-10-11, D18; optional in the schema, R39, always written by the app) Seven counts over the fourteen levels and two femoral heads together: `segmented`, `edited`, `manual`, `not_placed`, `not_visible` (entries per state), `points_moved` (the `edited` entries' `edited_points` added up) and `points_placed` (the `manual` entries'). Written after `complete`; computed from the entries, so it always agrees with them. |
+| `comment` | (Added 2026-10-15, E1, spec section 3.1; optional and nullable in the schema, as `edits` is optional, so a record written before it validates and reads as no comment; always written by the app) The annotator's free-text note on the film: the text trimmed, or `null` when blank. Written after `edits`. The study record keeps a display copy, `labelComment`, written in the same save (E5). Mark reviewed's zero-change record carries the study's current comment. |
 | `levels.<code>.state`, `source` | As in section 2 |
 | `levels.<code>.edited_points`, `femoral_heads[].edited_points` | (Added 2026-10-11, D18; optional in the schema, R39, always written by the app) The entry's own geometry keys the annotator gave it, in this order: a body `sa`, `sp`, `ia`, `ip`; C2 `ia`, `ip`, `centroid`; T1 and S1 `sa`, `sp`; T4 `centroid`; a femoral head `center`, `radius` (never its rim). `segmented`, `not_placed`, `not_visible`: `[]`. `edited`: the keys whose value differs from the model's by the test that derives the state (10⁻⁶ px), so `edited` exactly when the list is not empty (R38). `manual`: every key of the kind. |
 | `levels.<C3–C7, L1–L5>.corners` | `{sa, sp, ia, ip}`. Absent when `not_visible` or `not_placed`. |
@@ -406,7 +415,7 @@ The design artboard doesn't show `model_centroid` or `model_circle`. The schema 
 
 ## 11. Edge cases
 
-- **Segmentation failed entirely:** every level is `not_placed` (in film-type groups) or `not_visible`. The panel works the same, and every level can be placed by hand. This is the main case the feature exists for.
+- **Segmentation failed entirely:** every level is `not_placed` (in film-type groups) or `not_visible`. The panel works the same, and every level can be placed by hand. This is the main case the feature exists for. *Amended 2026-10-15 (E2, E6; R24 closed; spec section 4):* the first level committed on such a film clears its failure in the measure queue's own write, and the film then reads **Hand-placed**, not Failed: it counts as TO REVIEW, sorts after Needs review, and Mark reviewed is enabled and turns it Reviewed. A later failed re-run reads Failed again.
 - **Unchecking during placement:** the placement is cancelled.
 - **Placement clicks outside the image:** clamp to the image bounds.
 - **Two femoral points that are very close:** the radius is tiny. Accept it, since the user can refit.
@@ -446,6 +455,28 @@ D20 on 2026-10-13 from G7 (branch `claude/level-plates`).
 | D18 | Which points an edit moved (2026-10-11, gate feedback G5) | Every level and femoral head in the record lists `edited_points` (its own geometry keys: what moved when `edited`, every key when `manual`, none otherwise; `edited` exactly when the list is not empty, R38), and the record carries a top-level `edits` summary (entries per state, `points_moved`, `points_placed`). Both additive: the schema keeps its id and accepts records saved before them (R39). Section 9 amended. |
 | D19 | Accepting a film without editing it (2026-10-12, gate feedback G6) | **Mark reviewed** also writes the film's label record when the study has none yet: the zero-change record of the stored state, what Save edits writes right after entering edit mode with nothing changed. Unmarking writes nothing; a study with a record is left alone (Save edits keeps owning it); not while the study's level edits are open or stashed (R40); the mark never waits for or depends on the write (R41). A zero-change Save edits still works (D10). Section 9 amended. |
 | D20 | Where the level plates sit, and moving them (2026-10-13, gate feedback G7) | Each level's label plate sits outside its level on the posterior side, read from the level's own geometry and, only where it cannot say, from the film's anterior side (R43); any plate can be dragged in edit mode and a double-click puts it back (R44). The offsets are view state, like zoom, pan and the window: reset when another film opens, kept through leaving and entering edit mode, never persisted, never in the label record. Section 5's labels amended. |
+
+## 12a. Decisions (2026-10-15)
+
+Made with the owner on 2026-10-15 for the second annotation round; the spec of record is
+`docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md` ("the round-2 spec"), whose decisions
+E1–E7 are listed here one line each. Built on branch `worktree-annotation-round-2` (worktree
+`.claude/worktrees/annotation-round-2`, off `origin/main` @ `06c8cdd`, v1.1.1); plan
+`docs/superpowers/plans/2026-10-15-annotation-editor-round-2.md` (rulings P1–P10).
+
+| # | Decision |
+|---|---|
+| E1 | **One comment per film, in the record, shown outside edit mode too** (owner). A free-text comment typed in the panel and written into the label record as `comment`; the Analysis panel shows it read-only. Not per level. Sections 3, 6 and 9 amended. |
+| E2 | **A status of its own, Hand-placed, for any annotator result** (owner). A real study whose result no model produced reads `Hand-placed`, whether its run failed first or never ran; the first hand-placed commit clears the failure; it sorts after Needs review, counts as TO REVIEW, and Mark reviewed turns it Reviewed. Section 11 amended. |
+| E3 | **REVERT next to the level** (owner). A per-level control in the row's action column that returns an Edited level to the model's geometry. Sections 2, 3 and 6 amended. |
+| E4 | **Two specs, the editor first** (owner). The round-2 spec, then the bundle spec (`2026-10-15-annotation-bundle-export-import-design.md`), which carries the comment across libraries. |
+| E5 | **The comment lives twice** (planner). The record's `comment` is the training copy; the study's `labelComment` is the display copy, written by the same save, the record first. |
+| E6 | **The failure is cleared in the measure queue's own write** (planner), not by a second `setState`: the commit carries `clearFailure` and the write that puts the measurements on the record nulls `processingError` and `processingErrorAt` in the same patch. |
+| E7 | **REVERT sets `source` back to `model`** (planner), so a reverted level's record entry is indistinguishable from one never touched. |
+
+**R24 is closed** (the open ruling of the level editor plan's Task 15 and ROADMAP section 8: should a hand-placed film that
+had failed keep reading Failed?): the owner's answer is E2, a status of its own, with the failure cleared by the first
+hand-placed commit (E6).
 
 ---
 

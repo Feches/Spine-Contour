@@ -238,6 +238,7 @@ record, the film-date rule). No `STORE_VERSION` bump. Demo records carry `null`.
 | `proc` — Processing | no measurements (or, in `buildRow`, currently running) |
 | `ok` — Reviewed | measurements and `reviewedAt` set |
 | `rev` — Needs review | measurements, not reviewed, `reviewReasons` non-empty |
+| `hand` — Hand-placed | (2026-10-15, annotation editor round 2, E2) a real study with measurements, not failed, not reviewed, whose result no model produced (`isHandPlaced`: no prediction id and no `qc.models`); tested before `reviewReasons`, so it reads Hand-placed whatever its qc says, between Needs review and Segmented in the sort |
 | `seg` — Segmented | measurements, not reviewed, no reasons |
 
 `statusLabel('ok')` is `Reviewed`. A new badge class `badge-ok`: the completed state, so it is the

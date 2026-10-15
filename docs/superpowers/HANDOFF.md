@@ -1,9 +1,12 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-10-13
-**Branch:** `claude/level-plates` in the worktree `.claude\worktrees\level-plates` of the main checkout, off
-`origin/main` @ `cbbeb4e` (v1.1.0): gate feedback G7, the level plates outside the body and draggable — BUILT, the
-1.1.1 release commit on it, not pushed (first section under "Where things stand").
+**Last updated:** 2026-10-15
+**Branch:** `worktree-annotation-round-2` in the worktree `.claude\worktrees\annotation-round-2` of the main checkout,
+off `origin/main` @ `06c8cdd` (v1.1.1): annotation editor round 2 (a comment on the label record, the Hand-placed
+status, REVERT per level) — BUILT, at the owner's gate, not pushed (first section under "Where things stand").
+**2026-10-13 branch (released):** `claude/level-plates` in the worktree `.claude\worktrees\level-plates` of the main
+checkout, off `origin/main` @ `cbbeb4e` (v1.1.0): gate feedback G7, the level plates outside the body and draggable —
+~~BUILT, the 1.1.1 release commit on it, not pushed~~ RELEASED as v1.1.1 (PR #64, merge `06c8cdd`).
 **2026-10-12 branch (released):** `worktree-level-editor` in the worktree `.claude\worktrees\level-editor`, off
 `origin/main` @ `20fd4c5` (v1.0.17): the vertebral level editor, window / level and the label record, G1–G6
 included — RELEASED as v1.1.0 on 2026-10-12 (PR #60, merged as `cbbeb4e`, tagged `v1.1.0`).
@@ -53,7 +56,53 @@ algorithm changed; no screenshots were added.
 
 ## Where things stand
 
-### Vertebral level editor, window / level, label record — RELEASED as v1.1.0 on 2026-10-12 (PR #60, merge `cbbeb4e`; branch `worktree-level-editor`, worktree `.claude/worktrees/level-editor`, off `origin/main` @ `20fd4c5`, v1.0.17); gate feedback G7 BUILT after it, release 1.1.1 committed, not pushed (branch `claude/level-plates`, worktree `.claude/worktrees/level-plates`, off `origin/main` @ `cbbeb4e`)
+### Annotation editor round 2: a comment on the record, Hand-placed, REVERT: BUILT, at the owner's gate, not pushed (branch `worktree-annotation-round-2`, worktree `.claude/worktrees/annotation-round-2`, off `origin/main` @ `06c8cdd`, v1.1.1)
+
+2026-10-15. Three gaps the owner raised in the level editor, each closed on this branch: nothing in the annotation said
+why, a failed film placed by hand stayed Failed (the open ruling R24), and one edit could not be undone on its own.
+
+- Spec: `docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md` (decisions E1–E7; its section 8 lists the
+  records it amends). Plan: `docs/superpowers/plans/2026-10-15-annotation-editor-round-2.md` (eight tasks, rulings
+  P1–P10). Its companion, built after this one (E4): `specs/2026-10-15-annotation-bundle-export-import-design.md`,
+  which carries the comment across libraries. SDD ledger `.superpowers/sdd/2026-10-15-annotation-editor-round-2/`
+  (local, untracked).
+- **A comment on the record (E1, E5).** The label record gains an optional, nullable `comment` after `edits` (schema id
+  unchanged; a record saved before it validates and reads as no comment); the study gains `labelComment`, the display
+  copy, written by the same save as `labelFile`. The editor carries `comment` and `savedComment`; `commentChanged` makes
+  `unsavedCount` one higher, so the footer's count, Save edits, the exit prompt and the stash follow with no further
+  change. The Vertebral levels footer has a `COMMENT` textarea (one node kept across the panel's rebuilds, P8; 2,000
+  characters, `max-height: 30vh`); Save edits writes the record and `labelComment` and keeps the live text in the box
+  (P3); Mark reviewed's zero-change record carries the study's comment; the Analysis screen shows it read-only (six lines,
+  scrollable, hidden in edit mode) and the Find search matches it.
+- **Hand-placed (E2, E6; closes R24).** `deriveStatus` returns `hand` (`Hand-placed`) for a real study with measurements,
+  not failed, not reviewed, whose result no model produced (`isHandPlaced`; the real-study guard keeps demos Segmented,
+  P1). Sort rank 4 (`fail 0, proc 1, unseg 2, rev 3, hand 4, seg 5, ok 6`), counted in TO REVIEW, `.badge-hand`. The
+  level editor's `sync` passes `clearFailure: isHandPlaced(study)` and the measure queue's write nulls `processingError`
+  and `processingErrorAt` in the same patch as the measurements (a per-study flag that survives the debounce, P2); the
+  viewer's own commits pass nothing, so a failed re-run over old numbers still reads Failed.
+- **REVERT (E3, E7).** `revertLevel(editor, code)` returns an Edited level to the model's geometry (a head: the model
+  circle, `rim: null`) with `source` back to `model`; `revertPlacedLevel` commits it through `/measure` like a drag. A
+  mono `REVERT` button in the row's action column (`revert:<code>`); an edited head stacks Place… over REVERT.
+- What was built, by commit (`5835860..` this branch's tip): the Hand-placed status `9d5b4e6`; the queue's `clearFailure`
+  `03ed4a3`; REVERT `4f34893`; the comment on the record and the study `872f94d`; Save edits and the reopen `71b7b8c`;
+  the panel's box and the Analysis block `8341375`, their height caps `56cec01`; the smoke sections (12's failed film,
+  20 REVERT, 21 the comment) `fa0c181`; then the records commit (the design handoff's sections 2, 3, 6, 9, 11 and the
+  new 12a, `docs/level-editor.md`, ROADMAP §8, the port and studies-table specs, the contract, the level editor plan's
+  Ledger, CLAUDE.md, this file, and four comment-only fixes the reviews flagged).
+- Counts: unit 1005/1005 (975 on the base); `smoke-levels.mjs` dom 141/141 and film 25/25 (a fresh `%TEMP%` profile, one
+  copied OLIF lumbar film, DOM, store and file reads only, no screenshots); the other suites this workstation runs were
+  re-measured the same day, none with a FAIL line (`tools/smoke/README.md`).
+- Not run: a packaged build; backend pytest (no backend change); `smoke-cervical.mjs`, `smoke-segmental.mjs` and
+  `smoke-calibration.mjs` (no cervical film, no ruler films, no Tesseract binary here).
+
+**Next.** The owner's gate: the three features on real films from the workstation's films folder, on a `%TEMP%`
+profile with `TESSERACT_CMD` at the installed app's bundled OCR (no screenshot of a real film). Push, PR and release
+only on the owner's say-so; no release note is written yet (the owner picks the number; 1.2.0 is the suggestion).
+R24 is closed. Still open: the bundle spec's build, which follows this gate; PR #62 (release accuracy gate) and PR #63
+(in-app training); the retraining brainstorm (`docs/superpowers/NEXT-SESSION-retraining.md`, a new worktree off
+`main`); the human gate's checklist for the released editor (plan Task 15).
+
+### Vertebral level editor, window / level, label record — RELEASED as v1.1.0 on 2026-10-12 (PR #60, merge `cbbeb4e`; branch `worktree-level-editor`, worktree `.claude/worktrees/level-editor`, off `origin/main` @ `20fd4c5`, v1.0.17); gate feedback G7 ~~BUILT after it, release 1.1.1 committed, not pushed~~ RELEASED as v1.1.1 (PR #64, merge `06c8cdd`) (branch `claude/level-plates`, worktree `.claude/worktrees/level-plates`, off `origin/main` @ `cbbeb4e`)
 
 2026-10-10. Edit mode on the Analysis screen is now a level editor. In edit mode the right panel is the **Vertebral
 levels** panel: sixteen levels in five groups (C2–C7, T1 · T4, L1–L5, S1, two femoral heads), each with a visibility
@@ -121,7 +170,7 @@ and can be placed by hand.
 - **Released as v1.1.0 on 2026-10-12.** The branch was pushed to `origin` (Feches) at the owner's choice with the
   1.1.0 release commit `54c2511` on it (G6 and R42 included); PR #60 merged it to `main` as `cbbeb4e` the same day,
   which carries the tag `v1.1.0` and published the installers. The human gate's checklist (plan Task 15) stays the
-  owner's to tick on the released build; R24 is still open.
+  owner's to tick on the released build; ~~R24 is still open~~ (closed 2026-10-15 by E2, in the first section above).
 - **Gate feedback G7 (2026-10-13, D20, decisions 136–138 below; branch `claude/level-plates` off `cbbeb4e`).** The
   owner: "the vertebral body labeling gets in the way. Is there a way to move them?" On a film facing right every
   level's plate sat inside its body (Task 9 fixed it 14 px right of the posterior edge). Each plate now sits outside
@@ -166,15 +215,17 @@ and can be placed by hand.
   workstation, and it screenshots); a DICOM film's default window from its tags on a real DICOM (the unit and backend
   tests cover it).
 
-**Next.** The owner checks G7 on their right-facing film (plan Task 15's new item: the plates outside the bodies on
+**Next.** (Written 2026-10-13, before PR #64 merged: v1.1.1 is released and this paragraph is history; the current Next is
+the first section above.) The owner checks G7 on their right-facing film (plan Task 15's new item: the plates outside the bodies on
 the posterior side, the drag, the double-click, the reset on opening another film) and says whether to push
 `claude/level-plates`; its PR to `main`, merged with Create a merge commit, publishes v1.1.1. Before the push its smoke
 baseline (dom 121/121 when written) is worth re-measuring with the gate chain (parity, gate1–3, chip, chord), since
 the plates now take left presses in edit mode that used to do nothing. Still open on the released editor:
 
-- **R24, the owner's decision:** a film whose segmentation failed and whose levels were then placed by hand still
+- ~~**R24, the owner's decision:** a film whose segmentation failed and whose levels were then placed by hand still
   reads Failed, sorts first and blocks Mark reviewed; clear `processingError` on the first hand-placed commit, or give
-  such a film its own status? (Task 15's checklist; ROADMAP §8.)
+  such a film its own status? (Task 15's checklist; ROADMAP §8.)~~ Closed 2026-10-15 by E2 (annotation editor round 2:
+  a status of its own, Hand-placed, and the first hand-placed commit clears the failure).
 - **Michael's PR #61** (a missing-vertebra annotation in the old edit bar) was closed unmerged, as superseded by the
   level editor.
 - **PR #62** (a release accuracy gate) is open; once merged, it blocks publication until its variables and token are set.
@@ -1894,7 +1945,8 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
      deviation from the plan, documented in the contract amendment. *Cost if wrong:* none.
 112. **R24 — A hand-placed film's Failed status is the owner's call** (clear `processingError` on the first hand-placed
      commit, or a status of its own); on the gate's checklist and in ROADMAP §8, unchanged in code. *Cost if wrong:*
-     Failed films sort first and block Mark reviewed until the owner decides.
+     Failed films sort first and block Mark reviewed until the owner decides. **Closed 2026-10-15 by E2** (annotation
+     editor round 2): a status of its own, `hand`, and the first hand-placed commit clears the failure.
 113. **R25 — A rim-point drag or nudge that would leave a femoral head under 0.5 px is refused** (`moveHandle` returns
      the geometry unchanged, so the handle stays where it was): the re-review of the final wave found the one path R22
      left to a radius of 0, which the label record's schema rejects. *Cost if wrong:* a rim point cannot be dragged

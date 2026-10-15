@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "spinecontour.segmentation-label/1",
   "title": "SpineContour segmentation label record",
-  "description": "One file per film, written on Save edits. Coordinates are image pixels of the stored image, origin top-left. C2 is an inferior endplate plus a centroid (owner decision 2026-10-10). Every level and femoral head lists edited_points and the record carries an edits summary (D18, 2026-10-11); both are optional here, so a record saved before them still validates (R39), and the app always writes them.",
+  "description": "One file per film, written on Save edits. Coordinates are image pixels of the stored image, origin top-left. C2 is an inferior endplate plus a centroid (owner decision 2026-10-10). Every level and femoral head lists edited_points, the record carries an edits summary (D18, 2026-10-11) and an optional comment (annotation editor round 2, 2026-10-15); all three are optional here, so a record saved before them still validates (R39), and the app always writes them.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "study", "image", "film", "model", "app_version", "saved_at", "complete", "levels", "femoral_heads"],

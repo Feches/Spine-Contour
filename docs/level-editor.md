@@ -10,6 +10,11 @@ each level's label plate sits outside its body on the posterior side and can be 
 `docs/superpowers/plans/2026-10-10-level-editor.md`. Contract: the 2026-10-10 amendment of
 `docs/superpowers/plans/2026-08-31-00-architecture-contract.md`.
 
+Since 2026-10-15 (annotation editor round 2, decisions E1–E7) a film also has one free-text **comment** in its label
+record, a film whose result no model produced reads **Hand-placed**, and an Edited level has its own **REVERT**. Spec
+`docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md`; plan
+`docs/superpowers/plans/2026-10-15-annotation-editor-round-2.md` (rulings P1–P10).
+
 ## Entering and leaving
 
 The toolbar's pencil (**Edit segmentation**) enters edit mode. The right panel's tabs, its Export / Mark reviewed row and
@@ -43,11 +48,28 @@ disclosure button:
 
 Each row has a visibility checkbox (`<level> visible on film`), a select button with the level's colour swatch, name
 and state badge, and an action: **Place…** for a level with nothing placed, **CLEAR** for a level placed by hand,
-**CANCEL** while it is being placed. A femoral head always offers Place… while visible (rim points replace its
-circle); a head placed by hand shows Place… above CLEAR (R18). The header carries a summary, for example `7 PLACED ·
+**REVERT** for an Edited level (round 2, E3), **CANCEL** while it is being placed. A femoral head always offers Place…
+while visible (rim points replace its circle); a head placed by hand shows Place… above CLEAR (R18), and an edited head
+Place… above REVERT. The header carries a summary, for example `7 PLACED ·
 1 TO PLACE · 8 NOT VISIBLE` (a clause is left out at zero; PLACED is always written); each group carries its own count.
-The footer says whether the training label is complete (`TRAINING LABEL · COMPLETE` when every level is placed or
-marked not visible, else which visible levels still need placing), the unsaved count, **Discard** and **Save edits**.
+The footer starts with the **comment box** (below), then says whether the training label is complete (`TRAINING LABEL ·
+COMPLETE` when every level is placed or marked not visible, else which visible levels still need placing), the unsaved
+count, **Discard** and **Save edits**.
+
+**REVERT** (round 2, E3 and E7). An Edited level shows a mono **REVERT** button in its action column (`Revert L4 to the
+model's output`). It returns that one level to the model's geometry and its `source` to `model`, so the level reads
+Segmented again, the dashed model ghost goes, and the measurements follow through `/measure` like a handle drag. A
+Segmented level has nothing to revert, a Manual one has CLEAR, and a level being placed has CANCEL. Whether it changes
+the unsaved count depends on the baseline: reverting an unsaved edit lowers it, reverting an edit that was saved raises
+it, and Save edits then writes the level `segmented` with its contour again.
+
+**The comment** (round 2, E1). Above the training-label status the footer carries a `COMMENT` box: one free-text
+comment per film, not per level, three rows tall, 2,000 characters at most, resizable vertically up to 30% of the
+window's height, with the placeholder `Anything the next reader or the trainer should know about this film.`. Typing
+counts as one unsaved change while the text differs from the saved one (whitespace at either end ignored), so the
+footer's count and Save edits follow each keystroke; Tab, the arrows and Escape stay in the box and never reach the
+stage's handle keys. Outside edit mode the Analysis panel shows a saved comment read-only, as a `COMMENT` block under
+the Export / Mark reviewed row (capped at six lines, scrollable), and the Find list's search matches it (no column).
 
 ### The five states, and what they mean for training
 
@@ -123,7 +145,8 @@ placement returns to how it was before it, so a press that re-placed a point giv
 CANCEL (in the edit bar or on the row) abandons the placement; selecting another row
 cancels it too. A level placed by hand can be removed with **CLEAR**, which sends it back to Not placed (D13). A
 segmented vertebral level has no Place… or reset of its own: drag its handles, uncheck it, or use Discard or RESET TO
-PREDICTION for the whole study.
+PREDICTION for the whole study. An Edited level can also be returned to the model's output one level at a time with
+**REVERT** (round 2, E3).
 
 ## Handles and the keyboard
 
@@ -181,13 +204,15 @@ no measurement and nothing unsaved.
 ## Discard, RESET TO PREDICTION, Save edits
 
 - **Discard** puts every level back to the baseline: the saved label record when one exists, otherwise the state at
-  entry, and commits it through `/measure`. Toast: `Discarded 2 changes.`
+  entry, and commits it through `/measure`. The comment returns to the saved text with them (round 2). Toast:
+  `Discarded 2 changes.`
 - **RESET TO PREDICTION** (D14, in the edit bar) returns the whole study to the model's output: the prediction's own
   numbers on the record (no `/measure`) and every level to the model's geometry. The baseline and the record are
-  untouched, so the reset itself can be an unsaved change.
-- **Save edits** writes the label record and makes the current levels the baseline. Toast: `Saved 2 edits to the label
-  record.` (`Saved the label record.` for a first save with nothing changed, which is allowed: it confirms the model's
-  output, D10). Save is disabled, with `NOTHING TO SAVE`, only when a record already exists and nothing has changed
+  untouched, so the reset itself can be an unsaved change. It leaves the comment alone: the reset is about geometry.
+- **Save edits** writes the label record, comment included, and makes the current levels the baseline and the comment's
+  text the saved one. Toast: `Saved 2 edits to the label record.` (a changed comment counts as one of the edits;
+  `Saved the label record.` for a first save with nothing changed, which is allowed: it confirms the model's output,
+  D10). Save is disabled, with `NOTHING TO SAVE`, only when a record already exists and nothing has changed
   since. Since 2026-10-12 **Mark reviewed** writes that same zero-change record for a film that has none, without
   entering edit mode (D19, under "The label record" below); the zero-change Save edits still works.
 
@@ -264,6 +289,15 @@ added up) and `points_placed` (the manual entries'). Dragging L3's SA corner and
 before it lack them, and the schema accepts them either way (R39, same schema id), so a script should treat a missing
 `edited_points` as unknown, not as empty.
 
+**The comment** (annotation editor round 2, E1 and E5). The record carries `comment`, after `edits`: the annotator's
+text trimmed, or `null` when it is blank (the box caps new text at 2,000 characters; nothing truncates a record read
+from disk). The field is optional in the schema, the way `edits` is (R39), under the same schema id, so a record
+saved before it validates and reads as no comment; the app writes it on every save. The study keeps a display copy,
+`labelComment` (optional-null, no `STORE_VERSION` bump), set in the same save as `labelFile`, so the Analysis panel
+and the Find search read it without opening the file; a re-run, a Region change and Unmark reviewed leave it, since
+the record stays, and a delete removes both. Opening the editor takes the comment from the record, else from
+`labelComment`. Mark reviewed's zero-change record carries the study's current comment, usually none.
+
 ## Window / level
 
 Window / level works in every mode, on any film on the stage (gate feedback G3 and G4, 2026-10-11). The toolbar's
@@ -326,8 +360,19 @@ and then C3 on a failed Auto full-spine film therefore measures it as a full spi
 says `full_spine`; such a film always opens in edit mode as Auto (every level visible, unless its label record says
 otherwise), whatever region its last commit wrote. A cervical or full-spine reading with no anterior side known is not measured until one is (R7).
 
-A film whose segmentation failed keeps its Failed status after levels are placed on it by hand: it still sorts first
-and blocks Mark reviewed until a run succeeds or the owner decides otherwise (R24, on the human gate's checklist).
+A real film whose result no model produced reads **Hand-placed** (round 2, E2; this closes R24), whether its run failed
+first or never ran. The first level committed on a film that had failed clears the failure in the measure queue's own
+write, so the film never reads Unsegmented in between: the Failed pill, the header's `Last run failed` note and the
+FAILED card go, and Mark reviewed is enabled. The pill is Needs review's tint with Unsegmented's hollow dot (the dot
+means no model ran). A Hand-placed film sorts after Needs review and before Segmented, counts as TO REVIEW in the
+Studies summary, and Mark reviewed turns it Reviewed; Unmark reviewed returns it to Hand-placed. A later failed re-run
+reads Failed again, and a successful re-run makes it a model result again (its record stays; the levels then compare
+to the new model). A demo study never reads Hand-placed. A projection that measures nothing (a cervical or full-spine
+reading with no anterior side, R7) is not committed, so a film stays Failed until one is.
+
+~~A film whose segmentation failed keeps its Failed status after levels are placed on it by hand: it still sorts first
+and blocks Mark reviewed until a run succeeds or the owner decides otherwise (R24, on the human gate's checklist).~~
+(Superseded 2026-10-15: R24 is closed by E2, the paragraph above.)
 
 ## Demo studies
 
@@ -340,7 +385,8 @@ write a label record; the save path refuses with `Demo studies are not exported`
 unchecking, Save edits and the record on disk (its `edited_points` and `edits` included), Discard and the exit prompt, femoral rim points, window / level in edit
 mode and (section 17) outside it, with the right-button drag and the double right-click, the keyboard and the stash,
 and (section 18) the record Mark reviewed writes for a film with none, and (section 19) where the level plates sit,
-their drag, the double-click and their reset;
+their drag, the double-click and their reset, and (2026-10-15, round 2) section 12's failed film, which now reads Failed
+before its first commit and Hand-placed after, section 20 (REVERT) and section 21 (the comment);
 the pure modules have unit tests (`test/levels`, `level-projection`, `level-handles`, `level-labels` for the plates,
 `window-level`, `label-record`, `contours`, and `interactions` for the double right-click; `canvas` draws the plates),
 `test/level-editor-wiring.test.js` drives the wiring

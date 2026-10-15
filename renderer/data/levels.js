@@ -683,7 +683,9 @@ export function unsavedText(n) {
 
 /**
  * After a successful save: the levels become the baseline and the record exists. `file` defaults to the current one.
- * The comment becomes its trimmed text, as the record holds it, and that text is the saved one.
+ * The comment becomes its trimmed text, as the record holds it, and that text is the saved one. The wiring's caller
+ * (`saveLevelEdits`) takes `savedComment` only (plan ruling P3): the live `comment` stays as typed, so text typed during
+ * the write stays unsaved and a trailing space survives in the box until the next save.
  */
 export function markSaved(editor, file) {
   const comment = String(editor.comment ?? '').trim();
