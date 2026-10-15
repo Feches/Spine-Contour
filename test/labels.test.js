@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle, lastSegment, subjectLabel } from '../renderer/data/labels.js';
+import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle, lastSegment, subjectLabel, safeStem } from '../renderer/data/labels.js';
 
 const DASH = '\u2014';
 
@@ -88,4 +88,39 @@ test('subjectLabel shows the subject id, else the demo patient label, else an em
   assert.equal(subjectLabel({ subjectId: '  ', pt: '' }), DASH);
   assert.equal(subjectLabel({}), DASH);
   assert.equal(subjectLabel(null), DASH);
+});
+
+// ---------- safeStem (moved here from label-record.js; the bundle's folder names and the label names share it) ----------
+
+test('safeStem turns reserved and control characters into _ and keeps DEL, non-ASCII letters and an inner dot (R12)', () => {
+  assert.equal(safeStem('a:b*c?d"e<f>g|h'), 'a_b_c_d_e_f_g_h', 'reserved characters become _');
+  assert.equal(safeStem('a\\b/c'), 'a_b_c', 'both separators become _');
+  assert.equal(safeStem('tab\there\u0000\u001f'), 'tab_here__', 'control characters become _');
+  assert.equal(safeStem('\u007f\u00e9t\u00e9'), '\u007f\u00e9t\u00e9', 'DEL and non-ASCII letters are kept');
+  assert.equal(safeStem('a.b'), 'a.b', 'an inner dot is kept');
+  assert.equal(safeStem('a b'), 'a b', 'a space is kept');
+});
+
+test('safeStem strips leading dots and gives film when nothing is left', () => {
+  assert.equal(safeStem('..hidden'), 'hidden', 'leading dots are stripped');
+  assert.equal(safeStem('...'), 'film', 'nothing left: film');
+  assert.equal(safeStem(''), 'film', 'an empty stem: film');
+  assert.equal(safeStem(undefined), 'film', 'no stem: film');
+  assert.equal(safeStem(null), 'film', 'no stem: film');
+});
+
+test('safeStem caps at 180 characters without splitting a surrogate pair', () => {
+  assert.equal(safeStem('x'.repeat(250)), 'x'.repeat(180), 'capped at 180 characters');
+  assert.equal(safeStem(`${'x'.repeat(179)}\u{1F600}`), 'x'.repeat(179), 'the cap never splits a surrogate pair');
+  assert.equal(safeStem('x'.repeat(180)), 'x'.repeat(180), 'exactly 180 is kept whole');
+});
+
+test('safeStem gives a Windows device name a trailing _ and leaves look-alikes alone', () => {
+  for (const device of ['CON', 'prn', 'Aux', 'NUL', 'COM1', 'com9', 'LPT1', 'lpt9']) {
+    assert.equal(safeStem(device), `${device}_`, `${device} is a Windows device name`);
+  }
+  assert.equal(safeStem('con.x'), 'con_.x', 'a device name before the first dot is a device too');
+  for (const plain of ['COM10', 'CONSOLE', 'LPT0', 'nul_', 'xCON']) {
+    assert.equal(safeStem(plain), plain, `${plain} is not a device name`);
+  }
 });
