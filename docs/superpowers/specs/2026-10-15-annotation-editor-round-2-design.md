@@ -35,24 +35,24 @@ Three gaps in the editor, each raised by the owner on 2026-10-15:
 
 User rulings (2026-10-15) are marked.
 
-D1. **One comment per film, in the record, shown outside edit mode too** (user). A free-text comment typed in the
+E1. **One comment per film, in the record, shown outside edit mode too** (user). A free-text comment typed in the
     Vertebral levels panel and written into the label record as `comment`. The Analysis panel shows it read-only when
     the study has one. Not per level.
-D2. **A status of its own, Hand-placed, for any annotator result** (user). A real study whose result no model
+E2. **A status of its own, Hand-placed, for any annotator result** (user). A real study whose result no model
     produced reads `Hand-placed`, whether its run failed first or never ran. The first hand-placed commit clears the
     failure, as a successful run does, so a later failed re-run reads Failed again. It sorts after Needs review and
     before Segmented, counts as TO REVIEW, and Mark reviewed turns it Reviewed. R24 closes with this.
-D3. **REVERT next to the level** (user). A per-level control in the row's action column that returns an Edited level
+E3. **REVERT next to the level** (user). A per-level control in the row's action column that returns an Edited level
     to the model's geometry.
-D4. **Two specs, the editor first** (user). This document and the bundle spec; this one is built and gated first.
-D5. **Where the comment lives twice** (planner). The record's `comment` is the training copy; the study record's
+E4. **Two specs, the editor first** (user). This document and the bundle spec; this one is built and gated first.
+E5. **Where the comment lives twice** (planner). The record's `comment` is the training copy; the study record's
     `labelComment` is the display copy, so the Analysis panel and the Find search read it without a disk read. Both
     are written by the same save, the record first. *Cost if wrong:* a save whose record write succeeds and whose
     store write is lost leaves the panel a save behind; the next Save edits rewrites both.
-D6. **The failure is cleared in the measure queue's own write** (planner), not by a second `setState`: the level
+E6. **The failure is cleared in the measure queue's own write** (planner), not by a second `setState`: the level
     editor's commit carries a flag and the write that puts the measurements on the record nulls the failure in the
     same patch. The film never reads Unsegmented between the two. *Cost if wrong:* none visible; see §4.3.
-D7. **REVERT sets `source` back to `model`** (planner), as RESET TO PREDICTION does through a fresh open, so a
+E7. **REVERT sets `source` back to `model`** (planner), as RESET TO PREDICTION does through a fresh open, so a
     reverted level's record entry is indistinguishable from one never touched. *Cost if wrong:* a record cannot say
     "the annotator looked and agreed"; `edits` and `edited_points` carry nothing for it either way.
 
@@ -204,7 +204,7 @@ compare to the new model, as today).
 
 `revertLevel(editor, code)`: a no-op unless `levelState(entry, editor.model[code]) === 'edited'` and no placement is
 running for `code`. Otherwise the entry's `geometry` becomes a copy of `editor.model[code]` (point arrays copied; a
-femoral head takes the model circle's `center` and `radius` with `rim: null`) and its `source` becomes `model` (D7).
+femoral head takes the model circle's `center` and `radius` with `rim: null`) and its `source` becomes `model` (E7).
 `visible`, the selection and the focused handle stay (the handle names a point that still exists). Nothing else on
 the editor changes. The level then reads Segmented, by the same `sameGeometry` test that made it Edited.
 
@@ -282,7 +282,7 @@ workstation's films folder, on a `%TEMP%` profile, with `TESSERACT_CMD` at the i
 
 - `docs/design/level-editor/HANDOFF.md`: §2 rules (REVERT), §3 panel footer and row actions, §6 interactions
   (REVERT, the comment), §9 fields (`comment`), §11 "Segmentation failed entirely" (the status), §12 the decisions
-  D1–D7 above as the 2026-10-15 set.
+  E1–E7 above as the 2026-10-15 set.
 - `docs/design/level-editor/label-record.schema.json` and `label-record.example.json`: `comment`.
 - `docs/level-editor.md`: the panel, REVERT, the record's fields, "Films with no result" (Hand-placed replaces the
   R24 paragraph).
