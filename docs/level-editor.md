@@ -154,7 +154,9 @@ PREDICTION for the whole study. An Edited level can also be returned to the mode
 
 Selecting a row gives that level its handles on the stage (only the selected level has handles) and focuses its first
 handle; the help line says `L3 selected — drag a handle to adjust it.`. A corner handle carries its corner's colour, a
-centroid the level's colour, a rim point the trace yellow. An edited level, when selected, shows the model's original
+centroid the level's colour, a rim point the trace yellow. A handle is 6 px in radius at 1:1 and above and, on a
+film zoomed out below 1:1, shrinks with it to a floor of 3 px, its outline and its focus ring in step; the grab radius
+keeps its 14 px floor (gate feedback G8, D21). An edited level, when selected, shows the model's original
 geometry dashed beneath it. Dragging a handle moves that point, clamped to the image; a femoral head's rim point refits
 the circle through its rim (a model head's four rim points are synthesised at −45°, 45°, 135° and 225°, the diagonals, until the first edit);
 a drag or nudge that would leave the head under 0.5 px is refused and the handle stays where it was (R25).

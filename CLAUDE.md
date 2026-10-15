@@ -21,7 +21,10 @@ review's fix wave (`7be532f` and a records commit): I1, Place then Discard (or C
 level) on a failed film no longer reads Hand-placed with nothing placed (the editor keeps `entryFailure`; an empty
 hand-placed projection goes to the screen's `clearResult`, not `/measure`, and the film reads Failed again, or
 Unsegmented if it never ran); I2, the comment box's footer is never detached by a rebuild, so Ctrl+Z and composition
-survive it; unit 1014/1014, `smoke-levels.mjs` dom 145/145 and film 25/25, `smoke-studies.mjs` 151/151. Nothing
+survive it; unit 1014/1014, `smoke-levels.mjs` dom 145/145 and film 25/25, `smoke-studies.mjs` 151/151. Gate feedback
+G8 (the owner, D21): the level handles shrink with the film below 1:1, from 6 px at 1:1 and above to a floor of 3 px
+(`handleRadiusImagePx`, `handleScale` in `renderer/viewer/level-handles.js`), their outline and focus ring in step, the
+grab radius keeping its 14 px floor; unit 1024/1024. Nothing
 pushed, no release note (the owner picks the number at the gate; 1.2.0 is the suggestion); the companion bundle spec
 (`specs/2026-10-15-annotation-bundle-export-import-design.md`) is built after this gate.
 
