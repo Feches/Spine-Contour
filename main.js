@@ -6,6 +6,7 @@ const net = require('node:net');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { readStudyStore, writeStudyStore, readJsonOrNull, writeJsonAtomic } = require('./store-io.js');
+const { isStudyId, isLabelFileName } = require('./bundle-io.js');
 const { scanFolder } = require('./scan-folder.js');
 const { postForm, normalizePerformance, normalizeProcessors } = require('./backend-client.cjs');
 const { createCalibrationStore } = require('./calibration-io.js');
@@ -38,7 +39,6 @@ if (!app.isPackaged && process.env.SPINE_CONTOUR_USER_DATA) {
   app.setPath('userData', process.env.SPINE_CONTOUR_USER_DATA);
 }
 
-const REAL_STUDY_ID = /^SP-\d{4,}$/;
 const calibrationStore = createCalibrationStore(path.join(app.getPath('userData'), 'calibrations'));
 ipcMain.handle('save-calibration', (_event, reference) => calibrationStore.save(reference));
 
@@ -46,22 +46,19 @@ function storePath() {
   return path.join(app.getPath('userData'), 'studies.json');
 }
 
-// Sidecar ids come from the renderer; the pattern check keeps them inside predictions/, and
-// the range check keeps demo ids (SP-0030..SP-0042, which have no film) out of it.
+// Sidecar ids come from the renderer; isStudyId (bundle-io.js) keeps them inside predictions/ and
+// keeps demo ids (SP-0030..SP-0042, which have no film) out of it.
 function predictionPath(id) {
-  if (typeof id !== 'string' || !REAL_STUDY_ID.test(id) || Number(id.slice(3)) < 1000) {
-    throw new Error('Invalid study id.');
-  }
+  if (!isStudyId(id)) throw new Error('Invalid study id.');
   return path.join(app.getPath('userData'), 'predictions', `${id}.json`);
 }
 
 // (2026-10-10, level editor) The label record: one JSON file per film under userData/labels/. The
 // renderer picks the name (<stem>.label.json, stored on the study as labelFile) and this process only
-// validates it. No path separators and no leading dot, so '.' and '..' cannot form and nothing
-// outside labels/ is reachable.
-const LABEL_FILE = /^(?!\.)[^\\/:*?"<>|\u0000-\u001f]{1,200}\.label\.json$/;
+// validates it (isLabelFileName, bundle-io.js). No path separators and no leading dot, so '.' and
+// '..' cannot form and nothing outside labels/ is reachable.
 function labelPath(name) {
-  if (typeof name !== 'string' || !LABEL_FILE.test(name)) throw new Error('Invalid label file name.');
+  if (!isLabelFileName(name)) throw new Error('Invalid label file name.');
   return path.join(app.getPath('userData'), 'labels', name);
 }
 

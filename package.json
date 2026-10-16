@@ -30,6 +30,7 @@
       "calibration-io.js",
       "preload.js",
       "store-io.js",
+      "bundle-io.js",
       "scan-folder.js",
       "renderer/**/*",
       "styles/**/*",

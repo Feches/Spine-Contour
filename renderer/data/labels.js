@@ -19,7 +19,7 @@ const STEM_MAX = 180;
 const UNSAFE_CHARACTERS = /[\\/:*?"<>|\u0000-\u001f]/g;
 const DEVICE_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
-// A film's stem as the stem of a file name the main process accepts (ruling R12; main.js LABEL_FILE): every
+// A film's stem as the stem of a file name the main process accepts (ruling R12; bundle-io.js isLabelFileName): every
 // reserved or control character becomes '_', leading dots go, the stem is capped at 180 UTF-16 units (never
 // splitting a surrogate pair), an empty stem becomes 'film', and a Windows device name before the first dot
 // ('CON', 'nul.x') takes a '_' (Windows reads 'CON.label.json' as the device CON).

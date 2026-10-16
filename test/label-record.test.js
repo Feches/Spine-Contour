@@ -305,7 +305,7 @@ test('labelFileName suffixes a clash', () => {
   assert.equal(labelFileName('Film', ['film.label.json']), 'Film-2.label.json', 'Windows and macOS file names ignore case');
 });
 
-// The main process's own rule (main.js LABEL_FILE): every name labelFileName returns must pass it.
+// The main process's own rule (bundle-io.js isLabelFileName): every name labelFileName returns must pass it.
 const MAIN_LABEL_FILE = /^(?!\.)[^\\/:*?"<>|\u0000-\u001f]{1,200}\.label\.json$/;
 
 test('labelFileName sanitises the stem so the main process accepts the name (R12)', () => {
