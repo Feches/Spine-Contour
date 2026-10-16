@@ -16,8 +16,8 @@ import { imageToClient } from './geometry.js';
 export const RIM_HANDLES = ['R0', 'R1', 'R2', 'R3'];
 
 /**
- * A handle's radius in CSS px at 1:1 and, since gate feedback G9 (decision D22), at every zoom past it, and the floor
- * it shrinks to on a zoomed-out film (gate feedback G8, decision D21).
+ * A handle's radius in CSS px at 1:1, from which it grows past 1:1 with the square root of the zoom (gate feedback G9,
+ * decision D22 as amended), and the floor it shrinks to on a zoomed-out film (gate feedback G8, decision D21).
  */
 export const HANDLE_RADIUS_CSS_PX = 6;
 export const HANDLE_RADIUS_FLOOR_CSS_PX = 3;
@@ -28,20 +28,22 @@ const ratioOf = pixelRatio => (Number.isFinite(pixelRatio) && pixelRatio > 0 ? p
 
 /**
  * A handle's radius in IMAGE pixels for a draw whose `pixelRatio` is the UNFLOORED ratio (image px per CSS px): 6 CSS
- * px on screen at 1:1; the same 6 CSS px at every zoom past it, so a handle never magnifies with the film the way the
- * rest of the overlay does under R28 (G9, D22: zoomed in on a small cervical body the magnified discs dwarfed it); and
- * below 1:1 shrinking with the film to 3 CSS px at a ratio of 2 and beyond, so a handle on a zoomed-out film no longer
- * covers a vertebra (G8, D21). In image px: 6·ratio past 1:1, 6 from 1 to 2, 3·ratio beyond.
+ * px on screen at 1:1; past 1:1 growing with the SQUARE ROOT of the zoom (8.5 CSS px at 2x, 12 at 4x, 17 at 8x) — the
+ * middle ground between the rest of the overlay, which magnifies with the film under R28 and at 8x dwarfed a small
+ * cervical body (G9, D22), and a flat 6 CSS px, which beside a 16 px outline read too small (G9 round 2) — and below
+ * 1:1 shrinking with the film to 3 CSS px at a ratio of 2 and beyond, so a handle on a zoomed-out film no longer
+ * covers a vertebra (G8, D21). In image px: 6·√ratio past 1:1, 6 from 1 to 2, 3·ratio beyond.
  */
 export function handleRadiusImagePx(pixelRatio) {
   const ratio = ratioOf(pixelRatio);
-  return Math.max(HANDLE_RADIUS_FLOOR_CSS_PX * ratio, Math.min(HANDLE_RADIUS_CSS_PX, HANDLE_RADIUS_CSS_PX * ratio));
+  if (ratio < 1) return HANDLE_RADIUS_CSS_PX * Math.sqrt(ratio);
+  return Math.max(HANDLE_RADIUS_FLOOR_CSS_PX * ratio, HANDLE_RADIUS_CSS_PX);
 }
 
 /**
- * The factor (1 down to 0.5) by which the handle is smaller on screen than its 6 CSS px at `pixelRatio` (unfloored),
- * for the outline and focus ring to shrink in step (G8, D21): 1 at 1:1 and at every zoom past it (G9), 2/3 at 1.5,
- * 0.5 at 2 and beyond.
+ * The factor by which the handle's on-screen size differs from its 6 CSS px at `pixelRatio` (unfloored), for the
+ * outline and focus ring to follow in step (G8, D21; G9, D22): 1 at 1:1, 2/3 at 1.5, 0.5 at 2 and beyond (zoomed out),
+ * and past 1:1 the square root of the zoom (√2 at 2x, 2 at 4x).
  */
 export function handleScale(pixelRatio) {
   const ratio = ratioOf(pixelRatio);

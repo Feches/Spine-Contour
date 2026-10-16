@@ -445,10 +445,10 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
 // edited level, a plate naming each level, and the placement in progress. Every size is in CSS pixels times
 // `opts.pixelRatio` floored at 1 (ruling R28), so it holds its size on screen at any fit and zoom up to 1:1 and
 // magnifies with the film past it; the one exception is the level handle (the disc, its outline and its focus ring,
-// and the placement points), sized against the UNFLOORED ratio: 6 CSS px at 1:1 and at every zoom past it, never
-// magnifying with the film (gate feedback G9, decision D22), and shrinking with the film below 1:1 to a floor of
-// 3 CSS px, outline and ring in step (gate feedback G8, decision D21; `handleRadiusImagePx`, `handleScale`). The
-// editor state is read, never written.
+// and the placement points), sized against the UNFLOORED ratio: 6 CSS px at 1:1, growing past it with the square
+// root of the zoom rather than with the film (gate feedback G9, decision D22 as amended), and shrinking with the film
+// below 1:1 to a floor of 3 CSS px, outline and ring in step (gate feedback G8, decision D21; `handleRadiusImagePx`,
+// `handleScale`). The editor state is read, never written.
 
 const LEVEL_STROKE_ALPHA = 0.85;
 const LEVEL_STROKE_PX = 1.25;
@@ -471,8 +471,8 @@ const isPoint = (p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFin
 const isPair = (pair) => Array.isArray(pair) && pair.length === 2 && isPoint(pair[0]) && isPoint(pair[1]);
 const rgba = (color, alpha) => `rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
 const dashFor = (pixelRatio) => EDITOR_DASH_PX.map(length => length * pixelRatio);
-// A handle's stroke in image pixels at the UNFLOORED ratio: its outline shrinks with the handle (G8, D21), never
-// thinner than 1 CSS px, and past 1:1 stays 2 CSS px like the disc (G9, D22).
+// A handle's stroke in image pixels at the UNFLOORED ratio: its outline follows the handle (G8, D21; G9, D22), never
+// thinner than 1 CSS px.
 const handleOutlinePx = (handleRatio) => Math.max(handleRatio, LEVEL_HANDLE_OUTLINE_PX * handleRatio * handleScale(handleRatio));
 
 // A level's overlay colour; the femoral heads share the femoral green.
@@ -693,8 +693,8 @@ export function drawLevelEditor(ctx, canvas, editor, opts) {
   // anti-aliased away and then be magnified: faint lines, unreadable labels. Past 1:1 the overlay therefore keeps its
   // image-pixel size and magnifies with the film, crisp; below 1:1 it holds its size on screen, as before.
   const pixelRatio = Math.max(1, opts?.pixelRatio ?? 1);
-  // (G9, D22) The handles alone take the UNFLOORED ratio, so past 1:1 they keep their screen size instead of
-  // magnifying with the film; a ratio that is not a positive number reads as 1:1, as the floored one does.
+  // (G9, D22) The handles alone take the UNFLOORED ratio, so past 1:1 they grow with the square root of the zoom
+  // instead of magnifying with the film; a ratio that is not a positive number reads as 1:1, as the floored one does.
   const handleRatio = Number.isFinite(opts?.pixelRatio) && opts.pixelRatio > 0 ? opts.pixelRatio : 1;
   const fillAlpha = (BASE_OVERLAY_ALPHA / 255) * (Math.max(0, Math.min(100, overlayOpacity)) / 100);
   ctx.save();

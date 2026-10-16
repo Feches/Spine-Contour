@@ -260,8 +260,8 @@ test('the handle, its outline and its focus ring shrink with the film below 1:1 
   assert.deepEqual(mid.radii, [6, 6, 6, 6], '4 CSS px at ratio 1.5');
   assert.ok(Math.abs(mid.ring - 10) < 1e-9 && mid.outlines.every(w => Math.abs(w - 2) < 1e-9));
   const zoomedIn = sizes(0.25);
-  assert.deepEqual(zoomedIn, { radii: [1.5, 1.5, 1.5, 1.5], ring: 2.5, outlines: [0.5, 0.5, 0.5, 0.5] },
-    'past 1:1 the handle keeps 6 CSS px, its ring 10 and its outline 2 (G9, D22): 1.5, 2.5 and 0.5 image px at ratio 0.25');
+  assert.deepEqual(zoomedIn, { radii: [3, 3, 3, 3], ring: 5, outlines: [1, 1, 1, 1] },
+    'past 1:1 the handle grows with the square root of the zoom (G9, D22): at 4x it is 12 CSS px, its ring 20 and its outline 4, which is 3, 5 and 1 image px at ratio 0.25');
 });
 
 test('the outline of a handle is never under 1 CSS px', () => {
@@ -550,13 +550,14 @@ test('drawDynamicLayer returns the editor\'s plates in edit mode and none outsid
   assert.deepEqual(drawDynamicLayer(bare.ctx, EDITOR_CANVAS, null, { editing: false }), []);
 });
 
-// (Gate feedback G9, decision D22) Past 1:1 the handle takes the UNFLOORED ratio: it keeps 6 CSS px on screen, its outline
-// 2 CSS px and its focus ring 10 CSS px, while every other size still magnifies with the film (R28).
-test('past 1:1 the handle, its outline and its focus ring keep their screen size instead of magnifying with the film', () => {
+// (Gate feedback G9, decision D22) Past 1:1 the handle takes the UNFLOORED ratio and grows with the square root of the
+// zoom: at 4x (ratio 0.25) the disc is 12 CSS px, its outline 4 and its focus ring 20, while every other size still
+// magnifies with the film (R28), four times its 1:1 size.
+test('past 1:1 the handle, its outline and its focus ring grow with the square root of the zoom, not with the film', () => {
   const { calls, painted } = drawEditor(setLevelGeometry(lumbarEditor('L3'), 'L2', { superior: [[8, 28], [20, 30]], inferior: [[10, 40], [20, 40]] }), { pixelRatio: 0.25, handle: { code: 'L3', handle: 'SA' } });
-  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 1.5).length, 4, 'handles are 1.5 image px: 6 CSS px at ratio 0.25 (G9, D22)');
-  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 2.5).length, 1, 'the ring is 2.5 image px: 10 CSS px');
-  assert.deepEqual(painted.filter(p => p.name === 'stroke' && p.strokeStyle === STAGE_BG).map(p => p.lineWidth), [0.5, 0.5, 0.5, 0.5], 'the outline is 0.5 image px: 2 CSS px');
+  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 3).length, 4, 'handles are 3 image px: 12 CSS px at ratio 0.25 (G9, D22)');
+  assert.equal(arcsOf(calls).filter(([x, y, radius]) => x === 10 && y === 50 && radius === 5).length, 1, 'the ring at SA is 5 image px: 20 CSS px');
+  assert.deepEqual(painted.filter(p => p.name === 'stroke' && p.strokeStyle === STAGE_BG).map(p => p.lineWidth), [1, 1, 1, 1], 'the outline is 1 image px: 4 CSS px');
   assert.deepEqual(levelStrokes(painted).filter(p => p.strokeStyle === rgba(LEVEL_RGB.L4, 0.85)).map(p => p.lineWidth), [1.25], 'a level outline keeps its image-pixel size past 1:1 (R28)');
 });
 
@@ -623,9 +624,9 @@ test('past 1:1 the editor keeps its image-pixel size: a pixel ratio under 1 pain
 
   const [handles, extra] = scenes[0];
   const { calls, painted } = drawEditor(handles, { ...extra, pixelRatio: 0.25 });
-  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 1.5).length, 4, 'handles are 1.5 image px: 6 CSS px, not magnified (G9, D22)');
-  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 2.5).length, 1, 'the ring is 2.5 image px: 10 CSS px');
-  assert.deepEqual(painted.filter(p => p.name === 'stroke' && p.strokeStyle === STAGE_BG).map(p => p.lineWidth), [0.5, 0.5, 0.5, 0.5], 'the outline is 2 CSS px');
+  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 3).length, 4, 'handles are 3 image px: 12 CSS px at 4x, the square root of the zoom (G9, D22)');
+  assert.equal(arcsOf(calls).filter(([x, y, radius]) => x === 10 && y === 50 && radius === 5).length, 1, 'the ring at SA is 5 image px: 20 CSS px');
+  assert.deepEqual(painted.filter(p => p.name === 'stroke' && p.strokeStyle === STAGE_BG).map(p => p.lineWidth), [1, 1, 1, 1], 'the outline is 4 CSS px');
   assert.equal(painted.find(p => p.name === 'fillText').font, "500 11px 'Chivo Mono', monospace");
   const ghost = drawEditor(scenes[1][0], { pixelRatio: 0.25 });
   assert.equal(dashed(ghost.calls, [6, 5]).length, 1, 'the ghost dash is 6 5 image px');

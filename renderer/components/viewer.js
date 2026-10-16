@@ -18,7 +18,7 @@ import { inferenceView, unsupportedViewReason } from '../data/inference-view.js'
 import { progressTitle, progressDetail } from '../data/processing.js';
 import { cancelProcessing } from '../processing.js';
 import { kindOf, rowName, placementSteps, placingLabel, placingHelp, canFinishPlacing } from '../data/levels.js';
-import { levelHandles, hitTestLevelHandles, moveHandle, nudgeHandle, nextLevelHandle, handleAt } from '../viewer/level-handles.js';
+import { levelHandles, hitTestLevelHandles, moveHandle, nudgeHandle, nextLevelHandle, handleAt, handleRadiusImagePx } from '../viewer/level-handles.js';
 import { plateAnteriorSide, plateAt, plateOffset, movePlate, resetPlate } from '../viewer/level-labels.js';
 import { dragWindow, windowText } from '../viewer/window-level.js';
 import {
@@ -482,13 +482,14 @@ export function mountViewer(container) {
   });
   resizeObserver.observe(stage);
 
-  // The grab radius in CSS pixels: 14 at every zoom. The drawn handle is never wider than 6 CSS px (6 at 1:1 and at
-  // every zoom past it since gate feedback G9, decision D22; down to 3 on a zoomed-out film, G8, D21), so a press
-  // anywhere on the disc is inside the grab area, and a drag target does not shrink with the picture. (Before G9
-  // the disc magnified with the film past 1:1 and the grab radius grew with it, R28.)
+  // The grab radius in CSS pixels: 14, or the drawn disc when that is wider. Past 1:1 the disc grows with the square
+  // root of the zoom (gate feedback G9, decision D22: 12 CSS px at 4x, 17 at 8x), so the grab area follows it and a
+  // press anywhere on the disc is inside; on a zoomed-out film the disc shrinks to 3 CSS px (G8, D21) and the grab
+  // radius keeps its 14 px floor, so a drag target does not shrink with the picture.
   const HANDLE_GRAB_PX = 14;
   function grabRadius() {
-    return HANDLE_GRAB_PX;
+    const ratio = pixelRatio();
+    return Math.max(HANDLE_GRAB_PX, handleRadiusImagePx(ratio) / ratio);
   }
 
   // The selected level's handle under the pointer, or null. Only the selected level has handles (handoff
