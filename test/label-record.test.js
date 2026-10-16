@@ -9,6 +9,7 @@ import {
   startPlacing, addPoint, finishPlacing, pointKeys, setComment,
 } from '../renderer/data/levels.js';
 import { VERSION_LABEL } from '../renderer/data/version.js';
+import { isLabelFileName } from '../bundle-io.js';
 import { validateAgainst } from './fixtures/schema-check.js';
 
 const SCHEMA = JSON.parse(fs.readFileSync(new URL('../docs/design/level-editor/label-record.schema.json', import.meta.url), 'utf8'));
@@ -305,9 +306,8 @@ test('labelFileName suffixes a clash', () => {
   assert.equal(labelFileName('Film', ['film.label.json']), 'Film-2.label.json', 'Windows and macOS file names ignore case');
 });
 
-// The main process's own rule (bundle-io.js isLabelFileName): every name labelFileName returns must pass it.
-const MAIN_LABEL_FILE = /^(?!\.)[^\\/:*?"<>|\u0000-\u001f]{1,200}\.label\.json$/;
-
+// The main process's own rule is bundle-io.js isLabelFileName, imported above: every name labelFileName returns must
+// pass it.
 test('labelFileName sanitises the stem so the main process accepts the name (R12)', () => {
   assert.equal(labelFileName('a:b*c?d"e<f>g|h', []), 'a_b_c_d_e_f_g_h.label.json', 'reserved characters become _');
   assert.equal(labelFileName('a\\b/c', []), 'a_b_c.label.json', 'both separators become _');
@@ -331,7 +331,7 @@ test('labelFileName sanitises the stem so the main process accepts the name (R12
   for (const stem of ['a:b', '..x', '', 'x'.repeat(250), 'CON', 'con.x', 'tab\t', '.', 'a b']) {
     for (const taken of [[], [labelFileName(stem, [])]]) {
       const name = labelFileName(stem, taken);
-      assert.match(name, MAIN_LABEL_FILE, `${JSON.stringify(stem)} gives a name the main process accepts`);
+      assert.equal(isLabelFileName(name), true, `${JSON.stringify(stem)} gives a name the main process accepts`);
     }
   }
 });

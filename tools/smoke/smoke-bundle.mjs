@@ -19,14 +19,17 @@
 //      unsegmented film has no record on either side); SP-9400's comment and record read `from B` under its own label
 //      file, SP-9401 is untouched.
 //
-//   SPINE_CONTOUR_USER_DATA=%TEMP%\spine-contour-bundle-a node tools/smoke/launch.mjs
-//   SMOKE_PHASE=a node tools/smoke/smoke-bundle.mjs
+// The run sequence, as tools/smoke/README.md ("Running the bundle suite") gives it, from Git Bash with
+// SPINE_CONTOUR_PYTHON (and on this workstation TESSERACT_CMD) set and ELECTRON_RUN_AS_NODE unset:
+//
+//   SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-a node tools/smoke/launch.mjs
+//   SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-a SMOKE_PHASE=a node tools/smoke/smoke-bundle.mjs > tools/smoke/out/smoke-bundle-a.txt 2>&1
 //   node tools/smoke/cdp.mjs --quit
-//   SPINE_CONTOUR_USER_DATA=%TEMP%\spine-contour-bundle-b node tools/smoke/launch.mjs
-//   SMOKE_PHASE=b node tools/smoke/smoke-bundle.mjs
+//   SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-b node tools/smoke/launch.mjs
+//   SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-b SMOKE_PHASE=b node tools/smoke/smoke-bundle.mjs > tools/smoke/out/smoke-bundle-b.txt 2>&1
 //   node tools/smoke/cdp.mjs --quit
-//   SMOKE_KEEP_PROFILE=1 SPINE_CONTOUR_USER_DATA=%TEMP%\spine-contour-bundle-a node tools/smoke/launch.mjs
-//   SMOKE_PHASE=c node tools/smoke/smoke-bundle.mjs
+//   SMOKE_KEEP_PROFILE=1 SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-a node tools/smoke/launch.mjs
+//   SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-a SMOKE_PHASE=c node tools/smoke/smoke-bundle.mjs > tools/smoke/out/smoke-bundle-c.txt 2>&1
 //   node tools/smoke/cdp.mjs --quit
 //
 // The native folder pickers are bypassed (plan PB7): the suite calls the screen's own exportBundleTo, importBundleFrom
@@ -514,7 +517,7 @@ async function phaseC() {
     const { predictionMatchesStudy } = await import('./renderer/data/predictions.js');
     return predictionMatchesStudy(window.__bundle.study(${js(SEG)}), await api.loadPrediction(${js(SEG)}));
   })()`);
-  check('c. SP-9400 stays reviewed and its sidecar (now B\'s copy) still matches it', typeof seg?.reviewedAt === 'string' && sidecar === true, { reviewedAt: seg?.reviewedAt, sidecar });
+  check('c. SP-9400 stays reviewed and the sidecar under its id still matches it (predictionMatchesStudy)', typeof seg?.reviewedAt === 'string' && sidecar === true, { reviewedAt: seg?.reviewedAt, sidecar });
   const untouched = await ev(`(() => { const s = window.__bundle.study(${js(UNSEG)}); return { same: s === window.__bundle.unsegBefore, labelFile: s ? s.labelFile : 'missing' }; })()`);
   const real = await realIds();
   check('c. SP-9401 is untouched (the same record, labelFile null) and the library still holds exactly the two films',

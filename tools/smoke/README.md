@@ -821,8 +821,8 @@ toast), B's bundle holding both films' digests and the record with `comment` `fr
 `importBundleFrom` showing `… 0 to add, 1 to update, 1 to skip. …` with the focus on Cancel; `confirmImport` toasting
 exactly `Imported 0 studies, updated 1, skipped 1 (already in the library: bundle-unsegmented.png)` (the unsegmented
 film has no record on either side); SP-9400's `labelComment` `from B` under its own, unchanged `labelFile`
-`bundle-segmented.label.json`, whose record on disk reads `comment` `from B`; SP-9400 still reviewed and its sidecar,
-now B's copy, still matching it; SP-9401 untouched (the same record object, `labelFile` null) and the library still
+`bundle-segmented.label.json`, whose record on disk reads `comment` `from B`; SP-9400 still reviewed and the sidecar
+under its id still matching it (`predictionMatchesStudy`); SP-9401 untouched (the same record object, `labelFile` null) and the library still
 exactly the two films. Each phase ends with the harness's no-console-errors check.
 
 **Known baseline** (2026-10-15, branch `worktree-annotation-round-2` at `50d6311` plus this suite; Windows 11, CPU
