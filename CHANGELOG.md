@@ -11,7 +11,8 @@
 - An Edited level's row shows **REVERT**, which returns that one level to the model's output and commits it like a
   drag.
 - The selected level's handles shrink with the film below 1:1, to a floor of 3 px, instead of covering a zoomed-out
-  vertebra at a fixed 6 px, and keep their 6 px on screen when zoomed in past 1:1 instead of magnifying with the film.
+  vertebra at a fixed 6 px, and when zoomed in past 1:1 grow with the square root of the zoom instead of magnifying
+  with the film (12 px at 4x, 17 at 8x, not 24 and 48).
 - The study drawer's STUDY column grows with a long film name (to 280 px) and wraps it inside its cell instead of
   running it over SUBJECT.
 - The C2 centroid is drawn outside edit mode as a cross in C2's colour on cervical and full-spine films, as the C7

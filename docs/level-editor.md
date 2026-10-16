@@ -154,10 +154,11 @@ PREDICTION for the whole study. An Edited level can also be returned to the mode
 
 Selecting a row gives that level its handles on the stage (only the selected level has handles) and focuses its first
 handle; the help line says `L3 selected — drag a handle to adjust it.`. A corner handle carries its corner's colour, a
-centroid the level's colour, a rim point the trace yellow. A handle is 6 px in radius on screen at 1:1 and at every
-zoom past it (it never magnifies with the film, so a zoomed-in cervical body is not dwarfed by its handles: gate
-feedback G9, D22) and, on a film zoomed out below 1:1, shrinks with it to a floor of 3 px, its outline and its focus
-ring in step (gate feedback G8, D21); the grab radius is 14 px at every zoom. An edited level, when selected, shows the model's original
+centroid the level's colour, a rim point the trace yellow. A handle is 6 px in radius on screen at 1:1; zoomed in
+past 1:1 it grows with the square root of the zoom (8.5 px at 2x, 12 at 4x, 17 at 8x) rather than with the film, so a
+zoomed-in cervical body is neither dwarfed by its handles nor left with specks beside the magnified outline (gate
+feedback G9, D22); on a film zoomed out below 1:1 it shrinks with it to a floor of 3 px, its outline and its focus
+ring in step either way (gate feedback G8, D21); the grab radius is 14 px, or the drawn disc when that is wider. An edited level, when selected, shows the model's original
 geometry dashed beneath it. Dragging a handle moves that point, clamped to the image; a femoral head's rim point refits
 the circle through its rim (a model head's four rim points are synthesised at −45°, 45°, 135° and 225°, the diagonals, until the first edit);
 a drag or nudge that would leave the head under 0.5 px is refused and the handle stays where it was (R25).
@@ -181,8 +182,8 @@ pixel. Up to 1:1 the overlay (handles, outlines, the dashed ghost, the placement
 size on screen at every zoom. Past 1:1 it keeps its size in image pixels and magnifies with the film instead of
 shrinking under a pixel, so the lines stay crisp and the plates legible (R28); at 800% on a small film the plates are
 correspondingly large. The handles are the one exception: the selected level's discs, their outline, the focus ring and
-the placement dots keep their screen size past 1:1 as well (G9, D22), so they stay out of the way on a zoomed-in
-vertebra, and a handle can be grabbed within 14 px of its point at any zoom. The same holds for the hip line
+the placement dots grow past 1:1 with the square root of the zoom instead (G9, D22), so they stay in proportion on a
+zoomed-in vertebra, and a handle can be grabbed within 14 px of its point, or anywhere on its disc. The same holds for the hip line
 and its markers outside edit mode.
 
 ### The level plates

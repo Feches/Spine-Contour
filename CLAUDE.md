@@ -78,8 +78,9 @@ D21): the level handles shrink with the film below 1:1, from 6 px at 1:1 and abo
 grab radius keeping its 14 px floor; unit 1024/1024. Gate feedback G9 (the owner, 2026-10-16, D22, after Mike's PR #65
 was merged in as `be4bd80`): zoomed in on a cervical film the handles were "still too big" (past 1:1 they magnified
 with the film under R28); now the handle-sized parts (the discs, their outline, the focus ring, the placement dots)
-take the UNFLOORED ratio and keep 6 px on screen at every zoom past 1:1, still shrinking to the 3 px floor zoomed out;
-the grab radius is a flat 14 px; unit 1112/1112. G10 (D23, `5b9ff72`): the clinical drawer's STUDY track is
+take the UNFLOORED ratio and, after a second look ("a tiny bit too small" at a flat 6 px beside the magnified
+outline), grow past 1:1 with the SQUARE ROOT of the zoom (`6·√ratio` image px: 8.5 CSS px at 2x, 12 at 4x, 17 at 8x),
+still shrinking to the 3 px floor zoomed out; the grab radius is max(14 px, the drawn disc); unit 1113/1113. G10 (D23, `5b9ff72`): the clinical drawer's STUDY track is
 `fit-content(280px)` instead of a fixed 110px and `.clinical-grid-id` wraps anywhere, so a long film name grows the
 column or wraps inside its cell instead of running over SUBJECT (`smoke-workspace.mjs`'s pinned template follows).
 G11 (D24, same commit): `drawDynamicLayer` draws the C2 centroid as a cross in C2's colour outside edit mode on
