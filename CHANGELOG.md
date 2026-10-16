@@ -11,7 +11,7 @@
 - An Edited level's row shows **REVERT**, which returns that one level to the model's output and commits it like a
   drag.
 - The selected level's handles shrink with the film below 1:1, to a floor of 3 px, instead of covering a zoomed-out
-  vertebra at a fixed 6 px.
+  vertebra at a fixed 6 px, and keep their 6 px on screen when zoomed in past 1:1 instead of magnifying with the film.
 - **Export all** (or **Export N selected**) on the Find tab writes a bundle folder: a manifest and, per film, the
   original file, the study's record, the model's result, the label record and the manual image scale. **Import
   bundle…** reads one into another library after asking in the bar: new films are added, a film the library already

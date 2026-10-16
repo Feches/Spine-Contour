@@ -195,7 +195,7 @@ All are in the Spine Contour design system. Use the app's CSS variables, not hex
 - **Fill:** each level in its overlay colour at alpha `116/255 × FILL`, the existing slider. Stroke is the level colour at 0.85, 1.25px. Overlays toggle hides fills and labels, but the selected level stays outlined.
 - **Colours:** L1–L5 use `level-l1`…`level-l5`. Every other vertebral level cycles the same five colours, anchored at L1: index = (position − position of L1) mod 5. That gives C2…C7, T1, T4 and S1 a colour. Femoral heads use `femoral`.
 - **Selected level:**
-  - outline in `stage-accent` at 2px, with handles: 6px radius and a 2px `stage-bg` stroke *Amended 2026-10-15 (gate feedback G8, D21): 6 px at 1:1 and above; below 1:1 the handle, its outline and its focus ring shrink with the film to a floor of 3 px; the grab radius keeps its 14 px floor.*
+  - outline in `stage-accent` at 2px, with handles: 6px radius and a 2px `stage-bg` stroke *Amended 2026-10-15 (gate feedback G8, D21): 6 px at 1:1 and above; below 1:1 the handle, its outline and its focus ring shrink with the film to a floor of 3 px; the grab radius keeps its 14 px floor. Amended 2026-10-16 (gate feedback G9, D22): past 1:1 the handle, its outline and its focus ring keep their screen size too, never magnifying with the film; the grab radius is 14 px at every zoom.*
   - vertebrae: corner handles in `corner-*` colours
   - endplates: `sa` and `sp` handles
   - T4: one handle

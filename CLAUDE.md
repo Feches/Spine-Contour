@@ -75,7 +75,11 @@ session); I2, the comment box's footer is never detached by a rebuild, so Ctrl+Z
 1014/1014, `smoke-levels.mjs` dom 145/145 and film 25/25, `smoke-studies.mjs` 151/151. Gate feedback G8 (the owner,
 D21): the level handles shrink with the film below 1:1, from 6 px at 1:1 and above to a floor of 3 px
 (`handleRadiusImagePx`, `handleScale` in `renderer/viewer/level-handles.js`), their outline and focus ring in step, the
-grab radius keeping its 14 px floor; unit 1024/1024. ~~Nothing
+grab radius keeping its 14 px floor; unit 1024/1024. Gate feedback G9 (the owner, 2026-10-16, D22, after Mike's PR #65
+was merged in as `be4bd80`): zoomed in on a cervical film the handles were "still too big" (past 1:1 they magnified
+with the film under R28); now the handle-sized parts (the discs, their outline, the focus ring, the placement dots)
+take the UNFLOORED ratio and keep 6 px on screen at every zoom past 1:1, still shrinking to the 3 px floor zoomed out;
+the grab radius is a flat 14 px; unit 1112/1112. ~~Nothing
 pushed, no release note (the owner picks the number at the gate; 1.2.0 is the suggestion);~~ Its owner gate passed on
 real films and its 1.2.0 release commit is `7dec644` (the tip is backed up on `origin`, no PR yet); the companion
 bundle spec (`specs/2026-10-15-annotation-bundle-export-import-design.md`) is ~~built after this gate~~ now built, on
