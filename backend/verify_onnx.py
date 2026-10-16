@@ -22,6 +22,8 @@ def verify(gpu=None, parity_films=None):
             if kind == 'cervical_detr':
                 inputs = {'pixel_values': np.zeros((1, 3, 800, 800), np.float32),
                           'pixel_mask': np.ones((1, 800, 800), np.int64)}
+            elif kind == 'cervical_anatomical_hrnet':
+                inputs = {'image': np.zeros((1, 3, 512, 384), np.float32)}
             elif kind == 'cervical_hrnet':
                 inputs = {'image': np.zeros((1, 3, 384, 384), np.float32)}
             else:
@@ -38,7 +40,7 @@ def verify(gpu=None, parity_films=None):
             else:
                 expected = {'vertebra': (1, 6, 768, 768),
                             'femoral': (1, 1, models.FEMORAL_IMAGE_SIZE, models.FEMORAL_IMAGE_SIZE),
-                            'hrnet': (1, 22, 2), 'cervical_hrnet': (1, 23, 96, 96)}[kind]
+                            'hrnet': (1, 22, 2), 'cervical_hrnet': (1, 23, 96, 96), 'cervical_anatomical_hrnet': (1, 23, 128, 96)}[kind]
                 assert output[0].shape == expected
             results[kind] = [list(value.shape) for value in output]
         models.release_models()

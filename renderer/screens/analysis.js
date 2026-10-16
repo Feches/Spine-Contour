@@ -333,10 +333,10 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       data,
       modality: 'xray',
       bodyPart: requestedRegion(current),
-      anteriorSide: current.anteriorSide ?? null,
+      anteriorSide: studyRegion(current) === 'cervical' ? null : current.anteriorSide ?? null,
       view,
       ...(requestedRegion(current) === 'auto' ? {} : { models: requestedRegion(current) === 'cervical'
-        ? { vertebrae: 'cervical_hrnet' } : requestedRegion(current) === 'full_spine'
+        ? { vertebrae: 'cervical_anatomical_hrnet' } : requestedRegion(current) === 'full_spine'
         ? { vertebrae: 'dual_hrnet' } : getState().models }),
       calibration: calibrationForStudy(current),
     });
@@ -439,7 +439,7 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       selection: state.openId === studyId ? null : state.selection,
       levelEditor: state.levelEditor?.studyId === studyId ? null : state.levelEditor,
       studies: state.studies.map((s) => (s.id === studyId
-        ? { ...s, predictionId: requestId, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
+        ? { ...s, anteriorSide: response.geometry?.region === 'cervical' ? null : s.anteriorSide, predictionId: requestId, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
           calibration: preferReviewedCalibration(response.calibration, calibrationForStudy(s)), thumbnail,
           // A re-run replaces every number a review was made over (studies-table spec 2026-09-10, section 8.4, site 1).
           reviewedAt: null, processingError: null, processingErrorAt: null }
@@ -1065,8 +1065,8 @@ export function render(state) {
     const produced = describeModels(open.qc);
     regionSelect.value = requestedRegion(open);
     anteriorSelect.value = open.anteriorSide ?? '';
-    anteriorLabel.hidden = requestedRegion(open) === 'lumbar';
-    anteriorSelect.options[0].textContent = requestedRegion(open) === 'cervical' ? 'Choose anterior side…' : 'Auto detect';
+    anteriorLabel.hidden = ['lumbar', 'cervical'].includes(studyRegion(open));
+    anteriorSelect.options[0].textContent = 'Auto detect';
     anteriorSelect.setAttribute('aria-label', requestedRegion(open) === 'auto' ? 'Anterior image side'
       : studyRegion(open) === 'full_spine' ? 'Full spine anterior image side' : 'Cervical anterior image side');
     regionSelect.disabled = anteriorSelect.disabled = Boolean(live.running || live.batch || open.source === 'demo' || live.editing);
@@ -1087,10 +1087,10 @@ export function render(state) {
     const failedNote = failedRunNote(open, { unsupported, status: badgeStatus }, previewNote);
     regionNote.classList.toggle('is-failed', failedNote !== null);
     regionNote.textContent = failedNote !== null ? failedNote : previewNote ? previewNote : open.measurements
-      ? `${requestedRegion(open) === 'auto' ? `Detected ${studyRegionLabel(open)}. ` : ''}${open.geometry?.anterior_side ? `Anterior: image ${open.geometry.anterior_side}. ` : ''}Changing region or orientation clears measurements; run again.`
+      ? `${requestedRegion(open) === 'auto' ? `Detected ${studyRegionLabel(open)}. ` : ''}${open.geometry?.anterior_side ? `Anterior: image ${open.geometry.anterior_side}. ` : ''}Changing ${studyRegion(open) === 'cervical' ? 'region' : 'region or orientation'} clears measurements; run again.`
       : requestedRegion(open) === 'auto' ? 'Detect cervical, lumbar or full spine from the film. Choose a region or orientation to override.'
       : studyRegion(open) === 'full_spine' ? 'Use a lateral full-spine film. Orientation is detected automatically; left/right overrides it.'
-      : studyRegion(open) === 'cervical' ? 'Use a lateral cervical film. Confirm which image side is anterior.' : '';
+      : studyRegion(open) === 'cervical' ? 'Use a lateral cervical film. Anterior and posterior are identified automatically.' : '';
     // Never overwrite what the user is in the middle of typing.
     if (document.activeElement !== nameField) {
       nameField.value = studyName(open);

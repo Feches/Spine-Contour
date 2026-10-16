@@ -60,7 +60,7 @@ def decoded(kind, cpu, gpu, feeds):
         return bool(np.max(np.abs(cpu[0] - gpu[0]), initial=0) <= .05)
     if kind == 's1':
         return bool(np.max(np.abs(cpu[1][..., :2] - gpu[1][..., :2]), initial=0) <= .05)
-    if kind == 'cervical_hrnet':
+    if kind in ('cervical_hrnet', 'cervical_anatomical_hrnet'):
         return bool(np.array_equal(cpu[0].reshape(23, -1).argmax(1), gpu[0].reshape(23, -1).argmax(1)))
     if kind == 'vertebra':
         # Match production argmax labels before extracting extremal corners.
@@ -107,6 +107,7 @@ def probes(kind):
         yield 'zeros', {'pixel_values': np.zeros((1, 3, 800, 800), np.float32), 'pixel_mask': np.ones((1, 800, 800), np.int64)}
     else:
         if kind == 'cervical_hrnet': shape = (1, 3, 384, 384)
+        if kind == 'cervical_anatomical_hrnet': shape = (1, 3, 512, 384)
         yield 'zeros', {'image': np.zeros(shape, np.float32)}
     rng = np.random.default_rng(40)
     y, x = np.mgrid[:768, :768]
@@ -115,6 +116,9 @@ def probes(kind):
     for name, image in zip(('blank_preprocessed', 'noise_preprocessed', 'smooth_preprocessed'), images):
         if kind == 'cervical_detr':
             feed = cervical.detector_input(image)
+        elif kind == 'cervical_anatomical_hrnet':
+            from .models.cervical_anatomical import landmark_input
+            feed = {'image': landmark_input(image)[0]}
         elif kind == 'cervical_hrnet':
             feed = {'image': cervical.landmark_input(image, [0, 0, 768, 768])[0]}
         elif kind == 'femoral': feed = {'image': models._femoral_input(image)}

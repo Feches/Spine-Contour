@@ -170,6 +170,7 @@ ONNX_DIRECTORY = Path(__file__).resolve().parent.parent / "onnx"
 MODEL_NAMES = {"s1": "S1 detector", "vertebra": "vertebra model",
                "femoral": "femoral-head model", "hrnet": "HRNet landmark model",
                "cervical_detr": "cervical detector",
+               "cervical_anatomical_hrnet": "anatomical cervical landmarks",
                "cervical_hrnet": "cervical HRNET landmarks"}
 _resident_key = None
 _cache_policy = None
@@ -296,6 +297,7 @@ _GRAPHS_BY_MODEL = {
     "keypointrcnn": ("s1",),
     "hrnet": ("hrnet",),
     "cervical_hrnet": ("cervical_hrnet",),
+    "cervical_anatomical_hrnet": ("cervical_anatomical_hrnet",),
     "cervical_detr": ("cervical_detr",),
     "dual_hrnet": ("cervical_hrnet", "hrnet"),
 }
@@ -640,16 +642,30 @@ def spinopelvic_prediction(
 
     runtime.report("landmarks", "Extracting available vertebral endplates")
     model_values = {level: index for index, level in enumerate(LUMBAR_LEVELS, start=1)}
-    s1_source = _source_s1(frame, transform)
-    # Without S1, U-Net can recover endplates but cannot establish anterior.
-    # Keep a stable image-coordinate ordering, marked explicitly as unconfirmed.
-    anterior = frame["s1"][0] - frame["s1"][1] if s1_source is not None else np.array([-1., 0.])
-    # Letterbox padding is not anatomy and must not supply presence evidence.
-    inner = transform.inner
-    labels = np.zeros_like(frame["vertebra_labels"])
-    region = np.s_[inner.top:inner.top + inner.resized_height, inner.left:inner.left + inner.resized_width]
-    labels[region] = frame["vertebra_labels"][region]
-    present = landmarks.corners_from_label_map(labels, model_values, anterior)
+    def visible_levels(candidate, candidate_transform):
+        anchor = _source_s1(candidate, candidate_transform)
+        # Without S1 retain image-coordinate ordering, explicitly unconfirmed.
+        anterior = candidate["s1"][0]-candidate["s1"][1] if anchor is not None else np.array([-1., 0.])
+        inner = candidate_transform.inner
+        labels = np.zeros_like(candidate["vertebra_labels"])
+        region = np.s_[inner.top:inner.top + inner.resized_height,
+                       inner.left:inner.left + inner.resized_width]
+        labels[region] = candidate["vertebra_labels"][region]
+        return labels, landmarks.corners_from_label_map(labels, model_values, anterior), anchor
+
+    labels, present, s1_source = visible_levels(frame, transform)
+    empty_crop_fallback = False
+    whole_window = framing.fallback_window(raw)
+    if not present and tuple(window) != tuple(whole_window):
+        runtime.report("framing", "No lumbar bodies in the selected crop; checking the visible film")
+        whole_canvas, whole_transform = framing.prepare_crop(raw, whole_window)
+        whole_frame = _read_frame(whole_canvas, choice,
+                                 raw[whole_window[1]:whole_window[3], whole_window[0]:whole_window[2]])
+        whole_labels, whole_present, whole_s1 = visible_levels(whole_frame, whole_transform)
+        if whole_present:
+            canvas, transform, frame = whole_canvas, whole_transform, whole_frame
+            window, labels, present, s1_source = whole_window, whole_labels, whole_present, whole_s1
+            fallback, reframed, empty_crop_fallback = True, False, True
     if choice["vertebrae"] == "unet":
         corners = present
         label_map = labels
@@ -689,6 +705,7 @@ def spinopelvic_prediction(
             "window": [int(v) for v in window],
             "reframed": reframed,
             "fallback_whole_film": fallback,
+            "empty_crop_recovered": empty_crop_fallback,
             "trimmed_black_margins": (fallback or not localizer) and window != (0, 0, raw.shape[1], raw.shape[0]),
             "searched": located["searched"],
             "whole_film_won": bool(located.get("whole_film_won")),

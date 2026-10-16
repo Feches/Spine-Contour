@@ -19,10 +19,7 @@ export function studyRegion(study) {
 export function studyRegionLabel(study) { return studyRegion(study).replace('_', ' '); }
 export function requiresAnteriorSide(study) { return studyRegion(study) !== 'lumbar'; }
 export function validAnteriorSide(side) { return side === 'left' || side === 'right'; }
-export function regionRunReason(study) {
-  return requestedRegion(study) === 'cervical' && !validAnteriorSide(study.anteriorSide)
-    ? `Choose the anterior side of this ${studyRegionLabel(study)} film (image left or image right) before segmentation.` : null;
-}
+export function regionRunReason(study) { return null; }
 const point = p => Array.isArray(p) && p.length === 2 && p.every(value => Number.isFinite(value) && value >= 0);
 const endplate = p => Array.isArray(p) && p.length === 2 && p.every(point)
   && Math.hypot(p[1][0] - p[0][0], p[1][1] - p[0][1]) > 0;

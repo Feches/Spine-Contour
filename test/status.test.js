@@ -253,3 +253,14 @@ test('a real hand-placed result reads Hand-placed until reviewed; a failure, no 
   assert.equal(deriveStatus({ ...hand, qc: { models: {} } }), 'seg');
   assert.equal(statusLabel('hand'), 'Hand-placed');
 });
+
+test('anatomical cervical results retain their review warnings without unrelated S1 warnings', () => {
+  const study = { region: 'cervical', measurements: {}, qc: {
+    models: { vertebrae: 'cervical_anatomical_hrnet' }, framing: { detector: null },
+    warnings: ['Selected anterior side disagrees with the anatomical landmarks.'],
+  } };
+  const reasons = reviewReasons(study);
+  assert.ok(reasons.some(reason => reason.includes('C2/C7')));
+  assert.ok(reasons.includes(study.qc.warnings[0]));
+  assert.ok(!reasons.some(reason => reason.includes('S1')));
+});
