@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { predict, measure, loadStudies, readFile, pathForFile, storeLoadNotice, persistenceDisabledReason, chooseFolder, scanFolder, chooseCsv, readCsv, deletePrediction, loadLabelRecord, saveLabelRecord, deleteLabelRecord } from '../renderer/api.js';
+import { predict, measure, loadStudies, readFile, pathForFile, storeLoadNotice, persistenceDisabledReason, chooseFolder, scanFolder, chooseCsv, readCsv, deletePrediction, loadLabelRecord, saveLabelRecord, deleteLabelRecord, exportBundle, readBundle, hashFilms, importBundle } from '../renderer/api.js';
 
 const GENERIC_FALLBACK_MESSAGE = 'The application encountered an unexpected error.';
 const BRIDGE_UNAVAILABLE_MESSAGE =
@@ -353,5 +353,54 @@ test('without the bridge, the label-record wrappers reject with the bridge-unava
         return true;
       });
     }
+  });
+});
+
+// (2026-10-15, annotation bundles) Persistence is on in this file, so importBundle reaches the bridge too; its gate is
+// tested in api-persistence.test.js, where disablePersistence's irreversible state cannot leak into other tests.
+test('the four bundle channels forward their arguments to the bridge', async () => {
+  const calls = [];
+  const exportRequest = { parent: 'C:/out', name: 'spinecontour-bundle-2026-10-15-1432', entries: [{ dir: 'a' }], appVersion: '1.2.0' };
+  const importRequest = { dir: 'C:/out/bundle', actions: [{ kind: 'add', dir: 'a', id: 'SP-1001' }] };
+  const filmPaths = ['C:/films/a.dcm', 'C:/films/b.dcm'];
+  const results = {
+    exportBundle: { path: 'C:/out/spinecontour-bundle-2026-10-15-1432', written: 1, filmsMissing: [], notRead: [] },
+    readBundle: { manifest: { schema: 'spinecontour.bundle/1', studies: [] }, entries: [] },
+    hashFilms: { 'C:/films/a.dcm': 'a'.repeat(64), 'C:/films/b.dcm': null },
+    importBundle: { placed: ['SP-1001'], failed: null },
+  };
+  const bridge = {};
+  for (const name of Object.keys(results)) {
+    bridge[name] = async (...args) => { calls.push([name, ...args]); return results[name]; };
+  }
+  await withWindow({ spineContour: bridge }, async () => {
+    assert.equal(await exportBundle(exportRequest), results.exportBundle);
+    assert.equal(await readBundle('C:/out/bundle'), results.readBundle);
+    assert.equal(await hashFilms(filmPaths), results.hashFilms);
+    assert.equal(await importBundle(importRequest), results.importBundle);
+  });
+  assert.deepEqual(calls, [
+    ['exportBundle', exportRequest],
+    ['readBundle', 'C:/out/bundle'],
+    ['hashFilms', filmPaths],
+    ['importBundle', importRequest],
+  ]);
+  assert.equal(calls[0][1], exportRequest, 'the request object itself is handed on');
+
+  // A handler's display-ready sentence arrives without Electron's IPC prefix.
+  await withWindow({
+    spineContour: {
+      readBundle: async () => {
+        throw new Error("Error invoking remote method 'read-bundle': Error: This folder is not a Spine Contour bundle.");
+      },
+    },
+  }, async () => {
+    await assert.rejects(readBundle('C:/films'), { message: 'This folder is not a Spine Contour bundle.' });
+  });
+
+  // Without the bridge, all four reject with the bridge-unavailable message.
+  await withWindow({}, async () => {
+    const thunks = [() => exportBundle(exportRequest), () => readBundle('C:/out/bundle'), () => hashFilms(filmPaths), () => importBundle(importRequest)];
+    for (const call of thunks) await assert.rejects(call, { message: BRIDGE_UNAVAILABLE_MESSAGE });
   });
 });

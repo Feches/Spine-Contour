@@ -89,3 +89,34 @@ test('after disablePersistence, saveLabelRecord and deleteLabelRecord reject wit
   assert.equal(writes, 0);
   assert.deepEqual(reads, ['a.label.json']);
 });
+
+// Appended by the annotation bundle's Task 3 (ruling S15). Import writes sidecars, label records and calibration
+// references into the data folder, so it is gated like every other write. Export writes only into the folder the
+// person chose, and reading a bundle or hashing films writes nothing, so those three still reach the bridge. Runs
+// after the tests above, so persistence is already off.
+test('importBundle is gated by persistence; exportBundle, readBundle and hashFilms are not', async () => {
+  const { importBundle, exportBundle, readBundle, hashFilms, persistenceDisabledReason } = await import('../renderer/api.js');
+  const reason = persistenceDisabledReason();
+  assert.ok(reason, 'precondition: persistence is already disabled by the first test');
+  let imports = 0;
+  const reached = [];
+  await withWindow({
+    spineContour: {
+      importBundle: async () => { imports += 1; return { placed: [], failed: null }; },
+      exportBundle: async (request) => { reached.push(['exportBundle', request]); return { path: 'C:/out/b', written: 0, filmsMissing: [], notRead: [] }; },
+      readBundle: async (dir) => { reached.push(['readBundle', dir]); return { manifest: {}, entries: [] }; },
+      hashFilms: async (paths) => { reached.push(['hashFilms', paths]); return {}; },
+    },
+  }, async () => {
+    await assert.rejects(importBundle({ dir: 'C:/out/b', actions: [] }), (err) => {
+      assert.match(err.message, /not being saved/);
+      assert.ok(err.message.includes(reason));
+      return true;
+    });
+    assert.deepEqual(await exportBundle({ parent: 'C:/out' }), { path: 'C:/out/b', written: 0, filmsMissing: [], notRead: [] });
+    assert.deepEqual(await readBundle('C:/out/b'), { manifest: {}, entries: [] });
+    assert.deepEqual(await hashFilms(['C:/films/a.dcm']), {});
+  });
+  assert.equal(imports, 0);
+  assert.deepEqual(reached, [['exportBundle', { parent: 'C:/out' }], ['readBundle', 'C:/out/b'], ['hashFilms', ['C:/films/a.dcm']]]);
+});

@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile, readdir, rm, stat } from 'node:fs/
 import { createHash, randomBytes } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
-import { BUNDLE_SCHEMA, isStudyId, isLabelFileName, isSafeName, exportBundle, readBundle, hashFiles } from '../bundle-io.js';
+import { BUNDLE_SCHEMA, isStudyId, isLabelFileName, isSafeName, exportBundle, readBundle, hashFiles, placeImport } from '../bundle-io.js';
 import { BUNDLE_SCHEMA as RENDERER_SCHEMA } from '../renderer/data/bundle.js';
 
 const dirs = [];
@@ -542,4 +542,255 @@ test('hashFiles hashes each path and gives null for a missing file', async () =>
     [folder]: null,
   });
   assert.deepEqual(await hashFiles([]), {});
+});
+
+// ── placeImport ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// A stand-in for userData's three data folders. A fresh profile has none of them yet (`folders: false`).
+async function library({ folders = true } = {}) {
+  const root = await tempDir('spine-contour-import-');
+  const paths = {
+    predictions: path.join(root, 'predictions'),
+    labels: path.join(root, 'labels'),
+    calibrations: path.join(root, 'calibrations'),
+  };
+  if (folders) for (const folder of Object.values(paths)) await mkdir(folder);
+  return { root, paths };
+}
+
+// A bundle's study folders, written by hand inside an outer folder so a file can sit just outside the bundle.
+async function importSource(files) {
+  const outer = await tempDir('spine-contour-import-src-');
+  const bundle = path.join(outer, 'bundle');
+  await mkdir(bundle);
+  for (const [relative, content] of Object.entries(files)) {
+    const target = path.join(bundle, relative);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, content);
+  }
+  return { outer, bundle };
+}
+
+// One action as Task 4's planImport builds it, with nothing to place unless overridden.
+const action = (overrides = {}) => ({
+  kind: 'add', dir: 'a', id: 'SP-1000', prediction: null, deleteLocalPrediction: false, label: null, calibration: null,
+  ...overrides,
+});
+
+// A saveCalibration stand-in that records what it was handed.
+function calibrationStub() {
+  const saved = [];
+  return { saved, saveCalibration: async reference => { saved.push(reference); return reference; } };
+}
+
+const place = (bundle, lib, actions, saveCalibration = async () => {}) =>
+  placeImport({ dir: bundle, actions, paths: lib.paths, saveCalibration });
+
+test('placeImport copies a sidecar under the new id, the record under its new name, saves the calibration through the callback, and unlinks a local sidecar when told to', async () => {
+  const calibration = { source_sha256: CAL_DIGEST, status: 'corrected', review_revision: 3 };
+  const sidecarText = '{\n  "prediction_id": "run-a"\n}';
+  const { bundle } = await importSource({
+    'a/study.json': '{"id":"SP-1000"}',
+    'a/prediction.json': sidecarText,
+    'a/a.label.json': '{"saved_at":"2026-10-15T10:00:00.000Z","comment":"from the bundle"}',
+    'a/calibration.json': JSON.stringify(calibration),
+    'b/b.label.json': '{"saved_at":"2026-10-15T11:00:00.000Z"}',
+    'c/prediction.json': '{"prediction_id":"run-c"}',
+  });
+  const lib = await library();
+  await writeFile(path.join(lib.paths.predictions, 'SP-1001.json'), '{"prediction_id":"old-b"}');
+  await writeFile(path.join(lib.paths.predictions, 'SP-1002.json'), '{"prediction_id":"old-c"}');
+  await writeFile(path.join(lib.paths.labels, 'b.label.json'), '{"saved_at":"2026-10-01T00:00:00.000Z"}');
+  await writeFile(path.join(lib.paths.labels, 'a.label.json'), '{"keep":"another film\'s record"}');
+  const { saved, saveCalibration } = calibrationStub();
+
+  const result = await place(bundle, lib, [
+    action({ dir: 'a', id: 'SP-1005', prediction: 'prediction.json', label: { from: 'a.label.json', to: 'a-2.label.json' },
+      calibration: 'calibration.json' }),
+    action({ kind: 'update', dir: 'b', id: 'SP-1001', deleteLocalPrediction: true, label: { from: 'b.label.json', to: 'b.label.json' } }),
+    action({ kind: 'update', dir: 'c', id: 'SP-1002', prediction: 'prediction.json' }),
+    action({ kind: 'update', dir: 'd', id: 'SP-1003', deleteLocalPrediction: true }), // no local sidecar: ENOENT is done
+  ], saveCalibration);
+
+  assert.deepEqual(result, { placed: ['SP-1005', 'SP-1001', 'SP-1002', 'SP-1003'], failed: null });
+  // The sidecar lands under the new id, byte for byte; an update's replaces the local one; a deleted one is gone.
+  assert.equal(await readFile(path.join(lib.paths.predictions, 'SP-1005.json'), 'utf8'), sidecarText);
+  assert.deepEqual(await readJson(path.join(lib.paths.predictions, 'SP-1002.json')), { prediction_id: 'run-c' });
+  assert.equal(await exists(path.join(lib.paths.predictions, 'SP-1001.json')), false, 'the local sidecar is removed');
+  assert.deepEqual((await readdir(lib.paths.predictions)).sort(), ['SP-1002.json', 'SP-1005.json'], 'no temporary file is left');
+  // The record lands under `to`, never `from`: another film's a.label.json is untouched, and b's is written over.
+  assert.deepEqual(await readJson(path.join(lib.paths.labels, 'a-2.label.json')),
+    { saved_at: '2026-10-15T10:00:00.000Z', comment: 'from the bundle' });
+  assert.deepEqual(await readJson(path.join(lib.paths.labels, 'a.label.json')), { keep: 'another film\'s record' });
+  assert.deepEqual(await readJson(path.join(lib.paths.labels, 'b.label.json')), { saved_at: '2026-10-15T11:00:00.000Z' });
+  assert.deepEqual((await readdir(lib.paths.labels)).sort(), ['a-2.label.json', 'a.label.json', 'b.label.json']);
+  // The calibration is parsed and handed to the store's save, which writes it; placeImport writes no calibration itself.
+  assert.deepEqual(saved, [calibration]);
+  assert.deepEqual(await readdir(lib.paths.calibrations), []);
+  // The bundle is read, never changed.
+  assert.deepEqual((await readdir(path.join(bundle, 'a'))).sort(), ['a.label.json', 'calibration.json', 'prediction.json', 'study.json']);
+  assert.equal(await readFile(path.join(bundle, 'a', 'prediction.json'), 'utf8'), sidecarText);
+});
+
+test('placeImport refuses an action with an unsafe dir, id or label name and reports it as the failure, placing nothing after it (Review Focus 1)', async () => {
+  const { outer, bundle } = await importSource({
+    'a/prediction.json': '{"p":"a"}',
+    'a/a.label.json': '{"r":"a"}',
+    'a/calibration.json': JSON.stringify({ source_sha256: CAL_DIGEST, status: 'corrected' }),
+    'b/prediction.json': '{"p":"b"}',
+    'b/b.label.json': '{"r":"b"}',
+    'c/prediction.json': '{"p":"c"}',
+  });
+  // Files that a path built from an unsafe name would reach, just outside the bundle.
+  await mkdir(path.join(outer, 'escape'));
+  await writeFile(path.join(outer, 'escape', 'prediction.json'), '{"outside":true}');
+  await writeFile(path.join(outer, 'escape', 'b.label.json'), '{"outside":true}');
+
+  const first = action({ dir: 'a', id: 'SP-1000', prediction: 'prediction.json', label: { from: 'a.label.json', to: 'a.label.json' },
+    calibration: 'calibration.json' });
+  const last = action({ dir: 'c', id: 'SP-1002', prediction: 'prediction.json' });
+  // Each would place b's (or the outside folder's) files if it were not refused.
+  const bad = overrides => action({ dir: 'b', id: 'SP-1001', prediction: 'prediction.json',
+    label: { from: 'b.label.json', to: 'b.label.json' }, ...overrides });
+  const unsafe = [
+    ['not an object', null],
+    ['a string', 'SP-1001'],
+    ['an array', [bad()]],
+    ['kind unknown', bad({ kind: 'delete' })],
+    ['kind missing', bad({ kind: undefined })],
+    ['dir that climbs', bad({ dir: '../escape' })],
+    ['dir that is ..', bad({ dir: '..' })],
+    ['dir with a separator', bad({ dir: 'b/..' })],
+    ['dir with a backslash', bad({ dir: '..\\escape' })],
+    ['dir that is absolute', bad({ dir: path.join(outer, 'escape') })],
+    ['dir with a leading dot', bad({ dir: '.b' })],
+    ['dir that is empty', bad({ dir: '' })],
+    ['dir that is not a string', bad({ dir: 5 })],
+    ['id below SP-1000', bad({ id: 'SP-0999' })],
+    ['id that climbs', bad({ id: '../SP-1001' })],
+    ['id with a separator', bad({ id: 'SP-1001/x' })],
+    ['id that is not a string', bad({ id: 1001 })],
+    ['prediction of another name', bad({ prediction: 'other.json' })],
+    ['prediction that climbs', bad({ prediction: '../escape/prediction.json' })],
+    ['prediction missing', bad({ prediction: undefined })],
+    ['calibration of another name', bad({ calibration: 'cal.json' })],
+    ['calibration that climbs', bad({ calibration: '..\\a\\calibration.json' })],
+    ['label that is a string', bad({ label: 'b.label.json' })],
+    ['label.from that climbs', bad({ label: { from: '../escape/b.label.json', to: 'b.label.json' } })],
+    ['label.from with a separator', bad({ label: { from: 'sub/b.label.json', to: 'b.label.json' } })],
+    ['label.from that is ..', bad({ label: { from: '..', to: 'b.label.json' } })],
+    ['label.to that climbs', bad({ label: { from: 'b.label.json', to: '../b.label.json' } })],
+    ['label.to of the wrong kind', bad({ label: { from: 'b.label.json', to: 'b.json' } })],
+    ['label.to with a leading dot', bad({ label: { from: 'b.label.json', to: '.b.label.json' } })],
+    ['label.to missing', bad({ label: { from: 'b.label.json' } })],
+    ['deleteLocalPrediction not a boolean', bad({ deleteLocalPrediction: 'yes' })],
+    ['deleteLocalPrediction missing', bad({ deleteLocalPrediction: undefined })],
+  ];
+
+  for (const [name, refused] of unsafe) {
+    const lib = await library();
+    const { saved, saveCalibration } = calibrationStub();
+    const result = await place(bundle, lib, [first, refused, last], saveCalibration);
+    const id = refused !== null && typeof refused === 'object' && typeof refused.id === 'string' ? refused.id : null;
+    assert.deepEqual(result, { placed: ['SP-1000'], failed: { id, message: 'Invalid import action.' } }, name);
+    // Only the first action's files were placed: nothing of the refused one, nothing of the one after it.
+    assert.deepEqual(await readdir(lib.paths.predictions), ['SP-1000.json'], name);
+    assert.deepEqual(await readdir(lib.paths.labels), ['a.label.json'], name);
+    assert.equal(saved.length, 1, name);
+    assert.deepEqual((await readdir(lib.root)).sort(), ['calibrations', 'labels', 'predictions'], `${name}: nothing beside the data folders`);
+  }
+  // Nothing outside the bundle was touched.
+  assert.deepEqual((await readdir(outer)).sort(), ['bundle', 'escape']);
+  assert.deepEqual((await readdir(path.join(outer, 'escape'))).sort(), ['b.label.json', 'prediction.json']);
+});
+
+test('placeImport stops at the first failed copy and returns what it placed', async () => {
+  const { bundle } = await importSource({
+    'a/prediction.json': '{"p":"a"}',
+    'a/a.label.json': '{"r":"a"}',
+    'b/b.label.json': '{"r":"b"}', // b's sidecar is named but not there
+    'c/prediction.json': '{"p":"c"}',
+    'c/c.label.json': '{"r":"c"}',
+  });
+  const lib = await library({ folders: false }); // a fresh profile: predictions/ and labels/ are made by the first copy
+
+  const result = await place(bundle, lib, [
+    action({ dir: 'a', id: 'SP-1000', prediction: 'prediction.json', label: { from: 'a.label.json', to: 'a.label.json' } }),
+    action({ dir: 'b', id: 'SP-1001', prediction: 'prediction.json', label: { from: 'b.label.json', to: 'b.label.json' } }),
+    action({ dir: 'c', id: 'SP-1002', prediction: 'prediction.json', label: { from: 'c.label.json', to: 'c.label.json' } }),
+  ]);
+
+  assert.deepEqual(result, { placed: ['SP-1000'], failed: { id: 'SP-1001', message: 'The sidecar for b could not be read.' } });
+  assert.deepEqual(await readdir(lib.paths.predictions), ['SP-1000.json']);
+  assert.deepEqual(await readdir(lib.paths.labels), ['a.label.json'], 'b\'s record comes after its sidecar, and c is never reached');
+  assert.deepEqual(await readJson(path.join(lib.paths.labels, 'a.label.json')), { r: 'a' });
+});
+
+test('each failure is a sentence naming the study\'s folder, never an errno or a path, and stops the import there', async () => {
+  const cases = [
+    { name: 'a sidecar that is not JSON', files: { 'x/prediction.json': 'not json {' }, act: { prediction: 'prediction.json' },
+      message: 'The sidecar for x could not be read.' },
+    { name: 'a sidecar that is not an object', files: { 'x/prediction.json': 'null' }, act: { prediction: 'prediction.json' },
+      message: 'The sidecar for x could not be read.' },
+    { name: 'a sidecar that is a folder', files: { 'x/prediction.json/inner': '{}' }, act: { prediction: 'prediction.json' },
+      message: 'The sidecar for x could not be read.' },
+    { name: 'a record that is missing', files: {}, act: { label: { from: 'x.label.json', to: 'x.label.json' } },
+      message: 'The label record for x could not be copied.' },
+    { name: 'a calibration that is missing', files: {}, act: { calibration: 'calibration.json' },
+      message: 'The calibration reference for x could not be read.' },
+    { name: 'a calibration that is not JSON', files: { 'x/calibration.json': '<<<' }, act: { calibration: 'calibration.json' },
+      message: 'The calibration reference for x could not be read.' },
+    { name: 'a calibration the store refuses', files: { 'x/calibration.json': '{"status":"bogus"}' },
+      act: { calibration: 'calibration.json' },
+      save: async () => { throw new Error('Invalid image reference.'); },
+      message: 'Invalid image reference.' },
+    { name: 'a calibration the store cannot write', files: { 'x/calibration.json': '{"status":"corrected"}' },
+      act: { calibration: 'calibration.json' },
+      save: async () => {
+        const error = new Error("EPERM: operation not permitted, rename 'C:\\Users\\someone\\calibrations\\a.json.tmp'");
+        error.code = 'EPERM';
+        throw error;
+      },
+      message: 'The calibration reference for x could not be saved.' },
+    { name: 'a local sidecar that cannot be removed', files: {}, act: { deleteLocalPrediction: true },
+      setup: lib => mkdir(path.join(lib.paths.predictions, 'SP-1000.json', 'held'), { recursive: true }),
+      message: 'The local sidecar for x could not be removed.' },
+  ];
+
+  for (const c of cases) {
+    const { bundle } = await importSource({ ...c.files, 'y/prediction.json': '{"p":"y"}' });
+    const lib = await library();
+    if (c.setup) await c.setup(lib);
+    const result = await place(bundle, lib, [
+      action({ dir: 'x', id: 'SP-1000', ...c.act }),
+      action({ dir: 'y', id: 'SP-1001', prediction: 'prediction.json' }),
+    ], c.save);
+    assert.deepEqual(result, { placed: [], failed: { id: 'SP-1000', message: c.message } }, c.name);
+    assert.doesNotMatch(result.failed.message, /E[A-Z]{2,}|[A-Za-z]:\\|\//, `${c.name}: no errno or path`);
+    assert.equal(await exists(path.join(lib.paths.predictions, 'SP-1001.json')), false, `${c.name}: the next action is not reached`);
+    if (!c.setup) assert.deepEqual(await readdir(lib.paths.predictions), [], `${c.name}: no partial or temporary sidecar`);
+  }
+});
+
+test('placeImport rejects the whole call for a bundle folder that is not an absolute path or a request it cannot use, and resolves an empty list as nothing placed', async () => {
+  const lib = await library();
+  const { bundle } = await importSource({ 'a/prediction.json': '{"p":"a"}' });
+  const one = [action({ prediction: 'prediction.json' })];
+  for (const dir of ['', 'relative/bundle', 'bundle', null, undefined, 5]) {
+    await assert.rejects(placeImport({ dir, actions: one, paths: lib.paths, saveCalibration: async () => {} }),
+      { message: 'The folder was not found.' }, String(dir));
+  }
+  const bad = [
+    ['actions not an array', { actions: 'nope' }],
+    ['actions missing', { actions: undefined }],
+    ['paths missing', { paths: null }],
+    ['paths without labels', { paths: { predictions: lib.paths.predictions } }],
+    ['saveCalibration not a function', { saveCalibration: null }],
+  ];
+  for (const [name, overrides] of bad) {
+    await assert.rejects(placeImport({ dir: bundle, actions: one, paths: lib.paths, saveCalibration: async () => {}, ...overrides }),
+      { message: 'Invalid request.' }, name);
+  }
+  assert.deepEqual(await readdir(lib.paths.predictions), [], 'nothing was placed');
+  assert.deepEqual(await place(bundle, lib, []), { placed: [], failed: null });
 });

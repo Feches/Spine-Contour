@@ -6,7 +6,7 @@ const net = require('node:net');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { readStudyStore, writeStudyStore, readJsonOrNull, writeJsonAtomic } = require('./store-io.js');
-const { isStudyId, isLabelFileName } = require('./bundle-io.js');
+const { isStudyId, isLabelFileName, exportBundle, readBundle, hashFiles, placeImport } = require('./bundle-io.js');
 const { scanFolder } = require('./scan-folder.js');
 const { postForm, normalizePerformance, normalizeProcessors } = require('./backend-client.cjs');
 const { createCalibrationStore } = require('./calibration-io.js');
@@ -408,6 +408,67 @@ ipcMain.handle('delete-label-record', async (_event, name) => {
     if (error.code === 'ENOENT') return;
     throw new Error('The file is locked or the folder is not writable. Close anything that may be using it, then try again.');
   }
+});
+
+// (2026-10-15, annotation bundles; spec 2026-10-15-annotation-bundle-export-import-design.md) The four bundle
+// channels. bundle-io.js does the file work and validates every name before it builds a path from it; these handlers
+// check the request's shape and hand in the data folders themselves, so the renderer never names a folder under
+// userData. Every throw is display-ready: renderer/api.js strips the IPC prefix and the Studies screen hands the
+// message to a toast verbatim.
+function bundleDataFolders() {
+  const root = app.getPath('userData');
+  return {
+    predictions: path.join(root, 'predictions'),
+    labels: path.join(root, 'labels'),
+    calibrations: path.join(root, 'calibrations'),
+  };
+}
+
+function isExistingFolder(target) {
+  if (typeof target !== 'string' || target.length === 0) return false;
+  try {
+    return fs.existsSync(target) && fs.statSync(target).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+// The parent is the folder the person just chose. Checked here, before exportBundle creates anything, so a drive that
+// went away between the pick and the export, or a path that names a file, reads as the folder not being found.
+ipcMain.handle('export-bundle', async (_event, request) => {
+  const { parent, name, entries, appVersion } = request ?? {};
+  if (!isExistingFolder(parent)) throw new Error('The folder was not found.');
+  return exportBundle({ parent, name, entries, appVersion, paths: bundleDataFolders() });
+});
+
+// manifest.json, each study.json and each label record are parsed; sidecars, calibrations and films are only checked
+// for (the renderer never sees their bytes). A folder that is not a bundle rejects with readBundle's own sentence.
+ipcMain.handle('read-bundle', async (_event, dir) => {
+  if (typeof dir !== 'string' || dir.length === 0) throw new Error('The folder was not found.');
+  return readBundle(dir);
+});
+
+// The library's own films, hashed so an import can match a study by content (plan PB3). Each film is streamed, and
+// the cap keeps one request from asking for an unbounded list of 50 MB reads.
+ipcMain.handle('hash-films', async (_event, paths) => {
+  if (!Array.isArray(paths) || paths.length > 500 || !paths.every(file => typeof file === 'string')) {
+    throw new Error('Invalid request.');
+  }
+  return hashFiles(paths);
+});
+
+// Places the confirmed studies' files and stops at the first that fails (plan PB5). It resolves {placed, failed}
+// rather than rejecting, so the renderer patches the store for exactly what is on disk. A calibration reference goes
+// through the store's own save, which validates it and keeps its review revision counting.
+ipcMain.handle('import-bundle', async (_event, request) => {
+  const { dir, actions } = request ?? {};
+  if (!Array.isArray(actions)) throw new Error('Invalid request.');
+  return placeImport({
+    dir,
+    actions,
+    paths: bundleDataFolders(),
+    saveCalibration: (reference) => calibrationStore.save(reference),
+  });
 });
 
 // The film bytes for a persisted study. Resolves null when the file is gone — that is an

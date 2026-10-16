@@ -1,15 +1,16 @@
 /**
- * The annotation bundle's file I/O (spec 2026-10-15-annotation-bundle-export-import-design.md, plan Task 2): the
- * three validators that guard every path built from a name the renderer or a bundle supplies, `exportBundle`,
- * `readBundle` and `hashFiles`. Outside renderer/ and CommonJS like store-io.js, and only main.js imports it. The
- * pure planning (folder names, which studies, the toast) is renderer/data/bundle.js; this file only touches disk.
+ * The annotation bundle's file I/O (spec 2026-10-15-annotation-bundle-export-import-design.md, plan Tasks 2 and 3):
+ * the three validators that guard every path built from a name the renderer or a bundle supplies, `exportBundle`,
+ * `readBundle`, `hashFiles` and `placeImport`. Outside renderer/ and CommonJS like store-io.js, and only main.js
+ * imports it. The pure planning (folder names, which studies, the toast) is renderer/data/bundle.js; this file only
+ * touches disk.
  *
  * Nothing here reads or writes outside the three data folders main.js hands in, the chosen parent folder, the bundle
  * and (for a film) the study's own file path. Every name is validated before a path is built from it. A film is
  * streamed, never held in memory. A rejection's message is a sentence a person can read: no errno code, no path.
  */
 const { createReadStream, createWriteStream } = require('node:fs');
-const { copyFile, mkdir, open, rm, rmdir, stat } = require('node:fs/promises');
+const { copyFile, mkdir, open, rename, rm, rmdir, stat, unlink } = require('node:fs/promises');
 const { createHash } = require('node:crypto');
 const { Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
@@ -305,4 +306,117 @@ async function hashFiles(paths) {
   return Object.fromEntries(hashes);
 }
 
-module.exports = { BUNDLE_SCHEMA, isStudyId, isLabelFileName, isSafeName, exportBundle, readBundle, hashFiles };
+// ── Import ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+const INVALID_ACTION = 'Invalid import action.';
+// The only names an action may give a study's sidecar and calibration inside the bundle (what exportBundle writes).
+const PREDICTION_FILE = 'prediction.json';
+const CALIBRATION_FILE = 'calibration.json';
+
+// An action from renderer/data/bundle.js planImport, checked whole before any path is built from it: readBundle hands
+// an unsafe row's `dir` back as it found it and never checks `source_id`, so nothing here trusts the planner to have
+// filtered them out.
+function isValidAction(action) {
+  if (!isObject(action)) return false;
+  if (action.kind !== 'add' && action.kind !== 'update') return false;
+  if (!isSafeName(action.dir) || !isStudyId(action.id)) return false;
+  if (action.prediction !== PREDICTION_FILE && action.prediction !== null) return false;
+  if (action.calibration !== CALIBRATION_FILE && action.calibration !== null) return false;
+  if (typeof action.deleteLocalPrediction !== 'boolean') return false;
+  const { label } = action;
+  return label === null || (isObject(label) && isSafeName(label.from) && isLabelFileName(label.to));
+}
+
+// Copy a file through <destination>.tmp and a rename, as writeJsonAtomic writes, so a copy cut off part way never
+// leaves half a sidecar or record where a whole one was. The folder is made first: a fresh profile has no labels/.
+async function copyAtomic(source, destination) {
+  const temporary = `${destination}.tmp`;
+  try {
+    await mkdir(path.dirname(destination), { recursive: true });
+    await copyFile(source, temporary);
+    await rename(temporary, destination);
+  } catch (error) {
+    await rm(temporary, { force: true }).catch(() => {});
+    throw error;
+  }
+}
+
+// The calibration store's own sentences ('Invalid image reference.') pass through; a Node error from its write (an
+// errno code and a path) does not.
+function calibrationFailure(error, dir) {
+  const own = error instanceof Error && typeof error.code !== 'string' && typeof error.message === 'string'
+    && error.message.trim() !== '';
+  return own ? error.message : `The calibration reference for ${dir} could not be saved.`;
+}
+
+// One validated action, in the order spec §5.6 and §5.7 give: the sidecar, the record, the calibration. Throws a
+// sentence naming the study's folder at the first step that fails; the steps before it stay placed.
+async function placeAction(root, action, paths, saveCalibration) {
+  const source = path.join(root, action.dir);
+  const sidecar = path.join(paths.predictions, `${action.id}.json`);
+  if (action.prediction !== null) {
+    const from = path.join(source, PREDICTION_FILE);
+    // Parsed before it is placed, so the library never gains a sidecar it cannot read.
+    if (await readJsonObject(from) === null) throw new Error(`The sidecar for ${action.dir} could not be read.`);
+    try {
+      await copyAtomic(from, sidecar);
+    } catch (_error) {
+      throw new Error(`The sidecar for ${action.dir} could not be copied.`);
+    }
+  } else if (action.deleteLocalPrediction) {
+    // An update whose bundle study has no sidecar retires the local one; one that is already gone is the outcome wanted.
+    try {
+      await unlink(sidecar);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw new Error(`The local sidecar for ${action.dir} could not be removed.`);
+    }
+  }
+  if (action.label !== null) {
+    try {
+      await copyAtomic(path.join(source, action.label.from), path.join(paths.labels, action.label.to));
+    } catch (_error) {
+      throw new Error(`The label record for ${action.dir} could not be copied.`);
+    }
+  }
+  if (action.calibration !== null) {
+    const reference = await readJsonObject(path.join(source, CALIBRATION_FILE));
+    if (reference === null) throw new Error(`The calibration reference for ${action.dir} could not be read.`);
+    try {
+      await saveCalibration(reference);
+    } catch (error) {
+      throw new Error(calibrationFailure(error, action.dir));
+    }
+  }
+}
+
+/**
+ * Place the files of the studies an import adds or updates (plan PB5): per action, in order, the bundle's sidecar
+ * copied to `<paths.predictions>/<id>.json` (or, with no sidecar and `deleteLocalPrediction`, the local one removed),
+ * the label record copied from `<dir>/<action.dir>/<label.from>` to `<paths.labels>/<label.to>`, and the calibration
+ * reference parsed and handed to `saveCalibration` (the calibration store's `save`, which validates and writes it).
+ * `dir` is the bundle's absolute path; each action is `{ kind: 'add'|'update', dir, id, prediction:
+ * 'prediction.json'|null, deleteLocalPrediction, label: { from, to }|null, calibration: 'calibration.json'|null }`.
+ * Resolves `{ placed, failed }`: `placed` the ids of the actions fully placed, in order, and `failed` `{ id, message }`
+ * for the first action that was invalid (`Invalid import action.`) or could not be placed (a sentence naming its
+ * folder), or null. Nothing of the failed action's later steps, and nothing of any later action, is placed. Rejects
+ * only when `dir` is not an absolute path (`The folder was not found.`) or the request cannot be used.
+ */
+async function placeImport({ dir, actions, paths, saveCalibration } = {}) {
+  if (typeof dir !== 'string' || !path.isAbsolute(dir)) throw new Error('The folder was not found.');
+  if (!Array.isArray(actions) || !isObject(paths) || typeof paths.predictions !== 'string'
+      || typeof paths.labels !== 'string' || typeof saveCalibration !== 'function') throw new Error('Invalid request.');
+  const placed = [];
+  for (const action of actions) {
+    const id = isObject(action) && typeof action.id === 'string' ? action.id : null;
+    if (!isValidAction(action)) return { placed, failed: { id, message: INVALID_ACTION } };
+    try {
+      await placeAction(dir, action, paths, saveCalibration);
+    } catch (error) {
+      return { placed, failed: { id, message: error.message } };
+    }
+    placed.push(action.id);
+  }
+  return { placed, failed: null };
+}
+
+module.exports = { BUNDLE_SCHEMA, isStudyId, isLabelFileName, isSafeName, exportBundle, readBundle, hashFiles, placeImport };
