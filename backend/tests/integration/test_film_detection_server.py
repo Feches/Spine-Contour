@@ -60,7 +60,7 @@ def test_auto_dispatches_regional_models_and_persists_resolved_region(monkeypatc
     monkeypatch.setattr(server, "calibration_from_payload", lambda payload, **_: calibration(payload))
     if region == "cervical":
         def cervical(pixels, anterior_side, model):
-            assert anterior_side == "left" and model == "cervical_hrnet"
+            assert anterior_side == "left" and model == "cervical_anatomical_hrnet"
             return prediction(pixels, {"region": "cervical", "anterior_side": "left", "vertebrae": {}})
         monkeypatch.setattr(server, "cervical_prediction", cervical)
     else:
@@ -82,10 +82,9 @@ def test_auto_dispatches_regional_models_and_persists_resolved_region(monkeypatc
 
 @pytest.mark.parametrize("detection, message", [
     ({"body_part": None, "warnings": ["Choose a spine region manually."]}, "Choose a spine region"),
-    ({"body_part": "cervical", "anterior_side": None}, "Detected a cervical film"),
 ])
 @pytest.mark.parametrize("route", ["/predict", "/predict-stream"])
-def test_ambiguous_detection_and_cervical_orientation_request_user_selection(monkeypatch, detection, message, route):
+def test_ambiguous_region_detection_requests_user_selection(monkeypatch, detection, message, route):
     monkeypatch.setattr(server, "detect_film", lambda *a, **kw: detection)
     monkeypatch.setattr(server, "cervical_prediction", lambda *a, **kw: pytest.fail("No guessed side"))
     response = TestClient(server.app).post(route, data={

@@ -381,3 +381,66 @@ def test_reversed_anatomical_s1_labels_cannot_be_sorted_into_orientation_agreeme
     monkeypatch.setattr(full.models, '_score_s1', lambda images: [(.9, plate[::-1])])
     rejected, _ = full._lumbar_candidates(np.zeros((1000, 500), np.uint8))
     assert rejected == []
+
+
+@pytest.mark.parametrize('side', ['left', 'right'])
+@pytest.mark.parametrize('failure', [None, 'mirror', 'crop'])
+def test_anatomical_orientation_requires_mirror_and_crop_agreement(monkeypatch, side, failure):
+    from backend.models import cervical_anatomical as anatomy
+    points = np.vstack(([[100, 75], [90, 80], [110, 80]], body_chain()))
+    if side == 'right':
+        points[1:3] = points[1:3][::-1]
+        points[3:] = points[3:].reshape(10, 2, 2)[:, ::-1].reshape(20, 2)
+    legacy = np.vstack((points[1:3], points[:1], body_chain()))
+    neck = {'window': [0, 0, 300, 300], 'scale': 20, 'points': legacy}
+    if failure == 'crop':
+        neck['points'] = legacy + [50, 0]
+    calls = []
+    def predict(image):
+        p = points.copy()
+        if calls:
+            p[:, 0] = 299-p[:, 0]
+            if failure == 'mirror':
+                p[:, 1] += 40
+        calls.append(True)
+        return {'landmarks': anatomy.anatomical_contract(p, (300, 300))}
+    monkeypatch.setattr(anatomy, 'cervical_prediction', predict)
+    selected, qc = full.anatomical_orientation(np.zeros((300, 300), np.uint8),
+                                               {'left': {'neck': neck}, 'right': {'neck': neck}})
+    assert selected == (side if failure is None else None)
+    assert qc['status'] == ({None: 'accepted', 'mirror': 'anatomical_mirror_disagreement',
+                            'crop': 'anatomical_crop_disagreement'}[failure])
+
+
+@pytest.mark.parametrize('circle', [[-1., 500., 20.], [500., 500., 20.],
+                                    [200., 1000., 20.], [200., 500., float('nan')]])
+def test_invalid_optional_femoral_fit_preserves_spine_landmarks(monkeypatch, circle):
+    evidence = {side: orientation_evidence(side, ['cervical', 'lumbar'] if side == 'left' else [])
+                for side in ('left', 'right')}
+    monkeypatch.setattr(full, '_femoral_region', lambda raw, pelvis:
+                        (np.ones(raw.shape, np.uint8), [circle], {'qc_pass': True}))
+    result = full.full_spine_prediction(np.ones((1000, 500), np.uint8), detection_evidence=evidence)
+    assert result['landmarks']['vertebrae']
+    assert result['landmarks']['c7_centroid'] is not None
+    assert result['landmarks']['femoral_circles'] == []
+    assert result['femoral_mask'].any()
+    assert result['framing']['femoral']['qc_pass'] is False
+
+
+@pytest.mark.parametrize('context_sides,expected', [(['right', 'right'], 'right'),
+                                                   (['right', None], None),
+                                                   (['right', 'left'], None)])
+def test_context_retry_requires_two_agreeing_valid_windows(monkeypatch, context_sides, expected):
+    calls = []
+    def assess(raw, searches):
+        calls.append(searches['left']['neck']['window'])
+        side = None if len(calls) == 1 else context_sides[len(calls)-2]
+        return side, {'status': 'accepted' if side else 'anatomical_mirror_disagreement'}
+    monkeypatch.setattr(full, '_anatomical_orientation_crop', assess)
+    neck = {'window': [100, 100, 200, 200]}
+    side, qc = full.anatomical_orientation(np.zeros((400, 400), np.uint8),
+                                          {'left': {'neck': neck}, 'right': {'neck': neck}})
+    assert side == expected
+    assert calls == [[100, 100, 200, 200], [90, 90, 210, 210], [80, 80, 220, 220]]
+    assert neck['window'] == [100, 100, 200, 200]
+    assert qc.get('context_retry', False) is (expected is not None)

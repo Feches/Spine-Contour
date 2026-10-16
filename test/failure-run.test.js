@@ -133,14 +133,18 @@ test('a cancelled run stores nothing and keeps an earlier failure and its time',
   });
 });
 
-test('a refusal before a run is stored with its time (1.0.13)', async (t) => {
+test('unsupported views are refused, while cervical automatic orientation reaches inference', async (t) => {
   const ap = film('SP-9709', { view: 'AP' });
   const cervical = film('SP-9710', { region: 'cervical', anteriorSide: null });
-  await withBridge(t, { predict: unreachable }, [ap, cervical], async () => {
+  let called = 0;
+  await withBridge(t, { predict: async () => { called++; throw new Error(SOCKET); } }, [ap, cervical], async () => {
     assert.deepEqual(await segmentStudy(ap.id, { batch: true }), { ok: false, reason: unsupportedViewReason('AP') });
-    assert.deepEqual(await segmentStudy(cervical.id), { ok: false, reason: regionRunReason(cervical) });
+    assert.equal(called, 0);
+    setFilePayload(cervical.id, BYTES);
+    assert.deepEqual(await segmentStudy(cervical.id), { ok: false, reason: SOCKET });
+    assert.equal(called, 1);
     assert.equal(record(ap.id).processingError, unsupportedViewReason('AP'));
-    assert.equal(record(cervical.id).processingError, regionRunReason(cervical));
+    assert.equal(record(cervical.id).processingError, BACKEND_STOPPED_REASON);
     for (const id of [ap.id, cervical.id]) assert.ok(isIsoTime(record(id).processingErrorAt), id);
   });
 });

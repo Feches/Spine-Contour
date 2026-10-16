@@ -12,4 +12,6 @@ tools/smoke/out/
 spine-contour-backend.spec
 
 artifacts/
-backend/onnx/
+backend/onnx/*
+!backend/onnx/cervical_anatomical_hrnet.onnx
+!backend/onnx/cervical_anatomical_hrnet.json

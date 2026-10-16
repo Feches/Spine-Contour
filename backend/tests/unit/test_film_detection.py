@@ -67,7 +67,7 @@ def test_cervical_routing_does_not_infer_anterior_from_image_sided_labels(monkey
     result = detection.detect_film(image())
     assert result["body_part"] == "cervical" and result["status"] == "detected"
     assert result["anterior_side"] is None
-    assert any("anterior" in warning for warning in result["warnings"])
+    assert not any("Choose whether anterior" in warning for warning in result["warnings"])
 
 
 def test_explicit_side_is_preserved_and_only_that_orientation_is_searched(monkeypatch):

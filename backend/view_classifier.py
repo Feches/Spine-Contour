@@ -110,8 +110,6 @@ def detect_film(pixel_array, anterior_side=None):
     classification["elapsed_ms"] = round((time.perf_counter()-start)*1000, 2)
     if region:
         warnings = ["Review the automatically detected film region and orientation before accepting measurements."]
-        if region == "cervical" and side is None:
-            warnings.append("Choose whether anterior is on the left or right of this image.")
     elif classification["label"] == "lumbar_ap":
         warnings = ["This looks like a lumbar AP film. The available measurements require a lateral film. Check the image and select its region manually."]
     elif classification["label"] == "other":

@@ -47,7 +47,7 @@ except ImportError:  # Support `uvicorn server:app` from backend/.
 
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
-CERVICAL_MODEL = "cervical_hrnet"
+CERVICAL_MODEL = "cervical_anatomical_hrnet"
 FULL_SPINE_MODEL = "dual_hrnet"
 
 app = FastAPI(title="Spine-Contour", version="0.1.0")
@@ -90,9 +90,9 @@ def _decode_grayscale(payload: bytes) -> np.ndarray:
 def cervical_prediction(pixel_array, anterior_side, model=CERVICAL_MODEL):
     # Keep the cervical runtime lazy so lumbar launches never require its assets.
     if __package__:
-        from .models.cervical import cervical_prediction as predict_cervical
+        from .models.cervical_anatomical import cervical_prediction as predict_cervical
     else:
-        from models.cervical import cervical_prediction as predict_cervical
+        from models.cervical_anatomical import cervical_prediction as predict_cervical
     return predict_cervical(pixel_array, anterior_side, model=model)
 
 
@@ -141,8 +141,8 @@ def _validate_cervical_request(modality, view, laterality, vertebra_model,
         raise ValueError("view and laterality must agree when both are provided")
     if normalize(modality) != "xray" or (normalized_view or normalized_laterality) != "lateral":
         raise ValueError("Cervical models require modality='xray', body_part='cervical', view='lateral'")
-    if anterior_side not in ("left", "right"):
-        raise ValueError("Cervical models require anterior_side='left' or 'right'; select the anterior image side")
+    if anterior_side not in (None, "", "auto", "left", "right"):
+        raise ValueError("Cervical anterior side must be auto, left or right")
     if vertebra_model not in (None, "", CERVICAL_MODEL):
         raise ValueError(f"Unknown cervical vertebra model; available: {CERVICAL_MODEL}")
     if femoral_model or s1_model:
@@ -285,15 +285,13 @@ def _analyze(payload, modality, body_part, view, laterality,
                 raise ValueError(reasons or "Could not confidently identify the spine region. Choose cervical, lumbar or full spine, then segment again.")
             if anterior_side not in ("left", "right"):
                 anterior_side = detection.get("anterior_side")
-            if body_part == "cervical" and anterior_side not in ("left", "right"):
-                raise ValueError("Detected a cervical film. Choose anterior left or right, then segment again.")
         is_cervical = body_part == "cervical"
         is_full_spine = body_part == "full_spine"
         landmark_only = is_cervical or is_full_spine
         if is_cervical:
             _validate_cervical_request(modality, view, laterality, vertebra_model,
                                       femoral_model, s1_model, anterior_side)
-            prediction = cervical_prediction(pixel_array, anterior_side, model=vertebra_model or CERVICAL_MODEL)
+            prediction = cervical_prediction(pixel_array, requested_anterior_side, model=vertebra_model or CERVICAL_MODEL)
         elif is_full_spine:
             _validate_full_spine_request(modality, view, laterality, vertebra_model,
                                         femoral_model, s1_model, anterior_side)
@@ -380,12 +378,12 @@ def _analyze(payload, modality, body_part, view, laterality,
                          "runtime": "onnxruntime", "runtime_version": ort.__version__,
                          "providers": runtime.providers(),
                          "processor": runtime.processor_record(),
-                         "crop_localizer": True if landmark_only else runtime.options().crop_localizer,
+                         "crop_localizer": False if is_cervical else True if is_full_spine else runtime.options().crop_localizer,
                          "crop_method": "not_applicable" if is_cervical else runtime.options().crop_method,
                          "toolbar_removal": False if landmark_only else runtime.options().toolbar_removal,
                          "search_batch": runtime.options().search_batch}}
     if landmark_only:
-        # Landmark pipelines use their trained localizers and return the original
+        # Landmark pipelines return the original
         # image. Retain user preferences separately from
         # the processing actually applied by this model.
         qc["processing"]["requested_crop_localizer"] = runtime.options().crop_localizer

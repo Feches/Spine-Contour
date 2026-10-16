@@ -1,18 +1,17 @@
 # Cervical alignment
 
-Select **Cervical** for the study or its workspace folder and explicitly choose
-whether anterior is on the image's left or right. HRNET names
-image-left/image-right corners, so this choice is required to identify the C7
-posterior corner. Existing studies remain lumbar unless changed deliberately.
-The original image is previewed before an orientation choice is required,
-including for DICOM uploads. Previewing does not create measurements.
+Select **Cervical** for the study or its workspace folder, or use automatic region
+selection. The cervical model predicts anatomically named anterior and posterior
+corners in either image orientation. Anterior side is inferred from the predicted
+endplates. The cervical UI has no manual orientation selector. The API retains an explicit side override for compatibility,
+without exchanging anatomical landmark identities. A disagreement is flagged for review.
 
 Run the model, review the landmarks on the source image, and select a measurement
 row to display its construction. The available endplate corners and C2 centroid can be corrected;
 the measurements recalculate and the corrected geometry is saved with the study.
 Reset restores the original prediction. Cervical results are included in the
 Parameters table and CSV exports. A missing anchor leaves its dependent value
-absent; a missed detector does not trigger a whole-image landmark guess.
+absent. The cervical model reads the whole radiograph without a crop detector.
 
 Segmental lordosis and disc angulation are also available; see [segmental angles](segmental-angles.md).
 
@@ -23,7 +22,7 @@ Segmental lordosis and disc angulation are also available; see [segmental angles
   assign a lordosis/kyphosis sign.
 - **C2–C7 SVA:** horizontal displacement of the C2 body centroid relative to the
   C7 superior-posterior corner. Positive means anterior displacement, according
-  to the selected anterior side. The plumb line follows image acquisition
+  to the inferred anterior side. The plumb line follows image acquisition
   vertical; the pipeline does not rotate the spine upright.
 
 Without valid calibration, SVA is explicitly shown in pixels and its millimetre
@@ -40,24 +39,24 @@ accepting the measurements. The cervical pipeline returns no segmentation masks.
 
 ## Model provenance
 
-The source checkpoint is `csxa_detr_hrnet/runs/hrnet/best.pt`.
+The anatomical HRNet-W32 model predicts 23 channels: C2 centroid and inferior
+anterior/posterior corners, followed by superior and inferior anterior/posterior
+corners for C3–C7. Training uses 4,963 CSXA images and 204 QOD images, with the
+same 20 QOD validation patients evaluated in both original and mirrored views.
+These are 20 independent validation patients, not 40. CSXA training-image
+execution rates do not establish held-out generalization.
 
-HRNET uses the W32 architecture and predicts 23 cervical landmarks from 384×384 spine crops,
-using its original 96×96 heatmap argmax decoder. Its paired DETR ResNet-50 finds
-the spine crop without reference annotations. Both task-specific training and
-checkpoint selection use the original CSXA splits: **3,474 train, 992 validation,
-497 test**. Generic pretrained model
-initialization precedes CSXA fine-tuning; this is not a claim of training from
-random weights. Source checkpoints and SHA-256 hashes are recorded in
-[`cervical_provenance.json`](../backend/weights/cervical_provenance.json).
+The image and landmarks undergo joint horizontal flips, rotation, scaling,
+translation and smooth horizontal bending. Intensity augmentation includes
+uneven exposure, contrast, blur, noise, small occlusions and JPEG compression.
+The bend is a geometric augmentation, not a biomechanical simulation of lordosis.
+Ordering penalties follow target anatomical vectors rather than image-left/right.
 
-The detector preserves the original aspect-dependent 800/1333 resize. HRNET uses
-the original expanded crop, ImageNet normalization and heatmap argmax. Returned
-coordinates use the actual integer crop rectangle sampled from the source image,
-avoiding the old evaluation script's subpixel discrepancy between its rounded
-crop and floating inverse mapping. The displayed image retains its original
-coordinate origin and dimensions. Lumbar crop-localizer and toolbar-removal
-settings do not replace the cervical model's required detector or alter this frame.
+Input is an aspect-preserving grayscale letterbox of 384×512 pixels, with
+ImageNet normalization. The 96×128 heatmap argmax coordinates are multiplied by
+four, unpadded and divided by the resize scale to recover source-image coordinates.
+The ONNX sidecar records the checkpoint hash, epoch, channel names, preprocessing
+and real-image export parity checks. No cervical segmentation masks are generated.
 
 ## Development and packaging
 
@@ -69,24 +68,17 @@ python -m pytest backend/tests -q
 node --test test/*.test.js
 ```
 
-To export only cervical models, run `python tools/export_cervical_onnx.py`.
-Training checkpoints are tracked with Git LFS; generated ONNX graphs and export
-metadata remain in the ignored `backend/onnx/` directory. All desktop build
-workflows run the common exporter, which includes both cervical graphs.
-The runtime remains ONNX-only and offline; Transformers, PyTorch and timm are
-export/test dependencies. The packaged verification executes all six graphs.
+Export the anatomical cervical model with real-image parity checks:
 
-The implementation checks cover independent and missing anchors, mirror
-invariance with an explicitly reversed anterior side, anisotropic scale,
-correction/reload/export behavior, streaming, and PyTorch/ONNX output agreement.
-These are software integration checks, not a new clinical validation study.
+```sh
+python tools/export_cervical_anatomical_onnx.py --checkpoint /path/to/best.pt --image /path/to/cervical.png
+```
 
-Branch verification: **471 backend tests**, **553 renderer tests**, and **15 live
-Electron checks** passed. All six ONNX graphs passed runtime shape/hash checks.
-Three local CSXA test films passed native/ONNX comparison; the cervical heatmap
-argmax coordinates agreed exactly. The live desktop check exercised real
-inference, original preview, both constructions, centroid correction, reset,
-scale apply/clear, CSV and app reload. No installer was published by this change.
+The legacy cervical exporter remains available for the full-spine crop-search
+pipeline. Generated ONNX files and sidecars are stored under `backend/onnx/`.
+The desktop runtime remains ONNX-only; PyTorch and timm are build dependencies.
+Coordinate-contract regression tests and real-image inference checks are distinct
+from anatomical accuracy evaluation.
 
 With an isolated scratch-profile app running, repeat the desktop check using:
 
@@ -107,3 +99,7 @@ explicitly uncalibrated. These are model predictions for review.
 ![HRNET C2–C7 Cobb construction on a CSXA sample](images/cervical-hrnet-cobb.png)
 
 ![HRNET C2–C7 SVA construction on the same CSXA sample](images/cervical-hrnet-sva.png)
+
+A complete bundle export uses `tools/export_onnx.py --cervical-checkpoint CHECKPOINT --cervical-image RADIOGRAPH` (repeat the image option for additional parity cases). The checkpoint and real-image arguments are required so a complete export cannot silently omit the anatomical cervical model.
+
+For standing films with established cervical crop consensus but unresolved lumbar orientation, the anatomical model checks that cervical crop in both image orientations. Orientation is accepted only when the reflected anatomical endpoints agree with each other and with the established crop landmarks. Unresolved or missing anatomy still withholds orientation; this fallback does not create lumbar landmarks or a segmentation mask.

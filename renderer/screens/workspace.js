@@ -363,7 +363,7 @@ export function render(state) {
       key: 'all-region', label: 'Set the region of every folder', choices: ['auto', 'lumbar', 'cervical', 'full_spine'], none: null,
       onChange: value => setAllFolderRows({ region: value, anteriorSide: null }),
     })), el('th', { scope: 'col' }, 'ANTERIOR IMAGE SIDE', setAllSelect({
-      key: 'all-anterior', label: 'Set the anterior image side of every cervical and full spine folder', choices: ['left', 'right'], none: 'Auto detect',
+      key: 'all-anterior', label: 'Set the anterior image side of every full spine or automatic folder', choices: ['left', 'right'], none: 'Auto detect',
       onChange: value => setAllFolderRows({ anteriorSide: value || null }),
     })));
     const body = rows.map((row) => el('tr', { 'data-ws-folder': row.folder },
@@ -381,8 +381,8 @@ export function render(state) {
         key: `region:${row.folder}`, label: `Region for ${row.folder}`, value: row.region ?? 'auto', choices: ['auto', 'lumbar', 'cervical', 'full_spine'], none: null,
         onChange: event => setFolderRow(row.folder, { region: event.target.value, anteriorSide: null }),
       })),
-      el('td', {}, requiresAnteriorSide({ ...row, region: row.region ?? 'auto' }) ? rowSelect({
-        key: `anterior:${row.folder}`, label: `Anterior image side for ${row.folder}`, value: row.anteriorSide, choices: ['left', 'right'], none: row.region === 'cervical' ? 'Choose…' : 'Auto detect',
+      el('td', {}, row.region !== 'cervical' && requiresAnteriorSide({ ...row, region: row.region ?? 'auto' }) ? rowSelect({
+        key: `anterior:${row.folder}`, label: `Anterior image side for ${row.folder}`, value: row.anteriorSide, choices: ['left', 'right'], none: 'Auto detect',
         onChange: event => setFolderRow(row.folder, { anteriorSide: event.target.value || null }),
       }) : '—')));
     return el('div', { class: 'workspace-folders-wrap' },

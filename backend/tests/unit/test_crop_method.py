@@ -104,3 +104,30 @@ def test_rejected_regional_model_crop_tries_search(monkeypatch):
         with pytest.raises(RuntimeError, match="search crop reached"):
             models.spinopelvic_prediction(raw)
     assert calls == ["search"]
+
+
+@pytest.mark.parametrize('recover', [False, True])
+def test_empty_search_crop_uses_whole_film_only_with_visible_bodies(monkeypatch, recover):
+    raw = np.ones((900, 600), np.uint8)
+    box = (100, 200, 500, 800)
+    monkeypatch.setattr(framing, 'locate', lambda *_: {
+        'window': box, 'searched': True, 'whole_film_won': False,
+        'whole_film_cost': None, 'confidence': .8, 'cost': .2, 'candidates': 2})
+    monkeypatch.setattr(framing, 'reframe', lambda *_: None)
+    monkeypatch.setattr(models, '_source_s1', lambda *_: np.array([[200., 700.], [300., 700.]]))
+    calls = []
+    def read(canvas, choice, image):
+        calls.append(image.shape)
+        labels = np.zeros(canvas.shape, np.uint8)
+        if recover and len(calls) == 2:
+            labels[200:300, 300:450] = 1
+        return {'vertebra_labels': labels, 's1': np.array([[200., 700.], [300., 700.]]),
+                's1_confidence': .9, 'femoral': np.zeros(image.shape, np.float32)}
+    monkeypatch.setattr(models, '_read_frame', read)
+    with runtime.session(runtime.Options()):
+        result = models.spinopelvic_prediction(raw)
+    assert calls == [(600, 400), (900, 600)]
+    assert result['framing']['empty_crop_recovered'] is recover
+    assert result['framing']['window'] == ([0, 0, 600, 900] if recover else list(box))
+    assert bool(result['landmarks']['vertebrae']) is recover
+    assert bool(result['mask'].any()) is recover

@@ -1,5 +1,5 @@
 // Real CSXA inference and live editing on a scratch Electron profile.
-// Pass a local lateral cervical image with anterior on image left. Images/results
+// Pass a real lateral cervical image; EXPECTED_SIDE defaults to left. Images/results
 // stay in ignored directories; this checks integration, not clinical accuracy.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,7 +8,9 @@ import { connect } from './cdp-lib.mjs';
 
 const input = path.resolve(process.argv[2] || 'artifacts/cervical_parity/0025037.png');
 assert.ok(fs.existsSync(input), 'Pass a local cervical test image');
-const out = path.resolve('tools/smoke/out/cervical');
+const expectedSide = process.env.EXPECTED_SIDE || 'left';
+assert.ok(['left','right'].includes(expectedSide));
+const out = path.resolve(process.env.SMOKE_OUT || 'tools/smoke/out/cervical');
 fs.mkdirSync(out, { recursive: true });
 const cdp = await connect();
 const checks = [];
@@ -34,22 +36,18 @@ try {
   })()`);
   await until('document.querySelector(\'[aria-label="Spine region"]\')');
   await cdp.evaluate(`(()=>{const e=document.querySelector('[aria-label="Spine region"]');e.value='cervical';e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
-  check('cervical run requires an explicit anterior side', await cdp.evaluate(`(async()=>{
-    const {segmentStudy}=await import('./renderer/screens/analysis.js');
-    const result=await segmentStudy('SP-9801');return !result.ok&&result.reason.includes('anterior');
-  })()`));
   await until("document.querySelector('.viewer-canvas-dynamic')?.width>10 && document.querySelector('.run-card')?.classList.contains('is-hidden')");
   check('original image is visible before orientation confirmation without invented measurements', await cdp.evaluate("import('./renderer/store.js').then(m=>{const s=m.getState().studies[0];return s.geometry===null&&s.measurements===null&&s.anteriorSide===null;})"));
+  check('cervical orientation selector is hidden', await cdp.evaluate("document.querySelector('[aria-label=\"Cervical anterior image side\"]')?.closest('label')?.hidden === true"));
   await cdp.screenshot(path.join(out, 'original-preview.png'));
-  await cdp.evaluate(`(()=>{const e=document.querySelector('[aria-label="Cervical anterior image side"]');e.value='left';e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
   const run = await cdp.evaluate("import('./renderer/screens/analysis.js').then(m=>m.segmentStudy('SP-9801'))");
-  check('real cervical detector and HRNET complete through Electron IPC and streaming', run.ok);
+  check('anatomical cervical HRNET completes with automatic orientation through Electron IPC and streaming', run.ok);
   await until("document.querySelector('.viewer-canvas-dynamic')?.width>10 && document.querySelector('.run-card')?.classList.contains('is-hidden')");
   check('only cervical measurement rows appear', await cdp.evaluate("document.querySelector('[data-row-key=\"C2C7_COBB\"]')&&document.querySelector('[data-row-key=\"C2C7_SVA\"]')&&!document.querySelector('[data-row-key=\"LL\"]')"));
   check('actual model and source frame are recorded', await cdp.evaluate(`import('./renderer/store.js').then(m=>{
     const s=m.getState().studies[0];window.cervicalOriginal=structuredClone(s);
-    return s.geometry.region==='cervical'&&s.qc.models.vertebrae==='cervical_hrnet'
-      &&s.qc.provenance.dataset==='CSXA'&&s.geometry.c2_centroid
+    return s.geometry.region==='cervical'&&s.qc.models.vertebrae==='cervical_anatomical_hrnet'
+      &&s.qc.provenance.dataset==='CSXA + QOD'&&s.geometry.anterior_side==='${expectedSide}'&&s.geometry.c2_centroid
       &&Object.keys(s.geometry.vertebrae).length===6&&s.geometry.s1_superior===null;
   })`));
   await cdp.evaluate("document.querySelector('[data-row-key=\"C2C7_COBB\"]').click()");
@@ -88,14 +86,14 @@ try {
   await cdp.key('ArrowRight');
   await until(`import('./renderer/store.js').then(m=>{const s=m.getState();return !s.measurementDrafts['SP-9801']&&Math.abs(s.studies[0].geometry.c2_centroid[0]-${centroid[0]+1})<1e-7;})`);
   check('centroid nudge recalculates SVA through the real backend', await cdp.evaluate(`import('./renderer/store.js').then(m=>{
-    const s=m.getState().studies[0];return Math.abs(s.measurements.C2C7_SVA_PX-window.cervicalOriginal.measurements.C2C7_SVA_PX+1)<1e-7;
+    const s=m.getState().studies[0];return Math.abs(s.measurements.C2C7_SVA_PX-window.cervicalOriginal.measurements.C2C7_SVA_PX-(${expectedSide === 'left' ? -1 : 1}))<1e-7;
   })`));
   await cdp.evaluate("[...document.querySelectorAll('.viewer-editbar button')].find(b=>b.textContent.trim()==='RESET TO PREDICTION').click()");
   check('reset restores original cervical geometry', await cdp.evaluate(`import('./renderer/store.js').then(m=>m.getState().studies[0].geometry.c2_centroid[0]===${centroid[0]})`));
   check('CSV exports cervical columns and current calibrated values', await cdp.evaluate(`(async()=>{
     const s=(await import('./renderer/store.js')).getState().studies[0];
     const csv=(await import('./renderer/data/csv.js')).toCsv([s]);
-    return csv.includes('C2-C7 Cobb (deg)')&&csv.includes('C2-C7 SVA (mm)')&&csv.includes('cervical,left');
+    return csv.includes('C2-C7 Cobb (deg)')&&csv.includes('C2-C7 SVA (mm)')&&csv.includes('cervical,${expectedSide}');
   })()`));
   await cdp.evaluate(`(async()=>{
     const s=(await import('./renderer/store.js')).getState().studies[0];
@@ -110,7 +108,7 @@ try {
   await cdp.settle(700);
   await cdp.setState("{ack:true,screen:'analysis',openId:'SP-9801',selectedLevel:'C2C7_SVA',tab:'meas'}");
   await until("document.querySelector('.viewer-canvas-dynamic')?.width>10&&document.querySelector('.run-card')?.classList.contains('is-hidden')");
-  check('cervical geometry, orientation and cleared scale survive app reload', await cdp.evaluate("import('./renderer/store.js').then(m=>{const s=m.getState().studies[0];return s.region==='cervical'&&s.anteriorSide==='left'&&s.geometry.region==='cervical'&&s.calibration.status==='cleared';})"));
+  check('cervical geometry, orientation and cleared scale survive app reload', await cdp.evaluate(`import('./renderer/store.js').then(m=>{const s=m.getState().studies[0];return s.region==='cervical'&&s.anteriorSide===null&&s.geometry.anterior_side==='${expectedSide}'&&s.geometry.region==='cervical'&&s.calibration.status==='cleared';})`));
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 800, deviceScaleFactor: 1, mobile: false });
   await cdp.screenshot(path.join(out, 'compact.png'));
   check('measurement panel fits compact window', await cdp.evaluate("document.querySelector('.meas-panel').getBoundingClientRect().right<=innerWidth"));

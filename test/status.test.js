@@ -238,3 +238,15 @@ test('a manually edited study reads Needs review until it is marked, and the man
   assert.ok(after.some((reason) => reason.startsWith('Manually edited landmarks')),
     'the mark outranks the reason for the badge, it does not remove the reason');
 });
+
+
+test('anatomical cervical results retain their review warnings without unrelated S1 warnings', () => {
+  const study = { region: 'cervical', measurements: {}, qc: {
+    models: { vertebrae: 'cervical_anatomical_hrnet' }, framing: { detector: null },
+    warnings: ['Selected anterior side disagrees with the anatomical landmarks.'],
+  } };
+  const reasons = reviewReasons(study);
+  assert.ok(reasons.some(reason => reason.includes('C2/C7')));
+  assert.ok(reasons.includes(study.qc.warnings[0]));
+  assert.ok(!reasons.some(reason => reason.includes('S1')));
+});
