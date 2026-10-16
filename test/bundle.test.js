@@ -204,12 +204,12 @@ test('exportMessage names the count and path, then the missing-film and not-read
     'Exported 12 studies to P',
   );
   assert.equal(
-    exportMessage({ path: 'P', written: 12, filmsMissing: ['a.png', 'b.png'], notRead: ['SP-1003 sidecar'] }),
-    'Exported 12 studies to P \u00b7 2 films were not found and were left out (a.png, b.png) \u00b7 1 sidecar could not be read (SP-1003 sidecar)',
+    exportMessage({ path: 'P', written: 12, filmsMissing: ['a.png', 'b.png'], notRead: ['c.png sidecar'] }),
+    'Exported 12 studies to P \u00b7 2 films were not found and were left out (a.png, b.png) \u00b7 1 file could not be read (c.png sidecar)',
   );
 });
 
-test('exportMessage uses the singular for one study, one film and one sidecar, and the plural otherwise', () => {
+test('exportMessage uses the singular for one study, one film and one file, and the plural otherwise (S40: the list names sidecars, records and calibrations)', () => {
   assert.equal(exportMessage({ path: 'P', written: 1, filmsMissing: [], notRead: [] }), 'Exported 1 study to P');
   assert.equal(exportMessage({ path: 'P', written: 0, filmsMissing: [], notRead: [] }), 'Exported 0 studies to P');
   assert.equal(
@@ -217,8 +217,8 @@ test('exportMessage uses the singular for one study, one film and one sidecar, a
     'Exported 3 studies to P \u00b7 1 film was not found and was left out (a.png)',
   );
   assert.equal(
-    exportMessage({ path: 'P', written: 3, filmsMissing: [], notRead: ['x', 'y'] }),
-    'Exported 3 studies to P \u00b7 2 sidecars could not be read (x, y)',
+    exportMessage({ path: 'P', written: 3, filmsMissing: [], notRead: ['a.png sidecar', 'b.label.json', 'c.png calibration'] }),
+    'Exported 3 studies to P \u00b7 3 files could not be read (a.png sidecar, b.label.json, c.png calibration)',
   );
 });
 
@@ -367,6 +367,20 @@ test('an entry with problems is never trusted, even when its study.json would va
   const plan = planOf([flagged]);
   assert.equal(plan.add.length, 0);
   assert.deepEqual(plan.skip, [{ fileName: 'ok.png', reason: 'malformed' }]);
+});
+
+test('an entry whose sidecar or calibration did not parse is malformed, named, and never stops the others (S38)', () => {
+  const entries = [
+    entryFor('side', { hash: HASH_A, problems: ['sidecar unreadable'] }),
+    entryFor('cal', { hash: HASH_B, problems: ['calibration unreadable'] }),
+    entryFor('good', { hash: HASH_C }),
+  ];
+  // Matched or not, the entry is malformed: a damaged file is never placed over a local study either.
+  const plan = planOf(entries, withLocal('SP-1000', HASH_A, null));
+  assert.deepEqual(plan.skip, [{ fileName: 'side.png', reason: 'malformed' }, { fileName: 'cal.png', reason: 'malformed' }]);
+  assert.deepEqual(plan.add.map(item => item.entry.dir), ['good']);
+  assert.deepEqual(plan.update, []);
+  assert.deepEqual(plan.actions.map(item => item.dir), ['good']);
 });
 
 test('matching is by film hash, never by file name alone', () => {
@@ -526,6 +540,19 @@ test('newer saved_at updates; equal, older or unparseable skips; no record on ei
   const localOnly = planOf([entryFor('film', { hash: HASH_A })], withLocal('SP-1000', HASH_A, localRecord(day(10))));
   assert.deepEqual(localOnly.skip, [{ fileName: 'film.png', reason: ALREADY }], 'only the local study has a record: the bundle cannot improve it');
   assert.deepEqual(localOnly.update, []);
+});
+
+test('a local record that exists but could not be read is not overwritten, while a missing or damaged one is replaced (S42)', () => {
+  const entry = entryFor('film', { hash: HASH_A, record: labelRecord(day(12)) });
+  // The screen hands this for a record whose read REJECTED (locked, not permitted): it is there, its time unknown.
+  const unread = planOf([entry], withLocal('SP-1000', HASH_A, { saved_at: null, image_sha256: null }, { labelFile: 'film.label.json' }));
+  assert.deepEqual(unread.skip, [{ fileName: 'film.png', reason: ALREADY }]);
+  assert.deepEqual(unread.update, []);
+  assert.deepEqual(unread.actions, [], 'nothing is placed over a record that could not be read');
+  // null is what the main process resolves for a record that is missing or does not parse: the bundle's replaces it.
+  const missing = planOf([entry], withLocal('SP-1000', HASH_A, null, { labelFile: 'film.label.json' }));
+  assert.deepEqual(missing.update.map(item => [item.id, item.labelFile]), [['SP-1000', 'film.label.json']]);
+  assert.deepEqual(missing.skip, []);
 });
 
 test('an update carries the local id, the local label name and the entry', () => {

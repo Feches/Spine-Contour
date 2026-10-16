@@ -89,9 +89,18 @@ async function createBundleFolder(parent, name) {
   throw failed;
 }
 
+// The end of the sentence an export rejects with when the bundle's own folder refuses a write (ruling S39).
+const NOT_WRITTEN = 'could not be written to the bundle. Is the folder full or read-only?';
+
+// What a person calls a study in the toast: its film's file name, else its folder in the bundle. Never the SP-nnnn
+// record id, which is shown nowhere a person looks (the 2026-09-12 rule; ruling S37).
+const studyLabel = entry => (typeof entry.fileName === 'string' && entry.fileName !== '' ? entry.fileName : entry.dir);
+
 // Copy a small JSON file (a sidecar, a label record, a calibration) when it is there and parses. 'absent' when no
-// such file exists; 'unreadable' when one exists and cannot be read or parsed (it is left out of the bundle).
-async function copyJson(source, destination) {
+// such file exists; 'unreadable' when one exists and cannot be read or parsed (it is left out of the bundle and named).
+// Once it has parsed, a failed copy is the bundle's folder refusing the write (a full or read-only stick): the partial
+// copy is removed and the export rejects with `failure`, a display-ready sentence (ruling S39).
+async function copyJson(source, destination, failure) {
   let parsed = null;
   try { parsed = await readJsonOrNull(source); } catch (_error) { parsed = null; }
   if (parsed === null) return (await pathExists(source)) ? 'unreadable' : 'absent';
@@ -99,14 +108,16 @@ async function copyJson(source, destination) {
     await copyFile(source, destination);
   } catch (_error) {
     await rm(destination, { force: true }).catch(() => {});
-    return 'unreadable';
+    throw new Error(failure);
   }
   return 'copied';
 }
 
 // Stream the film into <studyDir>/film/<fileName> while hashing it; the SHA-256 hex, or null when there is no film to
-// copy (no path, not a file, unreadable, an unsafe file name, or the copy failed: a partial file is removed). The
-// film/ folder is made only once the source has opened, so a study without a film has none.
+// copy (no path, an unsafe file name, or a source that is not a file or cannot be opened). The film/ folder is made
+// only once the source has opened, so a study without a film has none. Once the source is open, any failure of the
+// copy (a full or read-only destination, or a read that breaks off) rejects the whole export (ruling S39), after the
+// partial film and its folder are removed: a film counted as missing must be one that was not there.
 async function copyFilm(filePath, studyDir, fileName) {
   if (typeof filePath !== 'string' || filePath === '' || !isSafeName(fileName)) return null;
   let handle;
@@ -127,7 +138,7 @@ async function copyFilm(filePath, studyDir, fileName) {
   } catch (_error) {
     await rm(destination, { force: true }).catch(() => {});
     await rmdir(filmDir).catch(() => {}); // succeeds only when empty
-    return null;
+    throw new Error(`The film ${fileName} ${NOT_WRITTEN}`);
   } finally {
     await handle.close().catch(() => {});
   }
@@ -138,11 +149,14 @@ async function copyFilm(filePath, studyDir, fileName) {
  * so a bundle cut off mid-export has none and import refuses it. `entries` are renderer/data/bundle.js planExport's;
  * `paths` are the absolute predictions/, labels/ and calibrations/ folders; `appVersion` is the manifest's
  * `app_version`. Resolves `{ path, written, filmsMissing, notRead }`: `path` the folder actually created,
- * `filmsMissing` the file names of films that could not be copied (the study is still written; a study with no file
- * name is listed by its folder name), `notRead` the
- * sidecars, records and calibrations that exist and could not be read (left out). Rejects with a display-ready
- * sentence when an entry is invalid (nothing written), or the bundle folder, a study folder, a study.json or the
- * manifest cannot be written (a partial folder is left, without a manifest).
+ * `filmsMissing` the file names of films that were not there to copy (no path, not a file, or the source would not
+ * open; the study is still written, and one with no file name is listed by its folder name), `notRead` the sidecars,
+ * records and calibrations that exist and could not be read or parsed (left out), named `<file name> sidecar`, the
+ * record's own file name and `<file name> calibration` (the folder name when the study has no file name; never the
+ * SP-nnnn id, ruling S37). Rejects with a display-ready sentence when an entry is invalid (nothing written), or the
+ * bundle folder, a study folder, a study.json, a film, a sidecar, a record, a calibration or the manifest cannot be
+ * written to the bundle (ruling S39: a full or read-only destination is never reported as a missing film; a partial
+ * folder is left, without a manifest, and the partial file removed).
  */
 async function exportBundle({ parent, name, entries, appVersion, paths }) {
   validateExport({ name, entries, paths });
@@ -166,25 +180,30 @@ async function exportBundle({ parent, name, entries, appVersion, paths }) {
       throw new Error(`The study ${entry.dir} could not be written to the bundle.`);
     }
 
-    const prediction = await copyJson(path.join(paths.predictions, `${entry.sourceId}.json`), path.join(studyDir, 'prediction.json'));
-    if (prediction === 'unreadable') notRead.push(`${entry.sourceId} sidecar`);
+    // A study is named by its film's file name, or its folder when it has none (studyLabel); the record by its own name.
+    const label = studyLabel(entry);
+    const prediction = await copyJson(path.join(paths.predictions, `${entry.sourceId}.json`), path.join(studyDir, 'prediction.json'),
+      `The sidecar for ${label} ${NOT_WRITTEN}`);
+    if (prediction === 'unreadable') notRead.push(`${label} sidecar`);
 
-    let label = 'absent';
+    let record = 'absent';
     if (typeof entry.labelFile === 'string') {
-      label = await copyJson(path.join(paths.labels, entry.labelFile), path.join(studyDir, entry.labelFile));
-      if (label === 'unreadable') notRead.push(entry.labelFile);
+      record = await copyJson(path.join(paths.labels, entry.labelFile), path.join(studyDir, entry.labelFile),
+        `The label record ${entry.labelFile} ${NOT_WRITTEN}`);
+      if (record === 'unreadable') notRead.push(entry.labelFile);
     }
 
     let calibration = 'absent';
     if (typeof entry.calibrationDigest === 'string') {
-      calibration = await copyJson(path.join(paths.calibrations, `${entry.calibrationDigest}.json`), path.join(studyDir, 'calibration.json'));
-      if (calibration === 'unreadable') notRead.push(`${entry.sourceId} calibration`);
+      calibration = await copyJson(path.join(paths.calibrations, `${entry.calibrationDigest}.json`), path.join(studyDir, 'calibration.json'),
+        `The calibration reference for ${label} ${NOT_WRITTEN}`);
+      if (calibration === 'unreadable') notRead.push(`${label} calibration`);
     }
 
     const filmSha256 = await copyFilm(entry.filePath, studyDir, entry.fileName);
     const hasFileName = typeof entry.fileName === 'string';
     // A study with no file name has no film to name: its folder name stands in for it in the toast.
-    if (filmSha256 === null) filmsMissing.push(hasFileName ? entry.fileName : entry.dir);
+    if (filmSha256 === null) filmsMissing.push(label);
 
     studies.push({
       dir: entry.dir,
@@ -193,7 +212,7 @@ async function exportBundle({ parent, name, entries, appVersion, paths }) {
       film: filmSha256 === null ? null : `film/${entry.fileName}`,
       film_sha256: filmSha256,
       prediction: prediction === 'copied' ? 'prediction.json' : null,
-      label: label === 'copied' ? entry.labelFile : null,
+      label: record === 'copied' ? entry.labelFile : null,
       calibration: calibration === 'copied' ? 'calibration.json' : null,
     });
   }
@@ -221,6 +240,16 @@ async function readJsonObject(file) {
   } catch (_error) {
     return null;
   }
+}
+
+// A JSON file the manifest names: 'absent' when it names none or none is there, 'parsed' when it is an object, and
+// 'unreadable' when it is there and does not parse as one. The parsed value is dropped: a sidecar or calibration is
+// checked here, never handed to the renderer (PB2).
+async function namedJson(studyDir, name) {
+  if (name === null) return 'absent';
+  const file = path.join(studyDir, name);
+  if (!(await isFile(file))) return 'absent';
+  return (await readJsonObject(file)) === null ? 'unreadable' : 'parsed';
 }
 
 const optionalName = value => value === null || value === undefined || isSafeName(value);
@@ -258,10 +287,16 @@ async function readEntry(root, row) {
     record = await readJsonObject(path.join(studyDir, relative.label));
     if (record === null) problems.push('label record unreadable');
   }
+  // The sidecar and the calibration are parsed as study.json is (ruling S38): one that is there and does not parse makes
+  // the entry malformed before the prompt, named in it and in the toast, instead of stopping the placement later.
+  const prediction = await namedJson(studyDir, relative.prediction);
+  if (prediction === 'unreadable') problems.push('sidecar unreadable');
+  const calibration = await namedJson(studyDir, relative.calibration);
+  if (calibration === 'unreadable') problems.push('calibration unreadable');
   const filmPath = relative.film === null ? null : path.join(studyDir, relative.film);
   const has = {
-    prediction: relative.prediction !== null && await isFile(path.join(studyDir, relative.prediction)),
-    calibration: relative.calibration !== null && await isFile(path.join(studyDir, relative.calibration)),
+    prediction: prediction === 'parsed',
+    calibration: calibration === 'parsed',
     film: filmPath !== null && await isFile(filmPath),
   };
   return { dir, manifest: row, study, record, has, filmPath: has.film ? filmPath : null, problems };
@@ -271,9 +306,12 @@ async function readEntry(root, row) {
  * Read a bundle folder: `{ manifest, entries }`, one entry per manifest row, in order, each
  * `{ dir, manifest, study, record, has: { prediction, calibration, film }, filmPath, problems }`. `study` and `record`
  * are the parsed study.json and label record (null when unreadable), `filmPath` the absolute path of the film (null
- * unless the row names one and it is there). A row with any unsafe path is not read at all: `problems` is
- * `['unsafe path']`, everything else null or false. Sidecars, calibrations and films are never read, only checked for.
- * Rejects when the folder is not a bundle, or was written by a newer app.
+ * unless the row names one and it is there). `has.prediction` and `has.calibration` are true only when the named file
+ * is there and parses as a JSON object; one that is there and does not parse adds the problem `sidecar unreadable` or
+ * `calibration unreadable` (ruling S38). A row with any unsafe path is not read at all: `problems` is
+ * `['unsafe path']`, everything else null or false. Sidecars and calibrations are parsed, checked and dropped, and
+ * films only checked for: none of them reaches the result. Rejects when the folder is not a bundle, or was written by
+ * a newer app.
  */
 async function readBundle(dir) {
   if (typeof dir !== 'string' || dir === '') throw new Error(NOT_A_BUNDLE);
@@ -341,25 +379,57 @@ async function copyAtomic(source, destination) {
   }
 }
 
-// The calibration store's own sentences ('Invalid image reference.') pass through; a Node error from its write (an
-// errno code and a path) does not.
+// A failure on the bundle's side of one action (ruling S38): a file it places is gone or does not parse, or the
+// calibration store refused the reference. The action is skipped, nothing of it having been written, and the import
+// goes on. Every other failure is the data folder's (a copy, write, rename or unlink there) and stops the import.
+class BundleFileProblem extends Error {}
+
+// The calibration store's own sentences ('Invalid image reference.', or 'The saved reference for this image could not
+// be read. ...') are a refusal of this reference: the action is skipped and the sentence kept. A Node error from the
+// store's read or write (an errno code and a path) is the data folder failing: it stops the import, and its text is
+// never shown.
 function calibrationFailure(error, dir) {
   const own = error instanceof Error && typeof error.code !== 'string' && typeof error.message === 'string'
     && error.message.trim() !== '';
-  return own ? error.message : `The calibration reference for ${dir} could not be saved.`;
+  return own
+    ? new BundleFileProblem(`The calibration reference for ${dir} was not saved: ${error.message}`)
+    : new Error(`The calibration reference for ${dir} could not be saved.`);
 }
 
-// One validated action, in the order spec §5.6 and §5.7 give: the sidecar, the record, the calibration. Throws a
-// sentence naming the study's folder at the first step that fails; the steps before it stay placed.
+// One validated action. Every bundle file it places is parsed first, so one that is gone or damaged skips the action
+// before anything of it is written. Then the writes, in the order ruling S38 gives: the calibration (the store
+// validates it and writes it per film digest, so saving it again on a re-import is harmless), the sidecar (or the
+// unlink of the local one), and the label record LAST. A stop before the record leaves the local record older than the
+// bundle's, so importing the bundle again plans this update again; a record written first would make a half-placed
+// update read as already in the library for good. Throws a sentence naming the study's folder.
 async function placeAction(root, action, paths, saveCalibration) {
   const source = path.join(root, action.dir);
   const sidecar = path.join(paths.predictions, `${action.id}.json`);
-  if (action.prediction !== null) {
-    const from = path.join(source, PREDICTION_FILE);
-    // Parsed before it is placed, so the library never gains a sidecar it cannot read.
-    if (await readJsonObject(from) === null) throw new Error(`The sidecar for ${action.dir} could not be read.`);
+  const sidecarFrom = path.join(source, PREDICTION_FILE);
+  const labelFrom = action.label === null ? null : path.join(source, action.label.from);
+
+  let reference = null;
+  if (action.calibration !== null) {
+    reference = await readJsonObject(path.join(source, CALIBRATION_FILE));
+    if (reference === null) throw new BundleFileProblem(`The calibration reference for ${action.dir} could not be read.`);
+  }
+  if (action.prediction !== null && await readJsonObject(sidecarFrom) === null) {
+    throw new BundleFileProblem(`The sidecar for ${action.dir} could not be read.`);
+  }
+  if (labelFrom !== null && await readJsonObject(labelFrom) === null) {
+    throw new BundleFileProblem(`The label record for ${action.dir} could not be read.`);
+  }
+
+  if (reference !== null) {
     try {
-      await copyAtomic(from, sidecar);
+      await saveCalibration(reference);
+    } catch (error) {
+      throw calibrationFailure(error, action.dir);
+    }
+  }
+  if (action.prediction !== null) {
+    try {
+      await copyAtomic(sidecarFrom, sidecar);
     } catch (_error) {
       throw new Error(`The sidecar for ${action.dir} could not be copied.`);
     }
@@ -371,52 +441,52 @@ async function placeAction(root, action, paths, saveCalibration) {
       if (error.code !== 'ENOENT') throw new Error(`The local sidecar for ${action.dir} could not be removed.`);
     }
   }
-  if (action.label !== null) {
+  if (labelFrom !== null) {
     try {
-      await copyAtomic(path.join(source, action.label.from), path.join(paths.labels, action.label.to));
+      await copyAtomic(labelFrom, path.join(paths.labels, action.label.to));
     } catch (_error) {
       throw new Error(`The label record for ${action.dir} could not be copied.`);
-    }
-  }
-  if (action.calibration !== null) {
-    const reference = await readJsonObject(path.join(source, CALIBRATION_FILE));
-    if (reference === null) throw new Error(`The calibration reference for ${action.dir} could not be read.`);
-    try {
-      await saveCalibration(reference);
-    } catch (error) {
-      throw new Error(calibrationFailure(error, action.dir));
     }
   }
 }
 
 /**
- * Place the files of the studies an import adds or updates (plan PB5): per action, in order, the bundle's sidecar
- * copied to `<paths.predictions>/<id>.json` (or, with no sidecar and `deleteLocalPrediction`, the local one removed),
- * the label record copied from `<dir>/<action.dir>/<label.from>` to `<paths.labels>/<label.to>`, and the calibration
- * reference parsed and handed to `saveCalibration` (the calibration store's `save`, which validates and writes it).
- * `dir` is the bundle's absolute path; each action is `{ kind: 'add'|'update', dir, id, prediction:
- * 'prediction.json'|null, deleteLocalPrediction, label: { from, to }|null, calibration: 'calibration.json'|null }`.
- * Resolves `{ placed, failed }`: `placed` the ids of the actions fully placed, in order, and `failed` `{ id, message }`
- * for the first action that was invalid (`Invalid import action.`) or could not be placed (a sentence naming its
- * folder), or null. Nothing of the failed action's later steps, and nothing of any later action, is placed. Rejects
- * only when `dir` is not an absolute path (`The folder was not found.`) or the request cannot be used.
+ * Place the files of the studies an import adds or updates (plan PB5, ruling S38): per action, in order, the
+ * calibration reference parsed and handed to `saveCalibration` (the calibration store's `save`, which validates and
+ * writes it), the bundle's sidecar copied to `<paths.predictions>/<id>.json` (or, with no sidecar and
+ * `deleteLocalPrediction`, the local one removed), and LAST the label record copied from `<dir>/<action.dir>/<label.from>`
+ * to `<paths.labels>/<label.to>`. `dir` is the bundle's absolute path; each action is `{ kind: 'add'|'update', dir, id,
+ * prediction: 'prediction.json'|null, deleteLocalPrediction, label: { from, to }|null, calibration:
+ * 'calibration.json'|null }`.
+ * Resolves `{ placed, skipped, failed }`: `placed` the ids of the actions fully placed, in order; `skipped`
+ * `{ id, message }` for each action whose bundle file was gone or did not parse, or whose calibration the store
+ * refused (nothing of it is written, and the next action is placed); `failed` `{ id, message }` for the first action
+ * that was invalid (`Invalid import action.`) or could not be written to the data folder, or null. A failure stops the
+ * import: its action's earlier steps stay placed, nothing of any later action is. Every message is a sentence naming
+ * the study's folder. Rejects only when `dir` is not an absolute path (`The folder was not found.`) or the request
+ * cannot be used.
  */
 async function placeImport({ dir, actions, paths, saveCalibration } = {}) {
   if (typeof dir !== 'string' || !path.isAbsolute(dir)) throw new Error('The folder was not found.');
   if (!Array.isArray(actions) || !isObject(paths) || typeof paths.predictions !== 'string'
       || typeof paths.labels !== 'string' || typeof saveCalibration !== 'function') throw new Error('Invalid request.');
   const placed = [];
+  const skipped = [];
   for (const action of actions) {
     const id = isObject(action) && typeof action.id === 'string' ? action.id : null;
-    if (!isValidAction(action)) return { placed, failed: { id, message: INVALID_ACTION } };
+    if (!isValidAction(action)) return { placed, skipped, failed: { id, message: INVALID_ACTION } };
     try {
       await placeAction(dir, action, paths, saveCalibration);
     } catch (error) {
-      return { placed, failed: { id, message: error.message } };
+      if (error instanceof BundleFileProblem) {
+        skipped.push({ id, message: error.message });
+        continue;
+      }
+      return { placed, skipped, failed: { id, message: error.message } };
     }
     placed.push(action.id);
   }
-  return { placed, failed: null };
+  return { placed, skipped, failed: null };
 }
 
 module.exports = { BUNDLE_SCHEMA, isStudyId, isLabelFileName, isSafeName, exportBundle, readBundle, hashFiles, placeImport };

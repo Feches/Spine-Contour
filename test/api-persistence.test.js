@@ -102,7 +102,7 @@ test('importBundle is gated by persistence; exportBundle, readBundle and hashFil
   const reached = [];
   await withWindow({
     spineContour: {
-      importBundle: async () => { imports += 1; return { placed: [], failed: null }; },
+      importBundle: async () => { imports += 1; return { placed: [], skipped: [], failed: null }; },
       exportBundle: async (request) => { reached.push(['exportBundle', request]); return { path: 'C:/out/b', written: 0, filmsMissing: [], notRead: [] }; },
       readBundle: async (dir) => { reached.push(['readBundle', dir]); return { manifest: {}, entries: [] }; },
       hashFilms: async (paths) => { reached.push(['hashFilms', paths]); return {}; },

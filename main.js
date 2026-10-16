@@ -441,15 +441,17 @@ ipcMain.handle('export-bundle', async (_event, request) => {
   return exportBundle({ parent, name, entries, appVersion, paths: bundleDataFolders() });
 });
 
-// manifest.json, each study.json and each label record are parsed; sidecars, calibrations and films are only checked
-// for (the renderer never sees their bytes). A folder that is not a bundle rejects with readBundle's own sentence.
+// manifest.json, each study.json and each label record are parsed and returned; sidecars and calibrations are parsed
+// to be checked and dropped (ruling S38), films only checked for, so the renderer never sees their bytes. A folder
+// that is not a bundle rejects with readBundle's own sentence.
 ipcMain.handle('read-bundle', async (_event, dir) => {
   if (typeof dir !== 'string' || dir.length === 0) throw new Error('The folder was not found.');
   return readBundle(dir);
 });
 
-// The library's own films, hashed so an import can match a study by content (plan PB3). Each film is streamed, and
-// the cap keeps one request from asking for an unbounded list of 50 MB reads.
+// The library's own films, hashed so an import can match a study by content (plan PB3). Each film is streamed, never
+// held whole, and hashFiles has no size cap; the 500-path cap keeps one request from asking for an unbounded list (the
+// screen sends larger lists in batches).
 ipcMain.handle('hash-films', async (_event, paths) => {
   if (!Array.isArray(paths) || paths.length > 500 || !paths.every(file => typeof file === 'string')) {
     throw new Error('Invalid request.');
@@ -457,9 +459,13 @@ ipcMain.handle('hash-films', async (_event, paths) => {
   return hashFiles(paths);
 });
 
-// Places the confirmed studies' files and stops at the first that fails (plan PB5). It resolves {placed, failed}
-// rather than rejecting, so the renderer patches the store for exactly what is on disk. A calibration reference goes
-// through the store's own save, which validates it and keeps its review revision counting.
+// Places the confirmed studies' files: per study the calibration, the sidecar, then the label record last (ruling
+// S38). A study whose bundle file is gone or damaged, or whose calibration the store refuses, is skipped and the rest
+// go on; a write that fails in the data folder stops the import there (plan PB5). It resolves {placed, skipped,
+// failed} rather than rejecting, and the renderer applies only the placed studies to the store. A study stopped part
+// way can leave its calibration and sidecar placed with its old record, so the store still names the old result and
+// importing the bundle again plans the update again. A calibration reference goes through the store's own save,
+// which validates it and keeps its review revision counting.
 ipcMain.handle('import-bundle', async (_event, request) => {
   const { dir, actions } = request ?? {};
   if (!Array.isArray(actions)) throw new Error('Invalid request.');

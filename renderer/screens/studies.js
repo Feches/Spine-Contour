@@ -5,6 +5,10 @@
  * render(state) builds the shell; the summary, the bar and the table update in place from a
  * module-scope subscription, because router.js remounts this host only on screen/calibrationRequest.
  * (2026-09-10, studies-table spec) Sortable headers, the SUBJECT column with its in-place editor, Delete over the ticked visible rows, and the summary's TO REVIEW count.
+ * (2026-10-15, annotation bundle spec) The bar's Export N selected / Export all writes a bundle folder of the ticked
+ * or visible real rows; the dropzone's Import bundle… reads one, plans adds, updates and skips, and confirms them in
+ * the bar's inline prompt before the files are placed and the store patched once (exportBundleTo, importBundleFrom,
+ * confirmImport).
  */
 
 import { deleteStudyBatch } from '../data/delete-studies.js';
@@ -748,13 +752,22 @@ async function readLocalHashes(locals, names) {
 
 // PB3's second read: the label record of every local real study with one whose film digest or file name a bundle
 // entry shares (ruling S27, a superset of what planImport's rule needs), `{ [id]: { saved_at, image_sha256 }|null }`.
-// A record that cannot be read is null: the study then counts as having none.
+// null is what the main process resolves for a record that is missing or does not parse: the study counts as having
+// none, so the bundle's record replaces a damaged one. A read that REJECTS (the file locked or not permitted) is a
+// record that is there and could not be read (ruling S42): `{ saved_at: null, image_sha256: null }`, whose unknown
+// time is never older, so the entry is skipped as already in the library rather than written over an unknown record.
 async function readLocalRecords(locals, { names, hashes }, localHashes) {
   const records = {};
   for (const study of locals) {
     if (typeof study.labelFile !== 'string' || study.labelFile === '') continue;
     if (!hashes.has(localHashes[study.id]) && !names.has(study.fileName)) continue;
-    const record = await loadLabelRecord(study.labelFile).catch(() => null);
+    let record;
+    try {
+      record = await loadLabelRecord(study.labelFile);
+    } catch (_error) {
+      records[study.id] = { saved_at: null, image_sha256: null };
+      continue;
+    }
     records[study.id] = record
       ? { saved_at: record.saved_at ?? null, image_sha256: record.image?.sha256 ?? null } : null;
   }
@@ -813,7 +826,10 @@ function cancelImport() {
 }
 
 // The prompt's Import, exported for the smoke suite (PB7). The main process places the confirmed files and stops at
-// the first action that fails (PB5); only what it placed is applied. Each placed update is treated as re-run first --
+// the first action whose write to the data folder fails (PB5); only what it placed is applied. An action whose bundle
+// file was gone or damaged by then, or whose calibration the store refused, was skipped whole (ruling S38): it is
+// counted under skipped as malformed, named by its film, and neither added nor updated. Each placed update is treated
+// as re-run first --
 // its editor state, its prediction snapshot and its cached film and bitmaps go -- so the next open reads the new
 // sidecar and record (PB4). Then ONE setState patches the library as it is now (a subject typed meanwhile is kept), so
 // the store never names a file that is not on disk; the persistence subscriber in renderer/main.js saves it. A
@@ -843,14 +859,20 @@ export async function confirmImport() {
     setState({ studies: applyImport(getState().studies, plan, placedIds) });
     const added = plan.add.filter((item) => placed.has(item.id));
     const failed = result?.failed ?? null;
-    const stoppedOn = failed ? [...plan.add, ...plan.update].find((item) => item.id === failed.id) : null;
+    // Never the SP-nnnn id: the record id is shown nowhere a person looks (user rule 2026-09-12; ruling S31).
+    const filmName = (item) => item?.entry.study.fileName ?? 'a study';
+    const planned = [...plan.add, ...plan.update];
+    const stoppedOn = failed ? planned.find((item) => item.id === failed.id) : null;
+    // Ruling S38: placeImport never reports a skipped action as placed, so it is in neither count above.
+    const skippedIds = new Set((Array.isArray(result?.skipped) ? result.skipped : []).map((item) => item?.id));
+    const skippedAtPlacement = planned.filter((item) => skippedIds.has(item.id))
+      .map((item) => ({ fileName: filmName(item), reason: 'malformed' }));
     const message = importMessage({
       added: added.length,
       updated: plan.update.filter((item) => placed.has(item.id)).length,
-      skipped: plan.skip,
+      skipped: [...plan.skip, ...skippedAtPlacement],
       withoutFilm: added.filter((item) => item.entry.filmPath == null).map((item) => item.entry.study.fileName),
-      // Never the SP-nnnn id: the record id is shown nowhere a person looks (user rule 2026-09-12; ruling S31).
-      stoppedAt: failed ? { fileName: stoppedOn?.entry.study.fileName ?? 'a study', message: failed.message } : null,
+      stoppedAt: failed ? { fileName: filmName(stoppedOn), message: failed.message } : null,
     });
     const lostNames = lost.map((item) => item.entry.study.fileName).join(', ');
     showToast(lost.length === 0 ? message

@@ -367,7 +367,7 @@ test('the four bundle channels forward their arguments to the bridge', async () 
     exportBundle: { path: 'C:/out/spinecontour-bundle-2026-10-15-1432', written: 1, filmsMissing: [], notRead: [] },
     readBundle: { manifest: { schema: 'spinecontour.bundle/1', studies: [] }, entries: [] },
     hashFilms: { 'C:/films/a.dcm': 'a'.repeat(64), 'C:/films/b.dcm': null },
-    importBundle: { placed: ['SP-1001'], failed: null },
+    importBundle: { placed: ['SP-1001'], skipped: [], failed: null },
   };
   const bridge = {};
   for (const name of Object.keys(results)) {

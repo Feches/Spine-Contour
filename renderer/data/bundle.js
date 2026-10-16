@@ -108,7 +108,9 @@ const plural = (count, one, many) => (count === 1 ? one : many);
 
 /**
  * The toast an export ends with: what was written and where, then, only when non-zero, the films that were not
- * found (left out of the bundle) and the sidecars that could not be read. `filmsMissing` and `notRead` list names.
+ * found (left out of the bundle) and the files that could not be read. `filmsMissing` and `notRead` list names;
+ * `notRead` holds sidecars, label records and calibration references (`<file name> sidecar`, the record's own name,
+ * `<file name> calibration`), so its clause says files (ruling S40).
  */
 export function exportMessage({ path, written, filmsMissing = [], notRead = [] }) {
   const parts = [`Exported ${written} ${plural(written, 'study', 'studies')} to ${path}`];
@@ -118,7 +120,7 @@ export function exportMessage({ path, written, filmsMissing = [], notRead = [] }
   }
   if (notRead.length > 0) {
     const n = notRead.length;
-    parts.push(`${n} ${plural(n, 'sidecar', 'sidecars')} could not be read (${notRead.join(', ')})`);
+    parts.push(`${n} ${plural(n, 'file', 'files')} could not be read (${notRead.join(', ')})`);
   }
   return parts.join(' · ');
 }

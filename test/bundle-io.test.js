@@ -1,7 +1,10 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, writeFile, readdir, rm, stat } from 'node:fs/promises';
+import { createWriteStream as realCreateWriteStream } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { Writable } from 'node:stream';
 import path from 'node:path';
 import os from 'node:os';
 import { BUNDLE_SCHEMA, isStudyId, isLabelFileName, isSafeName, exportBundle, readBundle, hashFiles, placeImport } from '../bundle-io.js';
@@ -161,10 +164,11 @@ test('exportBundle lists every study in entry order, with null where a file is a
   assert.deepEqual((await readdir(path.join(result.path, 'a'))).sort(), ['film', 'study.json']);
 });
 
-test('a missing film leaves film null and names it; a sidecar that is not JSON is left out and named (Review Focus 3)', async () => {
+test('a missing film leaves film null and names it; a sidecar that is not JSON is left out and named by the study\'s file name, never its id (Review Focus 3, S37)', async () => {
   const fx = await fixture();
   await writeFile(path.join(fx.paths.predictions, 'SP-1000.json'), 'not json {');
   await writeFile(path.join(fx.paths.predictions, 'SP-1001.json'), '{"fine":1}');
+  await writeFile(path.join(fx.paths.predictions, 'SP-1003.json'), '[ cut');
   await writeFile(path.join(fx.paths.labels, 'bad.label.json'), '{ truncated');
   await writeFile(path.join(fx.paths.calibrations, `${CAL_DIGEST}.json`), '<<<');
 
@@ -173,11 +177,16 @@ test('a missing film leaves film null and names it; a sidecar that is not JSON i
       labelFile: 'bad.label.json', calibrationDigest: CAL_DIGEST }),
     entry({ dir: 'nopath', sourceId: 'SP-1001', fileName: 'nopath.png', filePath: null }),
     entry({ dir: 'named', sourceId: 'SP-1002', fileName: 'named.png', filePath: null, labelFile: 'absent.label.json' }),
+    entry({ dir: 'unnamed', sourceId: 'SP-1003', fileName: null, filePath: null, calibrationDigest: CAL_DIGEST }),
   ]);
 
-  assert.equal(result.written, 3);
-  assert.deepEqual(result.filmsMissing, ['gone.png', 'nopath.png', 'named.png']);
-  assert.deepEqual(result.notRead, ['SP-1000 sidecar', 'bad.label.json', 'SP-1000 calibration']);
+  assert.equal(result.written, 4);
+  assert.deepEqual(result.filmsMissing, ['gone.png', 'nopath.png', 'named.png', 'unnamed']);
+  // The SP-nnnn record id is shown nowhere a person looks (the 2026-09-12 rule): a study with no file name is named by
+  // its folder, and a record by its own file name.
+  assert.deepEqual(result.notRead, ['gone.png sidecar', 'bad.label.json', 'gone.png calibration', 'unnamed sidecar',
+    'unnamed calibration']);
+  assert.doesNotMatch(result.notRead.join(' '), /SP-\d/);
   const manifest = await readJson(path.join(result.path, 'manifest.json'));
   assert.deepEqual(manifest.studies[0], {
     dir: 'gone', source_id: 'SP-1000', file_name: 'gone.png', film: null, film_sha256: null,
@@ -326,6 +335,137 @@ test('the manifest is written last: a study that cannot be written rejects, name
   assert.equal(left.includes('manifest.json'), false, 'a cut-off export has no manifest');
   assert.ok(left.includes('good'), 'the finished study is still there');
   assert.ok(await exists(path.join(fx.parent, 'bundle', 'good', 'film', 'good.png')));
+});
+
+// ── Write failures at export (ruling S39) ───────────────────────────────────────────────────────────────────────────
+
+const requireCjs = createRequire(import.meta.url);
+
+// bundle-io.js takes its fs functions when it loads, so a copy loaded while some are replaced writes through the
+// replacements: a full stick or a read-only folder is played without one. `faults` is `{ fs: {...}, fsp: {...} }`
+// (node:fs and node:fs/promises); the originals are back before the copy is used, and the cached module is untouched.
+function bundleIoWith(faults) {
+  const modules = { fs: requireCjs('node:fs'), fsp: requireCjs('node:fs/promises') };
+  const saved = [];
+  const modulePath = requireCjs.resolve('../bundle-io.js');
+  const cached = requireCjs.cache[modulePath];
+  try {
+    for (const [key, replacements] of Object.entries(faults)) {
+      for (const [name, replacement] of Object.entries(replacements)) {
+        saved.push([modules[key], name, modules[key][name]]);
+        modules[key][name] = replacement(modules[key][name]);
+      }
+    }
+    delete requireCjs.cache[modulePath];
+    return requireCjs('../bundle-io.js');
+  } finally {
+    for (const [module, name, original] of saved) module[name] = original;
+    if (cached) requireCjs.cache[modulePath] = cached;
+    else delete requireCjs.cache[modulePath];
+  }
+}
+
+const fault = (code, message) => Object.assign(new Error(`${code}: ${message}, write 'C:\\stick\\x'`), { code });
+
+// A write stream onto `target` that takes the first chunk and then fails as a full disk does, leaving a partial file.
+function fullAfterFirstChunk(target) {
+  const real = realCreateWriteStream(target);
+  let chunks = 0;
+  return new Writable({
+    write(chunk, encoding, done) {
+      chunks += 1;
+      if (chunks === 1) { real.write(chunk, encoding, done); return; }
+      real.once('close', () => done(fault('ENOSPC', 'no space left on device')));
+      real.end();
+    },
+    final(done) { real.once('close', () => done()); real.end(); },
+  });
+}
+
+const FULL_OR_READ_ONLY = 'could not be written to the bundle. Is the folder full or read-only?';
+
+test('a film that cannot be written to the bundle rejects the export, removes the partial film and writes no manifest (S39)', async () => {
+  const fx = await fixture();
+  const filmBytes = randomBytes(300_000); // several chunks: the first lands, the second meets a full disk
+  const filmPath = path.join(fx.root, 'film.png');
+  await writeFile(filmPath, filmBytes);
+  await writeFile(path.join(fx.root, 'later.png'), 'later');
+  const io = bundleIoWith({ fs: { createWriteStream: () => target => fullAfterFirstChunk(target) } });
+
+  await assert.rejects(io.exportBundle({
+    parent: fx.parent, name: 'bundle', appVersion: '1.2.0', paths: fx.paths,
+    entries: [
+      entry({ filePath: filmPath }),
+      entry({ dir: 'later', sourceId: 'SP-1001', fileName: 'later.png', filePath: path.join(fx.root, 'later.png') }),
+    ],
+  }), { message: `The film film.png ${FULL_OR_READ_ONLY}` });
+
+  const bundle = path.join(fx.parent, 'bundle');
+  assert.deepEqual(await readdir(bundle), ['film'], 'no manifest, and the export stopped at that study');
+  assert.deepEqual(await readdir(path.join(bundle, 'film')), ['study.json'], 'the partial film and its folder are removed');
+  assert.ok((await readFile(filmPath)).equals(filmBytes), 'the source film is untouched');
+});
+
+test('a film folder that cannot be made in the bundle rejects the export, while a film that cannot be opened is still only missing (S39)', async () => {
+  const fx = await fixture();
+  const filmPath = path.join(fx.root, 'film.png');
+  await writeFile(filmPath, 'bytes');
+  const readOnly = original => async (target, options) => {
+    if (path.basename(target) === 'film' && options?.recursive) throw fault('EROFS', 'read-only file system');
+    return original(target, options);
+  };
+  const io = bundleIoWith({ fsp: { mkdir: readOnly } });
+
+  // A film that is not there never opens: it is missing, and the export completes with the rest of the study.
+  const missing = await io.exportBundle({
+    parent: fx.parent, name: 'first', appVersion: '1.2.0', paths: fx.paths,
+    entries: [entry({ filePath: path.join(fx.root, 'not-there.png') })],
+  });
+  assert.deepEqual(missing.filmsMissing, ['film.png']);
+  assert.ok(await exists(path.join(missing.path, 'manifest.json')));
+
+  await assert.rejects(io.exportBundle({
+    parent: fx.parent, name: 'second', appVersion: '1.2.0', paths: fx.paths, entries: [entry({ filePath: filmPath })],
+  }), error => {
+    assert.equal(error.message, `The film film.png ${FULL_OR_READ_ONLY}`);
+    assert.doesNotMatch(error.message, /EROFS|stick/);
+    return true;
+  });
+  assert.deepEqual(await readdir(path.join(fx.parent, 'second')), ['film'], 'no manifest');
+  assert.deepEqual(await readdir(path.join(fx.parent, 'second', 'film')), ['study.json']);
+});
+
+test('a sidecar, label record or calibration that cannot be written to the bundle rejects the export, names the study and writes no manifest (S37, S39)', async () => {
+  const cases = [
+    { name: 'the sidecar', target: 'prediction.json', over: {}, message: `The sidecar for film.png ${FULL_OR_READ_ONLY}` },
+    { name: 'the sidecar of a study with no file name', target: 'prediction.json', over: { fileName: null },
+      message: `The sidecar for film ${FULL_OR_READ_ONLY}` },
+    { name: 'the label record', target: 'film.label.json', over: {},
+      message: `The label record film.label.json ${FULL_OR_READ_ONLY}` },
+    { name: 'the calibration', target: 'calibration.json', over: {},
+      message: `The calibration reference for film.png ${FULL_OR_READ_ONLY}` },
+  ];
+  for (const c of cases) {
+    const fx = await fixture();
+    await writeFile(path.join(fx.paths.predictions, 'SP-1000.json'), '{"p":1}');
+    await writeFile(path.join(fx.paths.labels, 'film.label.json'), '{"r":1}');
+    await writeFile(path.join(fx.paths.calibrations, `${CAL_DIGEST}.json`), '{"c":1}');
+    // The copy starts, leaves part of a file, and meets a full disk.
+    const full = original => async (source, destination, mode) => {
+      if (path.basename(destination) !== c.target) return original(source, destination, mode);
+      await writeFile(destination, 'part');
+      throw fault('ENOSPC', 'no space left on device');
+    };
+    const io = bundleIoWith({ fsp: { copyFile: full } });
+
+    await assert.rejects(io.exportBundle({
+      parent: fx.parent, name: 'bundle', appVersion: '1.2.0', paths: fx.paths,
+      entries: [entry({ labelFile: 'film.label.json', calibrationDigest: CAL_DIGEST, ...c.over })],
+    }), { message: c.message }, c.name);
+    const studyFolder = path.join(fx.parent, 'bundle', 'film');
+    assert.deepEqual(await readdir(path.join(fx.parent, 'bundle')), ['film'], `${c.name}: no manifest`);
+    assert.equal(await exists(path.join(studyFolder, c.target)), false, `${c.name}: the partial copy is removed`);
+  }
 });
 
 // ── readBundle ──────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -492,6 +632,53 @@ test('readBundle reports study.json and label record problems without failing th
   assert.equal(byDir.good.filmPath, null, 'a film named but not on disk gives no path');
 });
 
+test('readBundle parses a named sidecar and calibration: one that does not parse is a problem and not present, and neither reaches the result (S38)', async () => {
+  const study = '{"id":"SP-1000","source":"real"}';
+  const dir = await writeBundle(
+    [
+      row({ dir: 'badside', source_id: 'SP-1000', film: null, label: null, calibration: null }),
+      row({ dir: 'listside', source_id: 'SP-1001', film: null, label: null, calibration: null }),
+      row({ dir: 'badcal', source_id: 'SP-1002', film: null, label: null, prediction: null }),
+      row({ dir: 'both', source_id: 'SP-1003', film: null, label: null }),
+      row({ dir: 'fine', source_id: 'SP-1004', film: null, label: null }),
+      row({ dir: 'gone', source_id: 'SP-1005', film: null, label: null }),
+    ],
+    {
+      'badside/study.json': study,
+      'badside/prediction.json': '{ truncated',
+      'listside/study.json': study,
+      'listside/prediction.json': '[1,2]',
+      'badcal/study.json': study,
+      'badcal/calibration.json': '<<<',
+      'both/study.json': study,
+      'both/prediction.json': 'not json',
+      'both/calibration.json': 'null',
+      'fine/study.json': study,
+      'fine/prediction.json': '{"prediction_id":"run-1","image_png":"AAAA"}',
+      'fine/calibration.json': '{"status":"corrected"}',
+      'gone/study.json': study,
+    });
+  const { entries } = await readBundle(dir);
+  const byDir = Object.fromEntries(entries.map(e => [e.dir, e]));
+
+  assert.deepEqual(byDir.badside.problems, ['sidecar unreadable']);
+  assert.equal(byDir.badside.has.prediction, false, 'a sidecar that does not parse is not present');
+  assert.deepEqual(byDir.listside.problems, ['sidecar unreadable'], 'a sidecar that is not an object does not parse as one');
+  assert.deepEqual(byDir.badcal.problems, ['calibration unreadable']);
+  assert.equal(byDir.badcal.has.calibration, false);
+  assert.deepEqual(byDir.both.problems, ['sidecar unreadable', 'calibration unreadable']);
+  assert.deepEqual(byDir.both.has, { prediction: false, calibration: false, film: false });
+  assert.deepEqual(byDir.fine.problems, []);
+  assert.deepEqual(byDir.fine.has, { prediction: true, calibration: true, film: false });
+  assert.deepEqual(byDir.gone.problems, [], 'a named file that is not there is absent, not a problem');
+  assert.deepEqual(byDir.gone.has, { prediction: false, calibration: false, film: false });
+  // Parsed, checked and dropped: the renderer never sees a sidecar or a calibration (PB2).
+  for (const e of entries) {
+    assert.deepEqual(Object.keys(e).sort(), ['dir', 'filmPath', 'has', 'manifest', 'problems', 'record', 'study'], e.dir);
+  }
+  assert.doesNotMatch(JSON.stringify(entries), /image_png|run-1|corrected/);
+});
+
 test('what exportBundle writes, readBundle reads back', async () => {
   const fx = await fixture();
   const filmPath = path.join(fx.root, 'film.png');
@@ -612,7 +799,7 @@ test('placeImport copies a sidecar under the new id, the record under its new na
     action({ kind: 'update', dir: 'd', id: 'SP-1003', deleteLocalPrediction: true }), // no local sidecar: ENOENT is done
   ], saveCalibration);
 
-  assert.deepEqual(result, { placed: ['SP-1005', 'SP-1001', 'SP-1002', 'SP-1003'], failed: null });
+  assert.deepEqual(result, { placed: ['SP-1005', 'SP-1001', 'SP-1002', 'SP-1003'], skipped: [], failed: null });
   // The sidecar lands under the new id, byte for byte; an update's replaces the local one; a deleted one is gone.
   assert.equal(await readFile(path.join(lib.paths.predictions, 'SP-1005.json'), 'utf8'), sidecarText);
   assert.deepEqual(await readJson(path.join(lib.paths.predictions, 'SP-1002.json')), { prediction_id: 'run-c' });
@@ -692,7 +879,7 @@ test('placeImport refuses an action with an unsafe dir, id or label name and rep
     const { saved, saveCalibration } = calibrationStub();
     const result = await place(bundle, lib, [first, refused, last], saveCalibration);
     const id = refused !== null && typeof refused === 'object' && typeof refused.id === 'string' ? refused.id : null;
-    assert.deepEqual(result, { placed: ['SP-1000'], failed: { id, message: 'Invalid import action.' } }, name);
+    assert.deepEqual(result, { placed: ['SP-1000'], skipped: [], failed: { id, message: 'Invalid import action.' } }, name);
     // Only the first action's files were placed: nothing of the refused one, nothing of the one after it.
     assert.deepEqual(await readdir(lib.paths.predictions), ['SP-1000.json'], name);
     assert.deepEqual(await readdir(lib.paths.labels), ['a.label.json'], name);
@@ -704,57 +891,75 @@ test('placeImport refuses an action with an unsafe dir, id or label name and rep
   assert.deepEqual((await readdir(path.join(outer, 'escape'))).sort(), ['b.label.json', 'prediction.json']);
 });
 
-test('placeImport stops at the first failed copy and returns what it placed', async () => {
-  const { bundle } = await importSource({
-    'a/prediction.json': '{"p":"a"}',
-    'a/a.label.json': '{"r":"a"}',
-    'b/b.label.json': '{"r":"b"}', // b's sidecar is named but not there
-    'c/prediction.json': '{"p":"c"}',
-    'c/c.label.json': '{"r":"c"}',
-  });
-  const lib = await library({ folders: false }); // a fresh profile: predictions/ and labels/ are made by the first copy
+// x's three bundle files, whole; a case overrides the one it damages.
+const WHOLE_X = {
+  'x/prediction.json': '{"p":"x"}',
+  'x/x.label.json': '{"r":"x"}',
+  'x/calibration.json': '{"status":"corrected"}',
+};
+const FULL_X = { dir: 'x', id: 'SP-1000', prediction: 'prediction.json', label: { from: 'x.label.json', to: 'x.label.json' },
+  calibration: 'calibration.json' };
+const storeError = message => async () => { throw new Error(message); };
 
-  const result = await place(bundle, lib, [
-    action({ dir: 'a', id: 'SP-1000', prediction: 'prediction.json', label: { from: 'a.label.json', to: 'a.label.json' } }),
-    action({ dir: 'b', id: 'SP-1001', prediction: 'prediction.json', label: { from: 'b.label.json', to: 'b.label.json' } }),
-    action({ dir: 'c', id: 'SP-1002', prediction: 'prediction.json', label: { from: 'c.label.json', to: 'c.label.json' } }),
-  ]);
+test('a bundle file that is gone or damaged at placement, or a calibration the store refuses, skips that action whole and the import goes on (S38)', async () => {
+  const cases = [
+    { name: 'a sidecar that is not JSON', files: { 'x/prediction.json': 'not json {' }, message: 'The sidecar for x could not be read.' },
+    { name: 'a sidecar that is not an object', files: { 'x/prediction.json': 'null' }, message: 'The sidecar for x could not be read.' },
+    { name: 'a sidecar that is a folder', files: { 'x/prediction.json': undefined, 'x/prediction.json/inner': '{}' },
+      message: 'The sidecar for x could not be read.' },
+    { name: 'a sidecar that is gone', files: { 'x/prediction.json': undefined }, message: 'The sidecar for x could not be read.' },
+    { name: 'a record that is gone', files: { 'x/x.label.json': undefined }, message: 'The label record for x could not be read.' },
+    { name: 'a record that is not JSON', files: { 'x/x.label.json': '{ cut' }, message: 'The label record for x could not be read.' },
+    { name: 'a calibration that is gone', files: { 'x/calibration.json': undefined },
+      message: 'The calibration reference for x could not be read.' },
+    { name: 'a calibration that is not JSON', files: { 'x/calibration.json': '<<<' },
+      message: 'The calibration reference for x could not be read.' },
+    { name: 'a calibration the store refuses', save: storeError('Invalid image reference.'),
+      message: 'The calibration reference for x was not saved: Invalid image reference.' },
+    { name: 'a local reference the store cannot read',
+      save: storeError('The saved reference for this image could not be read. It has been left unchanged.'),
+      message: 'The calibration reference for x was not saved: The saved reference for this image could not be read. '
+        + 'It has been left unchanged.' },
+  ];
 
-  assert.deepEqual(result, { placed: ['SP-1000'], failed: { id: 'SP-1001', message: 'The sidecar for b could not be read.' } });
-  assert.deepEqual(await readdir(lib.paths.predictions), ['SP-1000.json']);
-  assert.deepEqual(await readdir(lib.paths.labels), ['a.label.json'], 'b\'s record comes after its sidecar, and c is never reached');
-  assert.deepEqual(await readJson(path.join(lib.paths.labels, 'a.label.json')), { r: 'a' });
+  for (const c of cases) {
+    const files = { ...WHOLE_X, ...c.files, 'y/prediction.json': '{"p":"y"}', 'y/y.label.json': '{"r":"y"}' };
+    for (const [key, value] of Object.entries(files)) if (value === undefined) delete files[key];
+    const { bundle } = await importSource(files);
+    const lib = await library({ folders: false }); // a fresh profile: the folders are made by the first copy
+    const { saved, saveCalibration } = calibrationStub();
+    const result = await place(bundle, lib, [
+      action(FULL_X),
+      action({ dir: 'y', id: 'SP-1001', prediction: 'prediction.json', label: { from: 'y.label.json', to: 'y.label.json' } }),
+    ], c.save ?? saveCalibration);
+    assert.deepEqual(result, { placed: ['SP-1001'], skipped: [{ id: 'SP-1000', message: c.message }], failed: null }, c.name);
+    assert.doesNotMatch(result.skipped[0].message, /E[A-Z]{2,}|[A-Za-z]:\\|\//, `${c.name}: no errno or path`);
+    // Nothing of the skipped action was written, and the next one was placed whole.
+    assert.deepEqual(await readdir(lib.paths.predictions), ['SP-1001.json'], c.name);
+    assert.deepEqual(await readdir(lib.paths.labels), ['y.label.json'], c.name);
+    assert.deepEqual(saved, [], `${c.name}: no calibration saved`);
+  }
 });
 
-test('each failure is a sentence naming the study\'s folder, never an errno or a path, and stops the import there', async () => {
+test('a write failure in the data folder stops the import at that study with a sentence naming its folder (PB5)', async () => {
+  const eperm = async () => {
+    const error = new Error("EPERM: operation not permitted, rename 'C:\\Users\\someone\\calibrations\\a.json.tmp'");
+    error.code = 'EPERM';
+    throw error;
+  };
   const cases = [
-    { name: 'a sidecar that is not JSON', files: { 'x/prediction.json': 'not json {' }, act: { prediction: 'prediction.json' },
-      message: 'The sidecar for x could not be read.' },
-    { name: 'a sidecar that is not an object', files: { 'x/prediction.json': 'null' }, act: { prediction: 'prediction.json' },
-      message: 'The sidecar for x could not be read.' },
-    { name: 'a sidecar that is a folder', files: { 'x/prediction.json/inner': '{}' }, act: { prediction: 'prediction.json' },
-      message: 'The sidecar for x could not be read.' },
-    { name: 'a record that is missing', files: {}, act: { label: { from: 'x.label.json', to: 'x.label.json' } },
-      message: 'The label record for x could not be copied.' },
-    { name: 'a calibration that is missing', files: {}, act: { calibration: 'calibration.json' },
-      message: 'The calibration reference for x could not be read.' },
-    { name: 'a calibration that is not JSON', files: { 'x/calibration.json': '<<<' }, act: { calibration: 'calibration.json' },
-      message: 'The calibration reference for x could not be read.' },
-    { name: 'a calibration the store refuses', files: { 'x/calibration.json': '{"status":"bogus"}' },
-      act: { calibration: 'calibration.json' },
-      save: async () => { throw new Error('Invalid image reference.'); },
-      message: 'Invalid image reference.' },
     { name: 'a calibration the store cannot write', files: { 'x/calibration.json': '{"status":"corrected"}' },
-      act: { calibration: 'calibration.json' },
-      save: async () => {
-        const error = new Error("EPERM: operation not permitted, rename 'C:\\Users\\someone\\calibrations\\a.json.tmp'");
-        error.code = 'EPERM';
-        throw error;
-      },
-      message: 'The calibration reference for x could not be saved.' },
+      act: { calibration: 'calibration.json' }, save: eperm, message: 'The calibration reference for x could not be saved.' },
     { name: 'a local sidecar that cannot be removed', files: {}, act: { deleteLocalPrediction: true },
       setup: lib => mkdir(path.join(lib.paths.predictions, 'SP-1000.json', 'held'), { recursive: true }),
       message: 'The local sidecar for x could not be removed.' },
+    { name: 'a sidecar whose place is a folder', files: { 'x/prediction.json': '{"p":"x"}' }, act: { prediction: 'prediction.json' },
+      setup: lib => mkdir(path.join(lib.paths.predictions, 'SP-1000.json', 'held'), { recursive: true }),
+      message: 'The sidecar for x could not be copied.' },
+    { name: 'a record whose place is a folder', files: { 'x/x.label.json': '{"r":"x"}' },
+      act: { label: { from: 'x.label.json', to: 'x.label.json' } },
+      setup: lib => mkdir(path.join(lib.paths.labels, 'x.label.json', 'held'), { recursive: true }),
+      message: 'The label record for x could not be copied.' },
   ];
 
   for (const c of cases) {
@@ -765,11 +970,55 @@ test('each failure is a sentence naming the study\'s folder, never an errno or a
       action({ dir: 'x', id: 'SP-1000', ...c.act }),
       action({ dir: 'y', id: 'SP-1001', prediction: 'prediction.json' }),
     ], c.save);
-    assert.deepEqual(result, { placed: [], failed: { id: 'SP-1000', message: c.message } }, c.name);
+    assert.deepEqual(result, { placed: [], skipped: [], failed: { id: 'SP-1000', message: c.message } }, c.name);
     assert.doesNotMatch(result.failed.message, /E[A-Z]{2,}|[A-Za-z]:\\|\//, `${c.name}: no errno or path`);
     assert.equal(await exists(path.join(lib.paths.predictions, 'SP-1001.json')), false, `${c.name}: the next action is not reached`);
-    if (!c.setup) assert.deepEqual(await readdir(lib.paths.predictions), [], `${c.name}: no partial or temporary sidecar`);
+    for (const folder of [lib.paths.predictions, lib.paths.labels]) {
+      assert.deepEqual((await readdir(folder)).filter(name => name.endsWith('.tmp')), [], `${c.name}: no temporary file`);
+    }
   }
+});
+
+test('the label record is written last: a record that cannot be placed stops with the calibration and sidecar placed and the local record untouched (S38)', async () => {
+  const { bundle } = await importSource({ ...WHOLE_X, 'y/prediction.json': '{"p":"y"}' });
+  const lib = await library();
+  await writeFile(path.join(lib.paths.predictions, 'SP-1000.json'), '{"p":"old"}');
+  await writeFile(path.join(lib.paths.labels, 'x.label.json'), '{"r":"old"}');
+  // The copy goes through x.label.json.tmp; a folder in its place makes that write fail.
+  await mkdir(path.join(lib.paths.labels, 'x.label.json.tmp', 'held'), { recursive: true });
+  const { saved, saveCalibration } = calibrationStub();
+
+  const result = await place(bundle, lib, [
+    action({ ...FULL_X, kind: 'update' }),
+    action({ dir: 'y', id: 'SP-1001', prediction: 'prediction.json' }),
+  ], saveCalibration);
+
+  assert.deepEqual(result, { placed: [], skipped: [], failed: { id: 'SP-1000', message: 'The label record for x could not be copied.' } });
+  assert.deepEqual(saved, [{ status: 'corrected' }], 'the calibration was saved first');
+  assert.deepEqual(await readJson(path.join(lib.paths.predictions, 'SP-1000.json')), { p: 'x' }, 'the sidecar was placed next');
+  // The record is the local one still: its saved_at is older than the bundle's, so importing again plans the update again.
+  assert.deepEqual(await readJson(path.join(lib.paths.labels, 'x.label.json')), { r: 'old' });
+  assert.equal(await exists(path.join(lib.paths.predictions, 'SP-1001.json')), false, 'the next action is not reached');
+});
+
+test('the calibration is saved before the sidecar and the record, and a store that fails writes nothing else of the action (S38)', async () => {
+  const { bundle } = await importSource(WHOLE_X);
+  const lib = await library();
+  const seen = [];
+  const probe = async () => {
+    seen.push([await exists(path.join(lib.paths.predictions, 'SP-1000.json')), await exists(path.join(lib.paths.labels, 'x.label.json'))]);
+  };
+  assert.deepEqual(await place(bundle, lib, [action(FULL_X)], probe), { placed: ['SP-1000'], skipped: [], failed: null });
+  assert.deepEqual(seen, [[false, false]], 'neither the sidecar nor the record was there when the calibration was saved');
+  assert.ok(await exists(path.join(lib.paths.predictions, 'SP-1000.json')));
+  assert.ok(await exists(path.join(lib.paths.labels, 'x.label.json')));
+
+  const fresh = await library();
+  const failing = async () => { const error = new Error('ENOSPC: no space left on device'); error.code = 'ENOSPC'; throw error; };
+  const result = await place(bundle, fresh, [action(FULL_X)], failing);
+  assert.deepEqual(result, { placed: [], skipped: [], failed: { id: 'SP-1000', message: 'The calibration reference for x could not be saved.' } });
+  assert.deepEqual(await readdir(fresh.paths.predictions), [], 'no sidecar after a failed calibration');
+  assert.deepEqual(await readdir(fresh.paths.labels), [], 'no record after a failed calibration');
 });
 
 test('placeImport rejects the whole call for a bundle folder that is not an absolute path or a request it cannot use, and resolves an empty list as nothing placed', async () => {
@@ -792,5 +1041,5 @@ test('placeImport rejects the whole call for a bundle folder that is not an abso
       { message: 'Invalid request.' }, name);
   }
   assert.deepEqual(await readdir(lib.paths.predictions), [], 'nothing was placed');
-  assert.deepEqual(await place(bundle, lib, []), { placed: [], failed: null });
+  assert.deepEqual(await place(bundle, lib, []), { placed: [], skipped: [], failed: null });
 });
