@@ -10,7 +10,10 @@
 import { deleteStudyBatch } from '../data/delete-studies.js';
 import { el, mount } from '../dom.js';
 import { getState, setState, subscribe } from '../store.js';
-import { selectFile, pathForFile, deletePrediction, deleteLabelRecord, persistenceDisabledReason, chooseFolder, exportBundle } from '../api.js';
+import {
+  selectFile, pathForFile, deletePrediction, deleteLabelRecord, persistenceDisabledReason, chooseFolder, exportBundle,
+  readBundle, hashFilms, importBundle, loadLabelRecord,
+} from '../api.js';
 import { showToast } from '../components/toast.js';
 import { displayStatus } from '../data/status.js';
 import { failureTitle } from '../data/failure.js';
@@ -22,7 +25,10 @@ import { seedFields } from '../data/seeding.js';
 import {
   withIds, toggleId, selectedVisible, rowsToExport, workspaceOptions, folderOptions, normaliseFilters, patchFilters, matchesLocation, HAND_ADDED,
 } from '../data/parameters.js';
-import { planExport, exportMessage } from '../data/bundle.js';
+import {
+  planExport, exportMessage, localFilmHash, planImport, applyImport, importPromptText, importMessage,
+  nothingToImportMessage,
+} from '../data/bundle.js';
 import { appVersion } from '../data/label-record.js';
 import { planBatch, progressText, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
 import { sortFindRows, toggleFindSort, summaryCounts } from '../data/find.js';
@@ -32,6 +38,7 @@ import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js
 import { startBatch, stopBatch } from '../batch.js';
 import { setFilePayload, releaseStudy } from './analysis.js';
 import { forgetPrediction } from '../components/viewer.js';
+import { hasStashedEditor, forgetLevelEditor } from '../level-editor.js';
 import { mountParameters } from './parameters.js';
 
 const DASH = '\u2014';
@@ -171,6 +178,18 @@ function dropzone() {
     type: 'button', class: 'btn btn-primary btn-small',
     onClick: (event) => { event.stopPropagation(); handleChoose(); },
   }, 'Choose radiograph');
+  // Import bundle… (bundle spec 5.1): the folder picker, then importBundleFrom. Its click stops at the button as
+  // Choose's does, so the zone underneath does not open the film picker too. The zone is built once per mount and
+  // update() does not rebuild it, so update() keeps this button's disabled state and title current through the
+  // module-scope reference.
+  importButton = el('button', {
+    type: 'button', class: 'btn btn-small studies-import-bundle', 'data-find-key': 'import-bundle',
+    onClick: (event) => {
+      event.stopPropagation();
+      chooseFolder().then((dir) => dir && importBundleFrom(dir))
+        .catch((error) => showToast(error?.message || 'The import failed.'));
+    },
+  }, 'Import bundle…');
   const zone = el('div', {
     class: 'dropzone dropzone-clickable', tabindex: '0', 'aria-label': 'Choose a radiograph, or drop one here',
     onClick: () => handleChoose(),
@@ -183,7 +202,7 @@ function dropzone() {
     el('div', { class: 'dropzone-text' },
       el('div', { class: 'dropzone-title' }, 'Drop a DICOM series or lateral radiograph'),
       el('div', { class: 'dropzone-subtitle' }, 'De-identified files only. Segmentation runs locally on the workstation.')),
-    chooseButton);
+    chooseButton, importButton);
   zone.addEventListener('dragover', (event) => { event.preventDefault(); zone.classList.add('dropzone-active'); });
   // dragleave also fires when the pointer crosses onto a child; the next dragover re-adds the
   // class, so the flicker is one frame and accepted.
@@ -427,9 +446,18 @@ function findRows(live) {
 }
 
 // What refuses the bar's Delete and Export alike: a run, a batch or a bulk delete in flight, or studies not being
-// saved (studies-table spec 2026-09-10, section 5; bundle spec 4.1).
+// saved (studies-table spec 2026-09-10, section 5; bundle spec 4.1). An import reading or placing files refuses them
+// as a bulk delete does (ruling S25): its placement rewrites the sidecars and records they read.
 function barBlocked(live) {
-  return Boolean(live.running || live.batch || live.deletingStudies || persistenceDisabledReason());
+  return Boolean(live.running || live.batch || live.deletingStudies || importing || persistenceDisabledReason());
+}
+
+// Why Delete, Export and Import bundle… are refused, on their titles (ruling S23), in this order; '' when none of
+// these is the reason. Each button then names its own empty case.
+function waitTitle(live) {
+  return live.batch ? WAIT_FOR_BATCH
+    : live.running ? WAIT_FOR_RUN
+    : persistenceDisabledReason() ? `Studies are not being saved: ${persistenceDisabledReason()}` : '';
 }
 
 // The live mount, or null when this screen is not on screen. See screens/analysis.js for why
@@ -456,23 +484,36 @@ let editingSubject = null;
 // Listed in update()'s key like the three above, but navigation does NOT clear it: the export carries on without
 // the screen, and only its own `finally` may end it.
 let exporting = false;
+// True while an import reads the bundle and the local films and records, or places the confirmed files (bundle spec
+// 5.3–5.8); like `exporting`, only the flow's own `finally` ends it. `pendingImport` is the plan the inline prompt
+// confirms, `{ dir, plan, studies }`, or null: `studies` is the library list the plan was computed against, and
+// update() withdraws the prompt once the store holds another (ruling S26), because the plan's new ids and its matches
+// were made against that list. `importButton` is the dropzone's Import bundle…, which update() does not rebuild.
+let importing = false;
+let pendingImport = null;
+let importButton = null;
 
 subscribe((state) => {
-  // Navigation withdraws an open prompt and an open editor along with the mount.
-  if (state.screen !== 'studies') { mounted = null; confirmingId = null; confirmingSelected = null; editingSubject = null; return; }
+  // Navigation withdraws an open prompt and an open editor along with the mount. The import prompt goes too: a plan
+  // left pending while a study is opened in edit mode would update it on return (its `editing` set is the click's).
+  if (state.screen !== 'studies') {
+    mounted = null; confirmingId = null; confirmingSelected = null; editingSubject = null; pendingImport = null;
+    return;
+  }
   if (mounted) mounted.update(state);
 });
 
 // Repaint the bar and the table from the current store after module-scope UI state changes.
 // Called from DOM event handlers only, never from inside a subscriber. The repaint replaces the
 // nodes, which drops keyboard focus onto the body; `focusSelector` names the node that gets it
-// back -- in the table or on the bar. A text input that gets it also gets its text selected:
-// that is how a fresh SUBJECT editor opens (spec 7.2).
+// back -- in the table, on the bar or in the dropzone (Import bundle…). A text input that gets it
+// also gets its text selected: that is how a fresh SUBJECT editor opens (spec 7.2).
 function refreshTable(focusSelector) {
   if (!mounted) return;
   mounted.update(getState());
   if (focusSelector) {
-    const target = mounted.host.querySelector(focusSelector) ?? mounted.bar.querySelector(focusSelector);
+    const target = mounted.host.querySelector(focusSelector) ?? mounted.bar.querySelector(focusSelector)
+      ?? mounted.zone.querySelector(focusSelector);
     if (target) {
       target.focus();
       if (target instanceof HTMLInputElement && target.type === 'text') target.select();
@@ -483,9 +524,10 @@ function refreshTable(focusSelector) {
 // Focus lands on CANCEL, not Delete. The repaint drops focus to <body>, so something must
 // take it; the safe half of a destructive pair is the one that may be triggered by a stray
 // Enter or Space. Delete is one Tab (or one click) away, and its own :focus-visible ring
-// makes the difference visible before it is pressed.
+// makes the difference visible before it is pressed. An import in flight refuses it as a bulk delete does (ruling
+// S25): its placement may be writing this study's sidecar and record.
 function askToDelete(id) {
-  if (getState().deletingStudies) return;
+  if (getState().deletingStudies || importing) return;
   confirmingSelected = null;
   confirmingId = id;
   refreshTable('.studies-delete-cancel');
@@ -505,7 +547,7 @@ function cancelDelete() {
 // persistence disabled the sidecar is left alone on purpose: a sidecar under this id may
 // belong to the newer library this build cannot read, and the disabled saver writes nothing.
 async function deleteStudy(id) {
-  if (getState().deletingStudies) return;
+  if (getState().deletingStudies || importing) return;
   confirmingId = null;
   // Read the name before the record leaves the list -- the toast below fires after the setState
   // that removes it, and the user knows this study by its name, not by SP-nnnn.
@@ -621,6 +663,12 @@ async function deleteSelectedStudies(ids) {
 
 // ---- Export (annotation bundle spec 2026-10-15, section 4) -------------------------------------------
 
+// `selector` when the repaint in flight dropped focus to <body> (a disabled or replaced button cannot hold it), else
+// null: the closing rule of the export and the import, so a person who moved on to the search box keeps their caret.
+function ifFocusDropped(selector) {
+  return !document.activeElement || document.activeElement === document.body ? selector : null;
+}
+
 // The export minus the folder picker, exported so the smoke suite can drive it without the native dialog (PB7).
 // The rows are read again from the live store when the picker closes: the ticked visible real rows, else every
 // visible real row (rowsToExport, B6; planExport drops demo studies as well). Silent when blocked, already exporting
@@ -643,8 +691,143 @@ export async function exportBundleTo(parentDir) {
     showToast(error?.message || 'The export failed.');
   } finally {
     exporting = false;
-    const dropped = !document.activeElement || document.activeElement === document.body;
-    refreshTable(dropped ? '[data-find-key="export-bundle"]' : null);
+    refreshTable(ifFocusDropped('[data-find-key="export-bundle"]'));
+  }
+}
+
+// ---- Import (annotation bundle spec 2026-10-15, section 5) -------------------------------------------
+
+// The file names and film digests a bundle's entries carry (ruling S27): a name is the entry study's, else its
+// manifest row's; a digest is the row's film_sha256, else the one the entry study's result was made on.
+function bundleKeys(entries) {
+  const names = new Set();
+  const hashes = new Set();
+  for (const entry of entries) {
+    const name = entry?.study?.fileName ?? entry?.manifest?.file_name;
+    if (typeof name === 'string') names.add(name);
+    for (const digest of [entry?.manifest?.film_sha256, localFilmHash(entry?.study)]) {
+      if (typeof digest === 'string') hashes.add(digest);
+    }
+  }
+  return { names, hashes };
+}
+
+// PB3's first read: each local real study's film digest, `{ [id]: sha256|null }`. A study whose result names none and
+// that shares a bundle entry's file name has its film hashed by the main process, at most 500 paths a call (the
+// channel's limit); a film that cannot be read stays null, which matches nothing.
+async function readLocalHashes(locals, names) {
+  const hashes = {};
+  const idsByPath = new Map();
+  for (const study of locals) {
+    hashes[study.id] = localFilmHash(study);
+    const unread = hashes[study.id] === null && typeof study.filePath === 'string' && study.filePath !== '';
+    if (!unread || !names.has(study.fileName)) continue;
+    idsByPath.set(study.filePath, [...(idsByPath.get(study.filePath) ?? []), study.id]);
+  }
+  const paths = [...idsByPath.keys()];
+  for (let start = 0; start < paths.length; start += 500) {
+    const batch = paths.slice(start, start + 500);
+    const read = await hashFilms(batch);
+    for (const file of batch) for (const id of idsByPath.get(file)) hashes[id] = read?.[file] ?? null;
+  }
+  return hashes;
+}
+
+// PB3's second read: the label record of every local real study with one whose film digest or file name a bundle
+// entry shares (ruling S27, a superset of what planImport's rule needs), `{ [id]: { saved_at, image_sha256 }|null }`.
+// A record that cannot be read is null: the study then counts as having none.
+async function readLocalRecords(locals, { names, hashes }, localHashes) {
+  const records = {};
+  for (const study of locals) {
+    if (typeof study.labelFile !== 'string' || study.labelFile === '') continue;
+    if (!hashes.has(localHashes[study.id]) && !names.has(study.fileName)) continue;
+    const record = await loadLabelRecord(study.labelFile).catch(() => null);
+    records[study.id] = record
+      ? { saved_at: record.saved_at ?? null, image_sha256: record.image?.sha256 ?? null } : null;
+  }
+  return records;
+}
+
+// The import minus the folder picker, exported so the smoke suite can drive it without the native dialog (PB7). Silent
+// when an import or export is in flight, a plan is already waiting, or the bar is blocked: the button is disabled in
+// each. `importing` is set before the first await and refuses the bar's other actions meanwhile (S25); a Delete prompt
+// is withdrawn. The bundle is read, then the local digests and records PB3 names, then planImport over the library as
+// it was at the click: a plan with nothing to add or update is a toast, anything else waits in the bar's inline prompt
+// for Import or Cancel. The api's rejections are display-ready sentences, toasted as is.
+export async function importBundleFrom(dir) {
+  const state = getState();
+  if (exporting || pendingImport || barBlocked(state)) return; // barBlocked holds `importing` (S25)
+  importing = true;
+  confirmingSelected = null;
+  refreshTable();
+  try {
+    const bundle = await readBundle(dir);
+    const locals = state.studies.filter((study) => study.source === 'real');
+    const keys = bundleKeys(bundle.entries);
+    const localHashes = await readLocalHashes(locals, keys.names);
+    const localRecords = await readLocalRecords(locals, keys, localHashes);
+    // A study open in edit mode, or with an unsaved editor stashed, is left alone (spec 5.4): its levels are not yet
+    // on disk, and an update would release them.
+    const editing = new Set(locals.filter((study) => hasStashedEditor(study.id)).map((study) => study.id));
+    if (state.editing && typeof state.openId === 'string') editing.add(state.openId);
+    const plan = planImport({ bundle, studies: state.studies, localHashes, localRecords, editing });
+    if (plan.add.length + plan.update.length === 0) {
+      showToast(nothingToImportMessage(plan));
+    } else {
+      pendingImport = { dir, plan, studies: state.studies };
+      confirmingSelected = null;
+      confirmingId = null;
+      refreshTable('[data-find-key="import-cancel"]');
+    }
+  } catch (error) {
+    showToast(error?.message || 'The import failed.');
+  } finally {
+    importing = false;
+    refreshTable(pendingImport ? '[data-find-key="import-cancel"]' : ifFocusDropped('[data-find-key="import-bundle"]'));
+  }
+}
+
+function cancelImport() {
+  pendingImport = null;
+  refreshTable('[data-find-key="import-bundle"]');
+}
+
+// The prompt's Import, exported for the smoke suite (PB7). The main process places the confirmed files and stops at
+// the first action that fails (PB5); only what it placed is applied. Each placed update is treated as re-run first --
+// its editor state, its prediction snapshot and its cached film and bitmaps go -- so the next open reads the new
+// sidecar and record (PB4). Then ONE setState patches the library as it is now (a subject typed meanwhile is kept), so
+// the store never names a file that is not on disk; the persistence subscriber in renderer/main.js saves it. A
+// rejection (persistence off, an invalid request) applies nothing.
+export async function confirmImport() {
+  const live = getState();
+  if (!pendingImport || exporting || barBlocked(live)) return; // barBlocked holds `importing` (S25)
+  const { dir, plan } = pendingImport;
+  pendingImport = null;
+  importing = true;
+  refreshTable();
+  try {
+    const result = await importBundle({ dir, actions: plan.actions });
+    const placedIds = Array.isArray(result?.placed) ? result.placed : [];
+    const placed = new Set(placedIds);
+    for (const { id } of plan.update) {
+      if (placed.has(id)) { forgetLevelEditor(id); forgetPrediction(id); releaseStudy(id); }
+    }
+    setState({ studies: applyImport(getState().studies, plan, placedIds) });
+    const added = plan.add.filter((item) => placed.has(item.id));
+    const failed = result?.failed ?? null;
+    const stoppedOn = failed ? [...plan.add, ...plan.update].find((item) => item.id === failed.id) : null;
+    showToast(importMessage({
+      added: added.length,
+      updated: plan.update.filter((item) => placed.has(item.id)).length,
+      skipped: plan.skip,
+      withoutFilm: added.filter((item) => item.entry.filmPath == null).map((item) => item.entry.study.fileName),
+      stoppedAt: failed ? { fileName: stoppedOn?.entry.study.fileName ?? failed.id, message: failed.message } : null,
+    }));
+  } catch (error) {
+    showToast(error?.message || 'The import failed.');
+  } finally {
+    importing = false;
+    refreshTable(ifFocusDropped('[data-find-key="import-bundle"]'));
   }
 }
 
@@ -722,6 +905,7 @@ export function render(state) {
   confirmingId = null;
   confirmingSelected = null;
   editingSubject = null;
+  pendingImport = null;
   const summary = el('div', { class: 'studies-summary' });
   const search = el('input', {
     type: 'search', class: 'studies-search', value: state.query || '',
@@ -749,9 +933,10 @@ export function render(state) {
     onClick: () => setState({ studiesTab: 'parameters' }),
   }, 'Parameters');
   const tabs = el('div', { class: 'studies-tabs', role: 'tablist', 'aria-label': 'Studies views' }, tabFind, tabParameters);
+  const zone = dropzone();
   const findPanel = el('div', {
     class: 'studies-tabpanel', role: 'tabpanel', 'aria-labelledby': 'studies-tab-find',
-  }, dropzone(), barHost, tableHost);
+  }, zone, barHost, tableHost);
   const parametersHost = el('div', {
     class: 'studies-tabpanel studies-parameters-host', role: 'tabpanel', 'aria-labelledby': 'studies-tab-parameters',
   });
@@ -778,6 +963,25 @@ export function render(state) {
     // search or a filter is hiding is never deleted.
     const real = visible.filter((study) => study.source === 'real');
     const targets = selectedVisible(real, live.paramSelected);
+    // The import prompt (bundle spec 5.5) takes the bar's place as the Delete prompt does (S25), so nothing else on
+    // the bar is reachable while it waits; checked first, though starting an import withdraws a Delete prompt.
+    if (pendingImport) {
+      return el('div', { class: 'studies-filters' },
+        el('div', {
+          class: 'studies-bulk-prompt', role: 'group', 'aria-label': 'Confirm importing the bundle',
+          'data-find-key': 'import-prompt',
+          onKeydown: (event) => { if (event.key === 'Escape') { event.preventDefault(); cancelImport(); } },
+        },
+          el('span', {}, importPromptText(pendingImport.plan, pendingImport.dir)),
+          el('button', {
+            type: 'button', class: 'btn btn-small', 'data-find-key': 'import-confirm', disabled: blocked || exporting,
+            onClick: () => confirmImport(),
+          }, 'Import'),
+          el('button', {
+            type: 'button', class: 'btn btn-small studies-bulk-cancel', 'data-find-key': 'import-cancel',
+            onClick: () => cancelImport(),
+          }, 'Cancel')));
+    }
     if (confirmingSelected) {
       const n = confirmingSelected.length;
       return el('div', { class: 'studies-filters' },
@@ -820,11 +1024,9 @@ export function render(state) {
     }
     folderSelect.value = filters.folder ?? '';
 
-    // Delete and Export share the first three reasons, in this order; each then names its own empty case.
-    const waitTitle = live.batch ? WAIT_FOR_BATCH
-      : live.running ? WAIT_FOR_RUN
-      : persistenceDisabledReason() ? `Studies are not being saved: ${persistenceDisabledReason()}` : '';
-    const deleteTitle = waitTitle || (targets.length === 0 ? 'Tick studies to delete' : '');
+    // Delete and Export share the first three reasons (waitTitle); each then names its own empty case.
+    const wait = waitTitle(live);
+    const deleteTitle = wait || (targets.length === 0 ? 'Tick studies to delete' : '');
     const deleteButton = el('button', {
       type: 'button', class: 'btn btn-small studies-delete-selected', 'data-find-key': 'delete',
       disabled: blocked || targets.length === 0, title: deleteTitle,
@@ -838,7 +1040,7 @@ export function render(state) {
     const exportButton = el('button', {
       type: 'button', class: 'btn btn-small studies-export-bundle', 'data-find-key': 'export-bundle',
       disabled: blocked || exporting || exportRows.length === 0,
-      title: waitTitle || (exportRows.length === 0 ? 'Nothing to export' : ''),
+      title: wait || (exportRows.length === 0 ? 'Nothing to export' : ''),
       onClick: () => chooseFolder().then((dir) => dir && exportBundleTo(dir))
         .catch((error) => showToast(error?.message || 'The export failed.')),
     }, exporting ? 'Exporting\u2026' : (targets.length > 0 ? `Export ${exportRows.length} selected` : 'Export all'));
@@ -859,10 +1061,11 @@ export function render(state) {
         }, 'Stop'));
     } else {
       const plan = planBatch({ visible, selected: live.paramSelected, running: live.running });
+      // An import in flight refuses a batch too (S25): its placement rewrites the sidecars a run writes.
       action = el('div', { class: 'param-export-group' },
         el('button', {
           type: 'button', class: 'btn btn-primary btn-small', 'data-find-key': 'segment',
-          disabled: !plan.enabled,
+          disabled: !plan.enabled || importing,
           title: plan.enabled ? '' : (plan.note ?? ''),
           onClick: () => startBatch(plan.ids),
         }, plan.label),
@@ -908,16 +1111,30 @@ export function render(state) {
     // assignments, not setState: this runs inside a store notification.
     if (confirmingSelected && (live.studiesTab === 'parameters' || confirmingSelected.join(' ') !== targets.join(' '))) confirmingSelected = null;
     if (editingSubject && !studies.some((study) => study.id === editingSubject.id)) editingSubject = null;
+    // The import prompt likewise (ruling S26): withdrawn silently when the library is no longer the list its plan was
+    // made against (a run ending, a subject typed, a film added: its new ids and matches may be wrong now) or the user
+    // leaves for the Parameters tab.
+    if (pendingImport && (live.studiesTab === 'parameters' || live.studies !== pendingImport.studies)) {
+      pendingImport = null;
+    }
+    // Import bundle… lives in the dropzone, which no rebuild replaces, so its state is set here on
+    // every notification: refused as the bar's actions are, and while an export runs or a plan
+    // waits (the Global Constraints).
+    if (importButton) {
+      importButton.disabled = barBlocked(live) || exporting || pendingImport !== null;
+      importButton.title = waitTitle(live);
+    }
 
     // live.running is in the key so the table repaints when a run starts or ends: the row badge is
-    // derived from it. confirmingId, confirmingSelected, editingSubject and exporting are module scope, not
-    // store state; listing them here is what lets a refreshTable() after a change to them get past the
-    // gate, while a notification that changed nothing the table shows (a pan frame, a toast) still
-    // returns early. paramFilters, paramSelected, batch and findSort are what the bar, the ticks and
-    // the header read; deletingStudies is what Delete and Export read: every store key this screen reads
-    // must be here, or it silently stops repainting for it.
+    // derived from it. confirmingId, confirmingSelected, editingSubject, exporting, importing and
+    // pendingImport are module scope, not store state; listing them here is what lets a
+    // refreshTable() after a change to them get past the gate, while a notification that changed
+    // nothing the table shows (a pan frame, a toast) still returns early. paramFilters,
+    // paramSelected, batch and findSort are what the bar, the ticks and the header read;
+    // deletingStudies is what Delete and Export read: every store key this screen reads must be
+    // here, or it silently stops repainting for it.
     const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, editingSubject, exporting,
-      live.deletingStudies, live.paramFilters, live.paramSelected, live.batch, live.findSort];
+      importing, pendingImport, live.deletingStudies, live.paramFilters, live.paramSelected, live.batch, live.findSort];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
     // The summary always describes the whole library, not the filtered view, and counts with
@@ -965,7 +1182,7 @@ export function render(state) {
       tabs,
       findPanel,
       parametersHost));
-  mounted = { update, host: tableHost, bar: barHost };
+  mounted = { update, host: tableHost, bar: barHost, zone };
   update(state);
   return root;
 }

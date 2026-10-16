@@ -299,6 +299,13 @@
   white-space: nowrap;
 }
 
+/* Import bundle… (annotation bundle spec 2026-10-15, section 5.1): beside Choose radiograph in the
+   dropzone, a plain secondary button so Choose keeps the primary style. Its label never breaks
+   inside the button; the dropzone's text shrinks first. Its prompt is the bar's .studies-bulk-prompt. */
+.studies-import-bundle {
+  white-space: nowrap;
+}
+
 /* Tab strip: FIND (the list, search and dropzone) and PARAMETERS (the grid). Same shape as the
    Analysis panel's tab group. The list is for finding a study; the grid is for reading its
    numbers -- the split that paid for deleting LORDOSIS from the list. */
