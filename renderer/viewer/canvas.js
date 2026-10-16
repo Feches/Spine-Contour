@@ -4,7 +4,7 @@ import { LEVELS, FEMORAL_SIDES } from './geometry.js';
 import { applyWindow } from './window-level.js';
 import { LEVEL_CODES, kindOf, levelState, placementSteps, fitRim } from '../data/levels.js';
 import { quadrilateral } from '../data/level-projection.js';
-import { levelHandles, HANDLE_RADIUS_CSS_PX, handleRadiusImagePx, handleScale } from './level-handles.js';
+import { levelHandles, handleRadiusImagePx, handleScale } from './level-handles.js';
 import { labelPlacement, plateOffset } from './level-labels.js';
 
 export const LEVEL_RGB = {
@@ -444,16 +444,17 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
 // placed level filled and outlined, the selected level's handles, the model's own geometry dashed under an
 // edited level, a plate naming each level, and the placement in progress. Every size is in CSS pixels times
 // `opts.pixelRatio` floored at 1 (ruling R28), so it holds its size on screen at any fit and zoom up to 1:1 and
-// magnifies with the film past it; the one exception is the level handle, drawn 6 CSS px at 1:1 and shrinking with
-// the film below it to a floor of 3 CSS px, its outline and focus ring in step (gate feedback G8, decision D21;
-// `handleRadiusImagePx`, `handleScale`). The editor state is read, never written.
+// magnifies with the film past it; the one exception is the level handle (the disc, its outline and its focus ring,
+// and the placement points), sized against the UNFLOORED ratio: 6 CSS px at 1:1 and at every zoom past it, never
+// magnifying with the film (gate feedback G9, decision D22), and shrinking with the film below 1:1 to a floor of
+// 3 CSS px, outline and ring in step (gate feedback G8, decision D21; `handleRadiusImagePx`, `handleScale`). The
+// editor state is read, never written.
 
 const LEVEL_STROKE_ALPHA = 0.85;
 const LEVEL_STROKE_PX = 1.25;
 const SELECTED_STROKE_PX = 2;
 const GHOST_COLOR = 'rgba(250,247,242,.7)';
 const INK_COLOR = '#FAF7F2';
-export const LEVEL_HANDLE_RADIUS_PX = HANDLE_RADIUS_CSS_PX;   // exported for the stage's grab radius past 1:1 (R28); the drawn radius is handleRadiusImagePx (G8)
 const LEVEL_HANDLE_OUTLINE_PX = 2;
 const CENTRE_DOT_RADIUS_PX = 3.5;
 const C2_CENTROID_RADIUS_PX = 3;
@@ -470,8 +471,9 @@ const isPoint = (p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFin
 const isPair = (pair) => Array.isArray(pair) && pair.length === 2 && isPoint(pair[0]) && isPoint(pair[1]);
 const rgba = (color, alpha) => `rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
 const dashFor = (pixelRatio) => EDITOR_DASH_PX.map(length => length * pixelRatio);
-// A handle's stroke in image pixels: its outline shrinks with the handle (G8, D21) but is never thinner than 1 CSS px.
-const handleOutlinePx = (pixelRatio) => Math.max(pixelRatio, LEVEL_HANDLE_OUTLINE_PX * pixelRatio * handleScale(pixelRatio));
+// A handle's stroke in image pixels at the UNFLOORED ratio: its outline shrinks with the handle (G8, D21), never
+// thinner than 1 CSS px, and past 1:1 stays 2 CSS px like the disc (G9, D22).
+const handleOutlinePx = (handleRatio) => Math.max(handleRatio, LEVEL_HANDLE_OUTLINE_PX * handleRatio * handleScale(handleRatio));
 
 // A level's overlay colour; the femoral heads share the femoral green.
 function levelColor(code) {
@@ -571,9 +573,10 @@ function drawLevelLabel(ctx, code, placement, offset, selected, pixelRatio, boun
   return { code, x, y, width, height };
 }
 
-// The selected level's draggable points (and a head's fixed centre dot). The focused handle also gets the ring;
-// a focus that names another level, or a handle this level does not have, draws nothing extra.
-function drawLevelHandles(ctx, code, geometry, focused, pixelRatio) {
+// The selected level's draggable points (and a head's fixed centre dot, an R28 size at the floored `pixelRatio`). The
+// focused handle also gets the ring; a focus that names another level, or a handle this level does not have, draws
+// nothing extra. The disc, its outline and the ring are sized against `handleRatio`, the unfloored ratio (G9, D22).
+function drawLevelHandles(ctx, code, geometry, focused, pixelRatio, handleRatio) {
   if (kindOf(code) === 'circle' && isPoint(geometry.center)) {
     ctx.beginPath();
     ctx.arc(geometry.center[0], geometry.center[1], CENTRE_DOT_RADIUS_PX * pixelRatio, 0, 2 * Math.PI);
@@ -583,17 +586,17 @@ function drawLevelHandles(ctx, code, geometry, focused, pixelRatio) {
   for (const { handle, point, colorKey } of levelHandles(code, geometry)) {
     if (focused && focused.code === code && focused.handle === handle) {
       ctx.beginPath();
-      ctx.arc(point[0], point[1], HANDLE_RING_RADIUS_PX * pixelRatio * handleScale(pixelRatio), 0, 2 * Math.PI);
+      ctx.arc(point[0], point[1], HANDLE_RING_RADIUS_PX * handleRatio * handleScale(handleRatio), 0, 2 * Math.PI);
       ctx.strokeStyle = STAGE_SELECTED_COLOR;
-      ctx.lineWidth = SELECTED_STROKE_PX * pixelRatio;
+      ctx.lineWidth = SELECTED_STROKE_PX * handleRatio;
       ctx.stroke();
     }
     ctx.beginPath();
-    ctx.arc(point[0], point[1], handleRadiusImagePx(pixelRatio), 0, 2 * Math.PI);
+    ctx.arc(point[0], point[1], handleRadiusImagePx(handleRatio), 0, 2 * Math.PI);
     ctx.fillStyle = colorFor(colorKey, code);
     ctx.fill();
     ctx.strokeStyle = STAGE_BG_COLOR;
-    ctx.lineWidth = handleOutlinePx(pixelRatio);
+    ctx.lineWidth = handleOutlinePx(handleRatio);
     ctx.stroke();
   }
 }
@@ -628,7 +631,7 @@ function drawPlacedLevel(ctx, editor, code, geometry, { overlays, fillAlpha, pix
 // The placement in progress: each placed point as a dot in its step's colour, then either a dashed line through them
 // in step order or, for a femoral head with two points or more, the dashed circle they fit and its centre. `points`
 // holds one slot per step, null until set (gate feedback G2: the steps may be set in any order).
-function drawPlacement(ctx, canvas, placing, pixelRatio) {
+function drawPlacement(ctx, canvas, placing, pixelRatio, handleRatio) {
   const placed = (placing.points ?? []).flatMap((point, index) => (point ? [{ point, index }] : []));
   if (placed.length === 0) return;
   const points = placed.map(({ point }) => point);
@@ -649,13 +652,14 @@ function drawPlacement(ctx, canvas, placing, pixelRatio) {
     ctx.stroke();
     ctx.restore();
   }
+  // The placed points are handles in size (G8, D21; G9, D22): the unfloored ratio, like the selected level's.
   placed.forEach(({ point, index }) => {
     ctx.beginPath();
-    ctx.arc(point[0], point[1], handleRadiusImagePx(pixelRatio), 0, 2 * Math.PI);
+    ctx.arc(point[0], point[1], handleRadiusImagePx(handleRatio), 0, 2 * Math.PI);
     ctx.fillStyle = colorFor(steps[index]?.colorKey ?? 'trace', placing.code);
     ctx.fill();
     ctx.strokeStyle = STAGE_BG_COLOR;
-    ctx.lineWidth = handleOutlinePx(pixelRatio);
+    ctx.lineWidth = handleOutlinePx(handleRatio);
     ctx.stroke();
   });
   if (fit) {
@@ -689,6 +693,9 @@ export function drawLevelEditor(ctx, canvas, editor, opts) {
   // anti-aliased away and then be magnified: faint lines, unreadable labels. Past 1:1 the overlay therefore keeps its
   // image-pixel size and magnifies with the film, crisp; below 1:1 it holds its size on screen, as before.
   const pixelRatio = Math.max(1, opts?.pixelRatio ?? 1);
+  // (G9, D22) The handles alone take the UNFLOORED ratio, so past 1:1 they keep their screen size instead of
+  // magnifying with the film; a ratio that is not a positive number reads as 1:1, as the floored one does.
+  const handleRatio = Number.isFinite(opts?.pixelRatio) && opts.pixelRatio > 0 ? opts.pixelRatio : 1;
   const fillAlpha = (BASE_OVERLAY_ALPHA / 255) * (Math.max(0, Math.min(100, overlayOpacity)) / 100);
   ctx.save();
   ctx.lineJoin = 'round';
@@ -705,8 +712,8 @@ export function drawLevelEditor(ctx, canvas, editor, opts) {
     }
   }
   // The selected level's handles go above every level, so a later level's fill or outline never covers one.
-  if (selected) drawLevelHandles(ctx, selected.code, selected.geometry, handle, pixelRatio);
-  if (editor.placing) drawPlacement(ctx, canvas, editor.placing, pixelRatio);
+  if (selected) drawLevelHandles(ctx, selected.code, selected.geometry, handle, pixelRatio, handleRatio);
+  if (editor.placing) drawPlacement(ctx, canvas, editor.placing, pixelRatio, handleRatio);
   ctx.restore();
   return plates;
 }

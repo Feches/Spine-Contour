@@ -436,37 +436,41 @@ test('the handle returned is a new object, safe to store', () => {
   assert.deepEqual(current, { code: 'L1', handle: 'SA' });
 });
 
-// ---------- the handle's size against the film's zoom (gate feedback G8, decision D21) ----------
+// ---------- the handle's size against the film's zoom (gate feedback G8, decision D21; G9, decision D22) ----------
 
-// `pixelRatio` is what canvas.js draws with: image pixels per CSS pixel at the current fit and zoom, floored at 1 (R28).
-// A size of N image pixels is therefore N / max(1, ratio) CSS pixels on screen.
-const onScreen = ratio => handleRadiusImagePx(ratio) / Math.max(1, ratio);
+// `pixelRatio` is the UNFLOORED ratio the handle functions take (since G9): image pixels per CSS pixel at the current
+// fit and zoom, below 1 past 1:1. A size of N image pixels is therefore N / ratio CSS pixels on screen.
+const onScreen = ratio => handleRadiusImagePx(ratio) / ratio;
 
-test('the handle radius is 6 CSS px at 1:1 and above, shrinking to a floor of 3', () => {
+test('the handle radius is 6 CSS px at 1:1 and past it, shrinking to a floor of 3 zoomed out', () => {
   assert.equal(HANDLE_RADIUS_CSS_PX, 6);
   assert.equal(HANDLE_RADIUS_FLOOR_CSS_PX, 3);
 });
 
-test('the handle radius in image px at ratios 0.5, 1, 1.5, 2, 3 and 4', () => {
-  assert.deepEqual([0.5, 1, 1.5, 2, 3, 4].map(handleRadiusImagePx), [6, 6, 6, 6, 9, 12]);
+test('the handle radius in image px at ratios 0.25, 0.5, 1, 1.5, 2, 3 and 4', () => {
+  assert.deepEqual([0.25, 0.5, 1, 1.5, 2, 3, 4].map(handleRadiusImagePx), [1.5, 3, 6, 6, 6, 9, 12]);
 });
 
-test('the handle shows 6, 6, 4, 3, 3, 3 CSS px on screen at ratios 0.5, 1, 1.5, 2, 3 and 4', () => {
-  assert.deepEqual([0.5, 1, 1.5, 2, 3, 4].map(onScreen), [6, 6, 4, 3, 3, 3]);
+test('the handle shows 6, 6, 6, 4, 3, 3, 3 CSS px on screen at ratios 0.25, 0.5, 1, 1.5, 2, 3 and 4', () => {
+  assert.deepEqual([0.25, 0.5, 1, 1.5, 2, 3, 4].map(onScreen), [6, 6, 6, 4, 3, 3, 3]);
 });
 
-test('the on-screen handle never grows as the film zooms out and never drops under the floor', () => {
+test('the on-screen handle never grows as the film zooms out, never exceeds 6 CSS px zoomed in, and never drops under the floor', () => {
   let previous = Infinity;
-  for (let ratio = 0.25; ratio <= 16; ratio += 0.25) {
+  for (let ratio = 0.125; ratio <= 16; ratio += 0.125) {
     const size = onScreen(ratio);
-    assert.ok(size <= previous, `ratio ${ratio}: ${size} CSS px after ${previous}`);
-    if (ratio >= 1) assert.ok(size >= HANDLE_RADIUS_FLOOR_CSS_PX, `ratio ${ratio}: ${size} CSS px is under the floor`);
+    assert.ok(size <= previous + 1e-9, `ratio ${ratio}: ${size} CSS px after ${previous}`);
+    assert.ok(size <= HANDLE_RADIUS_CSS_PX + 1e-9, `ratio ${ratio}: ${size} CSS px is over 6`);
+    if (ratio >= 1) assert.ok(size >= HANDLE_RADIUS_FLOOR_CSS_PX - 1e-9, `ratio ${ratio}: ${size} CSS px is under the floor`);
     previous = size;
   }
 });
 
-test('below 1:1 the handle is the same 6 image px as before, so the zoomed-in film grows it as it always did', () => {
-  for (const ratio of [0.1, 0.25, 0.5, 0.99, 1]) assert.equal(handleRadiusImagePx(ratio), HANDLE_RADIUS_CSS_PX);
+test('past 1:1 the handle keeps 6 CSS px on screen instead of magnifying with the film: 6 × ratio image px (G9, D22)', () => {
+  for (const ratio of [0.125, 0.25, 0.5, 0.99, 1]) {
+    assert.ok(Math.abs(handleRadiusImagePx(ratio) - HANDLE_RADIUS_CSS_PX * ratio) < 1e-12, `ratio ${ratio}: ${handleRadiusImagePx(ratio)}`);
+  }
+  for (const ratio of [0, -1, NaN, Infinity, undefined]) assert.equal(handleRadiusImagePx(ratio), HANDLE_RADIUS_CSS_PX, `a ratio of ${ratio} reads as 1:1`);
 });
 
 test('the handle scale is 1 at 1:1, 2/3 at 1.5, and 0.5 at 2 and beyond', () => {
