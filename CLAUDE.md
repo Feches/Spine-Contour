@@ -79,7 +79,12 @@ grab radius keeping its 14 px floor; unit 1024/1024. Gate feedback G9 (the owner
 was merged in as `be4bd80`): zoomed in on a cervical film the handles were "still too big" (past 1:1 they magnified
 with the film under R28); now the handle-sized parts (the discs, their outline, the focus ring, the placement dots)
 take the UNFLOORED ratio and keep 6 px on screen at every zoom past 1:1, still shrinking to the 3 px floor zoomed out;
-the grab radius is a flat 14 px; unit 1112/1112. ~~Nothing
+the grab radius is a flat 14 px; unit 1112/1112. G10 (D23, `5b9ff72`): the clinical drawer's STUDY track is
+`fit-content(280px)` instead of a fixed 110px and `.clinical-grid-id` wraps anywhere, so a long film name grows the
+column or wraps inside its cell instead of running over SUBJECT (`smoke-workspace.mjs`'s pinned template follows).
+G11 (D24, same commit): `drawDynamicLayer` draws the C2 centroid as a cross in C2's colour outside edit mode on
+cervical and full-spine films (`drawCentroidCross`, which also draws C7's on a full-spine film as before), labelled
+while C2C7_SVA is selected; unit 1113/1113. ~~Nothing
 pushed, no release note (the owner picks the number at the gate; 1.2.0 is the suggestion);~~ Its owner gate passed on
 real films and its 1.2.0 release commit is `7dec644` (the tip is backed up on `origin`, no PR yet); the companion
 bundle spec (`specs/2026-10-15-annotation-bundle-export-import-design.md`) is ~~built after this gate~~ now built, on
