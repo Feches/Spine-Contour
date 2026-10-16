@@ -3,7 +3,9 @@
 **Last updated:** 2026-10-15
 **Branch:** `worktree-annotation-round-2` in the worktree `.claude\worktrees\annotation-round-2` of the main checkout,
 off `origin/main` @ `06c8cdd` (v1.1.1): annotation editor round 2 (a comment on the label record, the Hand-placed
-status, REVERT per level) — BUILT, at the owner's gate, not pushed (first section under "Where things stand").
+status, REVERT per level) — BUILT, at the owner's gate, not pushed (second section under "Where things stand") — and,
+on the same branch after it, the annotation bundle export and import (Export all / Import bundle…) — BUILT, at the
+owner's gate, not pushed (first section).
 **2026-10-13 branch (released):** `claude/level-plates` in the worktree `.claude\worktrees\level-plates` of the main
 checkout, off `origin/main` @ `cbbeb4e` (v1.1.0): gate feedback G7, the level plates outside the body and draggable —
 ~~BUILT, the 1.1.1 release commit on it, not pushed~~ RELEASED as v1.1.1 (PR #64, merge `06c8cdd`).
@@ -55,6 +57,108 @@ the newest architecture amendment for controls and null rules. No model or calib
 algorithm changed; no screenshots were added.
 
 ## Where things stand
+
+### Annotation bundles: export a folder of studies, import it into another library: BUILT, at the owner's gate, not pushed (branch `worktree-annotation-round-2`, worktree `.claude/worktrees/annotation-round-2`, on top of the editor round, off `origin/main` @ `06c8cdd`, v1.1.1)
+
+2026-10-15. A study's data lives in four places (its row in `studies.json`, the prediction sidecar, the label record, the
+original film at an external path) and nothing moved them; the only export was the measurements CSV, which cannot be
+imported back. An annotator could not bring films and annotations to another computer, and a library could not take a
+colleague's annotations of films it already held. Built on the same branch as the editor round so one PR carries both.
+
+- Spec: `docs/superpowers/specs/2026-10-15-annotation-bundle-export-import-design.md` (decisions B1–B9: B1–B4 the owner's,
+  B5–B8 the planner's, B9 the standing rule that nothing leaves the machine). Plan:
+  `docs/superpowers/plans/2026-10-15-annotation-bundle-export-import.md` (nine tasks, rulings PB1–PB10; its `## Ledger`
+  holds the execution rulings S1–S36, a row per task and the deferred minors). User doc: `docs/bundles.md`. SDD ledger
+  `.superpowers/sdd/2026-10-15-annotation-bundle-export-import/` (local, untracked). Next-session prompt that started it:
+  `docs/superpowers/NEXT-SESSION-bundle.md`.
+- **The bundle** (B1, B2, B3, B7). A folder, `spine-contour-export-<YYYY-MM-DD>-<HHMM>` in local time: `manifest.json`
+  (schema `spinecontour.bundle/1`, written last so a cut-off export has none and import refuses it) and one folder per
+  real study holding `study.json` (the record with `filePath: null`), `prediction.json`, the label record under the
+  study's own `labelFile` name, `calibration.json` (the manual scale reference, saved through the calibration store on
+  import) and `film/<file>` (the original, streamed and SHA-256 hashed as it is copied; the hash is what a model result
+  stores as `source_sha256`). Demo studies are never written.
+- **Export** (B6). The Find bar's `Export all` / `Export N selected` (`data-find-key` `export-bundle`) takes the CSV's
+  rows (`rowsToExport`: the ticked visible real rows, else every visible real row), asks `chooseFolder` for a parent and
+  writes the bundle; `Exporting…` in flight; disabled, with the reason on its `title`, during a run, a batch, a bulk
+  delete or an import, when studies are not being saved, and with no rows. The toast is `Exported 12 studies to <path>`,
+  then `· 2 films were not found and were left out (…)` and `· 1 sidecar could not be read (…)` when non-zero.
+- **Import** (B4, B5, B8). The dropzone's `Import bundle…` (`import-bundle`) asks for a bundle, `readBundle` returns
+  the parsed records and presence flags, the screen reads the local films' hashes and the local records it needs, and
+  `planImport` decides per entry, in manifest order: **add** when no local study has the film (matched by SHA-256, never
+  by file name alone); **update** when one does and the bundle's record was saved strictly later than the local one, or
+  the local study has none; **skip** `already in the library` (older, equal, unparseable or no bundle record), `being
+  edited` (the match is open in edit mode or holds a stashed editor) or `malformed`. The inline prompt (`import-prompt`,
+  `import-confirm`, `import-cancel`, focus on Cancel, Escape cancels) reads `Import from <folder>: 10 to add, 2 to
+  update, 3 to skip. The films stay in this folder, so keep it where it is.` and takes the bar's place; a plan with
+  nothing to do toasts `Nothing to import: …` instead. Confirm places the files in the main process (stopping at the
+  first that fails), then ONE `setState` applies what was placed. Imported films stay in the bundle folder (B5): moving
+  it breaks re-runs and a hand-placed film's display until the film is found again. An update keeps the local `id`,
+  `filePath`, `addedAt`, `name`, `workspaceFolder`, `subjectId`, `timepoint`, `filmDate`, `note` and `clinical`, and
+  takes the result, the review mark, the comment, the sidecar, the record and the scale.
+- **Modules and channels.** `renderer/data/bundle.js` (pure; imports only `persistence.js`, `label-record.js` and
+  `labels.js`; `hasStashedEditor` is handed in by the screen): `BUNDLE_SCHEMA`, `bundleFolderName`, `studyFolderName`,
+  `localFilmHash`, `planExport`, `exportMessage`, `planImport`, `applyImport`, `importPromptText`, `importMessage`,
+  `nothingToImportMessage`. `renderer/data/labels.js` now exports `safeStem` (moved from `label-record.js`). The root
+  CommonJS `bundle-io.js` (imported only by `main.js`; imports `writeJsonAtomic` and `readJsonOrNull` from `store-io.js`;
+  in both electron-builder allowlists): `BUNDLE_SCHEMA`, `isStudyId`, `isLabelFileName`, `isSafeName`, `exportBundle`,
+  `readBundle`, `hashFiles`, `placeImport`; `main.js`'s `predictionPath` and `labelPath` call the validators (its
+  `REAL_STUDY_ID` and `LABEL_FILE` are gone). Handlers `export-bundle`, `read-bundle`, `hash-films` (at most 500 paths)
+  and `import-bundle`; `preload.js` and `renderer/api.js` `exportBundle`, `readBundle`, `hashFilms`, `importBundle` (only
+  `importBundle` gated by `assertWritable`). `renderer/screens/studies.js` exports the flows `exportBundleTo(parentDir)`,
+  `importBundleFrom(dir)` and `confirmImport()` (the smoke suite drives them, PB7); module flags `exporting`,
+  `importing`, `pendingImport`. The contract's 2026-10-15 amendment "annotation bundles" is the binding text.
+- What was built, by commit (`7dec644..` this branch's tip): the plan `ccb825d` and the next-session prompt `69a7262`;
+  Task 1 the planner's names and export plan `a810827`; Task 2 `bundle-io.js` `8bd1375`, fixed `5b3002c`; Task 3
+  `placeImport` and the four channels `53ade2b`; Task 4 the import plan `9f185b6`, fixed `0e79356`; Task 5 Export from
+  the Find tab `21e45d5`; Task 6 Import into the library `5079860`, fixed `50d6311`; Task 7 `tools/smoke/smoke-bundle.mjs`
+  `188b103`; then the records commit (`docs/bundles.md`, the contract, this file, `CLAUDE.md`, `docs/level-editor.md`,
+  ROADMAP §1, README, the 1.2.0 release note and CHANGELOG, the plan's Ledger).
+- Counts: unit 1102/1102 (1024 at the start of the plan; 1040, 1058, 1065 and 1102 after Tasks 1–4);
+  `smoke-bundle.mjs` phase a 17/17, b 18/18, c 9/9, each on its own fresh `%TEMP%` profile (two synthetic canvas-drawn
+  films, DOM, store and file reads, no screenshots); Tasks 5 and 6 were also walked from source over CDP (24/24, and two
+  profiles at 4/4 and 15/15 after the fix).
+- The release stays 1.2.0 (PB10): `docs/releases/1.2.0.md` gains a section "Export and import a folder of annotated
+  films" and its opening sentence, CHANGELOG's 1.2.0 entry a bullet; no version bump anywhere.
+- **Rulings.** The planning rulings PB1–PB10: the validators move to `bundle-io.js` (PB1); the renderer never sees film or
+  sidecar bytes (PB2); two IPC reads before a plan (PB3); `applyImport` is pure and the screen does ONE `setState` after
+  placement (PB4); `import-bundle` stops at the first failed action (PB5); the manifest is written last (PB6); the
+  smoke suite bypasses the pickers through exported flows (PB7); timestamps compare by `Date.parse`, unparseable counts
+  as absent (PB8); an update keeps the local `labelFile` (PB9); the release stays 1.2.0 (PB10). The execution rulings
+  S1–S36, each with its cost in the plan's Ledger: S1 the main process suffixes a clashing bundle folder; S2 label names
+  come from `labelFileName`; S3 `filmPath` is set only when the file is there; S4 export validates every entry first and
+  an unsafe `fileName` only costs that study its film; S5 `bundle.js` does not import `isHandPlaced`; S6 `safeStem` gets
+  direct tests in `labels.test.js`; S7 the entry's study is the validated record; S8 `deleteLocalPrediction`, amended by
+  S21 (only when the bundle's study names a different `predictionId`); S9 `localFilmHash` takes the first valid digest;
+  S10 folder names never end in a dot or a space; S11 `BUNDLE_SCHEMA` is held twice and pinned equal by a test; S12 a
+  damaged label record skips that entry as malformed; S13 a damaged calibration digest is null in `planExport`; S14
+  path hardening beyond the brief (symlinks, device names) deferred; S15 the persistence-gating test lives in
+  `api-persistence.test.js`; S16 the prompt names the bundle by its last path segment; S17 an update's `labelComment` is an
+  add's expression; S18 a tie between two unparseable records takes the first in manifest order; S19 the stopped-import
+  toast's wording; S20 a film-less entry matches by its result's digest; S22 the record fallback also runs for a
+  `film_sha256` that is not hex; S23 Export's reason goes on its `title`; S24 an export in flight blocks nothing else
+  (deferred); S25 an import blocks the bar's other actions and its prompt takes the bar's place; S26 a pending plan is
+  withdrawn when the library or the tab changes; S27 which local records are read; S28 an add whose id the library took
+  meanwhile is dropped and named, and the other add paths refuse while importing; S29 a library that changed during the
+  read says so; S30 `Importing…`; S31 the import's toast never shows the record id; S32 an edit or re-run started on an
+  update target during placement deferred; S33 the staleness check runs before both outcomes; S34 each smoke phase cleans
+  its own scratch files and keeps the bundle the next phase needs; S35 both smoke fixtures have a real film on disk, so
+  matches are by `film_sha256`; S36 the plan's Ledger carries all of this.
+- Review: every task reviewed on Opus, three needed a fix round (Tasks 2, 4, 6; each re-reviewed clean on Sonnet). The
+  Ledger's deferred minors (22) and carried items (5) wait for the final whole-branch review. One to read first, found
+  while writing the records: `exportBundle`'s `notRead` names are `<SP id> sidecar` and `<SP id> calibration`
+  (`bundle-io.js`), which `exportMessage` puts in the export toast, against the 2026-09-12 rule that the record id is
+  shown nowhere a person looks (S31 applied the rule to the import toast only).
+- Not run: a packaged build; the human gate (plan Task 9, the owner's); a real film (no screenshot of one); the owner's
+  second computer; any other smoke suite on this tree (the SDD ledger records only `smoke-bundle`); backend pytest (no
+  backend change).
+
+**Next.** The owner's gate (plan Task 9): Export all from a library of three real films (one segmented, one hand-placed,
+one unsegmented) to a folder on a stick, open the bundle; on the other computer (or a second scratch profile) Import
+bundle…, read the prompt's counts, Import; the segmented film opens on its stored image, the hand-placed one on its
+original, a re-run on an imported DICOM works and so does window / level; import the same bundle again (all skipped);
+edit a comment on one side, export, import on the other (one updated, the local film path, name and subject untouched);
+export with a film moved away (the toast names it and the study imports without a film). Then the final whole-branch
+review of both rounds; push, the single PR (1.2.0) and its merge only on the owner's say-so.
 
 ### Annotation editor round 2: a comment on the record, Hand-placed, REVERT: BUILT, at the owner's gate, not pushed (branch `worktree-annotation-round-2`, worktree `.claude/worktrees/annotation-round-2`, off `origin/main` @ `06c8cdd`, v1.1.1)
 
@@ -111,8 +215,9 @@ then press an arrow (the arrow must nudge the handle, not move the caret; unveri
 `preventDefault` in `components/viewer.js` may leave the textarea focused); Ctrl+Z after the first keystroke; a
 dead-key accent as the first character; and, after upgrading, a look over the real library for old model results with
 neither `predictionId` nor `qc.models` reading Hand-placed (spec §9). Push, PR and release
-only on the owner's say-so; no release note is written yet (the owner picks the number; 1.2.0 is the suggestion).
-R24 is closed. Still open: the bundle spec's build, which follows this gate; PR #62 (release accuracy gate) and PR #63
+only on the owner's say-so; ~~no release note is written yet (the owner picks the number; 1.2.0 is the suggestion)~~ the
+1.2.0 release commit `7dec644` is on the branch (the tip is backed up on `origin`, no PR yet).
+R24 is closed. Still open: ~~the bundle spec's build, which follows this gate~~ (built, the section above); PR #62 (release accuracy gate) and PR #63
 (in-app training); the retraining brainstorm (`docs/superpowers/NEXT-SESSION-retraining.md`, a new worktree off
 `main`); the human gate's checklist for the released editor (plan Task 15).
 

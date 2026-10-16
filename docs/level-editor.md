@@ -302,6 +302,15 @@ and the Find search read it without opening the file; a re-run, a Region change 
 the record stays, and a delete removes both. Opening the editor takes the comment from the record, else from
 `labelComment`. Mark reviewed's zero-change record carries the study's current comment, usually none.
 
+**The record travels in bundles** (annotation bundles, 2026-10-15, B1–B9). **Export all** on the Find tab copies each
+film's record, its `comment` with it, into that film's folder in the bundle, beside the film and its model result;
+**Import bundle…** places it in the other library's `labels/` folder under a name that library chooses
+(`labelFileName`, so `-2` on a clash) and sets `labelFile` and `labelComment` on the new study. For a film the library
+already holds, a record saved later than the local one is written over it, under the local `labelFile`, and an older or
+equal one is skipped (B4). The record itself is unchanged, the same schema id; `saved_at` is what the rule reads. See
+[annotation bundles](bundles.md) for what a bundle holds, the identifiers warning (B3) and why to keep the bundle folder
+where it is (B5).
+
 ## Window / level
 
 Window / level works in every mode, on any film on the stage (gate feedback G3 and G4, 2026-10-11). The toolbar's

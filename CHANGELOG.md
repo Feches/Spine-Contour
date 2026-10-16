@@ -12,6 +12,12 @@
   drag.
 - The selected level's handles shrink with the film below 1:1, to a floor of 3 px, instead of covering a zoomed-out
   vertebra at a fixed 6 px.
+- **Export all** (or **Export N selected**) on the Find tab writes a bundle folder: a manifest and, per film, the
+  original file, the study's record, the model's result, the label record and the manual image scale. **Import
+  bundle…** reads one into another library after asking in the bar: new films are added, a film the library already
+  holds (matched by content) is updated only when the bundle's annotation was saved later, and the rest is skipped and
+  named. Imported films stay in the bundle folder, so keep it where it is. A bundle can carry patient identifiers in a
+  DICOM header: it is for your own machines. See `docs/bundles.md`.
 
 [Release notes](docs/releases/1.2.0.md)
 

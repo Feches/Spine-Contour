@@ -163,7 +163,7 @@ and `forgetLevelEditor` from `../level-editor.js`, `releaseStudy` from `./analys
   `study.calibration?.source_sha256 ?? null`; demo studies dropped; entries in the given order;
   `exportMessage({ path, written, filmsMissing, notRead }) -> string`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `test/labels.test.js`: `safeStem` where it now lives (move the cases `label-record.test.js` has for it, keeping that
 file's `labelFileName` tests). `test/bundle.test.js`:
@@ -180,22 +180,22 @@ test('exportMessage names the count and path, then the missing-film and not-read
   // filmsMissing ['a.png','b.png'], notRead ['SP-1003 sidecar'] → 'Exported 12 studies to P · 2 films were not found and were left out (a.png, b.png) · 1 sidecar could not be read (SP-1003 sidecar)'; 'study' singular at 1
 ```
 
-- [ ] **Step 2: Run the three files to verify they fail**
+- [x] **Step 2: Run the three files to verify they fail**
 
 Run: `node --test test/labels.test.js test/label-record.test.js test/bundle.test.js`
 Expected: FAIL — `safeStem` not exported from `labels.js`; `bundle.js` missing.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Move `safeStem` (with its `STEM_MAX`, `UNSAFE_CHARACTERS`, `DEVICE_NAME` constants and comment) into `labels.js`,
 export it, import it in `label-record.js`. Create `bundle.js` with the exports above; the clash suffix logic is one
 shared helper used by both name functions and by Task 4's label naming.
 
-- [ ] **Step 4: Run the whole suite**
+- [x] **Step 4: Run the whole suite**
 
 Run: `node --test test/*.test.js` — PASS, 1024 + the new tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add renderer/data/labels.js renderer/data/label-record.js renderer/data/bundle.js test/labels.test.js test/label-record.test.js test/bundle.test.js
@@ -237,7 +237,7 @@ git commit -m "feat: the bundle planner's names and export plan; safeStem moves 
   `film/` prefix) or `study.json unreadable`; an unsafe entry has every `has` false and no `filmPath`;
   `hashFiles(paths) -> Promise<Record<string, string|null>>` (SHA-256 hex, null when unreadable, streamed).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```js
 test('isStudyId accepts SP-1000 and up, rejects SP-0999, demo ids, and non-strings', ...);
@@ -250,11 +250,11 @@ test('readBundle returns parsed study and record, presence flags, the absolute f
 test('hashFiles hashes each path and gives null for a missing file', ...);
 ```
 
-- [ ] **Step 2: Run the file to verify it fails**
+- [x] **Step 2: Run the file to verify it fails**
 
 Run: `node --test test/bundle-io.test.js` — FAIL (module missing).
 
-- [ ] **Step 3: Implement `bundle-io.js`; `main.js` adopts the validators; both allowlists gain `bundle-io.js`**
+- [x] **Step 3: Implement `bundle-io.js`; `main.js` adopts the validators; both allowlists gain `bundle-io.js`**
 
 `main.js`'s `predictionPath` becomes `if (!isStudyId(id)) throw new Error('Invalid study id.')` and `labelPath`
 `if (!isLabelFileName(name)) throw new Error('Invalid label file name.')`, their messages unchanged (the smoke suites
@@ -262,9 +262,9 @@ assert them). Streaming: `fs.createReadStream` piped through a `crypto.createHas
 `createWriteStream` destination; copies of JSON files use `copyFile`. `exportBundle`'s `app_version` comes from
 `entries`' sibling argument `appVersion`.
 
-- [ ] **Step 4: Run the whole suite** — PASS.
+- [x] **Step 4: Run the whole suite** — PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add bundle-io.js main.js package.json electron-builder.preview.yml test/bundle-io.test.js
@@ -296,7 +296,7 @@ git commit -m "feat: bundle-io writes, reads and hashes a bundle in the main pro
   `importBundle` is gated by `assertWritable()`; the others are reads of the bundle or writes outside the data
   folder and are not gated.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```js
 // bundle-io.test.js
@@ -308,13 +308,13 @@ test('importBundle is gated by persistence; exportBundle, readBundle and hashFil
 test('the four bundle channels forward their arguments to the bridge', ...);
 ```
 
-- [ ] **Step 2: Run the two files to verify they fail** — FAIL (functions missing).
+- [x] **Step 2: Run the two files to verify they fail** — FAIL (functions missing).
 
-- [ ] **Step 3: Implement** the four handlers in `main.js` (display-ready throws only, as `choose-folder`'s neighbours), the bridge entries and the api functions.
+- [x] **Step 3: Implement** the four handlers in `main.js` (display-ready throws only, as `choose-folder`'s neighbours), the bridge entries and the api functions.
 
-- [ ] **Step 4: Run the whole suite** — PASS.
+- [x] **Step 4: Run the whole suite** — PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add bundle-io.js main.js preload.js renderer/api.js test/bundle-io.test.js test/api.test.js
@@ -355,7 +355,7 @@ git commit -m "feat: import placement in the main process and the four bundle ch
   `importPromptText(plan, dir) -> string`; `importMessage(result) -> string` where result is
   `{ added, updated, skipped: [{ fileName, reason }], withoutFilm: string[], stoppedAt: { fileName, message }|null }`.
 
-- [ ] **Step 1: Write the failing tests** — one per row of the spec's §5.4 table, plus:
+- [x] **Step 1: Write the failing tests** — one per row of the spec's §5.4 table, plus:
 
 ```js
 test('a malformed study.json is skipped and the others import (Review Focus 2)', ...);
@@ -369,9 +369,9 @@ test('applyImport appends adds, patches updates with the §5.7 fields only, neve
 test('importPromptText and importMessage read as the spec writes them', ...);
 ```
 
-- [ ] **Step 2: Run** — FAIL. **Step 3: Implement.** **Step 4: Whole suite** — PASS.
+- [x] **Step 2: Run** — FAIL. **Step 3: Implement.** **Step 4: Whole suite** — PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add renderer/data/bundle.js test/bundle.test.js
@@ -395,11 +395,11 @@ git commit -m "feat: the bundle import plan: matching by film hash, newer annota
   button's handler `chooseFolder().then(dir => dir && exportBundleTo(dir))`; a module-scope `exporting` flag in the
   bar's rebuild key.
 
-- [ ] **Step 1: Implement** the button, the flow and CSS (the button takes `.btn.btn-small` like Delete). Nothing to
+- [x] **Step 1: Implement** the button, the flow and CSS (the button takes `.btn.btn-small` like Delete). Nothing to
   unit-test: the flow is picker + api + toast.
-- [ ] **Step 2: Run the whole suite** — PASS (unchanged). Launch from source on a scratch profile with two synthetic
+- [x] **Step 2: Run the whole suite** — PASS (unchanged). Launch from source on a scratch profile with two synthetic
   films, click Export all, pick a folder, open it: `manifest.json` and one folder per film. No real film on screen.
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add renderer/screens/studies.js styles/screens/studies.css
@@ -429,10 +429,10 @@ git commit -m "feat: Export all / Export N selected writes a bundle folder from 
   (PB4, PB5), then the toast; a module-scope `importing` flag and `pendingImport` in the bar's rebuild key; the
   button disabled under the Global Constraints' conditions.
 
-- [ ] **Step 1: Implement** the button, the flow, the prompt, the CSS.
-- [ ] **Step 2: Run the whole suite** — PASS. From source: export from one scratch profile, launch a second, import,
+- [x] **Step 1: Implement** the button, the flow, the prompt, the CSS.
+- [x] **Step 2: Run the whole suite** — PASS. From source: export from one scratch profile, launch a second, import,
   the rows appear; import again, all skipped.
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add renderer/screens/studies.js styles/screens/studies.css
@@ -455,7 +455,7 @@ git commit -m "feat: Import bundle… reads a bundle, plans adds and updates, co
   (a canvas-drawn 600x800 film, a segmented fixture with a sidecar via `api.savePrediction`, a hand-placed one
   written to `%TEMP%`) as the model.
 
-- [ ] **Step 1: Write the suite** in three phases, each on its own launch, ids `SP-9400`–`SP-9405`:
+- [x] **Step 1: Write the suite** in three phases, each on its own launch, ids `SP-9400`–`SP-9405`:
   - `a` (profile `%TEMP%\spine-contour-bundle-a`, fresh): inject a segmented fixture SP-9400 with a sidecar and a
     label record (write one through `api.saveLabelRecord` built with `toLabelRecord` from the page, with `comment`
     `'from A'`, and set `labelFile`, `labelComment`, `reviewedAt` on the study) and an unsegmented film SP-9401 whose
@@ -476,8 +476,8 @@ git commit -m "feat: Import bundle… reads a bundle, plans adds and updates, co
     skipped 1 (already in the library: …)`; SP-9400's `labelComment` is `'from B'` and its record on disk has
     `comment` `'from B'`; its `labelFile` unchanged. `finally` of each phase removes its studies, sidecars, records,
     films and the bundle folders.
-- [ ] **Step 2: Run** the three phases in order (`SMOKE_PHASE=a|b|c`), each `> tools/smoke/out/smoke-bundle-<phase>.txt 2>&1`, quitting between launches; every line PASS.
-- [ ] **Step 3: README** (the suite, its phases, profiles and counts). **Commit:**
+- [x] **Step 2: Run** the three phases in order (`SMOKE_PHASE=a|b|c`), each `> tools/smoke/out/smoke-bundle-<phase>.txt 2>&1`, quitting between launches; every line PASS.
+- [x] **Step 3: README** (the suite, its phases, profiles and counts). **Commit:**
 
 ```bash
 git add tools/smoke/smoke-bundle.mjs tools/smoke/README.md
@@ -492,9 +492,9 @@ git commit -m "test: a two-profile smoke suite for the bundle export and import"
 - Create: `docs/bundles.md` (what a bundle holds; the identifiers warning, B3; keep the folder, B5; the duplicate rule, B4; where the buttons are)
 - Modify: `docs/superpowers/plans/2026-08-31-00-architecture-contract.md` (the root module and its exports; the four channels in the IPC list near `readCsv` at ~:506; `api.js`'s list; `data/bundle.js`'s boundaries; `safeStem`'s move), `docs/superpowers/HANDOFF.md` and `CLAUDE.md` (first sections), `README.md` (one line if it lists features; else untouched), `docs/level-editor.md` "The label record" (the record travels in bundles), `docs/ROADMAP.md` §1 (a note that the bundle is the annotation round trip; the CSV import stays), `docs/releases/1.2.0.md` and `CHANGELOG.md` (the 1.2.0 entries gain the bundle, PB10), `tools/smoke/README.md` (done in Task 7)
 
-- [ ] **Step 1: Make every edit**, each in the document's own voice, naming B1–B9 and PB1–PB10.
-- [ ] **Step 2:** `grep -rn "bundle" docs/ROADMAP.md README.md` reads consistently; `node --test test/*.test.js` still passes (no code touched).
-- [ ] **Step 3: Commit**
+- [x] **Step 1: Make every edit**, each in the document's own voice, naming B1–B9 and PB1–PB10.
+- [x] **Step 2:** `grep -rn "bundle" docs/ROADMAP.md README.md` reads consistently; `node --test test/*.test.js` still passes (no code touched).
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs CLAUDE.md README.md CHANGELOG.md
@@ -517,3 +517,310 @@ The session stops here and waits for "gate passed". The single PR (both rounds, 
 - [ ] Edit a comment on one side, export, import on the other: one updated, the comment replaced; the local film
       path, name and subject untouched.
 - [ ] Export with a film moved away: the toast names it, the study still imports without a film.
+
+---
+
+## Ledger
+
+Filled during execution (2026-10-15, subagent-driven development in this worktree, the plan at `69a7262`, baseline unit
+1024/1024 confirmed): the pre-flight scan's rulings, every ruling made on the way with what it costs if wrong, one row
+per task, and the deferred minors in one list for the final whole-branch review to triage. The planning rulings PB1–PB10
+are above and stood unchanged. The execution rulings are numbered S1–S36 in the order they were made; where one amends
+another it says so (S21 amends S8). The session's working ledger
+(`.superpowers/sdd/2026-10-15-annotation-bundle-export-import/`, local and untracked) is where these lines were written
+first; this section is their copy in the repository (S36).
+
+### Pre-flight scan (2026-10-15)
+
+Before Task 1 every pair of tasks sharing a file or an interface was traced by hand (eleven pairs: the planner's entry
+shape into the export, the folder-name helper into the screen, the read entry into the import plan, the two tasks
+editing `bundle-io.js` and `main.js`, the screen flows into the smoke suite, the plan's boundaries against the spec's
+section 6) and every task's own text was checked against the tree (eleven checks: the plan's quoted `main.js` anchors,
+`validate`'s behaviour on a bad record, `safeStem`'s tests, the store's `openId`, `editing` and `hasStashedEditor`, the
+button states against the Global Constraints). Most pairs were consistent; eight points needed a ruling:
+
+- Ruling S1: the bundle folder's clash inside the chosen parent is resolved by `exportBundle` in the main process (mkdir
+  of `<parent>/<name>` non-recursive; on EEXIST retry `<name>-2`, `-3`, … and report the folder actually created as
+  `path`); `bundleFolderName(now, taken)` stays as the plan writes it (taken defaults to none) and the screen passes no
+  `taken` — the renderer has no directory listing and the spec puts the clash "inside the chosen parent", which only
+  main can see. Cost if wrong: the suffix rule lives twice (one pure, one mkdir loop); on a case-sensitive filesystem a
+  case-different name does not clash.
+- Ruling S2: Task 4 names label files with `labelFileName(fileStem(fileName), taken)` as its own text says; Task 1's
+  shared clash helper serves `bundleFolderName` and `studyFolderName` only. Cost if wrong: none (labelFileName's suffix
+  rule is the same, case-insensitive).
+- Ruling S3: `readBundle` sets `filmPath` only when the manifest names a film AND the file exists (`has.film` true);
+  otherwise null, so an import of a damaged bundle adds the study without a film (spec §5.6's "without film"). Cost if
+  wrong: a study imported without a film that a later copy of the bundle would have had.
+- Ruling S4: `exportBundle` validates every entry before writing anything: `dir` with isSafeName, `sourceId` with
+  isStudyId, `labelFile` (when non-null) with isLabelFileName, `calibrationDigest` (when non-null) as 64 hex; any
+  failure rejects with `Invalid export entry.`. A `fileName` failing isSafeName (a leading dot, a control character)
+  counts that film as missing (`filmsMissing`, `film: null`) so the study still exports. Cost if wrong: one film left
+  out of a bundle, named in the toast.
+- Ruling S5: `bundle.js` does not import `isHandPlaced` (the plan's boundaries); the spec's §6 line listed it before the
+  planner's matching was designed on hashes and records alone. Cost if wrong: one import line.
+- Ruling S6: `test/labels.test.js` gains direct `safeStem` tests restating the R12 cases on the stem;
+  `test/label-record.test.js` is left as it is (its labelFileName tests already cover the move's "unchanged behaviour").
+  Cost if wrong: a duplicated test case.
+- Ruling S7: `planImport` keeps the normalized record `validate(...)[0]` returns as the entry's study for `applyImport`,
+  not the raw parsed `study.json`, so an import carries exactly the shape `load-studies` would accept. Cost if wrong:
+  none (export wrote the validated shape).
+- Ruling S8: "the local study has a sidecar-bearing result" means `study.predictionId != null` (a model run records one
+  from v1.0.10 on, and only such results have a sidecar `predictions/<id>.json` to delete); `deleteLocalPrediction` is
+  true when that holds and the bundle entry has no `prediction`. Cost if wrong: a pre-1.0.10 sidecar-less result leaves
+  nothing to delete, which is harmless (ENOENT ignored).
+
+### Per task
+
+| Task | Implementer | Commits | Review | Fix rounds | Counts |
+|---|---|---|---|---|---|
+| 1 | Sonnet | `69a7262..a810827` | Opus: clean, one ⚠️ (S9); a minor folded into Task 4 (S10) | 0 | unit 1040/1040 |
+| 2 | Sonnet | `a810827..5b3002c` (`8bd1375`, fix `5b3002c`) | Opus: Needs fixes, 1 Important (a non-string `fileName` rejected the whole export, against S4); re-review Sonnet clean | 1 | unit 1058/1058 (17 new in `8bd1375`) |
+| 3 | Opus | `5b3002c..53ade2b` (`a0ea315` amended to `53ade2b`: the trailer only) | Opus: Approved, no Critical or Important | 0 | unit 1065/1065 (7 new) |
+| 4 | Sonnet | `53ade2b..0e79356` (`9f185b6`, fix `0e79356`) | Opus: Needs fixes, 1 Important (S8 deleted a sidecar that still matched, lost image for good; S21 amends it, S20 added); re-review Sonnet clean | 1 | unit 1102/1102 (35 new in `9f185b6`) |
+| 5 | Opus | `0e79356..21e45d5` | Opus: Approved, no Critical or Important | 0 | unit 1102/1102; source launch 24/24 over CDP (DOM, store and file reads, two canvas-drawn films) |
+| 6 | Opus | `21e45d5..50d6311` (`5079860`, fix `50d6311`) | Opus: Needs fixes, 1 Important (a drop or Choose radiograph during placement could take an id the plan had reserved; S28, with S29–S31); re-review Sonnet clean | 1 | unit 1102/1102; CDP on two profiles, A 4/4 and B 20/20 and update path 6/6 before the fix, A 4/4 and B 15/15 after |
+| 7 | Opus | `50d6311..188b103` | Opus: Approved, no Critical or Important; counts verified one to one against the output files | 0 | `smoke-bundle.mjs` phases a 17/17, b 18/18, c 9/9; unit 1102/1102 |
+| 8 | Sonnet | `188b103..` the records commit | the controller's review follows this commit | — | unit 1102/1102 (no code touched) |
+
+Reviewers were Opus on every task, Sonnet for the small scoped re-reviews after a fix round. The owner's trailer
+(`Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`) was verified from the commit log of each task; Task 3's
+first commit carried the harness's own attribution and was amended (message only). Task 9, the human gate, is the
+owner's and is not run.
+
+### Rulings made on the way (S9–S36)
+
+**Task 1.**
+
+- Ruling S9 (Task 1 review ⚠️): `localFilmHash` returns the first VALID 64-hex digest (calibration, then geometry)
+  rather than the literal `??` chain then validate — kept as built; a stored calibration digest is already validated
+  (calibration.js:20), so the two forms differ only on data the store never holds. Cost if wrong: none observable.
+- Task 1: minor (deferred): a study folder name can end in `.` or a space (bundle.js:38) — Windows tools cannot handle
+  such names. Ruling S10: fold into Task 4 (same file): `studyFolderName` trims trailing dots and spaces, `film` when
+  nothing is left. Cost if wrong: a folder name differing from its label stem by a trailing character.
+
+**Task 2.**
+
+- Ruling S11: `bundle-io.js` (CommonJS) holds its own `BUNDLE_SCHEMA = 'spinecontour.bundle/1'` and exports it; the
+  renderer's `bundle.js` holds the same string; `test/bundle-io.test.js` asserts the two are equal. The root module
+  stays standalone like store-io.js rather than requiring the renderer's ESM graph. Cost if wrong: a string in two
+  places, pinned by a test.
+- Ruling S12: `readBundle` adds the problem `label record unreadable` when the manifest names a label whose file is
+  missing or does not parse (spec §5.2 "reported, not fatal": Task 4 then skips that entry as malformed and the rest
+  imports); a manifest whose `studies` is not an array reads as not a bundle. Cost if wrong: a study with a damaged
+  record is skipped instead of imported bare.
+- Ruling S13 (Task 2 review ⚠️, the digest seam): `planExport` passes `calibrationDigest` only when it is 64 lower-case
+  hex, else null (the planner's `SHA256_HEX` rule, as `localFilmHash` applies it), so one damaged digest in the library
+  never blocks a whole export; `exportBundle` stays strict (a bad digest reaching it is a programming error). Folded
+  into Task 4 (same file). Cost if wrong: a damaged calibration reference silently left out of a bundle.
+- Task 2: minor (deferred): path hardening beyond the brief — symlinks/junctions inside a bundle are followed; Windows
+  device names pass `isSafeName`; `sha256File` has no `isFile` check. Ruling S14: deferred, not blocking — bundles are
+  the owner's own (B3) and the renderer that names hash paths is the app's own; the final review triages. Cost if wrong:
+  a crafted bundle could read a file outside itself on the importing machine.
+
+**Task 3.**
+
+- Ruling S15: the persistence-gating test for `importBundle` lives in `test/api-persistence.test.js` (where
+  `disablePersistence`, irreversible module state, is already exercised), and the forwarding test for the four channels
+  in `test/api.test.js`; the plan named one file for both. Cost if wrong: a test in a different file than the plan says.
+
+**Task 4.**
+
+- Ruling S16: `importPromptText(plan, dir)` names the bundle by its last path segment (`lastSegment` from labels.js),
+  not the full path the user just picked. Cost if wrong: a prompt line.
+- Ruling S17: an update's `labelComment` uses the same expression as an add's (`study.labelComment ??
+  normalizeComment(record.comment)`); spec §5.6 states the fallback for adds and §5.7 lists `labelComment` among the
+  fields an update takes from the bundle. Cost if wrong: an updated study showing a comment the bundle's study.json did
+  not carry but its record did.
+- Ruling S18: two bundle entries matching one local study with neither `saved_at` parseable (only possible when the
+  local has no record) → the first in manifest order wins. Cost if wrong: which of two hand-edited records lands.
+- Ruling S19: `importMessage` for a stopped import reads `Imported <n> studies, updated <u>, skipped <s>[ (…)] · stopped
+  at <fileName>: <message> Import the bundle again to continue.` (spec §5.8 gives the content, not the wording). Cost if
+  wrong: a toast line.
+- Ruling S20 (Task 4 concern 1 / review minor 1): when the manifest's `film_sha256` is null, the bundle entry's hash is
+  `localFilmHash(entry's normalized study)` (its calibration or geometry `source_sha256`, the same film bytes' digest
+  the local side already matches on), compared against `localHashes`; the record `image.sha256` fallback stays after it.
+  An entry with no film, no result, no calibration and no record still matches nothing and is added each time (nothing
+  to carry). Spec §5.3 gave no key for this case. Cost if wrong: none beyond the spec's own rule (file name alone never
+  matches).
+- Ruling S21 (amends S8): `deleteLocalPrediction` is true only when the local study has `predictionId != null`, the
+  entry has no sidecar (`has.prediction` false), AND the bundle study's `predictionId` differs from the local one
+  (`decision.study.predictionId !== local.predictionId`, null included — the hand-placed-over-model case S8 was written
+  for). When the ids are equal the local sidecar still matches and is kept. Cost if wrong: an orphaned sidecar file when
+  a re-run's sidecar was unreadable at export (harmless), against a stored image lost (the old S8).
+- Ruling S22 (review minor 3): the record fallback also runs for a non-null `film_sha256` that is not a 64-hex digest (a
+  hand-edited manifest) — kept as built; the fallback still needs the same file name and equal image hashes. Cost if
+  wrong: none.
+
+**Task 5.**
+
+- Ruling S23: the Export button's disabled reason goes on its `title`, as Delete's does (the plan's Task 5 text says
+  "the bar's title"; the Global Constraints' "visible note" is the segment button's pattern, whose label does not say
+  what it would do). Cost if wrong: a tooltip where a note was wanted.
+- Task 5: minor (deferred): an export in flight blocks nothing else — Delete, the row delete, Segment and Save edits
+  stay live while main copies sidecars. Ruling S24: deferred to the final review and the owner — the spec disables
+  export during a run, not runs during an export; the window is the copy's duration; a sidecar rewritten mid-copy is
+  listed under notRead or copied whole (writeJsonAtomic renames), a deleted one reads as absent. Cost if wrong: a bundle
+  naming one sidecar as not read.
+
+**Task 6.**
+
+- Ruling S25: while an import is reading or placing (`importing`), the bar's other actions are blocked as during a bulk
+  delete (`barBlocked` gains `importing`), since the placement rewrites sidecars and records the other actions read;
+  while the prompt is up (`pendingImport`) the prompt takes the bar's place, as Delete's does, so nothing else on the
+  bar is reachable. Starting an import withdraws a pending Delete prompt. Cost if wrong: Export or Segment unavailable
+  for the seconds an import takes.
+- Ruling S26: a pending import plan is withdrawn silently in `update()` when `live.studies` is no longer the reference
+  the plan was computed from, or the user leaves for the Parameters tab — mirroring the Delete prompt's withdrawal —
+  because the plan's ids (`nextId`) and matches were computed against that list; `confirmImport()` with no pending plan
+  does nothing. Cost if wrong: a prompt withdrawn by a subject edit or a run finishing, costing one more click.
+- Ruling S27 (PB3 made concrete): the screen reads the label record of every local real study with a `labelFile` whose
+  film hash equals any bundle entry's hash (manifest `film_sha256` or the entry study's `localFilmHash`) OR whose
+  `fileName` equals any bundle entry's; a superset of what the rule needs, bounded by the bundle's size;
+  `localRecords[id]` is `{ saved_at, image_sha256 }` or null when the read fails. `hashFilms` is called in batches of at
+  most 500 paths. Cost if wrong: a few extra record reads.
+- Ruling S28 (the id clash): closed where it manifests — after placement, `confirmImport` reads the current list and
+  drops every placed add whose id is now taken (its placed files are orphans: a sidecar under the other study's id is
+  ignored by predictionMatchesStudy and overwritten by that study's first run; a record under a fresh name is
+  unreferenced), applying the rest and naming the dropped ones in the toast with ` · <k> not added because the library
+  changed (<names>); import the bundle again`; updates apply as before. In addition the same-screen add paths
+  (`handleChoose`, `handleDrop`, the zone's click and Enter) refuse while `importing` with the toast `Wait for the
+  import to finish.`. The Workspace Load stays live (another screen) and is covered by the application-site guard. Cost
+  if wrong: an add dropped and re-imported under a fresh id; a stray sidecar or record file.
+- Ruling S29 (review minor 4, copy): a plan whose library changed during the read is not shown; `importBundleFrom`
+  toasts `The library changed while the bundle was being read. Import it again.` instead of setting pendingImport. Cost
+  if wrong: a toast line.
+- Ruling S30 (review minor 2, copy): the Import button reads `Importing…` while `importing`, as Export reads
+  `Exporting…`. Cost if wrong: a label.
+- Ruling S31 (review minor 3): `stoppedAt.fileName`'s last-resort fallback is `a study`, never the SP id (the 2026-09-12
+  rule: the record id is shown nowhere a person looks). Cost if wrong: none.
+- Task 6: minor (deferred): a user who enters edit mode on an update target during the seconds of placement has those
+  edits discarded by forgetLevelEditor; a Re-run started on an update target interleaves with the placement. Ruling S32:
+  deferred — the window is the placement's duration and the prompt names what will be updated. Cost if wrong: an edit of
+  a few seconds lost.
+- Ruling S33: the S29 staleness check runs before both outcomes (the prompt and Nothing to import) — kept as built,
+  since a stale list can make a Nothing-to-import wrong as well. Cost if wrong: one extra click.
+
+**Task 7.**
+
+- Ruling S34 (the plan's "finally of each phase removes its studies" cannot hold across the shared profile): phase a
+  leaves its studies, records, sidecars, films and bundle in place (phases b and c need them); phase b removes its own
+  profile's studies, sidecars and records at its end but keeps its bundle (`…-out-b`) for phase c; phase c removes
+  profile A's studies, sidecars and records, the films folder, both bundle folders and `out/bundle-path.txt`. A phase
+  that fails early still runs its own cleanup. Cost if wrong: scratch files left under %TEMP%.
+- Ruling S35: both fixtures carry a real film on disk under `%TEMP%\spine-contour-bundle-films\` (the segmented one too,
+  unlike smoke-levels' SP-9300), so the export streams and hashes both films and every match in phases b and c is by
+  `film_sha256` against a hashed local film, the spec's primary rule; the record-hash fallback is the planner's unit
+  tests' concern. Cost if wrong: none.
+
+**Task 8.**
+
+- Ruling S36: the plan file gains a `## Ledger` section (as the editor round's plan has) carrying this session's rulings
+  S1–S35 verbatim with their costs, the per-task commit ranges and counts, and the deferred minors in one list — the
+  project's convention is that a plan's Ledger holds every ruling, and the ignored SDD workspace is deleted after the
+  final review. Cost if wrong: a longer plan file.
+
+### Deferred minors, by task
+
+Everything a task review or an implementer deferred, copied from the working ledger and left for the final whole-branch
+review to triage, with the ⚠️ items carried into a later task. Some were closed by a later task or ruling, as each line
+says (S10, S13, S20, S21 and S28–S31 among them); the final review reads the tree, not this list, to see which still
+stand.
+
+**Task 1.**
+
+- Task 1: minor (deferred): a study folder name can end in `.` or a space (bundle.js:38) — Windows tools cannot handle
+  such names. Ruling S10: fold into Task 4 (same file): `studyFolderName` trims trailing dots and spaces, `film` when
+  nothing is left. Cost if wrong: a folder name differing from its label stem by a trailing character.
+- Task 1: minor (deferred → Task 4): `clashFree`'s unused `ext` parameter (bundle.js:17); seed `dirs` with
+  `manifest.json` so a study folder never collides with the root manifest (bundle.js:66); one running lower-cased set in
+  `planExport` instead of a rebuilt set per study; assertions for `labelFile: ''` → null and a missing `fileName` →
+  `film`.
+- Task 1: minor (deferred): `calibrationDigest` unvalidated in the planner — covered by ruling S4 (exportBundle checks
+  64 hex before building a path).
+
+**Task 2.**
+
+- Task 2 review ⚠️ carried into Tasks 3 and 4: `readBundle` returns `dir` unvalidated for unsafe rows and never
+  validates `file_name` or `source_id`; consumers check `problems` first and never build a path from `file_name` or
+  `source_id` (`placeImport` re-validates every name it uses).
+- Task 2: minor (deferred → Task 4): reserved study-folder names `manifest.json` and `manifest.json.tmp` (the atomic
+  write's temp name) must never be a study dir (seed the planner's taken set, ignoring case).
+- Task 2: minor (deferred): `rowPaths` checks the manifest's `label` with `isSafeName` (200 chars) while export accepts
+  `isLabelFileName` (211); check `row.label` with `isLabelFileName` in `readBundle` (bundle-io.js:250). Unreachable
+  today (safeStem caps at 180).
+- Task 2: minor (deferred): test/label-record.test.js:309 still holds a hard-coded copy of the label rule
+  (`MAIN_LABEL_FILE`); import `isLabelFileName` from `../bundle-io.js` instead.
+- Task 2: minor (deferred): untested branches — `Invalid export folders.`, a relative `parent`, a `parent` that is a
+  file (ENOTDIR), the partial-film cleanup after a failed stream (checked only by an uncommitted scratch script).
+- Task 2: minor (deferred): path hardening beyond the brief — symlinks/junctions inside a bundle are followed; Windows
+  device names pass `isSafeName`; `sha256File` has no `isFile` check. Ruling S14: deferred, not blocking — bundles are
+  the owner's own (B3) and the renderer that names hash paths is the app's own; the final review triages. Cost if wrong:
+  a crafted bundle could read a file outside itself on the importing machine.
+
+**Task 3.**
+
+- Task 3: minor (deferred): a partly placed update (sidecar replaced, record or calibration step failed) is invisible to
+  the renderer; the main.js comment "patches the store for exactly what is on disk" overclaims — correct the comment;
+  optionally read calibration.json before the first write. Carried to Task 6 (the toast) and the final review.
+- Task 3: minor (deferred → resolved by design in Task 4/6): the calibration store's two sentences do not name the
+  study; `importMessage`'s `stoppedAt: { fileName, message }` names it. `calibrationFailure` passes any Error without a
+  `code` through — latent (normalizeCalibration cannot throw a TypeError today).
+- Task 3: minor (deferred): `isExistingFolder` in main.js uses sync `existsSync`/`statSync` (a disconnected network
+  drive could block the main thread); use `fsPromises.stat`.
+- Task 3: minor (deferred): untested — a sidecar that parses but fails to copy (`could not be copied`), a rename failure
+  leaving a `.tmp` (destination is a folder).
+- Task 3: minor (deferred): the `hash-films` comment says "50 MB reads"; the cap belongs to read-file; `hashFiles` has
+  no size cap.
+- Task 3: minor (deferred): the data-folder joins live in three places in main.js (`bundleDataFolders`,
+  `predictionPath`, `labelPath`/the calibration store).
+- Task 3 ⚠️ carried to Task 6: `hash-films` caps a request at 500 paths — the screen batches larger lists. The channels
+  have not run in the app (Task 7's smoke does).
+
+**Task 4.**
+
+- Task 4: minor (deferred → Task 6): an unread local record (`localRecords[id]` null) and a missing one are treated the
+  same (the bundle's record overwrites it); Task 6 reads the record of every matched local study with a `labelFile` and
+  of every same-named one (PB3). Pin with a test later.
+- Task 4: minor (deferred): two local copies of one film match the first in library order (bundle.js:158) — untested;
+  the decision objects' key names (`{ add }` vs `{ update, study }`); the last-resort skip name is the 0-based manifest
+  index.
+- Task 4 ⚠️ carried to Task 6: `localHashes` must be built from `localFilmHash(study)` first and `hashFilms` only for
+  the same-named studies lacking one (PB3); `localRecords[id]` set for every local study whose record the screen read;
+  `withoutFilm` built by the caller from the placed adds with `filePath` null.
+
+**Task 5.**
+
+- Task 5: minor (deferred): an export in flight blocks nothing else — Delete, the row delete, Segment and Save edits
+  stay live while main copies sidecars. Ruling S24: deferred to the final review and the owner — the spec disables
+  export during a run, not runs during an export; the window is the copy's duration; a sidecar rewritten mid-copy is
+  listed under notRead or copied whole (writeJsonAtomic renames), a deleted one reads as absent. Cost if wrong: a bundle
+  naming one sidecar as not read.
+- Task 5: minor (deferred): Export disabled during a bulk delete shows no title; the picker window is unguarded (a fast
+  double-click before the modal appears could invoke choose-folder twice: the second pick is dropped silently or written
+  as a second bundle); the file's top docblock (studies.js:3–4) still says the bar holds Delete and the segment button.
+- Task 5 ⚠️ (deferred to Task 7's smoke): the WAIT_FOR_BATCH and `Studies are not being saved` titles, and the bar's
+  wrapping with one more button, were not read.
+
+**Task 6.**
+
+- Task 6 concern 3 (unfixed, needs a ruling): during the confirm's placement, Choose radiograph, a drop and a Workspace
+  folder load stay live; `addStudy`'s `nextId` could reuse an id the plan reserved, giving two studies one id. Ruling
+  deferred until the review reports on its reach.
+- Task 6: minor (deferred): a user who enters edit mode on an update target during the seconds of placement has those
+  edits discarded by forgetLevelEditor; a Re-run started on an update target interleaves with the placement. Ruling S32:
+  deferred — the window is the placement's duration and the prompt names what will be updated. Cost if wrong: an edit of
+  a few seconds lost.
+- Task 6: minor (deferred → Task 7): the batch / persistence-off / deletingStudies states of the Import button, Segment
+  disabled while importing, the navigation clearing of pendingImport, the stoppedAt and withoutFilm mapping were not
+  exercised; `releaseStudy` already calls `forgetLevelEditor` (called twice, harmless).
+- Task 6: minor (deferred): when both `stoppedAt` and a lost add occur, the lost-add clause lands after "Import the
+  bundle again to continue." — awkward but readable.
+
+**Task 7.**
+
+- Task 7: minor (deferred): `openFromRow` and the persistence check print no useful failure detail
+  (smoke-bundle.mjs:433, :502, :562, :577); a failed freshness precondition does not stop the phase (:388, :520) while
+  the README says it fails at once; the two path-file checks cannot fail (:504, :603); two check names overclaim (:454
+  "its record unchanged" compares the name only; :645 "now B's copy" would pass with A's sidecar); the header's run
+  sequence drifted from the README's (:150–158).
+

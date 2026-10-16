@@ -17,6 +17,13 @@ would change a stored file's shape, that is called out, because it forces a stor
 
 **Priority: next.** This is the item the roadmap was opened for.
 
+**Note (2026-10-15):** the annotation bundle (`docs/bundles.md`: **Export all** on the Find tab, **Import bundle…** on the
+Studies screen) is the round trip for annotations. A study's record, its model result, its label record, its manual
+image scale and its original film move between libraries as a folder, and the bundle's own import reads that folder
+back. It does not read a spreadsheet and does not replace this item: the CSV is still the file a researcher edits, and
+the CSV import described below is still what brings edited clinical columns back in through the Workspace. A bundle
+carries a study's clinical fields as the exporting library held them (an update keeps the importing library's own).
+
 Plan 06 put clinical import and clinical export in the same module and made clinical values part of
 both. The obvious workflow is therefore: export the study list, fill in Diagnosis and ODI in Excel,
 load the file back. That does not work today, and it fails silently rather than with a message.
