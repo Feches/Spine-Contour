@@ -129,8 +129,19 @@ function openStudy(study) {
   setState({ screen: 'analysis', openId: study.id, ...FRESH_VIEW });
 }
 
-// The one entry point for the picker and a drop. Inserts at the front.
+// Ruling S28 (b): no film is added here while an import reads or places files. Its plan has already given out the
+// next ids, and a film added under one of them would share it with an imported study. True (and the toast) when
+// refused; the picker, a drop, the zone's click and Enter/Space all come through handleChoose or handleDrop.
+function refusedWhileImporting() {
+  if (!importing) return false;
+  showToast('Wait for the import to finish.');
+  return true;
+}
+
+// The one entry point for the picker and a drop. Inserts at the front. Checked again here: an import can start while
+// the picker is open or a dropped file is being read.
 function addStudy({ name, data, path }) {
+  if (refusedWhileImporting()) return;
   const id = nextId(getState().studies);
   setFilePayload(id, data);
   setState((state) => ({
@@ -142,6 +153,7 @@ function addStudy({ name, data, path }) {
 }
 
 async function handleChoose() {
+  if (refusedWhileImporting()) return;
   try {
     const chosen = await selectFile();
     if (!chosen) return;
@@ -155,6 +167,7 @@ async function handleChoose() {
 const FILM_EXTENSIONS = /\.(dcm|dicom|png|jpe?g|tiff?|bmp|webp)$/i;
 
 async function handleDrop(files) {
+  if (refusedWhileImporting()) return;
   if (files.length > 1) {
     showToast('Drop one film at a time.');
     return;
@@ -750,15 +763,18 @@ async function readLocalRecords(locals, { names, hashes }, localHashes) {
 
 // The import minus the folder picker, exported so the smoke suite can drive it without the native dialog (PB7). Silent
 // when an import or export is in flight, a plan is already waiting, or the bar is blocked: the button is disabled in
-// each. `importing` is set before the first await and refuses the bar's other actions meanwhile (S25); a Delete prompt
-// is withdrawn. The bundle is read, then the local digests and records PB3 names, then planImport over the library as
-// it was at the click: a plan with nothing to add or update is a toast, anything else waits in the bar's inline prompt
-// for Import or Cancel. The api's rejections are display-ready sentences, toasted as is.
+// each. `importing` is set before the first await (the button reads Importing…, S30) and refuses the bar's other
+// actions and the film add paths meanwhile (S25, S28); both Delete prompts are withdrawn. The bundle is read, then the
+// local digests and records PB3 names, then planImport over the library as it was at the click. A library that changed
+// during the reads makes the plan stale and says so (S29); otherwise a plan with nothing to add or update is a toast,
+// anything else waits in the bar's inline prompt for Import or Cancel. The api's rejections are display-ready
+// sentences, toasted as is.
 export async function importBundleFrom(dir) {
   const state = getState();
   if (exporting || pendingImport || barBlocked(state)) return; // barBlocked holds `importing` (S25)
   importing = true;
   confirmingSelected = null;
+  confirmingId = null;
   refreshTable();
   try {
     const bundle = await readBundle(dir);
@@ -771,7 +787,11 @@ export async function importBundleFrom(dir) {
     const editing = new Set(locals.filter((study) => hasStashedEditor(study.id)).map((study) => study.id));
     if (state.editing && typeof state.openId === 'string') editing.add(state.openId);
     const plan = planImport({ bundle, studies: state.studies, localHashes, localRecords, editing });
-    if (plan.add.length + plan.update.length === 0) {
+    // Ruling S29: its ids and matches were made against the list read at the click; one changed meanwhile (a subject
+    // typed in place) is not offered, and the person is told why nothing appeared.
+    if (getState().studies !== state.studies) {
+      showToast('The library changed while the bundle was being read. Import it again.');
+    } else if (plan.add.length + plan.update.length === 0) {
       showToast(nothingToImportMessage(plan));
     } else {
       pendingImport = { dir, plan, studies: state.studies };
@@ -797,7 +817,12 @@ function cancelImport() {
 // its editor state, its prediction snapshot and its cached film and bitmaps go -- so the next open reads the new
 // sidecar and record (PB4). Then ONE setState patches the library as it is now (a subject typed meanwhile is kept), so
 // the store never names a file that is not on disk; the persistence subscriber in renderer/main.js saves it. A
-// rejection (persistence off, an invalid request) applies nothing.
+// rejection (persistence off, an invalid request) applies nothing. Ruling S28 (a): a placed add whose planned id the
+// library took meanwhile (a Workspace load on another screen) is not applied, so no two studies share an id, and the
+// toast names it. Its placed files stay on disk as orphans that a re-import replaces: the add is planned again under a
+// new id and the same record name, and its calibration reference is saved again. Until then the sidecar under the
+// taken id is never read for the film-only study holding that id (predictionMatchesStudy needs a result), and that
+// study's own run overwrites it.
 export async function confirmImport() {
   const live = getState();
   if (!pendingImport || exporting || barBlocked(live)) return; // barBlocked holds `importing` (S25)
@@ -807,7 +832,10 @@ export async function confirmImport() {
   refreshTable();
   try {
     const result = await importBundle({ dir, actions: plan.actions });
-    const placedIds = Array.isArray(result?.placed) ? result.placed : [];
+    const reported = Array.isArray(result?.placed) ? result.placed : [];
+    const taken = new Set(getState().studies.map((study) => study.id));
+    const lost = plan.add.filter((item) => reported.includes(item.id) && taken.has(item.id));
+    const placedIds = reported.filter((id) => !lost.some((item) => item.id === id));
     const placed = new Set(placedIds);
     for (const { id } of plan.update) {
       if (placed.has(id)) { forgetLevelEditor(id); forgetPrediction(id); releaseStudy(id); }
@@ -816,13 +844,17 @@ export async function confirmImport() {
     const added = plan.add.filter((item) => placed.has(item.id));
     const failed = result?.failed ?? null;
     const stoppedOn = failed ? [...plan.add, ...plan.update].find((item) => item.id === failed.id) : null;
-    showToast(importMessage({
+    const message = importMessage({
       added: added.length,
       updated: plan.update.filter((item) => placed.has(item.id)).length,
       skipped: plan.skip,
       withoutFilm: added.filter((item) => item.entry.filmPath == null).map((item) => item.entry.study.fileName),
-      stoppedAt: failed ? { fileName: stoppedOn?.entry.study.fileName ?? failed.id, message: failed.message } : null,
-    }));
+      // Never the SP-nnnn id: the record id is shown nowhere a person looks (user rule 2026-09-12; ruling S31).
+      stoppedAt: failed ? { fileName: stoppedOn?.entry.study.fileName ?? 'a study', message: failed.message } : null,
+    });
+    const lostNames = lost.map((item) => item.entry.study.fileName).join(', ');
+    showToast(lost.length === 0 ? message
+      : `${message} · ${lost.length} not added because the library changed (${lostNames}); import the bundle again`);
   } catch (error) {
     showToast(error?.message || 'The import failed.');
   } finally {
@@ -1119,10 +1151,13 @@ export function render(state) {
     }
     // Import bundle… lives in the dropzone, which no rebuild replaces, so its state is set here on
     // every notification: refused as the bar's actions are, and while an export runs or a plan
-    // waits (the Global Constraints).
+    // waits (the Global Constraints); it reads Importing… while an import reads or places, as
+    // Export reads Exporting… (ruling S30).
     if (importButton) {
       importButton.disabled = barBlocked(live) || exporting || pendingImport !== null;
       importButton.title = waitTitle(live);
+      const label = importing ? 'Importing\u2026' : 'Import bundle\u2026';
+      if (importButton.textContent !== label) importButton.textContent = label;
     }
 
     // live.running is in the key so the table repaints when a run starts or ends: the row badge is
