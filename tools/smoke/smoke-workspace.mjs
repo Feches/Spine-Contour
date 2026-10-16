@@ -439,7 +439,7 @@ try {
   check('AGE, SEX and TREATMENT PLAN cells hold the CSV values, enabled',
     cells.AGE?.value === '58' && cells.SEX?.value === 'F' && cells['TREATMENT PLAN']?.value === 'Fusion' && [cells.AGE, cells.SEX, cells['TREATMENT PLAN']].every((c) => c && c.disabled === false), cells);
   check('the count label reads 3 FIELDS · 1 STUDY', grid?.count === '3 FIELDS · 1 STUDY', grid?.count);
-  check('--clinical-cols is set for three fields', grid?.cols === '110px repeat(5, minmax(130px, 1fr)) repeat(3, minmax(150px, 1fr))', grid?.cols);
+  check('--clinical-cols is set for three fields', grid?.cols === 'fit-content(280px) repeat(5, minmax(130px, 1fr)) repeat(3, minmax(150px, 1fr))', grid?.cols);
   check('the imported fields leave the ADD FIELD row', same(grid?.chips, KNOWN_FIELDS.filter((f) => !['Age', 'Sex', 'Treatment plan'].includes(f))), grid?.chips);
 
   // 8. Add the Notes field from its chip.

@@ -412,8 +412,11 @@ export function mountClinicalData(host) {
     // A CSS custom property set AFTER construction. `style` must never be an el() prop: the
     // `key in node` branch would assign to the read-only CSSStyleDeclaration and throw.
     // repeat(0, …) is invalid CSS and would drop the whole declaration, hence the conditional.
+    // (Gate feedback G10, 2026-10-16, D23) The STUDY track was a fixed 110px, sized for an SP-nnnn id; a film's
+    // name is the stem now, and a long one broke out of the cell over SUBJECT. fit-content(280px) lets the track
+    // grow with the name up to .study-name's own cap, and past it the name wraps inside its cell (.clinical-grid-id).
     grid.style.setProperty('--clinical-cols',
-      `110px repeat(${STUDY_COLUMNS.length}, minmax(130px, 1fr))${fields.length > 0 ? ` repeat(${fields.length}, minmax(150px, 1fr))` : ''}`);
+      `fit-content(280px) repeat(${STUDY_COLUMNS.length}, minmax(130px, 1fr))${fields.length > 0 ? ` repeat(${fields.length}, minmax(150px, 1fr))` : ''}`);
     // The two datalists the Timepoint and View cells suggest from. Ids are document-wide; the
     // drawer is mounted once per Analysis screen and rebuilt whole, so one pair per rebuild.
     const lists = [

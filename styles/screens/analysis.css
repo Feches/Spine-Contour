@@ -972,7 +972,9 @@ button.viewer-step:disabled { opacity: .35; cursor: not-allowed; }
   overflow-x: auto;
 }
 /* --clinical-cols is set on .clinical-grid by the component (style.setProperty) and
-   inherited by every row: 110px for the id, then minmax(150px, 1fr) per field. */
+   inherited by every row: fit-content(280px) for the study name (gate feedback G10, D23: it
+   grows with the name up to the same 280px cap as .study-name, never spilling over SUBJECT),
+   then minmax(130px, 1fr) per study column and minmax(150px, 1fr) per field. */
 .clinical-grid-row {
   display: grid;
   grid-template-columns: var(--clinical-cols);
@@ -1008,6 +1010,11 @@ button.viewer-step:disabled { opacity: .35; cursor: not-allowed; }
   letter-spacing: 0.08em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+  /* (G10, D23) A name longer than the track's 280px cap wraps inside its own cell, at any character if it has
+     no space or hyphen to break at; before, the unbreakable tail ran over the SUBJECT cell. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
 }
 .clinical-remove {
   padding: 0 2px;

@@ -764,6 +764,37 @@ test('the editor restores the context state it changes', () => {
   assert.deepEqual(rec.ctx.lineDash, []);
 });
 
+// (Gate feedback G11, decision D24) Outside edit mode the C2 centroid is drawn as a cross in C2's colour, as the C7
+// centroid is on a full-spine film; the label appears only while the C2–C7 SVA is selected.
+test('outside edit mode the C2 centroid is drawn as a cross like the C7 centroid, on cervical and full-spine films', () => {
+  const arm = Math.max(4, EDITOR_CANVAS.width / 150);
+  const crossAt = (calls, [x, y]) => {
+    const has = (name, point) => calls.some(([n, args]) => n === name && args[0] === point[0] && args[1] === point[1]);
+    return has('moveTo', [x - arm, y]) && has('lineTo', [x + arm, y]) && has('moveTo', [x, y - arm]) && has('lineTo', [x, y + arm]);
+  };
+  const cervical = {
+    region: 'cervical', anterior_side: 'left', c2_centroid: [15, 6],
+    vertebrae: { C2: { inferior: [[10, 12], [20, 12]] }, C7: { superior: [[10, 50], [20, 50]], inferior: [[10, 60], [20, 60]], quadrilateral: [[10, 50], [20, 50], [20, 60], [10, 60]] } },
+  };
+  const plain = recordingContext();
+  drawDynamicLayer(plain.ctx, EDITOR_CANVAS, cervical, { selectedLevel: null, measurements: null, editing: false });
+  assert.ok(crossAt(plain.calls, [15, 6]), 'a cross at the C2 centroid');
+  assert.ok(plain.painted.some(p => p.name === 'stroke' && p.strokeStyle === `rgb(${LEVEL_RGB.C2.join(',')})`), "in C2's colour");
+  assert.deepEqual(labelsOf(plain.calls), [], 'no label until the C2–C7 SVA is selected');
+  const sva = recordingContext();
+  drawDynamicLayer(sva.ctx, EDITOR_CANVAS, cervical, { selectedLevel: 'C2C7_SVA', measurements: { C2C7_SVA_PX: 3 }, editing: false });
+  assert.ok(labelsOf(sva.calls).includes('C2'), 'the C2 label while the C2–C7 SVA is selected');
+  const bare = recordingContext();
+  drawDynamicLayer(bare.ctx, EDITOR_CANVAS, { ...cervical, c2_centroid: null }, { selectedLevel: null, measurements: null, editing: false });
+  assert.ok(!crossAt(bare.calls, [15, 6]), 'no cross without a centroid');
+  const fullSpine = recordingContext();
+  drawDynamicLayer(fullSpine.ctx, EDITOR_CANVAS, { ...fakeGeometry(), region: 'full_spine', c7_centroid: [50, 5], c2_centroid: [15, 6] }, { selectedLevel: null, measurements: null, editing: false });
+  assert.ok(crossAt(fullSpine.calls, [50, 5]) && crossAt(fullSpine.calls, [15, 6]), 'both crosses on a full-spine film');
+  const lumbar = recordingContext();
+  drawDynamicLayer(lumbar.ctx, EDITOR_CANVAS, { ...fakeGeometry(), c2_centroid: [15, 6] }, { selectedLevel: null, measurements: null, editing: false });
+  assert.ok(!crossAt(lumbar.calls, [15, 6]), 'a lumbar film draws no C2 cross');
+});
+
 test('drawDynamicLayer with an editor skips the region outlines, S1 line, C7 cross and femoral drawing', () => {
   const geometry = { ...fakeGeometry(), region: 'full_spine', c7_centroid: [50, 5] };
   const { ctx, calls, painted } = recordingContext();

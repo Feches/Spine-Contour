@@ -766,14 +766,22 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
     ctx.stroke();
     drawSelectedStageLabel(ctx, 'S1', geometry.s1_superior[0], selectedS1, canvas.width);
   }
-  if (geometry.region === 'full_spine' && geometry.c7_centroid) {
-    const [x, y] = geometry.c7_centroid;
-    const arm = Math.max(4, canvas.width / 150);
-    ctx.strokeStyle = `rgb(${LEVEL_RGB.C7.join(',')})`;
-    ctx.beginPath(); ctx.moveTo(x - arm, y); ctx.lineTo(x + arm, y);
-    ctx.moveTo(x, y - arm); ctx.lineTo(x, y + arm); ctx.stroke();
-    drawSelectedStageLabel(ctx, 'C7', geometry.c7_centroid, selectedLevel === 'GLOBAL_SVA', canvas.width);
-  }
+  // A centroid cross in the level's colour: C7's on a full-spine film (the C7–S1 plumb's origin, labelled while
+  // GLOBAL_SVA is selected) and, since gate feedback G11 (2026-10-16, decision D24), C2's on a cervical or full-spine
+  // film (the C2–C7 plumb's origin, labelled while C2C7_SVA is selected), so both ends of the cervical plumb read
+  // alike outside edit mode; before G11 the C2 centroid was drawn only in the editor, as a dot.
+  const crossArm = Math.max(4, canvas.width / 150);
+  const drawCentroidCross = (point, level, selected) => {
+    if (!isPoint(point)) return;
+    const [x, y] = point;
+    ctx.strokeStyle = `rgb(${LEVEL_RGB[level].join(',')})`;
+    ctx.lineWidth = lineWidth;
+    ctx.beginPath(); ctx.moveTo(x - crossArm, y); ctx.lineTo(x + crossArm, y);
+    ctx.moveTo(x, y - crossArm); ctx.lineTo(x, y + crossArm); ctx.stroke();
+    drawSelectedStageLabel(ctx, level, point, selected, canvas.width);
+  };
+  if (geometry.region === 'full_spine') drawCentroidCross(geometry.c7_centroid, 'C7', selectedLevel === 'GLOBAL_SVA');
+  if (['cervical', 'full_spine'].includes(geometry.region)) drawCentroidCross(geometry.c2_centroid, 'C2', selectedLevel === 'C2C7_SVA');
 
   // Ruling R28, as in drawLevelEditor: past 1:1 the hip line, its dash and the markers keep their image-pixel size
   // and magnify with the film instead of shrinking under one image pixel; below 1:1 they hold their screen size.
