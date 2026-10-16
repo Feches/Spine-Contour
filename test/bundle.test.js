@@ -289,6 +289,11 @@ const withLocal = (id, hash, record, over = {}) => ({
   studies: [local(id, over)], localHashes: { [id]: hash }, localRecords: { [id]: record },
 });
 const localRecord = (saved_at, image_sha256 = IMAGE_1) => ({ saved_at, image_sha256 });
+// A calibration reference made on the film with this digest (the smallest one normalizeCalibration keeps).
+const calibrationOf = source_sha256 => ({
+  version: 1, coordinate_space: 'original_image', source_sha256, width: 100, height: 100,
+  status: 'not_found', candidates: [], selected_index: null,
+});
 
 function deepFreeze(value) {
   if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
@@ -423,7 +428,7 @@ test('the no-film fallback matches by the records\' image.sha256 among same-name
   const noRead = planOf([entry], { studies: [studies[1]], localRecords: {} });
   assert.equal(noRead.add.length, 1, 'a local study whose record was not read matches nothing');
   const noRecord = planOf([{ ...entry, record: null }], { studies: [studies[1]], localRecords });
-  assert.equal(noRecord.add.length, 1, 'an entry with no film hash and no record has nothing to match on');
+  assert.equal(noRecord.add.length, 1, 'an entry with no film, no result, no calibration and no record has nothing to match on (file name alone never does)');
   const noImage = planOf([{ ...entry, record: { saved_at: day(12) } }], { studies: [studies[1]], localRecords });
   assert.equal(noImage.add.length, 1, 'a record without an image hash matches nothing');
   const badImage = planOf([{ ...entry, record: labelRecord(day(12), 'abc') }], {
@@ -439,6 +444,47 @@ test('the record fallback is only for an entry with no film hash', () => {
     localRecords: { 'SP-1000': localRecord(day(10), IMAGE_1) },
   });
   assert.equal(plan.add.length, 1, 'a bundle film that hashes differently is a different film, whatever its record says');
+});
+
+test('an entry with no film hash matches by the digest its result or calibration was made on (S20)', () => {
+  const library = (fileName, hash) => ({ studies: [local('SP-1000', { fileName })], localHashes: { 'SP-1000': hash } });
+  const calibrated = entryFor('film', { fileName: 'film.png', film: false, study: { calibration: calibrationOf(HASH_D) } });
+
+  const found = planOf([calibrated], library('renamed.png', HASH_D));
+  assert.equal(found.add.length, 0, 'matched with no film hash and a different file name: the study\'s own digest is the film\'s');
+  assert.deepEqual(found.skip, [{ fileName: 'film.png', reason: ALREADY }]);
+
+  const newer = planOf([{ ...calibrated, record: labelRecord(day(12)) }], library('film.png', HASH_D));
+  assert.deepEqual(newer.update.map(item => item.id), ['SP-1000'], 'and then the table applies as for any match');
+
+  // The geometry's digest stands in the same way (a result with its measurements; the smallest valid one).
+  const placed = entryFor('film', {
+    fileName: 'film.png', film: false,
+    study: {
+      measurements: { PI: null, PT: null, SS: null, LL: { 'L1-S1': null } },
+      geometry: {
+        vertebrae: {}, s1_superior: null, l1_center: null, hip_midpoint: null, femoral_circles: [],
+        manually_cleared: true, source_sha256: HASH_E,
+      },
+    },
+  });
+  assert.equal(planOf([placed], library('film.png', HASH_E)).add.length, 0, 'a geometry digest matches too');
+
+  assert.equal(planOf([calibrated], library('film.png', HASH_E)).add.length, 1, 'another film\'s digest is not it');
+  assert.equal(planOf([calibrated], library('film.png', null)).add.length, 1, 'a local study with no digest is not it');
+  assert.equal(planOf([calibrated], { studies: [local('SP-1000')], localHashes: {} }).add.length, 1, 'nor one whose film was not hashed');
+
+  const withFilm = entryFor('film', { fileName: 'film.png', hash: HASH_B, study: { calibration: calibrationOf(HASH_D) } });
+  assert.equal(planOf([withFilm], library('film.png', HASH_D)).add.length, 1, 'with a film hash in the manifest, only that hash counts');
+
+  const viaRecord = entryFor('film', {
+    fileName: 'film.png', film: false, record: labelRecord(day(12), IMAGE_1), study: { calibration: calibrationOf(HASH_D) },
+  });
+  const fallback = planOf([viaRecord], {
+    studies: [local('SP-1000', { fileName: 'film.png' })], localHashes: { 'SP-1000': null },
+    localRecords: { 'SP-1000': localRecord(day(10), IMAGE_1) },
+  });
+  assert.deepEqual(fallback.update.map(item => item.id), ['SP-1000'], 'the record\'s image hash is still tried when the result\'s digest finds nothing');
 });
 
 test('a match with a bundle record and no local record updates', () => {
@@ -641,6 +687,26 @@ test('actions are the placement list: adds and updates, in manifest order, in th
   assert.deepEqual(plan.skip, [{ fileName: 'older.png', reason: ALREADY }], 'the older entry matches the study the newer one updates');
 });
 
+test('an update deletes the local sidecar only when the bundle study names a different result, never one it merely did not bring (S21)', () => {
+  const deletes = (bundlePrediction, localPrediction, hasSidecar) => {
+    const entry = entryFor('film', {
+      hash: HASH_A, record: labelRecord(day(12)), prediction: hasSidecar, study: { predictionId: bundlePrediction },
+    });
+    const plan = planOf([entry], withLocal('SP-1000', HASH_A, localRecord(day(10)), { predictionId: localPrediction }));
+    assert.equal(plan.actions.length, 1);
+    assert.equal(plan.actions[0].prediction, hasSidecar ? 'prediction.json' : null);
+    return plan.actions[0].deleteLocalPrediction;
+  };
+  assert.equal(deletes(null, 'p1', false), true, 'a hand-placed result over a model result: the model\'s sidecar goes');
+  assert.equal(deletes('p2', 'p1', false), true, 'a different result the bundle did not bring');
+  assert.equal(deletes('p1', 'p1', false), false,
+    'the same result with no sidecar in the bundle (the exporter could not read it): the local sidecar still matches the study and stays');
+  assert.equal(deletes('p1', 'p1', true), false, 'the bundle brings its sidecar: it replaces the local one');
+  assert.equal(deletes('p2', 'p1', true), false, 'a sidecar in the bundle is copied over, not deleted');
+  assert.equal(deletes(null, null, false), false, 'a local study with no result has no sidecar to delete');
+  assert.equal(deletes('p1', null, false), false, 'nor does one whose bundle study names a result it did not bring');
+});
+
 test('planImport does not mutate what it is given and ignores now', () => {
   const entries = [
     entryFor('a', { hash: HASH_A, record: labelRecord(day(12)), prediction: true }),
@@ -675,27 +741,31 @@ test('the same bundle planned twice against the library it produced adds nothing
     entryFor('n1', { hash: HASH_B, record: labelRecord(day(11), IMAGE_2), prediction: true }),
     entryFor('n2', { hash: HASH_C }),
     entryFor('n3', { fileName: 'nofilm.png', film: false, record: labelRecord(day(9), IMAGE_3) }),
+    entryFor('n4', { fileName: 'segmented.png', film: false, study: { calibration: calibrationOf(HASH_E) } }),
   ];
   const bundle = bundleOf(...entries);
   const facts = { localHashes: { 'SP-1000': HASH_A }, localRecords: { 'SP-1000': localRecord(day(10), IMAGE_1) } };
 
   const first = planImport({ bundle, studies: library, ...facts, editing: new Set(), now: NOW });
-  assert.equal(first.add.length, 3);
+  assert.equal(first.add.length, 4);
   assert.equal(first.update.length, 1);
   const imported = applyImport(library, first);
-  assert.equal(imported.length, 4);
+  assert.equal(imported.length, 5);
 
-  // What the screen reads back for the library the import produced: the new films' hashes, and each label record's times.
+  // What the screen reads back for the library the import produced: each study's film digest (its result's, else the
+  // hash of the film it hashed), and each label record's times.
+  const byId = new Map(imported.map(study => [study.id, study]));
   const after = { localHashes: { ...facts.localHashes }, localRecords: { ...facts.localRecords } };
   for (const item of [...first.add, ...first.update]) {
-    after.localHashes[item.id] = item.entry.manifest.film_sha256;
+    after.localHashes[item.id] = localFilmHash(byId.get(item.id)) ?? item.entry.manifest.film_sha256;
     after.localRecords[item.id] = item.entry.record === null ? null : localRecord(item.entry.record.saved_at, item.entry.record.image.sha256);
   }
+  assert.equal(after.localHashes[first.add[3].id], HASH_E, 'the film-less segmented study is known by its calibration\'s digest (S20)');
   const second = planImport({ bundle, studies: imported, ...after, editing: new Set(), now: NOW });
   assert.deepEqual(second.add, []);
   assert.deepEqual(second.update, []);
   assert.deepEqual(second.actions, []);
-  assert.deepEqual(second.skip.map(skip => skip.reason), [ALREADY, ALREADY, ALREADY, ALREADY]);
+  assert.deepEqual(second.skip.map(skip => skip.reason), [ALREADY, ALREADY, ALREADY, ALREADY, ALREADY]);
   assert.deepEqual(applyImport(imported, second), imported);
 });
 
@@ -708,10 +778,7 @@ const GEOMETRY = {
   s1_superior: [[0, 4], [1, 5]], l1_center: [2, 2], hip_midpoint: [3, 3], femoral_circles: [[10, 10, 5], [20, 20, 6]],
 };
 const MEASUREMENTS = { PI: 50, PT: 20, SS: 30, L1PA: null, LL: { 'L1-S1': 40 } };
-const CALIBRATION = {
-  version: 1, coordinate_space: 'original_image', source_sha256: HASH_A, width: 100, height: 100,
-  status: 'not_found', candidates: [], selected_index: null,
-};
+const CALIBRATION = calibrationOf(HASH_A);
 const UPDATED_FIELDS = [
   'view', 'region', 'anteriorSide', 'predictionId', 'processingError', 'processingErrorAt', 'measurements', 'geometry', 'qc',
   'calibration', 'thumbnail', 'reviewedAt', 'labelComment', 'labelFile',

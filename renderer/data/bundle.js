@@ -158,11 +158,18 @@ function trustedStudy(entry) {
 // The local real study the entry's film is, or null (spec §5.3). Local studies are searched in library order and the
 // first match is the study: two copies of one film in the library are not told apart. File name alone never matches.
 // A bundle film hash matches a local study whose hash is the same 64-hex digest, so null never equals null. With no
-// film hash (the film was not exported) the entry's record carries the stored image's hash, which matches the same
-// hash in the record of a local study of the same file name.
+// film hash (the film was not exported) the digest of the film its result or calibration was made on stands in for it
+// (ruling S20: localFilmHash of the entry's study, the same digest the local side matches on), so a segmented or
+// calibrated study whose film was left out still finds its local copy. Failing that, the entry's record carries the
+// stored image's hash, which matches the same hash in the record of a local study of the same file name. An entry with
+// none of these matches nothing: file name alone never does.
 function findLocal(entry, study, locals, localHashes, localRecords) {
+  const withHash = hash => locals.find(local => localHashes?.[local.id] === hash) ?? null;
   const filmHash = entry.manifest?.film_sha256;
-  if (isHash(filmHash)) return locals.find(local => localHashes?.[local.id] === filmHash) ?? null;
+  if (isHash(filmHash)) return withHash(filmHash);
+  const resultHash = localFilmHash(study);
+  const byResult = resultHash === null ? null : withHash(resultHash);
+  if (byResult !== null) return byResult;
   const imageHash = entry.record?.image?.sha256;
   if (!isHash(imageHash)) return null;
   return locals.find(local => local.fileName === study.fileName && localRecords?.[local.id]?.image_sha256 === imageHash) ?? null;
@@ -292,8 +299,13 @@ export function planImport({ bundle, studies, localHashes, localRecords, editing
       taken.add(labelFile);
       plan.update.push({ id: local.id, labelFile, entry: { ...entry, study: decision.study } });
       // A bundle study with no sidecar replaces a result that had one (a hand-placed film over a model result): the
-      // local sidecar goes, or the record would point at a result it no longer has (ruling S8).
-      plan.actions.push(placement('update', local.id, entry, labelFile, local.predictionId != null && !entry.has?.prediction));
+      // local sidecar goes, or the record would point at a result it no longer has (ruling S8). But only when the
+      // bundle's study names a different result (S21): the exporter keeps `predictionId` in study.json even when it
+      // could not read the sidecar, and a sidecar stored under the same `predictionId` still matches the study the
+      // update leaves behind, so deleting it would lose the model's image and mask for good.
+      const retiresSidecar = local.predictionId != null && !entry.has?.prediction
+        && decision.study.predictionId !== local.predictionId;
+      plan.actions.push(placement('update', local.id, entry, labelFile, retiresSidecar));
     }
   });
   return plan;
