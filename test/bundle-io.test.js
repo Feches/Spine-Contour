@@ -219,6 +219,33 @@ test('a film path that is a folder, and a file name that is not a safe name, bot
   assert.equal(await exists(path.join(result.path, 'ok', 'film', 'real.png')), true);
 });
 
+test('a study with no file name counts its film as missing, named by its folder, while it and every other study are still written (S4)', async () => {
+  const fx = await fixture();
+  const film = path.join(fx.root, 'real.png');
+  await writeFile(film, 'bytes');
+  await writeFile(path.join(fx.paths.predictions, 'SP-1000.json'), '{"p":1}');
+
+  const result = await run(fx, [
+    entry({ dir: 'none', fileName: null, filePath: film }),
+    entry({ dir: 'undef', sourceId: 'SP-1001', fileName: undefined, filePath: film }),
+    entry({ dir: 'num', sourceId: 'SP-1002', fileName: 7, filePath: film }),
+    entry({ dir: 'ok', sourceId: 'SP-1003', fileName: 'real.png', filePath: film }),
+  ]);
+
+  assert.equal(result.written, 4);
+  assert.deepEqual(result.filmsMissing, ['none', 'undef', 'num']);
+  const manifest = await readJson(path.join(result.path, 'manifest.json'));
+  assert.deepEqual(manifest.studies.map(study => study.dir), ['none', 'undef', 'num', 'ok']);
+  assert.deepEqual(manifest.studies.map(study => study.file_name), [null, null, null, 'real.png']);
+  assert.deepEqual(manifest.studies.map(study => study.film), [null, null, null, 'film/real.png']);
+  assert.deepEqual(manifest.studies.map(study => study.film_sha256), [null, null, null, sha256('bytes')]);
+  for (const study of manifest.studies) assert.ok(await exists(path.join(result.path, study.dir, 'study.json')), study.dir);
+  for (const dir of ['none', 'undef', 'num']) assert.equal(await exists(path.join(result.path, dir, 'film')), false, `${dir}/film`);
+  // The rest of such a study is written whole.
+  assert.deepEqual(await readJson(path.join(result.path, 'none', 'prediction.json')), { p: 1 });
+  assert.equal(manifest.studies[0].prediction, 'prediction.json');
+});
+
 test('a name that is taken in the parent gets -2, -3, and the result path is the folder actually created', async () => {
   const fx = await fixture();
   await mkdir(path.join(fx.parent, 'bundle'));
@@ -269,7 +296,6 @@ test('exportBundle validates every name before any path is built and writes noth
     ['calibrationDigest in capitals', { entries: [entry({ calibrationDigest: hex.toUpperCase() })] }],
     ['calibrationDigest too short', { entries: [entry({ calibrationDigest: 'abc' })] }],
     ['calibrationDigest that climbs', { entries: [entry({ calibrationDigest: `..${'a'.repeat(62)}` })] }],
-    ['fileName that is not a string', { entries: [entry({ fileName: 7 })] }],
     ['study that is not an object', { entries: [entry({ study: 'nope' })] }],
   ];
   for (const [label, overrides] of bad) {

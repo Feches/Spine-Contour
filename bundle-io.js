@@ -63,7 +63,7 @@ function validateExport({ name, entries, paths }) {
     if (labelFile !== null && labelFile !== undefined && !isLabelFileName(labelFile)) throw new Error(INVALID_ENTRY);
     if (calibrationDigest !== null && calibrationDigest !== undefined
         && !(typeof calibrationDigest === 'string' && SHA256_HEX.test(calibrationDigest))) throw new Error(INVALID_ENTRY);
-    if (typeof entry.fileName !== 'string' || !isObject(entry.study)) throw new Error(INVALID_ENTRY);
+    if (!isObject(entry.study)) throw new Error(INVALID_ENTRY);
   }
   if (!isObject(paths) || !['predictions', 'labels', 'calibrations'].every(key => typeof paths[key] === 'string')) {
     throw new Error('Invalid export folders.');
@@ -137,7 +137,8 @@ async function copyFilm(filePath, studyDir, fileName) {
  * so a bundle cut off mid-export has none and import refuses it. `entries` are renderer/data/bundle.js planExport's;
  * `paths` are the absolute predictions/, labels/ and calibrations/ folders; `appVersion` is the manifest's
  * `app_version`. Resolves `{ path, written, filmsMissing, notRead }`: `path` the folder actually created,
- * `filmsMissing` the file names of films that could not be copied (the study is still written), `notRead` the
+ * `filmsMissing` the file names of films that could not be copied (the study is still written; a study with no file
+ * name is listed by its folder name), `notRead` the
  * sidecars, records and calibrations that exist and could not be read (left out). Rejects with a display-ready
  * sentence when an entry is invalid (nothing written), or the bundle folder, a study folder, a study.json or the
  * manifest cannot be written (a partial folder is left, without a manifest).
@@ -180,12 +181,14 @@ async function exportBundle({ parent, name, entries, appVersion, paths }) {
     }
 
     const filmSha256 = await copyFilm(entry.filePath, studyDir, entry.fileName);
-    if (filmSha256 === null) filmsMissing.push(entry.fileName);
+    const hasFileName = typeof entry.fileName === 'string';
+    // A study with no file name has no film to name: its folder name stands in for it in the toast.
+    if (filmSha256 === null) filmsMissing.push(hasFileName ? entry.fileName : entry.dir);
 
     studies.push({
       dir: entry.dir,
       source_id: entry.sourceId,
-      file_name: entry.fileName,
+      file_name: hasFileName ? entry.fileName : null,
       film: filmSha256 === null ? null : `film/${entry.fileName}`,
       film_sha256: filmSha256,
       prediction: prediction === 'copied' ? 'prediction.json' : null,
