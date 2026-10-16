@@ -922,3 +922,25 @@ stand.
   editor-round headings (CLAUDE.md:41, HANDOFF:163) read "at the owner's gate, not pushed" while their bodies say the
   gate passed. (Addressed by the fix wave's records commit.)
 
+
+### The fix wave's re-review (Opus, 2026-10-15): residuals parked
+
+The scoped re-review of `135a25a..82e4be1` found every finding addressed and no Critical or Important breakage. The
+process allows no second fix wave; its four Minor items and three observations are parked here for the owner.
+
+- Ruling S45 (residuals parked): (1) a local calibration reference the store cannot read ("The saved reference for
+  this image could not be read…") now makes the import SKIP that study as `malformed`, the store's sentence kept only
+  in the result's `skipped` (bundle-io.js `calibrationFailure`; studies.js's skip mapping) — the toast points at the
+  bundle, not at this library's own damaged file; parked: a distinct reason, or the skip's message in the toast.
+  (2) A sidecar deleted between the export's parse and its copy (a Delete during an export, which S24 leaves live)
+  rejects the whole export as "full or read-only" (`copyJson`'s copy step); parked: re-check the source exists before
+  rejecting, so it reads as `unreadable` again. (3) `tools/smoke/README.md` has one rewrapped line at 141 columns.
+  (4) `renderer/screens/studies.js` `confirmImport`'s comment has an orphan wrapping line (`// as re-run first --`).
+  Observations for the owner's gate, unverified: Windows `CopyFile` copies the read-only attribute, so a bundle file
+  marked read-only would arrive as a read-only sidecar or record and a later Save edits rename over it may fail;
+  S42's "skipped as already in the library" holds only for a film- or result-digest match (an entry that matches
+  only through the record-hash fallback, with the local read rejected, is added as a duplicate — the local record
+  is not written over); a Save edits on a stopped update's study before the re-import makes the local record newer,
+  so the re-import skips it (the old order had the same window; `predictionMatchesStudy` protects what is shown).
+  Cost if wrong: a misleading skip reason until the next release; an export aborted by a deletion made during it; a
+  read-only sidecar on Windows; a duplicate study in a rare locked-record case.
