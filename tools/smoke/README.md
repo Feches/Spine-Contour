@@ -743,6 +743,92 @@ DOM and the store only and writes nothing to git. Baseline (2026-10-11, level-ed
 profile): save 5/5, batch 7/7, verify 5/5. The `batch` phase had timed out on its 240 s wait on every run since
 1.0.10 made Auto the import default, so its later checks and the whole `verify` phase had not run on this tree before.
 
+## Running the bundle suite
+
+`smoke-bundle.mjs` drives the annotation bundle (spec
+`docs/superpowers/specs/2026-10-15-annotation-bundle-export-import-design.md`; plan
+`docs/superpowers/plans/2026-10-15-annotation-bundle-export-import.md`, Task 7) against the real app across two scratch
+profiles: a library exported from profile A, imported into profile B, edited there, exported again and imported back
+into A. The native folder pickers are bypassed (plan PB7): the suite calls the Find screen's own `exportBundleTo`,
+`importBundleFrom` and `confirmImport`, and writes each label record through the level editor's own
+`enterLevelEditor`, `setLevelComment`, `saveLevelEdits` and `exitNow` (`renderer/level-editor.js`). No model runs and
+no real film is read (`/measure` needs no graphs); every check is a DOM, store or file read and no screenshot is taken.
+Every selector is a `data-find-key`, a `data-study-id` or a class. Three phases, each on its own launch, in order:
+
+```
+SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-a node tools/smoke/launch.mjs
+SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-a SMOKE_PHASE=a node tools/smoke/smoke-bundle.mjs > tools/smoke/out/smoke-bundle-a.txt 2>&1
+node tools/smoke/cdp.mjs --quit
+SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-b node tools/smoke/launch.mjs
+SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-b SMOKE_PHASE=b node tools/smoke/smoke-bundle.mjs > tools/smoke/out/smoke-bundle-b.txt 2>&1
+node tools/smoke/cdp.mjs --quit
+SMOKE_KEEP_PROFILE=1 SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-a node tools/smoke/launch.mjs
+SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-a SMOKE_PHASE=c node tools/smoke/smoke-bundle.mjs > tools/smoke/out/smoke-bundle-c.txt 2>&1
+node tools/smoke/cdp.mjs --quit
+```
+
+- **The environment.** Every launch also needs `SPINE_CONTOUR_PYTHON` (the main checkout's
+  `.venv/Scripts/python.exe`) and, on this workstation, `TESSERACT_CMD` (the installed app's
+  `resources/backend-runtime/_internal/ocr/tesseract.exe`); unset `ELECTRON_RUN_AS_NODE` if the shell exports it.
+  The suite reads its profile from `SMOKE_USER_DATA`, else `SPINE_CONTOUR_USER_DATA`, else the phase's own folder
+  (`spine-contour-bundle-a` for a and c, `-b` for b, under `%TEMP%`). Run the suite lines from Git Bash, whose `>`
+  writes the file as the suite prints it (PowerShell 5.1's re-encodes it; see the level editor suite's note).
+- **The two profiles.** A is fresh for phase a and KEPT for phase c (`SMOKE_KEEP_PROFILE=1`: phase c reads the
+  library phase a left in A's `studies.json`); B is fresh for phase b. Phase a and phase b each first check that their
+  profile holds no real study, so a launch without the wipe fails at once.
+- **The films and the bundles, all under `%TEMP%`.** `spine-contour-bundle-films\` holds the two canvas-drawn 600x800
+  films (ruling S35: both are on disk, so the export streams and hashes both and every match in phases b and c is by
+  `film_sha256` against a hashed local film): `bundle-segmented.png`, a grey film whose bytes are its sidecar's
+  `image_png`, and `bundle-unsegmented.png`, a gradient. A's bundle is written under `spine-contour-bundle-out\` and
+  B's under `spine-contour-bundle-out-b\`, each as `spine-contour-export-<YYYY-MM-DD>-<HHMM>`; the suite reads the
+  folder actually created from the export's toast and hands it on in `tools/smoke/out/bundle-path.txt` (a → b) and
+  `tools/smoke/out/bundle-path-b.txt` (b → c).
+- **What each phase leaves for the next** (ruling S34; each phase's cleanup runs in `finally`, so a failing phase still
+  does its own). Phase a leaves everything: its two studies, the sidecar, the record, the films and its bundle (it
+  only resets the store keys it touched). Phase b removes profile B's studies, sidecars and records and keeps its
+  bundle and its path file. Phase c removes profile A's studies, sidecars and records, the films folder, both bundle
+  folders and both path files. The two profile folders stay (the next fresh launch wipes them). A phase that fails
+  means a rerun from phase a: phase a wipes the films folder and its bundle parent before it starts, phase b its own.
+- **Ids** `SP-9400` (the segmented fixture) and `SP-9401` (the unsegmented film); `SP-9402`–`SP-9405` are reserved
+  for this suite and unused. B's imported studies take whatever `nextId` gives on B's library and are found by file
+  name. The page-side helper is `window.__bundle` (`study(idOrName)`, `editor()`, a toast log fed by a read-only store
+  subscription, `unsub`), installed by the suite as `smoke-levels.mjs` installs `window.__lv`.
+
+What it checks. **Phase a** (17): profile A fresh; `SP-9400`, measured by the real `/measure` on the level editor
+suite's prototype geometry (Region Lumbar, a sidecar with a prediction id), opens on its film restored from the
+sidecar (the 600x800 dynamic canvas, the run card hidden, `hasStoredImage`, the viewer's prediction snapshot); Edit,
+the comment `from A` (one unsaved change), Save edits toasting `Saved 1 edit to the label record.` and out of edit
+mode; the study naming `bundle-segmented.label.json` with `labelComment` `from A`, and that record on disk with
+`comment` `from A`; the Analysis screen's Mark reviewed (`.analysis-review`, a trusted click) stamping `reviewedAt`
+with nothing toasted (the film has a record, so the mark writes none); Export all toasting exactly `Exported 2
+studies to <%TEMP%>\spine-contour-bundle-out\spine-contour-export-<date>-<time>`; `manifest.json` with `schema`
+`spinecontour.bundle/1` and two entries, `SP-9400` and `SP-9401`; each `study.json` with `filePath` null and its
+`fileName`; each `film/<name>` hashing to its manifest `film_sha256`, which is the source film's own digest; SP-9400's
+folder holding `prediction.json` (its sidecar) and `bundle-segmented.label.json` with `comment` `from A`, both named
+in the manifest; the manifest's `prediction` and `label` null for SP-9401; A's `studies.json` holding both studies (the
+record, the comment and the mark) for phase c; the path file written. **Phase b** (18): profile B fresh and phase a's
+bundle on disk; `importBundleFrom` showing exactly `Import from <bundle>: 2 to add, 0 to update, 0 to skip. The films
+stay in this folder, so keep it where it is.` with the focus on `[data-find-key="import-cancel"]`; `confirmImport`
+toasting exactly `Imported 2 studies, updated 0, skipped 0`; two real studies, each with its `.studies-row` and its
+`filePath` inside the bundle, on disk; the segmented one's row badge reading `Reviewed` and its `labelComment` `from
+A`; its sidecar at `<B>/predictions/<new id>.json` with `predictionMatchesStudy` holding against `api.loadPrediction`;
+opened from its row, its film restored from that sidecar (as in phase a); the store's `query` `from A` leaving exactly
+its row; the same bundle again toasting exactly `Nothing to import: already in the library: <both names in manifest
+order>` with no prompt; Edit reading the imported record's comment `from A` back, `from B` saved (`Saved 1 edit to the
+label record.`), the study and B's record reading `from B`; Export all into `spine-contour-bundle-out-b` (the same exact
+toast), B's bundle holding both films' digests and the record with `comment` `from B`; the path file written.
+**Phase c** (9): profile A reloaded with SP-9400 (its record, `from A`, reviewed) and SP-9401; B's bundle on disk;
+`importBundleFrom` showing `… 0 to add, 1 to update, 1 to skip. …` with the focus on Cancel; `confirmImport` toasting
+exactly `Imported 0 studies, updated 1, skipped 1 (already in the library: bundle-unsegmented.png)` (the unsegmented
+film has no record on either side); SP-9400's `labelComment` `from B` under its own, unchanged `labelFile`
+`bundle-segmented.label.json`, whose record on disk reads `comment` `from B`; SP-9400 still reviewed and its sidecar,
+now B's copy, still matching it; SP-9401 untouched (the same record object, `labelFile` null) and the library still
+exactly the two films. Each phase ends with the harness's no-console-errors check.
+
+**Known baseline** (2026-10-15, branch `worktree-annotation-round-2` at `50d6311` plus this suite; Windows 11, CPU
+processor; the three phases in order on fresh `%TEMP%` profiles as above, one app at a time; DOM, store and file reads
+only, no screenshots): phase a **17/17**, phase b **18/18**, phase c **9/9**.
+
 ## Library
 
 `cdp-lib.mjs` exports `connect()`, whose returned object provides trusted-input helpers
