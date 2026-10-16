@@ -1,0 +1,75 @@
+{
+  "kind": "cervical_anatomical_hrnet",
+  "precision": "float32",
+  "model": "cervical_anatomical_hrnet",
+  "onnx_sha256": "54ea239b9744320c7d6e8957343b2c3d17cd48f3045932cd359ffc6a127c3e78",
+  "checkpoint_sha256": "13475106d2f38d009ed0d96877ca94b22e4e39ad955d3576ffc6e0d09f724ed0",
+  "checkpoint_epoch": 87,
+  "keypoints": [
+    "C2_centroid",
+    "C2_inferior_anterior",
+    "C2_inferior_posterior",
+    "C3_superior_anterior",
+    "C3_superior_posterior",
+    "C3_inferior_anterior",
+    "C3_inferior_posterior",
+    "C4_superior_anterior",
+    "C4_superior_posterior",
+    "C4_inferior_anterior",
+    "C4_inferior_posterior",
+    "C5_superior_anterior",
+    "C5_superior_posterior",
+    "C5_inferior_anterior",
+    "C5_inferior_posterior",
+    "C6_superior_anterior",
+    "C6_superior_posterior",
+    "C6_inferior_anterior",
+    "C6_inferior_posterior",
+    "C7_superior_anterior",
+    "C7_superior_posterior",
+    "C7_inferior_anterior",
+    "C7_inferior_posterior"
+  ],
+  "input_shape": [
+    1,
+    3,
+    512,
+    384
+  ],
+  "output_shape": [
+    1,
+    23,
+    128,
+    96
+  ],
+  "preprocessing": "grayscale uint8; OpenCV aspect-preserving letterbox; ImageNet normalization",
+  "coordinate_transform": "heatmap * 4, subtract padding, divide scale",
+  "training_dataset": "CSXA4963 + QOD204; QOD20 validation",
+  "orientation_semantics": "anatomical channel identity, preserved under mirroring",
+  "checks": [
+    {
+      "image": "/3.6T/mjayasur/cervical_keypoint/datasets-PNG/0001035.png",
+      "mirrored": false,
+      "max_absolute_heatmap_error": 4.76837158203125e-07,
+      "decoded_points_equal": true
+    },
+    {
+      "image": "/3.6T/mjayasur/cervical_keypoint/datasets-PNG/0001035.png",
+      "mirrored": true,
+      "max_absolute_heatmap_error": 3.5762786865234375e-07,
+      "decoded_points_equal": true
+    },
+    {
+      "image": "/3.6T/mjayasur/cervical_keypoint/datasets-PNG/0049040.png",
+      "mirrored": false,
+      "max_absolute_heatmap_error": 4.76837158203125e-07,
+      "decoded_points_equal": true
+    },
+    {
+      "image": "/3.6T/mjayasur/cervical_keypoint/datasets-PNG/0049040.png",
+      "mirrored": true,
+      "max_absolute_heatmap_error": 3.5762786865234375e-07,
+      "decoded_points_equal": true
+    }
+  ]
+}

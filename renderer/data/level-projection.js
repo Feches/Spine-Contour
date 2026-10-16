@@ -149,6 +149,22 @@ function lumbarPart(editor, base) {
 }
 
 /**
+ * (The final review of round 2, I1) Whether a projection places nothing at all: `manually_cleared` (a lumbar film
+ * with nothing left), or none of what a projection writes from the levels: no vertebra (C2-C7 and L1-L5), no S1
+ * endplate, no femoral circle, no C2 or C7 centroid. True for every region's empty projection (lumbar, cervical and
+ * full spine) and for null. Pure.
+ * @param {object|null} geometry   a `projectGeometry` result
+ */
+export function projectionIsEmpty(geometry) {
+  if (!geometry) return true;
+  if (geometry.manually_cleared === true) return true;
+  const hasVertebra = Boolean(geometry.vertebrae) && Object.keys(geometry.vertebrae).length > 0;
+  const hasCircle = Array.isArray(geometry.femoral_circles) && geometry.femoral_circles.length > 0;
+  return !hasVertebra && geometry.s1_superior == null && !hasCircle
+    && geometry.c2_centroid == null && geometry.c7_centroid == null;
+}
+
+/**
  * The editor's levels as the `study.geometry` of the film's region, for `/measure` and the record; null only
  * when there is no editor. Only visible, placed levels are written. `study.geometry` supplies everything the
  * level model does not own (`image_width`, `image_height`, `source_sha256`, `coordinate_space`, ...); the keys

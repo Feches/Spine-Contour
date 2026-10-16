@@ -65,6 +65,11 @@ index.html                        shell only — no inline CSS, no inline script
 main.js                           Electron main; gained its IPC handlers in plans 05–06
 preload.js                        contextBridge surface; grew in plans 05–06
 store-io.js                       (plan 05) disk I/O for the study store and the prediction sidecars — CommonJS
+bundle-io.js                      (2026-10-15, annotation bundles) the bundle's file I/O and the three path validators
+                                  (isStudyId and isLabelFileName, which main.js imports for its sidecar and label paths;
+                                  isSafeName, the bundle code's own); exportBundle, readBundle, hashFiles, placeImport —
+                                  CommonJS, required only by main.js, imports store-io.js; listed in BOTH
+                                  electron-builder allowlists
 scan-folder.js                    (plan 06) recursive film discovery for the Workspace folder scan — CommonJS, node:fs only,
                                   required by main.js; listed in BOTH electron-builder allowlists
 tools/smoke/                      (plan 05) CDP smoke harness: launch.mjs, cdp-lib.mjs, cdp.mjs, smoke-*.mjs — dev only, not packaged
@@ -112,7 +117,9 @@ renderer/                         (new)
                                   parts through configureLevelEditor); module scope; verified by smoke. (2026-10-11, G3) The
                                   window / level state moved out to film-window.js. (2026-10-12, G6, D19) writeReviewRecord:
                                   the label record Mark reviewed writes for a film with none, through writeRecord, the one
-                                  write it shares with Save edits
+                                  write it shares with Save edits. (2026-10-15, annotation editor round 2) setLevelComment(text)
+                                  and revertPlacedLevel(code); sync passes { clearFailure: isHandPlaced(study) } to commitGeometry;
+                                  saveLevelEdits writes the comment into the record and the study's labelComment
   film-window.js                  (2026-10-11, gate feedback G3/G4, plan D15–D17) the view's window / level, the pattern of
                                   level-editor.js: configureFilmWindow({ensureFilm}), windowFor(state, study), openWindowPanel(),
                                   ensureWindowLoaded(), closeWindowPanel(), setWindow({width, level}), resetWindow(),
@@ -183,7 +190,9 @@ renderer/                         (new)
                                   movePlate, resetPlate; R44); pure
   viewer/measure-queue.js         (plan 04) createMeasureQueue({measure, getState, setState, showToast, debounceMs})
                                   → {commitGeometry, replaceMeasured}: per-study revisions, one owner-tracked
-                                  debounce, flush on study switch; session-only drafts, atomic geometry/measurement commit
+                                  debounce, flush on study switch; session-only drafts, atomic geometry/measurement commit.
+                                  (2026-10-15, round 2, spec §4.3) commitGeometry(studyId, geometry, { clearFailure }): the
+                                  write that lands nulls processingError and processingErrorAt in the same patch
   viewer/geometry.js              circle fit, coordinate transforms
 
   data/demo-studies.js            the nine fabricated studies
@@ -196,7 +205,9 @@ renderer/                         (new)
   data/csv.js                     parse, auto-map, export; toPairedCsv and delta1 (2026-09-08); (2026-09-12) toCsv's
                                   Study ID is studyName (the stem) and the record id is not written; fileStem now
                                   lives in data/labels.js and is re-exported here, so labels.js imports nothing from csv.js
-  data/labels.js                  how a study names itself and where it came from
+  data/labels.js                  how a study names itself and where it came from; (2026-10-15) safeStem(stem), moved here from
+                                  data/label-record.js and exported (R12's rules unchanged), so data/label-record.js and
+                                  data/bundle.js share it; label-record.js imports it
   data/timepoints.js              (2026-09-07) pure: timepoint and view vocabularies, token normalisation, §7.2 sort order,
                                   parseFilmDate, the drawer's suggestion lists
   data/seeding.js                 (2026-09-07) pure: folder segments, §8.1 inference from folders and stems, folderRows for the
@@ -227,13 +238,19 @@ renderer/                         (new)
   data/levels.js                  (2026-10-10) the level model: sixteen codes in five groups, kinds, names, film-type defaults, state
                                   derivation, placement steps, visibility, the unsaved count, summary and training status, the
                                   measurement-to-level table behind the dependency notes; the LevelEditor and WindowState typedefs;
-                                  (2026-10-11, D18) pointKeys and changedPoints, the record's edited points; pure
+                                  (2026-10-11, D18) pointKeys and changedPoints, the record's edited points; (2026-10-15, round 2)
+                                  revertLevel, setComment, commentChanged and the editor's comment / savedComment; pure
   data/level-projection.js        (2026-10-10) the level model into study.geometry per region (projectGeometry, projectionRegion,
                                   regionFollowsLevels, projectsLevel, anteriorSideFrom, quadrilateral); the reverse direction is
                                   levels.js levelsFromGeometry; pure
   data/label-record.js            (2026-10-10) the label record: toLabelRecord, recordLevels, labelFileName (a safe stem, -2/-3 on a
                                   clash), viewSlug, appVersion, LABEL_SCHEMA; (2026-10-11, D18) each entry's edited_points and the
-                                  record's edits summary; pure
+                                  record's edits summary; (2026-10-15, round 2) normalizeComment, recordComment and the record's
+                                  comment; pure
+  data/bundle.js                  (2026-10-15, annotation bundles) the planner: BUNDLE_SCHEMA, bundleFolderName, studyFolderName,
+                                  localFilmHash, planExport, exportMessage, planImport, applyImport, importPromptText, importMessage,
+                                  nothingToImportMessage; imports only data/persistence.js, data/label-record.js and data/labels.js;
+                                  pure (the 2026-10-15 bundle amendment below)
   data/contours.js                (2026-10-10) a level's outline in the label mask (traceLabel, simplify, levelContours), for the
                                   record's contour; pure
 
@@ -299,6 +316,9 @@ The single record type. Demo and real studies share it exactly.
  *                                    userData/labels/ (`<stem>.label.json`, `-2`/`-3` on a clash), set by its first
  *                                    Save edits (or, 2026-10-12, D19, by Mark reviewed on a film with none) and
  *                                    kept across saves; null until then
+ * @property {string|null} labelComment  (2026-10-15, annotation editor round 2) the display copy of the label record's
+ *                                    comment: its trimmed text, null for none; set with labelFile by Save edits (and by the
+ *                                    bundle import), kept by a re-run, a Region change and Unmark reviewed
  * @property {Object<string,string>} clinical   field name → value
  */
 ```
@@ -315,7 +335,9 @@ from `filePath`**, never stored, so it stays correct when a moved film is reloca
 must match `/^\d{4}-\d{2}-\d{2}$/` or `validateStudy` nulls it with a warning. (2026-10-01, issue #39) `processingError`
 (1.0.13) and `processingErrorAt` are optional-null on the same terms, with no `STORE_VERSION` bump, and are listed in
 `validateStudy` too; `processingErrorAt` is kept only when it parses as a date and `processingError` is set, and any
-other value that is present is nulled with a warning.
+other value that is present is nulled with a warning. (2026-10-15, annotation editor round 2, spec §3.2) `labelComment`
+is optional-null on the terms of `note` (`optionalText`), listed in `validateStudy`'s returned object so it survives a
+reload, with no `STORE_VERSION` bump; `newStudy` sets it null.
 
 Demo studies additionally carry `dx`, `plan`, `hx`, `outcome`, `pt`, `sex`, `age`,
 `bmi`, `odi`, `conf` for display. Real studies leave these absent; the UI renders `—`.
@@ -496,6 +518,10 @@ export async function readCsv(filePath)         // → string  (raw text)
 export async function deletePrediction(id)      // → void   (plan 06) removes predictions/<id>.json; ENOENT is not an error; rejects for the session after disablePersistence
 export async function saveCsv(request)          // → string|null  absolute path, null if cancelled
 export async function openExternal(url)         // → void
+export async function exportBundle(request)     // → {path, written, filmsMissing, notRead}   (2026-10-15) request {parent, name, entries, appVersion}; writes only inside the folder the person chose
+export async function readBundle(dir)           // → {manifest, entries}   (2026-10-15) reads a bundle folder; rejects when it is not one or is newer
+export async function hashFilms(paths)          // → {[path]: string|null}   (2026-10-15) SHA-256 hex of each film, null when unreadable; at most 500 paths
+export async function importBundle(request)     // → {placed, skipped, failed}   (2026-10-15) request {dir, actions}; the one bundle function gated by assertWritable (rejects after disablePersistence)
 ```
 
 `predict(request)` takes `{name, data, modality: 'xray', bodyPart: 'lumbar', view: 'lateral'}`.
@@ -670,8 +696,8 @@ export const S1_CONFIDENCE_LIMIT = 0.6   // review threshold, not accuracy proba
 
 export function reviewReasons(study)    // → string[]; shared by status and Analysis warnings
 
-export function deriveStatus(study)      // → 'fail'|'unseg'|'ok'|'rev'|'seg'  (2026-10-01; see the amendment below)
-export function statusLabel(status)      // → 'Processing'|'Unsegmented'|'Failed'|'Segmented'|'Needs review'|'Reviewed'; '—' otherwise
+export function deriveStatus(study)      // → 'fail'|'unseg'|'ok'|'hand'|'rev'|'seg'  (2026-10-01; 2026-10-15 adds 'hand'; see the amendments below)
+export function statusLabel(status)      // → 'Processing'|'Unsegmented'|'Failed'|'Segmented'|'Needs review'|'Hand-placed'|'Reviewed'; '—' otherwise
 export function isReviewed(study)                // → boolean  (2026-09-10) a non-blank reviewedAt
 export function displayStatus(study, runningId, batch)  // → the status a row or header SHOWS: 'proc' while runningId === study.id
                                                         //   or (2026-10-01) the film waits in a running batch, else deriveStatus
@@ -706,9 +732,21 @@ running study and, given `state.batch`, for every film still waiting in a runnin
 (`data/batch.js isQueued`), and every caller passes `state.batch`. A batch's waiting films therefore read Processing by
 that rule, not by rule 1; a stopping batch's waiting films read their own status. The Studies summary keeps its three
 clauses and its UNSEGMENTED counts Unsegmented, Processing and Failed (`data/find.js summaryCounts`). The Find sort
-ranks fail 0 · proc 1 · unseg 2 · rev 3 · seg 4 · ok 5. `statusLabel` names all six keys and returns `—` for any
-other. A failed attempt stores `processingError` as `failureReason(message)` and `processingErrorAt` in the same
-update; the Failed pill's tooltip is `failureTitle(processingError, processingErrorAt)`.
+ranks fail 0 · proc 1 · unseg 2 · rev 3 · ~~seg 4 · ok 5~~ hand 4 · seg 5 · ok 6 (2026-10-15). `statusLabel` names all
+~~six~~ seven keys (2026-10-15: `hand`) and returns `—` for any other. A failed attempt stores `processingError` as
+`failureReason(message)` and `processingErrorAt` in the same update; the Failed pill's tooltip is `failureTitle(processingError, processingErrorAt)`.
+
+**2026-10-15 amendment (annotation editor round 2, E2;
+`docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md` §4).** `deriveStatus` gains one rule and its
+first-match order is now: no study → `'unseg'`; a non-blank `processingError` → `'fail'`; `measurements == null` →
+`'unseg'`; `isReviewed` → `'ok'`; **`study.source === 'real' && isHandPlaced(study)` → `'hand'`**; then `reviewReasons`
+non-empty → `'rev'`, else `'seg'`. `isHandPlaced` is `data/predictions.js`'s test (no prediction id and no
+`qc.models`, R16); the real-study guard is load-bearing, since a demo has neither field and keeps reading Segmented. A
+marked hand-placed film reads Reviewed and a failed re-run over it reads Failed. `displayStatus` and
+`reviewBlockedReason` are unchanged; `statusLabel('hand')` is `Hand-placed`. `data/find.js`: `STATUS_RANK` is fail 0 ·
+proc 1 · unseg 2 · rev 3 · hand 4 · seg 5 · ok 6, and `summaryCounts` counts `hand` in TO REVIEW beside `rev`. The
+pill is `.badge-hand` in `styles/components.css` (Needs review's tint with Unsegmented's hollow dot); every other
+surface calls `statusBadge` with the key and needed no change.
 
 **There is exactly one rule, and demo studies are not exempt from it.** All nine demo
 studies have internally consistent parameters (residual ≈ 0) and confidence 0.82–0.97,
@@ -969,6 +1007,9 @@ rename) by `store-io.js`, both reached only through `main.js`'s IPC handlers:
   sidecar through `deletePrediction`. A load-time orphan sweep of `predictions/` is deliberately
   not performed: a refused store must never lose data. Ids are max+1, so a deleted highest id is
   reused by the next film, which is why every id-keyed renderer cache is cleared on delete.
+- **Bundles** (2026-10-15) move a study, its sidecar, its label record, its manual calibration reference and its film
+  between libraries as a folder; nothing in `userData` changes shape. See "2026-10-15 amendment: annotation bundles"
+  at the end of this document.
 - **The film's bytes are never stored.** `filePath` is the film's identity. A re-run takes the
   bytes from this session's payload map, else from `api.readFile(filePath)`, and when that is
   `null` offers to relocate the film (toast + native picker); a relocation rewrites
@@ -1424,7 +1465,8 @@ and keeps it on the record across saves; the main process only validates it.
 filename stem (`lateral_lumbar_001.dcm` → `lateral_lumbar_001`), `-2`, `-3` … when another study's `labelFile`
 already holds the name (D3). The stem is made safe first (R12: `\ / : * ? " < > |` and control characters become `_`,
 leading dots go, the stem is capped at 180 characters, a Windows device name takes a `_`); the main process accepts
-only a bare `<name>.label.json` (`main.js` `LABEL_FILE`) and rejects anything else with `Invalid label file name.`.
+only a bare `<name>.label.json` (`main.js` `LABEL_FILE`; 2026-10-15: `bundle-io.js` `isLabelFileName`) and rejects
+anything else with `Invalid label file name.`.
 Written atomically through `main.js` (`writeJsonAtomic`, IPC `save-label-record`, which creates `labels/`), read with
 `load-label-record` (null when absent or unparseable), deleted with the study (`deleteStudy` and the bulk
 `deleteStudyBatch`, inside the same try as the sidecar), and quarantined with the rest: a corrupt `studies.json` moves
@@ -1503,9 +1545,10 @@ refitted by a rim-point drag, and hidden with its checkbox; Delete and Backspace
 - R22 (final review): `data/levels.js` `canFinishPlacing(editor, imageSize)` is false while a femoral head's fit would
   have a radius under 0.5 px (or below `fitFrom` clicks); `finishPlacing` is a no-op then, FIT's enabled state reads
   it, and `addPoint` drops a head's click within 1 px of any of its rim points.
-- R24 (final review): a hand-placed film whose run had failed keeps `processingError` and its Failed status; whether
+- R24 (final review): ~~a hand-placed film whose run had failed keeps `processingError` and its Failed status; whether
   the first hand-placed commit should clear it, or the film get a status of its own, is the owner's decision (plan
-  Task 15, ROADMAP §8).
+  Task 15, ROADMAP §8).~~ Closed 2026-10-15 by E2 (annotation editor round 2, the amendment at the end of this file):
+  a status of its own, `hand`, and the first hand-placed commit clears the failure.
 - R25 (the wave's re-review): `viewer/level-handles.js` `moveHandle` refuses a rim-point move (a drag or an arrow nudge)
   whose refit would have a radius under `MIN_RADIUS` (0.5 px, exported by `data/levels.js`) and returns the geometry
   unchanged, so no path leaves a femoral head the label record's schema rejects.
@@ -1718,3 +1761,215 @@ construction chip's drag is unchanged.
 
 No `STORE_VERSION` bump, no CSP change, no runtime dependency, no new stylesheet file (rules in
 `styles/screens/analysis.css` section `05 — LEVEL EDITOR` and `styles/components.css`), no Python package.
+
+## 2026-10-15 amendment: annotation editor round 2 (a comment on the record, Hand-placed, REVERT)
+
+Spec `docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md` (E1–E7, the owner's rulings and the
+planner's); plan `plans/2026-10-15-annotation-editor-round-2.md` (rulings P1–P10); branch `worktree-annotation-round-2`
+off `origin/main` @ `06c8cdd` (v1.1.1), `9d5b4e6`..`fa0c181` and the records commit, then the final review's fix wave
+(I1, I2); user doc `docs/level-editor.md`.
+Nothing the 2026-10-10 amendment says is removed; R24 closes with E2.
+
+**Status.** The 2026-10-15 amendment in the `data/status.js` section above: `'hand'`, `Hand-placed`, rank 4, TO REVIEW,
+`.badge-hand`.
+
+**`Study.labelComment`** and the study field list: the Study typedef above and the paragraph under it. Written by exactly
+two paths, Save edits and the bundle spec's import (`specs/2026-10-15-annotation-bundle-export-import-design.md`).
+
+**`viewer/measure-queue.js`: `commitGeometry(studyId, geometry, { clearFailure = false } = {})`.** The queue keeps a
+per-study flag, set by any commit that passes `clearFailure`, kept through the debounce and coalescing, read and
+dropped at the start of `recalculate`, and dropped by `replaceMeasured` (plan P2). The write that lands adds
+`processingError: null, processingErrorAt: null` to the patch that sets the measurements, geometry, `reviewedAt: null`
+and qc, in the same `setState` (E6), so the film never reads Unsegmented in between. A `/measure` error writes nothing:
+the film stays Failed and the next commit tries again. The level editor's `sync` passes `clearFailure:
+isHandPlaced(study)`, which is `false` on a model result, and any other commit passes nothing, so a failed re-run over
+old numbers still reads Failed (port spec P6, which gains this third clearing site). `configureLevelEditor`'s
+`commitGeometry` dependency takes the optional third argument.
+
+**The empty hand-placed projection (the final review, I1; spec §4.3's amendment).** `components/viewer.js` exports the
+queue's `replaceMeasured` beside `commitGeometry`, and `configureLevelEditor` takes a fifth dependency,
+`clearResult(studyId, patch)`, supplied by `screens/analysis.js`: `replaceMeasured(studyId, null)` (any `/measure`
+pending or in flight for the study is orphaned and its draft dropped), then `patch` onto the study, matched by id and
+`addedAt`, in one `setState`. `sync`, for a study `isHandPlaced` whose projection `data/level-projection.js`
+`projectionIsEmpty(geometry)` reads as empty (`manually_cleared`, or no vertebra, S1 endplate, femoral circle or C2/C7
+centroid), calls `clearResult` with `measurements`, `geometry`, `qc` and `reviewedAt` null and the failure from
+`editor.entryFailure` instead of committing: the film reads Failed again, or Unsegmented when the editor found no failure at Edit (a film that never ran, or a hand-placed film reopened in a later session). The
+`LevelEditor` typedef gains `entryFailure: { processingError, processingErrorAt }`, read from the study by `openEditor`
+(nulls when it has none) and carried by every step; `markSaved` and `revertToBaseline` leave it.
+
+**Exports.** `data/levels.js`: `revertLevel(editor, code)`, `setComment(editor, text)`, `commentChanged(editor)`; the
+`LevelEditor` typedef gains the strings `comment` and `savedComment`; `openEditor`'s `saved` takes an optional `comment`
+(else the study's `labelComment`); `unsavedCount` adds one while `commentChanged`; `markSaved` sets both strings to the
+trimmed text and `revertToBaseline` sets `comment` back to `savedComment`; `resetLevelsToModel` leaves both alone
+(D14). `data/label-record.js`: `normalizeComment(text)` (trimmed, null when blank or not a string) and
+`recordComment(record)` (trimmed, `''` for none); `toLabelRecord` writes `comment` after `edits`. `renderer/level-editor.js`
+(the wiring, which stays the only writer of a non-null `state.levelEditor`): `setLevelComment(text)` (an edit that
+commits nothing) and `revertPlacedLevel(code)` (an edit that commits); the private `withLabelFile(studies, studyId,
+addedAt, file, labelComment)` gains a fifth, optional argument (P6: `undefined` leaves the field alone, as Mark reviewed's
+write does; a string or `null` sets it, as Save edits does); `saveLevelEdits` sets `labelComment` with `labelFile` in
+one patch and puts only `savedComment` into the stored editor (P3: the live `comment` stays as typed). `enterLevelEditor`
+reads `recordComment(record)`; `writeReviewRecord` needs no change, since `openEditor` with no record takes the study's
+`labelComment`. `screens/studies.js` `matchesQuery` searches `labelComment`.
+
+**Panel and Analysis.** `components/level-editor.js`: the footer's comment box, one `<textarea>` made at mount in a
+footer that persists (the final review, I2, superseding P8's re-append and selection restore): `.lv-foot` and its
+`.lv-comment` block are never detached while an editor is shown; the head and the list rebuild around them, inserted
+before the foot, and the status line and the actions row (or exit prompt) rebuild inside it, after the comment block;
+only the no-editor path clears everything (the rebuild key carries `commentChanged(editor)`, not the text, and the
+viewer's key handler already ignores keys typed in a `textarea`, P9), and the REVERT button
+(`data-level-key` `revert:<code>`, `lv-text-btn lv-revert`; an edited head stacks Place… over REVERT in `is-stacked`).
+`screens/analysis.js`: the read-only `analysis-comment` block under the actions row, written on every `update()` with no
+key of its own (P10) and hidden in edit mode. CSS: `.badge-hand` in `styles/components.css`; `.lv-comment*`,
+`.analysis-comment*` and the `is-stacked` column in `styles/screens/analysis.css`.
+
+**Label record schema.** `docs/design/level-editor/label-record.schema.json` gains `comment`, optional and nullable the
+way `model_corners` is (`oneOf` string / null, P5), under the same schema id; the example gains one. A record written
+before it validates and reads as no comment.
+
+No `STORE_VERSION` bump, no IPC or CSP change, no runtime dependency, no new module file, no backend change.
+
+## 2026-10-15 amendment: annotation bundles
+
+Spec `docs/superpowers/specs/2026-10-15-annotation-bundle-export-import-design.md` (B1–B9, the owner's rulings and the
+planner's); plan `plans/2026-10-15-annotation-bundle-export-import.md` (rulings PB1–PB10; its Ledger holds the execution
+rulings S1–S44, S37–S44 from the final whole-branch review); branch `worktree-annotation-round-2`, `a810827`..`188b103`,
+the records commits and the final review's fix wave (`eb90e6f`, `630af13` and its records commit), built on the editor
+round above and to ship with it in one PR as 1.2.0 (PB10); user doc `docs/bundles.md`. Nothing an earlier amendment says
+is removed. No `STORE_VERSION` bump, no CSP change, no runtime dependency, no stylesheet file (rules in
+`styles/screens/studies.css`), no backend change.
+
+**The bundle.** A folder, never an archive (B2): `manifest.json` (written last, so a bundle cut off mid-export has none
+and import refuses it; `schema` `spinecontour.bundle/1`, `app_version`, `exported_at`, and per study `dir`, `source_id`,
+`file_name`, `film`, `film_sha256`, `prediction`, `label`, `calibration`, the last five null when absent) and one folder
+per real study holding `study.json` (the study record with `filePath: null`), `prediction.json`, the label record under
+the study's own `labelFile` name, `calibration.json` (B7) and `film/<fileName>` (the original film, B3). Every path in a
+manifest is one bare name; `film` may carry one `film/` prefix. Demo studies are never exported. Both directions are
+local file I/O through native pickers and make no network call (B9).
+
+**`bundle-io.js`** (root, CommonJS; `node:fs`, `node:fs/promises`, `node:crypto`, `node:stream`, `node:stream/promises`,
+`node:path`; imports `writeJsonAtomic` and `readJsonOrNull` from `store-io.js`; required only by `main.js`; **listed in
+both electron-builder allowlists**). Exports `BUNDLE_SCHEMA`, `isStudyId`, `isLabelFileName`, `isSafeName`,
+`exportBundle`, `readBundle`, `hashFiles`, `placeImport`. Its `BUNDLE_SCHEMA` equals the renderer's, pinned by a test
+(S11). Every error it throws is a sentence a person can read: no errno code and no path.
+
+- **The validators moved here** (PB1). `isStudyId(id)` is `/^SP-\d{4,}$/` with the number at least 1000 (the rule
+  `main.js`'s `REAL_STUDY_ID` held), `isLabelFileName(name)` the bare `<name>.label.json` rule (`main.js`'s `LABEL_FILE`),
+  and `isSafeName(name)` one file or folder name of 1–200 characters with none of `\ / : * ? " < > |` or U+0000–U+001F
+  and no leading dot. `main.js`'s `predictionPath` and `labelPath` call the first two and throw the same sentences as
+  before (`Invalid study id.`, `Invalid label file name.`); `REAL_STUDY_ID` and `LABEL_FILE` no longer exist. **Every
+  name that comes from the renderer or from a bundle is validated before any path is built from it**, and nothing
+  outside `userData/predictions/`, `labels/` and `calibrations/`, the folder the person chose, the bundle folder and a
+  study's own `filePath` is read or written.
+- **`exportBundle({ parent, name, entries, appVersion, paths })`** takes `planExport`'s entries and the three absolute
+  data folders, validates every entry before writing anything (a bad entry rejects `Invalid export entry.`), creates
+  `<parent>/<name>` with a non-recursive `mkdir` and, on EEXIST, `<name>-2`, `-3` … (S1), then per entry writes
+  `study.json`, copies the sidecar, the record and the calibration reference when each exists and parses, and streams the
+  film into `film/<fileName>` while hashing it (SHA-256 hex, the digest a model result stores as `source_sha256`). It
+  resolves `{ path, written, filmsMissing, notRead }`: `path` is the folder actually created. A film that is absent,
+  not a file, whose source will not open or whose study has no safe file name is listed in `filmsMissing`, leaves
+  `film` and `film_sha256` null and does not stop the study (Review Focus 3, PB6, S4); a sidecar, record or reference
+  that exists and cannot be read or parsed is listed in `notRead` and left out, named `<fileName> sidecar`, the record's
+  own file name and `<fileName> calibration` (the study's folder name when it has no file name; never the SP-nnnn id,
+  S37). It rejects when the folder, a study folder, a `study.json` or the manifest cannot be written, and (S39) when,
+  once a film's source is open or a JSON file has parsed, its copy into the bundle fails (a full or read-only
+  destination, a read that breaks off): `The film <name> could not be written to the bundle. Is the folder full or
+  read-only?`, `The sidecar for <name> …`, `The label record <file> …`, `The calibration reference for <name> …`, the
+  partial file removed. A partial folder is left without a manifest (PB6).
+- **`readBundle(dir)`** resolves `{ manifest, entries }`, one entry per manifest row in order, each `{ dir, manifest,
+  study, record, has: { prediction, calibration, film }, filmPath, problems }`: `study` and `record` are the parsed
+  `study.json` and label record (null when unreadable), `has.prediction` and `has.calibration` say whether the sidecar
+  and the reference are there AND parse as JSON objects (S38), `has.film` whether the film is there, `filmPath` is the
+  film's absolute path only when the row names one and the file is there (S3). `problems` holds `unsafe path` (a row
+  with any path failing `isSafeName`, which is then not read at all), `study.json unreadable`, `label record
+  unreadable` (S12), `sidecar unreadable` or `calibration unreadable` (a named file that is there and does not parse,
+  S38). It rejects `This folder is not a Spine Contour bundle.` for a missing, unparseable or schemaless manifest or one
+  without a `studies` array, and `This bundle was written by a newer Spine Contour (schema <id>). Update the app to
+  import it.` for another schema. Sidecars and references are parsed, checked and dropped, films only checked for:
+  none of them reaches the result (PB2).
+- **`hashFiles(paths)`** resolves `{ [path]: sha256 | null }`, streamed one file after another.
+- **`placeImport({ dir, actions, paths, saveCalibration })`**: per action `{ kind: 'add' | 'update', dir, id, prediction:
+  'prediction.json' | null, deleteLocalPrediction, label: { from, to } | null, calibration: 'calibration.json' | null }`,
+  checked whole first (`Invalid import action.`), then every bundle file it places parsed, then (S38) **the reference
+  handed to `saveCalibration`, the sidecar copied to `predictions/<id>.json` (or, with none and
+  `deleteLocalPrediction`, the local one unlinked), and the record copied to `labels/<to>` LAST**, so an action stopped
+  part way leaves the local record older and a re-import plans it again; each copy goes through a temporary file and a
+  rename. It resolves `{ placed, skipped, failed }`. A **source-side** failure (a bundle file gone or unparseable at
+  placement, or a reference the calibration store refuses with its own sentence) **skips** that action, nothing of it
+  written, and the loop goes on: `skipped` gains `{ id, message }`. A **destination-side** failure (a copy, write,
+  rename or unlink error in the data folder, an unlink's ENOENT excepted, or an invalid action) **stops** the import
+  (PB5): the ids placed before it stay placed, nothing after it is placed, and `failed` is `{ id, message }`.
+
+**The four channels** (`main.js` handlers, `preload.js` bridge, `renderer/api.js`; the data folders are supplied by
+`main.js`, never named by the renderer):
+
+| Channel | `preload.js` / `api.js` | Reads | Writes | Gate |
+|---|---|---|---|---|
+| `export-bundle` | `exportBundle(request)` | the data folders' sidecars, records and references; each study's film at its `filePath` | only inside `<parent>/<name>` | none: it writes outside the data folder |
+| `read-bundle` | `readBundle(dir)` | the manifest, each `study.json` and record; each sidecar and reference parsed and dropped (S38); presence of the film | nothing | none |
+| `hash-films` | `hashFilms(paths)` | the films named, streamed; at most 500 paths (`Invalid request.` beyond) | nothing | none |
+| `import-bundle` | `importBundle(request)` | the bundle's sidecars, records and references | `predictions/<id>.json`, `labels/<name>`, the calibration store through its own `save`; unlinks a retired sidecar | `assertWritable()` |
+
+`export-bundle` first checks `parent` is an existing directory (`The folder was not found.`). **The renderer never sees
+film or sidecar bytes** (PB2): it receives parsed records and flags, and the copies happen in the main process.
+
+**`renderer/data/bundle.js`** is pure ES module code: it imports `STORE_VERSION`, `nextId` and `validate` from
+`persistence.js`, `labelFileName` and `normalizeComment` from `label-record.js`, and `fileStem`, `lastSegment` and
+`safeStem` from `labels.js`, and nothing else. It does **not** import `predictions.js` (S5), `level-editor.js` or any
+screen: **`hasStashedEditor` is evaluated by the screen** and handed in as the `editing` set. `safeStem` moved from
+`label-record.js` to `labels.js` and is exported, so `studyFolderName` and `labelFileName` share R12's rules;
+`labelFileName` is unchanged in behaviour. Exports:
+
+- `bundleFolderName(now, taken)` (`spine-contour-export-YYYY-MM-DD-HHMM` in local time) and `studyFolderName(stem,
+  taken)` (the safe stem, no trailing dot or space, S10), both suffixing `-2`, `-3` on a case-insensitive clash.
+- `localFilmHash(study)`: the first 64-hex `source_sha256` of `calibration`, then `geometry`, else null (S9).
+- `planExport(studies, now, takenFolderNames)` → `{ name, entries }`, an entry `{ dir, sourceId, fileName, filePath,
+  study, labelFile, calibrationDigest }` with `study` the record with `filePath: null`; demo studies dropped; the root
+  names `manifest.json` and `manifest.json.tmp` are never a study folder; a damaged `calibrationDigest` is null (S13).
+- `planImport({ bundle, studies, localHashes, localRecords, editing })` → `{ add, update, skip, actions }`, per entry in
+  manifest order. **Matching is by film hash and never by file name alone** (B4): the entry's `film_sha256` when it is a
+  64-hex digest, else the digest of its study's own result (`localFilmHash`, S20), against `localHashes[id]`; failing
+  both, its record's `image.sha256` against `localRecords[id].image_sha256` of a local study of the same `fileName`
+  (S22). **The rule** (B4, PB8): `malformed` when the entry has `problems`, no study, or `validate` rejects its
+  `study.json`; `add` with no local match; `being edited` when the match is in `editing`; `update` when the bundle has a
+  record and the match has none, or both parse and the bundle's `saved_at` is strictly later; otherwise `already in the
+  library` (an unparseable time counts as none). Two entries on one local study: the one with a record, then the later
+  saved, applies, the other is skipped (S18). Ids come from `nextId` over the library plus those given so far, label
+  names from `labelFileName` over the library's names plus those given so far (S2), both in manifest order; an update
+  keeps the local `labelFile` and takes a fresh name only when it had none (PB9); `deleteLocalPrediction` is true only
+  when the local study has a `predictionId`, the entry has no sidecar and the bundle's study names a different
+  `predictionId` (S8, S21). The entry's study is the record `validate` returns (S7).
+- `applyImport(studies, plan, placedIds)` → new studies: updates patched with `view`, `region`, `anteriorSide`,
+  `predictionId`, `processingError`, `processingErrorAt`, `measurements`, `geometry`, `qc`, `calibration`, `thumbnail`,
+  `reviewedAt`, `labelComment` and `labelFile` (the local study keeping `id`, `filePath`, `addedAt`, `name`,
+  `workspaceFolder`, `subjectId`, `timepoint`, `filmDate`, `note` and `clinical`), adds appended with the new `id`, the
+  film's path inside the bundle (null when it was not exported, B5), `labelFile` and `labelComment` (`study.labelComment`,
+  else the record's `comment`, S17); only the ids in `placedIds`; nothing mutated.
+- `exportMessage` (its not-read clause reads `· <k> files could not be read (<names>)`, `file` at 1, S40),
+  `importPromptText` (names the bundle by its last path segment, S16), `importMessage` (S19) and
+  `nothingToImportMessage`, whose sentences are the spec's §4–§5 and `docs/bundles.md`'s.
+
+**`screens/studies.js`** owns the flows and is the only place that composes them. The Find bar's `Export all` / `Export N
+selected` (`data-find-key` `export-bundle`; `Exporting…` in flight) acts on `rowsToExport` over the visible real rows
+(B6); the dropzone's `Import bundle…` (`import-bundle`; `Importing…`) sits beside Choose radiograph; the inline prompt
+(`import-prompt`, `import-confirm`, `import-cancel`, focus on Cancel, Escape cancels) takes the bar's place as Delete's
+does (B8). The flows are exported without their pickers so the smoke suite can drive them (PB7): `exportBundleTo(parentDir)`,
+`importBundleFrom(dir)`, `confirmImport()`. Module-scope, never in the store: `exporting`, `importing`, `pendingImport`
+(`{ dir, plan, studies }`) and the dropzone's `importButton`. Both buttons are disabled, with the reason on their titles,
+while a run or batch is in flight, studies are not being saved, or an export or import is in flight, and the bar's other
+actions wait while an import reads or places (S23, S25). `importBundleFrom` reads the bundle, builds `localHashes` from
+`localFilmHash` and, for local studies without one that share an entry's `fileName`, `hashFilms` in batches of 500, reads
+the label record of each local study the rule needs (PB3, S27; a record whose read rejects is handed on as `{ saved_at:
+null, image_sha256: null }`, so the entry is skipped rather than written over it, while a missing or unparseable one is
+null, S42), and plans; a plan with nothing to add or update toasts
+`Nothing to import: …`, one built on a library that changed meanwhile toasts that it did (S29), any other waits for
+Import or Cancel and is withdrawn silently when the library or the tab changes (S26). `confirmImport` calls
+`importBundle`, then for each placed update forgets the study's level editor, prediction snapshot and cached film, drops
+a placed add whose id the library took meanwhile and names it (S28), and applies the rest in **one** `setState` after the
+files are on disk (PB4). While an import runs the screen's other add paths refuse with `Wait for the import to finish.`
+(S28). An action `placeImport` skipped is counted under skipped as `malformed`, named by its film, and is neither added
+nor updated (S38). A write failure stops at that study and the toast says so (PB5, S19). The record id is never shown in
+the import's toast (S31) or the export's (S37).
+
+**Label record and store.** Unchanged: the record keeps its schema id and the study gains no field. An import is the
+second of the two paths the editor round's amendment allows to write `labelComment` (Save edits is the first); it sets
+it, and `labelFile`, on the studies it adds or updates.

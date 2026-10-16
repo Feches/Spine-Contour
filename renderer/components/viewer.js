@@ -6,7 +6,7 @@ import { getState, setState } from '../store.js';
 import { measure } from '../api.js';
 import { showToast } from './toast.js';
 import {
-  createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel, colorFor, LEVEL_HANDLE_RADIUS_PX,
+  createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel, colorFor,
 } from '../viewer/canvas.js';
 import { clientToImage } from '../viewer/geometry.js';
 import {
@@ -18,7 +18,7 @@ import { inferenceView, unsupportedViewReason } from '../data/inference-view.js'
 import { progressTitle, progressDetail } from '../data/processing.js';
 import { cancelProcessing } from '../processing.js';
 import { kindOf, rowName, placementSteps, placingLabel, placingHelp, canFinishPlacing } from '../data/levels.js';
-import { levelHandles, hitTestLevelHandles, moveHandle, nudgeHandle, nextLevelHandle, handleAt } from '../viewer/level-handles.js';
+import { levelHandles, hitTestLevelHandles, moveHandle, nudgeHandle, nextLevelHandle, handleAt, handleRadiusImagePx } from '../viewer/level-handles.js';
 import { plateAnteriorSide, plateAt, plateOffset, movePlate, resetPlate } from '../viewer/level-labels.js';
 import { dragWindow, windowText } from '../viewer/window-level.js';
 import {
@@ -117,8 +117,10 @@ export function drawnPlates() {
 
 const measureQueue = createMeasureQueue({ measure, getState, setState, showToast, debounceMs: MEASURE_DEBOUNCE_MS });
 // The level editor's projection reaches the store through here (renderer/level-editor.js, wired by
-// screens/analysis.js): previewed as a draft, re-measured, then written to the study record.
-export const { commitGeometry } = measureQueue;
+// screens/analysis.js): previewed as a draft, re-measured, then written to the study record. (The final review of
+// round 2, I1) `replaceMeasured` too, for the screen's clearResult: a film placed by hand and emptied again orphans
+// whatever /measure it has pending or in flight before its result is taken away.
+export const { commitGeometry, replaceMeasured } = measureQueue;
 
 // ---------------------------------------------------------------------------
 // The raw /predict output per study: the target of RESET TO PREDICTION. Kept off the Study
@@ -480,12 +482,14 @@ export function mountViewer(container) {
   });
   resizeObserver.observe(stage);
 
-  // The grab radius in CSS pixels: 14 up to 1:1, where the handle is drawn 6 CSS px wide; past 1:1 the handle
-  // keeps its 6 image px and grows with the film (R28), so the grab area follows the drawn disc (the re-review
-  // of the gate feedback: at 800% on a small film a press inside the drawn handle missed it).
+  // The grab radius in CSS pixels: 14, or the drawn disc when that is wider. Past 1:1 the disc grows with the square
+  // root of the zoom (gate feedback G9, decision D22: 12 CSS px at 4x, 17 at 8x), so the grab area follows it and a
+  // press anywhere on the disc is inside; on a zoomed-out film the disc shrinks to 3 CSS px (G8, D21) and the grab
+  // radius keeps its 14 px floor, so a drag target does not shrink with the picture.
   const HANDLE_GRAB_PX = 14;
   function grabRadius() {
-    return Math.max(HANDLE_GRAB_PX, LEVEL_HANDLE_RADIUS_PX / Math.min(1, pixelRatio()));
+    const ratio = pixelRatio();
+    return Math.max(HANDLE_GRAB_PX, handleRadiusImagePx(ratio) / ratio);
   }
 
   // The selected level's handle under the pointer, or null. Only the selected level has handles (handoff

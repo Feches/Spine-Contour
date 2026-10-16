@@ -331,6 +331,22 @@ test('validate carries the note as optional text and defaults it to null', () =>
   }
 });
 
+test('validate carries the label comment copy as optional text and defaults it to null (annotation round 2, spec §3.3)', () => {
+  const [bare] = validate({ version: STORE_VERSION, studies: [identity('SP-1000')] });
+  assert.equal(bare.labelComment, null);
+  // Listed on the returned object, or the saver writes it and the next load drops it.
+  assert.ok('labelComment' in bare);
+  const [commented] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1001'), labelComment: 'L5 is sacralised' }] });
+  assert.equal(commented.labelComment, 'L5 is sacralised');
+  for (const bad of ['   ', 42, null, {}]) {
+    const [study] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1002'), labelComment: bad }] });
+    assert.equal(study.labelComment, null, String(bad));
+  }
+  const [noted] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1003'), note: 'femoral heads', labelComment: 'x' }] });
+  assert.equal(noted.note, 'femoral heads', 'the note is a separate field');
+  assert.equal(noted.labelComment, 'x');
+});
+
 test('validate nulls a blank or non-string study field silently, and a malformed film date with one warning', (t) => {
   const warn = t.mock.method(console, 'warn', () => {});
   const [study] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1000'), subjectId: '  ', timepoint: 42, filmDate: 20250302 }] });

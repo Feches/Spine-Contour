@@ -6,6 +6,7 @@ const net = require('node:net');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { readStudyStore, writeStudyStore, readJsonOrNull, writeJsonAtomic } = require('./store-io.js');
+const { isStudyId, isLabelFileName, exportBundle, readBundle, hashFiles, placeImport } = require('./bundle-io.js');
 const { scanFolder } = require('./scan-folder.js');
 const { postForm, normalizePerformance, normalizeProcessors } = require('./backend-client.cjs');
 const { createCalibrationStore } = require('./calibration-io.js');
@@ -38,7 +39,6 @@ if (!app.isPackaged && process.env.SPINE_CONTOUR_USER_DATA) {
   app.setPath('userData', process.env.SPINE_CONTOUR_USER_DATA);
 }
 
-const REAL_STUDY_ID = /^SP-\d{4,}$/;
 const calibrationStore = createCalibrationStore(path.join(app.getPath('userData'), 'calibrations'));
 ipcMain.handle('save-calibration', (_event, reference) => calibrationStore.save(reference));
 
@@ -46,22 +46,19 @@ function storePath() {
   return path.join(app.getPath('userData'), 'studies.json');
 }
 
-// Sidecar ids come from the renderer; the pattern check keeps them inside predictions/, and
-// the range check keeps demo ids (SP-0030..SP-0042, which have no film) out of it.
+// Sidecar ids come from the renderer; isStudyId (bundle-io.js) keeps them inside predictions/ and
+// keeps demo ids (SP-0030..SP-0042, which have no film) out of it.
 function predictionPath(id) {
-  if (typeof id !== 'string' || !REAL_STUDY_ID.test(id) || Number(id.slice(3)) < 1000) {
-    throw new Error('Invalid study id.');
-  }
+  if (!isStudyId(id)) throw new Error('Invalid study id.');
   return path.join(app.getPath('userData'), 'predictions', `${id}.json`);
 }
 
 // (2026-10-10, level editor) The label record: one JSON file per film under userData/labels/. The
 // renderer picks the name (<stem>.label.json, stored on the study as labelFile) and this process only
-// validates it. No path separators and no leading dot, so '.' and '..' cannot form and nothing
-// outside labels/ is reachable.
-const LABEL_FILE = /^(?!\.)[^\\/:*?"<>|\u0000-\u001f]{1,200}\.label\.json$/;
+// validates it (isLabelFileName, bundle-io.js). No path separators and no leading dot, so '.' and
+// '..' cannot form and nothing outside labels/ is reachable.
 function labelPath(name) {
-  if (typeof name !== 'string' || !LABEL_FILE.test(name)) throw new Error('Invalid label file name.');
+  if (!isLabelFileName(name)) throw new Error('Invalid label file name.');
   return path.join(app.getPath('userData'), 'labels', name);
 }
 
@@ -411,6 +408,73 @@ ipcMain.handle('delete-label-record', async (_event, name) => {
     if (error.code === 'ENOENT') return;
     throw new Error('The file is locked or the folder is not writable. Close anything that may be using it, then try again.');
   }
+});
+
+// (2026-10-15, annotation bundles; spec 2026-10-15-annotation-bundle-export-import-design.md) The four bundle
+// channels. bundle-io.js does the file work and validates every name before it builds a path from it; these handlers
+// check the request's shape and hand in the data folders themselves, so the renderer never names a folder under
+// userData. Every throw is display-ready: renderer/api.js strips the IPC prefix and the Studies screen hands the
+// message to a toast verbatim.
+function bundleDataFolders() {
+  const root = app.getPath('userData');
+  return {
+    predictions: path.join(root, 'predictions'),
+    labels: path.join(root, 'labels'),
+    calibrations: path.join(root, 'calibrations'),
+  };
+}
+
+function isExistingFolder(target) {
+  if (typeof target !== 'string' || target.length === 0) return false;
+  try {
+    return fs.existsSync(target) && fs.statSync(target).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+// The parent is the folder the person just chose. Checked here, before exportBundle creates anything, so a drive that
+// went away between the pick and the export, or a path that names a file, reads as the folder not being found.
+ipcMain.handle('export-bundle', async (_event, request) => {
+  const { parent, name, entries, appVersion } = request ?? {};
+  if (!isExistingFolder(parent)) throw new Error('The folder was not found.');
+  return exportBundle({ parent, name, entries, appVersion, paths: bundleDataFolders() });
+});
+
+// manifest.json, each study.json and each label record are parsed and returned; sidecars and calibrations are parsed
+// to be checked and dropped (ruling S38), films only checked for, so the renderer never sees their bytes. A folder
+// that is not a bundle rejects with readBundle's own sentence.
+ipcMain.handle('read-bundle', async (_event, dir) => {
+  if (typeof dir !== 'string' || dir.length === 0) throw new Error('The folder was not found.');
+  return readBundle(dir);
+});
+
+// The library's own films, hashed so an import can match a study by content (plan PB3). Each film is streamed, never
+// held whole, and hashFiles has no size cap; the 500-path cap keeps one request from asking for an unbounded list (the
+// screen sends larger lists in batches).
+ipcMain.handle('hash-films', async (_event, paths) => {
+  if (!Array.isArray(paths) || paths.length > 500 || !paths.every(file => typeof file === 'string')) {
+    throw new Error('Invalid request.');
+  }
+  return hashFiles(paths);
+});
+
+// Places the confirmed studies' files: per study the calibration, the sidecar, then the label record last (ruling
+// S38). A study whose bundle file is gone or damaged, or whose calibration the store refuses, is skipped and the rest
+// go on; a write that fails in the data folder stops the import there (plan PB5). It resolves {placed, skipped,
+// failed} rather than rejecting, and the renderer applies only the placed studies to the store. A study stopped part
+// way can leave its calibration and sidecar placed with its old record, so the store still names the old result and
+// importing the bundle again plans the update again. A calibration reference goes through the store's own save,
+// which validates it and keeps its review revision counting.
+ipcMain.handle('import-bundle', async (_event, request) => {
+  const { dir, actions } = request ?? {};
+  if (!Array.isArray(actions)) throw new Error('Invalid request.');
+  return placeImport({
+    dir,
+    actions,
+    paths: bundleDataFolders(),
+    saveCalibration: (reference) => calibrationStore.save(reference),
+  });
 });
 
 // The film bytes for a persisted study. Resolves null when the file is gone — that is an

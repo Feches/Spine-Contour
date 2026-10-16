@@ -30,6 +30,18 @@
 // a left drag on L3's plate by (40, 20) client px setting `platePositions.L3` to that travel in image px and moving the
 // rect by it, L3's SA handle under the plate still winning the press, a double-click putting the plate back, and another
 // study opened from the list resetting `platePositions` to {} (SP-9300 then reopened, its stash bringing L3 back).
+// Annotation editor round 2 (2026-10-15; docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md): SP-9301
+// is seeded as a film whose run failed (`processingError` 'No spine was found on this film.'). Section 12 reads its header
+// pill Failed before Edit and Hand-placed once the first level placed by hand is committed (the measure queue's own write
+// clears the failure, §4.3); Discard then takes that level off and the pill reads Failed again, the failure back and
+// the result gone (the round's final review, I1), and L1 is placed again; outside edit mode it marks and unmarks the
+// film reviewed (Reviewed, then Hand-placed again) and reads Hand-placed on the Find list's row. Section 20, on SP-9300
+// after section 7: REVERT returns an Edited level to the model's output, L4 moved through the page's own
+// commitHandleMove and then Head 1, whose row stacks Place… over REVERT (§5). Section 21, straight after: the comment
+// box in the panel's footer, its first keystroke undone by Ctrl+Z (I2: the foot is never detached), typed, kept with its
+// focus and caret across a rebuild that leaves the foot and the comment block the same nodes, Escape in it ignored by
+// the stage, saved into the record's `comment` and the study's `labelComment`, discarded, shown read-only on the
+// Analysis panel outside edit mode and read back on Edit (§3); it leaves SP-9300 in edit mode for section 8.
 //
 //   node tools/smoke/launch.mjs                                     (SPINE_CONTOUR_USER_DATA under %TEMP%)
 //   node tools/smoke/smoke-levels.mjs                               phase `dom` (the default)
@@ -38,7 +50,8 @@
 //
 // Phase `dom`: no model run and no real film. Two synthetic, canvas-drawn films: SP-9300, a segmented fixture whose
 // geometry is the prototype's (L1, L2, L4, L5, S1 and two heads; L3 missing) with an all-zero mask, measured by the
-// real /measure; and SP-9301, an unsegmented film written to %TEMP% and placed by hand, decoded by the real /decode.
+// real /measure; and SP-9301, an unsegmented film written to %TEMP% and placed by hand, decoded by the real /decode, its
+// last run recorded as failed (round 2).
 // Section 17 adds SP-9303, a study with no film, only so that another study can be opened and left; section 18 adds
 // SP-9304, the second copy of the segmented fixture, for Mark reviewed.
 // Phase `film`: one real lateral lumbar film, segmented by the real models as SP-9302 (backend/onnx must hold the
@@ -77,7 +90,11 @@ const SAVED_TOAST = 'Saved the label record.';
 const REVIEW_WRITE_FAILED = 'Marked reviewed. The label record could not be written: ';
 const HAND_FILE = 'levels-hand-placed.png';
 const HAND_PATH = path.join(FILM_DIR, HAND_FILE);
+const HAND_FAILURE = 'No spine was found on this film.';   // SP-9301's seeded failure (round 2, spec §4.3)
+const HAND_FAILED_AT = '2026-10-10T08:00:00.000Z';         // and when it was recorded
 const PREDICTION_ID = 'smoke-levels-fixture';
+const STATUS_PILL = '.analysis-status .badge';
+const COMMENT = 'Hardware over L4';
 
 const DASH = '—';
 const MID = '·';
@@ -216,6 +233,8 @@ const clearToasts = () => ev('(() => { window.__lv.toasts.length = 0; return tru
 const settled = (id, timeoutMs = 10000) => until(`window.__lv.settled(${js(id)})`, timeoutMs);
 const studyOf = (id) => ev(`window.__lv.study(${js(id)})`);
 const badge = (code) => text(`[data-level-key="${code}"] .badge`);
+// (Round 2) A call into the page's own renderer/level-editor.js (`m`), as the panel's controls and the stage make it.
+const viaWiring = (call) => ev(`import('./renderer/level-editor.js').then((m) => { ${call}; return true; })`);
 const editLabel = () => text('.viewer-editbar-label');
 const readRecord = (name) => JSON.parse(fs.readFileSync(path.join(LABELS, name), 'utf8'));
 
@@ -810,7 +829,9 @@ async function domPhase() {
     const seg = { id: ${js(SEG)}, source: 'real', fileName: ${js(SEG_FILE)}, filePath: '/test/levels-ui-check.png',
       name: 'Levels UI check', addedAt: new Date().toISOString(), view: 'Standing lateral', clinical: {},
       predictionId: ${js(PREDICTION_ID)}, labelFile: null, measurements: result.measurements, geometry: result.geometry, qc: result.qc ?? null };
-    const hand = { ...newStudy({ id: ${js(HAND)}, fileName: ${js(HAND_FILE)}, filePath: ${js(HAND_PATH)} }), labelFile: null };
+    // (Annotation editor round 2, spec §4.3) A film whose run failed: the first hand-placed commit clears the failure.
+    const hand = { ...newStudy({ id: ${js(HAND)}, fileName: ${js(HAND_FILE)}, filePath: ${js(HAND_PATH)} }), labelFile: null,
+      processingError: ${js(HAND_FAILURE)}, processingErrorAt: ${js(HAND_FAILED_AT)} };
     const ours = new Set([${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}, ${js(REVIEW)}]);
     store.setState((s) => ({ ack: true, studies: [seg, hand, ...s.studies.filter((x) => !ours.has(x.id))], screen: 'studies',
       studiesTab: 'find', query: '', openId: null, editing: false, levelEditor: null, selection: null, measurementDrafts: {},
@@ -1045,8 +1066,147 @@ async function domPhase() {
     discardMeasured && afterDiscard?.geometry?.s1_superior === null && panelBack.measHidden === false && panelBack.levelHidden === true && panelBack.pi === DASH,
     { s1: afterDiscard?.geometry?.s1_superior, panelBack });
 
-  // 8. Femoral: Place… on Head 1, two rim points, FIT; then a rim-point drag refits.
+  // 20 (annotation editor round 2, spec §5). REVERT, on SP-9300 back in edit mode with nothing unsaved: an Edited level
+  // returns to the model's output one level at a time. L4 moved 5 px right through the page's own commitHandleMove (a
+  // handle drag's commit), then its REVERT; then Head 1 moved 4 px, its row stacking Place… over REVERT, then its
+  // REVERT. (The dashed model ghost is canvas-drawn and is not asserted.)
   await enterEdit();
+  const nothingBefore = await text('.lv-unsaved');
+  const l4Moved = await ev(`(() => {
+    const shift = (v) => (Array.isArray(v) ? (v.length === 2 && v.every((n) => typeof n === 'number') ? [v[0] + 5, v[1]] : v.map(shift))
+      : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, inner]) => [k, shift(inner)])) : v);
+    return shift(window.__lv.editor()?.levels?.L4?.geometry ?? null);
+  })()`);
+  await viaWiring(`m.commitHandleMove('L4', ${js(l4Moved)})`);
+  await settled(SEG);
+  check('20. L4 moved 5 px reads Edited, with REVERT on its row and 1 UNSAVED CHANGE',
+    nothingBefore === 'NOTHING TO SAVE' && Boolean(l4Moved?.superior) && (await badge('L4')) === 'Edited'
+      && (await present('[data-level-key="revert:L4"]')) && (await text('.lv-unsaved')) === '1 UNSAVED CHANGE',
+    { nothingBefore, L4: await badge('L4'), revert: await present('[data-level-key="revert:L4"]'), unsaved: await text('.lv-unsaved') });
+  await clickSelector('[data-level-key="revert:L4"]');
+  await settled(SEG);
+  const l4Focus = await ev(`document.activeElement?.getAttribute('data-level-key') ?? null`);
+  check('20. REVERT on L4: Segmented, its REVERT gone with focus on the row\'s select button, and NOTHING TO SAVE',
+    (await badge('L4')) === 'Segmented' && !(await present('[data-level-key="revert:L4"]')) && (await text('.lv-unsaved')) === 'NOTHING TO SAVE' && l4Focus === 'L4',
+    { L4: await badge('L4'), revert: await present('[data-level-key="revert:L4"]'), unsaved: await text('.lv-unsaved'), l4Focus });
+  const l4Reverted = await ev(`(() => { const e = window.__lv.editor(); return { source: e?.levels?.L4?.source ?? null, model: JSON.stringify(e?.model?.L4?.superior ?? null) }; })()`);
+  const l4Stored = js((await studyOf(SEG))?.geometry?.vertebrae?.L4?.superior ?? null);
+  check('20. the reverted L4 is the model\'s again: source model, and the study\'s L4 superior endplate is the model\'s',
+    l4Reverted.source === 'model' && l4Reverted.model !== 'null' && l4Stored === l4Reverted.model,
+    { ...l4Reverted, stored: l4Stored });
+
+  const fh1 = await ev('window.__lv.editor()?.levels?.FH1?.geometry ?? null');
+  if (fh1?.center) await viaWiring(`m.commitHandleMove('FH1', ${js({ center: [fh1.center[0] + 4, fh1.center[1]], radius: fh1.radius, rim: null })})`);
+  await settled(SEG);
+  const fh1Actions = await ev(`(() => { const a = document.querySelector('[data-level-row="FH1"] .lv-actions.is-stacked');
+    return a ? [...a.querySelectorAll('[data-level-key]')].map((b) => b.getAttribute('data-level-key')) : null; })()`);
+  check('20. Head 1 moved 4 px reads Edited, its row stacking Place… over REVERT (is-stacked)',
+    Boolean(fh1?.center) && (await badge('FH1')) === 'Edited' && js(fh1Actions) === js(['place:FH1', 'revert:FH1']) && (await text('.lv-unsaved')) === '1 UNSAVED CHANGE',
+    { FH1: await badge('FH1'), fh1Actions, unsaved: await text('.lv-unsaved') });
+  await clickSelector('[data-level-key="revert:FH1"]');
+  await settled(SEG);
+  check('20. REVERT on Head 1: Segmented, its rim null, NOTHING TO SAVE',
+    (await badge('FH1')) === 'Segmented' && (await ev('window.__lv.editor()?.levels?.FH1?.geometry?.rim')) === null && (await text('.lv-unsaved')) === 'NOTHING TO SAVE',
+    { FH1: await badge('FH1'), geometry: await ev('window.__lv.editor()?.levels?.FH1?.geometry ?? null'), unsaved: await text('.lv-unsaved') });
+
+  // 21 (round 2, spec §3). The comment, on SP-9300 straight after: typed into the panel's one textarea, its first
+  // keystroke undone by Ctrl+Z, kept with its focus and caret across a rebuild, Escape in it ignored by the stage (P9),
+  // saved into the record and onto the study, discarded back to the saved text, shown read-only outside edit mode, and
+  // read back on Edit.
+  const COMMENT_BOX = '.lv-comment-input';
+  const boxValue = () => ev(`document.querySelector(${js(COMMENT_BOX)})?.value ?? null`);
+  await clickSelector(COMMENT_BOX);
+  // (The final review of round 2, I2) The first keystroke rebuilds the panel (the comment now differs from the saved
+  // text). The foot that holds the box is never detached by a rebuild, so the textarea's own undo takes it back.
+  await cdp.typeText('H');
+  await cdp.settle(80);
+  const typedOne = { value: await boxValue(), unsaved: await text('.lv-unsaved') };
+  await cdp.key('z', { ctrl: true });
+  await cdp.settle(120);
+  const undone = { value: await boxValue(), unsaved: await text('.lv-unsaved') };
+  check('21. Ctrl+Z after the first keystroke (H, 1 UNSAVED CHANGE) undoes it: the box is empty and the footer reads NOTHING TO SAVE (I2)',
+    typedOne.value === 'H' && typedOne.unsaved === '1 UNSAVED CHANGE' && undone.value === '' && undone.unsaved === 'NOTHING TO SAVE', { typedOne, undone });
+  // Whatever Ctrl+Z left, the box's text is selected and the comment typed over it.
+  await ev(`(() => { const b = document.querySelector(${js(COMMENT_BOX)}); b.focus(); b.select(); return true; })()`);
+  await cdp.typeText(COMMENT);
+  await cdp.settle(80);
+  check('21. typing in the comment box is one unsaved change and enables Save edits',
+    (await boxValue()) === COMMENT && (await text('.lv-unsaved')) === '1 UNSAVED CHANGE' && (await ev(`document.querySelector('.lv-save')?.disabled`)) === false,
+    { value: await boxValue(), unsaved: await text('.lv-unsaved'), saveDisabled: await ev(`document.querySelector('.lv-save')?.disabled`) });
+
+  // A rebuild from the keyboard-free path (a group opened through the page): the same node, focus and caret kept.
+  // (I2) The foot and its comment block are the same nodes after it; the list is a new one.
+  await ev(`(() => { for (const s of ['.lv-foot', '.lv-comment', '.lv-list']) document.querySelector(s).__lvProbe = true; return true; })()`);
+  await viaWiring(`m.toggleGroupOpen('thoracic')`);
+  await cdp.settle(80);
+  const keptBox = await ev(`(() => { const a = document.activeElement; return { box: Boolean(a?.classList.contains('lv-comment-input')), value: a?.value ?? null,
+    start: a?.selectionStart ?? null, thoracicOpen: Boolean(document.querySelector('[data-group-key="thoracic"] .lv-rows')) }; })()`);
+  check(`21. a rebuild while typing (a group opened through the page) keeps the focus in the box, its text and its caret at ${COMMENT.length}`,
+    keptBox.box && keptBox.value === COMMENT && keptBox.start === COMMENT.length && keptBox.thoracicOpen, keptBox);
+  const nodes = await ev(`(() => ({ foot: document.querySelector('.lv-foot')?.__lvProbe === true, comment: document.querySelector('.lv-comment')?.__lvProbe === true,
+    newList: Boolean(document.querySelector('.lv-list')) && document.querySelector('.lv-list').__lvProbe !== true,
+    order: [...document.querySelector('.lv-panel').children].map((n) => n.className),
+    footChildren: [...document.querySelector('.lv-foot').children].map((n) => n.className) }))()`);
+  check('21. the rebuild kept the foot and its comment block (the same nodes) and built a new list before them (I2)',
+    nodes.foot === true && nodes.comment === true && nodes.newList && js(nodes.order) === js(['lv-head', 'lv-list', 'lv-foot'])
+      && js(nodes.footChildren) === js(['lv-comment', 'lv-status', 'lv-actions-row']), nodes);
+  await viaWiring(`m.toggleGroupOpen('thoracic')`);
+  await cdp.settle(80);
+
+  // P9: Escape typed in the box never reaches the stage: still editing, no prompt, the box still focused.
+  await cdp.key('Escape');
+  await cdp.settle(120);
+  const escapedBox = await ev(`(async () => ({ editing: (await import('./renderer/store.js')).getState().editing, prompt: Boolean(document.querySelector('.lv-prompt')),
+    box: Boolean(document.activeElement?.classList.contains('lv-comment-input')) }))()`);
+  check('21. Escape in the comment box leaves edit mode alone: still editing, no prompt, the box still focused (P9)',
+    escapedBox.editing === true && escapedBox.prompt === false && escapedBox.box === true, escapedBox);
+
+  await clearToasts();
+  await clickSelector('.lv-save');
+  const commentSaved = await toastSeen('Saved 1 edit to the label record.');
+  let commentRecord = null;
+  try { commentRecord = readRecord(segRecordName); } catch (_error) { commentRecord = null; }
+  check('21. Save edits toasts Saved 1 edit to the label record. and the record carries the comment',
+    commentSaved && commentRecord?.comment === COMMENT, { toasts: await ev('window.__lv.toasts'), comment: commentRecord?.comment });
+  check('21. the study carries the comment as labelComment, and the footer reads NOTHING TO SAVE',
+    (await studyOf(SEG))?.labelComment === COMMENT && (await text('.lv-unsaved')) === 'NOTHING TO SAVE',
+    { labelComment: (await studyOf(SEG))?.labelComment, unsaved: await text('.lv-unsaved') });
+
+  await clickSelector(COMMENT_BOX);
+  await ev(`(() => { const b = document.querySelector(${js(COMMENT_BOX)}); b.setSelectionRange(b.value.length, b.value.length); return true; })()`);
+  await cdp.typeText(' more');
+  await cdp.settle(80);
+  check('21. typing more after the save is one unsaved change again',
+    (await boxValue()) === `${COMMENT} more` && (await text('.lv-unsaved')) === '1 UNSAVED CHANGE', { value: await boxValue(), unsaved: await text('.lv-unsaved') });
+  await clearToasts();
+  await clickSelector('.lv-discard');
+  const commentDiscarded = await toastSeen('Discarded 1 change.');
+  await settled(SEG);
+  check('21. Discard toasts Discarded 1 change. and the box reads the saved comment again',
+    commentDiscarded && (await boxValue()) === COMMENT && (await text('.lv-unsaved')) === 'NOTHING TO SAVE',
+    { toasts: await ev('window.__lv.toasts'), value: await boxValue(), unsaved: await text('.lv-unsaved') });
+
+  // Out of edit mode by Escape, focus first on L1's select button (the controller's ruling: Discard is disabled with
+  // nothing unsaved and cannot take focus): the Analysis panel shows the comment read-only.
+  await ev(`(() => { document.querySelector('[data-level-key="L1"]')?.focus(); return true; })()`);
+  await cdp.key('Escape');
+  await until(`(async () => !(await import('./renderer/store.js')).getState().editing)()`, 5000);
+  await until(`document.querySelector('.analysis-comment')?.classList.contains('is-hidden') === false`, 3000);
+  const shown = await ev(`(() => { const b = document.querySelector('.analysis-comment');
+    return b ? { hidden: b.classList.contains('is-hidden'), text: b.querySelector('.analysis-comment-text')?.textContent ?? null } : null; })()`);
+  check('21. outside edit mode the Analysis panel shows the comment read-only (.analysis-comment)',
+    (await editingNow()) === false && shown?.hidden === false && shown.text === COMMENT, { editing: await editingNow(), shown });
+
+  // Back into edit mode, for section 8: the box reads the comment from the record, the read-only block hides.
+  await enterEdit();
+  await until(`document.querySelector('.analysis-comment')?.classList.contains('is-hidden') === true`, 3000);
+  check('21. Edit again: the box reads the saved comment, the read-only block is hidden, NOTHING TO SAVE',
+    (await boxValue()) === COMMENT && (await isHidden('.analysis-comment')) && (await text('.lv-unsaved')) === 'NOTHING TO SAVE',
+    { value: await boxValue(), blockHidden: await isHidden('.analysis-comment'), unsaved: await text('.lv-unsaved') });
+
+  // 8. Femoral: Place… on Head 1, two rim points, FIT; then a rim-point drag refits. Section 21 left SP-9300 in edit
+  // mode, reopened from its saved record.
+  if (!(await editingNow())) await enterEdit();
   // The Sacral group opens closed: its one level is not visible.
   const reopened = await ev(`({ s1: window.__lv.editor()?.levels?.S1?.visible ?? null, sacral: document.querySelector('[data-group-key="sacral"] .lv-group-count')?.textContent ?? null })`);
   check('8. reopening reads the saved record: S1 not visible (Sacral 1 NOT VISIBLE), L3 Manual',
@@ -1154,6 +1314,12 @@ async function domPhase() {
   await openFromList(HAND);
   const unseg = await studyOf(HAND);
   check('12. the unsegmented film has no result before Edit', unseg?.measurements === null && unseg?.geometry === null, unseg && { measurements: unseg.measurements, geometry: unseg.geometry });
+  // (Annotation editor round 2, spec §4.3) The fixture's run failed, so the header pill reads Failed until a level is
+  // placed by hand.
+  await until(`document.querySelector(${js(STATUS_PILL)})?.textContent === 'Failed'`, 3000);
+  check('12. the failed film\'s header pill reads Failed before Edit',
+    (await text(STATUS_PILL)) === 'Failed' && unseg?.processingError === HAND_FAILURE,
+    { pill: await text(STATUS_PILL), processingError: unseg?.processingError ?? null });
   await enterEdit();
   const decoded = await until(`document.querySelector('.viewer-canvas-dynamic')?.width === 600 && document.querySelector('.viewer-canvas-dynamic')?.height === 800`, 20000);
   check('12. Edit opens the unsegmented film on its decoded original, no card over it',
@@ -1169,6 +1335,33 @@ async function domPhase() {
   check('12. the hand-placed film has geometry and measurements but no prediction id and no qc.models (isHandPlaced)',
     Boolean(handStudy?.geometry?.vertebrae?.L1) && Boolean(handStudy?.measurements) && handStudy.predictionId == null && !handStudy.qc?.models,
     handStudy && { predictionId: handStudy.predictionId, models: handStudy.qc?.models ?? null });
+  // (Round 2, spec §4.3) The first commit of a level placed by hand clears the failure in the measure queue's own
+  // write, and the pill derives Hand-placed.
+  await until(`document.querySelector(${js(STATUS_PILL)})?.textContent === 'Hand-placed'`, 3000);
+  check('12. the first hand-placed commit cleared the failure and the pill reads Hand-placed (spec §4.3)',
+    handStudy?.processingError === null && handStudy?.processingErrorAt === null && (await text(STATUS_PILL)) === 'Hand-placed',
+    handStudy && { processingError: handStudy.processingError, processingErrorAt: handStudy.processingErrorAt, pill: await text(STATUS_PILL) });
+  // (The final review of round 2, I1) Discard takes L1 off again: the film has no level placed and no result left, so
+  // nothing goes to /measure and the failure it carried at Edit comes back: the pill reads Failed again. L1 is then
+  // placed again by the same four clicks, so the rest of the section runs as it did.
+  await clickSelector('.lv-discard');
+  await settled(HAND);
+  await until(`document.querySelector(${js(STATUS_PILL)})?.textContent === 'Failed'`, 3000);
+  const discardedHand = await studyOf(HAND);
+  check('12. Discard after placing L1 by hand: the pill reads Failed again, the failure is back and the result gone (I1)',
+    (await text(STATUS_PILL)) === 'Failed' && discardedHand?.processingError === HAND_FAILURE && discardedHand?.processingErrorAt === HAND_FAILED_AT
+      && discardedHand?.measurements === null && discardedHand?.geometry === null && (await badge('L1')) !== 'Manual',
+    discardedHand && { pill: await text(STATUS_PILL), processingError: discardedHand.processingError, processingErrorAt: discardedHand.processingErrorAt,
+      measurements: discardedHand.measurements, geometry: discardedHand.geometry, L1: await badge('L1') });
+  await clickSelector('[data-level-key="place:L1"]');
+  for (const point of [[200, 150], [400, 160], [196, 232], [396, 242]]) await clickImage(...point);
+  await settled(HAND);
+  await until(`document.querySelector(${js(STATUS_PILL)})?.textContent === 'Hand-placed'`, 3000);
+  const replacedHand = await studyOf(HAND);
+  check('12. L1 placed again by hand: Manual, the pill reads Hand-placed and the failure is cleared again',
+    (await badge('L1')) === 'Manual' && (await text(STATUS_PILL)) === 'Hand-placed' && replacedHand?.processingError === null
+      && Boolean(replacedHand?.geometry?.vertebrae?.L1) && Boolean(replacedHand?.measurements),
+    replacedHand && { L1: await badge('L1'), pill: await text(STATUS_PILL), processingError: replacedHand.processingError });
   await clearToasts();
   await clickSelector('.lv-save');
   check('12. Save edits toasts Saved 1 edit to the label record.', await toastSeen('Saved 1 edit to the label record.'), await ev('window.__lv.toasts'));
@@ -1192,6 +1385,30 @@ async function domPhase() {
     outOfEdit.editing === false && outOfEdit.width === 600 && outOfEdit.card === false, outOfEdit);
 
   await windowOutsideEditChecks(windowInEdit);
+
+  // 12 (round 2, spec §4.1 and §4.4). The hand-placed film outside edit mode: with its failure cleared Mark reviewed is
+  // enabled; marking it reads Reviewed, unmarking returns it to Hand-placed (its record exists, so the mark writes
+  // nothing), and the Find list's row reads Hand-placed too.
+  const reviewButton = () => ev(`(() => { const b = document.querySelector(${js(REVIEW_BUTTON)}); const n = document.querySelector('.analysis-review-note');
+    return b ? { text: b.textContent.trim(), disabled: b.disabled, noteHidden: !n || n.hidden } : null; })()`);
+  const handOffered = await reviewButton();
+  check('12. on the hand-placed film Mark reviewed is enabled and its note hidden',
+    handOffered?.text === 'Mark reviewed' && handOffered.disabled === false && handOffered.noteHidden === true, handOffered);
+  await clickSelector(REVIEW_BUTTON);
+  await until(`document.querySelector(${js(STATUS_PILL)})?.textContent === 'Reviewed'`, 3000);
+  const handMarked = await reviewButton();
+  check('12. Mark reviewed on the hand-placed film: the button reads Reviewed and so does the pill',
+    handMarked?.text.startsWith('Reviewed') === true && (await text(STATUS_PILL)) === 'Reviewed' && typeof (await studyOf(HAND))?.reviewedAt === 'string',
+    { button: handMarked, pill: await text(STATUS_PILL) });
+  await clickSelector(REVIEW_BUTTON);
+  await until(`document.querySelector(${js(STATUS_PILL)})?.textContent === 'Hand-placed'`, 3000);
+  check('12. unmarking returns the pill to Hand-placed (spec §4.4)',
+    (await text(STATUS_PILL)) === 'Hand-placed' && (await reviewButton())?.text === 'Mark reviewed' && (await studyOf(HAND))?.reviewedAt === null,
+    { pill: await text(STATUS_PILL), button: await reviewButton() });
+  await clickSelector(STUDIES_NAV);
+  await until(`document.querySelector(${js(row(HAND))})`, 5000);
+  check('12. the Find list\'s row reads Hand-placed', (await text(`${row(HAND)} .badge`)) === 'Hand-placed', await text(`${row(HAND)} .badge`));
+  await openFromList(HAND);
 
   // 13. The main process refuses a label file name that is not a bare <stem>.label.json, through the real bridge.
   const refused = await ev(`Promise.allSettled([window.spineContour.saveLabelRecord('..', {}), window.spineContour.saveLabelRecord('a/b.label.json', {})])

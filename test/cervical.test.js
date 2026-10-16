@@ -117,16 +117,16 @@ test('current calibrated measurements agree across panel, parameter grid, CSV an
   assert.equal(csv.rows[0]['C2-C7 SVA (px)'], '40');
 });
 
-test('folder assignments are persisted per study and batch excludes cervical films with unconfirmed side', () => {
+test('folder assignments are persisted per study and batch accepts cervical films with automatic orientation', () => {
   const files = ['/test/cervical/a.png', '/test/lumbar/b.png'];
   const rows = folderRows(files, '/test').map(row => ({ ...row, region: row.folder === 'cervical' ? 'cervical' : 'lumbar', anteriorSide: row.folder === 'cervical' ? 'right' : null }));
   const result = loadWorkspaceStudies({ studies: [], wsFiles: files, wsFolder: '/test', wsFolderRows: rows });
   assert.equal(result.studies[0].region, 'cervical'); assert.equal(result.studies[0].anteriorSide, 'right');
   assert.equal(result.studies[1].region, 'lumbar');
   const unconfirmed = { ...result.studies[0], anteriorSide: null };
-  assert.match(regionRunReason(unconfirmed), /anterior side/);
+  assert.equal(regionRunReason(unconfirmed), null);
   const plan = planBatch({ visible: [unconfirmed, result.studies[1]], selected: [], running: null });
-  assert.deepEqual(plan.ids, [result.studies[1].id]); assert.match(plan.note, /anterior image side/);
+  assert.deepEqual(plan.ids, [unconfirmed.id, result.studies[1].id]);
 });
 
 test('landmark recalculation sends cervical centroid, orientation and current scale then commits a complete pair', async () => {
@@ -144,7 +144,7 @@ test('landmark recalculation sends cervical centroid, orientation and current sc
   assert.deepEqual(state.measurementDrafts, {});
 });
 
-test('single/batch run sends cervical model and explicit side through the bridge, never lumbar defaults', async () => {
+test('single/batch cervical run ignores saved manual orientation and requests anatomical inference', async () => {
   const saved = getState(); const oldWindow = globalThis.window; const s = { ...study(), measurements: null, geometry: null };
   let request;
   globalThis.window = { spineContour: { predict: async payload => { request = payload; throw new Error('intentional transport stop'); } } };
@@ -153,7 +153,7 @@ test('single/batch run sends cervical model and explicit side through the bridge
     setFilePayload(s.id, new Uint8Array([1]));
     const result = await segmentStudy(s.id, { batch: true });
     assert.equal(result.ok, false); assert.equal(request.bodyPart, 'cervical');
-    assert.deepEqual(request.models, { vertebrae: 'cervical_hrnet' }); assert.equal(request.anteriorSide, 'left');
+    assert.deepEqual(request.models, { vertebrae: 'cervical_anatomical_hrnet' }); assert.equal(request.anteriorSide, null);
   } finally { globalThis.window = oldWindow; setState(saved); }
 });
 

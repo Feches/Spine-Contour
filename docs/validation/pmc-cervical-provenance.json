@@ -1,0 +1,51 @@
+{
+  "dataset": "202 PMC cervical native-resolution crops, each tested original and horizontally mirrored",
+  "route": "POST /predict, body_part=cervical, view=lateral, no anterior_side supplied",
+  "old": "Snapshot of Spine-Contour-orientation/backend including automatic orientation classifier",
+  "new": "Current Spine-Contour-reliability/backend anatomical cervical pipeline",
+  "complete_definition": "11 noncollapsed endplate pairs within image boundaries plus C2 centroid within image boundaries",
+  "any_output_definition": "At least one returned endplate pair; not an accuracy assessment",
+  "limitations": [
+    "No reference landmark annotations; completion does not establish correct anatomy",
+    "Known cervical region provided: not a test of automatic body-region classification",
+    "Related views from an article are not independent patients"
+  ],
+  "model_hashes": {
+    "cervical_detr.onnx": "7f0c80ebf6299e9b753c9f65e0e2e2a1986b1cc8f1a12b40b159667bf731e2ed",
+    "cervical_anatomical_hrnet.onnx": "54ea239b9744320c7d6e8957343b2c3d17cd48f3045932cd359ffc6a127c3e78",
+    "cervical_hrnet.onnx": "277c9c85f3a5de0cca616822263ff6305c50665ed953956ba5b6461aa97211f9",
+    "orientation_classifier.onnx": "310971c3c749eae2b02eef3cbc21c9b8cd57dcb140d677fc0bb3b107eb92abb2"
+  },
+  "source_hashes": {
+    "backend/standalone.py": "6f73cda91ca40241e96ccce295dfdbea11aba58b03d05f7f79adf2dd709e4aec",
+    "backend/server.py": "e38d675ff18e668e231ddaea5f300aa2a2b09f08af15fb543453c9a665178a7e",
+    "backend/ruler_extraction.py": "c9dfdb2b446aebc14b02e9bc67657df5dc6be7e264788271e493ed86ad0ae8c9",
+    "backend/region_detector.py": "f6a0646136293981f9e49158d2c7ff1c43a076bd118baa3ec51bbeba74526503",
+    "backend/gpu_parity.py": "7623bc86e99c8fe9918bcae4a430f3c42c62ad7d9f4002f825d527bb9aa546d4",
+    "backend/landmarks.py": "fbdb90e24c49978e934dfef5b7c3edd3010d11b990dd48d7d6e92142f902a613",
+    "backend/view_classifier.py": "e72e6ed1259acfa5f3ab74fc6461b82cea0f141d9996650f0e248403d82ef61c",
+    "backend/__init__.py": "8559b4fc887f9778ebb24dad0a1d679415cac25e958f014d16552e92cd035cc7",
+    "backend/runtime.py": "ae4b1a6dd0ef22476ad74bdc5407d2eabb5c9760781d866118c3b71394305549",
+    "backend/learned_region.py": "bef87330ccf820d7e73db8b51cc536a355d6c5baafe1c8fb0ee72da123870556",
+    "backend/femoral.py": "e7dbc1f6ae44c8f8f47e5719944f29430af67fc0ed5e299b46de90a0d0eb8f3a",
+    "backend/toolbar.py": "abc33a03c6745334e14254b78bf7e23e509f96e5c5946bac288451d55d819167",
+    "backend/global_sva_measurements.py": "c0517d616d0a17cffe806e14902887f56d366f0cc6584ed140683c6e0756aa62",
+    "backend/utils.py": "f49a4cc7729f69a9148fac5367801e49f16adbca2c2892a816584877a59860da",
+    "backend/film_detection.py": "5a21fb85f9104fba281a212512a647b5bc0253212f409b49df7cb9d0c1ae7cb8",
+    "backend/verify_onnx.py": "b2c7684c4fb8732086b57c8b938b34812337cc08b63f8df50d45ba26d970a054",
+    "backend/framing.py": "706d2dca9729f6069bd47e27646164f5c3da993ea3f8d0199c03bf563748fca3",
+    "backend/processors.py": "42a0ef4c597786436bc0564fe5737d245c59c4b60c106303d07606637bf6db60",
+    "backend/progress.py": "23471fc62f5f17bb5ff2adc9454f2c9e8bf8502c016900138e4aa8125362f143",
+    "backend/decode.py": "688a3e6f533a30cda4fa1ed429e7a813c22b00072abfbd23b7afddd00069779b",
+    "backend/orientation_classifier.py": "c569207abef13768a664ca75cebff699e23aade615d16e5645ef1294ff5e717f",
+    "backend/calibration.py": "f099afb0315dc95676bee50751d6288c64421108159d5a372ce7cf4f9eeba38e",
+    "backend/cervical_measurements.py": "4fe917cd55fcee3649432153438263f408ae4e4bbb978472755acf983822bd1e",
+    "backend/models/hrnet.py": "352e5ca9fb0ef1e502273acfe08065a14c7d80d194171df4b0b87857103f6ef8",
+    "backend/models/models.py": "2b387c8281587904b43c59a3f5f7bff0d1fc2e2a87d56cc2a4dcc8c9469bbcb1",
+    "backend/models/cervical.py": "2093a01fd034e170ca72ce677307977ca277a5cf3ea4aae0fbf76a602b16aa70",
+    "backend/models/__init__.py": "c181019fe62b017e7077b8ccf0158e139c27f8126fc8c4fd53d45587c9413f56",
+    "backend/models/full_spine.py": "b6e1f1cd33ed92315a36ecc84f264f826c02781258f8d16cefc2229d8b95f17c",
+    "backend/models/cervical_training.py": "5c6fdfc9e8bf28fc4fe6178448361b5826b278051e81473125ad33008f46dac3",
+    "backend/models/training.py": "ae3754cb9f7d67ad7075b242f0fa04b321493720fc75b61f1ab02355e5871a5d"
+  }
+}

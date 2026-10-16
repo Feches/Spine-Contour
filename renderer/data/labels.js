@@ -14,6 +14,27 @@ export function fileStem(name) {
   return dot > 0 ? base.slice(0, dot) : base;
 }
 
+const STEM_MAX = 180;
+// The characters no Windows file name may hold, and the control characters U+0000-U+001F.
+const UNSAFE_CHARACTERS = /[\\/:*?"<>|\u0000-\u001f]/g;
+const DEVICE_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+
+// A film's stem as the stem of a file name the main process accepts (ruling R12; bundle-io.js isLabelFileName): every
+// reserved or control character becomes '_', leading dots go, the stem is capped at 180 UTF-16 units (never
+// splitting a surrogate pair), an empty stem becomes 'film', and a Windows device name before the first dot
+// ('CON', 'nul.x') takes a '_' (Windows reads 'CON.label.json' as the device CON).
+// The label record's file name (label-record.js) and the bundle's study folders (bundle.js) both start from it.
+export function safeStem(stem) {
+  let safe = String(stem ?? '').replace(UNSAFE_CHARACTERS, '_').replace(/^\.+/, '');
+  if (safe.length > STEM_MAX) {
+    safe = safe.slice(0, STEM_MAX);
+    if (/[\uD800-\uDBFF]$/.test(safe)) safe = safe.slice(0, -1);
+  }
+  if (safe === '') return 'film';
+  const head = safe.match(/^[^.]*/)[0];
+  return DEVICE_NAME.test(head.trimEnd()) ? `${head}_${safe.slice(head.length)}` : safe;
+}
+
 // The default display name for a new study: its film's filename without the extension.
 // The SP-nnnn id stays the record's identity -- it names the sidecar on disk, keys the delete
 // and the CSV join, and must keep matching /^SP-\d{4,}$/. This is only what a human reads.

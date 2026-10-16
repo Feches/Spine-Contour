@@ -5,6 +5,7 @@ import {
   drawDynamicLayer, drawStaticLayer, drawLevelEditor, colorFor, constructionLabel, thumbnailSize, imagesFromRaw, disposeStudyImages,
 } from '../renderer/viewer/canvas.js';
 import { LEVEL_CODES, openEditor, selectLevel, setLevelGeometry, startPlacing, addPoint, setPlacingStep, toggleVisible } from '../renderer/data/levels.js';
+import { handleRadiusImagePx, handleScale, levelHandles, handleAt } from '../renderer/viewer/level-handles.js';
 
 test('buildLabelColorMap maps L1..L5 backend label ids to the fixed RGB ramp', () => {
   const labels = { BACKGROUND: 0, L1: 20, L2: 21, L3: 22, L4: 23, L5: 24, S1: 25 };
@@ -238,6 +239,46 @@ test('the handles take the corner colours and are outlined in the stage backgrou
   const outlines = painted.filter(p => p.name === 'stroke' && p.strokeStyle === STAGE_BG);
   assert.equal(outlines.length, 4);
   assert.ok(outlines.every(p => p.lineWidth === 2));
+});
+
+// (Gate feedback G8, decision D21) Drawn at the R28-floored pixelRatio: the handle is 6 CSS px at 1:1 and shrinks with the film below it
+// to 3 CSS px (ratio 2 and beyond), its outline and focus ring in step; the outline is never under 1 CSS px.
+test('the handle, its outline and its focus ring shrink with the film below 1:1 to a floor of 3 CSS px', () => {
+  const editor = lumbarEditor('L3');
+  const focus = { handle: { code: 'L3', handle: 'SP' } };
+  const sizes = (ratio) => {
+    const { calls, painted } = drawEditor(editor, { ...focus, pixelRatio: ratio });
+    const arcsAt = ([px, py]) => arcsOf(calls).filter(([x, y]) => x === px && y === py).map(([, , r]) => r);
+    // SA SP IA IP of L3; the focused SP carries the ring first, then its disc.
+    const radii = [[10, 50], [20, 50], [10, 60], [20, 60]].map(point => arcsAt(point).at(-1));
+    return { radii, ring: arcsAt([20, 50])[0], outlines: painted.filter(p => p.name === 'stroke' && p.strokeStyle === STAGE_BG).map(p => p.lineWidth) };
+  };
+  assert.deepEqual(sizes(1), { radii: [6, 6, 6, 6], ring: 10, outlines: [2, 2, 2, 2] }, '1:1 as before');
+  assert.deepEqual(sizes(2), { radii: [6, 6, 6, 6], ring: 10, outlines: [2, 2, 2, 2] }, '3 CSS px: 6 image px at ratio 2, ring 5 CSS px, outline 1 CSS px');
+  assert.deepEqual(sizes(4), { radii: [12, 12, 12, 12], ring: 20, outlines: [4, 4, 4, 4] }, '3 CSS px at ratio 4');
+  const mid = sizes(1.5);
+  assert.deepEqual(mid.radii, [6, 6, 6, 6], '4 CSS px at ratio 1.5');
+  assert.ok(Math.abs(mid.ring - 10) < 1e-9 && mid.outlines.every(w => Math.abs(w - 2) < 1e-9));
+  const zoomedIn = sizes(0.25);
+  assert.deepEqual(zoomedIn, { radii: [3, 3, 3, 3], ring: 5, outlines: [1, 1, 1, 1] },
+    'past 1:1 the handle grows with the square root of the zoom (G9, D22): at 4x it is 12 CSS px, its ring 20 and its outline 4, which is 3, 5 and 1 image px at ratio 0.25');
+});
+
+test('the outline of a handle is never under 1 CSS px', () => {
+  for (const ratio of [1, 1.5, 2, 3, 8]) {
+    const outlines = drawEditor(lumbarEditor('L3'), { pixelRatio: ratio }).painted.filter(p => p.name === 'stroke' && p.strokeStyle === STAGE_BG);
+    assert.ok(outlines.length === 4 && outlines.every(p => p.lineWidth >= ratio), `ratio ${ratio}`);
+  }
+});
+
+test('the dots of a placement shrink with the film like the handles', () => {
+  let editor = startPlacing(emptyEditor(), 'L3');
+  editor = addPoint(editor, [30, 20], { width: 200, height: 150 });
+  for (const [ratio, radius, outline] of [[1, 6, 2], [2, 6, 2], [4, 12, 4]]) {
+    const { calls, painted } = drawEditor(editor, { pixelRatio: ratio });
+    assert.deepEqual(arcsOf(calls).map(([x, y, r]) => [x, y, r]), [[30, 20, radius]], `ratio ${ratio}`);
+    assert.deepEqual(painted.filter(p => p.name === 'stroke' && p.strokeStyle === STAGE_BG).map(p => p.lineWidth), [outline], `ratio ${ratio}`);
+  }
 });
 
 test('selecting a femoral head draws four rim handles and a non-draggable centre dot', () => {
@@ -509,11 +550,22 @@ test('drawDynamicLayer returns the editor\'s plates in edit mode and none outsid
   assert.deepEqual(drawDynamicLayer(bare.ctx, EDITOR_CANVAS, null, { editing: false }), []);
 });
 
+// (Gate feedback G9, decision D22) Past 1:1 the handle takes the UNFLOORED ratio and grows with the square root of the
+// zoom: at 4x (ratio 0.25) the disc is 12 CSS px, its outline 4 and its focus ring 20, while every other size still
+// magnifies with the film (R28), four times its 1:1 size.
+test('past 1:1 the handle, its outline and its focus ring grow with the square root of the zoom, not with the film', () => {
+  const { calls, painted } = drawEditor(setLevelGeometry(lumbarEditor('L3'), 'L2', { superior: [[8, 28], [20, 30]], inferior: [[10, 40], [20, 40]] }), { pixelRatio: 0.25, handle: { code: 'L3', handle: 'SA' } });
+  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 3).length, 4, 'handles are 3 image px: 12 CSS px at ratio 0.25 (G9, D22)');
+  assert.equal(arcsOf(calls).filter(([x, y, radius]) => x === 10 && y === 50 && radius === 5).length, 1, 'the ring at SA is 5 image px: 20 CSS px');
+  assert.deepEqual(painted.filter(p => p.name === 'stroke' && p.strokeStyle === STAGE_BG).map(p => p.lineWidth), [1, 1, 1, 1], 'the outline is 1 image px: 4 CSS px');
+  assert.deepEqual(levelStrokes(painted).filter(p => p.strokeStyle === rgba(LEVEL_RGB.L4, 0.85)).map(p => p.lineWidth), [1.25], 'a level outline keeps its image-pixel size past 1:1 (R28)');
+});
+
 test('sizes that are screen sizes scale with the pixel ratio', () => {
   const { calls, painted } = drawEditor(setLevelGeometry(lumbarEditor('L3'), 'L2', { superior: [[8, 28], [20, 30]], inferior: [[10, 40], [20, 40]] }), { pixelRatio: 2, handle: { code: 'L3', handle: 'SA' } });
-  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 12).length, 4, 'handles are 6 CSS px');
-  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 20).length, 1, 'the ring is 10 CSS px');
-  assert.deepEqual(painted.filter(p => p.name === 'stroke' && p.strokeStyle === STAGE_BG).map(p => p.lineWidth), [4, 4, 4, 4]);
+  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 6).length, 4, 'handles are 3 CSS px at ratio 2, the floor (G8, D21)');
+  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 10).length, 1, 'the ring is 5 CSS px');
+  assert.deepEqual(painted.filter(p => p.name === 'stroke' && p.strokeStyle === STAGE_BG).map(p => p.lineWidth), [2, 2, 2, 2], 'the outline is 1 CSS px');
   assert.deepEqual(levelStrokes(painted).filter(p => p.strokeStyle === rgba(LEVEL_RGB.L4, 0.85)).map(p => p.lineWidth), [2.5]);
   assert.equal(dashed(calls, [6, 5]).length, 0);
   const ghost = drawEditor(setLevelGeometry(lumbarEditor('L2'), 'L2', { superior: [[8, 28], [20, 30]], inferior: [[10, 40], [20, 40]] }), { pixelRatio: 2 });
@@ -533,10 +585,38 @@ test('past 1:1 the editor keeps its image-pixel size: a pixel ratio under 1 pain
     [addPoint(addPoint(startPlacing(emptyEditor(), 'L3'), [30, 20], size), [60, 20], size), {}],
     [addPoint(addPoint(startPlacing(emptyEditor(), 'FH1'), [20, 30], size), [60, 30], size), {}],
   ];
+  // (Gate feedback G9, decision D22) The handle-sized parts are the one exception to R28: the disc, its outline, the
+  // focus ring and the placement dots keep their screen size past 1:1, so they are set aside here (their sizes at
+  // 0.25 are pinned below and in the G9 test) and everything else must paint exactly as at 1. A handle outline is
+  // the only stage-background stroke and the ring the only undashed stroke in the selected colour.
+  const STAGE_SELECTED = '#D45A32';
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  // A disc is stripped where a handle sits (the selected level's handle points, the placement's points) at the disc
+  // radius for that ratio, and the ring only at the focused handle's point at the ring radius: a match on radius alone
+  // would drop other arcs (the fixture's femoral head circles are 5 image px, the ring's size at 0.5). A fill paints
+  // nothing with the line width in force at the time (a handle's fill records the ring's or the outline's), so a
+  // fill's `lineWidth` is dropped from the comparison.
+  const discPoints = (editor) => [
+    ...(editor.selected ? levelHandles(editor.selected, editor.levels?.[editor.selected]?.geometry).map(h => h.point) : []),
+    ...((editor.placing?.points ?? []).filter(Boolean)),
+  ];
+  const at = (args, point) => Boolean(point) && near(args[0], point[0]) && near(args[1], point[1]);
+  const handleArc = (ratio, args, { points, focus }) => (points.some(point => at(args, point)) && near(args[2], handleRadiusImagePx(ratio)))
+    || (at(args, focus) && near(args[2], 10 * ratio * handleScale(ratio)));
+  const withoutHandles = (rec, ratio, parts) => ({
+    calls: rec.calls.filter(([name, args]) => !(name === 'arc' && handleArc(ratio, args, parts))),
+    painted: rec.painted
+      .filter(p => !(p.name === 'stroke' && (p.strokeStyle === STAGE_BG || (p.strokeStyle === STAGE_SELECTED && p.lineDash.length === 0))))
+      .map(p => (p.name === 'fill' ? { ...p, lineWidth: undefined } : p)),
+  });
   for (const [editor, extra] of scenes) {
-    const one = drawEditor(editor, { ...extra, pixelRatio: 1 });
+    const parts = {
+      points: discPoints(editor),
+      focus: extra.handle ? handleAt(extra.handle.code, editor.levels?.[extra.handle.code]?.geometry, extra.handle.handle) : null,
+    };
+    const one = withoutHandles(drawEditor(editor, { ...extra, pixelRatio: 1 }), 1, parts);
     for (const pixelRatio of [0.25, 0.5, 0.999]) {
-      const zoomed = drawEditor(editor, { ...extra, pixelRatio });
+      const zoomed = withoutHandles(drawEditor(editor, { ...extra, pixelRatio }), pixelRatio, parts);
       assert.deepEqual(zoomed.calls, one.calls, `pixel ratio ${pixelRatio}: every path, radius, dash and plate as at 1`);
       assert.deepEqual(zoomed.painted, one.painted, `pixel ratio ${pixelRatio}: every width, dash and font as at 1`);
     }
@@ -544,9 +624,9 @@ test('past 1:1 the editor keeps its image-pixel size: a pixel ratio under 1 pain
 
   const [handles, extra] = scenes[0];
   const { calls, painted } = drawEditor(handles, { ...extra, pixelRatio: 0.25 });
-  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 6).length, 4, 'handles are 6 image px, not 1.5');
-  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 10).length, 1, 'the ring is 10 image px');
-  assert.deepEqual(painted.filter(p => p.name === 'stroke' && p.strokeStyle === STAGE_BG).map(p => p.lineWidth), [2, 2, 2, 2]);
+  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 3).length, 4, 'handles are 3 image px: 12 CSS px at 4x, the square root of the zoom (G9, D22)');
+  assert.equal(arcsOf(calls).filter(([x, y, radius]) => x === 10 && y === 50 && radius === 5).length, 1, 'the ring at SA is 5 image px: 20 CSS px');
+  assert.deepEqual(painted.filter(p => p.name === 'stroke' && p.strokeStyle === STAGE_BG).map(p => p.lineWidth), [1, 1, 1, 1], 'the outline is 4 CSS px');
   assert.equal(painted.find(p => p.name === 'fillText').font, "500 11px 'Chivo Mono', monospace");
   const ghost = drawEditor(scenes[1][0], { pixelRatio: 0.25 });
   assert.equal(dashed(ghost.calls, [6, 5]).length, 1, 'the ghost dash is 6 5 image px');
@@ -554,7 +634,7 @@ test('past 1:1 the editor keeps its image-pixel size: a pixel ratio under 1 pain
   assert.equal(placing.painted.find(p => p.name === 'stroke' && p.lineDash.length === 2).lineWidth, 1.5);
 
   const doubled = drawEditor(handles, { ...extra, pixelRatio: 2 });
-  assert.equal(arcsOf(doubled.calls).filter(([, , radius]) => radius === 12).length, 4, 'below 1:1 the sizes still scale');
+  assert.equal(arcsOf(doubled.calls).filter(([, , radius]) => radius === 6).length, 4, 'below 1:1 the handles shrink with the film, 6 image px = 3 CSS px at ratio 2 (G8, D21)');
   assert.equal(doubled.painted.find(p => p.name === 'fillText').font, "500 22px 'Chivo Mono', monospace");
 });
 
@@ -685,6 +765,37 @@ test('the editor restores the context state it changes', () => {
   assert.deepEqual(rec.ctx.lineDash, []);
 });
 
+// (Gate feedback G11, decision D24) Outside edit mode the C2 centroid is drawn as a cross in C2's colour, as the C7
+// centroid is on a full-spine film; the label appears only while the C2–C7 SVA is selected.
+test('outside edit mode the C2 centroid is drawn as a cross like the C7 centroid, on cervical and full-spine films', () => {
+  const arm = Math.max(4, EDITOR_CANVAS.width / 150);
+  const crossAt = (calls, [x, y]) => {
+    const has = (name, point) => calls.some(([n, args]) => n === name && args[0] === point[0] && args[1] === point[1]);
+    return has('moveTo', [x - arm, y]) && has('lineTo', [x + arm, y]) && has('moveTo', [x, y - arm]) && has('lineTo', [x, y + arm]);
+  };
+  const cervical = {
+    region: 'cervical', anterior_side: 'left', c2_centroid: [15, 6],
+    vertebrae: { C2: { inferior: [[10, 12], [20, 12]] }, C7: { superior: [[10, 50], [20, 50]], inferior: [[10, 60], [20, 60]], quadrilateral: [[10, 50], [20, 50], [20, 60], [10, 60]] } },
+  };
+  const plain = recordingContext();
+  drawDynamicLayer(plain.ctx, EDITOR_CANVAS, cervical, { selectedLevel: null, measurements: null, editing: false });
+  assert.ok(crossAt(plain.calls, [15, 6]), 'a cross at the C2 centroid');
+  assert.ok(plain.painted.some(p => p.name === 'stroke' && p.strokeStyle === `rgb(${LEVEL_RGB.C2.join(',')})`), "in C2's colour");
+  assert.deepEqual(labelsOf(plain.calls), [], 'no label until the C2–C7 SVA is selected');
+  const sva = recordingContext();
+  drawDynamicLayer(sva.ctx, EDITOR_CANVAS, cervical, { selectedLevel: 'C2C7_SVA', measurements: { C2C7_SVA_PX: 3 }, editing: false });
+  assert.ok(labelsOf(sva.calls).includes('C2'), 'the C2 label while the C2–C7 SVA is selected');
+  const bare = recordingContext();
+  drawDynamicLayer(bare.ctx, EDITOR_CANVAS, { ...cervical, c2_centroid: null }, { selectedLevel: null, measurements: null, editing: false });
+  assert.ok(!crossAt(bare.calls, [15, 6]), 'no cross without a centroid');
+  const fullSpine = recordingContext();
+  drawDynamicLayer(fullSpine.ctx, EDITOR_CANVAS, { ...fakeGeometry(), region: 'full_spine', c7_centroid: [50, 5], c2_centroid: [15, 6] }, { selectedLevel: null, measurements: null, editing: false });
+  assert.ok(crossAt(fullSpine.calls, [50, 5]) && crossAt(fullSpine.calls, [15, 6]), 'both crosses on a full-spine film');
+  const lumbar = recordingContext();
+  drawDynamicLayer(lumbar.ctx, EDITOR_CANVAS, { ...fakeGeometry(), c2_centroid: [15, 6] }, { selectedLevel: null, measurements: null, editing: false });
+  assert.ok(!crossAt(lumbar.calls, [15, 6]), 'a lumbar film draws no C2 cross');
+});
+
 test('drawDynamicLayer with an editor skips the region outlines, S1 line, C7 cross and femoral drawing', () => {
   const geometry = { ...fakeGeometry(), region: 'full_spine', c7_centroid: [50, 5] };
   const { ctx, calls, painted } = recordingContext();
@@ -730,10 +841,10 @@ test('drawDynamicLayer passes the overlay, opacity, handle and drag options to t
   const moved = { superior: [[5, 45], [20, 50]], inferior: [[10, 60], [20, 60]] };
   const { ctx, calls, painted } = recordingContext();
   drawDynamicLayer(ctx, EDITOR_CANVAS, fakeGeometry(), {
-    editor: lumbarEditor('L3'), overlays: false, overlayOpacity: 80, pixelRatio: 1.5, handle: { code: 'L3', handle: 'IP' }, dragGeometry: { code: 'L3', geometry: moved },
+    editor: lumbarEditor('L3'), overlays: false, overlayOpacity: 80, pixelRatio: 3, handle: { code: 'L3', handle: 'IP' }, dragGeometry: { code: 'L3', geometry: moved },
   });
-  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 9).length, 4, 'pixelRatio reaches the handles');
-  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 15).length, 1, 'the focused handle ring');
+  assert.equal(arcsOf(calls).filter(([, , radius]) => radius === 9).length, 4, 'pixelRatio reaches the handles: 3 CSS px at 3, 9 image px (G8, D21); ratio 1 would draw 6');
+  assert.equal(arcsOf(calls).filter(([, , radius]) => Math.abs(radius - 15) < 1e-9).length, 1, 'the focused handle ring: 15 image px at 3; ratio 1 would draw 10');
   assert.ok(arcsOf(calls).some(([x, y, radius]) => x === 5 && y === 45 && radius === 9), 'the drag geometry');
   assert.deepEqual(painted.filter(p => p.name === 'fill' && String(p.fillStyle).startsWith('rgba(') && p.fillStyle !== PLATE), [], 'overlays false: no level fill');
   const defaults = recordingContext();

@@ -15,18 +15,23 @@ import { el, clear } from '../dom.js';
 import { checkbox } from './checkbox.js';
 import {
   LEVEL_GROUPS, kindOf, rowName, fullName, levelState, badgeFor, summaryText, groupCountText, groupCheckState,
-  trainingStatus, unsavedCount, unsavedText, canSave, dependencyNote,
+  trainingStatus, unsavedCount, unsavedText, canSave, dependencyNote, commentChanged,
 } from '../data/levels.js';
 import { LEVEL_RGB, FEMORAL_OVERLAY_COLOR } from '../viewer/canvas.js';
 import {
   toggleLevelVisible, toggleLevelGroup, toggleGroupOpen, selectLevelRow, startPlace, cancelPlace, clearPlacedLevel,
-  saveLevelEdits, discardLevelEdits, keepEditing,
+  revertPlacedLevel, saveLevelEdits, discardLevelEdits, keepEditing, setLevelComment,
 } from '../level-editor.js';
 
 const TITLE = 'Vertebral levels';
 const HELP = "Uncheck a level you can't see on this film. It's saved as not visible, not as missing.";
 const DEMO_NOTE = 'Demo studies are not exported';
 const ELLIPSIS = '…';
+// (Annotation editor round 2, spec §3.4) The comment box's words and its cap.
+const COMMENT_LABEL = 'COMMENT';
+const COMMENT_PLACEHOLDER = 'Anything the next reader or the trainer should know about this film.';
+const COMMENT_ARIA = "Comment on this film's annotation";
+const COMMENT_MAX = 2000;
 
 // 12x12 chevron pointing down (open); .is-closed rotates it -90deg in CSS. The house construction of
 // sidebar.js's and clinical-data.js's chevrons, with the path the handoff's prototype uses.
@@ -79,9 +84,12 @@ function levelRow(editor, code) {
   // placed by hand; CANCEL alone while it is being placed, which also covers a head placed by hand being re-placed
   // (a CLEAR there would leave the placement running with nothing to clear). A head placed by hand takes both
   // Place… and CLEAR (ruling R18): `is-stacked` lays them out as a column, Place… above CLEAR, in the same 70px.
+  // (Annotation editor round 2, spec §5.3) REVERT for an Edited level returns it to the model's output; an edited
+  // head shows Place… and REVERT stacked the same way, Place… above. CLEAR (manual) and REVERT (edited) never meet.
   const canPlace = !placing && (state === 'not_placed' || (circle && entry.visible));
   const canClear = !placing && state === 'manual';
-  const actions = el('div', { class: `lv-actions${canPlace && canClear ? ' is-stacked' : ''}` },
+  const canRevert = !placing && state === 'edited';
+  const actions = el('div', { class: `lv-actions${canPlace && (canClear || canRevert) ? ' is-stacked' : ''}` },
     canPlace ? el('button', {
       type: 'button',
       class: 'btn btn-small lv-place',
@@ -97,6 +105,14 @@ function levelRow(editor, code) {
       'data-level-key': `clear:${code}`,
       onClick: () => clearPlacedLevel(code),
     }, 'CLEAR') : null,
+    canRevert ? el('button', {
+      type: 'button',
+      class: 'lv-text-btn lv-revert',
+      'aria-label': `Revert ${name} to the model's output`,
+      title: `Revert ${name} to the model's output`,
+      'data-level-key': `revert:${code}`,
+      onClick: () => revertPlacedLevel(code),
+    }, 'REVERT') : null,
     placing ? el('button', {
       type: 'button',
       class: 'lv-text-btn lv-cancel',
@@ -171,21 +187,26 @@ function groupSection(editor, group) {
 }
 
 // ---------------------------------------------------------------------------
-// The footer (handoff §3 "Footer"; D7, D10): the training-label status, then the unsaved count with Discard and
-// Save edits, or, once leaving was asked for with changes unsaved, the three-button prompt in their place.
+// The footer (handoff §3 "Footer"; D7, D10): the comment box (annotation round 2, spec §3.4), the training-label
+// status, then the unsaved count with Discard and Save edits, or, once leaving was asked for with changes unsaved,
+// the three-button prompt in their place; the box stays above the prompt, so the text being kept or discarded shows.
+// (The final review of round 2, I2) The foot and its comment block are made once, at mount, and never detached while an
+// editor is shown (mountLevelEditor); a rebuild replaces only what these two build inside it, after the comment block.
 
-function footer(editor, study) {
+function footStatus(editor) {
   const status = trainingStatus(editor);
-  const n = unsavedCount(editor);
-  const statusLine = el('div', { class: 'lv-status' },
+  return el('div', { class: 'lv-status' },
     el('span', { class: `lv-status-dot${status.complete ? ' is-complete' : ''}`, 'aria-hidden': 'true' }),
     el('div', { class: 'lv-status-body' },
       el('span', { class: 'lv-status-label' }, status.label),
       el('span', { class: `lv-status-text${status.complete ? '' : ' is-incomplete'}` }, status.text)));
+}
 
+function footActions(editor, study) {
+  const n = unsavedCount(editor);
   // The wiring drops the prompt once nothing is unsaved (I1); its Save edits still follows canSave, as the action
   // row's does, so it is never an enabled button that does nothing.
-  const actions = editor.exitPrompt
+  return editor.exitPrompt
     ? el('div', { class: 'lv-prompt', role: 'group', 'aria-labelledby': 'lv-prompt-text' },
       el('p', { class: 'lv-prompt-text', id: 'lv-prompt-text' }, unsavedPrompt(n)),
       el('div', { class: 'lv-prompt-actions' },
@@ -217,15 +238,14 @@ function footer(editor, study) {
         type: 'button', class: 'btn btn-primary btn-small lv-save', disabled: !canSave(editor), 'data-level-key': 'save',
         onClick: () => saveLevelEdits(),
       }, 'Save edits'));
-
-  return el('div', { class: 'lv-foot' }, statusLine, actions);
 }
 
 // ---------------------------------------------------------------------------
 // Focus after a rebuild. The same key first; when that control is gone or disabled (Place… becomes CANCEL, CLEAR
-// becomes Place…, the prompt closes, Save edits disables itself after a save), the nearest control that stands
-// for the same thing, then the selected row, then the first control, so focus never drops to <body> from inside
-// the panel: the stage's keyboard handler reads a Tab from <body> as "cycle the handles".
+// becomes Place…, REVERT goes once the level reads Segmented, the prompt closes, Save edits disables itself after a
+// save), the nearest control that stands for the same thing (for REVERT, the row's select button), then the selected
+// row, then the first control, so focus never drops to <body> from inside the panel: the stage's keyboard handler
+// reads a Tab from <body> as "cycle the handles".
 
 function fallbackKeys(key) {
   const colon = key.indexOf(':');
@@ -235,6 +255,7 @@ function fallbackKeys(key) {
     case 'place': return [`cancel:${rest}`, rest];
     case 'cancel': return [`place:${rest}`, rest];
     case 'clear': return [`place:${rest}`, rest];
+    case 'revert': return [rest];
     case 'visible': return [rest];
     case 'prompt': return ['save', 'discard'];
     case 'save': return ['discard'];
@@ -271,6 +292,27 @@ export function mountLevelEditor(container) {
   let lastStudyId = null;
   let promptShown = false;
 
+  // (Annotation editor round 2, spec §3.4; the final review of round 2, I2) The foot and its comment block are one pair
+  // of nodes for the life of the panel, never detached while an editor is shown: a rebuild puts a new head and list
+  // before the foot and a new status line and actions row (or exit prompt) inside it, after the comment block. So the
+  // box keeps its focus, caret, selection, scroll, undo history and any composition in progress (a dead key, an IME)
+  // through every rebuild. Each keystroke goes to the wiring as an edit (no /measure); the count and Save edits follow
+  // through the rebuild key's commentChanged. The visible label is hidden from assistive tech: the box carries its own
+  // aria-label.
+  const commentBox = el('textarea', {
+    class: 'lv-comment-input',
+    rows: 3,
+    maxLength: COMMENT_MAX,
+    placeholder: COMMENT_PLACEHOLDER,
+    'aria-label': COMMENT_ARIA,
+    'data-level-key': 'comment',
+    onInput: (event) => setLevelComment(event.target.value),
+  });
+  const commentBlock = el('div', { class: 'lv-comment' },
+    el('span', { class: 'lv-comment-label', 'aria-hidden': 'true' }, COMMENT_LABEL),
+    commentBox);
+  const foot = el('div', { class: 'lv-foot' }, commentBlock);
+
   function update(state, study) {
     const editor = state.levelEditor;
     // Rebuild gate. screens/analysis.js calls this on every store notification, pan and window / level drag
@@ -279,38 +321,48 @@ export function mountLevelEditor(container) {
     // window / level drag no longer touches the editor at all: the window is the view's, `state.filmWindow`,
     // since gate feedback G3), and a rebuild between a press and its release would swallow the click that
     // press began. The study's geometry and its pending measurement are left out (the final review's minor 6):
-    // the panel reads neither, and keying on them rebuilt it twice per /measure round trip.
+    // the panel reads neither, and keying on them rebuilt it twice per /measure round trip. The comment's text is
+    // left out too (annotation round 2, spec §3.4): the box already shows what was typed, and keying on the text
+    // would rebuild the panel on every keystroke; `commentChanged` is in, since the unsaved count and Save edits
+    // read it, so typing rebuilds once when the comment first differs from the saved text and once when it returns.
     const key = [
       editor?.studyId, editor?.region, editor?.levels, editor?.model, editor?.baseline, editor?.record,
-      editor?.selected, editor?.placing, editor?.open, editor?.exitPrompt,
+      editor?.selected, editor?.placing, editor?.open, editor?.exitPrompt, editor ? commentChanged(editor) : null,
       study?.id, study?.source,
     ];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
 
-    // Focus and scroll snapshots: clear(root) destroys the focused control, and a new list starts at the top.
-    // Only a key from inside this panel is taken, so a rebuild never pulls focus from elsewhere on the page.
+    // Focus and scroll snapshots: the rebuild destroys the focused control (unless it is the comment box, which stays),
+    // and a new list starts at the top. Only a key from inside this panel is taken, so a rebuild never pulls focus from
+    // elsewhere on the page.
     const active = document.activeElement;
     const focusKey = active && root.contains(active) ? active.getAttribute('data-level-key') : null;
     const oldList = root.querySelector('.lv-list');
     const scrollTop = oldList && editor && editor.studyId === lastStudyId ? oldList.scrollTop : 0;
 
-    clear(root);
     if (!editor || !study || editor.studyId !== study.id) {
+      clear(root);
       lastStudyId = null;
       promptShown = false;
       return;
     }
+    // Everything but the foot goes, and everything in the foot but the comment block.
+    for (const child of [...root.children]) if (child !== foot) child.remove();
+    for (const child of [...foot.children]) if (child !== commentBlock) child.remove();
+    if (foot.parentNode !== root) root.append(foot);
+    // The box shows the editor's comment unless it is being typed in: then its text is what was just typed (the
+    // editor's comment). A box focused over another study's editor is not being typed in for this one.
+    if (document.activeElement !== commentBox || editor.studyId !== lastStudyId) commentBox.value = editor.comment ?? '';
     lastStudyId = editor.studyId;
 
     const list = el('div', { class: 'lv-list' }, ...LEVEL_GROUPS.map((group) => groupSection(editor, group)));
-    root.append(
-      el('div', { class: 'lv-head' },
-        el('h2', { class: 'lv-title' }, TITLE),
-        el('div', { class: 'lv-summary' }, summaryText(editor)),
-        el('p', { class: 'lv-help' }, HELP)),
-      list,
-      footer(editor, study));
+    root.insertBefore(el('div', { class: 'lv-head' },
+      el('h2', { class: 'lv-title' }, TITLE),
+      el('div', { class: 'lv-summary' }, summaryText(editor)),
+      el('p', { class: 'lv-help' }, HELP)), foot);
+    root.insertBefore(list, foot);
+    foot.append(footStatus(editor), footActions(editor, study));
     if (scrollTop) list.scrollTop = scrollTop;
 
     // `indeterminate` is a property with no markup form, so it is written on the live boxes after the rebuild.
@@ -320,12 +372,12 @@ export function mountLevelEditor(container) {
     }
 
     // A prompt that has just appeared takes focus on Keep editing (D7), wherever focus was: DONE, Escape and Back
-    // all ask from outside the panel. Otherwise focus goes back where it was.
+    // all ask from outside the panel. Otherwise focus goes back where it was; the comment box never lost it.
     const showPrompt = Boolean(editor.exitPrompt);
     const keep = showPrompt && !promptShown ? root.querySelector('[data-level-key="prompt:keep"]') : null;
     promptShown = showPrompt;
     if (keep) keep.focus({ preventScroll: true });
-    else if (focusKey !== null) restoreFocus(root, focusKey, editor);
+    else if (focusKey !== null && document.activeElement !== commentBox) restoreFocus(root, focusKey, editor);
   }
 
   return { update };

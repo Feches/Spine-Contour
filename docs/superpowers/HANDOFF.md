@@ -1,9 +1,15 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-10-13
-**Branch:** `claude/level-plates` in the worktree `.claude\worktrees\level-plates` of the main checkout, off
-`origin/main` @ `cbbeb4e` (v1.1.0): gate feedback G7, the level plates outside the body and draggable — BUILT, the
-1.1.1 release commit on it, not pushed (first section under "Where things stand").
+**Last updated:** 2026-10-15
+**Branch:** `worktree-annotation-round-2` in the worktree `.claude\worktrees\annotation-round-2` of the main checkout,
+off `origin/main` @ `06c8cdd` (v1.1.1): annotation editor round 2 (a comment on the label record, the Hand-placed
+status, REVERT per level) — its owner gate passed; its 1.2.0 release commit is `7dec644`, backed up on `origin`, no PR
+yet (second section under "Where things stand") — and, on the same branch after it, the annotation bundle export and
+import (Export all / Import bundle…) — BUILT and through its final whole-branch review and fix wave, waiting at its own
+owner gate (plan Task 9), not pushed (first section).
+**2026-10-13 branch (released):** `claude/level-plates` in the worktree `.claude\worktrees\level-plates` of the main
+checkout, off `origin/main` @ `cbbeb4e` (v1.1.0): gate feedback G7, the level plates outside the body and draggable —
+~~BUILT, the 1.1.1 release commit on it, not pushed~~ RELEASED as v1.1.1 (PR #64, merge `06c8cdd`).
 **2026-10-12 branch (released):** `worktree-level-editor` in the worktree `.claude\worktrees\level-editor`, off
 `origin/main` @ `20fd4c5` (v1.0.17): the vertebral level editor, window / level and the label record, G1–G6
 included — RELEASED as v1.1.0 on 2026-10-12 (PR #60, merged as `cbbeb4e`, tagged `v1.1.0`).
@@ -53,7 +59,199 @@ algorithm changed; no screenshots were added.
 
 ## Where things stand
 
-### Vertebral level editor, window / level, label record — RELEASED as v1.1.0 on 2026-10-12 (PR #60, merge `cbbeb4e`; branch `worktree-level-editor`, worktree `.claude/worktrees/level-editor`, off `origin/main` @ `20fd4c5`, v1.0.17); gate feedback G7 BUILT after it, release 1.1.1 committed, not pushed (branch `claude/level-plates`, worktree `.claude/worktrees/level-plates`, off `origin/main` @ `cbbeb4e`)
+### Annotation bundles: export a folder of studies, import it into another library: BUILT, final review fixed, at the owner's gate, not pushed (branch `worktree-annotation-round-2`, worktree `.claude/worktrees/annotation-round-2`, on top of the editor round, off `origin/main` @ `06c8cdd`, v1.1.1)
+
+2026-10-15. A study's data lives in four places (its row in `studies.json`, the prediction sidecar, the label record, the
+original film at an external path) and nothing moved them; the only export was the measurements CSV, which cannot be
+imported back. An annotator could not bring films and annotations to another computer, and a library could not take a
+colleague's annotations of films it already held. Built on the same branch as the editor round so one PR carries both.
+
+- Spec: `docs/superpowers/specs/2026-10-15-annotation-bundle-export-import-design.md` (decisions B1–B9: B1–B4 the owner's,
+  B5–B8 the planner's, B9 the standing rule that nothing leaves the machine). Plan:
+  `docs/superpowers/plans/2026-10-15-annotation-bundle-export-import.md` (nine tasks, rulings PB1–PB10; its `## Ledger`
+  holds the execution rulings S1–S44, a row per task, the deferred minors and the final review's triage). The spec
+  carries dated amendment notes from the final review at §4.2 (S37, S39, S40), §5.6 and §5.8 (S38). User doc:
+  `docs/bundles.md`. SDD ledger
+  `.superpowers/sdd/2026-10-15-annotation-bundle-export-import/` (local, untracked). Next-session prompt that started it:
+  `docs/superpowers/NEXT-SESSION-bundle.md`.
+- **The bundle** (B1, B2, B3, B7). A folder, `spine-contour-export-<YYYY-MM-DD>-<HHMM>` in local time: `manifest.json`
+  (schema `spinecontour.bundle/1`, written last so a cut-off export has none and import refuses it) and one folder per
+  real study holding `study.json` (the record with `filePath: null`), `prediction.json`, the label record under the
+  study's own `labelFile` name, `calibration.json` (the manual scale reference, saved through the calibration store on
+  import) and `film/<file>` (the original, streamed and SHA-256 hashed as it is copied; the hash is what a model result
+  stores as `source_sha256`). Demo studies are never written.
+- **Export** (B6). The Find bar's `Export all` / `Export N selected` (`data-find-key` `export-bundle`) takes the CSV's
+  rows (`rowsToExport`: the ticked visible real rows, else every visible real row), asks `chooseFolder` for a parent and
+  writes the bundle; `Exporting…` in flight; disabled, with the reason on its `title`, during a run, a batch, a bulk
+  delete or an import, when studies are not being saved, and with no rows. The toast is `Exported 12 studies to <path>`,
+  then `· 2 films were not found and were left out (…)` and `· 1 file could not be read (a.dcm sidecar)` when non-zero
+  (S37, S40: a sidecar or calibration named by the film, a record by its own name, never the SP id). A destination that
+  refuses a write (a full or read-only stick) rejects the export with `The film <name> could not be written to the
+  bundle. Is the folder full or read-only?` or the like for a JSON file, never listing films as missing (S39).
+- **Import** (B4, B5, B8). The dropzone's `Import bundle…` (`import-bundle`) asks for a bundle, `readBundle` returns
+  the parsed records and presence flags, the screen reads the local films' hashes and the local records it needs, and
+  `planImport` decides per entry, in manifest order: **add** when no local study has the film (matched by SHA-256, never
+  by file name alone); **update** when one does and the bundle's record was saved strictly later than the local one, or
+  the local study has none; **skip** `already in the library` (older, equal, unparseable or no bundle record), `being
+  edited` (the match is open in edit mode or holds a stashed editor) or `malformed`. The inline prompt (`import-prompt`,
+  `import-confirm`, `import-cancel`, focus on Cancel, Escape cancels) reads `Import from <folder>: 10 to add, 2 to
+  update, 3 to skip. The films stay in this folder, so keep it where it is.` and takes the bar's place; a plan with
+  nothing to do toasts `Nothing to import: …` instead. Confirm places the files in the main process (S38: `readBundle`
+  has already parsed each sidecar and calibration, so a damaged one is `malformed` before the prompt; per study the
+  calibration, the sidecar, then the label record LAST; a bundle file gone or damaged at placement, or a calibration the
+  store refuses, skips that study, counted as `malformed`; a write failure in the data folder stops the import, and a
+  re-import plans the stopped study again because its record is still the older one), then ONE `setState` applies what
+  was placed. A local record whose read rejects is never written over (S42). Imported films stay in the bundle folder
+  (B5): moving it breaks re-runs and a hand-placed film's display until the film is found again. An update keeps the
+  local `id`, `filePath`, `addedAt`, `name`, `workspaceFolder`, `subjectId`, `timepoint`, `filmDate`, `note` and
+  `clinical`, and takes the result, the review mark, the comment, the sidecar, the record and the scale.
+- **Modules and channels.** `renderer/data/bundle.js` (pure; imports only `persistence.js`, `label-record.js` and
+  `labels.js`; `hasStashedEditor` is handed in by the screen): `BUNDLE_SCHEMA`, `bundleFolderName`, `studyFolderName`,
+  `localFilmHash`, `planExport`, `exportMessage`, `planImport`, `applyImport`, `importPromptText`, `importMessage`,
+  `nothingToImportMessage`. `renderer/data/labels.js` now exports `safeStem` (moved from `label-record.js`). The root
+  CommonJS `bundle-io.js` (imported only by `main.js`; imports `writeJsonAtomic` and `readJsonOrNull` from `store-io.js`;
+  in both electron-builder allowlists): `BUNDLE_SCHEMA`, `isStudyId`, `isLabelFileName`, `isSafeName`, `exportBundle`,
+  `readBundle`, `hashFiles`, `placeImport`; `main.js`'s `predictionPath` and `labelPath` call the validators (its
+  `REAL_STUDY_ID` and `LABEL_FILE` are gone). Handlers `export-bundle`, `read-bundle`, `hash-films` (at most 500 paths)
+  and `import-bundle`; `preload.js` and `renderer/api.js` `exportBundle`, `readBundle`, `hashFilms`, `importBundle` (only
+  `importBundle` gated by `assertWritable`). `renderer/screens/studies.js` exports the flows `exportBundleTo(parentDir)`,
+  `importBundleFrom(dir)` and `confirmImport()` (the smoke suite drives them, PB7); module flags `exporting`,
+  `importing`, `pendingImport`. The contract's 2026-10-15 amendment "annotation bundles" is the binding text.
+- What was built, by commit (`7dec644..` this branch's tip): the plan `ccb825d` and the next-session prompt `69a7262`;
+  Task 1 the planner's names and export plan `a810827`; Task 2 `bundle-io.js` `8bd1375`, fixed `5b3002c`; Task 3
+  `placeImport` and the four channels `53ade2b`; Task 4 the import plan `9f185b6`, fixed `0e79356`; Task 5 Export from
+  the Find tab `21e45d5`; Task 6 Import into the library `5079860`, fixed `50d6311`; Task 7 `tools/smoke/smoke-bundle.mjs`
+  `188b103`; then the records commits `27a817b` and `135a25a` (`docs/bundles.md`, the contract, this file, `CLAUDE.md`,
+  `docs/level-editor.md`, ROADMAP §1, README, the 1.2.0 release note and CHANGELOG, the plan's Ledger); then the final
+  review's fix wave: `eb90e6f` (S37–S40, S42 in code with their tests), `630af13` (the R12 test imports the real label
+  rule; the bundle suite's header and one check name) and its records commit.
+- Counts: unit 1110/1110 (1024 at the start of the plan; 1040, 1058, 1065 and 1102 after Tasks 1–4; 1110 after the
+  fix wave); `smoke-bundle.mjs` phase a 17/17, b 18/18, c 9/9 on two fresh `%TEMP%` profiles (phase c reuses a's; two
+  synthetic canvas-drawn films, DOM, store and file reads, no screenshots), the same before and after the fix wave;
+  after the fix wave `smoke-studies.mjs` 151/151 and `smoke-workspace.mjs` 100/100, each on its own fresh profile;
+  Tasks 5 and 6 were also walked from source over CDP (24/24, and two profiles at 4/4 and 15/15 after the fix).
+- The release stays 1.2.0 (PB10): `docs/releases/1.2.0.md` gains a section "Export and import a folder of annotated
+  films" and its opening sentence, CHANGELOG's 1.2.0 entry a bullet; no version bump anywhere.
+- **Rulings.** The planning rulings PB1–PB10: the validators move to `bundle-io.js` (PB1); the renderer never sees film or
+  sidecar bytes (PB2); two IPC reads before a plan (PB3); `applyImport` is pure and the screen does ONE `setState` after
+  placement (PB4); `import-bundle` stops at the first failed action (PB5; since S38 only a data-folder write failure
+  stops it, and a damaged bundle file skips its study); the manifest is written last (PB6); the smoke suite bypasses
+  the pickers through exported flows (PB7); timestamps compare by `Date.parse`, unparseable counts as absent (PB8); an
+  update keeps the local `labelFile` (PB9); the release stays 1.2.0 (PB10). The execution rulings S1–S44, each with
+  its cost in the plan's Ledger: S1 the main process suffixes a clashing bundle folder; S2 label names
+  come from `labelFileName`; S3 `filmPath` is set only when the file is there; S4 export validates every entry first and
+  an unsafe `fileName` only costs that study its film; S5 `bundle.js` does not import `isHandPlaced`; S6 `safeStem` gets
+  direct tests in `labels.test.js`; S7 the entry's study is the validated record; S8 `deleteLocalPrediction`, amended by
+  S21 (only when the bundle's study names a different `predictionId`); S9 `localFilmHash` takes the first valid digest;
+  S10 folder names never end in a dot or a space; S11 `BUNDLE_SCHEMA` is held twice and pinned equal by a test; S12 a
+  damaged label record skips that entry as malformed; S13 a damaged calibration digest is null in `planExport`; S14
+  path hardening beyond the brief (symlinks, device names) deferred; S15 the persistence-gating test lives in
+  `api-persistence.test.js`; S16 the prompt names the bundle by its last path segment; S17 an update's `labelComment` is an
+  add's expression; S18 a tie between two unparseable records takes the first in manifest order; S19 the stopped-import
+  toast's wording; S20 a film-less entry matches by its result's digest; S22 the record fallback also runs for a
+  `film_sha256` that is not hex; S23 Export's reason goes on its `title`; S24 an export in flight blocks nothing else
+  (deferred); S25 an import blocks the bar's other actions and its prompt takes the bar's place; S26 a pending plan is
+  withdrawn when the library or the tab changes; S27 which local records are read; S28 an add whose id the library took
+  meanwhile is dropped and named, and the other add paths refuse while importing; S29 a library that changed during the
+  read says so; S30 `Importing…`; S31 the import's toast never shows the record id; S32 an edit or re-run started on an
+  update target during placement deferred; S33 the staleness check runs before both outcomes; S34 each smoke phase cleans
+  its own scratch files and keeps the bundle the next phase needs; S35 both smoke fixtures have a real film on disk, so
+  matches are by `film_sha256`; S36 the plan's Ledger carries all of this. From the final whole-branch review: S37
+  `notRead` names files, never the SP id; S38 the placement order (calibration, sidecar, record last), source-side
+  failures skip a study and destination-side ones stop the import, `readBundle` parses sidecars and calibrations; S39 a
+  destination write failure rejects the export; S40 the export toast says files; S41 imported films all read FOLDER
+  `film` (deferred to the owner); S42 a local record whose read rejects is never written over; S43 the review's
+  "declined to judge" lines, accepted as outside the plan; S44 an invalid `labelFile` rejecting a whole export unnamed,
+  and an add keeping the bundle's `addedAt` (deferred to the owner).
+- Review: every task reviewed on Opus, four needed a fix round (Tasks 2, 4, 6 and 8; each re-reviewed clean on Sonnet).
+  The final whole-branch review (Opus) read "With fixes": I1 a stopped placement could leave a half-applied update a
+  re-import skipped for good, and a damaged bundle file stopped every later study on every re-import (S38); I2 a full
+  stick at export was reported as films not found (S39); I3 the export toast named SP ids (S37, with S40); I4
+  `smoke-studies` and `smoke-workspace` had not run since the Find bar changed. One fix wave closed all four and the
+  triage's fix-before-merge items (the R12 test's hard-coded rule, two `main.js` comments, the records' accuracy
+  items, the long lines and the editor-round headings, the bundle suite's header and one check name). The note that
+  stood here ("one to read first": `notRead`'s `<SP id> sidecar`) is resolved by S37. A scoped re-review of the fix wave
+  follows.
+- Not run: a packaged build; the human gate (plan Task 9, the owner's); a real film (no screenshot of one); the owner's
+  second computer; the other smoke suites on this tree (only `smoke-bundle`, `smoke-studies` and `smoke-workspace` ran
+  after the bundle); backend pytest (no backend change).
+
+**Next.** The owner's gate (plan Task 9): Export all from a library of three real films (one segmented, one hand-placed,
+one unsegmented) to a folder on a stick, open the bundle; on the other computer (or a second scratch profile) Import
+bundle…, read the prompt's counts, Import; the segmented film opens on its stored image, the hand-placed one on its
+original, a re-run on an imported DICOM works and so does window / level; import the same bundle again (all skipped);
+edit a comment on one side, export, import on the other (one updated, the local film path, name and subject untouched);
+export with a film moved away (the toast names it and the study imports without a film). The final whole-branch review
+is done and its fix wave landed; its scoped re-review comes first. The owner's list from it, to decide at the gate:
+S41 (every imported film reads FOLDER `film` and WORKSPACE the exporting machine's root), S44 (one invalid `labelFile`
+rejects a whole export unnamed; an add keeps the bundle's `addedAt`) and S43's lines. Push, the single PR (1.2.0) and
+its merge only on the owner's say-so.
+
+### Annotation editor round 2: a comment on the record, Hand-placed, REVERT: BUILT, owner gate passed, 1.2.0 release commit `7dec644` (backed up on `origin`, no PR), waiting on the bundle's gate (branch `worktree-annotation-round-2`, worktree `.claude/worktrees/annotation-round-2`, off `origin/main` @ `06c8cdd`, v1.1.1)
+
+2026-10-15. Three gaps the owner raised in the level editor, each closed on this branch: nothing in the annotation said
+why, a failed film placed by hand stayed Failed (the open ruling R24), and one edit could not be undone on its own.
+
+- Spec: `docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md` (decisions E1–E7; its section 8 lists the
+  records it amends). Plan: `docs/superpowers/plans/2026-10-15-annotation-editor-round-2.md` (eight tasks, rulings
+  P1–P10). Its companion, built after this one (E4): `specs/2026-10-15-annotation-bundle-export-import-design.md`,
+  which carries the comment across libraries. SDD ledger `.superpowers/sdd/2026-10-15-annotation-editor-round-2/`
+  (local, untracked).
+- **A comment on the record (E1, E5).** The label record gains an optional, nullable `comment` after `edits` (schema id
+  unchanged; a record saved before it validates and reads as no comment); the study gains `labelComment`, the display
+  copy, written by the same save as `labelFile`. The editor carries `comment` and `savedComment`; `commentChanged` makes
+  `unsavedCount` one higher, so the footer's count, Save edits, the exit prompt and the stash follow with no further
+  change. The Vertebral levels footer has a `COMMENT` textarea (its footer never detached by a rebuild, I2; 2,000
+  characters, `max-height: 30vh`); Save edits writes the record and `labelComment` and keeps the live text in the box
+  (P3); Mark reviewed's zero-change record carries the study's comment; the Analysis screen shows it read-only (six lines,
+  scrollable, hidden in edit mode) and the Find search matches it.
+- **Hand-placed (E2, E6; closes R24).** `deriveStatus` returns `hand` (`Hand-placed`) for a real study with measurements,
+  not failed, not reviewed, whose result no model produced (`isHandPlaced`; the real-study guard keeps demos Segmented,
+  P1). Sort rank 4 (`fail 0, proc 1, unseg 2, rev 3, hand 4, seg 5, ok 6`), counted in TO REVIEW, `.badge-hand`. The
+  level editor's `sync` passes `clearFailure: isHandPlaced(study)` and the measure queue's write nulls `processingError`
+  and `processingErrorAt` in the same patch as the measurements (a per-study flag that survives the debounce, P2); a
+  model result's commit passes `false` and any other commit nothing, so a failed re-run over old numbers still reads
+  Failed.
+- **REVERT (E3, E7).** `revertLevel(editor, code)` returns an Edited level to the model's geometry (a head: the model
+  circle, `rim: null`) with `source` back to `model`; `revertPlacedLevel` commits it through `/measure` like a drag. A
+  mono `REVERT` button in the row's action column (`revert:<code>`); an edited head stacks Place… over REVERT.
+- What was built, by commit (`5835860..` this branch's tip): the Hand-placed status `9d5b4e6`; the queue's `clearFailure`
+  `03ed4a3`; REVERT `4f34893`; the comment on the record and the study `872f94d`; Save edits and the reopen `71b7b8c`;
+  the panel's box and the Analysis block `8341375`, their height caps `56cec01`; the smoke sections (12's failed film,
+  20 REVERT, 21 the comment) `fa0c181`; then the records commit (the design handoff's sections 2, 3, 6, 9, 11 and the
+  new 12a, `docs/level-editor.md`, ROADMAP §8, the port and studies-table specs, the contract, the level editor plan's
+  Ledger, CLAUDE.md, this file, and four comment-only fixes the reviews flagged).
+- Counts: unit 1005/1005 (975 on the base); `smoke-levels.mjs` dom 141/141 and film 25/25 (a fresh `%TEMP%` profile, one
+  copied OLIF lumbar film, DOM, store and file reads only, no screenshots); the other suites this workstation runs were
+  re-measured the same day, none with a FAIL line (`tools/smoke/README.md`).
+- The final review's fix wave (`7be532f`, then a records commit): I1, Place then Discard (or CLEAR, or unchecking the
+  only placed level) on a failed film read Hand-placed with nothing placed and its failure erased; now the editor keeps
+  the study's failure at entry (`entryFailure`) and `sync` sends an empty hand-placed projection to the screen's
+  `clearResult` (the queue's `replaceMeasured`, then one write) instead of `/measure`, so the film reads Failed again,
+  or Unsegmented when it held no failure at Edit (a film that never ran, or a hand-placed film reopened in a later
+  session); I2, the comment box lost Ctrl+Z and composition because every rebuild detached it; now the footer and its
+  comment block persist and the head, list, status line and actions rebuild around them;
+  `.analysis-comment-text` wraps long runs (M5); counts after it: unit 1014/1014, `smoke-levels.mjs` dom 145/145 and
+  film 25/25, `smoke-studies.mjs` 151/151.
+- Not run: a packaged build; backend pytest (no backend change); `smoke-cervical.mjs`, `smoke-segmental.mjs` and
+  `smoke-calibration.mjs` (no cervical film, no ruler films, no Tesseract binary here).
+
+**Next.** ~~The owner's gate: the three features on real films from the workstation's films folder, on a `%TEMP%`
+profile with `TESSERACT_CMD` at the installed app's bundled OCR (no screenshot of a real film). The fix wave added to
+the plan's Task 9 checklist: place then Discard on a failed film reads Failed again; type a comment, drag a handle,
+then press an arrow (the arrow must nudge the handle, not move the caret; unverified, since the handle press's
+`preventDefault` in `components/viewer.js` may leave the textarea focused); Ctrl+Z after the first keystroke; a
+dead-key accent as the first character; and, after upgrading, a look over the real library for old model results with
+neither `predictionId` nor `qc.models` reading Hand-placed (spec §9).~~ This gate has passed (`7dec644`'s message,
+`docs/releases/1.2.0.md`). What waits now is the bundle's gate (plan Task 9, the section above), then one PR for both
+rounds as 1.2.0. Push, PR and release only on the owner's say-so; ~~no release note is written yet (the owner picks
+the number; 1.2.0 is the suggestion)~~ the 1.2.0 release commit `7dec644` is on the branch (the tip is backed up on
+`origin`, no PR yet). R24 is closed. Still open: ~~the bundle spec's build, which follows this gate~~ (built, the
+section above); PR #62 (release accuracy gate) and PR #63 (in-app training); the retraining brainstorm
+(`docs/superpowers/NEXT-SESSION-retraining.md`, a new worktree off `main`); the human gate's checklist for the
+released editor (plan Task 15).
+
+### Vertebral level editor, window / level, label record — RELEASED as v1.1.0 on 2026-10-12 (PR #60, merge `cbbeb4e`; branch `worktree-level-editor`, worktree `.claude/worktrees/level-editor`, off `origin/main` @ `20fd4c5`, v1.0.17); gate feedback G7 ~~BUILT after it, release 1.1.1 committed, not pushed~~ RELEASED as v1.1.1 (PR #64, merge `06c8cdd`) (branch `claude/level-plates`, worktree `.claude/worktrees/level-plates`, off `origin/main` @ `cbbeb4e`)
 
 2026-10-10. Edit mode on the Analysis screen is now a level editor. In edit mode the right panel is the **Vertebral
 levels** panel: sixteen levels in five groups (C2–C7, T1 · T4, L1–L5, S1, two femoral heads), each with a visibility
@@ -121,7 +319,7 @@ and can be placed by hand.
 - **Released as v1.1.0 on 2026-10-12.** The branch was pushed to `origin` (Feches) at the owner's choice with the
   1.1.0 release commit `54c2511` on it (G6 and R42 included); PR #60 merged it to `main` as `cbbeb4e` the same day,
   which carries the tag `v1.1.0` and published the installers. The human gate's checklist (plan Task 15) stays the
-  owner's to tick on the released build; R24 is still open.
+  owner's to tick on the released build; ~~R24 is still open~~ (closed 2026-10-15 by E2, in the first section above).
 - **Gate feedback G7 (2026-10-13, D20, decisions 136–138 below; branch `claude/level-plates` off `cbbeb4e`).** The
   owner: "the vertebral body labeling gets in the way. Is there a way to move them?" On a film facing right every
   level's plate sat inside its body (Task 9 fixed it 14 px right of the posterior edge). Each plate now sits outside
@@ -166,15 +364,17 @@ and can be placed by hand.
   workstation, and it screenshots); a DICOM film's default window from its tags on a real DICOM (the unit and backend
   tests cover it).
 
-**Next.** The owner checks G7 on their right-facing film (plan Task 15's new item: the plates outside the bodies on
+**Next.** (Written 2026-10-13, before PR #64 merged: v1.1.1 is released and this paragraph is history; the current Next is
+the first section above.) The owner checks G7 on their right-facing film (plan Task 15's new item: the plates outside the bodies on
 the posterior side, the drag, the double-click, the reset on opening another film) and says whether to push
 `claude/level-plates`; its PR to `main`, merged with Create a merge commit, publishes v1.1.1. Before the push its smoke
 baseline (dom 121/121 when written) is worth re-measuring with the gate chain (parity, gate1–3, chip, chord), since
 the plates now take left presses in edit mode that used to do nothing. Still open on the released editor:
 
-- **R24, the owner's decision:** a film whose segmentation failed and whose levels were then placed by hand still
+- ~~**R24, the owner's decision:** a film whose segmentation failed and whose levels were then placed by hand still
   reads Failed, sorts first and blocks Mark reviewed; clear `processingError` on the first hand-placed commit, or give
-  such a film its own status? (Task 15's checklist; ROADMAP §8.)
+  such a film its own status? (Task 15's checklist; ROADMAP §8.)~~ Closed 2026-10-15 by E2 (annotation editor round 2:
+  a status of its own, Hand-placed, and the first hand-placed commit clears the failure).
 - **Michael's PR #61** (a missing-vertebra annotation in the old edit bar) was closed unmerged, as superseded by the
   level editor.
 - **PR #62** (a release accuracy gate) is open; once merged, it blocks publication until its variables and token are set.
@@ -1894,7 +2094,8 @@ the spec's §6 (`2026-09-08-batch-segmentation-design.md`). Implemented by plan 
      deviation from the plan, documented in the contract amendment. *Cost if wrong:* none.
 112. **R24 — A hand-placed film's Failed status is the owner's call** (clear `processingError` on the first hand-placed
      commit, or a status of its own); on the gate's checklist and in ROADMAP §8, unchanged in code. *Cost if wrong:*
-     Failed films sort first and block Mark reviewed until the owner decides.
+     Failed films sort first and block Mark reviewed until the owner decides. **Closed 2026-10-15 by E2** (annotation
+     editor round 2): a status of its own, `hand`, and the first hand-placed commit clears the failure.
 113. **R25 — A rim-point drag or nudge that would leave a femoral head under 0.5 px is refused** (`moveHandle` returns
      the geometry unchanged, so the handle stays where it was): the re-review of the final wave found the one path R22
      left to a radius of 0, which the label record's schema rejects. *Cost if wrong:* a rim point cannot be dragged

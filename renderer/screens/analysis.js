@@ -10,7 +10,7 @@ import { showToast } from '../components/toast.js';
 import { toCsv } from '../data/csv.js';
 import { loadStudyImages, disposeStudyImages, thumbnailDataUri, bitmapFromBase64, imagesFromRaw } from '../viewer/canvas.js';
 import { cropRaw, defaultWindow, rawFromDecoded } from '../viewer/window-level.js';
-import { mountViewer, recordPrediction, forgetPrediction, getPrediction, commitGeometry } from '../components/viewer.js';
+import { mountViewer, recordPrediction, forgetPrediction, getPrediction, commitGeometry, replaceMeasured } from '../components/viewer.js';
 import { configureLevelEditor, forgetLevelEditor, requestExit, writeReviewRecord } from '../level-editor.js';
 import { configureFilmWindow, forgetFilmWindow, windowNeedsDecode, redecodeKeptWindow } from '../film-window.js';
 import { describeModels } from '../data/models.js';
@@ -333,10 +333,10 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       data,
       modality: 'xray',
       bodyPart: requestedRegion(current),
-      anteriorSide: current.anteriorSide ?? null,
+      anteriorSide: studyRegion(current) === 'cervical' ? null : current.anteriorSide ?? null,
       view,
       ...(requestedRegion(current) === 'auto' ? {} : { models: requestedRegion(current) === 'cervical'
-        ? { vertebrae: 'cervical_hrnet' } : requestedRegion(current) === 'full_spine'
+        ? { vertebrae: 'cervical_anatomical_hrnet' } : requestedRegion(current) === 'full_spine'
         ? { vertebrae: 'dual_hrnet' } : getState().models }),
       calibration: calibrationForStudy(current),
     });
@@ -439,7 +439,7 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
       selection: state.openId === studyId ? null : state.selection,
       levelEditor: state.levelEditor?.studyId === studyId ? null : state.levelEditor,
       studies: state.studies.map((s) => (s.id === studyId
-        ? { ...s, predictionId: requestId, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
+        ? { ...s, anteriorSide: response.geometry?.region === 'cervical' ? null : s.anteriorSide, predictionId: requestId, measurements: response.measurements, geometry: response.geometry, qc: response.qc ?? null,
           calibration: preferReviewedCalibration(response.calibration, calibrationForStudy(s)), thumbnail,
           // A re-run replaces every number a review was made over (studies-table spec 2026-09-10, section 8.4, site 1).
           reviewedAt: null, processingError: null, processingErrorAt: null }
@@ -724,9 +724,22 @@ async function readStoredImages(study) {
   return { images: await loadStudyImages(sidecar), geometry: sidecar.geometry };
 }
 
+// (The final review of round 2, I1) The level editor's way to take a study's result away: a film no model produced
+// whose levels were all taken off again (renderer/level-editor.js sync). Whatever /measure it has pending or in flight
+// is orphaned first (the queue's replaceMeasured, which also drops its draft), so no late answer lands over the patch;
+// then the patch is written in one update, onto the record that was asked about (`addedAt`).
+function clearResult(studyId, patch) {
+  const study = getState().studies.find((s) => s.id === studyId);
+  replaceMeasured(studyId, null);
+  if (!study) return;
+  setState((state) => ({
+    studies: state.studies.map((s) => (s.id === studyId && s.addedAt === study.addedAt ? { ...s, ...patch } : s)),
+  }));
+}
+
 // The level editor's wiring (renderer/level-editor.js) gets the viewer's measure queue and prediction snapshots,
-// and this screen's film loader and image facts. Once, at import, like the subscription above.
-configureLevelEditor({ commitGeometry, getPrediction, ensureFilm, imageInfo });
+// and this screen's film loader, image facts and result clear. Once, at import, like the subscription above.
+configureLevelEditor({ commitGeometry, clearResult, getPrediction, ensureFilm, imageInfo });
 // (2026-10-11, gate feedback G3) The view's window / level (renderer/film-window.js) decodes through the same loader.
 configureFilmWindow({ ensureFilm });
 
@@ -906,9 +919,16 @@ export function render(state) {
   const tabsRow = el('div', { class: 'analysis-tabs' },
     el('div', { class: 'analysis-tabgroup' }, tabMeas, tabSim));
   const actionsRow = el('div', { class: 'analysis-actions' }, exportButton, reviewButton, reviewNote);
+  // (2026-10-15, annotation editor round 2, spec §3.6) The label record's comment, read-only, under the actions row.
+  // It shows only while the study has one and hides in edit mode, where the panel's own box takes over.
+  const commentText = el('p', { class: 'analysis-comment-text' });
+  const commentBlock = el('div', { class: 'analysis-comment is-hidden' },
+    el('span', { class: 'analysis-comment-label' }, 'COMMENT'),
+    commentText);
   const panel = el('aside', { class: 'analysis-panel' },
     tabsRow,
     actionsRow,
+    commentBlock,
     measurementsHost,
     similarHost,
     levelHost);
@@ -1045,8 +1065,8 @@ export function render(state) {
     const produced = describeModels(open.qc);
     regionSelect.value = requestedRegion(open);
     anteriorSelect.value = open.anteriorSide ?? '';
-    anteriorLabel.hidden = requestedRegion(open) === 'lumbar';
-    anteriorSelect.options[0].textContent = requestedRegion(open) === 'cervical' ? 'Choose anterior side…' : 'Auto detect';
+    anteriorLabel.hidden = ['lumbar', 'cervical'].includes(studyRegion(open));
+    anteriorSelect.options[0].textContent = 'Auto detect';
     anteriorSelect.setAttribute('aria-label', requestedRegion(open) === 'auto' ? 'Anterior image side'
       : studyRegion(open) === 'full_spine' ? 'Full spine anterior image side' : 'Cervical anterior image side');
     regionSelect.disabled = anteriorSelect.disabled = Boolean(live.running || live.batch || open.source === 'demo' || live.editing);
@@ -1067,10 +1087,10 @@ export function render(state) {
     const failedNote = failedRunNote(open, { unsupported, status: badgeStatus }, previewNote);
     regionNote.classList.toggle('is-failed', failedNote !== null);
     regionNote.textContent = failedNote !== null ? failedNote : previewNote ? previewNote : open.measurements
-      ? `${requestedRegion(open) === 'auto' ? `Detected ${studyRegionLabel(open)}. ` : ''}${open.geometry?.anterior_side ? `Anterior: image ${open.geometry.anterior_side}. ` : ''}Changing region or orientation clears measurements; run again.`
+      ? `${requestedRegion(open) === 'auto' ? `Detected ${studyRegionLabel(open)}. ` : ''}${open.geometry?.anterior_side ? `Anterior: image ${open.geometry.anterior_side}. ` : ''}Changing ${studyRegion(open) === 'cervical' ? 'region' : 'region or orientation'} clears measurements; run again.`
       : requestedRegion(open) === 'auto' ? 'Detect cervical, lumbar or full spine from the film. Choose a region or orientation to override.'
       : studyRegion(open) === 'full_spine' ? 'Use a lateral full-spine film. Orientation is detected automatically; left/right overrides it.'
-      : studyRegion(open) === 'cervical' ? 'Use a lateral cervical film. Confirm which image side is anterior.' : '';
+      : studyRegion(open) === 'cervical' ? 'Use a lateral cervical film. Anterior and posterior are identified automatically.' : '';
     // Never overwrite what the user is in the middle of typing.
     if (document.activeElement !== nameField) {
       nameField.value = studyName(open);
@@ -1127,6 +1147,14 @@ export function render(state) {
     reviewNote.textContent = reason ?? '';
     reviewNote.hidden = reason === null;
 
+    // (Annotation editor round 2, spec §3.6) The comment block, written every time like the review button: the
+    // study's label comment, shown while it has one and edit mode is off. `editing` is a real boolean, here and in the
+    // panel swap below: classList.toggle with an undefined force toggles instead of setting.
+    const editing = Boolean(live.editing);
+    const comment = typeof open.labelComment === 'string' && open.labelComment.trim() !== '' ? open.labelComment : null;
+    commentText.textContent = comment ?? '';
+    commentBlock.classList.toggle('is-hidden', editing || comment === null);
+
     // The list's badge, on the list's rule (screens/studies.js buildRow): headerBadge's `unsupported`,
     // `status` and `badgeKey`, read above for the region note. A Failed pill carries the dated reason
     // as its tooltip (2026-10-01, issue #39).
@@ -1139,9 +1167,8 @@ export function render(state) {
     tabMeas.classList.toggle('is-active', live.tab === 'meas');
     tabSim.classList.toggle('is-active', live.tab === 'sim');
     // (2026-10-10, level editor Task 11) Edit mode swaps the panel: the tabs, the actions row and both tab bodies
-    // hide and the Vertebral levels panel shows; DONE brings them back on the tab that was active. A real
-    // boolean: classList.toggle with an undefined force toggles instead of setting.
-    const editing = Boolean(live.editing);
+    // hide and the Vertebral levels panel shows; DONE brings them back on the tab that was active. `editing` is read
+    // above, beside the comment block.
     panel.classList.toggle('is-editing', editing);
     tabsRow.classList.toggle('is-hidden', editing);
     actionsRow.classList.toggle('is-hidden', editing);

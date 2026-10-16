@@ -1,6 +1,8 @@
 """Export the trusted training checkpoints for desktop ONNX Runtime inference.
 
-Run from the repository root: python tools/export_onnx.py
+Run from the repository root to export the bundle, or select a model with --kind.
+The anatomical graph is distributed through LFS; --cervical-checkpoint and
+--cervical-image rebuild it with real-image parity checks.
 PyTorch is an export/test dependency, never a desktop inference dependency.
 """
 from pathlib import Path
@@ -90,10 +92,38 @@ def export(kind, destination):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--kind', choices=['vertebra', 'femoral', 's1', 'hrnet'])
+    parser.add_argument('--kind', choices=['vertebra', 'femoral', 's1', 'hrnet', 'cervical_anatomical_hrnet'])
     parser.add_argument('--output', type=Path, default=ROOT / 'backend' / 'onnx')
+    parser.add_argument('--cervical-checkpoint', type=Path,
+                        help='Anatomical cervical training checkpoint for a complete export')
+    parser.add_argument('--cervical-image', type=Path, action='append',
+                        help='Real cervical radiograph for export parity; repeatable')
     args = parser.parse_args()
-    if args.kind:
+    if args.kind in (None, 'cervical_anatomical_hrnet'):
+        if args.cervical_checkpoint or args.cervical_image:
+            if not args.cervical_checkpoint or not args.cervical_image:
+                parser.error('Re-export requires both --cervical-checkpoint and --cervical-image')
+            import subprocess
+            command = [sys.executable, str(ROOT / 'tools' / 'export_cervical_anatomical_onnx.py'),
+                       '--checkpoint', str(args.cervical_checkpoint), '--destination', str(args.output)]
+            for image in args.cervical_image:
+                command.extend(['--image', str(image)])
+            subprocess.run(command, check=True)
+        else:
+            # Distribute the parity-checked final graph; rebuilding requires training weights.
+            import shutil
+            source = ROOT / 'backend' / 'onnx' / 'cervical_anatomical_hrnet.onnx'
+            metadata = json.loads(source.with_suffix('.json').read_text())
+            if hashlib.sha256(source.read_bytes()).hexdigest() != metadata['onnx_sha256']:
+                raise ValueError('Anatomical cervical model hash mismatch; run git lfs pull')
+            args.output.mkdir(parents=True, exist_ok=True)
+            if args.output.resolve() != source.parent.resolve():
+                shutil.copy2(source, args.output / source.name)
+                shutil.copy2(source.with_suffix('.json'), args.output / source.with_suffix('.json').name)
+            print('Verified bundled anatomical cervical model', flush=True)
+    if args.kind == 'cervical_anatomical_hrnet':
+        pass
+    elif args.kind:
         export(args.kind, args.output)
     else:
         # Bound conversion memory; each model is exported in a fresh process.

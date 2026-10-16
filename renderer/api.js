@@ -185,6 +185,15 @@ export async function deleteLabelRecord(name) {
   return invoke('deleteLabelRecord', name);
 }
 
+// (2026-10-15, annotation bundles) The main process does all the file work; the renderer plans and hands over names.
+// Only importBundle is gated on persistence: it writes sidecars, label records and calibration references into the
+// data folder. exportBundle writes only into the folder the person chose, outside the data folder, and readBundle and
+// hashFilms only read, so after disablePersistence a library can still be exported and a bundle still inspected.
+export async function exportBundle(request) { return invoke('exportBundle', request); }
+export async function readBundle(dir) { return invoke('readBundle', dir); }
+export async function hashFilms(paths) { return invoke('hashFilms', paths); }
+export async function importBundle(request) { assertWritable(); return invoke('importBundle', request); }
+
 // Uint8Array of the file's bytes, or null when the file no longer exists.
 export async function readFile(filePath) {
   const bytes = await invoke('readFile', filePath);

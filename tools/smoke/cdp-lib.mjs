@@ -11,7 +11,9 @@ const KEYS = {
   ArrowDown: { code: 'ArrowDown', vk: 40 },
   ArrowLeft: { code: 'ArrowLeft', vk: 37 },
   ArrowRight: { code: 'ArrowRight', vk: 39 },
+  z: { code: 'KeyZ', vk: 90 },   // with { ctrl: true }: the text box's own undo (smoke-levels.mjs section 21)
 };
+const MODIFIER_CTRL = 2;
 const MODIFIER_SHIFT = 8;
 
 async function pageTarget(port) {
@@ -103,10 +105,10 @@ export async function connect(port = process.env.CDP_PORT || '9222') {
   const move = (x, y) => mouse('mouseMoved', x, y);
   const wheel = (x, y, deltaY) => mouse('mouseWheel', x, y, { deltaX: 0, deltaY });
 
-  async function key(name, { shift = false } = {}) {
+  async function key(name, { shift = false, ctrl = false } = {}) {
     const spec = KEYS[name];
     if (!spec) throw new Error(`unknown key ${name}`);
-    const modifiers = shift ? MODIFIER_SHIFT : 0;
+    const modifiers = (shift ? MODIFIER_SHIFT : 0) | (ctrl ? MODIFIER_CTRL : 0);
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key: name, code: spec.code, windowsVirtualKeyCode: spec.vk, modifiers });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code: spec.code, windowsVirtualKeyCode: spec.vk, modifiers });
   }

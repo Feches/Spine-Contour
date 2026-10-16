@@ -10,7 +10,7 @@
 
 import { LEVEL_CODES, kindOf, levelState, trainingStatus, changedPoints } from './levels.js';
 import { projectionRegion } from './level-projection.js';
-import { fileStem } from './labels.js';
+import { fileStem, safeStem } from './labels.js';
 import { VERSION_LABEL } from './version.js';
 
 export const LABEL_SCHEMA = 'spinecontour.segmentation-label/1';
@@ -31,26 +31,6 @@ export function viewSlug(view) {
 /** 'v1.0.17' -> '1.0.17'. */
 export function appVersion(label = VERSION_LABEL) {
   return String(label).trim().replace(/^v/i, '');
-}
-
-const STEM_MAX = 180;
-// The characters no Windows file name may hold, and the control characters U+0000-U+001F.
-const UNSAFE_CHARACTERS = /[\\/:*?"<>|\u0000-\u001f]/g;
-const DEVICE_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
-
-// A film's stem as the stem of a file name the main process accepts (ruling R12; main.js LABEL_FILE): every
-// reserved or control character becomes '_', leading dots go, the stem is capped at 180 UTF-16 units (never
-// splitting a surrogate pair), an empty stem becomes 'film', and a Windows device name before the first dot
-// ('CON', 'nul.x') takes a '_' (Windows reads 'CON.label.json' as the device CON).
-function safeStem(stem) {
-  let safe = String(stem ?? '').replace(UNSAFE_CHARACTERS, '_').replace(/^\.+/, '');
-  if (safe.length > STEM_MAX) {
-    safe = safe.slice(0, STEM_MAX);
-    if (/[\uD800-\uDBFF]$/.test(safe)) safe = safe.slice(0, -1);
-  }
-  if (safe === '') return 'film';
-  const head = safe.match(/^[^.]*/)[0];
-  return DEVICE_NAME.test(head.trimEnd()) ? `${head}_${safe.slice(head.length)}` : safe;
 }
 
 /**
@@ -144,6 +124,27 @@ function editsSummary(entries) {
 }
 
 /**
+ * (annotation editor round 2, spec §3.1) The comment as the record writes it: the text trimmed, or null when it is
+ * blank or not a string. The cap on its length belongs to the text box; nothing here truncates.
+ * @returns {string|null}
+ */
+export function normalizeComment(text) {
+  if (typeof text !== 'string') return null;
+  const trimmed = text.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+/**
+ * The comment a record holds, trimmed, or '' when it has none: the key absent (a record saved before comments),
+ * null, or anything that is not a string. Never throws, whatever it is given.
+ * @returns {string}
+ */
+export function recordComment(record) {
+  const comment = record?.comment;
+  return typeof comment === 'string' ? comment.trim() : '';
+}
+
+/**
  * The label record for one film, ready for JSON.stringify. `image` is `{ file, sha256, width, height }`, `model`
  * is `{ name, version }`, `savedAt` an ISO-8601 string and `contours` maps a level code to the model's mask
  * outline (`Pt[]`, or null); only a `segmented` body level takes its contour, an edited or manual one writes null
@@ -151,6 +152,7 @@ function editsSummary(entries) {
  * name or its SP id), the view, and the region when the editor's is Auto. Not-visible and not-placed levels
  * carry only `state`, `source` and an empty `edited_points`; a level's geometry is written only while it is visible
  * and placed. (D18) Every level and head lists `edited_points`, and `edits`, after `complete`, sums them.
+ * (Round 2, spec §3.1) `comment`, after `edits`, is the editor's comment trimmed, or null when it is blank.
  */
 export function toLabelRecord({ editor, study, image, model, appVersion: version = appVersion(), savedAt, contours = {} }) {
   const levels = {};
@@ -171,6 +173,7 @@ export function toLabelRecord({ editor, study, image, model, appVersion: version
     saved_at: savedAt,
     complete: trainingStatus(editor).complete,
     edits: editsSummary([...Object.values(levels), ...femoralHeads]),
+    comment: normalizeComment(editor.comment),
     levels,
     femoral_heads: femoralHeads,
   };

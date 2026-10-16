@@ -16,6 +16,7 @@
     "segmented": 5, "edited": 2, "manual": 1, "not_placed": 0, "not_visible": 8,
     "points_moved": 4, "points_placed": 4
   },
+  "comment": "L5 is sacralised; the S1 endplate is the top of the fused body.",
   "levels": {
     "C2": { "state": "not_visible", "source": "film_type", "edited_points": [] },
     "C3": { "state": "not_visible", "source": "film_type", "edited_points": [] },

@@ -2,13 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
-  LABEL_SCHEMA, viewSlug, appVersion, labelFileName, toLabelRecord, recordLevels,
+  LABEL_SCHEMA, viewSlug, appVersion, labelFileName, toLabelRecord, recordLevels, recordComment, normalizeComment,
 } from '../renderer/data/label-record.js';
 import {
   LEVEL_CODES, kindOf, levelState, trainingStatus, openEditor, setLevelGeometry, toggleVisible,
-  startPlacing, addPoint, finishPlacing, pointKeys,
+  startPlacing, addPoint, finishPlacing, pointKeys, setComment,
 } from '../renderer/data/levels.js';
 import { VERSION_LABEL } from '../renderer/data/version.js';
+import { isLabelFileName } from '../bundle-io.js';
 import { validateAgainst } from './fixtures/schema-check.js';
 
 const SCHEMA = JSON.parse(fs.readFileSync(new URL('../docs/design/level-editor/label-record.schema.json', import.meta.url), 'utf8'));
@@ -305,9 +306,8 @@ test('labelFileName suffixes a clash', () => {
   assert.equal(labelFileName('Film', ['film.label.json']), 'Film-2.label.json', 'Windows and macOS file names ignore case');
 });
 
-// The main process's own rule (main.js LABEL_FILE): every name labelFileName returns must pass it.
-const MAIN_LABEL_FILE = /^(?!\.)[^\\/:*?"<>|\u0000-\u001f]{1,200}\.label\.json$/;
-
+// The main process's own rule is bundle-io.js isLabelFileName, imported above: every name labelFileName returns must
+// pass it.
 test('labelFileName sanitises the stem so the main process accepts the name (R12)', () => {
   assert.equal(labelFileName('a:b*c?d"e<f>g|h', []), 'a_b_c_d_e_f_g_h.label.json', 'reserved characters become _');
   assert.equal(labelFileName('a\\b/c', []), 'a_b_c.label.json', 'both separators become _');
@@ -331,7 +331,7 @@ test('labelFileName sanitises the stem so the main process accepts the name (R12
   for (const stem of ['a:b', '..x', '', 'x'.repeat(250), 'CON', 'con.x', 'tab\t', '.', 'a b']) {
     for (const taken of [[], [labelFileName(stem, [])]]) {
       const name = labelFileName(stem, taken);
-      assert.match(name, MAIN_LABEL_FILE, `${JSON.stringify(stem)} gives a name the main process accepts`);
+      assert.equal(isLabelFileName(name), true, `${JSON.stringify(stem)} gives a name the main process accepts`);
     }
   }
 });
@@ -368,7 +368,7 @@ test('toLabelRecord writes the envelope: image, film, model, versions, time, com
   assert.equal(rec.app_version, '1.0.17');
   assert.equal(rec.saved_at, SAVED_AT);
   assert.deepEqual(Object.keys(rec),
-    ['schema', 'study', 'image', 'film', 'model', 'app_version', 'saved_at', 'complete', 'edits', 'levels', 'femoral_heads']);
+    ['schema', 'study', 'image', 'film', 'model', 'app_version', 'saved_at', 'complete', 'edits', 'comment', 'levels', 'femoral_heads']);
   assert.equal(rec.complete, false, 'L3 is visible and not placed');
   assert.equal(rec.complete, trainingStatus(e).complete);
   const done = setLevelGeometry(e, 'L3', { superior: [[10, 50], [20, 50]], inferior: [[10, 60], [20, 60]] });
@@ -376,6 +376,35 @@ test('toLabelRecord writes the envelope: image, film, model, versions, time, com
   assertValid(record(done));
   assertValid(rec);
   assert.equal(record(e, { appVersion: undefined }).app_version, SHIPPED_VERSION, 'the app version defaults to the shipped label');
+});
+
+test('toLabelRecord writes comment trimmed, null when blank, after edits and before levels; the example validates with one', () => {
+  const e = lumbarEditor();
+  const blank = record(e);
+  assert.equal(blank.comment, null, 'no comment is null, not absent');
+  assert.ok('comment' in blank);
+  assertValid(blank);
+  const typed = record(setComment(e, '  L5 is sacralised.\n'));
+  assert.equal(typed.comment, 'L5 is sacralised.');
+  assertValid(typed);
+  assert.deepEqual(Object.keys(typed),
+    ['schema', 'study', 'image', 'film', 'model', 'app_version', 'saved_at', 'complete', 'edits', 'comment', 'levels', 'femoral_heads']);
+  assert.equal(record(setComment(e, '   \n')).comment, null, 'whitespace alone is no comment');
+  assert.equal(record(setComment(e, 'x'.repeat(3000))).comment.length, 3000, 'nothing here truncates; the text box caps it');
+  assert.equal(typeof EXAMPLE.comment, 'string', 'the shipped example carries one');
+  assert.equal(validateAgainst(SCHEMA, EXAMPLE).ok, true);
+});
+
+test('the schema takes a comment that is a string or null, optional, and nothing else', () => {
+  const rec = record(lumbarEditor());
+  const { comment: _comment, ...without } = rec;
+  assertValid(without);
+  assertValid({ ...rec, comment: null });
+  assertValid({ ...rec, comment: 'a note' });
+  failsAt({ ...rec, comment: 42 }, '/comment');
+  failsAt({ ...rec, comment: {} }, '/comment');
+  failsAt({ ...rec, comment: ['a'] }, '/comment');
+  assert.match(SCHEMA.properties.comment.description, /spec/i, 'the description names the spec');
 });
 
 test('film.region is the editor region, or the projection\'s reading of the placed levels for Auto', () => {
@@ -725,7 +754,7 @@ test('the shipped example lists its edited points and its edits block agrees wit
   for (const entry of entriesOf(EXAMPLE)) assert.ok(Array.isArray(entry.edited_points), JSON.stringify(entry));
   assert.deepEqual(EXAMPLE.edits, summaryOf(EXAMPLE));
   assert.deepEqual(EXAMPLE.edits, { segmented: 5, edited: 2, manual: 1, not_placed: 0, not_visible: 8, points_moved: 4, points_placed: 4 });
-  assert.deepEqual(Object.keys(EXAMPLE).slice(7, 10), ['complete', 'edits', 'levels']);
+  assert.deepEqual(Object.keys(EXAMPLE).slice(7, 11), ['complete', 'edits', 'comment', 'levels']);
   // The example's edited lists name the keys whose value differs from the model's.
   const l2 = EXAMPLE.levels.L2;
   assert.deepEqual(Object.keys(l2.corners).filter(key => l2.corners[key].some((v, i) => v !== l2.model_corners[key][i])), l2.edited_points);
@@ -818,4 +847,41 @@ test('recordLevels leaves out what a damaged record does not say, and never inve
   assert.equal(partial.T4.geometry, null);
   assert.equal(partial.FH2.geometry, null, 'a zero radius is no circle');
   assert.deepEqual(partial.FH1.geometry, { center: [5, 5], radius: 3, rim: null }, 'a one-point rim is dropped to null');
+});
+
+// ---------- the comment (annotation editor round 2, spec §3) ----------
+
+test('recordComment reads a string trimmed and reads anything else as empty (Review Focus 2)', () => {
+  assert.equal(recordComment({ comment: 'a ' }), 'a');
+  assert.equal(recordComment({ comment: '  L5 is sacralised.\n' }), 'L5 is sacralised.');
+  assert.equal(recordComment({ comment: '   ' }), '');
+  assert.equal(recordComment({ comment: null }), '');
+  assert.equal(recordComment({ comment: 42 }), '');
+  assert.equal(recordComment({ comment: {} }), '');
+  assert.equal(recordComment({ comment: ['a'] }), '');
+  assert.equal(recordComment({}), '');
+  assert.equal(recordComment(null), '');
+  assert.equal(recordComment(undefined), '');
+  assert.equal(recordComment(42), '');
+  assert.equal(recordComment(EXAMPLE), EXAMPLE.comment);
+});
+
+test('recordComment inverts toLabelRecord, and a record saved before the comment reads empty', () => {
+  const rec = record(setComment(lumbarEditor(), '  held on disk  '));
+  assert.equal(recordComment(rec), 'held on disk');
+  assert.equal(recordComment(JSON.parse(JSON.stringify(rec))), 'held on disk');
+  assert.equal(recordComment(record(lumbarEditor())), '');
+  const { comment: _comment, ...older } = rec;
+  assert.equal(recordComment(older), '');
+});
+
+test('normalizeComment: " x " → "x", "   " → null, undefined → null', () => {
+  assert.equal(normalizeComment(' x '), 'x');
+  assert.equal(normalizeComment('   '), null);
+  assert.equal(normalizeComment(''), null);
+  assert.equal(normalizeComment(undefined), null);
+  assert.equal(normalizeComment(null), null);
+  assert.equal(normalizeComment(42), null);
+  assert.equal(normalizeComment({}), null);
+  assert.equal(normalizeComment('a\n\nb'), 'a\n\nb', 'inner line breaks are kept');
 });

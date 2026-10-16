@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.2.0
+
+- The Vertebral levels panel has a **COMMENT** box: whatever you type is saved with Save edits into the film's label
+  record as `comment`, counts as one unsaved change until saved, and shows read-only on the Analysis screen and in the
+  Studies search.
+- A real film placed by hand, with no model run behind it, reads **Hand-placed**: after Needs review in the sort,
+  counted in TO REVIEW, and Mark reviewed turns it Reviewed. The first level committed on a failed film clears its
+  failure; taking every level off again returns the film to what the editor found at Edit.
+- An Edited level's row shows **REVERT**, which returns that one level to the model's output and commits it like a
+  drag.
+- The selected level's handles shrink with the film below 1:1, to a floor of 3 px, instead of covering a zoomed-out
+  vertebra at a fixed 6 px, and when zoomed in past 1:1 grow with the square root of the zoom instead of magnifying
+  with the film (12 px at 4x, 17 at 8x, not 24 and 48).
+- The study drawer's STUDY column grows with a long film name (to 280 px) and wraps it inside its cell instead of
+  running it over SUBJECT.
+- The C2 centroid is drawn outside edit mode as a cross in C2's colour on cervical and full-spine films, as the C7
+  centroid is on a full-spine film.
+- **Export all** (or **Export N selected**) on the Find tab writes a bundle folder: a manifest and, per film, the
+  original file, the study's record, the model's result, the label record and the manual image scale. **Import
+  bundle…** reads one into another library after asking in the bar: new films are added, a film the library already
+  holds (matched by content) is updated only when the bundle's annotation was saved later, and the rest is skipped and
+  named; a damaged file in the bundle skips only its film. An export folder that fills up or cannot be written stops
+  the export with a message instead of reporting films as not found. Imported films stay in the bundle folder, so keep
+  it where it is. A bundle can carry patient identifiers in a DICOM header: it is for your own machines. See
+  `docs/bundles.md`.
+
+[Release notes](docs/releases/1.2.0.md)
+
 ## 1.1.1
 
 - In edit mode each level's name plate now sits **outside its vertebra, on the posterior side**, whichever way the

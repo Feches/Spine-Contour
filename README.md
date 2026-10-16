@@ -32,12 +32,15 @@ the film on the CPU and says so. See [GPU processing](docs/gpu-processing.md).
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.1.1 release notes](docs/releases/1.1.1.md) and
+[changelog](CHANGELOG.md), [v1.2.0 release notes](docs/releases/1.2.0.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
 Run segmentation on an individual study or a selected batch, review the landmarks
-and image scale, then export measurements. The macOS app is unsigned and supports
+and image scale, then export measurements. To carry films and their annotations
+to another computer, **Export all** (or **Export N selected**) on the Find tab
+writes a bundle folder and **Import bundle…** reads one; see
+[annotation bundles](docs/bundles.md). The macOS app is unsigned and supports
 Apple Silicon; Intel Mac builds are not provided. Preview installers and their
 libraries remain separate from the numbered release.
 

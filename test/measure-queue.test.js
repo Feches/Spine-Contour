@@ -16,17 +16,18 @@ function geometryWith(tag) {
 // whose promises the test resolves or rejects by hand, in whatever order it wants.
 function harness(studies = [{ id: 'A', measurements: null, geometry: null }, { id: 'B', measurements: null, geometry: null }]) {
   let state = { studies };
+  let sets = 0;
   const calls = [];
   const toasts = [];
   const queue = createMeasureQueue({
     measure: (request) => new Promise((resolve, reject) => { calls.push({ request, resolve, reject }); }),
     getState: () => state,
-    setState: (patchOrFn) => { state = { ...state, ...(typeof patchOrFn === 'function' ? patchOrFn(state) : patchOrFn) }; },
+    setState: (patchOrFn) => { sets += 1; state = { ...state, ...(typeof patchOrFn === 'function' ? patchOrFn(state) : patchOrFn) }; },
     showToast: (message) => toasts.push(message),
     debounceMs: 10,
   });
   const study = (id) => state.studies.find((s) => s.id === id);
-  return { queue, calls, toasts, study, draft: (id) => state.measurementDrafts?.[id] };
+  return { queue, calls, toasts, study, draft: (id) => state.measurementDrafts?.[id], setStateCalls: () => sets };
 }
 
 const tick = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -189,5 +190,100 @@ test('circle corrections mark score provenance and replace coverage only after a
   h.queue.commitGeometry('A', original);
   await tick(30); h.calls[2].reject(new Error('offline')); await tick(0);
   assert.equal(h.study('A'), saved, 'failed restoration cannot clear the deleted-circle warning');
+});
+
+// (2026-10-15, annotation editor round 2, section 4.3) The level editor's commit on a film no model produced carries
+// `clearFailure`; the queue holds the flag through its debounce and the write that lands nulls the failure with the
+// measurements. Every study below failed once: the flag is what clears it, nothing else.
+const FAILED_AT = '2026-10-10T08:00:00.000Z';
+const failedStudy = (id) => ({ id, measurements: null, geometry: null, processingError: 'boom', processingErrorAt: FAILED_AT });
+const failedStudies = () => [failedStudy('A'), failedStudy('B')];
+
+test('a commit with clearFailure nulls both failure fields in the same patch as the measurements', async () => {
+  const h = harness(failedStudies());
+  h.queue.commitGeometry('A', geometryWith(1), { clearFailure: true });
+  await tick(30);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.study('A').processingError, 'boom', 'the failure stands while /measure is out');
+  const before = h.setStateCalls();
+  h.calls[0].resolve({ measurements: { PI: 7 }, geometry: geometryWith(1) });
+  await tick(0);
+  assert.equal(h.setStateCalls() - before, 1, 'one setState: the film never reads Unsegmented between the clear and the numbers');
+  assert.equal(h.study('A').processingError, null);
+  assert.equal(h.study('A').processingErrorAt, null);
+  assert.deepEqual(h.study('A').measurements, { PI: 7 });
+  assert.deepEqual(h.study('A').geometry, geometryWith(1));
+  assert.equal(h.study('B').processingError, 'boom', 'another study keeps its failure');
+});
+
+test('without the flag both fields stay', async () => {
+  const h = harness(failedStudies());
+  h.queue.commitGeometry('A', geometryWith(1));
+  await tick(30);
+  h.calls[0].resolve({ measurements: { PI: 7 }, geometry: geometryWith(1) });
+  await tick(0);
+  assert.deepEqual(h.study('A').measurements, { PI: 7 }, 'the write landed');
+  assert.equal(h.study('A').processingError, 'boom');
+  assert.equal(h.study('A').processingErrorAt, FAILED_AT);
+});
+
+test('a rejected /measure leaves both fields and the next flagged commit clears them', async () => {
+  const h = harness(failedStudies());
+  h.queue.commitGeometry('A', geometryWith(1), { clearFailure: true });
+  await tick(30);
+  h.calls[0].reject(new Error('backend gone'));
+  await tick(0);
+  assert.equal(h.study('A').processingError, 'boom', 'a rejected call writes nothing');
+  assert.equal(h.study('A').processingErrorAt, FAILED_AT);
+  assert.equal(h.study('A').measurements, null);
+  h.queue.commitGeometry('A', geometryWith(2), { clearFailure: true });
+  await tick(30);
+  assert.equal(h.calls.length, 2);
+  h.calls[1].resolve({ measurements: { PI: 8 }, geometry: geometryWith(2) });
+  await tick(0);
+  assert.equal(h.study('A').processingError, null);
+  assert.equal(h.study('A').processingErrorAt, null);
+  assert.deepEqual(h.study('A').measurements, { PI: 8 });
+});
+
+test('coalesced commits keep the flag any of them set', async () => {
+  const h = harness(failedStudies());
+  h.queue.commitGeometry('A', geometryWith(1), { clearFailure: true });
+  h.queue.commitGeometry('A', geometryWith(2)); // before the debounce fires: one call carries both
+  await tick(30);
+  assert.equal(h.calls.length, 1);
+  h.calls[0].resolve({ measurements: { PI: 9 }, geometry: geometryWith(2) });
+  await tick(0);
+  assert.equal(h.study('A').processingError, null);
+  assert.equal(h.study('A').processingErrorAt, null);
+});
+
+test('replaceMeasured drops the flag', async () => {
+  const h = harness(failedStudies());
+  h.queue.commitGeometry('A', geometryWith(1), { clearFailure: true });
+  h.queue.replaceMeasured('A', geometryWith(0));
+  h.queue.commitGeometry('A', geometryWith(2));
+  await tick(30);
+  assert.equal(h.calls.length, 1);
+  h.calls[0].resolve({ measurements: { PI: 3 }, geometry: geometryWith(2) });
+  await tick(0);
+  assert.deepEqual(h.study('A').measurements, { PI: 3 }, 'the write landed');
+  assert.equal(h.study('A').processingError, 'boom', 'the replaced correction took its flag with it');
+  assert.equal(h.study('A').processingErrorAt, FAILED_AT);
+});
+
+test('the flag is per study: committing on another study flushes A and clears only A', async () => {
+  const h = harness(failedStudies());
+  h.queue.commitGeometry('A', geometryWith(1), { clearFailure: true });
+  h.queue.commitGeometry('B', geometryWith(5)); // flushes A at once
+  assert.equal(h.calls.length, 1);
+  await tick(30);
+  assert.equal(h.calls.length, 2);
+  h.calls[0].resolve({ measurements: { PI: 1 }, geometry: geometryWith(1) });
+  h.calls[1].resolve({ measurements: { PI: 5 }, geometry: geometryWith(5) });
+  await tick(0);
+  assert.equal(h.study('A').processingError, null);
+  assert.equal(h.study('B').processingError, 'boom', 'B committed without the flag');
+  assert.equal(h.study('B').processingErrorAt, FAILED_AT);
 });
 

@@ -8,7 +8,7 @@ import weakref
 import numpy as np
 import pytest
 
-from backend import framing, runtime, ruler_extraction
+from backend import framing, runtime, ruler_extraction, progress
 from backend.models import models
 from backend.progress import stream_job
 
@@ -111,7 +111,13 @@ def test_calibration_uses_the_selected_ocr_budget_and_reports_each_actual_pass(m
     assert [e['completed'] for e in events if e['stage'] == 'ocr'] == [0, 1, 1, 2, 2, 3, 3, 4, 4, 5]
 
 
-def test_stream_heartbeats_continue_during_work_and_disconnect_cancels_worker():
+@pytest.mark.parametrize('worker_start_delay', [0, .08])
+def test_stream_heartbeats_continue_during_work_and_disconnect_cancels_worker(monkeypatch, worker_start_delay):
+    original_dispatch = progress.run_in_threadpool
+    async def delayed_dispatch(worker):
+        await asyncio.sleep(worker_start_delay)
+        return await original_dispatch(worker)
+    monkeypatch.setattr(progress, 'run_in_threadpool', delayed_dispatch)
     finished = threading.Event()
     def work(report, cancelled):
         report({'type': 'progress', 'stage': 'testing', 'message': 'Working'})
@@ -121,9 +127,18 @@ def test_stream_heartbeats_continue_during_work_and_disconnect_cancels_worker():
             finished.set()
     async def run():
         stream = stream_job(work, heartbeat_seconds=.02)
-        assert json.loads(await anext(stream))['type'] == 'progress'
-        assert json.loads(await anext(stream))['type'] == 'heartbeat'
-        await stream.aclose()
+        try:
+            # A busy thread pool may emit heartbeats before work begins. Still
+            # require progress and then a heartbeat while that work is active.
+            async with asyncio.timeout(2):
+                while True:
+                    event = json.loads(await anext(stream))['type']
+                    if event == 'progress':
+                        break
+                    assert event == 'heartbeat'
+                assert json.loads(await anext(stream))['type'] == 'heartbeat'
+        finally:
+            await stream.aclose()
         assert await asyncio.to_thread(finished.wait, 2)
     asyncio.run(run())
 

@@ -174,7 +174,7 @@ def detect_film(pixel_array, anterior_side=None):
     warnings = (["Review the automatically detected film region and orientation before accepting measurements."]
                 if body_part else
                 ["Automatic film detection was inconclusive. Choose cervical, lumbar or standing / full spine manually."])
-    if body_part is not None and side is None:
+    if body_part in ("lumbar", "full_spine") and side is None:
         warnings.append("Choose whether anterior is on the left or right of this image.")
     return {"body_part": body_part, "anterior_side": side,
             "status": "detected" if body_part else "needs_selection",

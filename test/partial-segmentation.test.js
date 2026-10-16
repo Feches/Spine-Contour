@@ -24,6 +24,7 @@ function study(names = ['L1']) {
   return {
     id: 'SP-9901', source: 'real', fileName: 'partial.png', filePath: '/test/partial.png',
     addedAt: '2026-09-09T00:00:00Z', view: 'Standing lateral', clinical: {},
+    predictionId: 'p-1', // a model result: with no prediction id and no qc.models a real study reads Hand-placed
     geometry: { vertebrae, s1_superior: sacrum ? [[40, 230], [140, 230]] : null,
       l1_center: vertebrae.L1 ? [90, 40] : null, hip_midpoint: hips ? [90, 290] : null,
       femoral_circles: hips ? [[60, 290, 20], [120, 290, 20]] : [] },

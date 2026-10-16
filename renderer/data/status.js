@@ -8,12 +8,15 @@
  * it: a marked study is `ok` whatever its qc says unless a later run failed. (2026-10-01, issue #39)
  * A study with no result and no failure is `unseg`; `proc` is displayStatus's alone, for the running
  * study and the films waiting in the running batch
- * (docs/superpowers/specs/2026-10-01-failed-status-port-design.md section 3).
+ * (docs/superpowers/specs/2026-10-01-failed-status-port-design.md section 3). (2026-10-15, annotation editor
+ * round 2, section 4) A real study whose levels were placed by hand and that no model produced is `hand`:
+ * after a failure, no result and the review mark, before the qc reasons.
  */
 
 import { piResidual, RESIDUAL_LIMIT } from './measurements.js';
 import { studyRegion } from './cervical.js';
 import { isQueued } from './batch.js';
+import { isHandPlaced } from './predictions.js';
 
 export { RESIDUAL_LIMIT };
 export const CONFIDENCE_LIMIT = 0.6;
@@ -35,10 +38,11 @@ export function landmarkReviewReasons(qc) {
     for (const warning of qc?.warnings ?? []) if (typeof warning === 'string' && !reasons.includes(warning)) reasons.push(warning);
     return reasons;
   }
-  if (qc?.models?.vertebrae === 'cervical_hrnet' || qc?.models?.cervical === 'cervical_hrnet') {
+  if (['cervical_hrnet', 'cervical_anatomical_hrnet'].includes(qc?.models?.vertebrae) || ['cervical_hrnet', 'cervical_anatomical_hrnet'].includes(qc?.models?.cervical)) {
     if (qc?.coverage?.partial) reasons.push('Partial cervical landmarks — only available measurements are shown.');
     if (qc?.manual_edits?.landmarks) reasons.push('Manually edited landmarks — verify the corrected positions.');
-    reasons.push('Verify C2/C7 landmarks and the selected anterior image side.');
+    reasons.push('Verify C2/C7 landmarks and the inferred anterior image side.');
+    for (const warning of qc?.warnings ?? []) if (typeof warning === 'string' && !reasons.includes(warning)) reasons.push(warning);
     return reasons;
   }
   if (qc?.coverage?.partial) {
@@ -80,13 +84,17 @@ export function reviewReasons(study) {
 }
 
 // First match wins (port spec 3). A failure outranks measurements and the review mark (1.0.13's
-// rule); no result and no failure is Unsegmented, never Processing.
-/** @returns {'fail'|'unseg'|'ok'|'rev'|'seg'} */
+// rule); no result and no failure is Unsegmented, never Processing. (2026-10-15, annotation editor round 2,
+// section 4.1) The order is fail, unseg, ok, hand, rev, seg: a marked hand-placed film reads Reviewed, and a real
+// study with no model run reads Hand-placed. The real-study guard is load-bearing: a demo has neither model
+// field (no prediction id, no qc.models) and must keep reading Segmented.
+/** @returns {'fail'|'unseg'|'ok'|'hand'|'rev'|'seg'} */
 export function deriveStatus(study) {
   if (!study) return 'unseg';
   if (study.processingError) return 'fail';
   if (study.measurements == null) return 'unseg';
   if (isReviewed(study)) return 'ok';
+  if (study.source === 'real' && isHandPlaced(study)) return 'hand';
   return reviewReasons(study).length ? 'rev' : 'seg';
 }
 
@@ -105,7 +113,7 @@ export function isReviewed(study) {
 // state.batch: every film still waiting in a running batch reads Processing too, from the click that
 // starts it until its own turn ends; once the batch is stopping, the films that will not run read
 // their own status again. This is the only source of 'proc'.
-/** @returns {'proc'|'fail'|'unseg'|'ok'|'rev'|'seg'} */
+/** @returns {'proc'|'fail'|'unseg'|'ok'|'hand'|'rev'|'seg'} */
 export function displayStatus(study, runningId = null, batch = null) {
   if (study && runningId !== null && runningId === study.id) return 'proc';
   if (study && batch && !batch.stopping && isQueued(batch, study.id)) return 'proc';
@@ -120,6 +128,7 @@ export function statusLabel(status) {
   if (status === 'fail') return 'Failed';
   if (status === 'seg') return 'Segmented';
   if (status === 'rev') return 'Needs review';
+  if (status === 'hand') return 'Hand-placed';
   if (status === 'ok') return 'Reviewed';
   return '\u2014';
 }

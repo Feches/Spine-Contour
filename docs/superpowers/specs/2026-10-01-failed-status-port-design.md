@@ -53,8 +53,13 @@ P5. **Plain reasons** (user). The stored `processingError` goes through the reas
     batch's closing toast are unchanged.
 P6. **Kept as 1.0.13 has it** (user): batches include Failed films; a failed re-run over existing results reads
     Failed and blocks Mark reviewed (`REVIEW_FAILED`); a refusal before a run (unsupported view, `regionRunReason`) is
-    recorded as a failure; a relocate does not clear a failure; the summary has no FAILED clause; the two clearing
-    sites (a successful run, `changeRegion`).
+    recorded as a failure; a relocate does not clear a failure; the summary has no FAILED clause; ~~the two clearing
+    sites (a successful run, `changeRegion`)~~ three clearing sites: a successful run, `changeRegion` and, a
+    third since 2026-10-15 (annotation editor round 2, E2 and E6; spec §4.3 of
+    `2026-10-15-annotation-editor-round-2-design.md`), the first hand-placed commit: when the level editor commits a
+    film no model produced (`clearFailure`), the measure queue's own write nulls `processingError` and
+    `processingErrorAt`. A failed re-run over a model result still reads Failed, and a hand-placed film then reads
+    `hand` (Hand-placed), a sixth key beside the five of section 3.
 
 ## 3. Status model
 

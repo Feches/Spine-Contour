@@ -9,8 +9,9 @@
  * resets it to null on every change of the open study, which is what the stash below relies on.
  *
  * The screen hands in what it owns through configureLevelEditor: the viewer's measure queue (`commitGeometry`)
- * and prediction snapshots (`getPrediction`), and the analysis screen's film loader (`ensureFilm`) and image facts
- * (`imageInfo`). This file never imports components/viewer.js or screens/analysis.js, which both import it.
+ * and prediction snapshots (`getPrediction`), and the analysis screen's film loader (`ensureFilm`), image facts
+ * (`imageInfo`) and result clear (`clearResult`, over the queue's replaceMeasured). This file never imports
+ * components/viewer.js or screens/analysis.js, which both import it.
  *
  * (2026-10-11, gate feedback G3; plan D15) The window / level is no longer the editor's: it belongs to the view
  * (`state.filmWindow`, renderer/film-window.js) and outlives entering and leaving edit mode. The editor only reads
@@ -24,11 +25,11 @@ import { loadLabelRecord, saveLabelRecord, deleteLabelRecord } from './api.js';
 import { showToast } from './components/toast.js';
 import {
   LEVEL_CODES, openEditor, toggleVisible, toggleGroup, toggleOpen, selectLevel, startPlacing, addPoint, undoPoint,
-  setPlacingStep, cancelPlacing, finishPlacing, clearLevel, setLevelGeometry, unsavedCount, canSave, markSaved,
-  revertToBaseline, sameGeometry,
+  setPlacingStep, cancelPlacing, finishPlacing, clearLevel, revertLevel, setLevelGeometry, unsavedCount, canSave,
+  markSaved, revertToBaseline, sameGeometry, setComment,
 } from './data/levels.js';
-import { projectGeometry, projectsLevel, regionFollowsLevels } from './data/level-projection.js';
-import { toLabelRecord, recordLevels, labelFileName, appVersion } from './data/label-record.js';
+import { projectGeometry, projectsLevel, regionFollowsLevels, projectionIsEmpty } from './data/level-projection.js';
+import { toLabelRecord, recordLevels, recordComment, normalizeComment, labelFileName, appVersion } from './data/label-record.js';
 import { levelContours } from './data/contours.js';
 import { studyRegion, validAnteriorSide } from './data/cervical.js';
 import { isHandPlaced } from './data/predictions.js';
@@ -46,18 +47,22 @@ const NO_PREDICTION = 'the model\'s prediction is not loaded.';
 // ---------------------------------------------------------------------------
 // What the screen supplies.
 
-const deps = { commitGeometry: null, getPrediction: null, ensureFilm: null, imageInfo: null };
+const deps = { commitGeometry: null, clearResult: null, getPrediction: null, ensureFilm: null, imageInfo: null };
 
 /**
- * @param {{commitGeometry: (studyId: string, geometry: object) => void,
+ * `clearResult(studyId, patch)` (the final review of round 2, I1): orphans any /measure pending or in flight for the
+ * study (the measure queue's replaceMeasured) and writes `patch` onto it in one setState; what sync calls when a film
+ * no model produced is left with nothing placed.
+ * @param {{commitGeometry: (studyId: string, geometry: object, options?: {clearFailure?: boolean}) => void,
+ *   clearResult: (studyId: string, patch: object) => void,
  *   getPrediction: (studyId: string) => ({measurements: object, geometry: object, qc: object|null}|undefined),
  *   ensureFilm: (studyId: string) => Promise<{images: object|null, raw: object|null, reason: string|null, superseded: boolean}>,
  *   imageInfo: (studyId: string, options?: {storedOnly?: boolean}) => Promise<{file: string, sha256: string,
  *     width: number, height: number, maskPixels: Uint8ClampedArray|null, labels: object|null,
  *     sidecarGeometry?: object|null}>}} wiring
  */
-export function configureLevelEditor({ commitGeometry, getPrediction, ensureFilm, imageInfo }) {
-  Object.assign(deps, { commitGeometry, getPrediction, ensureFilm, imageInfo });
+export function configureLevelEditor({ commitGeometry, clearResult, getPrediction, ensureFilm, imageInfo }) {
+  Object.assign(deps, { commitGeometry, clearResult, getPrediction, ensureFilm, imageInfo });
 }
 
 // ---------------------------------------------------------------------------
@@ -120,13 +125,32 @@ function projectedChange(before, after, study) {
 // record (studies.json) takes the result. A cervical or full-spine projection with no anterior side is NOT
 // committed (rulings R7/R8): /measure and the persistence validator both refuse it. The level model keeps the
 // change, and the next change that gives an orientation commits the whole projection.
+//
+// (The final review of round 2, I1) A film no model produced whose projection now places nothing (Discard after
+// placing, CLEAR on its only level, every level unchecked) has no result left: nothing goes to /measure. The screen's
+// clearResult orphans any /measure still pending or in flight for it and, in one write, takes its result away and puts
+// back the failure it carried when edit mode was entered (`editor.entryFailure`), so it reads Failed again, or
+// Unsegmented if it never ran. Checked before the anterior side: an empty projection needs no orientation.
 function sync(editor) {
   const study = studyOf(getState(), editor.studyId);
-  if (!study || typeof deps.commitGeometry !== 'function') return;
+  if (!study) return;
   const geometry = projectGeometry(editor, study);
   if (!geometry) return;
+  if (isHandPlaced(study) && projectionIsEmpty(geometry)) {
+    if (typeof deps.clearResult !== 'function') return;
+    const failure = editor.entryFailure ?? {};
+    deps.clearResult(editor.studyId, {
+      measurements: null, geometry: null, qc: null, reviewedAt: null,
+      processingError: failure.processingError ?? null, processingErrorAt: failure.processingErrorAt ?? null,
+    });
+    return;
+  }
+  if (typeof deps.commitGeometry !== 'function') return;
   if ((geometry.region === 'cervical' || geometry.region === 'full_spine') && !validAnteriorSide(geometry.anterior_side)) return;
-  deps.commitGeometry(editor.studyId, geometry);
+  // (2026-10-15, annotation editor round 2, section 4.3) A film no model produced is the editor's alone: its first
+  // landed commit clears the failure the film carried. A model result's commit passes false, so a failed re-run over
+  // old numbers still reads Failed; any other commit passes nothing.
+  deps.commitGeometry(editor.studyId, geometry, { clearFailure: isHandPlaced(study) });
 }
 
 // A focused handle on a level that is hidden, unplaced or being placed is dropped here, in one place, whatever
@@ -198,7 +222,8 @@ export async function enterLevelEditor(studyId) {
       entering = studyId;
       try {
         const record = await loadLabelRecord(study.labelFile);
-        if (record) saved = { file: study.labelFile, levels: recordLevels(record) };
+        // (spec §3.3) The record on disk is the source of the comment; the study's labelComment is only its display copy.
+        if (record) saved = { file: study.labelFile, levels: recordLevels(record), comment: recordComment(record) };
       } catch (error) {
         // Opened as if there were no record; Save writes the same file name again.
         showToast(`Could not read the label record: ${error.message}`);
@@ -346,16 +371,21 @@ async function writeRecord(studyId, addedAt, editorOf, imageOptions) {
   return { file, editor, kept, state: after };
 }
 
-// The studies with `file` named on the one record it was written for (that id and that `addedAt`).
-function withLabelFile(studies, studyId, addedAt, file) {
-  return studies.map((item) => (item.id === studyId && item.addedAt === addedAt ? { ...item, labelFile: file } : item));
+// The studies with `file` named on the one record it was written for (that id and that `addedAt`). (Spec §3.5) With
+// `labelComment` (a string, or null for none) the study's display copy of the record's comment is set in the same
+// patch; left out (undefined), it is left alone, which is what Mark reviewed's zero-change record does.
+function withLabelFile(studies, studyId, addedAt, file, labelComment) {
+  return studies.map((item) => (item.id === studyId && item.addedAt === addedAt
+    ? { ...item, labelFile: file, ...(labelComment === undefined ? {} : { labelComment }) }
+    : item));
 }
 
 /**
  * Save edits: writes userData/labels/<file> (D3), makes the written levels the baseline and records the file on
- * the study. Resolves after the toast. A demo study never writes one. The record is built from the editor as it
- * stands once the film has been read, and only those levels become the baseline, so a change made while the file
- * is being written stays unsaved. (D19) A review write in flight ends first, so a save clicked meanwhile is not lost.
+ * the study, with the comment it carries (spec §3.5). Resolves after the toast. A demo study never writes one. The record
+ * is built from the editor as it stands once the film has been read, and only those levels and that comment become the
+ * baseline and the saved text, so a change or typing made while the file is being written stays unsaved. (D19) A
+ * review write in flight ends first, so a save clicked meanwhile is not lost.
  */
 export async function saveLevelEdits() {
   while (saving === 'review') await writeEnded;
@@ -386,11 +416,17 @@ export async function saveLevelEdits() {
     const { file, editor: current, kept, state: after } = written;
     const n = unsavedCount(current);
     const saved = markSaved(current, file);
+    // (spec §3.5) The study's display copy of the comment is what the record was written with: the editor the record was
+    // built from (`current`), not `open`, which may hold newer typing.
+    const labelComment = normalizeComment(current.comment);
     const latest = currentEditor(after);
     const open = latest && latest.studyId === studyId ? latest : null;
     setState((s) => ({
-      ...(kept.labelFile === file ? {} : { studies: withLabelFile(s.studies, studyId, addedAt, file) }),
-      ...(open ? { levelEditor: { ...open, baseline: saved.baseline, record: saved.record } } : {}),
+      ...(kept.labelFile === file && kept.labelComment === labelComment
+        ? {} : { studies: withLabelFile(s.studies, studyId, addedAt, file, labelComment) }),
+      // (plan P3) Only the saved text moves to what was written: `comment` stays as typed, so text typed while the file
+      // was being written is still unsaved, as a level changed meanwhile is.
+      ...(open ? { levelEditor: { ...open, baseline: saved.baseline, record: saved.record, savedComment: saved.savedComment } } : {}),
     }));
     stash.delete(studyId);
     showToast(savedText(n));
@@ -464,7 +500,10 @@ export async function writeReviewRecord(studyId) {
   }
 }
 
-/** Discard: every level back to the baseline (the saved record, else the state at entry), committed through the measure queue. */
+/**
+ * Discard: every level back to the baseline (the saved record, else the state at entry), committed through the measure
+ * queue; on a film no model produced whose baseline places nothing, the result is cleared instead (sync, I1).
+ */
 export function discardLevelEdits() {
   const editor = currentEditor(getState());
   if (!editor) return;
@@ -504,6 +543,14 @@ export function toggleLevelGroup(key) {
   update((editor) => toggleGroup(editor, key), { edit: true });
 }
 
+/**
+ * (2026-10-15, annotation editor round 2, spec §3.3) The comment box's text, as typed. An edit like every other (refused
+ * while the study's own run is in flight) that changes no level, so nothing is committed and /measure is not called.
+ */
+export function setLevelComment(text) {
+  update((editor) => setComment(editor, text), { edit: true, commit: false });
+}
+
 export function toggleGroupOpen(key) {
   update((editor) => toggleOpen(editor, key));
 }
@@ -518,6 +565,15 @@ export function startPlace(code) {
 
 export function clearPlacedLevel(code) {
   update((editor) => clearLevel(editor, code), { edit: true });
+}
+
+/**
+ * REVERT (annotation editor round 2, spec §5.2): an Edited level back to the model's output, committed like a handle
+ * drag, so the study takes the model's geometry through /measure and the measurements follow. The unsaved count needs
+ * nothing: the level returns to its baseline (the count falls) or leaves a saved edit (it rises).
+ */
+export function revertPlacedLevel(code) {
+  update((editor) => revertLevel(editor, code), { edit: true });
 }
 
 // ---------------------------------------------------------------------------

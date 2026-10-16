@@ -29,6 +29,9 @@
  *  @property {Placing|null} placing                                  the placement in progress
  *  @property {{cervical: boolean, thoracic: boolean, lumbar: boolean, sacral: boolean, femoral: boolean}} open
  *  @property {{then: 'exit'|'back'}|null} exitPrompt
+ *  @property {string} comment                                       the free-text comment as typed (annotation round 2, spec §3)
+ *  @property {string} savedComment                                  the comment as last saved or read from disk
+ *  @property {{processingError: string|null, processingErrorAt: string|null}} entryFailure   the study's failure at entry
  * (2026-10-11, gate feedback G3; plan D15) No window: the window / level belongs to the view, `state.filmWindow`
  * (the FilmWindow typedef in renderer/film-window.js), and outlives entering and leaving edit mode.
  */
@@ -392,7 +395,8 @@ function assignHeads(fromStudy, saved) {
 }
 
 /**
- * Start editing a study. `study` is read for `geometry`, `labelFile` and (optionally) `id`.
+ * Start editing a study. `study` is read for `geometry`, `labelFile`, `labelComment`, the failure it carries
+ * (`processingError`, `processingErrorAt`) and (optionally) `id`.
  * `modelGeometry` is the prediction's study-shaped geometry (or null). `saved` is the label record on
  * disk converted to `{ file, levels }` (levels keyed by code with `{visible, source, geometry}`), or null;
  * with it, the study's femoral circles are matched to the heads by value, not by slot, and a match takes the
@@ -417,6 +421,12 @@ export function openEditor({ study, region, modelGeometry, saved }) {
   const baseline = saved
     ? Object.fromEntries(LEVEL_CODES.map(code => [code, saved.levels?.[code] ?? levels[code]]))
     : snapshot(levels);
+  // (annotation editor round 2, spec §3.3) The record on disk is the source of the comment; the study's
+  // `labelComment` is only its display copy, read when no record was handed in. A saved object without a
+  // `comment` key (one that predates it) reads empty. Nothing is trimmed or capped here.
+  const comment = saved
+    ? (typeof saved.comment === 'string' ? saved.comment : '')
+    : (typeof study?.labelComment === 'string' ? study.labelComment : '');
   return {
     studyId: study?.id ?? null,
     region: REGIONS.includes(region) ? region : 'auto',
@@ -429,6 +439,15 @@ export function openEditor({ study, region, modelGeometry, saved }) {
     placing: null,
     open: Object.fromEntries(LEVEL_GROUPS.map(group => [group.key, group.codes.some(code => levels[code].visible)])),
     exitPrompt: null,
+    comment,
+    savedComment: comment,
+    // (The final review of round 2, I1) The failure the film carried at entry. The first hand-placed commit clears the
+    // study's failure (spec §4.3); emptying the film of every level again puts this one back, since nothing about the
+    // film's runs changed. Every step spreads the editor, so it rides along; markSaved and revertToBaseline leave it.
+    entryFailure: {
+      processingError: study?.processingError ?? null,
+      processingErrorAt: study?.processingErrorAt ?? null,
+    },
   };
 }
 
@@ -609,19 +628,56 @@ export function clearLevel(editor, code) {
   return editor.handle?.code === code ? { ...next, handle: null } : next;
 }
 
+// A copy of a level's geometry with every point array new, so nothing is shared with the source.
+const copyGeometry = value => (Array.isArray(value) ? value.map(copyGeometry)
+  : value && typeof value === 'object'
+    ? Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, copyGeometry(inner)])) : value);
+
+/**
+ * REVERT (annotation editor round 2, spec §5.1): a no-op unless `levelState(entry, editor.model[code]) === 'edited'`
+ * and no placement is running for `code`. Otherwise the entry's `geometry` becomes a copy of `editor.model[code]`
+ * (point arrays copied; a femoral head takes the model circle's `center` and `radius` with `rim: null`) and its
+ * `source` becomes `model` (E7). `visible`, the selection and the focused handle stay (the handle names a point that
+ * still exists); nothing else on the editor changes. The level then reads Segmented, by the same sameGeometry test
+ * that made it Edited. A no-op returns the editor itself.
+ */
+export function revertLevel(editor, code) {
+  const entry = editor.levels[code];
+  const model = editor.model[code];
+  if (!entry || !model || editor.placing?.code === code || levelState(entry, model) !== 'edited') return editor;
+  const geometry = kindOf(code) === 'circle'
+    ? { center: copyPoint(model.center), radius: model.radius, rim: null }
+    : copyGeometry(model);
+  return setEntry(editor, code, { geometry, source: 'model' });
+}
+
 export function setLevelGeometry(editor, code, geometry) {
   return setEntry(editor, code, { geometry, source: 'annotator' });
 }
 
 // ---------- unsaved changes, save and revert ----------
 
-/** Levels whose (visible, geometry) pair differs from the baseline; a source change alone does not count. */
+/** Replace the comment text, as typed. Nothing else on the editor changes (spec §3.3). */
+export function setComment(editor, text) {
+  return { ...editor, comment: String(text ?? '') };
+}
+
+/** True when the comment differs from the saved one, ignoring leading and trailing whitespace (the record trims it). */
+export function commentChanged(editor) {
+  return String(editor.comment ?? '').trim() !== String(editor.savedComment ?? '').trim();
+}
+
+/**
+ * Levels whose (visible, geometry) pair differs from the baseline, plus one while the comment differs from the
+ * saved one (annotation round 2, spec §3.3); a source change alone does not count.
+ */
 export function unsavedCount(editor) {
-  return LEVEL_CODES.filter(code => {
+  const levels = LEVEL_CODES.filter(code => {
     const entry = editor.levels[code];
     const base = editor.baseline?.[code];
     return entry.visible !== base?.visible || !sameGeometry(entry.geometry, base?.geometry);
   }).length;
+  return levels + (commentChanged(editor) ? 1 : 0);
 }
 
 /** Save is allowed with changes, or once with none when the study has no record yet (D10). */
@@ -634,18 +690,26 @@ export function unsavedText(n) {
   return n === 1 ? '1 UNSAVED CHANGE' : `${n} UNSAVED CHANGES`;
 }
 
-/** After a successful save: the levels become the baseline and the record exists. `file` defaults to the current one. */
+/**
+ * After a successful save: the levels become the baseline and the record exists. `file` defaults to the current one.
+ * The comment becomes its trimmed text, as the record holds it, and that text is the saved one. The wiring's caller
+ * (`saveLevelEdits`) takes `savedComment` only (plan ruling P3): the live `comment` stays as typed, so text typed during
+ * the write stays unsaved and a trailing space survives in the box until the next save.
+ */
 export function markSaved(editor, file) {
+  const comment = String(editor.comment ?? '').trim();
   return {
     ...editor,
     baseline: snapshot(editor.levels),
     record: { file: file ?? editor.record.file ?? null, exists: true },
+    comment,
+    savedComment: comment,
   };
 }
 
-/** Discard: every level back to the baseline, any placement and focused handle dropped. */
+/** Discard: every level back to the baseline and the comment to the saved text, any placement and focused handle dropped. */
 export function revertToBaseline(editor) {
-  return { ...editor, levels: snapshot(editor.baseline), placing: null, handle: null };
+  return { ...editor, levels: snapshot(editor.baseline), comment: editor.savedComment, placing: null, handle: null };
 }
 
 // ---------- counts and training status ----------

@@ -484,6 +484,85 @@ def select_orientation(searches):
                       "review_required": True}
 
 
+def anatomical_orientation(raw, searches):
+    side, qc = _anatomical_orientation_crop(raw, searches)
+    neck = searches.get("left", {}).get("neck")
+    if side is not None or neck is None or searches.get("right", {}).get("neck") is None:
+        return side, qc
+    # The anatomical model was trained on cervical films, not tight detector
+    # crops. Require two contextual windows to independently satisfy all of
+    # the same mirror and landmark checks before recovering a failed crop.
+    height, width = raw.shape
+    left, top, right, bottom = neck["window"]
+    checks = []
+    for margin in (.1, .2):
+        dx, dy = (right-left)*margin, (bottom-top)*margin
+        window = [max(0, int(left-dx)), max(0, int(top-dy)),
+                  min(width, int(right+dx)), min(height, int(bottom+dy))]
+        expanded = {**searches, "left": {**searches["left"],
+                    "neck": {**neck, "window": window}}}
+        candidate, evidence = _anatomical_orientation_crop(raw, expanded)
+        checks.append({"window": window, "anterior_side": candidate, **evidence})
+    if (checks[0]["window"] != checks[1]["window"]
+            and checks[0]["anterior_side"] is not None
+            and checks[0]["anterior_side"] == checks[1]["anterior_side"]):
+        return checks[0]["anterior_side"], {
+            **checks[0], "context_retry": True, "context_checks": checks,
+            "initial_crop_status": qc["status"]}
+    return None, {**qc, "context_checks": checks}
+
+
+def _anatomical_orientation_crop(raw, searches):
+    """Corroborate an agreed cervical crop with anatomical, mirror-stable labels.
+
+    This is only a fallback after regional orientation fails. The old crop
+    consensus must first establish visible cervical anatomy; the anatomical
+    model is never asked to find a neck in an arbitrary standing-film window.
+    """
+    from . import cervical_anatomical
+    neck = searches.get("left", {}).get("neck")
+    if neck is None or searches.get("right", {}).get("neck") is None:
+        return None, {"status": "no_cervical_consensus"}
+    left, top, right, bottom = neck["window"]
+    crop = np.asarray(raw)[top:bottom, left:right]
+    observations = []
+    for mirrored in (False, True):
+        image = np.ascontiguousarray(crop[:, ::-1]) if mirrored else crop
+        try:
+            geometry = cervical_anatomical.cervical_prediction(image)["landmarks"]
+        except ValueError as error:
+            return None, {"status": "unusable_anatomical_cervical", "reason": str(error)}
+        pairs = [geometry["vertebrae"][f"C{level}"].get(end)
+                 for level in range(3, 8) for end in ("superior", "inferior")]
+        if any(pair is None for pair in pairs):
+            return None, {"status": "incomplete_anatomical_cervical"}
+        points = np.asarray(pairs, dtype=float).reshape(20, 2)
+        if mirrored:
+            points[:, 0] = crop.shape[1]-1-points[:, 0]
+        observations.append(points + [left, top])
+    original, reflected = observations
+    radius = CONSENSUS_RADIUS*neck["scale"]
+    if np.linalg.norm(original-reflected, axis=1).max() > radius:
+        return None, {"status": "anatomical_mirror_disagreement"}
+    # Compare locations without assuming that the old image-sided endpoints
+    # already identify anterior/posterior. Never reorder the anatomical output.
+    legacy = np.asarray(neck["points"])[3:].reshape(10, 2, 2)
+    pairs = original.reshape(10, 2, 2)
+    direct = np.linalg.norm(pairs-legacy, axis=2).max(axis=1)
+    swapped = np.linalg.norm(pairs-legacy[:, ::-1], axis=2).max(axis=1)
+    if np.minimum(direct, swapped).max() > radius:
+        return None, {"status": "anatomical_crop_disagreement"}
+    deltas = np.concatenate([(p.reshape(10, 2, 2)[:, 0, 0]-
+                              p.reshape(10, 2, 2)[:, 1, 0]) for p in observations])
+    side = "right" if np.median(deltas) > 0 else "left"
+    if np.mean(deltas > 0 if side == "right" else deltas < 0) < .9:
+        return None, {"status": "anatomical_direction_disagreement"}
+    return side, {"status": "accepted", "source": "automatic", "anterior_side": side,
+                  "method": "anatomical_cervical_mirror_consensus", "review_required": True,
+                  "model": cervical_anatomical.MODEL_NAME,
+                  "mirror_max_distance_px": float(np.linalg.norm(original-reflected, axis=1).max())}
+
+
 def _femoral_region(canonical, pelvis):
     """Read the heads without treating the lumbar crop boundary as anatomy.
 
@@ -559,6 +638,10 @@ def full_spine_prediction(pixel_array, anterior_side=None, model=MODEL_NAME, *, 
     if automatic:
         anterior_side, orientation = select_orientation(searches)
         if anterior_side is None:
+            anterior_side, anatomical_qc = anatomical_orientation(raw, searches)
+            if anterior_side is not None:
+                orientation = {**anatomical_qc, "regional_hypotheses": orientation["hypotheses"]}
+        if anterior_side is None:
             raise ValueError("Automatic standing-film orientation is uncertain. Select anterior left or right and retry.")
     else:
         orientation = {"status": "user_selected", "source": "user", "anterior_side": anterior_side,
@@ -571,7 +654,10 @@ def full_spine_prediction(pixel_array, anterior_side=None, model=MODEL_NAME, *, 
     canonical = np.ascontiguousarray(raw[:, ::-1]) if mirrored else raw
     warnings = ["Review C7 identity, the S1 posterior corner, image orientation and calibration before accepting global SVA."]
     if automatic:
-        warnings.append("Anterior orientation was selected automatically from regional crop agreement; confirm it before accepting measurements.")
+        if orientation.get("method") == "anatomical_cervical_mirror_consensus":
+            warnings.append("Anterior orientation was selected from anatomical cervical landmarks checked in both image orientations; confirm it before accepting measurements.")
+        else:
+            warnings.append("Anterior orientation was selected automatically from regional crop agreement; confirm it before accepting measurements.")
     if neck is None:
         warnings.append("C7 centroid was not established consistently across crops; global SVA is unavailable.")
     if pelvis is None:
@@ -598,6 +684,15 @@ def full_spine_prediction(pixel_array, anterior_side=None, model=MODEL_NAME, *, 
                 "superior": body[:2].tolist(), "inferior": body[2:].tolist(),
                 "quadrilateral": body[[0, 1, 3, 2]].tolist()}
     femoral_mask, circles, femoral_qc = _femoral_region(canonical, pelvis)
+    if any(len(circle) != 3 or not np.isfinite(circle).all()
+           or not (0 <= circle[0] < width and 0 <= circle[1] < height)
+           or circle[2] <= 0 for circle in circles):
+        # An extrapolated circle is not a measured head center. Preserve the
+        # observed mask and spine landmarks without passing invalid optional
+        # geometry to measurement validation or clipping it onto the border.
+        circles = []
+        femoral_qc = {**femoral_qc, "qc_pass": False,
+                      "reason": "Fitted femoral head center falls outside the image or is invalid."}
     geometry["femoral_circles"] = [[*_source_points(circle[:2], width, mirrored).tolist(), circle[2]]
                                    for circle in circles]
     if not femoral_qc["qc_pass"]:
@@ -624,6 +719,7 @@ def full_spine_prediction(pixel_array, anterior_side=None, model=MODEL_NAME, *, 
             "mask": np.zeros(raw.shape, np.uint8), "femoral_mask": femoral_mask,
             "landmarks": geometry,
             "models": {"vertebrae": MODEL_NAME, "cervical": "cervical_hrnet", "lumbar": "hrnet",
+                       **({"orientation": orientation["model"]} if orientation.get("model") else {}),
                        "detector": "crop_detector+s1" if runtime.options().crop_method == "model"
                                    else "cervical_detr+s1", "femoral": "unet"},
             "framing": {"coordinate_space": "original_image", "canonical_mirror": mirrored,

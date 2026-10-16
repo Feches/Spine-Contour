@@ -122,6 +122,18 @@
   border: 1.5px solid currentColor;
   box-sizing: border-box;
 }
+/* Hand-placed (2026-10-15, annotation editor round 2 spec section 4.2): Needs review's terracotta tint and text,
+   because the result is waiting on a person, with Unsegmented's hollow dot. The hollow dot carries the rule it has
+   had since the port spec: no model ran. */
+.badge-hand {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.badge-hand .dot {
+  background: transparent;
+  border: 1.5px solid currentColor;
+  box-sizing: border-box;
+}
 
 /* Reviewed (studies-table spec 2026-09-10, section 8.2): the completed state. A stronger sage ground than
    Segmented's with ink text and a sage dot, so it reads in both themes; a filled sage ground with

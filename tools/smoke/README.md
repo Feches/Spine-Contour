@@ -412,8 +412,9 @@ Task 14; user doc `docs/level-editor.md`) against the real app: the Vertebral le
 unchecking one, Save edits and the label record on disk, Discard and the exit prompt, femoral rim points and FIT,
 window / level (in edit mode, and since 2026-10-11 outside it, with the right-button drag and the double right-click),
 the keyboard, the per-study stash, the main process's label-file name check, (since 2026-10-12, gate feedback G6)
-the label record Mark reviewed writes for a film that has none, and (since 2026-10-13, gate feedback G7) where the
-level plates sit and their drag. Two phases:
+the label record Mark reviewed writes for a film that has none, (since 2026-10-13, gate feedback G7) where the
+level plates sit and their drag, and (since 2026-10-15, annotation editor round 2) the Hand-placed status on a failed
+film placed by hand, REVERT per level and the comment box. Two phases:
 
 ```
 SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-levels-smoke SPINE_CONTOUR_PYTHON=<main checkout>/.venv/Scripts/python.exe node tools/smoke/launch.mjs
@@ -429,7 +430,9 @@ node tools/smoke/cdp.mjs --quit
   segmented fixture with the prototype's geometry (L1, L2, L4, L5, S1 and two heads; L3 missing; an all-zero mask),
   measured by the real `/measure`, with a sidecar and a prediction id so it restores like a model result. `SP-9301`
   is an unsegmented film written to `%TEMP%\spine-contour-levels-films\levels-hand-placed.png` and decoded by the real
-  `/decode`; it is placed by hand. Neither endpoint needs the model graphs. About 40 s.
+  `/decode`; it is placed by hand. Since 2026-10-15 (annotation editor round 2) it is seeded as a film whose run failed:
+  `processingError` `No spine was found on this film.`, `processingErrorAt` `2026-10-10T08:00:00.000Z`, which the first
+  level placed by hand clears. Neither endpoint needs the model graphs. About 40 s.
 - **Phase `film`** segments ONE real lateral lumbar film as `SP-9302` with the real models (region Lumbar), so the
   backend needs the ONNX graphs. A worktree's `backend/onnx/` holds only the tracked `crop_detector` and
   `view_classifier` pairs, so the other graphs are linked in from the main checkout (hard links on 2026-10-10, since
@@ -525,6 +528,41 @@ the handle's drag with SA focused, the offsets unchanged); a double-click on the
 puts it back where it was first drawn (`platePositions` `{}`); and after L1's plate is dragged, opening `SP-9301` from
 the list resets `platePositions` to `{}` (FRESH_VIEW), and back on `SP-9300` (Edit, its stash restoring L3) every plate
 is where it was first drawn. Section 5 then goes on from section 3's state.
+(Annotation editor round 2, 2026-10-15; spec `docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md`)
+Section 12 gains six dom checks on the failed `SP-9301`: its header pill (`.analysis-status .badge`) reads `Failed` before
+Edit; after the four clicks that place L1 by hand the study's `processingError` and `processingErrorAt` are null and the
+pill reads `Hand-placed` (§4.3: the measure queue's own write clears the failure). (The round's final review, I1; two
+more checks, eight in all) Discard (`.lv-discard`) then takes L1 off: the pill reads `Failed` again, the study's
+`processingError` and `processingErrorAt` are the fixture's again and its `measurements` and `geometry` are null (no
+`/measure` for an empty hand-placed film; the screen's `clearResult` puts back the failure the film carried at Edit);
+the same four clicks place L1 again and the pill reads `Hand-placed`, so Save edits still toasts `Saved 1 edit` and
+the rest of the section runs as before. Outside edit mode, after section 17's
+checks, Mark reviewed is enabled with its note hidden, a click makes the button read `Reviewed …` and the pill `Reviewed`
+(the film has a record already, so the mark writes nothing), a second click returns the pill to `Hand-placed` (§4.4), and
+the Find list's row reads `Hand-placed`; the film is then opened from the list again, so section 13 starts where it did.
+(20, dom) REVERT, on `SP-9300` back in edit mode after section 7 with nothing unsaved: L4's geometry moved 5 px right
+through the page's own `renderer/level-editor.js` `commitHandleMove` reads `Edited`, with `[data-level-key="revert:L4"]`
+on its row and `1 UNSAVED CHANGE`; REVERT puts it back to `Segmented` with the button gone, focus on the row's select
+button (spec §5.3) and `NOTHING TO SAVE`, the editor's L4 `source` `model` and the study's L4 superior endplate equal to
+the model's after `/measure`; Head 1 moved 4 px reads `Edited` with its row's `.lv-actions.is-stacked` holding
+`place:FH1` then `revert:FH1`, and its REVERT leaves it `Segmented` with `rim` null and `NOTHING TO SAVE`. Five checks;
+the dashed model ghost is canvas-drawn and not asserted. (21, dom) The comment, straight after: typed into
+`textarea.lv-comment-input` (`Input.insertText`, the harness's `typeText`) it is `1 UNSAVED CHANGE` with Save edits
+enabled; a rebuild through the page (`toggleGroupOpen('thoracic')`) keeps the focus in the box, its text and its caret
+at 16; Escape typed in the box leaves edit mode alone (still editing, no prompt, the box still focused); Save edits
+toasts `Saved 1 edit to the label record.`, the record's `comment` and the study's `labelComment` read
+`Hardware over L4` and the footer `NOTHING TO SAVE`; ` more` typed after it is one unsaved change, and Discard toasts
+`Discarded 1 change.` with the box back to the saved text; Escape (focus first on L1's select button, since Discard is
+disabled with nothing unsaved) leaves edit mode and the Analysis panel's `.analysis-comment` shows the text read-only;
+Edit again reads it back into the box with the block hidden and `NOTHING TO SAVE`. Nine checks; section 21 leaves
+`SP-9300` in edit mode, and section 8 enters edit mode only when it is not already in it. (The round's final review,
+I2; two more checks, eleven in all) The first keystroke, `H`, reads `1 UNSAVED CHANGE` and rebuilds the panel (the
+comment starts to differ from the saved text); Ctrl+Z (`cdp.key('z', { ctrl: true })`, the harness's key helper with
+its new `ctrl` modifier) undoes it to an empty box and `NOTHING TO SAVE`, since the panel's foot is never detached by a
+rebuild; and the thoracic rebuild leaves `.lv-foot` and `.lv-comment` the same nodes (a property set on each before it
+survives) with a new `.lv-list`, the panel's children `lv-head`, `lv-list`, `lv-foot` and the foot's `lv-comment`,
+`lv-status`, `lv-actions-row`. (Before the fix the Ctrl+Z step was an `info` line that read `"H" -> "H"`: the old
+rebuild detached the box and lost its undo.)
 The film phase also saves a record whose `image.sha256` is 64 hex characters and whose `model.version` is the run's,
 and (G5, D18) whose edited level, moved by the SA handle drag and the ArrowRight nudge, lists `edited_points` `['sa']`,
 exactly the corners whose value differs from its `model_corners`, with `edits.points_moved` the sum of the edited
@@ -555,7 +593,29 @@ profile (CDP port 9341; DOM, store and file reads only, no screenshots). (2026-1
 `27ae4b0`) Re-measured on fresh `%TEMP%` profiles, one app at a time, DOM, store and file reads only, no screenshots:
 levels dom **121/121** and film **25/25** (one launch, one copied OLIF lumbar film); on a second fresh launch the
 plan-04 chain in README order: parity **15/15**, gate1 **25/25**, gate2 **26/26** (handle drags still win over
-plates), gate3 **26/26**, chip **20/20**, chord **28/28**; no FAIL line in any of the eight runs.
+plates), gate3 **26/26**, chip **20/20**, chord **28/28**; no FAIL line in any of the eight runs. (2026-10-15, annotation
+editor round 2, branch `worktree-annotation-round-2`) Section 12 gains six dom checks, sections 20 and 21 five and nine:
+dom **141/141** (121 + 20) and film **25/25** (one launch, a fresh `%TEMP%` profile, one copied OLIF lumbar film; DOM,
+store and file reads only, no screenshots). Every other suite this workstation runs was re-measured the same day, one
+app at a time on fresh `%TEMP%` profiles, no FAIL line in any: landing **16/16** and parameters **58/58** first on one
+launch, then on it parity **15/15**, gate1 **25/25**, gate2 **26/26**, chip **20/20**, chord **28/28** and gate3
+**26/26** (run last, after its own fresh inject + run: its first attempt threw before connecting, because a PowerShell
+5.1 `>` redirect writes `out/last-run.json` with a UTF-8 BOM that `JSON.parse` refuses; write that file from a shell that
+adds none, as Git Bash's `>` does); studies **151/151**, workspace **100/100** and seeding **36/36** on one
+launch; persist **42/42** then **55/55**; femoral-confidence **16/16** then **5/5** (`SMOKE_PREDICTION` a copy of that
+day's sample-film `predictions/SP-9000.json`); disc-heights **13/13**, partial-segmentation **8/8** and accuracy
+**17/17** on one launch; global-sva **21/21** (its own app); onnx-localizer **10/10** (one copied lumbar film);
+manual-calibration save **5/5**, batch **7/7**, verify **5/5**; processing **15/15** (two copied lumbar films).
+`smoke-studies.mjs`'s own status rank follows `STATUS_RANK` with `hand` (`fail 0, proc 1, unseg 2, rev 3, hand 4,
+seg 5, ok 6`; a `badge-hand` row ranked 9 before) and its TO REVIEW expectation in 16c treats a `badge-hand` row as it
+treats `badge-rev` (spec §4.2: Hand-placed counts in TO REVIEW); its count is unchanged. Not run: cervical and
+segmental (no lateral cervical film here, and both screenshot the film), and `smoke-calibration.mjs` (it needs ruler
+films reading 27.1, 35.8 and 41.5 mm, and screenshots them). (2026-10-15, the round's final review fix wave, `7be532f`)
+Section 12 gains two dom checks (Discard on the hand-placed failed film reads Failed again; L1 placed again reads
+Hand-placed) and section 21 two (Ctrl+Z after the first keystroke, now a check; the foot and comment block kept as the
+same nodes through a rebuild): dom **145/145** (141 + 4) and film **25/25**, each phase pair run on its own fresh
+`%TEMP%` launch, twice (one copied OLIF lumbar film; DOM, store and file reads only, no screenshots); studies
+**151/151** on a separate fresh launch. The other suites were not re-run.
 
 ## The landmark-editor suites after the level editor (2026-10-10)
 
@@ -682,6 +742,92 @@ only when every study has a geometry). A real film is on screen throughout, so t
 DOM and the store only and writes nothing to git. Baseline (2026-10-11, level-editor tree, CPU, fresh `%TEMP%`
 profile): save 5/5, batch 7/7, verify 5/5. The `batch` phase had timed out on its 240 s wait on every run since
 1.0.10 made Auto the import default, so its later checks and the whole `verify` phase had not run on this tree before.
+
+## Running the bundle suite
+
+`smoke-bundle.mjs` drives the annotation bundle (spec
+`docs/superpowers/specs/2026-10-15-annotation-bundle-export-import-design.md`; plan
+`docs/superpowers/plans/2026-10-15-annotation-bundle-export-import.md`, Task 7) against the real app across two scratch
+profiles: a library exported from profile A, imported into profile B, edited there, exported again and imported back
+into A. The native folder pickers are bypassed (plan PB7): the suite calls the Find screen's own `exportBundleTo`,
+`importBundleFrom` and `confirmImport`, and writes each label record through the level editor's own
+`enterLevelEditor`, `setLevelComment`, `saveLevelEdits` and `exitNow` (`renderer/level-editor.js`). No model runs and
+no real film is read (`/measure` needs no graphs); every check is a DOM, store or file read and no screenshot is taken.
+Every selector is a `data-find-key`, a `data-study-id` or a class. Three phases, each on its own launch, in order:
+
+```
+SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-a node tools/smoke/launch.mjs
+SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-a SMOKE_PHASE=a node tools/smoke/smoke-bundle.mjs > tools/smoke/out/smoke-bundle-a.txt 2>&1
+node tools/smoke/cdp.mjs --quit
+SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-b node tools/smoke/launch.mjs
+SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-b SMOKE_PHASE=b node tools/smoke/smoke-bundle.mjs > tools/smoke/out/smoke-bundle-b.txt 2>&1
+node tools/smoke/cdp.mjs --quit
+SMOKE_KEEP_PROFILE=1 SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-a node tools/smoke/launch.mjs
+SPINE_CONTOUR_USER_DATA=<%TEMP%>/spine-contour-bundle-a SMOKE_PHASE=c node tools/smoke/smoke-bundle.mjs > tools/smoke/out/smoke-bundle-c.txt 2>&1
+node tools/smoke/cdp.mjs --quit
+```
+
+- **The environment.** Every launch also needs `SPINE_CONTOUR_PYTHON` (the main checkout's
+  `.venv/Scripts/python.exe`) and, on this workstation, `TESSERACT_CMD` (the installed app's
+  `resources/backend-runtime/_internal/ocr/tesseract.exe`); unset `ELECTRON_RUN_AS_NODE` if the shell exports it.
+  The suite reads its profile from `SMOKE_USER_DATA`, else `SPINE_CONTOUR_USER_DATA`, else the phase's own folder
+  (`spine-contour-bundle-a` for a and c, `-b` for b, under `%TEMP%`). Run the suite lines from Git Bash, whose `>`
+  writes the file as the suite prints it (PowerShell 5.1's re-encodes it; see the level editor suite's note).
+- **The two profiles.** A is fresh for phase a and KEPT for phase c (`SMOKE_KEEP_PROFILE=1`: phase c reads the
+  library phase a left in A's `studies.json`); B is fresh for phase b. Phase a and phase b each first check that their
+  profile holds no real study, so a launch without the wipe fails at once.
+- **The films and the bundles, all under `%TEMP%`.** `spine-contour-bundle-films\` holds the two canvas-drawn 600x800
+  films (ruling S35: both are on disk, so the export streams and hashes both and every match in phases b and c is by
+  `film_sha256` against a hashed local film): `bundle-segmented.png`, a grey film whose bytes are its sidecar's
+  `image_png`, and `bundle-unsegmented.png`, a gradient. A's bundle is written under `spine-contour-bundle-out\` and
+  B's under `spine-contour-bundle-out-b\`, each as `spine-contour-export-<YYYY-MM-DD>-<HHMM>`; the suite reads the
+  folder actually created from the export's toast and hands it on in `tools/smoke/out/bundle-path.txt` (a → b) and
+  `tools/smoke/out/bundle-path-b.txt` (b → c).
+- **What each phase leaves for the next** (ruling S34; each phase's cleanup runs in `finally`, so a failing phase still
+  does its own). Phase a leaves everything: its two studies, the sidecar, the record, the films and its bundle (it
+  only resets the store keys it touched). Phase b removes profile B's studies, sidecars and records and keeps its
+  bundle and its path file. Phase c removes profile A's studies, sidecars and records, the films folder, both bundle
+  folders and both path files. The two profile folders stay (the next fresh launch wipes them). A phase that fails
+  means a rerun from phase a: phase a wipes the films folder and its bundle parent before it starts, phase b its own.
+- **Ids** `SP-9400` (the segmented fixture) and `SP-9401` (the unsegmented film); `SP-9402`–`SP-9405` are reserved
+  for this suite and unused. B's imported studies take whatever `nextId` gives on B's library and are found by file
+  name. The page-side helper is `window.__bundle` (`study(idOrName)`, `editor()`, a toast log fed by a read-only store
+  subscription, `unsub`), installed by the suite as `smoke-levels.mjs` installs `window.__lv`.
+
+What it checks. **Phase a** (17): profile A fresh; `SP-9400`, measured by the real `/measure` on the level editor
+suite's prototype geometry (Region Lumbar, a sidecar with a prediction id), opens on its film restored from the
+sidecar (the 600x800 dynamic canvas, the run card hidden, `hasStoredImage`, the viewer's prediction snapshot); Edit,
+the comment `from A` (one unsaved change), Save edits toasting `Saved 1 edit to the label record.` and out of edit
+mode; the study naming `bundle-segmented.label.json` with `labelComment` `from A`, and that record on disk with
+`comment` `from A`; the Analysis screen's Mark reviewed (`.analysis-review`, a trusted click) stamping `reviewedAt`
+with nothing toasted (the film has a record, so the mark writes none); Export all toasting exactly `Exported 2
+studies to <%TEMP%>\spine-contour-bundle-out\spine-contour-export-<date>-<time>`; `manifest.json` with `schema`
+`spinecontour.bundle/1` and two entries, `SP-9400` and `SP-9401`; each `study.json` with `filePath` null and its
+`fileName`; each `film/<name>` hashing to its manifest `film_sha256`, which is the source film's own digest; SP-9400's
+folder holding `prediction.json` (its sidecar) and `bundle-segmented.label.json` with `comment` `from A`, both named
+in the manifest; the manifest's `prediction` and `label` null for SP-9401; A's `studies.json` holding both studies (the
+record, the comment and the mark) for phase c; the path file written. **Phase b** (18): profile B fresh and phase a's
+bundle on disk; `importBundleFrom` showing exactly `Import from <bundle>: 2 to add, 0 to update, 0 to skip. The films
+stay in this folder, so keep it where it is.` with the focus on `[data-find-key="import-cancel"]`; `confirmImport`
+toasting exactly `Imported 2 studies, updated 0, skipped 0`; two real studies, each with its `.studies-row` and its
+`filePath` inside the bundle, on disk; the segmented one's row badge reading `Reviewed` and its `labelComment` `from
+A`; its sidecar at `<B>/predictions/<new id>.json` with `predictionMatchesStudy` holding against `api.loadPrediction`;
+opened from its row, its film restored from that sidecar (as in phase a); the store's `query` `from A` leaving exactly
+its row; the same bundle again toasting exactly `Nothing to import: already in the library: <both names in manifest
+order>` with no prompt; Edit reading the imported record's comment `from A` back, `from B` saved (`Saved 1 edit to the
+label record.`), the study and B's record reading `from B`; Export all into `spine-contour-bundle-out-b` (the same exact
+toast), B's bundle holding both films' digests and the record with `comment` `from B`; the path file written.
+**Phase c** (9): profile A reloaded with SP-9400 (its record, `from A`, reviewed) and SP-9401; B's bundle on disk;
+`importBundleFrom` showing `… 0 to add, 1 to update, 1 to skip. …` with the focus on Cancel; `confirmImport` toasting
+exactly `Imported 0 studies, updated 1, skipped 1 (already in the library: bundle-unsegmented.png)` (the unsegmented
+film has no record on either side); SP-9400's `labelComment` `from B` under its own, unchanged `labelFile`
+`bundle-segmented.label.json`, whose record on disk reads `comment` `from B`; SP-9400 still reviewed and the sidecar
+under its id still matching it (`predictionMatchesStudy`); SP-9401 untouched (the same record object, `labelFile` null) and the library still
+exactly the two films. Each phase ends with the harness's no-console-errors check.
+
+**Known baseline** (2026-10-15, branch `worktree-annotation-round-2` at `50d6311` plus this suite; Windows 11, CPU
+processor; the three phases in order on fresh `%TEMP%` profiles as above, one app at a time; DOM, store and file reads
+only, no screenshots): phase a **17/17**, phase b **18/18**, phase c **9/9**.
 
 ## Library
 

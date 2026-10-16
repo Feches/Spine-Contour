@@ -775,8 +775,10 @@ try {
   await cdp.settle(200);
   const badgeOrder = () => cdp.evaluate(`[...document.querySelectorAll('.studies-row')].map((r) => (r.querySelector('.badge') || {}).className || '')`);
   // (2026-10-01, issue #39 port) find.js STATUS_RANK, port spec 3: fail 0, proc 1, unseg 2, rev 3,
-  // seg 4, ok 5.
-  const rank = (c) => (c.includes('badge-fail') ? 0 : c.includes('badge-proc') ? 1 : c.includes('badge-unseg') ? 2 : c.includes('badge-rev') ? 3 : c.includes('badge-seg') ? 4 : c.includes('badge-ok') ? 5 : 9);
+  // seg 4, ok 5. (2026-10-15, annotation editor round 2, spec §4.2) Hand-placed between Needs review and
+  // Segmented: fail 0, proc 1, unseg 2, rev 3, hand 4, seg 5, ok 6.
+  const rank = (c) => (c.includes('badge-fail') ? 0 : c.includes('badge-proc') ? 1 : c.includes('badge-unseg') ? 2 : c.includes('badge-rev') ? 3
+    : c.includes('badge-hand') ? 4 : c.includes('badge-seg') ? 5 : c.includes('badge-ok') ? 6 : 9);
   const activeKey = () => cdp.evaluate(`document.activeElement ? document.activeElement.getAttribute('data-find-key') : null`);
 
   // 15. Sort (spec 6). SP-9000 is segmented, SP-9001 Failed (section 11), SP-9004 Unsegmented (section
@@ -885,7 +887,8 @@ try {
   await cdp.settle(200);
   const badge1 = await badgeOf9000();
   check('a row carrying reviewedAt badges Reviewed on the list', Boolean(badge1) && badge1.cls === 'badge badge-ok' && badge1.text === 'Reviewed', { badge0, badge1 });
-  const expected1 = badge0 && badge0.cls.includes('badge-rev') ? review0 - 1 : review0;
+  // (2026-10-15, spec §4.2) Hand-placed counts in TO REVIEW as Needs review does, so marking either leaves it.
+  const expected1 = badge0 && (badge0.cls.includes('badge-rev') || badge0.cls.includes('badge-hand')) ? review0 - 1 : review0;
   const review1 = await toReviewCount();
   check("the summary's TO REVIEW count follows the mark", typeof review0 === 'number' && review1 === expected1, { review0, expected1, review1, badge0 });
   await mark('null');
