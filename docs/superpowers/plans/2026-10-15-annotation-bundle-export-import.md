@@ -525,8 +525,11 @@ The session stops here and waits for "gate passed". The single PR (both rounds, 
 Filled during execution (2026-10-15, subagent-driven development in this worktree, the plan at `69a7262`, baseline unit
 1024/1024 confirmed): the pre-flight scan's rulings, every ruling made on the way with what it costs if wrong, one row
 per task, and the deferred minors in one list for the final whole-branch review to triage. The planning rulings PB1–PB10
-are above and stood unchanged. The execution rulings are numbered S1–S36 in the order they were made; where one amends
-another it says so (S21 amends S8). The session's working ledger
+are above and stood unchanged, except PB5 as ruling S38 refines it (only a data-folder write failure stops an import).
+The execution rulings are numbered S1–S44 in the order they were made, S37–S44 from Task 8's review and the final
+whole-branch review; where one amends another it says so (S21 amends S8; S38 amends spec §5.6–§5.8 and S40 the Global
+Constraints' export clause, both as dated notes in the spec and here, the plan's text above left as history). The
+session's working ledger
 (`.superpowers/sdd/2026-10-15-annotation-bundle-export-import/`, local and untracked) is where these lines were written
 first; this section is their copy in the repository (S36).
 
@@ -580,14 +583,16 @@ button states against the Global Constraints). Most pairs were consistent; eight
 | 5 | Opus | `0e79356..21e45d5` | Opus: Approved, no Critical or Important | 0 | unit 1102/1102; source launch 24/24 over CDP (DOM, store and file reads, two canvas-drawn films) |
 | 6 | Opus | `21e45d5..50d6311` (`5079860`, fix `50d6311`) | Opus: Needs fixes, 1 Important (a drop or Choose radiograph during placement could take an id the plan had reserved; S28, with S29–S31); re-review Sonnet clean | 1 | unit 1102/1102; CDP on two profiles, A 4/4 and B 20/20 and update path 6/6 before the fix, A 4/4 and B 15/15 after |
 | 7 | Opus | `50d6311..188b103` | Opus: Approved, no Critical or Important; counts verified one to one against the output files | 0 | `smoke-bundle.mjs` phases a 17/17, b 18/18, c 9/9; unit 1102/1102 |
-| 8 | Sonnet | `188b103..` the records commit | the controller's review follows this commit | — | unit 1102/1102 (no code touched) |
+| 8 | Sonnet | `188b103..135a25a` (`27a817b`, fix `135a25a`) | Opus: Needs fixes, 3 Important accuracy findings (the editor round's gate read as pending in lines the commit edited; "importing the same bundle twice adds nothing" was false for S20's bare entry; each smoke phase was said to run on its own fresh profile); re-review Sonnet clean; S37 raised | 1 | unit 1102/1102 (no code touched) |
+| Final review | — | `69a7262..135a25a` (12 commits, both rounds' bundle work) | Opus: With fixes, 4 Important (I1 = S38, I2 = S39, I3 = S37, I4 the Studies and Workspace suites not re-run after the Find bar changed), minors M1–M7 (S40–S42, S44 and the cheap fixes), the triage of every deferred minor (S43) | 1 (the fix wave) | — |
+| Fix wave | Opus | `135a25a..` (`eb90e6f` code and tests, `630af13` tests and the suite's header, a records commit) | a scoped re-review follows | — | unit 1110/1110 (8 new); `smoke-bundle.mjs` a 17/17, b 18/18, c 9/9; `smoke-studies.mjs` 151/151; `smoke-workspace.mjs` 100/100, each on its own fresh `%TEMP%` profile (phase c reuses a's) |
 
 Reviewers were Opus on every task, Sonnet for the small scoped re-reviews after a fix round. The owner's trailer
 (`Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`) was verified from the commit log of each task; Task 3's
 first commit carried the harness's own attribution and was amended (message only). Task 9, the human gate, is the
 owner's and is not run.
 
-### Rulings made on the way (S9–S36)
+### Rulings made on the way (S9–S44)
 
 **Task 1.**
 
@@ -718,6 +723,79 @@ owner's and is not run.
   S1–S35 verbatim with their costs, the per-task commit ranges and counts, and the deferred minors in one list — the
   project's convention is that a plan's Ledger holds every ruling, and the ignored SDD workspace is deleted after the
   final review. Cost if wrong: a longer plan file.
+- Ruling S37 (Task 8 concern 4, a plan-text conflict with the owner's 2026-09-12 rule that the SP-nnnn id is shown
+  nowhere a person looks): `exportBundle`'s `notRead` names a study's sidecar and calibration by the study's file name
+  (`<fileName> sidecar`, `<fileName> calibration`; the folder name when the file name is absent), never `<sourceId> …`;
+  the record keeps its own file name. To be fixed in the final review's fix wave with its unit test and the records that
+  quote the form (the plan's Task 2 text stays as history). Cost if wrong: a toast naming a file instead of an id.
+  (Fixed in `eb90e6f`.)
+
+**The final whole-branch review** (Opus, the package `69a7262..135a25a`, 12 commits): **With fixes.** Important: I1 a
+stopped placement could leave a half-applied update a re-import skips forever (the record was written before the action
+completed, so `saved_at` read equal) and a damaged bundle file stopped every later study on every re-import; I2 a
+destination write failure at export (a full stick) was reported as films "not found" and the export "succeeded"; I3 =
+S37; I4 `smoke-studies` and `smoke-workspace` not re-run after the Find bar refactor. Minors M1–M7 and a full triage of
+the deferred minors (fix before merge: `label-record.test.js`'s hard-coded rule; the two `main.js` comments; Task 8's
+accuracy items; the fix round's long lines and the editor-round headings; `smoke-bundle`'s overclaiming check name).
+The rulings it produced:
+
+- Ruling S38 (I1; amends spec §5.6/§5.7's write order and §5.8's stop rule — the spec assumed only transient write
+  failures): (a) `readBundle` parses `prediction.json` and `calibration.json` as it parses `study.json` (object or
+  problem `sidecar unreadable` / `calibration unreadable`), so a damaged bundle file makes that entry `malformed` before
+  the prompt, named in it and in the toast, and never stops the others; (b) `placeImport` writes per action in the order
+  calibration (the store's own validate-and-write, idempotent per digest), sidecar (copy, or the unlink), label record
+  LAST, so a stop before the record leaves the local record older and a re-import plans the update again; (c)
+  `placeImport` separates source-side failures (a bundle file missing or unparseable at placement, a calibration the
+  store refuses) — the action is SKIPPED, the loop continues, and the result carries `skipped: [{ id, message }]` — from
+  destination-side failures (a copy, write or unlink error in the data folder), which stop the loop as PB5 says
+  (`failed`); the screen counts skipped placements under `skipped` with reason `malformed` and excludes them from
+  `added`/`updated`. Cost if wrong: a calibration reference saved for a study whose sidecar then failed to copy
+  (harmless: per digest, re-saved on re-import); sidecars parsed twice (readBundle and placement).
+- Ruling S39 (I2): in `exportBundle`, only a source that cannot be opened or is not a file counts as missing; once the
+  source is open, any failure of the copy (ENOSPC, EIO, EACCES, EROFS on the destination, or an unknown mid-stream
+  error) REJECTS the export with `The film <name> could not be written to the bundle. Is the folder full or read-only?`
+  (`The sidecar for <name> …`, `The label record <name> …`, `The calibration reference for <name> …` for the JSON
+  copies' copyFile step), leaving the partial folder without a manifest (PB6's class). Cost if wrong: a flaky source
+  read aborts an export the person then retries, instead of leaving one film out.
+- Ruling S40 (M1; amends the Global Constraints' verbatim clause): the export toast's second clause reads `· <k> files
+  could not be read (<names>)` (`file` at 1), since after S37 the list names sidecars, label records and calibration
+  references by file name; the spec's `sidecars` wording predates the list holding three kinds. Cost if wrong: one word
+  in a toast against the spec's example.
+- Ruling S41 (M2): every imported film reads FOLDER `film` (its path ends in `/film/<name>`) and WORKSPACE shows the
+  exporting machine's root — deferred to the owner at the gate; the spec is silent and either carrying the source
+  folder label or documenting it is a design call. Cost if wrong: the Folder filter collapses imported films into one
+  option.
+- Ruling S42 (M3): a local label record whose read REJECTS (EBUSY, EPERM) is passed to the planner as `{ saved_at: null,
+  image_sha256: null }` — a record that exists but could not be read — so the entry is skipped `already in the library`
+  rather than the bundle's record overwriting an unknown local one; a `null` result (the main handler's "missing or
+  does not parse") stays "no record", so a damaged local record is still replaced (Task 4's recovery). Pinned by a
+  planner unit test. Cost if wrong: a locked local record blocks one update until the lock clears.
+- Ruling S43 (the final review's "declined to judge" lines, each accepted as outside this plan): the manifest's
+  `source_id` and study.json's `id` (machine-readable, §3.2/§3.3); identifiers in `workspaceFolder`/`name`/`note`/
+  `fileName` (B3, the doc warns); S20's re-added bare entry; a renamed unsegmented local copy not hashed (§5.3); legacy
+  device-name semantics (S14); main-thread JSON.parse of large sidecars (no progress bar by spec); >260-char paths when
+  Explorer copies to a stick; the human gate, a packaged build and backend pytest (the owner's / no backend change).
+  Cost if wrong: an item the owner would have wanted raised at the gate, now in this list for them.
+- Ruling S44 (M4, M5): one invalid `labelFile` in the library rejecting the whole export unnamed, and an add keeping the
+  bundle's `addedAt` so a deleted-then-reimported study recreates its `(id, addedAt)` identity — deferred to the owner's
+  list; both need a hand-edited store or a modeless picker left open across a delete and an import. Cost if wrong: an
+  unnamed export refusal; a relocate landing on the wrong record in a seconds-long window.
+
+**The fix wave** (Opus, one dispatch): I1–I4, S37/S40, S42, M6, M7 and the triage's fix-before-merge items. `eb90e6f`
+(code and tests): `readBundle` parses the sidecar and calibration (S38 a); `placeImport` parses every bundle file an
+action places first, then writes calibration, sidecar, record LAST, skips on a source-side failure and stops on a
+destination-side one, resolving `{ placed, skipped, failed }` (S38 b, c); `confirmImport` counts placement skips as
+`malformed` (S38 d); `copyFilm` and `copyJson` reject on a write failure once the source is open or parsed (S39);
+`notRead` names files (S37) and the clause says files (S40); `readLocalRecords` hands a rejected read on as an unread
+record (S42); the `import-bundle`, `read-bundle` and `hash-films` comments in `main.js` corrected. `630af13`: the R12
+test imports `isLabelFileName` from `bundle-io.js`; `smoke-bundle.mjs`'s header carries the README's run sequence and
+phase c's sidecar check is named for what it asserts. The records commit: `docs/bundles.md` (the stop, the skip, the
+write failure, S18's ranking, the newer-schema refusal under Importing and the CSV in the intro), the contract (the
+validators line, the `importBundle` result, the 2026-10-10 `LABEL_FILE` mention, the amendment's export, read and
+placement text with S3/S12 cited where they apply), the spec's dated notes at §4.2, §5.6 and §5.8, the release note
+and CHANGELOG, README's paragraph, CLAUDE.md, HANDOFF and this Ledger. Unit 1110/1110 (8 new: one `readBundle` parse
+test, four placement tests replacing two, three export write-failure tests, the S38 malformed and S42 planner tests);
+the five suites on fresh profiles as the per-task table gives. A scoped re-review follows.
 
 ### Deferred minors, by task
 
@@ -749,9 +827,10 @@ stand.
   `isLabelFileName` (211); check `row.label` with `isLabelFileName` in `readBundle` (bundle-io.js:250). Unreachable
   today (safeStem caps at 180).
 - Task 2: minor (deferred): test/label-record.test.js:309 still holds a hard-coded copy of the label rule
-  (`MAIN_LABEL_FILE`); import `isLabelFileName` from `../bundle-io.js` instead.
+  (`MAIN_LABEL_FILE`); import `isLabelFileName` from `../bundle-io.js` instead. (Done in `630af13`.)
 - Task 2: minor (deferred): untested branches — `Invalid export folders.`, a relative `parent`, a `parent` that is a
-  file (ENOTDIR), the partial-film cleanup after a failed stream (checked only by an uncommitted scratch script).
+  file (ENOTDIR), the partial-film cleanup after a failed stream (checked only by an uncommitted scratch script). (The
+  partial-film cleanup is tested since `eb90e6f`, S39; the rest stands.)
 - Task 2: minor (deferred): path hardening beyond the brief — symlinks/junctions inside a bundle are followed; Windows
   device names pass `isSafeName`; `sha256File` has no `isFile` check. Ruling S14: deferred, not blocking — bundles are
   the owner's own (B3) and the renderer that names hash paths is the app's own; the final review triages. Cost if wrong:
@@ -761,16 +840,17 @@ stand.
 
 - Task 3: minor (deferred): a partly placed update (sidecar replaced, record or calibration step failed) is invisible to
   the renderer; the main.js comment "patches the store for exactly what is on disk" overclaims — correct the comment;
-  optionally read calibration.json before the first write. Carried to Task 6 (the toast) and the final review.
+  optionally read calibration.json before the first write. Carried to Task 6 (the toast) and the final review. (Closed
+  by S38: the record is written last and a half-placed update is planned again; the comment corrected in `eb90e6f`.)
 - Task 3: minor (deferred → resolved by design in Task 4/6): the calibration store's two sentences do not name the
   study; `importMessage`'s `stoppedAt: { fileName, message }` names it. `calibrationFailure` passes any Error without a
   `code` through — latent (normalizeCalibration cannot throw a TypeError today).
 - Task 3: minor (deferred): `isExistingFolder` in main.js uses sync `existsSync`/`statSync` (a disconnected network
   drive could block the main thread); use `fsPromises.stat`.
 - Task 3: minor (deferred): untested — a sidecar that parses but fails to copy (`could not be copied`), a rename failure
-  leaving a `.tmp` (destination is a folder).
+  leaving a `.tmp` (destination is a folder). (Both tested since `eb90e6f`.)
 - Task 3: minor (deferred): the `hash-films` comment says "50 MB reads"; the cap belongs to read-file; `hashFiles` has
-  no size cap.
+  no size cap. (Reworded in `eb90e6f`.)
 - Task 3: minor (deferred): the data-folder joins live in three places in main.js (`bundleDataFolders`,
   `predictionPath`, `labelPath`/the calibration store).
 - Task 3 ⚠️ carried to Task 6: `hash-films` caps a request at 500 paths — the screen batches larger lists. The channels
@@ -780,7 +860,7 @@ stand.
 
 - Task 4: minor (deferred → Task 6): an unread local record (`localRecords[id]` null) and a missing one are treated the
   same (the bundle's record overwrites it); Task 6 reads the record of every matched local study with a `labelFile` and
-  of every same-named one (PB3). Pin with a test later.
+  of every same-named one (PB3). Pin with a test later. (S42 tells them apart; pinned in `eb90e6f`.)
 - Task 4: minor (deferred): two local copies of one film match the first in library order (bundle.js:158) — untested;
   the decision objects' key names (`{ add }` vs `{ update, study }`); the last-resort skip name is the 0-based manifest
   index.
@@ -798,6 +878,7 @@ stand.
 - Task 5: minor (deferred): Export disabled during a bulk delete shows no title; the picker window is unguarded (a fast
   double-click before the modal appears could invoke choose-folder twice: the second pick is dropped silently or written
   as a second bundle); the file's top docblock (studies.js:3–4) still says the bar holds Delete and the segment button.
+  (The docblock names Export and Import bundle… since `eb90e6f`; the rest stands.)
 - Task 5 ⚠️ (deferred to Task 7's smoke): the WAIT_FOR_BATCH and `Studies are not being saved` titles, and the bar's
   wrapping with one more button, were not read.
 
@@ -805,7 +886,7 @@ stand.
 
 - Task 6 concern 3 (unfixed, needs a ruling): during the confirm's placement, Choose radiograph, a drop and a Workspace
   folder load stay live; `addStudy`'s `nextId` could reuse an id the plan reserved, giving two studies one id. Ruling
-  deferred until the review reports on its reach.
+  deferred until the review reports on its reach. (Closed by S28.)
 - Task 6: minor (deferred): a user who enters edit mode on an update target during the seconds of placement has those
   edits discarded by forgetLevelEditor; a Re-run started on an update target interleaves with the placement. Ruling S32:
   deferred — the window is the placement's duration and the prompt names what will be updated. Cost if wrong: an edit of
@@ -822,5 +903,22 @@ stand.
   (smoke-bundle.mjs:433, :502, :562, :577); a failed freshness precondition does not stop the phase (:388, :520) while
   the README says it fails at once; the two path-file checks cannot fail (:504, :603); two check names overclaim (:454
   "its record unchanged" compares the name only; :645 "now B's copy" would pass with A's sidecar); the header's run
-  sequence drifted from the README's (:150–158).
+  sequence drifted from the README's (:150–158). (The fix wave's `630af13` renamed the :645 check, now phase c's
+  sidecar check, and copied the README's run sequence into the header; the rest stands.)
+- Task 7 (carried, unexercised; deferred to the final review and the owner's gate): the batch and persistence-off button
+  titles, `stoppedAt` and `withoutFilm`, the S26 withdrawal on navigation.
+
+**Task 8.**
+
+- Task 8: minor (deferred → the final fix wave as accuracy items): contract :68–69 said `main.js` shares three
+  validators (it imports two); S3 and S12 cited against the wrong behaviour (contract :1867–1868, CLAUDE.md :30); Ledger
+  :806 (Task 6 concern 3) lacked "(closed by S28)"; the Ledger omitted progress.md's Task 7 "unexercised" carried item;
+  contract :1467 still named `main.js` `LABEL_FILE`; 1.2.0.md:89–90's "had not been run when this note was written"
+  needed an edit after the gate; bundles.md:154 "the later-saved one applies" should say an entry with a record
+  outranks one without, then the later-saved; unwrapped lines (CLAUDE.md:14, 1.2.0.md:75, :91, HANDOFF:220);
+  README:39–40's sentence placement; bundles.md:170–173 "What does not travel" misfiled the newer-schema refusal and the
+  CSV export. (All addressed by the fix wave's records commit.)
+- Task 8 fix round's new minors: four lines over 120 columns (CLAUDE.md:30, :68; 1.2.0.md:90; HANDOFF:118); the
+  editor-round headings (CLAUDE.md:41, HANDOFF:163) read "at the owner's gate, not pushed" while their bodies say the
+  gate passed. (Addressed by the fix wave's records commit.)
 

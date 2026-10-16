@@ -6,10 +6,13 @@ writes one from the Studies list; **Import bundle…** reads one into another li
 edit on the other side. It is how you carry films and their annotations to a second computer, or bring a colleague's
 annotations of films you already hold into your own list. Spec
 `docs/superpowers/specs/2026-10-15-annotation-bundle-export-import-design.md` (decisions B1–B9); plan
-`docs/superpowers/plans/2026-10-15-annotation-bundle-export-import.md` (rulings PB1–PB10, and S1–S36 in its Ledger).
+`docs/superpowers/plans/2026-10-15-annotation-bundle-export-import.md` (rulings PB1–PB10, and S1–S44 in its Ledger).
 
 Both buttons only read and write files on this computer. Nothing is uploaded, and the app makes no network call for
 either one (B9).
+
+A bundle is not the measurements CSV. The CSV export stays its own file for spreadsheets and cannot be imported back
+(see the roadmap); a bundle carries the films and their annotations and nothing else reads it.
 
 ## What a bundle holds
 
@@ -63,11 +66,19 @@ progress bar.
 
 The toast reads `Exported 12 studies to <the folder>`. When it can say more it adds:
 
-- `· 2 films were not found and were left out (a.png, b.png)`. The film's file had moved, could not be read, or has a
+- `· 2 films were not found and were left out (a.png, b.png)`. The film's file had moved, could not be opened, or has a
   name that cannot be a file name in a bundle (S4). The study is still in the bundle with its result, record and scale,
   and imports without a film (see below).
-- `· 1 sidecar could not be read (…)`. A result, record or scale reference exists in the library but could not be read,
-  so that one piece is left out and the rest of the study is written.
+- `· 1 file could not be read (a.png sidecar)`. A model result (named `<film> sidecar`), a label record (named by its
+  own file name) or a scale reference (named `<film> calibration`) exists in the library but could not be read, so that
+  one piece is left out and the rest of the study is written (S37, S40). A study with no file name is named by its
+  folder in the bundle.
+
+If the folder you chose cannot take the files, because the stick is full or the folder is read-only, the export stops
+instead with a sentence such as `The film a.png could not be written to the bundle. Is the folder full or read-only?`
+(or the same for a sidecar, a label record or a calibration reference) (S39). A film is reported as not found only when
+it was not there to copy, never because the bundle's folder refused it. The half-written bundle has no manifest, so
+Import refuses it: delete it, free some space or choose another folder, and export again.
 
 ## Importing
 
@@ -80,7 +91,9 @@ bar instead of the usual buttons:
 
 with **Import** and **Cancel**. Focus starts on Cancel, and Escape cancels too. Nothing has been changed yet. If there is
 nothing to add or update the prompt does not appear and a toast says why instead: `Nothing to import: already in the
-library: a.dcm, b.dcm`.
+library: a.dcm, b.dcm`. A folder with no manifest is refused with `This folder is not a Spine Contour bundle.`, and a
+bundle written by a newer Spine Contour than the one importing it with `This bundle was written by a newer Spine Contour
+(schema …). Update the app to import it.`
 
 - **A film the library does not hold** is added as a new study, ready to open, review and edit. It takes the subject,
   timepoint, note and clinical fields the bundle recorded, and its model result, label record, comment, review mark and
@@ -88,7 +101,9 @@ library: a.dcm, b.dcm`.
 - **A film the library already holds** is matched by the film's content, never by its file name (B4): the bundle's
   SHA-256 against the library's. A bundle that names a film the library holds under another name still matches; two
   different films that share a name do not.
-- **Anything else is skipped and named**, with its reason: `already in the library`, `being edited` or `malformed`.
+- **Anything else is skipped and named**, with its reason: `already in the library`, `being edited` or `malformed`. A
+  damaged file in the bundle (a `study.json`, label record, model result or scale reference that cannot be read) makes
+  that one film `malformed` and never stops the others (S38).
 
 The import button is disabled, like Export, while a run, a batch, an export or another import is in flight, and while
 studies are not being saved. While an import reads or places files it reads `Importing…`, and the bar's other actions
@@ -97,14 +112,19 @@ typed in the list, a film added) because its plan was made against the list as i
 again. If the library changed while the bundle was being read, a toast says so and no prompt appears (S29).
 
 When the import ends, the toast reads like `Imported 10 studies, updated 2, skipped 3 (already in the library: a, b;
-being edited: c)`. After it, when they apply:
+being edited: c)`. A film whose file in the bundle was damaged or gone by the time it was placed, or whose scale
+reference was refused, is counted there too, under `malformed`: nothing of it was written and the import went on with
+the others (S38). After it, when they apply:
 
 - `· 2 without film (x.dcm, y.dcm)`: those studies came in without a film (see below).
 - `· 1 not added because the library changed (z.dcm); import the bundle again`: a film was added by another route while
   the import ran and took the id the plan had set aside for this one (S28). Nothing is lost; import the bundle again.
-- `· stopped at q.dcm: <reason> Import the bundle again to continue.`: a file could not be placed (the data folder was
-  not writable, a sidecar in the bundle was damaged). The studies placed before it stay; the rest match nothing yet, so
-  importing the bundle again continues where it stopped.
+- `· stopped at q.dcm: <reason> Import the bundle again to continue.`: a file could not be written into this
+  computer's data folder (the disk was full, a file was held open by another program). The studies placed before it
+  stay. Importing the bundle again continues: the studies already placed are skipped as already in the library,
+  because their label records are now the bundle's, and q.dcm is offered again, as a new film if it was one (it was
+  never added) and as an update if the library held it (its label record is written last, so it still has its older
+  one) (S38).
 
 ## The identifiers warning
 
@@ -141,7 +161,7 @@ The rule is the newer annotation wins (B4):
 | held; both have records and the bundle's was saved later | updated |
 | held; anything else: the bundle's record is older, was saved at the same moment, has a save time that cannot be read, or the bundle has no record | skipped, `already in the library` |
 | held; that study is open in edit mode, or has edits left unsaved by opening another study | skipped, `being edited` |
-| `study.json` or the label record missing, damaged, or naming a path outside its folder | skipped, `malformed` |
+| `study.json` or a named label record missing or damaged, a model result or scale reference damaged, or a path outside its folder | skipped, `malformed` |
 
 An **update** keeps what is yours on this computer: where its film lives, its name, workspace folder, subject,
 timepoint, film date, note, clinical fields and when it was added. It takes the annotation: the model result
@@ -151,7 +171,13 @@ study is treated as re-run for the screen: its editor state and cached images ar
 the new files are read. The older annotation on this computer is overwritten, so a study edited on both computers keeps
 only the later save; there is no merge.
 
-If a bundle holds two entries for one film, the later-saved one applies and the other is skipped.
+If a bundle holds two entries for one film, only one of them is weighed against the library: an entry with a label
+record outranks one without, then the later-saved record, then the first in the bundle (S18). The rule above decides
+whether it applies, and the other is skipped as `already in the library`.
+
+A label record on this computer that exists but cannot be read at the moment (another program holds it open) is never
+written over: the film is skipped as `already in the library` until it can be read (S42). One that is missing or
+damaged counts as no record, so the bundle's replaces it.
 
 ## Importing the same bundle twice
 
@@ -175,10 +201,7 @@ a later import and is added again if the bundle is imported twice; Delete remove
 
 ## What does not travel
 
-- View state: window / level, zoom and where you dragged the level plates. The library never saved them.
-- A bundle written by a newer Spine Contour than the one importing it is refused with `This bundle was written by a newer
-  Spine Contour (schema …). Update the app to import it.`
-- The CSV export. It stays its own file for spreadsheets; it cannot be imported back (see the roadmap).
+View state: window / level, zoom and where you dragged the level plates. The library never saved them.
 
 ## Verification
 

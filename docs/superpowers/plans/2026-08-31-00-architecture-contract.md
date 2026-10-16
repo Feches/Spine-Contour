@@ -65,9 +65,10 @@ index.html                        shell only — no inline CSS, no inline script
 main.js                           Electron main; gained its IPC handlers in plans 05–06
 preload.js                        contextBridge surface; grew in plans 05–06
 store-io.js                       (plan 05) disk I/O for the study store and the prediction sidecars — CommonJS
-bundle-io.js                      (2026-10-15, annotation bundles) the bundle's file I/O and the three path validators main.js
-                                  shares (isStudyId, isLabelFileName, isSafeName); exportBundle, readBundle, hashFiles,
-                                  placeImport — CommonJS, required only by main.js, imports store-io.js; listed in BOTH
+bundle-io.js                      (2026-10-15, annotation bundles) the bundle's file I/O and the three path validators
+                                  (isStudyId and isLabelFileName, which main.js imports for its sidecar and label paths;
+                                  isSafeName, the bundle code's own); exportBundle, readBundle, hashFiles, placeImport —
+                                  CommonJS, required only by main.js, imports store-io.js; listed in BOTH
                                   electron-builder allowlists
 scan-folder.js                    (plan 06) recursive film discovery for the Workspace folder scan — CommonJS, node:fs only,
                                   required by main.js; listed in BOTH electron-builder allowlists
@@ -520,7 +521,7 @@ export async function openExternal(url)         // → void
 export async function exportBundle(request)     // → {path, written, filmsMissing, notRead}   (2026-10-15) request {parent, name, entries, appVersion}; writes only inside the folder the person chose
 export async function readBundle(dir)           // → {manifest, entries}   (2026-10-15) reads a bundle folder; rejects when it is not one or is newer
 export async function hashFilms(paths)          // → {[path]: string|null}   (2026-10-15) SHA-256 hex of each film, null when unreadable; at most 500 paths
-export async function importBundle(request)     // → {placed, failed}   (2026-10-15) request {dir, actions}; the one bundle function gated by assertWritable (rejects after disablePersistence)
+export async function importBundle(request)     // → {placed, skipped, failed}   (2026-10-15) request {dir, actions}; the one bundle function gated by assertWritable (rejects after disablePersistence)
 ```
 
 `predict(request)` takes `{name, data, modality: 'xray', bodyPart: 'lumbar', view: 'lateral'}`.
@@ -1464,7 +1465,8 @@ and keeps it on the record across saves; the main process only validates it.
 filename stem (`lateral_lumbar_001.dcm` → `lateral_lumbar_001`), `-2`, `-3` … when another study's `labelFile`
 already holds the name (D3). The stem is made safe first (R12: `\ / : * ? " < > |` and control characters become `_`,
 leading dots go, the stem is capped at 180 characters, a Windows device name takes a `_`); the main process accepts
-only a bare `<name>.label.json` (`main.js` `LABEL_FILE`) and rejects anything else with `Invalid label file name.`.
+only a bare `<name>.label.json` (`main.js` `LABEL_FILE`; 2026-10-15: `bundle-io.js` `isLabelFileName`) and rejects
+anything else with `Invalid label file name.`.
 Written atomically through `main.js` (`writeJsonAtomic`, IPC `save-label-record`, which creates `labels/`), read with
 `load-label-record` (null when absent or unparseable), deleted with the study (`deleteStudy` and the bulk
 `deleteStudyBatch`, inside the same try as the sidecar), and quarantined with the rest: a corrupt `studies.json` moves
@@ -1830,7 +1832,8 @@ No `STORE_VERSION` bump, no IPC or CSP change, no runtime dependency, no new mod
 
 Spec `docs/superpowers/specs/2026-10-15-annotation-bundle-export-import-design.md` (B1–B9, the owner's rulings and the
 planner's); plan `plans/2026-10-15-annotation-bundle-export-import.md` (rulings PB1–PB10; its Ledger holds the execution
-rulings S1–S36); branch `worktree-annotation-round-2`, `a810827`..`188b103` and the records commit, built on the editor
+rulings S1–S44, S37–S44 from the final whole-branch review); branch `worktree-annotation-round-2`, `a810827`..`188b103`,
+the records commits and the final review's fix wave (`eb90e6f`, `630af13` and its records commit), built on the editor
 round above and to ship with it in one PR as 1.2.0 (PB10); user doc `docs/bundles.md`. Nothing an earlier amendment says
 is removed. No `STORE_VERSION` bump, no CSP change, no runtime dependency, no stylesheet file (rules in
 `styles/screens/studies.css`), no backend change.
@@ -1863,26 +1866,38 @@ both electron-builder allowlists**). Exports `BUNDLE_SCHEMA`, `isStudyId`, `isLa
   `study.json`, copies the sidecar, the record and the calibration reference when each exists and parses, and streams the
   film into `film/<fileName>` while hashing it (SHA-256 hex, the digest a model result stores as `source_sha256`). It
   resolves `{ path, written, filmsMissing, notRead }`: `path` is the folder actually created. A film that is absent,
-  unreadable, whose study has no safe file name or whose copy failed is listed in `filmsMissing`, leaves `film` and
-  `film_sha256` null and does not stop the study (S3, S4); a sidecar, record or reference that exists and cannot be read
-  is listed in `notRead` and left out (S12). It rejects only when the folder, a study folder, a `study.json` or the
-  manifest cannot be written; a partial folder is left without a manifest (PB6).
+  not a file, whose source will not open or whose study has no safe file name is listed in `filmsMissing`, leaves
+  `film` and `film_sha256` null and does not stop the study (Review Focus 3, PB6, S4); a sidecar, record or reference
+  that exists and cannot be read or parsed is listed in `notRead` and left out, named `<fileName> sidecar`, the record's
+  own file name and `<fileName> calibration` (the study's folder name when it has no file name; never the SP-nnnn id,
+  S37). It rejects when the folder, a study folder, a `study.json` or the manifest cannot be written, and (S39) when,
+  once a film's source is open or a JSON file has parsed, its copy into the bundle fails (a full or read-only
+  destination, a read that breaks off): `The film <name> could not be written to the bundle. Is the folder full or
+  read-only?`, `The sidecar for <name> …`, `The label record <file> …`, `The calibration reference for <name> …`, the
+  partial file removed. A partial folder is left without a manifest (PB6).
 - **`readBundle(dir)`** resolves `{ manifest, entries }`, one entry per manifest row in order, each `{ dir, manifest,
   study, record, has: { prediction, calibration, film }, filmPath, problems }`: `study` and `record` are the parsed
-  `study.json` and label record (null when unreadable), `has` says whether the sidecar, the reference and the film
-  exist, `filmPath` is the film's absolute path only when the row names one and the file is there (S3). `problems` holds
-  `unsafe path` (a row with any path failing `isSafeName`, which is then not read at all), `study.json unreadable` or
-  `label record unreadable` (S12). It rejects `This folder is not a Spine Contour bundle.` for a missing, unparseable or
-  schemaless manifest or one without a `studies` array, and `This bundle was written by a newer Spine Contour (schema
-  <id>). Update the app to import it.` for another schema. Sidecars, references and films are checked for, never read.
+  `study.json` and label record (null when unreadable), `has.prediction` and `has.calibration` say whether the sidecar
+  and the reference are there AND parse as JSON objects (S38), `has.film` whether the film is there, `filmPath` is the
+  film's absolute path only when the row names one and the file is there (S3). `problems` holds `unsafe path` (a row
+  with any path failing `isSafeName`, which is then not read at all), `study.json unreadable`, `label record
+  unreadable` (S12), `sidecar unreadable` or `calibration unreadable` (a named file that is there and does not parse,
+  S38). It rejects `This folder is not a Spine Contour bundle.` for a missing, unparseable or schemaless manifest or one
+  without a `studies` array, and `This bundle was written by a newer Spine Contour (schema <id>). Update the app to
+  import it.` for another schema. Sidecars and references are parsed, checked and dropped, films only checked for:
+  none of them reaches the result (PB2).
 - **`hashFiles(paths)`** resolves `{ [path]: sha256 | null }`, streamed one file after another.
 - **`placeImport({ dir, actions, paths, saveCalibration })`**: per action `{ kind: 'add' | 'update', dir, id, prediction:
   'prediction.json' | null, deleteLocalPrediction, label: { from, to } | null, calibration: 'calibration.json' | null }`,
-  checked whole first (`Invalid import action.`), then the sidecar parsed and copied to `predictions/<id>.json` (or, with
-  none and `deleteLocalPrediction`, the local one unlinked), the record copied to `labels/<to>` and the reference parsed
-  and handed to `saveCalibration`; each copy goes through a temporary file and a rename. It resolves `{ placed, failed }`
-  and **stops at the first failed action** (PB5): the ids placed before it stay placed, nothing of it or after is
-  placed, and `failed` is `{ id, message }`.
+  checked whole first (`Invalid import action.`), then every bundle file it places parsed, then (S38) **the reference
+  handed to `saveCalibration`, the sidecar copied to `predictions/<id>.json` (or, with none and
+  `deleteLocalPrediction`, the local one unlinked), and the record copied to `labels/<to>` LAST**, so an action stopped
+  part way leaves the local record older and a re-import plans it again; each copy goes through a temporary file and a
+  rename. It resolves `{ placed, skipped, failed }`. A **source-side** failure (a bundle file gone or unparseable at
+  placement, or a reference the calibration store refuses with its own sentence) **skips** that action, nothing of it
+  written, and the loop goes on: `skipped` gains `{ id, message }`. A **destination-side** failure (a copy, write,
+  rename or unlink error in the data folder, an unlink's ENOENT excepted, or an invalid action) **stops** the import
+  (PB5): the ids placed before it stay placed, nothing after it is placed, and `failed` is `{ id, message }`.
 
 **The four channels** (`main.js` handlers, `preload.js` bridge, `renderer/api.js`; the data folders are supplied by
 `main.js`, never named by the renderer):
@@ -1890,7 +1905,7 @@ both electron-builder allowlists**). Exports `BUNDLE_SCHEMA`, `isStudyId`, `isLa
 | Channel | `preload.js` / `api.js` | Reads | Writes | Gate |
 |---|---|---|---|---|
 | `export-bundle` | `exportBundle(request)` | the data folders' sidecars, records and references; each study's film at its `filePath` | only inside `<parent>/<name>` | none: it writes outside the data folder |
-| `read-bundle` | `readBundle(dir)` | the manifest, each `study.json` and record; presence of the rest | nothing | none |
+| `read-bundle` | `readBundle(dir)` | the manifest, each `study.json` and record; each sidecar and reference parsed and dropped (S38); presence of the film | nothing | none |
 | `hash-films` | `hashFilms(paths)` | the films named, streamed; at most 500 paths (`Invalid request.` beyond) | nothing | none |
 | `import-bundle` | `importBundle(request)` | the bundle's sidecars, records and references | `predictions/<id>.json`, `labels/<name>`, the calibration store through its own `save`; unlinks a retired sidecar | `assertWritable()` |
 
@@ -1929,7 +1944,8 @@ screen: **`hasStashedEditor` is evaluated by the screen** and handed in as the `
   `workspaceFolder`, `subjectId`, `timepoint`, `filmDate`, `note` and `clinical`), adds appended with the new `id`, the
   film's path inside the bundle (null when it was not exported, B5), `labelFile` and `labelComment` (`study.labelComment`,
   else the record's `comment`, S17); only the ids in `placedIds`; nothing mutated.
-- `exportMessage`, `importPromptText` (names the bundle by its last path segment, S16), `importMessage` (S19) and
+- `exportMessage` (its not-read clause reads `· <k> files could not be read (<names>)`, `file` at 1, S40),
+  `importPromptText` (names the bundle by its last path segment, S16), `importMessage` (S19) and
   `nothingToImportMessage`, whose sentences are the spec's §4–§5 and `docs/bundles.md`'s.
 
 **`screens/studies.js`** owns the flows and is the only place that composes them. The Find bar's `Export all` / `Export N
@@ -1942,14 +1958,17 @@ does (B8). The flows are exported without their pickers so the smoke suite can d
 while a run or batch is in flight, studies are not being saved, or an export or import is in flight, and the bar's other
 actions wait while an import reads or places (S23, S25). `importBundleFrom` reads the bundle, builds `localHashes` from
 `localFilmHash` and, for local studies without one that share an entry's `fileName`, `hashFilms` in batches of 500, reads
-the label record of each local study the rule needs (PB3, S27), and plans; a plan with nothing to add or update toasts
+the label record of each local study the rule needs (PB3, S27; a record whose read rejects is handed on as `{ saved_at:
+null, image_sha256: null }`, so the entry is skipped rather than written over it, while a missing or unparseable one is
+null, S42), and plans; a plan with nothing to add or update toasts
 `Nothing to import: …`, one built on a library that changed meanwhile toasts that it did (S29), any other waits for
 Import or Cancel and is withdrawn silently when the library or the tab changes (S26). `confirmImport` calls
 `importBundle`, then for each placed update forgets the study's level editor, prediction snapshot and cached film, drops
 a placed add whose id the library took meanwhile and names it (S28), and applies the rest in **one** `setState` after the
 files are on disk (PB4). While an import runs the screen's other add paths refuse with `Wait for the import to finish.`
-(S28). A write failure stops at that study and the toast says so (PB5, S19). The record id is never shown in the import's
-toast (S31).
+(S28). An action `placeImport` skipped is counted under skipped as `malformed`, named by its film, and is neither added
+nor updated (S38). A write failure stops at that study and the toast says so (PB5, S19). The record id is never shown in
+the import's toast (S31) or the export's (S37).
 
 **Label record and store.** Unchanged: the record keeps its schema id and the study gains no field. An import is the
 second of the two paths the editor round's amendment allows to write `labelComment` (Save edits is the first); it sets

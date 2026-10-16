@@ -16,8 +16,10 @@
   original file, the study's record, the model's result, the label record and the manual image scale. **Import
   bundle…** reads one into another library after asking in the bar: new films are added, a film the library already
   holds (matched by content) is updated only when the bundle's annotation was saved later, and the rest is skipped and
-  named. Imported films stay in the bundle folder, so keep it where it is. A bundle can carry patient identifiers in a
-  DICOM header: it is for your own machines. See `docs/bundles.md`.
+  named; a damaged file in the bundle skips only its film. An export folder that fills up or cannot be written stops
+  the export with a message instead of reporting films as not found. Imported films stay in the bundle folder, so keep
+  it where it is. A bundle can carry patient identifiers in a DICOM header: it is for your own machines. See
+  `docs/bundles.md`.
 
 [Release notes](docs/releases/1.2.0.md)
 

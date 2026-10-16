@@ -1,46 +1,58 @@
 # Spine Contour
 
-**2026-10-15 annotation bundle export and import (BUILT, at the owner's gate (plan Task 9), on top of the gated editor
-round, not pushed):** the
-same branch `worktree-annotation-round-2` in worktree `.claude/worktrees/annotation-round-2`, on top of the editor round
-below (its tip `7dec644` is the 1.2.0 release commit, backed up on `origin`; these commits are not pushed), off
-`origin/main` @ `06c8cdd` (v1.1.1). A study's data lives in four places (its row in `studies.json`, the prediction
-sidecar, the label record, the original film) and nothing moved them between computers; a folder bundle now does. Spec
-`docs/superpowers/specs/2026-10-15-annotation-bundle-export-import-design.md` (B1–B9), plan
-`docs/superpowers/plans/2026-10-15-annotation-bundle-export-import.md` (rulings PB1–PB10; its Ledger holds the execution
-rulings S1–S36, its 22 deferred minors and 5 carried items), user doc `docs/bundles.md`. **Export all** / **Export N
-selected** on the Find bar (`data-find-key` `export-bundle`, the CSV's selection rule, B6) writes
+**2026-10-15 annotation bundle export and import (BUILT and through its final review, at the owner's gate (plan Task
+9), on top of the gated editor round, not pushed):** the same branch `worktree-annotation-round-2` in worktree
+`.claude/worktrees/annotation-round-2`, on top of the editor round below (its tip `7dec644` is the 1.2.0 release commit,
+backed up on `origin`; these commits are not pushed), off `origin/main` @ `06c8cdd` (v1.1.1). A study's data lives in
+four places (its row in `studies.json`, the prediction sidecar, the label record, the original film) and nothing moved
+them between computers; a folder bundle now does. Spec
+`docs/superpowers/specs/2026-10-15-annotation-bundle-export-import-design.md` (B1–B9; dated amendment notes at §4.2,
+§5.6 and §5.8 from the final review), plan `docs/superpowers/plans/2026-10-15-annotation-bundle-export-import.md`
+(rulings PB1–PB10; its Ledger holds the execution rulings S1–S44, S37–S44 from the final whole-branch review, and the
+deferred minors with the review's triage), user doc `docs/bundles.md`. **Export all** / **Export N selected** on the
+Find bar (`data-find-key` `export-bundle`, the CSV's selection rule, B6) writes
 `spine-contour-export-<YYYY-MM-DD>-<HHMM>`: `manifest.json` (written last; schema `spinecontour.bundle/1`) and per film
 a folder with `study.json` (`filePath` null), `prediction.json`, the label record, `calibration.json` (B7) and
-`film/<file>` (the original, hashed as it is copied, B3). **Import bundle…** in the dropzone (`import-bundle`) reads one, plans it in `planImport` (a film matches by
-its SHA-256, never by name; it is added, or updated when the bundle's record was saved later than the local one or the
-local study has none, or skipped as `already in the library`, `being edited` or `malformed`, B4), confirms in an inline
-prompt (`import-prompt`, B8) and applies what was placed in ONE `setState`. Imported films stay in the bundle folder
-(B5). New: `renderer/data/bundle.js` (pure; imports only `persistence.js`, `label-record.js` and `labels.js`;
-`hasStashedEditor` is handed in by the screen), the root CommonJS `bundle-io.js` (`isStudyId`, `isLabelFileName`,
-`isSafeName`, `exportBundle`, `readBundle`, `hashFiles`, `placeImport`; in both electron-builder allowlists; `main.js`'s
-`REAL_STUDY_ID` and `LABEL_FILE` became its validators, PB1), the channels `export-bundle`, `read-bundle`, `hash-films`
-(at most 500 paths) and `import-bundle` as `exportBundle`, `readBundle`, `hashFilms` and `importBundle` in `preload.js`
-and `renderer/api.js` (only `importBundle` is gated by `assertWritable`; the renderer never sees film or sidecar bytes,
-PB2), `safeStem` moved to `data/labels.js`, and `exportBundleTo`, `importBundleFrom` and `confirmImport` exported from
-`screens/studies.js` for the smoke suite (PB7). `a810827`..`188b103` (ten commits, Tasks 1–7; `5b3002c`, `0e79356` and
-`50d6311` are review fix rounds) and a records commit (`docs/bundles.md`, the contract's 2026-10-15 bundle amendment,
+`film/<file>` (the original, hashed as it is copied, B3). **Import bundle…** in the dropzone (`import-bundle`) reads
+one, plans it in `planImport` (a film matches by its SHA-256, never by name; it is added, or updated when the bundle's
+record was saved later than the local one or the local study has none, or skipped as `already in the library`, `being
+edited` or `malformed`, B4), confirms in an inline prompt (`import-prompt`, B8) and applies what was placed in ONE
+`setState`. Imported films stay in the bundle folder (B5). New: `renderer/data/bundle.js` (pure; imports only
+`persistence.js`, `label-record.js` and `labels.js`; `hasStashedEditor` is handed in by the screen), the root CommonJS
+`bundle-io.js` (`isStudyId`, `isLabelFileName`, `isSafeName`, `exportBundle`, `readBundle`, `hashFiles`,
+`placeImport`; in both electron-builder allowlists; `main.js`'s `REAL_STUDY_ID` and `LABEL_FILE` became its validators,
+PB1), the channels `export-bundle`, `read-bundle`, `hash-films` (at most 500 paths) and `import-bundle` as
+`exportBundle`, `readBundle`, `hashFilms` and `importBundle` in `preload.js` and `renderer/api.js` (only `importBundle`
+is gated by `assertWritable`; the renderer never sees film or sidecar bytes, PB2), `safeStem` moved to
+`data/labels.js`, and `exportBundleTo`, `importBundleFrom` and `confirmImport` exported from `screens/studies.js` for
+the smoke suite (PB7). `a810827`..`188b103` (ten commits, Tasks 1–7; `5b3002c`, `0e79356` and `50d6311` are review fix
+rounds), two records commits (`27a817b`, `135a25a`: `docs/bundles.md`, the contract's 2026-10-15 bundle amendment,
 HANDOFF, this file, `docs/level-editor.md`, ROADMAP §1, README, the 1.2.0 release note and CHANGELOG, the plan's
-Ledger). Unit 1102/1102 (1024 when the plan began); `smoke-bundle.mjs` a 17/17, b 18/18 and c 9/9 on two fresh `%TEMP%`
-profiles (phase c reuses a's), synthetic films, DOM, store and file reads, no screenshot (Tasks 5 and 6 were also walked from source over
-CDP). Rulings that shape it: S1 (the main process suffixes a clashing bundle folder), S3/S4 (a missing or unsafe film
-counts as missing and the rest of the study still exports), S10 (folder names never end in a dot or a space), S12 (a
-damaged label record skips that entry as malformed), S20/S21 (a film-less entry matches by its result's digest; an
-update keeps a local sidecar the bundle names but did not bring), S25/S26/S28/S29 (an import blocks the bar's other
-actions, a pending plan is withdrawn when the library changes, an add whose id was taken meanwhile is dropped and named,
-a stale read says so), S30 (`Importing…`). The release stays 1.2.0 (PB10): no version bump, both rounds in one PR, the
+Ledger), and the final review's fix wave (`eb90e6f` code and tests, `630af13` tests and the suite's header, a records
+commit). Unit 1110/1110 (1024 when the plan began, 1102 before the fix wave); after the fix wave, each on its own fresh
+`%TEMP%` profile (phase c reuses a's), synthetic films, DOM, store and file reads, no screenshot: `smoke-bundle.mjs` a
+17/17, b 18/18 and c 9/9 (the same before it), `smoke-studies.mjs` 151/151 and `smoke-workspace.mjs` 100/100 (Tasks 5
+and 6 were also walked from source over CDP). Rulings that shape it: S1 (the main process suffixes a clashing bundle
+folder), Review Focus 3, PB6 and S4 (a missing or unsafe film counts as missing and the rest of the study still
+exports), S10 (folder names never end in a dot or a space), S12 (a damaged label record skips that entry as
+malformed), S20/S21 (a film-less entry matches by its result's digest; an update keeps a local sidecar the bundle
+names but did not bring), S25/S26/S28/S29 (an import blocks the bar's other actions, a pending plan is withdrawn when
+the library changes, an add whose id was taken meanwhile is dropped and named, a stale read says so), S30
+(`Importing…`), and from the final review S38 (`readBundle` parses the sidecar and calibration, so a damaged one is
+`malformed`; `placeImport` writes calibration, sidecar, then the label record LAST, skips a study whose bundle file is
+gone or damaged or whose calibration the store refuses, and stops only on a data-folder write failure, resolving
+`{ placed, skipped, failed }`), S39 (a full or read-only export folder rejects the export instead of listing films as
+missing), S37/S40 (`notRead` names files, never an SP id; `· <k> files could not be read`) and S42 (a local record
+whose read rejects is never written over). The release stays 1.2.0 (PB10): no version bump, both rounds in one PR, the
 release note and CHANGELOG extended. Not run: the human gate (plan Task 9, the owner's: a real library exported to a
 stick and imported on the second computer, a re-run and window / level on an imported DICOM), a packaged build, a real
-film (no screenshot of one), any other smoke suite on this tree, backend pytest (no backend change). Nothing pushed.
+film (no screenshot of one), the other smoke suites on this tree (their counts are from before the bundle), backend
+pytest (no backend change). Nothing pushed.
 
-**2026-10-15 annotation editor round 2: a comment on the record, Hand-placed, REVERT (BUILT, at the owner's gate, not
-pushed):** branch `worktree-annotation-round-2` in worktree `.claude/worktrees/annotation-round-2`, off `origin/main` @
-`06c8cdd` (v1.1.1, the merge of PR #64). Three gaps the owner raised: nothing in the annotation said why, a failed film
+**2026-10-15 annotation editor round 2: a comment on the record, Hand-placed, REVERT (BUILT, owner gate passed, 1.2.0
+release commit `7dec644` backed up on `origin`, waiting on the bundle's gate, no PR):** branch
+`worktree-annotation-round-2` in worktree `.claude/worktrees/annotation-round-2`, off `origin/main` @ `06c8cdd` (v1.1.1,
+the merge of PR #64). Three gaps the owner raised: nothing in the annotation said why, a failed film
 placed by hand stayed Failed (R24), and one edit could not be undone on its own. Spec
 `docs/superpowers/specs/2026-10-15-annotation-editor-round-2-design.md` (E1–E7), plan
 `docs/superpowers/plans/2026-10-15-annotation-editor-round-2.md` (rulings P1–P10). The label record gains an optional
@@ -58,15 +70,16 @@ the contract, the level editor plan's Ledger, this file, HANDOFF). Unit 1005/100
 review's fix wave (`7be532f` and a records commit): I1, Place then Discard (or CLEAR, or unchecking the only placed
 level) on a failed film no longer reads Hand-placed with nothing placed (the editor keeps `entryFailure`; an empty
 hand-placed projection goes to the screen's `clearResult`, not `/measure`, and the film reads Failed again, or
-Unsegmented when it held no failure at Edit, as a film that never ran or a hand-placed film reopened in a later session); I2, the comment box's footer is never detached by a rebuild, so Ctrl+Z and composition
-survive it; unit 1014/1014, `smoke-levels.mjs` dom 145/145 and film 25/25, `smoke-studies.mjs` 151/151. Gate feedback
-G8 (the owner, D21): the level handles shrink with the film below 1:1, from 6 px at 1:1 and above to a floor of 3 px
+Unsegmented when it held no failure at Edit, as a film that never ran or a hand-placed film reopened in a later
+session); I2, the comment box's footer is never detached by a rebuild, so Ctrl+Z and composition survive it; unit
+1014/1014, `smoke-levels.mjs` dom 145/145 and film 25/25, `smoke-studies.mjs` 151/151. Gate feedback G8 (the owner,
+D21): the level handles shrink with the film below 1:1, from 6 px at 1:1 and above to a floor of 3 px
 (`handleRadiusImagePx`, `handleScale` in `renderer/viewer/level-handles.js`), their outline and focus ring in step, the
 grab radius keeping its 14 px floor; unit 1024/1024. ~~Nothing
 pushed, no release note (the owner picks the number at the gate; 1.2.0 is the suggestion);~~ Its owner gate passed on
-real films and its 1.2.0 release commit is `7dec644` (the tip is backed up on `origin`, no PR yet); the companion bundle spec
-(`specs/2026-10-15-annotation-bundle-export-import-design.md`) is ~~built after this gate~~ now built, on the same
-branch: see the paragraph above.
+real films and its 1.2.0 release commit is `7dec644` (the tip is backed up on `origin`, no PR yet); the companion
+bundle spec (`specs/2026-10-15-annotation-bundle-export-import-design.md`) is ~~built after this gate~~ now built, on
+the same branch: see the paragraph above.
 
 **2026-10-13 level plates, gate feedback G7 (~~BUILT, release 1.1.1 committed, not pushed~~ RELEASED as v1.1.1: PR #64,
 merge `06c8cdd`):** branch `claude/level-plates`

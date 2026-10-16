@@ -138,6 +138,13 @@ rows are empty. It needs no confirmation: the folder picker is the commitment.
    were left out (a, b)` and `· 1 sidecar could not be read (c)` when non-zero; the toast's duration follows
    `toastDuration`.
 
+*Amended 2026-10-15 (final review, rulings S37, S39, S40):* a film is missing only when its source is absent or will
+not open; once it is open, or once a sidecar, record or reference has parsed, a failure to copy it into the bundle
+rejects the export with `The film <name> could not be written to the bundle. Is the folder full or read-only?` (and the
+like for the other three), so a full or read-only stick is never reported as films not found. `notRead` names a sidecar
+or reference by the study's file name, never its record id, and the clause reads `· 1 file could not be read (c.dcm
+sidecar)`, since the list holds three kinds of file.
+
 Main-process rules: the parent must be an existing directory; names come from the renderer but are validated with
 `safeStem`'s character rules and the sidecar id (`/^SP-\d{4,}$/`) and label (`LABEL_FILE`) regexes before any path is
 built; nothing outside `<userData>` and the chosen parent is read or written.
@@ -213,6 +220,12 @@ Ids come from `nextId` over the current list, assigned in manifest order. Per st
    absolute path of `film/<fileName>` inside the bundle (or null when the film was not exported), `labelFile` the
    name from step 2, `labelComment` from `study.json`, falling back to the record's `comment`, `addedAt` kept.
 
+*Amended 2026-10-15 (final review, ruling S38):* for an add and an update (§5.7) alike, every bundle file a study
+places is parsed first (`readBundle` already parses the sidecar and the reference, so a damaged one makes the entry
+`malformed` before the prompt), then the files are written in the order calibration reference, sidecar, label record
+last. A stop before the record leaves the local record older than the bundle's, so importing again plans the study
+again instead of skipping it as already in the library.
+
 A study without a film imports with `filePath: null` and is named in the toast (`without film`); a model result still
 opens on its stored image, a hand-placed one shows the existing film-not-found behaviour.
 
@@ -234,6 +247,12 @@ so the next open reads the new files.
 `without film` clauses when non-zero, through `importMessage(result)` and `toastDuration`. A write failure mid-import
 stops at that study: the studies already placed stay, the toast says how many were imported before the failure and
 why it stopped, and the bundle can be imported again (its remaining studies match nothing yet).
+
+*Amended 2026-10-15 (final review, ruling S38):* only a write that fails in this library's data folder stops an
+import. A bundle file that is gone or damaged by the time it is placed, or a reference the calibration store refuses,
+skips that study, nothing of it written, and the import goes on; the toast counts it under `malformed`. After a stop,
+importing again skips the studies already placed as already in the library (their records are the bundle's) and
+offers the one it stopped at again.
 
 ## 6. Modules and IPC
 

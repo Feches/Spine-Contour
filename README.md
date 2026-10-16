@@ -36,10 +36,11 @@ Each release includes both installers and `SHA256SUMS`. See the
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
-To carry films and their annotations to another computer, **Export all** (or **Export N selected**) on the Find tab
-writes a bundle folder and **Import bundle…** reads one; see [annotation bundles](docs/bundles.md).
 Run segmentation on an individual study or a selected batch, review the landmarks
-and image scale, then export measurements. The macOS app is unsigned and supports
+and image scale, then export measurements. To carry films and their annotations
+to another computer, **Export all** (or **Export N selected**) on the Find tab
+writes a bundle folder and **Import bundle…** reads one; see
+[annotation bundles](docs/bundles.md). The macOS app is unsigned and supports
 Apple Silicon; Intel Mac builds are not provided. Preview installers and their
 libraries remain separate from the numbered release.
 
