@@ -3,9 +3,9 @@
 **Last updated:** 2026-10-15
 **Branch:** `worktree-annotation-round-2` in the worktree `.claude\worktrees\annotation-round-2` of the main checkout,
 off `origin/main` @ `06c8cdd` (v1.1.1): annotation editor round 2 (a comment on the label record, the Hand-placed
-status, REVERT per level) — BUILT, at the owner's gate, not pushed (second section under "Where things stand") — and,
-on the same branch after it, the annotation bundle export and import (Export all / Import bundle…) — BUILT, at the
-owner's gate, not pushed (first section).
+status, REVERT per level) — its owner gate passed; its 1.2.0 release commit is `7dec644`, backed up on `origin`, no PR
+yet (second section under "Where things stand") — and, on the same branch after it, the annotation bundle export and
+import (Export all / Import bundle…) — BUILT, waiting at its own owner gate (plan Task 9), not pushed (first section).
 **2026-10-13 branch (released):** `claude/level-plates` in the worktree `.claude\worktrees\level-plates` of the main
 checkout, off `origin/main` @ `cbbeb4e` (v1.1.0): gate feedback G7, the level plates outside the body and draggable —
 ~~BUILT, the 1.1.1 release commit on it, not pushed~~ RELEASED as v1.1.1 (PR #64, merge `06c8cdd`).
@@ -114,8 +114,8 @@ colleague's annotations of films it already held. Built on the same branch as th
   `188b103`; then the records commit (`docs/bundles.md`, the contract, this file, `CLAUDE.md`, `docs/level-editor.md`,
   ROADMAP §1, README, the 1.2.0 release note and CHANGELOG, the plan's Ledger).
 - Counts: unit 1102/1102 (1024 at the start of the plan; 1040, 1058, 1065 and 1102 after Tasks 1–4);
-  `smoke-bundle.mjs` phase a 17/17, b 18/18, c 9/9, each on its own fresh `%TEMP%` profile (two synthetic canvas-drawn
-  films, DOM, store and file reads, no screenshots); Tasks 5 and 6 were also walked from source over CDP (24/24, and two
+  `smoke-bundle.mjs` phase a 17/17, b 18/18, c 9/9 on two fresh `%TEMP%` profiles (phase c reuses a's; two synthetic
+  canvas-drawn films, DOM, store and file reads, no screenshots); Tasks 5 and 6 were also walked from source over CDP (24/24, and two
   profiles at 4/4 and 15/15 after the fix).
 - The release stays 1.2.0 (PB10): `docs/releases/1.2.0.md` gains a section "Export and import a folder of annotated
   films" and its opening sentence, CHANGELOG's 1.2.0 entry a bullet; no version bump anywhere.
@@ -208,13 +208,15 @@ why, a failed film placed by hand stayed Failed (the open ruling R24), and one e
 - Not run: a packaged build; backend pytest (no backend change); `smoke-cervical.mjs`, `smoke-segmental.mjs` and
   `smoke-calibration.mjs` (no cervical film, no ruler films, no Tesseract binary here).
 
-**Next.** The owner's gate: the three features on real films from the workstation's films folder, on a `%TEMP%`
+**Next.** ~~The owner's gate: the three features on real films from the workstation's films folder, on a `%TEMP%`
 profile with `TESSERACT_CMD` at the installed app's bundled OCR (no screenshot of a real film). The fix wave added to
 the plan's Task 9 checklist: place then Discard on a failed film reads Failed again; type a comment, drag a handle,
 then press an arrow (the arrow must nudge the handle, not move the caret; unverified, since the handle press's
 `preventDefault` in `components/viewer.js` may leave the textarea focused); Ctrl+Z after the first keystroke; a
 dead-key accent as the first character; and, after upgrading, a look over the real library for old model results with
-neither `predictionId` nor `qc.models` reading Hand-placed (spec §9). Push, PR and release
+neither `predictionId` nor `qc.models` reading Hand-placed (spec §9).~~ This gate has passed (`7dec644`'s message,
+`docs/releases/1.2.0.md`). What waits now is the bundle's gate (plan Task 9, the section above), then one PR for both
+rounds as 1.2.0. Push, PR and release
 only on the owner's say-so; ~~no release note is written yet (the owner picks the number; 1.2.0 is the suggestion)~~ the
 1.2.0 release commit `7dec644` is on the branch (the tip is backed up on `origin`, no PR yet).
 R24 is closed. Still open: ~~the bundle spec's build, which follows this gate~~ (built, the section above); PR #62 (release accuracy gate) and PR #63

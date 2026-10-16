@@ -155,10 +155,13 @@ If a bundle holds two entries for one film, the later-saved one applies and the 
 
 ## Importing the same bundle twice
 
-Adds nothing. The second import matches every film by its content, finds each already in the library, and ends with
-`Nothing to import: already in the library: …` and no prompt. The same holds for a bundle exported from the library you
-are importing into. To bring a later edit across, export again from the computer where you made it; the update rule
-above decides whether it replaces the annotation on the other side.
+Adds nothing, with one exception. The second import matches every film by its content, finds each already in the
+library, and ends with `Nothing to import: already in the library: …` and no prompt. The same holds for a bundle
+exported from the library you are importing into. The exception is a study that came with no film, no model result, no
+image scale and no label record (an unsegmented film whose file had moved when the bundle was written): nothing in the
+bundle identifies it, and a file name alone never matches (B4), so it is added again each time the bundle is imported.
+To bring a later edit across, export again from the computer where you made it; the update rule above decides whether it
+replaces the annotation on the other side.
 
 ## A study that arrives without its film
 
@@ -166,6 +169,9 @@ If the film was not found when the bundle was written, or has since been taken o
 added with no film location and the toast names it under `without film`. A segmented study still opens on its stored
 image and shows its measurements, but cannot be re-run or windowed until a film is chosen for it (Run segmentation asks
 for its new location). A study placed by hand has no stored image and shows `The source film could not be found.`
+
+A study that arrives with nothing but its record (no film, no result, no scale, no label record) cannot be recognised on
+a later import and is added again if the bundle is imported twice; Delete removes the extra copy.
 
 ## What does not travel
 

@@ -1,6 +1,7 @@
 # Spine Contour
 
-**2026-10-15 annotation bundle export and import (BUILT, at the owner's gate with the editor round, not pushed):** the
+**2026-10-15 annotation bundle export and import (BUILT, at the owner's gate (plan Task 9), on top of the gated editor
+round, not pushed):** the
 same branch `worktree-annotation-round-2` in worktree `.claude/worktrees/annotation-round-2`, on top of the editor round
 below (its tip `7dec644` is the 1.2.0 release commit, backed up on `origin`; these commits are not pushed), off
 `origin/main` @ `06c8cdd` (v1.1.1). A study's data lives in four places (its row in `studies.json`, the prediction
@@ -26,7 +27,7 @@ PB2), `safeStem` moved to `data/labels.js`, and `exportBundleTo`, `importBundleF
 `50d6311` are review fix rounds) and a records commit (`docs/bundles.md`, the contract's 2026-10-15 bundle amendment,
 HANDOFF, this file, `docs/level-editor.md`, ROADMAP §1, README, the 1.2.0 release note and CHANGELOG, the plan's
 Ledger). Unit 1102/1102 (1024 when the plan began); `smoke-bundle.mjs` a 17/17, b 18/18 and c 9/9 on two fresh `%TEMP%`
-profiles, synthetic films, DOM, store and file reads, no screenshot (Tasks 5 and 6 were also walked from source over
+profiles (phase c reuses a's), synthetic films, DOM, store and file reads, no screenshot (Tasks 5 and 6 were also walked from source over
 CDP). Rulings that shape it: S1 (the main process suffixes a clashing bundle folder), S3/S4 (a missing or unsafe film
 counts as missing and the rest of the study still exports), S10 (folder names never end in a dot or a space), S12 (a
 damaged label record skips that entry as malformed), S20/S21 (a film-less entry matches by its result's digest; an
@@ -62,8 +63,8 @@ survive it; unit 1014/1014, `smoke-levels.mjs` dom 145/145 and film 25/25, `smok
 G8 (the owner, D21): the level handles shrink with the film below 1:1, from 6 px at 1:1 and above to a floor of 3 px
 (`handleRadiusImagePx`, `handleScale` in `renderer/viewer/level-handles.js`), their outline and focus ring in step, the
 grab radius keeping its 14 px floor; unit 1024/1024. ~~Nothing
-pushed, no release note (the owner picks the number at the gate; 1.2.0 is the suggestion);~~ Its 1.2.0 release commit is
-`7dec644` (the tip is backed up on `origin`, no PR yet); the companion bundle spec
+pushed, no release note (the owner picks the number at the gate; 1.2.0 is the suggestion);~~ Its owner gate passed on
+real films and its 1.2.0 release commit is `7dec644` (the tip is backed up on `origin`, no PR yet); the companion bundle spec
 (`specs/2026-10-15-annotation-bundle-export-import-design.md`) is ~~built after this gate~~ now built, on the same
 branch: see the paragraph above.
 
