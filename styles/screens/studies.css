@@ -292,6 +292,13 @@
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 
+/* The bar's Export (annotation bundle spec 2026-10-15, section 4.1): a plain secondary button, without
+   Delete's destructive hover. Its label changes with the ticks and while it runs, and never breaks
+   inside the button: the bar wraps the button whole instead. */
+.studies-export-bundle {
+  white-space: nowrap;
+}
+
 /* Tab strip: FIND (the list, search and dropzone) and PARAMETERS (the grid). Same shape as the
    Analysis panel's tab group. The list is for finding a study; the grid is for reading its
    numbers -- the split that paid for deleting LORDOSIS from the list. */

@@ -10,7 +10,7 @@
 import { deleteStudyBatch } from '../data/delete-studies.js';
 import { el, mount } from '../dom.js';
 import { getState, setState, subscribe } from '../store.js';
-import { selectFile, pathForFile, deletePrediction, deleteLabelRecord, persistenceDisabledReason } from '../api.js';
+import { selectFile, pathForFile, deletePrediction, deleteLabelRecord, persistenceDisabledReason, chooseFolder, exportBundle } from '../api.js';
 import { showToast } from '../components/toast.js';
 import { displayStatus } from '../data/status.js';
 import { failureTitle } from '../data/failure.js';
@@ -20,8 +20,10 @@ import { nextId } from '../data/persistence.js';
 import { DEFAULT_VIEW } from '../data/timepoints.js';
 import { seedFields } from '../data/seeding.js';
 import {
-  withIds, toggleId, selectedVisible, workspaceOptions, folderOptions, normaliseFilters, patchFilters, matchesLocation, HAND_ADDED,
+  withIds, toggleId, selectedVisible, rowsToExport, workspaceOptions, folderOptions, normaliseFilters, patchFilters, matchesLocation, HAND_ADDED,
 } from '../data/parameters.js';
+import { planExport, exportMessage } from '../data/bundle.js';
+import { appVersion } from '../data/label-record.js';
 import { planBatch, progressText, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
 import { sortFindRows, toggleFindSort, summaryCounts } from '../data/find.js';
 import { progressTitle, progressDetail } from '../data/processing.js';
@@ -412,6 +414,24 @@ function sameKey(a, b) {
   return a !== null && b !== null && a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
+// The Find table's rows from a store snapshot: searched, filtered, then sorted (studies-table spec 2026-09-10,
+// section 6), so `visible` is in the order the table shows it and the bar's buttons act in. One computation for
+// update() and the export (bundle spec 4.2), so a bundle holds exactly the rows the person is looking at.
+function findRows(live) {
+  const studies = live.studies || [];
+  const query = (live.query || '').trim().toLowerCase();
+  const queried = studies.filter((study) => matchesQuery(study, query));
+  const filters = normaliseFilters(live.paramFilters, studies);
+  const visible = sortFindRows(queried.filter((study) => matchesLocation(study, filters)), live.findSort, live.running, live.batch);
+  return { studies, query, queried, filters, visible };
+}
+
+// What refuses the bar's Delete and Export alike: a run, a batch or a bulk delete in flight, or studies not being
+// saved (studies-table spec 2026-09-10, section 5; bundle spec 4.1).
+function barBlocked(live) {
+  return Boolean(live.running || live.batch || live.deletingStudies || persistenceDisabledReason());
+}
+
 // The live mount, or null when this screen is not on screen. See screens/analysis.js for why
 // the subscription is module-scope and registered once: render() runs on every navigation.
 // `host` is the table's container, so the delete helpers can hand focus back after a repaint.
@@ -432,6 +452,10 @@ let confirmingSelected = null;
 // `editingSubject`, not `editing`: the store has its own `editing` key (the viewer's edit mode),
 // which this file spreads through FRESH_VIEW, and one name for the two would read as the other.
 let editingSubject = null;
+// True while an export writes its bundle (bundle spec 4.1): the button reads Exporting… and refuses a second one.
+// Listed in update()'s key like the three above, but navigation does NOT clear it: the export carries on without
+// the screen, and only its own `finally` may end it.
+let exporting = false;
 
 subscribe((state) => {
   // Navigation withdraws an open prompt and an open editor along with the mount.
@@ -568,7 +592,7 @@ async function deleteSelectedStudies(ids) {
   // empty target set below does.
   if (!Array.isArray(ids) || ids.length === 0) { confirmingSelected = null; refreshTable('[data-find-key="delete"]'); return; }
   const live = getState();
-  if (live.running || live.batch || live.deletingStudies || persistenceDisabledReason()) return;
+  if (barBlocked(live)) return;
   const wanted = new Set(ids);
   const targets = live.studies.filter((study) => study.source === 'real' && wanted.has(study.id));
   confirmingSelected = null;
@@ -592,6 +616,35 @@ async function deleteSelectedStudies(ids) {
       : `Deleted ${count}. Original image files were kept.`);
   } finally {
     if (getState().deletingStudies) setState({ deletingStudies: false });
+  }
+}
+
+// ---- Export (annotation bundle spec 2026-10-15, section 4) -------------------------------------------
+
+// The export minus the folder picker, exported so the smoke suite can drive it without the native dialog (PB7).
+// The rows are read again from the live store when the picker closes: the ticked visible real rows, else every
+// visible real row (rowsToExport, B6; planExport drops demo studies as well). Silent when blocked, already exporting
+// or with nothing to export -- the button is disabled in all three. `exporting` is set before the first await, so a
+// second call cannot start a second export. The api's rejection is a display-ready sentence, toasted as is. The
+// closing repaint hands focus back to the button only when the in-flight repaint dropped it to <body> (a disabled
+// button cannot hold it); a person who moved on to the search box meanwhile keeps their caret.
+export async function exportBundleTo(parentDir) {
+  const live = getState();
+  if (exporting || barBlocked(live)) return;
+  const rows = rowsToExport(findRows(live).visible.filter((study) => study.source === 'real'), live.paramSelected);
+  if (rows.length === 0) return;
+  exporting = true;
+  refreshTable('[data-find-key="export-bundle"]');
+  try {
+    const { name, entries } = planExport(rows, new Date());
+    const result = await exportBundle({ parent: parentDir, name, entries, appVersion: appVersion() });
+    showToast(exportMessage(result));
+  } catch (error) {
+    showToast(error?.message || 'The export failed.');
+  } finally {
+    exporting = false;
+    const dropped = !document.activeElement || document.activeElement === document.body;
+    refreshTable(dropped ? '[data-find-key="export-bundle"]' : null);
   }
 }
 
@@ -712,18 +765,19 @@ export function render(state) {
   }
 
   // The bar (batch spec 7.1, 7.3, 7.4; studies-table spec 2026-09-10, section 5): the grid's Workspace and
-  // Folder selects over the same shared keys, then Delete over the ticked visible rows, a spacer,
-  // then the segment button with its note -- or, while a batch runs, the progress group. While the
-  // Delete prompt is up it takes the bar's place (spec 5.3). Chromium shows no tooltip on a disabled
-  // control, so the segment button's reason is a visible note beside it; Delete's reason is on its
-  // title, because its label already says what it would do. Options come from the whole library,
-  // not the searched subset, as the grid's do. `visible` is the table's rows, in table order: the
-  // id list both buttons run.
+  // Folder selects over the same shared keys, then Delete over the ticked visible rows and Export
+  // (annotation bundle spec 2026-10-15, section 4.1), a spacer, then the segment button with its note --
+  // or, while a batch runs, the progress group. While the Delete prompt is up it takes the bar's place
+  // (spec 5.3). Chromium shows no tooltip on a disabled control, so the segment button's reason is a
+  // visible note beside it; Delete's and Export's reasons are on their titles, because their labels
+  // already say what they would do (ruling S23). Options come from the whole library, not the searched
+  // subset, as the grid's do. `visible` is the table's rows, in table order: the id list the buttons run.
   function buildFilterBar(live, filters, visible) {
-    const blocked = Boolean(live.running || live.batch || live.deletingStudies || persistenceDisabledReason());
+    const blocked = barBlocked(live);
     // The ticked VISIBLE real rows, the segment button's own rule (selectedVisible), so a tick the
     // search or a filter is hiding is never deleted.
-    const targets = selectedVisible(visible.filter((study) => study.source === 'real'), live.paramSelected);
+    const real = visible.filter((study) => study.source === 'real');
+    const targets = selectedVisible(real, live.paramSelected);
     if (confirmingSelected) {
       const n = confirmingSelected.length;
       return el('div', { class: 'studies-filters' },
@@ -766,15 +820,28 @@ export function render(state) {
     }
     folderSelect.value = filters.folder ?? '';
 
-    const deleteTitle = live.batch ? WAIT_FOR_BATCH
+    // Delete and Export share the first three reasons, in this order; each then names its own empty case.
+    const waitTitle = live.batch ? WAIT_FOR_BATCH
       : live.running ? WAIT_FOR_RUN
-      : persistenceDisabledReason() ? `Studies are not being saved: ${persistenceDisabledReason()}`
-      : targets.length === 0 ? 'Tick studies to delete' : '';
+      : persistenceDisabledReason() ? `Studies are not being saved: ${persistenceDisabledReason()}` : '';
+    const deleteTitle = waitTitle || (targets.length === 0 ? 'Tick studies to delete' : '');
     const deleteButton = el('button', {
       type: 'button', class: 'btn btn-small studies-delete-selected', 'data-find-key': 'delete',
       disabled: blocked || targets.length === 0, title: deleteTitle,
       onClick: () => askToDeleteSelected(targets.map((study) => study.id)),
     }, live.deletingStudies ? 'Deleting studies\u2026' : (targets.length > 0 ? `Delete ${targets.length} selected` : 'Delete'));
+
+    // Export (bundle spec 4.1): the ticked visible real rows, else every visible real row (rowsToExport, B6). No
+    // confirmation: the folder picker is the commitment, and cancelling it does nothing. A picker that cannot open
+    // rejects with a display-ready sentence; exportBundleTo toasts its own failures.
+    const exportRows = rowsToExport(real, live.paramSelected);
+    const exportButton = el('button', {
+      type: 'button', class: 'btn btn-small studies-export-bundle', 'data-find-key': 'export-bundle',
+      disabled: blocked || exporting || exportRows.length === 0,
+      title: waitTitle || (exportRows.length === 0 ? 'Nothing to export' : ''),
+      onClick: () => chooseFolder().then((dir) => dir && exportBundleTo(dir))
+        .catch((error) => showToast(error?.message || 'The export failed.')),
+    }, exporting ? 'Exporting\u2026' : (targets.length > 0 ? `Export ${exportRows.length} selected` : 'Export all'));
 
     let action;
     if (live.batch) {
@@ -802,7 +869,7 @@ export function render(state) {
         plan.note ? el('span', { class: 'param-export-note', 'data-find-key': 'segment-note' }, plan.note) : null);
     }
     return el('div', { class: 'studies-filters' },
-      workspaceSelect, folderSelect, deleteButton, el('div', { class: 'studies-header-spacer' }), action);
+      workspaceSelect, folderSelect, deleteButton, exportButton, el('div', { class: 'studies-header-spacer' }), action);
   }
 
   let lastKey = null;
@@ -822,19 +889,15 @@ export function render(state) {
     // equal so this never moves the caret.
     if (search.value !== (live.query || '')) search.value = live.query || '';
 
-    const studies = live.studies || [];
-    const query = (live.query || '').trim().toLowerCase();
-    const queried = studies.filter((study) => matchesQuery(study, query));
+    // Searched, filtered, then sorted (findRows): `visible` is the rows in the order the table shows them, which is
+    // the order the Segment, Delete and Export buttons act in.
+    const { studies, query, queried, filters, visible } = findRows(live);
     // The grid keeps its own reference-keyed gate; the search result is computed once here and
     // shared with the list below.
     parameters.update(live, queried);
     const progressNode = barHost.querySelector('.study-processing-detail');
     if (progressNode) progressNode.textContent = `${progressTitle(live.runStage)} · ${progressDetail(live.runStage)}`;
 
-    const filters = normaliseFilters(live.paramFilters, studies);
-    // Filtered, then sorted (studies-table spec 2026-09-10, section 6): the rows in the order the table
-    // shows them, which is the order the Segment and Delete buttons act in.
-    const visible = sortFindRows(queried.filter((study) => matchesLocation(study, filters)), live.findSort, live.running, live.batch);
     const selected = live.paramSelected ?? [];
     const targets = selectedVisible(visible.filter((study) => study.source === 'real'), selected).map((study) => study.id);
     // Module-scope UI state the store cannot see, reconciled BEFORE the key so it never sits on a
@@ -847,13 +910,13 @@ export function render(state) {
     if (editingSubject && !studies.some((study) => study.id === editingSubject.id)) editingSubject = null;
 
     // live.running is in the key so the table repaints when a run starts or ends: the row badge is
-    // derived from it. confirmingId, confirmingSelected and editingSubject are module scope, not store
-    // state; listing them here is what lets a refreshTable() after a change to them get past the
+    // derived from it. confirmingId, confirmingSelected, editingSubject and exporting are module scope, not
+    // store state; listing them here is what lets a refreshTable() after a change to them get past the
     // gate, while a notification that changed nothing the table shows (a pan frame, a toast) still
     // returns early. paramFilters, paramSelected, batch and findSort are what the bar, the ticks and
-    // the header read; deletingStudies is what Delete reads: every store key this screen reads must
-    // be here, or it silently stops repainting for it.
-    const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, editingSubject,
+    // the header read; deletingStudies is what Delete and Export read: every store key this screen reads
+    // must be here, or it silently stops repainting for it.
+    const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, editingSubject, exporting,
       live.deletingStudies, live.paramFilters, live.paramSelected, live.batch, live.findSort];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
