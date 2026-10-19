@@ -185,6 +185,12 @@ the controller ruled on each (R13-R16 below; the ledger lines begin `Final: Ruli
   lumbar film's and the preview the others' (Minor #12). Deferred: Tab wrapping inside the menu (#11), wasted decodes
   under a full card (#13), the arrows from the Parameters tab ignoring the grid's filters (#7: a gate step below and
   the owner's call). Cost if wrong: each fix is local; the deferred three are the open ends.
+- **R17** (parked at the fix wave's re-review) A record with no `region` field and no result — one stored before the
+  field existed and never run — reads `UNKNOWN` in the Analysis header's meta line and in its REGION cell while the
+  Region select beside it reads Lumbar, because `requestedRegion` falls back to lumbar for such a record. Accepted: the
+  header follows the ruled rule (R16, Minor #8), only pre-region records that were never run are affected, and the
+  select shows what a run would request. Cost if wrong: a cosmetic disagreement on those records until they are run or
+  their region is set.
 
 **What each task built** (commits on the branch, in order):
 
