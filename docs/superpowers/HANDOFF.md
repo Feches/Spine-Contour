@@ -63,7 +63,186 @@ algorithm changed; no screenshots were added.
 
 ## Where things stand
 
-### Reviewer navigation: previous / next over the filtered list, a status filter, every unsegmented film's X-ray, the scroll fix: BUILT, at the owner's gate, not pushed (branch `worktree-reviewer-navigation`, worktree `.claude/worktrees/reviewer-navigation`, off `origin/main` @ `cc1b548`, v1.2.0)
+### Find list header filters, the REGION column and the Unknown view: BUILT, at the owner's gate, not pushed (branch `worktree-reviewer-navigation`, worktree `.claude/worktrees/reviewer-navigation`, on top of the reviewer navigation round below and shipping as one release with it, off `origin/main` @ `cc1b548`, v1.2.0)
+
+2026-10-19. The owner, reviewing a library of several hundred films, found three things in the way. The Find list's VIEW
+column read `Standing lateral` on a cervical film: the view is the patient position (standing, supine, flexion,
+extension), seeded to Standing lateral on import unless a folder or file name said otherwise, and the anatomical region a
+run detects (lumbar, cervical, full spine) was shown nowhere on the list, so the list could not be filtered by it ("View
+is misleading and practically hard to input all at once"). The import's folder table made every folder choose a view,
+defaulting to Standing lateral, which is wrong for most films and too much to set per folder: the default should be
+Unknown. And filtering lived in a bar of dropdowns (Workspace, Folder and, since the reviewer round, Status) while
+sorting lived in the column headers; the owner asked whether filtering and sorting every column from the headers would
+be easier and chose the funnel-menu form after seeing two mock-ups. Designed in chat, written up as a spec
+(`docs/superpowers/specs/2026-10-19-find-list-header-filters-region-view-design.md`) and a seven-task plan
+(`docs/superpowers/plans/2026-10-19-find-list-header-filters-region-view.md`), built by one implementer per task with a
+review after each, every task verified over CDP on a scratch profile with synthetic films, no screenshots. This round
+sits on the reviewer navigation round below: the two rewrite the same list, so they ship as one release (the way the
+editor round and the bundle round shipped as 1.2.0); that round's status dropdown, its `Not reviewed` option and
+`findStatus` were replaced by this round's header menus before anything was released.
+
+**The decisions** (spec section 2; the owner's F1-F5, then the designer's F6-F9, each with its reason in the spec):
+
+- **F1** Funnel menus, not a filter row: each column name carries a funnel opening a menu of checkboxes (the values
+  present in the library) with the two sort directions; several values can be ticked at once (multi-select is what the
+  owner cares about: two regions at once, several statuses).
+- **F2** `Not reviewed` goes: the STATUS menu ticks Segmented, Needs review and Hand-placed together.
+- **F3** A REGION column between SUBJECT and VIEW: `Unknown`, `Lumbar`, `Cervical` or `Full spine`, updated the moment a
+  run finishes, sortable and filterable.
+- **F4** The view defaults to Unknown on import, unless a folder or file name names one. An Unknown view does not block
+  segmentation: the backend already works out what the film is during a run.
+- **F5** Built on the reviewer navigation branch, shipped with it as one release.
+- **F6** The Find list owns its filters: a store key `findFilters` replaces `findStatus` and the list's share of
+  `paramFilters.workspace` / `paramFilters.folder`. The Parameters grid keeps `paramFilters` and its own bar. The batch
+  spec's decision 4 (the two tabs share workspace and folder) is withdrawn for the list: a multi-select list filter and a
+  single-select grid filter cannot share one value. Session-only, replaced wholesale, never persisted, like `findSort`.
+- **F7** Within a column OR, across columns AND; a column with no ticks passes everything. The search box and the
+  SUBJECT text narrow further.
+- **F8** Unknown is stored as `null`: the view is `string | null`, `validateStudy` accepts null, no `STORE_VERSION`
+  bump. Accepted limitation: a 1.2.0 build reading a library in which this build has stored a null view refuses the
+  store ("missing view"), as it would for any newer field it cannot read; the owner runs one build at a time.
+- **F9** The run fills the region, never the view: standing versus supine cannot be read from the pixels, so the view
+  stays Unknown until a person sets it (the import table, the drawer, a folder or file name token, the CSV).
+
+**The controller's rulings** (made while the plan ran, each amending the plan or a brief; the cost is what is lost if the
+ruling was wrong; the full ledger is `.superpowers/sdd/2026-10-19-find-list-header-filters-region-view/progress.md`,
+untracked):
+
+- **R1** `matchesSubject` is exported from `data/parameters.js` and reused by `data/find.js`, not copied: a verbatim copy
+  is a defect and the plan should not mandate one. Cost if wrong: nothing (an export).
+- **R2** Task 6's file list gains `components/checkbox.js`, for the `menu` variant its own Interfaces block names (a plan
+  omission). Cost if wrong: nothing.
+- **R3** `workspace.js` `countSeeding` counted a folder-table view as "read from folder or file names" only when it
+  differed from Standing lateral; with no default firing, a folder named `standing/` is a real inference. The
+  `!== DEFAULT_VIEW` clause went, the comment was reworded, the count pin was updated (Task 3). Cost if wrong: a wrong
+  count in the Load message.
+- **R4** The sidebar's open-study line printed an em dash for a missing view while the Analysis header beside it read
+  `UNKNOWN`; it reads `Unknown` now (Task 5), so the fifth surface agrees with the spec's four. Cost if wrong: nothing.
+- **R5** The STATUS menu lists the pills in the spec's order (Unsegmented, Processing, Failed, Needs review, Hand-placed,
+  Segmented, Reviewed, the existing `STATUS_FILTERS` order the dropdown used), not the plan's "STATUS_RANK order", which
+  puts a failure first. Cost if wrong: a reorder of one list.
+- **R6** Processing is never a STATUS option: options are computed with no run, so a menu does not change under a running
+  batch; the spec's "those present" would offer Processing only while a run is up and drop the tick when it ends. Cost
+  if wrong: the running films cannot be filtered to, which the bar's progress already names.
+- **R7** A menu stays open through its OWN ticks (the table repaints behind it) and closes on any other change to what it
+  shows (a run ending adds a status, a delete removes a folder, a write from elsewhere): read literally, the plan's
+  keep-open sentence would close it on every tick, which the spec's "a tick applies at once" forbids. Cost if wrong:
+  nothing.
+- **R8** The SUBJECT menu has no All / None: it holds a text box, not values. Cost if wrong: nothing.
+- **R9** A click outside an open menu only closes it; it does not also open the row clicked. Cost if wrong: one extra
+  click (a stray navigation while filtering is the worse failure).
+- **R10** R9 rests on the pointerdown rebuild replacing the row before its click arrives, which was undocumented and
+  unpinned: the outside-press handler's comment now says so, and `smoke-reviewer.mjs` section 2 clicks a row with a menu
+  open and reads that the menu closed and `screen` is still `studies`. Cost if wrong: a stray navigation if the rebuild
+  ever stops replacing the row.
+- **R11** Escape was handled only inside the menu, so a keyboard user whose focus had left it (Shift+Tab from All, a
+  click on the menu's padding) could not close it: `screens/studies.js` registers a document-level `keydown` for Escape
+  (bubble phase, so the menu's own handler, which stops the event, still takes focus inside it) together with the
+  outside-press `pointerdown`, and removes both together; it closes the menu by the menu's own path, so focus lands on the
+  funnel. Cost if wrong: nothing.
+
+**What each task built** (commits on the branch, in order):
+
+1. `8898778` `regionKey(study)` and `regionLabel(key)` in `data/cervical.js`, beside `studyRegion`: the region a person
+   set (`study.region` other than `auto`), else the one the run detected (`geometry.region`), else a study carrying a
+   result with none is lumbar (only the old lumbar pipeline wrote results without a region), else `unknown`; written once
+   so the list, the menu, the CSV and the sort agree. `REGION_KEYS`.
+2. `e2ab491` The Unknown view in the data layer: `view: string | null`; `newStudy`, `rowForSegments` and `seedFields`
+   seed null (the `'default'` source is gone, so the load message counts only real inferences); `validateStudy` keeps a
+   label, null and an absent key, and nulls anything else with one warning; `inferenceView` reads null, blank and
+   `unknown` as lateral (`AP`, `Oblique` and other labels still refuse the run); the CSV writes an empty cell.
+3. `a26449b` `Unknown` on screen: the list's and grid's VIEW cell (muted), the drawer's placeholder (an emptied cell
+   stores null), the Analysis header's `UNKNOWN`, the import table's VIEW selects (per folder and Set all: Unknown
+   first, the default, option value `''`, the row model says null), the grid's View filter (`NO_VIEW`, `__unknown__`).
+4. `3658baa` `findFilters` in the store and the pure logic in `data/find.js`: `DEFAULT_FIND_FILTERS`, `FILTER_COLUMNS`,
+   `findFilterOptions` (from the whole library, labelled as the cells are; FOLDER under the WORKSPACE ticks),
+   `normaliseFindFilters` (drops values no longer offered), `patchFindFilters`, `matchesFindFilters` (F7; STATUS by the
+   pill the row shows), `activeColumns`, and the `region` sort key.
+5. `21798dd` The REGION column (cell, header, a `minmax(84px, 0.8fr)` track, the delete prompt's start column moved one
+   track right) and the CSV's `Spine region` cell (and the paired export's regions cell) reading the label.
+6. `91f9b53` The header menus: `components/filter-menu.js`, the funnel in every header but STUDY and DATE, the menu
+   mounted on the table host (the table clips anything below its header row), the bar without its dropdowns,
+   `findStatus` and `UNREVIEWED` removed, `findPredicate` and the Analysis `navKey` reading `findFilters`.
+7. The commits of this task: the Escape listener and the outside-press comment (R10, R11), `smoke-reviewer.mjs`
+   sections 5 and 6, the other suites' pins, and these records.
+
+**The suites' changed pins** (fixed to the new truth, none loosened): `smoke-studies.mjs` section 2's header row gains
+`REGION`, and section 10's Workspace / Folder selects became the WORKSPACE and FOLDER menus (their options, ticks, the
+funnel's count and title, the narrowing of FOLDER under a ticked root, All, and the ticks living in `findFilters` while
+`paramFilters` stay untouched); `smoke-seeding.mjs` reads `null` views for folders that name none (the table's VIEW
+selects read the empty string), `S001,,S001,Post-op,,,Unknown` in the export's first row in place of
+`S001,Standing lateral,S001,Post-op,,,auto`, and a cleared drawer VIEW cell stores null; `smoke-workspace.mjs` reads the
+loaded film's VIEW cell as `''` with the placeholder `Unknown`; `smoke-cervical.mjs` reads `Cervical,<side>` in the CSV
+(not run); `smoke-accuracy`, `smoke-onnx-localizer`, `smoke-processing` and `smoke-partial-segmentation` reset the list's
+`findFilters` to its default where they reset `paramFilters` (not run); `smoke-reviewer.mjs` gains the Escape-from-
+anywhere and row-click checks in section 2 (Shift+Tab from All, and focus moved to the search box with `.focus()`:
+a click on the search box is itself an outside press, which closes the menu before Escape is tried), a section 5 (a real run of the sample film: `SP-9000`'s REGION cell reads
+Unknown before and Lumbar after, and the REGION menu's Lumbar tick keeps it) and a section 6 (the import table's VIEW
+selects default to Unknown on seeded folder rows).
+
+**Counts** (2026-10-19, this worktree, each suite on a fresh scratch profile under the session scratchpad, synthetic
+films, DOM, store and file reads only, no screenshots). Unit 1123 -> 1142 (`test/find.test.js`, `test/cervical.test.js`,
+`test/seeding.test.js`, `test/persistence.test.js`, `test/inference-view.test.js`, `test/batch.test.js`,
+`test/csv.test.js`, `test/studies.test.js`, `test/parameters.test.js`, `test/workspace.test.js`, `test/store.test.js`).
+Profile `a` in the README's order, one launch: `smoke-parameters.mjs` 58/58; `smoke-studies.mjs` 155/155 (151 before:
+section 2's header row and section 10's menu checks; the two documented race checks passed this run); `smoke-reviewer.mjs`
+119/119 (97 at the end of Task 6, then six Escape and row-click checks in section 2, nine in the new section 5, seven in
+the new section 6); `smoke-workspace.mjs` 100/100. Profile `b`: `smoke-seeding.mjs` 36/36. Profile `c`:
+`smoke-persist.mjs` 42/42 then 55/55 across its restart. Profile `d`: `smoke-levels.mjs` phase dom 145/145.
+`smoke-bundle.mjs` 17/17, 18/18 and 9/9 across its three launches (`bundle-a` fresh, `bundle-b` fresh, `bundle-a`
+kept; `TESSERACT_CMD` set as the README says). Three suite faults the re-runs found and fixed, none in the app:
+`smoke-levels.mjs` read 143/145 first, because section 11 clicks the Find row's delete control at the table's right end,
+which is past the window's edge at the default 1166 px viewport (the table scrolls sideways; measured at scroll 0 the
+button spans x 1347-1371, 100 px further right than before the REGION column, and a click there lands on nothing). With
+the table scrolled the delete and its prompt work, so it is a click-reach fault in the suite, not an app regression, and
+the suite now scrolls the control into view first, as `smoke-studies.mjs`'s `clickAt` does. One thing is not
+explained: emulating the old layout in the page puts the same control past the edge too (x 1247-1271), yet the suite
+passed at the reviewer round, so something once brought it into reach that this run did not; at the default window the
+owner scrolls the table sideways to reach Delete, the overflow the README already lists. The other two were typos in the
+suite edits (a `JSON.parse` of a JS literal in `smoke-studies.mjs`, a backtick inside a template literal in
+`smoke-seeding.mjs`) that stopped those suites before any check ran.
+
+**Not run:** `smoke-global-sva.mjs` (its `Spine region` pin was changed to `Full spine` in Task 5; it needs a real
+full-spine run), `smoke-cervical.mjs` (the `Cervical,<side>` pin above; a real cervical film),
+`smoke-accuracy.mjs`, `smoke-onnx-localizer.mjs`, `smoke-processing.mjs` and `smoke-partial-segmentation.mjs` (model runs
+on real films or the ONNX localizer; their edit is the mechanical `findFilters` reset), `smoke-levels.mjs` phase film
+(a real film), the plan-04 gate suites, a packaged build.
+
+**Known limits and deferred notes.** The Find table's minimum width grew by 100 px (the new track and its gap), and the
+README already notes it overflows at 1180 px. The SUBJECT box matches `subjectId` only (the grid's rule), so it cannot
+find a demo study's `pt` label that the SUBJECT cell shows; the search box can. A value key equal to `all`, `none`,
+`close` or `text` (a folder named `none`) collides with the menu's own hooks. A menu's position is computed per rebuild,
+so it does not follow a sideways scroll of the table or a window resize while open. `studies.js` is about 1400 lines (the
+roughly 110 lines of menu wiring could move to their own module). `findPredicate` rebuilds the options per call (O(n)).
+The Unknown typed into the drawer's VIEW box is stored as the string `Unknown` and sits beside the sentinel in the grid
+filter. A 1.2.0 build refuses a library with a null view (F8).
+
+**Draft entry for the release notes:** *The Find list filters from its column headers: every header but STUDY and DATE
+has a funnel opening a menu of the values in your library, with several ticks at once (two regions, three statuses) and
+the sort directions; SUBJECT's menu is a text box; the bar's Workspace, Folder and Status dropdowns and the Not reviewed
+option are replaced by the menus (the Status menu ticks Segmented, Needs review and Hand-placed together). A new REGION
+column reads Unknown, Lumbar, Cervical or Full spine, fills in when a run finishes, and sorts and filters like the rest.
+A film's view is Unknown until a folder name, a file name or you set it (the import table's VIEW selects default to
+Unknown, and the Parameters grid's View filter offers Unknown), and an Unknown view no longer blocks segmentation: the
+run works out the region itself. The CSV exports write the region as Cervical, Lumbar, Full spine or Unknown, and an
+empty view cell for an Unknown view. Previous and next on the Analysis screen follow the menus. A library saved by this
+version with an Unknown view cannot be opened by 1.2.0.* (Together with the reviewer navigation round's entry below.)
+
+**The gate.** On real films: tick two regions at once in the REGION menu and confirm the list shows both and the funnel
+reads `2`; tick two statuses (say Needs review and Hand-placed), open the first row and arrow through them, with
+`3 / 12` and the greyed ends; import a folder (Workspace card) and confirm the folder table's VIEW selects default to
+Unknown, then Load and confirm the list's VIEW cells read Unknown (muted) except where a folder or file name named a
+view; select a batch of Unknown-view films and Segment them, and confirm none is refused as an unsupported view and the
+REGION cells fill in as the runs finish; sort by REGION in both directions (Unknown last both ways); close a menu with
+Escape (focus on the funnel), by clicking elsewhere (a click on a row only closes the menu, and does not open it), and by
+opening a film; tick a workspace and confirm FOLDER offers only its folders; type in SUBJECT's box; export a CSV and read
+the Spine region and View cells; open the Parameters tab and confirm its own dropdowns still work and the list's menus
+are untouched by them.
+
+### Reviewer navigation: previous / next over the filtered list, a status filter, every unsegmented film's X-ray, the scroll fix: BUILT, at the owner's gate, not pushed, part of the same release as the section above (branch `worktree-reviewer-navigation`, worktree `.claude/worktrees/reviewer-navigation`, off `origin/main` @ `cc1b548`, v1.2.0)
+
+(2026-10-19, header filters round: the status dropdown, its `Not reviewed` option and `state.findStatus` described below were
+replaced by the header menus above before release; everything else here stands. The counts below are the reviewer round's own.)
 
 2026-10-19. The owner, reviewing segmentations: "Right now I have to click back to studies to see another image. I
 want to be able to click through it with my arrow keys", over the list as filtered by workspace or folder, and by a

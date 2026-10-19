@@ -175,6 +175,20 @@ poll the row under the condition `s.running === RUNNING_ID` and fail only if tha
 never observed). Until then, treat a run whose only failures are one or both of these two names
 as green, and anything else as a real regression.
 
+**2026-10-19 (header filters round): `smoke-studies.mjs` goes from 151 to 155 checks.** Section 2's header-row check
+reads `STUDY, SUBJECT, REGION, VIEW, WORKSPACE, FOLDER, DATE, STATUS` (the REGION column sits between SUBJECT and VIEW).
+Section 10's bar checks followed the bar: its Workspace and Folder selects are gone, so the section now opens the
+WORKSPACE and FOLDER header menus (`data-find-key` `filter-workspace`, `filter-folder`) and reads their options as
+labels (`Fusion2025`, `Added by hand`; `pre-op`, `design_src`), ticks the root by a click on its row, and reads the
+funnel's count and title (`Filtered: Fusion2025`), the FOLDER menu narrowing to the ticked root, the summary, and that
+the ticks live in the list's own `findFilters` while the grid's `paramFilters` are untouched; then ticks the folder,
+types a search that matches nothing (the filters empty copy), and brings every row back with All on each menu (the
+workspace All leaves the folder tick, still offered, keeping its one film) and Escape. The helpers `tickValue`,
+`openFilterMenu`, `menuLabels` and `cssKey` (a backslash in a root path is doubled in an attribute selector) follow
+`smoke-reviewer.mjs`'s idiom; the select helper `pick` is gone. The later `paramFilters` resets stay (they reset the
+grid's key, which the list no longer reads); section 10's own reset also writes `findFilters` to its default. Measured
+155/155 on a fresh scratch launch after `smoke-parameters.mjs` (58/58), the two documented race checks included.
+
 `smoke-persist.mjs` runs in three phases across two real restarts, and phases 2 and 3
 read `out/persist-state.json` written by phase 1:
 
@@ -188,6 +202,11 @@ node tools/smoke/smoke-persist.mjs --phase restart
 
 There is a third phase, `--phase measurefail`, but it is **not part of the standard run**
 and there is currently no way to execute it. See below before trying.
+
+**The suite reads `SPINE_CONTOUR_USER_DATA` itself** (2026-10-19): phase 1's check 11 reads the label file under the
+profile folder after Save edits, so pass the launcher's folder to the suite as well as to `launch.mjs` (the same
+variable in the same shell, on both phases), or that check reads a file in the default profile and the phase reads
+41/42.
 
 `SMOKE_KEEP_PROFILE=1` on the relaunch is what makes it a restart rather than a fresh
 start — without it `launch.mjs` deletes the scratch profile and phase 2 has nothing to
@@ -340,6 +359,12 @@ run read 98/100: the two mapping-select checks still expected the option lists f
 `Keep column name (<header>)` option, fixed in `97b7478`); `smoke-persist.mjs` 41/41 then 53/53. These
 supersede the counts in the known baseline above, which predate 1.0.13.
 
+2026-10-19 (header filters round): `smoke-workspace.mjs` keeps its 100 checks, one reworded and tightened to the new
+truth: the loaded film's VIEW cell now reads the empty string with the placeholder `Unknown`, where it read the seeded
+`Standing lateral` (a film whose folder and name name no view loads with the Unknown view, null). The load toast's
+seeding counts did not move. Re-run 2026-10-19 on a fresh scratch launch after `smoke-parameters.mjs`,
+`smoke-studies.mjs` and `smoke-reviewer.mjs`: 100/100.
+
 ## Running the Parameters suite
 
 `smoke-parameters.mjs` drives the Studies screen's Parameters tab (pre-op/post-op spec task 1):
@@ -388,6 +413,16 @@ row reads `auto` then an empty side), the ten lumbar segmental columns from 1.0.
 [2] with the first row on [3] since 1.0.14 dropped the authors' line. The suite had read 34/36 against correct code
 since those changes; it reads 36/36 again (re-run 2026-10-11, fresh `%TEMP%` profile, CPU).
 
+2026-10-19 (header filters round, the Unknown view): six pins followed the app, none loosened, and the count stays
+36. A folder that names no view now infers `null` (the Unknown view), not Standing lateral, so `ROWS_AT_SCAN` and the
+rows read back after the table edits read `view: null` for the root, `post-op` and `pre-op` (before the pre-op row is
+changed; `flexion` still reads Flexion lateral from its name); the table's VIEW select rests on Unknown, whose option
+value is the empty string, so `tableRows()` reads `value || null`; `post-op/S001` loads with `view: null`; the export's
+first row reads `S001,,S001,Post-op,,,Unknown` (an empty view cell, and the Spine region cell reads the label, so an
+unrun film that names no region reads `Unknown` where the cell once wrote the requested `auto`); and a cleared drawer
+VIEW cell stores `null`, the Unknown view, where it once stored an empty string. The load toast's counts did not move.
+Re-run 2026-10-19 on a fresh `%TEMP%`-style scratch profile: 36/36.
+
 ## Running the landing suite
 
 `smoke-landing.mjs` drives the landing gate: the panel's copy (no author names, the contact line,
@@ -426,6 +461,11 @@ node tools/smoke/cdp.mjs --quit
 - **The profile.** The suite reads the records it saves from `<userData>/labels/`, where userData is
   `SMOKE_USER_DATA`, else `SPINE_CONTOUR_USER_DATA` (pass the value you launched with), else launch.mjs's default.
   Always a scratch folder under `%TEMP%`, never the real `%APPDATA%\spine-contour`.
+- **Section 11's delete scrolls first** (2026-10-19, header filters round). The Find row's Delete control and its
+  Confirm sit at the table's right end, past the window's edge at the default 1166 px viewport (the table scrolls
+  sideways; the REGION column made it 100 px wider), and a click at a rect outside the viewport lands on nothing, so the
+  suite scrolls each into view (`scrollIntoView`, as `smoke-studies.mjs`'s `clickAt` does) before clicking. Without that
+  the dom phase read 143/145 (the stash check and the disk check after the delete); with it, 145/145.
 - **Phase `dom`** (the default) runs no model and reads no real film: two canvas-drawn 600x800 films. `SP-9300` is a
   segmented fixture with the prototype's geometry (L1, L2, L4, L5, S1 and two heads; L3 missing; an all-zero mask),
   measured by the real `/measure`, with a sidecar and a prediction id so it restores like a model result. `SP-9301`
@@ -831,11 +871,12 @@ only, no screenshots): phase a **17/17**, phase b **18/18**, phase c **9/9**.
 
 ## Running the reviewer navigation suite
 
-`smoke-reviewer.mjs` (2026-10-19) drives the four pieces of the reviewer navigation work against the real app: the
-Studies list's scroll fix, its status filter, the Analysis screen's previous / next (the arrow keys and the header
-group) over the list's filtered order, and an unsegmented film's X-ray on the stage with the UNSEGMENTED strip. No
-model runs; section 4 decodes the sample film through the real `/decode`, so the backend must be up. Reads the DOM and
-the store only; no screenshots.
+`smoke-reviewer.mjs` (2026-10-19) drives the reviewer navigation work and the header filters round against the real app:
+the Studies list's scroll fix, its header filter menus, the Analysis screen's previous / next (the arrow keys and the
+header group) over the list's filtered order, an unsegmented film's X-ray on the stage with the UNSEGMENTED strip, the
+REGION column after a run, and the import table's Unknown view default. Section 4 decodes the sample film through the
+real `/decode`, and section 5 runs ONE real segmentation of it (`run-and-wait.js`, a few tens of seconds on CPU), so the
+backend and the models must be up. Reads the DOM and the store only; no screenshots.
 
 ```
 node tools/smoke/launch.mjs
@@ -845,30 +886,60 @@ node tools/smoke/cdp.mjs --quit
 
 - **Ids** `SP-9500`–`SP-9539`, forty unsegmented records injected at the start with paths that point nowhere (the scroll
   and navigation sections need rows, not films), newest first by `addedAt` under the default sort, removed in
-  `finally`; section 4 injects `SP-9000` through `inject-study.js`, as the other suites do, and leaves it.
-- **Any profile, any screen.** Section 3 reads the list's own row order under the Unsegmented filter as its
+  `finally`. Section 4 injects `SP-9000` through `inject-study.js`, as the other suites do, and section 5 segments it,
+  so it ends segmented, as `smoke-studies.mjs` leaves it (the other suites' `inject-study.js` + `run-and-wait.js`
+  pairs replace it). The first three films carry the subjects `RVW-NAV-0..2` for the SUBJECT menu; section 2 makes one
+  demo study Needs review in the store (demo studies are never saved) and restores it; section 6 seeds the Workspace
+  screen's folder table with synthetic paths and clears it.
+- **Any profile, any screen.** Section 3 reads the list's own row order under the Unsegmented tick as its
   expectation, so unsegmented films earlier suites left (`SP-9004`, `SP-9010`) only lengthen the list. It may follow
   `smoke-studies.mjs` on one launch; never between `smoke-persist.mjs --phase run` and `--phase restart` (it writes
   the store).
-- **What it checks** (64). (1) The document never grows past the window while the list holds forty rows (the hidden
+- **Menus are driven as a person drives them:** the `tick(column, value)` helper opens a column's menu through its
+  funnel (`data-find-key` `filter-<column>`, unless `aria-expanded` already says it is open) and clicks the value's row
+  (the label round its box, `filter-<column>-<value key>`); a click on a menu control scrolls it into view first, since
+  the header row scrolls with the list. The other suites reuse the idiom (`smoke-studies.mjs` section 10).
+- **What it checks** (119). (1) The document never grows past the window while the list holds forty rows (the hidden
   tick inputs used to escape the list's clipping, `styles/components.css` `.checkbox-row`), ticking the last row
-  leaves the app shell in place, and Back from a row near the bottom lands with that row in view. (2) The status
-  dropdown's nine options in order; Unsegmented, Segmented and Failed filter by the pill each row shows; the filters
-  empty copy; the summary still counts the whole library; the dropdown keeps focus through the rebuilds. (3) Under
-  Unsegmented: `1 / n` with Previous disabled, the titles naming the neighbours, ArrowRight/Down and ArrowLeft/Up,
-  nothing past either end, Shift+arrow and arrows inside the name field ignored, the header buttons (Next keeps
-  focus across the remount), the position following a filter change, an en dash for a hidden film whose ArrowLeft
-  still opens the previous shown row, review-then-ArrowRight under Not reviewed, edit mode disabling both buttons and
-  refusing the keys, and Back after twenty arrows landing on the film last open with the dropdown still showing the
-  filter. (4) `SP-9000` decodes onto the static canvas (157x280), the card becomes the strip along the bottom of the
-  stage, under 70 px, the footer above it, the header pill Unsegmented, the note clear, window / level enabled; a film
-  whose path points nowhere keeps the full card with `Original preview unavailable: The source film could not be
-  found.` in the note; reopened from the list, `SP-9000` shows the strip at once from the cache.
+  leaves the app shell in place, and Back from a row near the bottom lands with that row in view. (2) The header
+  menus: a funnel on every header but STUDY and DATE and no select left in the bar; the STATUS funnel's names, its
+  menu opening with focus on All and drawn whole (inside the window, below the header row, nothing over it); the
+  options read the pills present in workflow order; ticking Unsegmented, then Segmented, keeps the rows whose pill
+  reads those (count and title on the funnel, the store holding the ticks, the menu staying open behind each tick);
+  None clears; Escape, the close button, a click outside and the sort items close the menu with focus on the funnel;
+  **Escape from anywhere (R11)**: Shift+Tab from All takes focus out of the open menu, which stays open, and Escape then
+  closes it with focus on the funnel, as does Escape with focus in the search box (focus moved there without a press,
+  since a click on it would close the menu itself); **a row click with a menu open (R10)** closes the menu and `screen`
+  stays `studies`; one menu at a time; REGION's `Unknown` under the `__unknown__` key, its tick, All and sort items
+  (Z to A with Unknown last); SUBJECT's text box (focused, keeps its caret through each rebuild, a dot on its funnel,
+  empty filters nothing); with a demo study made Needs review, ticking Needs review and Segmented and arrowing through
+  exactly those rows in the list's order; the filters empty copy under an impossible combination; the summary still
+  counting the whole library. (3) Under Unsegmented: `1 / n` with Previous disabled, the titles naming the neighbours,
+  ArrowRight/Down and ArrowLeft/Up, nothing past either end, Shift+arrow and arrows inside the name field ignored, the
+  header buttons (Next keeps focus across the remount), the position following a filter change, an en dash for a
+  hidden film whose ArrowLeft still opens the previous shown row, review-then-ArrowRight under the three ticks
+  Segmented, Needs review and Hand-placed, edit mode disabling both buttons and refusing the keys, and Back after
+  twenty arrows landing on the film last open with the STATUS funnel still reading the tick. (4) `SP-9000` decodes onto
+  the static canvas (157x280), the card becomes the strip along the bottom of the stage, under 70 px, the footer
+  above it, the header pill Unsegmented, the note clear, window / level enabled; a film whose path points nowhere
+  keeps the full card with `Original preview unavailable: The source film could not be found.` in the note; reopened
+  from the list, `SP-9000` shows the strip at once from the cache. (5) The REGION column after a run: `SP-9000` reads
+  `Unknown`, muted, before; one real run of the sample film through `run-and-wait.js`; it reads `Lumbar` after, the
+  REGION menu offers `Lumbar` under `filter-region-lumbar`, ticking it keeps only rows reading Lumbar (SP-9000 among
+  them, the unsegmented films gone) and the funnel reads `Filtered: Lumbar`. (6) The import table's Unknown default:
+  seeded folder rows over synthetic paths (`pre-op/`, `post-op/`, `flexion/`), the pre-op and post-op VIEW selects
+  read `Unknown` (the empty option value), `flexion` still reads `Flexion lateral` from its name, every VIEW select
+  offers Unknown first and then the five suggestions, the Set all select too, and the store holds `null` for the
+  folders that name no view.
 
-Run on 2026-10-19 (worktree `reviewer-navigation`): 64/64 on a fresh scratch profile after `smoke-parameters.mjs`
-(58/58), and 64/64 again after `smoke-studies.mjs` (151/151) on another fresh launch; `smoke-workspace.mjs` 100/100,
-`smoke-persist.mjs` 42/42 then 55/55 and `smoke-levels.mjs` phase dom 145/145 on the same tree. One lesson from that
-run, now also in the persistence section's spirit: `smoke-persist.mjs` reads `SPINE_CONTOUR_USER_DATA` itself for the
+Run on 2026-10-19 (worktree `reviewer-navigation`, the header filters round): 119/119 on a fresh scratch profile after
+`smoke-parameters.mjs` (58/58) and `smoke-studies.mjs` (155/155) on one launch, the documented order; then
+`smoke-workspace.mjs` 100/100 on the same launch; `smoke-seeding.mjs` 36/36 on its own launch, `smoke-persist.mjs`
+42/42 then 55/55 across its restart, `smoke-levels.mjs` phase dom 145/145 and `smoke-bundle.mjs` 17/17, 18/18 and 9/9
+on the same tree, each on a fresh scratch profile. The earlier reviewer round's own runs were 64/64 (twice) with the
+status dropdown, and the header filters round's section 2 read 97/97 when it was rewritten (Task 6) before sections 5
+and 6 and the two Escape / row-click checks (Task 7) brought it to 119. One lesson from the reviewer round, now also in
+the persistence section's spirit: `smoke-persist.mjs` reads `SPINE_CONTOUR_USER_DATA` itself for the
 label file it checks after Save edits, so pass the launcher's folder to the suite too, or its phase-1 check 11 reads a
 file in the wrong profile and reports 41/42. And `smoke-studies.mjs` straight after `smoke-parameters.mjs` on one
 launch (the documented order) is what found `9dbb63c`: the Studies screen's return-to-row scroll (2026-10-19) must

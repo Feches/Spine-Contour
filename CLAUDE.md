@@ -1,6 +1,41 @@
 # Spine Contour
 
-**2026-10-19 reviewer navigation (BUILT, at the owner's gate, not pushed):** branch `worktree-reviewer-navigation` in
+**2026-10-19 Find list header filters, the REGION column and the Unknown view (BUILT, at the owner's gate, not pushed,
+shipping as one release with the reviewer navigation round below):** the same branch `worktree-reviewer-navigation` and
+worktree, on top of that round, off `origin/main` @ `cc1b548` (v1.2.0). The owner's ask: the Find list's VIEW column read
+`Standing lateral` on a cervical film (the view is the patient position, seeded on import; the anatomical region a run
+detects was shown nowhere); the import made every folder choose a view, defaulting to Standing lateral, which is wrong
+for most films ("make it Unknown"); and filtering lived in a bar of dropdowns while sorting lived in the headers ("filter
+and sort every column from the headers"). Spec `docs/superpowers/specs/2026-10-19-find-list-header-filters-region-view-design.md`
+(F1-F9), plan `docs/superpowers/plans/2026-10-19-find-list-header-filters-region-view.md`, seven tasks, each reviewed:
+(1) `data/cervical.js` `regionKey(study)` (the region a person set, else the one the run detected, else a result with
+none is lumbar, else `unknown`) and `regionLabel`; (2) the view is `string | null`, `null` (Unknown) until a name or a
+person sets it -- `newStudy`, `rowForSegments` and `seedFields` seed null, `validateStudy` accepts null (no
+`STORE_VERSION` bump), and `inferenceView` reads null, blank and `unknown` as lateral so an Unknown view passes the
+segmentation gate (the backend classifies the film during the run; a non-lateral film fails with its own reason and the
+run never writes `view`); (3) `Unknown` on every screen (the list, the grid, the drawer's placeholder, the Analysis
+header and the sidebar line, the import table's VIEW selects with Unknown first and the default, the grid's View
+filter through `NO_VIEW`); (4) `data/find.js` owns `findFilters` (`{ subject, region, view, workspace, folder, status }`,
+session-only like `findSort`) with `findFilterOptions`, `normaliseFindFilters`, `patchFindFilters`, `matchesFindFilters`
+and `activeColumns` -- OR within a column, AND across columns, a column with no ticks passes everything -- and
+`findOrder` / `findVisible` / `findNeighbour` / `findPosition` read it, so previous / next follows the menus; (5) the
+REGION column between SUBJECT and VIEW (`Unknown`, `Lumbar`, `Cervical`, `Full spine`, muted for Unknown, sortable with
+Unknown last), and the CSV's `Spine region` cell reads the label; (6) every header but STUDY and DATE carries a funnel
+(`data-find-key` `filter-<column>`) that opens a menu (`components/filter-menu.js`): All, None, one checkbox per value
+(`filter-<column>-<value key>`, with `__unknown__` and `__hand__` for no view / region and no workspace root), the sort
+directions in the column's words, a close button; SUBJECT's menu is a text box; the bar's Workspace, Folder and Status
+dropdowns and `findStatus` are gone (the grid keeps `paramFilters` and its own bar); a menu stays open through its own
+ticks, closes on another change to what it shows, on Escape (from anywhere, a document-level listener registered with
+the outside-press one), a press outside (which only closes: the pointerdown rebuild replaces the row before its click
+arrives, so a row is not also opened) or opening a film; (7) the other suites, the records, the whole-branch run. Unit
+1123 -> 1142; `smoke-reviewer` 119/119, `smoke-parameters` 58/58, `smoke-studies` 155/155, `smoke-workspace` 100/100,
+`smoke-seeding` 36/36, `smoke-persist` 42/42 then 55/55, `smoke-levels` dom 145/145, `smoke-bundle` 17/17, 18/18 and 9/9
+(the suites not run and why are in HANDOFF). Known limits: a 1.2.0 build refuses a library in which this build stored a null view
+(F8); SUBJECT's text matches `subjectId` only, as the grid's does; Processing is never a STATUS option; the table's
+minimum width grew 100 px. No version bump: the release is the owner's step after their gate. See HANDOFF's first
+"Where things stand" section.
+
+**2026-10-19 reviewer navigation (BUILT, at the owner's gate, not pushed; its status dropdown and `findStatus` were replaced by the header menus above before release):** branch `worktree-reviewer-navigation` in
 worktree `.claude/worktrees/reviewer-navigation`, off `origin/main` @ `cc1b548` (v1.2.0). The owner's ask: flip through
 films with the arrow keys instead of going back to the list, over the list as filtered; filter the list by status;
 unsegmented lumbar films opened to a dark stage; ticking a row far down the list scrolled the app off the window. Four
