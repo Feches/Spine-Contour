@@ -26,8 +26,39 @@ import { mountLevelEditor } from '../components/level-editor.js';
 import { mountClinicalData } from '../components/clinical-data.js';
 import { calibrationForStudy } from '../calibration.js';
 import { preferReviewedCalibration } from '../data/calibration.js';
+import { findNeighbour, findPosition } from '../data/find.js';
+import { FRESH_VIEW } from '../data/demo-visibility.js';
 
 const BACK_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12 H5"></path><path d="M11 6 L5 12 L11 18"></path></svg>';
+// (2026-10-19, reviewer navigation) Previous and next, the same 24-unit stroke convention as BACK_SVG.
+const PREV_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 L8 12 L15 19"></path></svg>';
+const NEXT_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5 L16 12 L9 19"></path></svg>';
+
+// (2026-10-19) Which arrow goes where: Left and Up to the previous row of the Find list, Right and Down to the next.
+export const NAV_STEP = Object.freeze({ ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 });
+// Controls whose own arrows win over navigation: text entry, dropdowns and sliders (the viewer's TEXT_ENTRY plus the
+// window / level sliders and the tick boxes, which Space and the arrows reach through the browser).
+const KEEPS_ARROWS = 'input, select, textarea, [contenteditable="true"]';
+
+// (2026-10-19) The header's place in the Find list: `3 / 42`, or an en dash for a study the list's filters hide.
+export function positionLabel({ index, count }) {
+  return `${index === null ? '–' : index} / ${count}`;
+}
+
+// (2026-10-19) Opens the row before (`step` -1) or after (`step` 1) the open study in the Find list's order -- its
+// search, its workspace, folder and status filters and its column sort (data/find.js findNeighbour) -- with the fresh
+// view every opener gives a study (FRESH_VIEW, the data copy of screens/studies.js's). openId is a key of this screen's
+// host (router.js ANALYSIS_KEYS), so the host remounts for the new film exactly as a click on the list does. Refused
+// while editing: the arrows nudge handles there, and a switch would drop unsaved levels without the exit prompt. True
+// when a study was opened.
+export function openNeighbour(step) {
+  const live = getState();
+  if (live.screen !== 'analysis' || live.editing) return false;
+  const next = findNeighbour(live, live.openId, step);
+  if (!next) return false;
+  setState({ openId: next.id, ...FRESH_VIEW });
+  return true;
+}
 
 export function formatConfidence(qc) {
   return scorePercent(qc?.femoral?.confidence);
@@ -152,6 +183,7 @@ function sameConfidenceKey(a, b) {
 function teardown() {
   if (!mounted) return;
   mounted.viewer.detach();
+  mounted.detachKeys();
   mounted = null;
   // imageCache deliberately survives -- that is the whole point of it.
 }
@@ -179,6 +211,10 @@ subscribe((state) => {
     return;
   }
   if (!mounted) return; // render() has not run for this navigation yet
+  // (2026-10-19) Another study is opening (previous / next): the router remounts this screen for it in this same
+  // notification, openId being one of its keys for this screen, so the outgoing mount is not updated with the
+  // incoming study's record over the outgoing film.
+  if (state.openId !== mounted.studyId) return;
   mounted.update();
 });
 
@@ -877,8 +913,26 @@ export function render(state) {
   // The same DEMO pill the Studies list puts beside the patient. A demo study's numbers are
   // fabricated for exploring the interface; the header is where the user is looking when they
   // read them, so the pill belongs beside the id, not only back on the list.
+  // (2026-10-19) Previous / next beside Back, with the open study's place in the Find list between them: what the
+  // arrow keys do (handleNavKey below), for the mouse, and where you are. update() keeps the three current.
+  const prevButton = el('button', {
+    type: 'button', class: 'icon-btn analysis-nav-prev', 'aria-label': 'Previous study', innerHTML: PREV_SVG,
+    onClick: () => openNeighbour(-1),
+  });
+  const nextButton = el('button', {
+    type: 'button', class: 'icon-btn analysis-nav-next', 'aria-label': 'Next study', innerHTML: NEXT_SVG,
+    onClick: () => openNeighbour(1),
+  });
+  const position = el('span', { class: 'analysis-meta analysis-position' });
+  const navGroup = el('div', { class: 'analysis-nav', role: 'group', 'aria-label': 'Previous and next study' },
+    prevButton, position, nextButton);
+  // What the group was last built from; update() runs on every notification, pan frames included, and the list's
+  // order is a sort over the library, so it is recomputed only when one of its inputs changes.
+  let lastNav = null;
+
   const header = el('header', { class: 'analysis-header' },
     backButton,
+    navGroup,
     nameField,
     headerMeta,
     study.source === 'demo' ? el('span', { class: 'pill-demo' }, 'DEMO') : null,
@@ -1155,6 +1209,26 @@ export function render(state) {
     commentText.textContent = comment ?? '';
     commentBlock.classList.toggle('is-hidden', editing || comment === null);
 
+    // (2026-10-19) Previous / next and the position, from the Find list's order under its filters (data/find.js): every
+    // store key that order reads is in the gate, and edit mode disables both buttons (openNeighbour refuses it too).
+    const navKey = [live.studies, live.query, live.paramFilters, live.findSort, live.findStatus, live.running, live.batch, editing];
+    if (!sameConfidenceKey(navKey, lastNav)) {
+      lastNav = navKey;
+      const place = findPosition(live, open.id);
+      const before = findNeighbour(live, open.id, -1);
+      const after = findNeighbour(live, open.id, 1);
+      position.textContent = positionLabel(place);
+      position.title = place.index === null
+        ? `This study is not in the Find list under its current filters (${place.count} ${place.count === 1 ? 'study' : 'studies'} are)`
+        : `Study ${place.index} of ${place.count} in the Find list`;
+      prevButton.disabled = editing || !before;
+      nextButton.disabled = editing || !after;
+      prevButton.title = editing ? 'Finish editing before moving to another study'
+        : before ? `Previous: ${studyName(before)} (←)` : 'First study in the list';
+      nextButton.title = editing ? 'Finish editing before moving to another study'
+        : after ? `Next: ${studyName(after)} (→)` : 'Last study in the list';
+    }
+
     // The list's badge, on the list's rule (screens/studies.js buildRow): headerBadge's `unsupported`,
     // `status` and `badgeKey`, read above for the region note. A Failed pill carries the dated reason
     // as its tooltip (2026-10-01, issue #39).
@@ -1187,14 +1261,27 @@ export function render(state) {
     clinical.update();
   }
 
+  // (2026-10-19) The arrow keys, on window like the viewer's shortcuts: Left/Up the previous row of the Find list,
+  // Right/Down the next, wherever focus is except inside a control that owns its arrows (KEEPS_ARROWS), with no
+  // modifier, and never in edit mode, where the viewer's own handler -- registered first, by mountViewer above --
+  // nudges handles with them (openNeighbour refuses edit mode). A key with nowhere to go is left alone, so it keeps
+  // whatever it did before. teardown() removes the listener with the mount.
+  function handleNavKey(event) {
+    const step = NAV_STEP[event.key];
+    if (!step || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target && target.closest(KEEPS_ARROWS)) return;
+    if (openNeighbour(step)) event.preventDefault();
+  }
+  window.addEventListener('keydown', handleNavKey);
+
   // mounted.studyId is refreshed ONLY here, and render() runs only when the router sees a
-  // SCREEN_KEYS ('screen', 'calibrationRequest') change. Every writer that changes state.openId today also
-  // sets screen, so the two stay in step. A future writer that changes openId WITHOUT screen
-  // would leave a stale studyId behind and mis-gate all three of its readers -- the
-  // setImages guard (~l.203), live() (~l.230) and needsRestore -- drawing one study's
-  // geometry over another study's film. Add openId to SCREEN_KEYS, or refresh this in
-  // update(), before writing such a caller.
-  mounted = { viewer, update, studyId: study.id };
+  // SCREEN_KEYS ('screen', 'calibrationRequest') change or, on this screen, an openId change (router.js
+  // ANALYSIS_KEYS, 2026-10-19: previous / next change openId with the screen unchanged). So the two stay in step:
+  // every opener remounts this host, and the module-scope subscription above skips an update whose openId is not
+  // this mount's. The three readers of studyId -- the setImages guard (~l.203), live() (~l.230) and needsRestore --
+  // depend on that, or one study's geometry would be drawn over another study's film.
+  mounted = { viewer, update, studyId: study.id, detachKeys: () => window.removeEventListener('keydown', handleNavKey) };
   update();
   // (2026-10-11, ruling R35) A window the view kept for this film (Back, then the sidebar's OPEN STUDY card) over images
   // with no decoded original -- another study's run took the single cache entry meanwhile, so the restore below would

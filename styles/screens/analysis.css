@@ -68,6 +68,28 @@
 
 .analysis-spacer { flex: 1; }
 
+/* (2026-10-19, reviewer navigation) Previous / next beside Back, the open study's place in the Find list between
+   them in the header's mono eyebrow face. The group pulls in from the header's gap so it reads as one control with
+   Back; a disabled arrow (the first or last row, or edit mode) fades rather than vanishing, so the pair never shifts. */
+.analysis-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: -6px;
+}
+.analysis-position {
+  min-width: 58px;
+  text-align: center;
+}
+.analysis-nav .icon-btn:disabled {
+  opacity: .35;
+  cursor: default;
+}
+.analysis-nav .icon-btn:disabled:hover {
+  color: var(--muted);
+  background: var(--card);
+}
+
 .confidence-badge {
   display: flex;
   align-items: center;

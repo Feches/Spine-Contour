@@ -10,8 +10,33 @@
  */
 import { displayStatus, statusLabel } from './status.js';
 import { studyName, workspaceLabel, folderLabel, subjectLabel } from './labels.js';
+import { normaliseFilters, matchesLocation } from './parameters.js';
 
 const DASH = '\u2014';
+
+// Case-insensitive substring match over id, view, the demo set's own patient/diagnosis labels,
+// and every CLINICAL VALUE on the record. Normalises the query itself, so the export is safe to
+// call with raw input. The clinical values are what makes the search box's promise true on real
+// studies: `pt`/`dx` exist only on the nine compiled-in demo records, so without them a
+// diagnosis the user imported a minute ago could be typed here and find nothing. Values are
+// user text of any shape, so the string filter below still guards the join. The study's name,
+// its workspace and its containing folder are searchable because the table shows all three and
+// a visible column you cannot search reads as broken. The subject, timepoint and film date are
+// on the Parameters grid, which the box also filters; the note is in the drawer, and is what
+// tells two same-day films of one subject apart. The FULL file path is still not: only the two
+// folder names the cells actually display are matched. The label record's comment (`labelComment`,
+// annotation round 2) is searchable too, though no column shows it: it is what flags a film for a reader.
+// (2026-10-19) Moved here from screens/studies.js, which re-exports it, so the Analysis screen's previous / next can
+// apply the search without importing a screen.
+export function matchesQuery(study, query) {
+  const needle = (query ?? '').trim().toLowerCase();
+  if (!needle) return true;
+  return [study.id, studyName(study), study.subjectId, study.timepoint, study.filmDate, study.note, study.labelComment, workspaceLabel(study), folderLabel(study), study.pt, study.dx, study.view, ...Object.values(study.clinical ?? {})]
+    .filter((value) => typeof value === 'string')
+    .join(' ')
+    .toLowerCase()
+    .includes(needle);
+}
 
 // (2026-10-19, reviewer navigation) The Find list's status filter. `unreviewed` is a result nobody has marked --
 // Segmented, Needs review or Hand-placed, the set a reviewer works through -- and the rest are the pills themselves,
@@ -98,6 +123,55 @@ export function sortFindRows(studies, sort, runningId = null, batch = null) {
     return (a.value < b.value ? -1 : 1) * sign;
   });
   return indexed.map((entry) => entry.study);
+}
+
+// ---- The list as one snapshot (2026-10-19, reviewer navigation) -------------------------------------------
+// The Find list's order and its three filters from a store snapshot, shared by the Studies screen (its rows) and the
+// Analysis screen (previous / next, the position in the header), so the keys step through exactly the rows the list
+// shows, in the order it shows them. `state` needs studies, query, paramFilters, findSort, findStatus, running, batch.
+
+// Every study in the list's order, filtered or not.
+export function findOrder(state) {
+  return sortFindRows(state?.studies ?? [], state?.findSort, state?.running ?? null, state?.batch ?? null);
+}
+
+// Whether a study is a row the list shows: the search box, then the workspace and folder filters (normalised against
+// the library, as the bar shows them), then the status filter.
+function findPredicate(state) {
+  const studies = state?.studies ?? [];
+  const query = state?.query ?? '';
+  const filters = normaliseFilters(state?.paramFilters, studies);
+  const status = normaliseStatusFilter(state?.findStatus);
+  return (study) => matchesQuery(study, query) && matchesLocation(study, filters)
+    && matchesStatus(study, status, state?.running ?? null, state?.batch ?? null);
+}
+
+// The rows the list shows, in table order.
+export function findVisible(state) {
+  return findOrder(state).filter(findPredicate(state));
+}
+
+// The row the list shows after (`step` 1) or before (`step` -1) the study `id`, or null at either end -- no wrap.
+// It steps from the study's OWN place in the full order, whether or not the study still passes the filters: a film
+// marked reviewed under Not reviewed has left the list, and its next is still the row after where it sat, so
+// review-then-arrow goes straight down the list. A study not in the library has no neighbours.
+export function findNeighbour(state, id, step) {
+  const order = findOrder(state);
+  const start = order.findIndex((study) => study.id === id);
+  if (start === -1) return null;
+  const shows = findPredicate(state);
+  for (let i = start + step; i >= 0 && i < order.length; i += step) {
+    if (shows(order[i])) return order[i];
+  }
+  return null;
+}
+
+// The study's 1-based place among the rows the list shows, `index` null when it is not one of them, and how many
+// rows there are.
+export function findPosition(state, id) {
+  const visible = findVisible(state);
+  const at = visible.findIndex((study) => study.id === id);
+  return { index: at === -1 ? null : at + 1, count: visible.length };
 }
 
 // The Studies summary line's counts (2026-10-01, issue #39; port spec 3), over the list given, which

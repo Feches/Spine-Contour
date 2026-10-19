@@ -27,7 +27,7 @@ import { nextId } from '../data/persistence.js';
 import { DEFAULT_VIEW } from '../data/timepoints.js';
 import { seedFields } from '../data/seeding.js';
 import {
-  withIds, toggleId, selectedVisible, rowsToExport, workspaceOptions, folderOptions, normaliseFilters, patchFilters, matchesLocation, HAND_ADDED,
+  withIds, toggleId, selectedVisible, rowsToExport, workspaceOptions, folderOptions, normaliseFilters, patchFilters, HAND_ADDED,
 } from '../data/parameters.js';
 import {
   planExport, exportMessage, localFilmHash, planImport, applyImport, importPromptText, importMessage,
@@ -35,7 +35,9 @@ import {
 } from '../data/bundle.js';
 import { appVersion } from '../data/label-record.js';
 import { planBatch, progressText, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
-import { sortFindRows, toggleFindSort, summaryCounts, STATUS_FILTERS, matchesStatus, normaliseStatusFilter } from '../data/find.js';
+import {
+  toggleFindSort, summaryCounts, STATUS_FILTERS, normaliseStatusFilter, matchesQuery, findVisible,
+} from '../data/find.js';
 import { progressTitle, progressDetail } from '../data/processing.js';
 import { checkbox } from '../components/checkbox.js';
 import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
@@ -61,27 +63,9 @@ export function formatDate(iso) {
   return dateFormatter.format(date);
 }
 
-// Case-insensitive substring match over id, view, the demo set's own patient/diagnosis labels,
-// and every CLINICAL VALUE on the record. Normalises the query itself, so the export is safe to
-// call with raw input. The clinical values are what makes the search box's promise true on real
-// studies: `pt`/`dx` exist only on the nine compiled-in demo records, so without them a
-// diagnosis the user imported a minute ago could be typed here and find nothing. Values are
-// user text of any shape, so the string filter below still guards the join. The study's name,
-// its workspace and its containing folder are searchable because the table shows all three and
-// a visible column you cannot search reads as broken. The subject, timepoint and film date are
-// on the Parameters grid, which the box also filters; the note is in the drawer, and is what
-// tells two same-day films of one subject apart. The FULL file path is still not: only the two
-// folder names the cells actually display are matched. The label record's comment (`labelComment`,
-// annotation round 2) is searchable too, though no column shows it: it is what flags a film for a reader.
-export function matchesQuery(study, query) {
-  const needle = (query ?? '').trim().toLowerCase();
-  if (!needle) return true;
-  return [study.id, studyName(study), study.subjectId, study.timepoint, study.filmDate, study.note, study.labelComment, workspaceLabel(study), folderLabel(study), study.pt, study.dx, study.view, ...Object.values(study.clinical ?? {})]
-    .filter((value) => typeof value === 'string')
-    .join(' ')
-    .toLowerCase()
-    .includes(needle);
-}
+// The search box's match (2026-10-19: now data/find.js matchesQuery, so the Analysis screen's previous / next can apply
+// the same search without importing this screen); re-exported here for its callers and test/studies.test.js.
+export { matchesQuery };
 
 // An unsegmented real Study. Bytes are NOT on the record (screens/analysis.js's payload map);
 // measurements, geometry, qc and thumbnail arrive when the run completes.
@@ -453,16 +437,16 @@ function sameKey(a, b) {
 // The Find table's rows from a store snapshot: searched, filtered, then sorted (studies-table spec 2026-09-10,
 // section 6), so `visible` is in the order the table shows it and the bar's buttons act in. One computation for
 // update() and the export (bundle spec 4.2), so a bundle holds exactly the rows the person is looking at.
-// (2026-10-19) The status filter (data/find.js matchesStatus) is the third filter, by the pill each row shows.
+// (2026-10-19) The status filter is the third filter, by the pill each row shows, and the rows themselves come from
+// data/find.js findVisible -- the one definition of the list's order, which the Analysis screen's previous / next
+// steps through. `queried` (the search alone) is what the Parameters grid takes.
 function findRows(live) {
   const studies = live.studies || [];
   const query = (live.query || '').trim().toLowerCase();
   const queried = studies.filter((study) => matchesQuery(study, query));
   const filters = normaliseFilters(live.paramFilters, studies);
   const status = normaliseStatusFilter(live.findStatus);
-  const visible = sortFindRows(
-    queried.filter((study) => matchesLocation(study, filters) && matchesStatus(study, status, live.running, live.batch)),
-    live.findSort, live.running, live.batch);
+  const visible = findVisible(live);
   return { studies, query, queried, filters, status, visible };
 }
 

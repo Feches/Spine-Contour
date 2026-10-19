@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_FIND_SORT, FIND_SORT_KEYS, statusRank, toggleFindSort, sortFindRows, summaryCounts,
   STATUS_FILTERS, matchesStatus, normaliseStatusFilter,
+  findOrder, findVisible, findNeighbour, findPosition,
 } from '../renderer/data/find.js';
 import { newBatch, withStopping } from '../renderer/data/batch.js';
 
@@ -191,6 +192,77 @@ test('matchesStatus: Processing follows state.running and the waiting batch, as 
   assert.equal(matchesStatus(unseg, 'unseg', 'SP-1001', batch), false);
   assert.equal(matchesStatus(unseg, 'proc', 'SP-1001', withStopping(batch)), false, 'a stopping batch: the film that will not run reads its own status');
   assert.equal(matchesStatus(unseg, 'unseg', 'SP-1001', withStopping(batch)), true);
+});
+
+// (2026-10-19, reviewer navigation) the list's order and filters as one snapshot, for the Analysis screen's previous /
+// next: the keys step through exactly the rows the Find list shows, in the order it shows them.
+const day = (n) => `2026-10-${String(n).padStart(2, '0')}T10:00:00.000Z`;
+// Newest first by default, so the order is A, B, C, D.
+const LIB = [
+  study('SP-1003', { addedAt: day(1), name: 'delta' }),
+  study('SP-1000', { addedAt: day(4), name: 'alpha', ...SEG }),
+  study('SP-1002', { addedAt: day(2), name: 'gamma', ...REV }),
+  study('SP-1001', { addedAt: day(3), name: 'beta' }),
+];
+const snapshot = (patch = {}) => ({
+  studies: LIB, query: '', paramFilters: null, findSort: { key: 'date', dir: 'desc' }, findStatus: null,
+  running: null, batch: null, ...patch,
+});
+
+test('findOrder and findVisible: the Find list\'s order, then its search, location and status filters', () => {
+  assert.deepEqual(ids(findOrder(snapshot())), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
+  assert.deepEqual(ids(findVisible(snapshot())), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
+  assert.deepEqual(ids(findVisible(snapshot({ findSort: { key: 'study', dir: 'asc' } }))), ['SP-1000', 'SP-1001', 'SP-1003', 'SP-1002']);
+  assert.deepEqual(ids(findVisible(snapshot({ findStatus: 'unseg' }))), ['SP-1001', 'SP-1003']);
+  assert.deepEqual(ids(findVisible(snapshot({ findStatus: 'unreviewed' }))), ['SP-1000', 'SP-1002']);
+  // The search box matches every searchable field, the view included ('ta' is in 'Standing lateral'); 'eta' is beta's alone.
+  assert.deepEqual(ids(findVisible(snapshot({ query: 'ta' }))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
+  assert.deepEqual(ids(findVisible(snapshot({ query: 'eta' }))), ['SP-1001'], 'the search box: beta');
+  assert.deepEqual(ids(findVisible(snapshot({ query: 'a', findStatus: 'unseg', findSort: { key: 'study', dir: 'asc' } }))), ['SP-1001', 'SP-1003']);
+  // The location filter: every study here sits under one root, so another root hides them all; a stale root is no filter.
+  assert.deepEqual(ids(findVisible(snapshot({ paramFilters: { workspace: 'C:\\films\\Cohort' } }))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
+  assert.deepEqual(ids(findVisible(snapshot({ paramFilters: { workspace: 'C:\\films\\Cohort', folder: 'Elsewhere' } }))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
+  // Added by hand is an option only while a film with no root is in the library; with none it is no filter either.
+  assert.deepEqual(ids(findVisible(snapshot({ paramFilters: { workspace: '__hand__' } }))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
+  const hand = study('SP-1004', { addedAt: day(5), name: 'epsilon', workspaceFolder: null, filePath: null });
+  assert.deepEqual(ids(findVisible(snapshot({ studies: [...LIB, hand], paramFilters: { workspace: '__hand__' } }))), ['SP-1004']);
+  assert.deepEqual(ids(findVisible(snapshot({ studies: [...LIB, hand], paramFilters: { workspace: 'C:\\films\\Cohort' } }))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
+  assert.deepEqual(ids(findVisible({ studies: null })), []);
+  assert.deepEqual(ids(findOrder({})), []);
+});
+
+test('findNeighbour: the next or previous row the list shows, from the open study\'s own place in the order', () => {
+  const s = snapshot();
+  assert.equal(findNeighbour(s, 'SP-1001', 1)?.id, 'SP-1002');
+  assert.equal(findNeighbour(s, 'SP-1001', -1)?.id, 'SP-1000');
+  assert.equal(findNeighbour(s, 'SP-1000', -1), null, 'nothing before the first row');
+  assert.equal(findNeighbour(s, 'SP-1003', 1), null, 'nothing after the last row: no wrap');
+  assert.equal(findNeighbour(s, 'SP-9999', 1), null, 'a study not in the library has no neighbours');
+  assert.equal(findNeighbour(s, null, 1), null);
+  // Under a filter the keys skip the hidden rows.
+  const unseg = snapshot({ findStatus: 'unseg' });
+  assert.equal(findNeighbour(unseg, 'SP-1001', 1)?.id, 'SP-1003');
+  assert.equal(findNeighbour(unseg, 'SP-1003', -1)?.id, 'SP-1001');
+  assert.equal(findNeighbour(unseg, 'SP-1001', -1), null);
+  // The open study itself fell out of the filter (marked reviewed under Not reviewed): next and previous still step
+  // from where it sat, so review-then-arrow goes straight down the list.
+  assert.equal(findNeighbour(unseg, 'SP-1000', 1)?.id, 'SP-1001');
+  assert.equal(findNeighbour(unseg, 'SP-1002', 1)?.id, 'SP-1003');
+  assert.equal(findNeighbour(unseg, 'SP-1002', -1)?.id, 'SP-1001');
+  assert.equal(findNeighbour(unseg, 'SP-1000', -1), null);
+  // The sort decides the direction.
+  const asc = snapshot({ findSort: { key: 'date', dir: 'asc' } });
+  assert.equal(findNeighbour(asc, 'SP-1003', 1)?.id, 'SP-1002');
+  assert.equal(findNeighbour(asc, 'SP-1003', -1), null);
+});
+
+test('findPosition: the open study\'s 1-based place among the rows the list shows, or null outside the filter', () => {
+  assert.deepEqual(findPosition(snapshot(), 'SP-1000'), { index: 1, count: 4 });
+  assert.deepEqual(findPosition(snapshot(), 'SP-1003'), { index: 4, count: 4 });
+  assert.deepEqual(findPosition(snapshot({ findStatus: 'unseg' }), 'SP-1003'), { index: 2, count: 2 });
+  assert.deepEqual(findPosition(snapshot({ findStatus: 'unseg' }), 'SP-1000'), { index: null, count: 2 });
+  assert.deepEqual(findPosition(snapshot(), 'SP-9999'), { index: null, count: 4 });
+  assert.deepEqual(findPosition({ studies: [] }, 'SP-1000'), { index: null, count: 0 });
 });
 
 test('normaliseStatusFilter: a known value stays, anything else is no filter', () => {

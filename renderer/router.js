@@ -94,6 +94,12 @@ export const SIDEBAR_KEYS = [
 // subscription inside the screen, never in this array.
 export const SCREEN_KEYS = ['screen', 'calibrationRequest'];
 
+// (2026-10-19, reviewer navigation) On the Analysis screen the host is keyed by the open study as well: the
+// previous / next keys change openId with the screen unchanged, and the host must remount for the new film exactly
+// as a click on the list remounts it (screens/analysis.js keeps every per-mount cache keyed by studyId). Only on
+// that screen: on Studies a delete clears openId, and the list must not be rebuilt for it.
+export const ANALYSIS_KEYS = ['openId'];
+
 export const TOAST_KEYS = ['toast'];
 
 // zoom, panX, panY and panMode are deliberately absent from every set above:
@@ -238,13 +244,15 @@ export function renderRoute(root, state) {
       if (keysChanged(prevState, state, SIDEBAR_KEYS)) {
         sidebarNode = swap(appShellNode, sidebarNode, renderSidebar(state));
       }
-      if (keysChanged(prevState, state, SCREEN_KEYS)) {
+      if (keysChanged(prevState, state, SCREEN_KEYS)
+          || (state.screen === 'analysis' && keysChanged(prevState, state, ANALYSIS_KEYS))) {
         const renderScreen = SCREENS[state.screen] || renderStudies;
         // Only restore focus when the mounted screen module is unchanged
-        // (i.e. this swap was driven by `calibrationRequest`, not by `screen`). When
-        // `screen` itself changed, the outgoing and incoming trees are
+        // (i.e. this swap was driven by `calibrationRequest` or, on Analysis, by `openId`, not by
+        // `screen`). When `screen` itself changed, the outgoing and incoming trees are
         // different components entirely, and swap()'s tag+ordinal matching
-        // would happily focus an unrelated control in the new screen.
+        // would happily focus an unrelated control in the new screen. On an openId swap the
+        // trees are two renders of the same header, so a click on Next keeps its button focused.
         const sameScreen = prevState && prevState.screen === state.screen;
         screenNode = swap(appShellNode, screenNode, renderScreen(state), undefined, sameScreen);
       }
