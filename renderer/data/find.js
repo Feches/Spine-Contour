@@ -131,8 +131,10 @@ export function sortFindRows(studies, sort, runningId = null, batch = null) {
 
 // ---- The header menus' filters (2026-10-19, header filters; spec F6, F7, section 3) ------------------------------
 // state.findFilters holds one list of ticks per checkbox column and the SUBJECT menu's text. A column with no ticks
-// passes everything, ticks within a column OR and columns AND, so an empty list comes only from a combination of
-// ticks. Every menu says "none" with one key, NO_VIEW, for a film with no view and a film with no region alike.
+// passes everything, ticks within a column OR and columns AND, so an empty list comes from a combination of ticks or
+// (2026-10-19, final review; R13) from a REGION or STATUS tick on a value no film shows now, such as Needs review once
+// the last film to review is marked. Every menu says "none" with one key, NO_VIEW, for a film with no view and a film
+// with no region alike.
 
 export const DEFAULT_FIND_FILTERS = Object.freeze({ subject: '', region: [], view: [], workspace: [], folder: [], status: [] });
 export const FILTER_COLUMNS = Object.freeze(['subject', 'region', 'view', 'workspace', 'folder', 'status']);
@@ -165,15 +167,20 @@ function byText(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-// What each menu offers, from the whole library rather than the searched subset, labelled as the cells are. The
-// options never depend on a run, so a menu does not change under a running batch: STATUS reads each film's own status,
-// and Processing, which only a run shows, is never offered. FOLDER lists the folders among the films the WORKSPACE
-// ticks keep (every film when none is ticked), counting only the ticks the WORKSPACE menu offers, as
+// What each menu offers, labelled as the cells are. The options never depend on a run, so a menu does not change under
+// a running batch. (2026-10-19, final review; ruling R13) REGION and STATUS are fixed vocabularies: they offer every
+// value -- the four regions in REGION_KEYS order, the seven pills in STATUS_FILTERS order -- whether or not a film shows
+// it, so a tick on them never dissolves. Under the "present" rule they had before, marking the last Needs review film
+// reviewed dropped the Needs review tick: the whole library showed, the arrows left the queue, and the stored tick came
+// back unseen with the next Needs review film. Processing is offered with the rest (R13 superseded R6, which never
+// offered it) and, ticked, matches the running and queued films by the pill each row shows (matchesFindFilters).
+// VIEW, WORKSPACE and FOLDER keep the "present" rule, computed from the whole library rather than the searched subset:
+// a view, a root or a folder nobody holds any more is not worth a row. FOLDER lists the folders among the films the
+// WORKSPACE ticks keep (every film when none is ticked), counting only the ticks the WORKSPACE menu offers, as
 // normaliseFindFilters keeps them; folderOptions lists them over those films, so the list and the grid share one rule.
 export function findFilterOptions(studies, filters) {
   const list = studies ?? [];
-  const regions = new Set(list.map((study) => regionKey(study)));
-  const region = REGION_KEYS.filter((key) => regions.has(key)).map((key) => ({ value: regionValue(key), label: regionLabel(key) }));
+  const region = REGION_KEYS.map((key) => ({ value: regionValue(key), label: regionLabel(key) }));
   const views = new Set(list.map(viewValue));
   const view = [
     ...(views.has(NO_VIEW) ? [{ value: NO_VIEW, label: 'Unknown' }] : []),
@@ -182,16 +189,18 @@ export function findFilterOptions(studies, filters) {
   const workspace = workspaceOptions(list);
   const ticked = (ticksOf(filters, 'workspace') ?? []).filter((value) => workspace.some((o) => o.value === value));
   const folder = folderOptions(ticked.length > 0 ? list.filter((study) => inWorkspaces(study, ticked)) : list, null);
-  const shown = new Set(list.map((study) => displayStatus(study, null, null)));
-  const status = PILLS.filter((pill) => shown.has(pill)).map((pill) => ({ value: pill, label: statusLabel(pill) }));
+  const status = STATUS_FILTERS.map(({ value, label }) => ({ value, label }));
   return { region, view, workspace, folder, status };
 }
 
 // The stored ticks reduced to what the menus offer now, each column deduplicated in the order it was ticked, every key
-// present: the normaliseFilters rule, so a value that left the library (its last film deleted, relabelled or marked)
-// is no filter rather than one no menu can show. FOLDER is reduced after WORKSPACE, because findFilterOptions lists the
-// folders under the workspace ticks it offers, so a folder outside the ticked workspaces goes too. The SUBJECT text is
-// kept as typed, since the box shows it back. Pure: the stale store value is not rewritten here.
+// present. For VIEW, WORKSPACE and FOLDER that is the normaliseFilters rule, so a value that left the library (its last
+// film deleted or relabelled) is no filter rather than one no menu can show. (2026-10-19, final review; R13) For REGION
+// and STATUS the menus offer the whole vocabulary, so a tick is kept while it is one of the four regions or the seven
+// pills, whether or not a film shows it: a ticked value no film shows keeps nothing, and the list reads its empty copy.
+// FOLDER is reduced after WORKSPACE, because findFilterOptions lists the folders under the workspace ticks it offers,
+// so a folder outside the ticked workspaces goes too. The SUBJECT text is kept as typed, since the box shows it back.
+// Pure: the stale store value is not rewritten here.
 export function normaliseFindFilters(filters, studies) {
   const options = findFilterOptions(studies, filters);
   const offered = (column) => {

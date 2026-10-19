@@ -172,11 +172,13 @@ export function mountClinicalData(host) {
   // value is already YYYY-MM-DD. An emptied cell stores null, view included: a view of null is the
   // Unknown view (2026-10-19), which validateStudy stores as null and the screens print as
   // `Unknown`. (Before that rule validateStudy threw on a non-string view, so an emptied view had
-  // to store '' and drew an em dash.)
+  // to store '' and drew an em dash.) (2026-10-19, final review) The word Unknown typed in the cell,
+  // in any case, is that view too and stores null: stored as the word, it sat beside the sentinel as a
+  // second Unknown in the VIEW menu and the grid's View filter.
   function setStudyField(studyId, field, value) {
     const text = String(value ?? '').trim();
     let next;
-    if (field === 'view') next = text === '' ? null : (normaliseView(text) ?? text);
+    if (field === 'view') next = text === '' || /^unknown$/i.test(text) ? null : (normaliseView(text) ?? text);
     else if (field === 'timepoint') next = text === '' ? null : (normaliseTimepoint(text) ?? text);
     else next = text === '' ? null : text;
     setState((s) => {

@@ -301,11 +301,27 @@ const MIXED = [
 ];
 const option = (value, label = value) => ({ value, label });
 
+// (2026-10-19, final review; ruling R13) REGION and STATUS are fixed vocabularies: their menus offer every value whether
+// or not a film shows it, so a tick on them never dissolves when its last film changes.
+const ALL_REGIONS = [option(NO_VIEW, 'Unknown'), option('lumbar', 'Lumbar'), option('cervical', 'Cervical'), option('full_spine', 'Full spine')];
+const ALL_STATUSES = [option('unseg', 'Unsegmented'), option('proc', 'Processing'), option('fail', 'Failed'), option('rev', 'Needs review'),
+  option('hand', 'Hand-placed'), option('seg', 'Segmented'), option('ok', 'Reviewed')];
+
+test('findFilterOptions: REGION and STATUS offer their whole vocabulary whatever the library holds (R13)', () => {
+  for (const library of [MIXED, [MIXED[2], MIXED[1]], [MIXED[0]], [], null]) {
+    const options = findFilterOptions(library, DEFAULT_FIND_FILTERS);
+    assert.deepEqual(options.region, ALL_REGIONS, 'the four regions in REGION_KEYS order, Unknown under the none key');
+    assert.deepEqual(options.status, ALL_STATUSES, 'the seven pills in the spec\'s order, Processing among them');
+  }
+  // The options never depend on a run either: the same seven while a film runs or waits in a batch.
+  assert.deepEqual(findFilterOptions([study('SP-1000')], { ...DEFAULT_FIND_FILTERS, status: ['proc'] }).status, ALL_STATUSES);
+});
+
 test('findFilterOptions: region in workflow order, view with Unknown first, folder under the workspace ticks, status in pill order', () => {
   const options = findFilterOptions(MIXED, DEFAULT_FIND_FILTERS);
-  // REGION: Unknown, Lumbar, Cervical, Full spine, those present; Unknown's value is the one "none" key every menu uses.
-  assert.deepEqual(options.region, [option(NO_VIEW, 'Unknown'), option('lumbar', 'Lumbar'), option('cervical', 'Cervical'), option('full_spine', 'Full spine')]);
-  assert.deepEqual(findFilterOptions([MIXED[2], MIXED[1]]).region, [option('lumbar', 'Lumbar'), option('cervical', 'Cervical')], 'only the regions present');
+  // REGION: Unknown, Lumbar, Cervical, Full spine; Unknown's value is the one "none" key every menu uses.
+  assert.deepEqual(options.region, ALL_REGIONS);
+  assert.deepEqual(findFilterOptions([MIXED[2], MIXED[1]]).region, ALL_REGIONS, 'every region, not only those present (R13)');
   // VIEW: Unknown first when a film has none, then the stored views A to Z, case-insensitively.
   assert.deepEqual(options.view, [option(NO_VIEW, 'Unknown'), option('extension lateral'), option('Flexion lateral'), option('Standing lateral')]);
   assert.deepEqual(findFilterOptions([MIXED[0], MIXED[2]]).view, [option('Flexion lateral'), option('Standing lateral')], 'no Unknown when every film has a view');
@@ -320,13 +336,13 @@ test('findFilterOptions: region in workflow order, view with Unknown first, fold
   assert.deepEqual(folders([HAND_ADDED, 'C:\\films\\Alpha']), ['pre-op', 'loose'], 'library order, not tick order');
   // A root no film carries any more is not a tick the WORKSPACE menu shows, so it keeps no folder out.
   assert.deepEqual(folders(['C:\\films\\Gone']), ['pre-op', 'Cohort', 'loose']);
-  // STATUS: the pills some film shows, in the pills' order, labelled as the pills are. The options never depend on a
-  // run, so Processing is never offered.
-  assert.deepEqual(options.status, [option('unseg', 'Unsegmented'), option('fail', 'Failed'), option('rev', 'Needs review'),
-    option('hand', 'Hand-placed'), option('seg', 'Segmented'), option('ok', 'Reviewed')]);
-  const none = { region: [], view: [], workspace: [], folder: [], status: [] };
-  assert.deepEqual(findFilterOptions([]), none);
-  assert.deepEqual(findFilterOptions(null, null), none);
+  // STATUS: every pill in the pills' order, labelled as the pills are, Processing included (R13 superseded R6, which
+  // never offered it): a Processing tick matches the running and queued films, by the pill each row shows.
+  assert.deepEqual(options.status, ALL_STATUSES);
+  // VIEW, WORKSPACE and FOLDER keep the "present" rule: an empty library offers none of them.
+  const empty = { region: ALL_REGIONS, view: [], workspace: [], folder: [], status: ALL_STATUSES };
+  assert.deepEqual(findFilterOptions([]), empty);
+  assert.deepEqual(findFilterOptions(null, null), empty);
 });
 
 test('normaliseFindFilters drops a value no longer offered and a folder outside the ticked workspaces', () => {
@@ -346,9 +362,14 @@ test('normaliseFindFilters drops a value no longer offered and a folder outside 
   assert.deepEqual(normaliseFindFilters({ workspace: ['C:\\films\\Gone'], folder: ['Cohort'] }, MIXED),
     { ...DEFAULT_FIND_FILTERS, folder: ['Cohort'] });
   // Values no film shows any more: no cervical film left, the one Needs review film marked reviewed, every view known.
+  // (2026-10-19, final review; R13) The REGION and STATUS ticks stay, since those menus offer their whole vocabulary;
+  // the VIEW tick no film carries goes, the normaliseFilters rule VIEW, WORKSPACE and FOLDER keep.
   const left = [{ ...MIXED[2], reviewedAt: '2026-10-19T11:00:00.000Z' }, MIXED[4]];
   assert.deepEqual(normaliseFindFilters({ region: ['cervical', 'lumbar'], status: ['rev', 'ok'], view: [NO_VIEW, 'Flexion lateral'] }, left),
-    { ...DEFAULT_FIND_FILTERS, region: ['lumbar'], status: ['ok'], view: ['Flexion lateral'] });
+    { ...DEFAULT_FIND_FILTERS, region: ['cervical', 'lumbar'], status: ['rev', 'ok'], view: ['Flexion lateral'] });
+  // A value outside the vocabulary is still no tick: a region that is not one of the four, a status that is not a pill.
+  assert.deepEqual(normaliseFindFilters({ region: ['thoracic', 'full_spine', 'unknown'], status: ['bogus', 'proc', 'unreviewed'] }, MIXED),
+    { ...DEFAULT_FIND_FILTERS, region: ['full_spine'], status: ['proc'] });
   // Each column deduplicated in the order it was ticked; a value that is not a list is no ticks.
   assert.deepEqual(normaliseFindFilters({ region: ['lumbar', NO_VIEW, 'lumbar'], status: 'rev', view: null }, MIXED),
     { ...DEFAULT_FIND_FILTERS, region: ['lumbar', NO_VIEW] });
@@ -357,12 +378,13 @@ test('normaliseFindFilters drops a value no longer offered and a folder outside 
   assert.equal(normaliseFindFilters({ subject: 'S0 ' }, MIXED).subject, 'S0 ');
   assert.equal(normaliseFindFilters({ subject: 42 }, MIXED).subject, '');
   // Pure: a stale stored value is not rewritten.
-  const stored = Object.freeze({ region: Object.freeze(['cervical']) });
-  assert.deepEqual(normaliseFindFilters(stored, LIB).region, []);
-  assert.deepEqual(stored.region, ['cervical']);
+  const stored = Object.freeze({ view: Object.freeze(['Gone']) });
+  assert.deepEqual(normaliseFindFilters(stored, LIB).view, []);
+  assert.deepEqual(stored.view, ['Gone']);
   // patchFindFilters merges a menu's change over what the menus show, so a stale tick never rides back in with it, and
-  // a tick is toggleId over the column's ticks.
-  assert.deepEqual(patchFindFilters({ region: ['cervical'], view: ['Gone'] }, LIB, { status: ['unseg'] }), { ...DEFAULT_FIND_FILTERS, status: ['unseg'] });
+  // a tick is toggleId over the column's ticks. A REGION tick no film shows is not stale (R13): it rides on.
+  assert.deepEqual(patchFindFilters({ region: ['cervical'], view: ['Gone'] }, LIB, { status: ['unseg'] }),
+    { ...DEFAULT_FIND_FILTERS, region: ['cervical'], status: ['unseg'] });
   let f = DEFAULT_FIND_FILTERS;
   f = patchFindFilters(f, MIXED, { region: toggleId(f.region, 'cervical') });
   f = patchFindFilters(f, MIXED, { region: toggleId(f.region, NO_VIEW) });
@@ -430,7 +452,7 @@ test('matchesFindFilters: status follows the pill the row shows, with the runnin
 
 // Review Focus 5: the Analysis screen's previous / next follows the menus exactly as it followed the bar.
 test('findVisible, findNeighbour and findPosition read findFilters', () => {
-  // Newest first: three Needs review films among others, so Needs review is still offered after one is marked.
+  // Newest first: three Needs review films among others, so two are still left after one is marked.
   const queue = [
     study('SP-1000', { addedAt: day(5), ...REV }),
     study('SP-1001', { addedAt: day(4), ...SEG }),
@@ -453,12 +475,47 @@ test('findVisible, findNeighbour and findPosition read findFilters', () => {
   assert.equal(findNeighbour(after, 'SP-1002', -1)?.id, 'SP-1000', 'previous: the Needs review film before it');
   // The tick matches the pill the row shows: the running film reads Processing and is out of the list while it runs.
   assert.deepEqual(ids(findVisible(snapshot({ studies: queue, findFilters: toReview, running: 'SP-1000' }))), ['SP-1002', 'SP-1004']);
-  // The ticks are normalised against the library, as the menus show them: a region no film has is no filter.
-  assert.deepEqual(ids(findVisible(snapshot({ findFilters: { ...DEFAULT_FIND_FILTERS, region: ['cervical'] } }))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
+  // The ticks are normalised against the library, as the menus show them: a view no film has is no filter, while a
+  // region no film has keeps nothing, since the REGION menu still offers it (2026-10-19, final review; R13).
+  assert.deepEqual(ids(findVisible(snapshot({ findFilters: { ...DEFAULT_FIND_FILTERS, view: ['Gone'] } }))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
+  assert.deepEqual(ids(findVisible(snapshot({ findFilters: { ...DEFAULT_FIND_FILTERS, region: ['cervical'] } }))), []);
   // The columns AND with the search box and with each other.
   assert.deepEqual(ids(findVisible(snapshot({ findFilters: { ...DEFAULT_FIND_FILTERS, region: [NO_VIEW] } }))), ['SP-1001', 'SP-1003']);
   assert.deepEqual(ids(findVisible(snapshot({ query: 'eta', findFilters: { ...DEFAULT_FIND_FILTERS, region: [NO_VIEW] } }))), ['SP-1001']);
   assert.deepEqual(ids(findVisible(snapshot({ findFilters: { ...DEFAULT_FIND_FILTERS, status: ['unseg'], region: ['lumbar'] } }))), []);
+});
+
+// (2026-10-19, final review; ruling R13) The review queue's filter must not dissolve at its last film: with the "present"
+// rule, marking the last Needs review film reviewed normalised the tick away, the whole library showed, the arrows left
+// the queue, and the stored tick came back unseen with the next Needs review film.
+test('a status tick survives normalisation when no film reads that status', () => {
+  const noneToReview = [study('SP-1000', SEG), study('SP-1001'), study('SP-1002', OK)];
+  assert.deepEqual(normaliseFindFilters({ status: ['rev'] }, noneToReview), { ...DEFAULT_FIND_FILTERS, status: ['rev'] });
+  assert.deepEqual(normaliseFindFilters({ region: [NO_VIEW], status: ['rev', 'hand'] }, [study('SP-1000', SEG)]),
+    { ...DEFAULT_FIND_FILTERS, region: [NO_VIEW], status: ['rev', 'hand'] }, 'and a REGION tick no film shows');
+  assert.deepEqual(normaliseFindFilters({ status: ['rev'] }, []), { ...DEFAULT_FIND_FILTERS, status: ['rev'] }, 'even in an empty library');
+});
+
+test('the last Needs review film marked reviewed under the Needs review tick: an empty list, no place, no neighbours', () => {
+  const queue = [
+    study('SP-1000', { addedAt: day(4), ...SEG }),
+    study('SP-1001', { addedAt: day(3), ...REV }),
+    study('SP-1002', { addedAt: day(2) }),
+    study('SP-1003', { addedAt: day(1), ...OK }),
+  ];
+  const toReview = { ...DEFAULT_FIND_FILTERS, status: ['rev'] };
+  const before = snapshot({ studies: queue, findFilters: toReview });
+  assert.deepEqual(ids(findVisible(before)), ['SP-1001'], 'one film left to review');
+  assert.deepEqual(findPosition(before, 'SP-1001'), { index: 1, count: 1 });
+  const marked = queue.map((s) => (s.id === 'SP-1001' ? { ...s, reviewedAt: '2026-10-19T12:00:00.000Z' } : s));
+  const after = snapshot({ studies: marked, findFilters: toReview });
+  assert.deepEqual(ids(findVisible(after)), [], 'the tick stays: nothing left to review, not the whole library');
+  assert.deepEqual(findPosition(after, 'SP-1001'), { index: null, count: 0 });
+  assert.equal(findNeighbour(after, 'SP-1001', 1), null, 'Next goes nowhere, not to a film outside the queue');
+  assert.equal(findNeighbour(after, 'SP-1001', -1), null, 'nor does Previous');
+  // A later Needs review film joins the list the tick still holds, in plain sight.
+  const later = snapshot({ studies: [study('SP-1004', { addedAt: day(5), ...REV }), ...marked], findFilters: toReview });
+  assert.deepEqual(ids(findVisible(later)), ['SP-1004']);
 });
 
 test('activeColumns names the ticked columns in column order', () => {

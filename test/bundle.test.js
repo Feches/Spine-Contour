@@ -940,6 +940,22 @@ test('an update takes labelComment the way an add does: the study.json copy, els
   assert.equal(run(null, undefined, null), null);
 });
 
+// (2026-10-19, final review) A bundle study with an Unknown view (null) says nothing about the patient position, so an
+// update keeps the view the local study has; a bundle that names a view still replaces it.
+test('an update keeps the local view when the bundle\'s view is Unknown, and takes a named one', () => {
+  const run = (bundleView, localView) => {
+    const entry = entryFor('film', { hash: HASH_A, record: labelRecord(day(12), IMAGE_1, null), study: { view: bundleView } });
+    const facts = withLocal('SP-1000', HASH_A, localRecord(day(10)), { view: localView });
+    const plan = planOf([entry], facts);
+    assert.equal(plan.update.length, 1, 'the bundle\'s later record updates the local study');
+    return applyImport(facts.studies, plan)[0].view;
+  };
+  assert.equal(run(null, 'Supine lateral'), 'Supine lateral', 'an Unknown view in the bundle keeps the local one');
+  assert.equal(run(null, null), null, 'both Unknown: still Unknown');
+  assert.equal(run('Flexion lateral', 'Supine lateral'), 'Flexion lateral', 'a named view replaces the local one');
+  assert.equal(run('Flexion lateral', null), 'Flexion lateral', 'and fills an Unknown one');
+});
+
 test('applyImport of an empty plan, or one for a library that changed, applies what still applies', () => {
   const library = [local('SP-1000')];
   assert.deepEqual(applyImport(library, { add: [], update: [], skip: [], actions: [] }), library);

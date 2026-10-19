@@ -70,6 +70,18 @@ dropped from the filter when the filters are normalised, the `normaliseFilters` 
 above its values: `All` clears the column's ticks (no filter), `None` unticks everything, which is also no filter — a
 column never filters to nothing by itself, so the empty state comes only from a combination of ticks, as today.
 
+> **Amendment (2026-10-19, final review; ruling R13).** STATUS and REGION are fixed vocabularies: their menus offer
+> every value, the seven pills and the four regions in the orders above, whether or not a film shows it, and a tick on
+> them is kept while it names one of those values, so it never dissolves. "Those present" and the `normaliseFilters`
+> rule apply to VIEW, WORKSPACE and FOLDER only. Why: under "those present", marking the last Needs review film
+> reviewed under the Needs review tick dropped the tick on normalisation, so the whole library showed, the header read
+> `4 / 5`, the arrow keys opened films outside the queue, and the stored tick came back unseen when a later run produced
+> a Needs review film (REGION's Unknown across a batch did the same). Now that list is empty: `No studies match these
+> filters.`, the header `– / 0`, both arrows disabled. So a single STATUS or REGION tick on a value no film shows is
+> the one case where a column alone filters to nothing. Processing is offered too (superseding the plan-time ruling R6,
+> which never offered it) and, ticked, matches the running and queued films by the pill each row shows. Cost: a menu
+> lists values no film has.
+
 ### 3.2 The menu
 
 - Opened by the funnel button in the header cell (`data-find-key` `filter-<column>`, `aria-haspopup`, `aria-expanded`),
@@ -126,6 +138,9 @@ findFilters: { subject: '', region: [], view: [], workspace: [], folder: [], sta
 - The CSV exports already write a `Spine region` column when any exported study is not lumbar
   (`data/csv.js` `withRegions`); it keeps its rule and reads `regionLabel` for the value, so `Unknown` appears there for
   a film with no run. The Analysis header's meta line already reads the region label; unchanged.
+  **Correction (2026-10-19, final review):** it did not. The meta line read `studyRegionLabel`, which prints an
+  undetected Auto detect film as `AUTO` and a record with no region as `LUMBAR`, so it disagreed with the REGION
+  cell. It now reads `regionLabel(regionKey(open))`, upper-cased, so such a film reads `UNKNOWN` there as in its cell.
 - After a run the record's `geometry.region` is set by the completion write, so the cell and the menu update with the
   list's ordinary repaint; nothing new to wire.
 
@@ -144,6 +159,9 @@ findFilters: { subject: '', region: [], view: [], workspace: [], folder: [], sta
 - The list's VIEW cell, the Parameters grid's VIEW cell, the drawer's VIEW field placeholder and the Analysis header's
   meta line read `Unknown` (the header's `—` for a missing value becomes `UNKNOWN`, since the meta line is upper-case);
   the CSV exports write an empty cell; a CSV import's blank view cell is Unknown (today it falls to the next source).
+  (2026-10-19, final review) So is the word `Unknown`, in any case, in a CSV View cell or typed in the drawer's VIEW
+  field: both store `null`, not the word, which would otherwise sit beside the sentinel as a second Unknown in the VIEW
+  menu and the grid's View filter.
 - The import table's VIEW select (per folder and "set all") offers `Unknown` first, the default; the five suggestions
   follow. The table's note ("What Load will assign … unless a film's own name or the CSV says otherwise") already
   describes the rule and is unchanged; only the default value shown changes.

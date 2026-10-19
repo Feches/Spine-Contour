@@ -586,6 +586,18 @@ test('structuralFromRow trims, normalises a known timepoint or view, keeps a cus
     { subjectId: 'S004', timepoint: null, filmDate: null, view: null, badDate: false });
 });
 
+// (2026-10-19, final review) The word Unknown in a View cell is the Unknown view, null, as a blank cell is: stored as the
+// string, it would sit beside the sentinel as a second "Unknown" in the VIEW menu and the grid's View filter.
+test('structuralFromRow seeds no view from a View cell reading unknown, in any case', () => {
+  const structural = findStructuralHeaders(['subject_id', 'view']);
+  for (const cell of ['unknown', 'Unknown', ' UNKNOWN ']) {
+    assert.deepEqual(structuralFromRow({ subject_id: 'S001', view: cell }, structural),
+      { subjectId: 'S001', timepoint: null, filmDate: null, view: null, badDate: false }, JSON.stringify(cell));
+  }
+  // A view that only contains the word is kept as typed.
+  assert.equal(structuralFromRow({ subject_id: 'S001', view: 'Unknown position' }, structural).view, 'Unknown position');
+});
+
 test('autoMap never claims a structural header as a clinical field', () => {
   assert.deepEqual(autoMap(['subject_id', 'timepoint', 'film_date', 'view', 'age']), [
     { src: 'subject_id', dest: null }, { src: 'timepoint', dest: null }, { src: 'film_date', dest: null },

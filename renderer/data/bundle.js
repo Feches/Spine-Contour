@@ -323,8 +323,14 @@ const UPDATED_FIELDS = [
   'qc', 'calibration', 'thumbnail', 'reviewedAt',
 ];
 
+// (2026-10-19, final review) The view is taken only when the bundle names one: an Unknown view (null) in the bundle says
+// nothing about the patient position, so it keeps the view the local study has rather than wiping it. A named view
+// replaces the local one, as every other field in the list does.
+const namesView = view => typeof view === 'string' && view.trim() !== '';
+
 function updatedStudy(local, { labelFile, entry }) {
   const patch = Object.fromEntries(UPDATED_FIELDS.map(field => [field, entry.study[field]]));
+  if (!namesView(patch.view)) patch.view = local.view;
   return { ...local, ...patch, labelComment: commentOf(entry.study, entry.record), labelFile };
 }
 

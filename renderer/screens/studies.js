@@ -598,16 +598,31 @@ function writeFindFilters(patch) {
 
 // A press outside the open menu closes it. A press on a funnel is left to that funnel's click, so another column's
 // funnel opens its own menu in one click. Captured, so nothing on the page can stop it first.
-// A press on a row closes the menu and does NOT also open the row (ruling R9), but only because of how this works: the
-// refreshTable() below rebuilds the table on the pointerdown, so the row the press landed on is replaced before its
-// click arrives and the click finds nothing to open. Nothing else here guards the row; if the rebuild ever stopped
-// replacing the row, that click would open it as well. smoke-reviewer.mjs section 2 pins the behaviour.
+// A press on the table's rows closes the menu and does NOT also open the row (ruling R9), but only because of how this
+// works: the refreshTable() below rebuilds the table on the pointerdown, so the row the press landed on is replaced
+// before its click arrives and the click finds nothing to open. Nothing else here guards the row; if the rebuild ever
+// stopped replacing the row, that click would open it as well. smoke-reviewer.mjs section 2 pins the behaviour.
+// (2026-10-19, final review; ruling R16) Only a press on the rows is swallowed that way. A press anywhere else -- the
+// bar's Delete, Export or Segment, a column header's sort button or the select-all box, the search box, the tabs --
+// closes the menu without a rebuild (its node goes, its funnel reads closed) and its click proceeds to its control, so
+// one click both closes the menu and does what it says. The rebuilt header the click would otherwise land on is a new
+// node, which is why the header is excluded from the rebuild along with everything outside the table.
 function closeMenuOnOutsidePress(event) {
   if (openMenu === null) { listenOutside(false); return; }
-  if (event.target instanceof Element && event.target.closest('.studies-filter-menu, .studies-funnel')) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest('.studies-filter-menu, .studies-funnel')) return;
+  const column = openMenu;
   openMenu = null;
   menuShows = null;
-  refreshTable();
+  const onRows = Boolean(target && mounted?.host.contains(target) && !target.closest('.studies-table-head'));
+  if (onRows) { refreshTable(); return; }
+  listenOutside(false);
+  if (!mounted) return;
+  mounted.host.querySelectorAll('.studies-filter-menu').forEach((menu) => menu.remove());
+  const funnel = mounted.host.querySelector(`[data-find-key="filter-${column}"]`);
+  funnel?.setAttribute('aria-expanded', 'false');
+  funnel?.classList.remove('is-open');
+  mounted.menuClosedInPlace();
 }
 
 // Escape closes the open menu from wherever focus is (ruling R11): the menu's own Escape handler covers focus inside it
@@ -1300,7 +1315,8 @@ export function render(state) {
     }
     // (2026-10-19, header filters; spec 3.2) The open header menu does not survive a change to what it shows -- its
     // column's offered values and ticks, compared as JSON with what it was last drawn from, once per update and only
-    // while a menu is open: a run ending can add a status, a delete can take a folder away. The menu's own write
+    // while a menu is open: a delete can take a folder away, a load can add a root. (2026-10-19, final review; R13) The
+    // REGION and STATUS menus offer their whole vocabulary, so a run ending no longer changes them. The menu's own write
     // (menuWriting) is the change the person just made, which the redrawn menu shows, so it becomes the new baseline.
     // Leaving for the Parameters tab closes it too, as it withdraws the Delete prompt: the hidden panel has no layout
     // to place it by.
@@ -1334,10 +1350,12 @@ export function render(state) {
     // findSort and findFilters are what the bar, the ticks, the header and its menus read
     // (2026-10-19: findFilters replaced the bar's location and status filters); deletingStudies is
     // what Delete and Export read: every store key this screen reads must be here, or it silently
-    // stops repainting for it.
+    // stops repainting for it. openMenu is the LAST entry on purpose (2026-10-19, final review; R16):
+    // menuClosedInPlace() below rewrites that one slot when an outside press closes the menu without a
+    // rebuild.
     const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, editingSubject, exporting,
-      importing, pendingImport, openMenu, live.deletingStudies, live.paramSelected, live.batch, live.findSort,
-      live.findFilters];
+      importing, pendingImport, live.deletingStudies, live.paramSelected, live.batch, live.findSort,
+      live.findFilters, openMenu];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
     // The summary always describes the whole library, not the filtered view, and counts with
@@ -1385,6 +1403,15 @@ export function render(state) {
     }
   }
 
+  // (2026-10-19, final review; R16) An outside press that closes the menu without a rebuild (closeMenuOnOutsidePress)
+  // leaves the table exactly as a rebuild with no menu would draw it, so the gate's key is told so: its last slot, the
+  // open menu, becomes null. Left saying the menu was open, the gate would take the funnel reopening that same menu for
+  // no change and draw nothing; cleared wholesale instead, the next notification of any kind would rebuild, and one
+  // landing between the press and its click would swallow the click again.
+  function menuClosedInPlace() {
+    if (lastKey !== null) lastKey = [...lastKey.slice(0, -1), null];
+  }
+
   const root = el('main', { class: 'studies-page' },
     el('div', { class: 'studies-page-inner' },
       el('div', { class: 'studies-header' },
@@ -1394,7 +1421,7 @@ export function render(state) {
       tabs,
       findPanel,
       parametersHost));
-  mounted = { update, host: tableHost, bar: barHost, zone };
+  mounted = { update, host: tableHost, bar: barHost, zone, menuClosedInPlace };
   update(state);
   // (2026-10-19) Back from a study lands on its row. The panel is rebuilt on every trip, so a fresh mount starts at
   // the top, and a reviewer returning from the fortieth film had to scroll down to it again. render() returns a

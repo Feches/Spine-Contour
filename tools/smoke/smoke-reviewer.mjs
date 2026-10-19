@@ -6,9 +6,10 @@
 // runs one segmentation of the sample film, so the models must load). Forty unsegmented records SP-9500..SP-9539 are
 // injected at the start, with paths that point nowhere (the scroll and navigation sections need rows, not films), and
 // removed at the end; the first three carry the subjects RVW-NAV-0..2 for the SUBJECT menu. Section 2 makes one demo
-// study Needs review in the store (demo studies are never saved) and restores it. Section 4 injects SP-9000 through
-// inject-study.js, as the other suites do, and section 5 segments it; it is left, segmented, as smoke-studies.mjs
-// leaves it. Section 6 seeds the Workspace screen's folder table and clears it.
+// study Needs review in the store (demo studies are never saved) and restores it. Section 3 (2026-10-19, final review)
+// marks every film the Segmented, Needs review and Hand-placed ticks keep reviewed, in the store, and puts each mark
+// back as it was. Section 4 injects SP-9000 through inject-study.js, as the other suites do, and section 5 segments it;
+// it is left, segmented, as smoke-studies.mjs leaves it. Section 6 seeds the Workspace screen's folder table and clears it.
 //
 // Reads the DOM and the store only; no screenshots.
 import fs from 'node:fs';
@@ -211,9 +212,11 @@ try {
     && m.column === 'status' && m.role === 'dialog' && m.label === 'Filter by status', { fn, m });
   check('2. focus lands on the menu\'s first control, All', (await focusedKey()) === 'filter-status-all', await focusedKey());
   check('2. the menu is drawn whole: inside the window, below the header row, nothing over it', m.inWindow && m.belowHeader && m.onTop, m);
-  const pills = await cdp.evaluate(`import('./renderer/data/find.js').then(async (f) => f.findFilterOptions((await import('./renderer/store.js')).getState().studies).status.map((o) => ['filter-status-' + o.value, o.label, false]))`);
-  check('2. the options read the pills present, in workflow order, none ticked', JSON.stringify(m.options) === JSON.stringify(pills)
-    && pills.some((p) => p[1] === 'Unsegmented') && pills.some((p) => p[1] === 'Segmented'), { options: m.options, pills });
+  // (2026-10-19, final review; R13) The STATUS menu offers all seven pills, Processing included, whatever the library
+  // holds: a tick on a status no film shows any more must not dissolve.
+  const pills = [['unseg', 'Unsegmented'], ['proc', 'Processing'], ['fail', 'Failed'], ['rev', 'Needs review'], ['hand', 'Hand-placed'],
+    ['seg', 'Segmented'], ['ok', 'Reviewed']].map(([value, label]) => [`filter-status-${value}`, label, false]);
+  check('2. the options read the seven pills in workflow order, none ticked', JSON.stringify(m.options) === JSON.stringify(pills), { options: m.options, pills });
   check('2. the STATUS sort items read Workflow order and Reverse', JSON.stringify(m.sorts) === JSON.stringify([['sort-status-asc', 'Workflow order'], ['sort-status-desc', 'Reverse']]), m.sorts);
 
   await tick('status', 'unseg');
@@ -276,14 +279,26 @@ try {
   await clickRow(clearRow);
   await cdp.settle(200);
   check('2. a click on a row with a menu open closes the menu and does not open the row', (await menu()) === null && (await cdp.state()).screen === 'studies', { menu: await menu(), screen: (await cdp.state()).screen });
+  // A click on a column header with a menu open (2026-10-19, final review; R16): the menu closes AND the header's sort
+  // button does what it says on that one click, since only a press on the rows is swallowed by the rebuild.
+  await press('filter-status');
+  const sortBefore = (await cdp.state()).findSort;
+  await press('sort-date');
+  const sortAfter = (await cdp.state()).findSort;
+  check('2. a click on a header\'s sort button with a menu open closes the menu and sorts on that one click',
+    (await menu()) === null && (await funnel('status')).expanded === 'false' && sortBefore.key === 'date' && sortBefore.dir === 'desc'
+    && sortAfter.key === 'date' && sortAfter.dir === 'asc', { menu: await menu(), sortBefore, sortAfter });
+  await cdp.setState("{ findSort: { key: 'date', dir: 'desc' } }"); await cdp.settle(150);
   await press('filter-status');
   await press('filter-region');
   m = await menu();
   check('2. opening the REGION menu closes the STATUS menu: one menu at a time', m?.count === 1 && m.column === 'region'
     && (await funnel('status')).expanded === 'false' && (await funnel('region')).expanded === 'true', { m, status: await funnel('status') });
 
-  // REGION: the none key, a tick, All, the close button.
-  check('2. the REGION menu offers Unknown under the none key', m.options.some(([key, label]) => key === 'filter-region-__unknown__' && label === 'Unknown'), m.options);
+  // REGION: the none key, a tick, All, the close button. (2026-10-19, final review; R13) The menu offers all four regions,
+  // Unknown under the none key, whatever the library holds.
+  check('2. the REGION menu offers the four regions, Unknown under the none key', JSON.stringify(m.options.map(([key, label]) => [key, label]))
+    === JSON.stringify([['filter-region-__unknown__', 'Unknown'], ['filter-region-lumbar', 'Lumbar'], ['filter-region-cervical', 'Cervical'], ['filter-region-full_spine', 'Full spine']]), m.options);
   await tick('region', '__unknown__');
   const unknownRows = await cdp.evaluate("[...document.querySelectorAll('.studies-row .studies-cell-region')].map((c) => [c.textContent, c.classList.contains('studies-cell-unknown')])");
   check('2. ticking Unknown keeps only rows whose REGION reads Unknown', unknownRows.length >= COUNT && unknownRows.every(([text, muted]) => text === 'Unknown' && muted), { count: unknownRows.length });
@@ -426,6 +441,21 @@ try {
   await cdp.click(prev.cx, prev.cy); await cdp.settle(150);
   check('3. the Previous button opens the previous row', (await openId()) === order[0].id, { now: await openId(), expected: order[0].id });
 
+  // The region bar's selects yield the arrows (2026-10-19, final review; R14): on a closed select an arrow is Chromium's
+  // "pick the next option", whose change event ran changeRegion and wiped the film's result. With focus put on the
+  // Region select the way the keyboard leaves it there, ArrowRight navigates and the film's region is untouched.
+  const regionOf = (id) => cdp.evaluate(`import('./renderer/store.js').then((m) => { const s = m.getState().studies.find((x) => x.id === ${JSON.stringify(id)}); return s ? { region: s.region ?? null, anteriorSide: s.anteriorSide ?? null } : null; })`);
+  const regionBefore = await regionOf(order[0].id);
+  const regionFocus = await cdp.evaluate("(() => { const s = document.querySelector('.analysis-region-bar select'); if (!s) return null; s.focus(); return { focused: document.activeElement === s, label: s.getAttribute('aria-label'), value: s.value, index: s.selectedIndex, options: s.options.length, disabled: s.disabled }; })()");
+  // The select must have a next option for the key to pick, or the check below would hold whatever the key did.
+  check('3. focus is on the enabled Region select, which has a next option', regionFocus?.focused === true && regionFocus.label === 'Spine region'
+    && regionFocus.disabled === false && regionFocus.index < regionFocus.options - 1, regionFocus);
+  await cdp.key('ArrowRight'); await cdp.settle(200);
+  check('3. ArrowRight on the Region select opens the next row', (await openId()) === order[1].id, { now: await openId(), expected: order[1].id });
+  const regionAfter = await regionOf(order[0].id);
+  check('3. and the film it left keeps its region: the select did not pick its next option', regionBefore !== null
+    && JSON.stringify(regionAfter) === JSON.stringify(regionBefore), { regionBefore, regionAfter, select: regionFocus.value });
+
   // To the last row and no further.
   for (let i = 0; i < total - 1; i += 1) await cdp.key('ArrowRight');
   await cdp.settle(200);
@@ -452,8 +482,8 @@ try {
   check('3. and the position is its place among them', h.position === `${segCount} / ${segCount}`, h);
 
   // Review-then-next: under the three results nobody has marked, ticked together (Segmented, Needs review,
-  // Hand-placed; the ticks no film shows are no filter), the open film marked reviewed leaves the list and its next
-  // still works.
+  // Hand-placed; a tick no film shows keeps nothing, and the others still OR with it), the open film marked reviewed
+  // leaves the list and its next still works.
   await cdp.setState(statusOnly('seg', 'rev', 'hand')); await cdp.settle(150);
   await cdp.key('ArrowLeft'); await cdp.settle(150);
   const midId = await openId();
@@ -474,6 +504,42 @@ try {
   await cdp.key('ArrowRight'); await cdp.settle(100);
   check('3. ArrowRight in edit mode does not navigate', (await openId()) === beforeEdit, await openId());
   await cdp.setState('{ editing: false }'); await cdp.settle(100);
+
+  // The queue reviewed to its end (2026-10-19, final review; R13): every film the three ticks keep is marked reviewed,
+  // through the store as above. The ticks stay -- the STATUS menu still offers what they name -- so the list is empty
+  // rather than the whole library, the header reads – / 0 and neither arrow goes anywhere. The marks are put back after,
+  // the ticks cleared through the menu, and the film reopened for the steps below.
+  await cdp.setState(statusOnly('seg', 'rev', 'hand')); await cdp.settle(150);
+  const queue3 = await cdp.evaluate(`import('./renderer/store.js').then(async (m) => {
+    const f = await import('./renderer/data/find.js');
+    const kept = f.findVisible(m.getState()).map((x) => [x.id, x.reviewedAt ?? null]);
+    const ids = kept.map(([id]) => id);
+    m.setState((s) => ({ studies: s.studies.map((x) => (ids.includes(x.id) ? { ...x, reviewedAt: '2026-10-19T10:00:00.000Z' } : x)) }));
+    return kept;
+  })`);
+  await cdp.settle(150);
+  h = await header();
+  check('3. the last of the queue marked reviewed: the position reads – / 0 and both arrows are disabled', queue3.length > 0
+    && h.position === '– / 0' && h.prevDisabled === true && h.nextDisabled === true, { queued: queue3.length, h });
+  const stuck = await openId();
+  await cdp.key('ArrowRight'); await cdp.settle(150);
+  await cdp.key('ArrowLeft'); await cdp.settle(150);
+  check('3. and the arrow keys stay on the open film', (await openId()) === stuck, { stuck, now: await openId() });
+  check('3. the store still holds the three ticks', JSON.stringify((await cdp.state()).findFilters.status) === '["seg","rev","hand"]', (await cdp.state()).findFilters.status);
+  await clickBack();
+  const empty3 = await cdp.evaluate("document.querySelector('.studies-empty')?.textContent ?? null");
+  fn = await funnel('status');
+  check('3. back on the list: no rows, the filters empty copy, and the STATUS funnel still reads its three ticks', (await rows()) === 0
+    && empty3 === 'No studies match these filters.' && fn.active && fn.count === '3', { rows: await rows(), empty3, fn });
+  await cdp.evaluate(`import('./renderer/store.js').then((m) => { const was = new Map(${JSON.stringify(queue3)});
+    m.setState((s) => ({ studies: s.studies.map((x) => (was.has(x.id) ? { ...x, reviewedAt: was.get(x.id) } : x)) })); return true; })`);
+  await cdp.settle(150);
+  await press('filter-status'); await press('filter-status-none');
+  await cdp.key('Escape'); await cdp.settle(100);
+  check('3. the marks put back and the ticks cleared, every row is back', (await rows()) === all && (await cdp.state()).findFilters.status.length === 0, await rows());
+  await cdp.evaluate(`document.querySelector('.studies-row[data-study-id="${stuck}"]')?.scrollIntoView({ block: 'center' })`);
+  await cdp.settle(100);
+  check('3. the film reopens for the steps below', (await clickRow(stuck)) && (await openId()) === stuck && (await cdp.state()).screen === 'analysis', { stuck, now: await openId() });
 
   // Back after a run of arrows lands on the film last open, with the filter still showing.
   await cdp.setState(statusOnly('unseg')); await cdp.settle(100);
@@ -516,6 +582,20 @@ try {
   const m4 = await stage();
   check('4. a film whose source is missing says so in the region note', missing && m4.note === 'Original preview unavailable: The source film could not be found.', m4.note);
   check('4. its card stays the full UNSEGMENTED card with the run button', m4.cardHidden === false && m4.strip === false && m4.eyebrow === 'UNSEGMENTED' && m4.button.text === 'Run segmentation', m4);
+  // (2026-10-19, final review) The header's meta line reads the region as the REGION cell does: an Auto detect film no
+  // run has placed is UNKNOWN there, not AUTO; its view is Unknown too.
+  const meta4 = await cdp.evaluate("document.querySelector('.analysis-header > .analysis-meta:not(.analysis-editing)')?.textContent ?? null");
+  check('4. the header meta line reads UNKNOWN for the undetected Auto detect film', typeof meta4 === 'string' && meta4.startsWith('UNKNOWN · UNKNOWN · '), meta4);
+  // (2026-10-19, final review) The word Unknown typed in the drawer's VIEW cell is the Unknown view, null, not the word.
+  // The film is given a view first, through the store, so the null is the typed word's doing.
+  await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (x.id === ${JSON.stringify(injectedId(0))} ? { ...x, view: 'Standing lateral' } : x)) })))`);
+  await cdp.settle(150);
+  const viewCell = await cdp.evaluate("(() => { const e = document.querySelector('.clinical-cell[data-kind=\"study\"][data-field=\"view\"]'); if (!e) return null; e.focus(); e.select(); return { value: e.value, focused: document.activeElement === e, disabled: e.disabled }; })()");
+  await cdp.typeText('Unknown');
+  await cdp.key('Tab'); await cdp.settle(200);
+  const typedView = await cdp.evaluate(`import('./renderer/store.js').then((m) => { const s = m.getState().studies.find((x) => x.id === ${JSON.stringify(injectedId(0))}); return s ? { view: s.view } : null; })`);
+  check('4. Unknown typed in the drawer\'s VIEW cell stores null, the Unknown view', viewCell?.value === 'Standing lateral' && viewCell.focused === true
+    && typedView !== null && typedView.view === null, { viewCell, typedView });
   await clickBack();
   await cdp.setState('{ query: "" }'); await cdp.settle(100);
 
@@ -531,7 +611,7 @@ try {
   // parked (section 4), so its REGION cell reads Unknown, muted. One real run of the sample film, through
   // run-and-wait.js as the other suites run it, and the cell reads Lumbar the moment the run is done: the completion
   // write sets geometry.region, and a result with none is lumbar (data/cervical.js regionKey). The REGION menu offers
-  // Lumbar (the demo studies have measurements, so it offered Lumbar already; the tick below is what shows SP-9000 in it).
+  // Lumbar (it offers all four regions since the final review's R13; the tick below is what shows SP-9000 in it).
   const regionCell = (id) => cdp.evaluate(`(() => { const c = document.querySelector('.studies-row[data-study-id="${id}"] .studies-cell-region'); return c ? { text: c.textContent, muted: c.classList.contains('studies-cell-unknown') } : null; })()`);
   await scrollListTo('top');
   await cdp.settle(100);

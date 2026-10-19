@@ -67,6 +67,16 @@ async function waitForState(predicateSource, timeoutMs) {
   return false;
 }
 
+// Polls a DOM expression the same way; false at the deadline, never a throw.
+async function waitForDom(expression, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await cdp.evaluate(expression)) return true;
+    await cdp.settle(150);
+  }
+  return false;
+}
+
 try {
   // 1. Land on Studies with an empty query; heading, summary shape, row count.
   await cdp.setState('{ ack: true, screen: "studies", query: "" }');
@@ -291,6 +301,11 @@ try {
   check('SP-9000 row has layout', Boolean(sp9000Rect), sp9000Rect);
   await cdp.click(sp9000Rect.cx, sp9000Rect.cy);
   await cdp.settle(150);
+  // (2026-10-19, final review; R15) The film's decode starts only after a 150 ms settle, so it can land, and the full
+  // UNSEGMENTED card collapse into the strip along the bottom of the stage, between reading the Run button's place and
+  // clicking it: the click then hits the film. Wait for the strip first (SP-9000 is lumbar, its bytes parked).
+  const settled7 = await waitForDom("document.querySelector('.run-card')?.classList.contains('run-card-strip') === true", 15000);
+  check('SP-9000\'s X-ray lands and its card settles into the UNSEGMENTED strip', settled7 === true, settled7);
   const runCardButton = await cdp.evaluate(`(() => {
     const b = document.querySelector('.run-button');
     if (!b) return null;
@@ -514,6 +529,9 @@ try {
   await openFilterMenu('workspace');
   const workspace10 = await menuLabels();
   check('the WORKSPACE menu offers the injected root, then Added by hand', JSON.stringify(workspace10) === JSON.stringify(['Fusion2025', 'Added by hand']), workspace10);
+  // (2026-10-19, final review) A root's row names its full path on its title, as the bar's Workspace select did.
+  const workspaceTitles10 = await cdp.evaluate(`[...document.querySelectorAll('.studies-filter-menu .menu-check')].map((l) => l.title)`);
+  check('the WORKSPACE menu\'s root row carries the root\'s full path on its title, Added by hand none', JSON.stringify(workspaceTitles10) === JSON.stringify(['C:\\smoke\\Fusion2025', '']), workspaceTitles10);
   await openFilterMenu('folder');
   const folder10 = await menuLabels();
   check('the FOLDER menu offers every folder in the library, first seen first', JSON.stringify(folder10) === JSON.stringify(['pre-op', 'design_src']), folder10);

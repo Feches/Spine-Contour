@@ -283,8 +283,16 @@ async function openFromList(id) {
   return opened;
 }
 
+// (2026-10-19, final review; R15) Enabled is not enough: until the film is on the stage the run card covers the toolbar,
+// and an unsegmented film's preview or decode now starts 150 ms after it opens, so a click in that time lands on the
+// card (section 12 read 130/145 that way). The tool must also be the topmost thing at its own centre.
 async function enterEdit() {
-  await until(`(() => { const b = document.querySelector(${js(EDIT_TOOL)}); return b && !b.disabled; })()`, 15000);
+  await until(`(() => {
+    const b = document.querySelector(${js(EDIT_TOOL)});
+    if (!b || b.disabled) return false;
+    const r = b.getBoundingClientRect();
+    return b.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+  })()`, 15000);
   await clickSelector(EDIT_TOOL);
   return until(`Boolean(document.querySelector('.lv-panel .lv-summary'))`, 10000);
 }

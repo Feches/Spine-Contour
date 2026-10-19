@@ -480,7 +480,9 @@ export function structuralFromRow(row, structural) {
     subjectId: subject === '' ? null : subject,
     timepoint: timepoint === '' ? null : (normaliseTimepoint(timepoint) ?? timepoint),
     filmDate,
-    view: view === '' ? null : (normaliseView(view) ?? view),
+    // (2026-10-19, final review) A cell reading Unknown, in any case, is the Unknown view, null, as a blank cell is:
+    // stored as the word it would sit beside the sentinel as a second Unknown in the VIEW menu and the grid's filter.
+    view: view === '' || /^unknown$/i.test(view) ? null : (normaliseView(view) ?? view),
     badDate: date !== '' && filmDate === null,
   };
 }

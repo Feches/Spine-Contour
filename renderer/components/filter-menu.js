@@ -2,9 +2,10 @@
  * One Find list header's filter menu (2026-10-19, header filters; spec F1, section 3.2): the menu's DOM only. The
  * screen (screens/studies.js) owns which menu is open, where it sits, the store writes and the focus; every control
  * here reports through a callback. `All` and `None` both clear the column's ticks (spec 3.1: a column never filters
- * to nothing by itself), then one tick box per value the library holds, a divider, the column's two sort directions,
- * and a close button. SUBJECT has no values to tick: its menu holds the "contains" text box in their place, and no
- * `All` / `None`, which would only clear the box.
+ * to nothing by itself), then one tick box per value the column offers (data/find.js findFilterOptions: the values the
+ * library holds, or, for REGION and STATUS since the final review's R13, their whole vocabulary), a divider, the
+ * column's two sort directions, and a close button. SUBJECT has no values to tick: its menu holds the "contains" text
+ * box in their place, and no `All` / `None`, which would only clear the box.
  *
  * Every control carries a data-find-key (the Global Constraints' hook names), so the screen's focus snapshot can hand
  * focus back to the same control after the table rebuilds behind the menu. The menu does not take focus itself: it is
@@ -12,6 +13,7 @@
  */
 import { el } from '../dom.js';
 import { checkbox } from './checkbox.js';
+import { HAND_ADDED } from '../data/parameters.js';
 
 // The 24-unit stroke-icon convention of screens/studies.js's TRASH_SVG and components/viewer.js's toolbar.
 const CLOSE_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6 L18 18"></path><path d="M18 6 L6 18"></path></svg>';
@@ -35,10 +37,17 @@ export function filterMenu({
         el('button', { type: 'button', class: 'studies-filter-item', 'data-find-key': key('all'), onClick: () => onAll() }, 'All'),
         el('button', { type: 'button', class: 'studies-filter-item', 'data-find-key': key('none'), onClick: () => onNone() }, 'None')),
       el('div', { class: 'studies-filter-options' },
-        options.map((option) => checkbox({
-          key: key(option.value), keyAttr: 'data-find-key', label: option.label, variant: 'menu',
-          checked: ticked.includes(option.value), onChange: () => onToggle(option.value),
-        }))),
+        options.map((option) => {
+          const row = checkbox({
+            key: key(option.value), keyAttr: 'data-find-key', label: option.label, variant: 'menu',
+            checked: ticked.includes(option.value), onChange: () => onToggle(option.value),
+          });
+          // (2026-10-19, final review) A WORKSPACE row names its root's full path on hover, as the bar's Workspace
+          // select's options did: the label is the root's last folder, which two roots can share. Added by hand has
+          // no root to name.
+          if (column === 'workspace' && option.value !== HAND_ADDED) row.title = option.value;
+          return row;
+        })),
     ];
   const sorts = [['asc', sortLabels[0]], ['desc', sortLabels[1]]].map(([dir, text]) => {
     const active = sortKey === column && sortDir === dir;
