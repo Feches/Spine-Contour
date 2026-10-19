@@ -1,7 +1,11 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-10-15
-**Branch:** `worktree-annotation-round-2` in the worktree `.claude\worktrees\annotation-round-2` of the main checkout,
+**Last updated:** 2026-10-19
+**Branch:** `worktree-reviewer-navigation` in the worktree `.claude\worktrees\reviewer-navigation` of the main checkout,
+off `origin/main` @ `cc1b548` (v1.2.0): the reviewer navigation round (previous / next over the Find list's filtered
+order, the status filter, every unsegmented film's X-ray on the stage, the list's scroll fix) — BUILT, at the owner's
+gate, not pushed (first section under "Where things stand").
+**2026-10-15 branch (released):** `worktree-annotation-round-2` in the worktree `.claude\worktrees\annotation-round-2` of the main checkout,
 off `origin/main` @ `06c8cdd` (v1.1.1): annotation editor round 2 (a comment on the label record, the Hand-placed
 status, REVERT per level) — its owner gate passed; its 1.2.0 release commit is `7dec644`, backed up on `origin`, no PR
 yet (second section under "Where things stand") — and, on the same branch after it, the annotation bundle export and
@@ -59,7 +63,86 @@ algorithm changed; no screenshots were added.
 
 ## Where things stand
 
-### Annotation bundles: export a folder of studies, import it into another library: BUILT, final review fixed, at the owner's gate, not pushed (branch `worktree-annotation-round-2`, worktree `.claude/worktrees/annotation-round-2`, on top of the editor round, off `origin/main` @ `06c8cdd`, v1.1.1)
+### Reviewer navigation: previous / next over the filtered list, a status filter, every unsegmented film's X-ray, the scroll fix: BUILT, at the owner's gate, not pushed (branch `worktree-reviewer-navigation`, worktree `.claude/worktrees/reviewer-navigation`, off `origin/main` @ `cc1b548`, v1.2.0)
+
+2026-10-19. The owner, reviewing segmentations: "Right now I have to click back to studies to see another image. I
+want to be able to click through it with my arrow keys", over the list as filtered by workspace or folder, and by a
+new status filter ("filter only unreviewed and then click arrows"); two smaller asks: lumbar films opened unsegmented
+showed no image ("Default view should be the xray and it should say at the top or bottom bar that it is
+unsegmented"), and selecting a study far down the list "puts me all the way at the bottom scroll". A bounded change,
+designed in chat (no spec file): four commits, each verified over CDP on a scratch profile with synthetic films, no
+screenshots.
+
+- **The scroll fix** (`d670f0d`). Reproduced first: the tick box's hidden native input (`components/checkbox.js`) is
+  `position: absolute` and had no positioned ancestor, so its containing block was the page; forty rows left forty
+  1px inputs at the list's CONTENT coordinates, outside the list's own scroll clipping, and the document became
+  scrollable to the last row's depth (2844 px against an 837 px window). Ticking a row near the bottom focused that
+  input, the document scrolled to it and the app shell slid off the top of the window. `.checkbox-row` is now
+  `position: relative` (load-bearing comment in `styles/components.css`); the document's scroll height is the
+  window's again. And the Studies screen, rebuilt on every trip, centres the open study's row on the frame after the
+  router places it (`revealRow` in `screens/studies.js`), so Back lands on the film you left instead of at the top.
+- **The status filter** (`a81de5c`). A third dropdown after Folder (`data-find-key` `status`): All statuses, Not
+  reviewed, then Unsegmented, Processing, Failed, Needs review, Hand-placed, Segmented, Reviewed (`data/find.js`
+  `STATUS_FILTERS`, labelled by `statusLabel` so the dropdown and the column cannot disagree). Not reviewed is a
+  result nobody has marked: Segmented, Needs review or Hand-placed. Each row is matched by the pill it SHOWS
+  (`matchesStatus` with `state.running` and `state.batch`), so a film waiting in a batch is Processing here as in its
+  cell. The value is `state.findStatus`: session-only, replaced wholesale, like `findSort`; the Parameters grid never
+  reads it. Segment, Delete and Export act over the filtered rows as before; the summary counts the whole library; an
+  empty result reads the filters empty copy.
+- **Previous / next** (`3146038`). `data/find.js` `findOrder`, `findVisible`, `findNeighbour` and `findPosition` are
+  the one definition of the Find list's order and filters (the search box, the workspace and folder filters normalised
+  against the library, the status filter, the column sort); `matchesQuery` moved there from `screens/studies.js`,
+  which re-exports it, so `data/` never imports a screen. On the Analysis screen Left/Up open the row before the open
+  study and Right/Down the row after it, stepping from the study's OWN place in the full order whether or not it still
+  passes the filters (a film marked reviewed under Not reviewed has left the list; its next is still the row after
+  where it sat, so review-then-arrow goes straight down the list); nothing past either end, no wrap. The keys are
+  ignored inside text entry, dropdowns and sliders (`KEEPS_ARROWS`), with any modifier, when another handler already
+  took the event, and in edit mode, where the viewer's own window listener (registered first) nudges handles.
+  Beside Back the header carries Previous and Next (`.analysis-nav-prev`, `.analysis-nav-next`, `icon-btn`) with the
+  position between them (`.analysis-position`: `3 / 42`, or `– / 42` for a film the filters hide, the count on its
+  title), disabled at the ends and while editing, each title naming its neighbour. `openId` is a key of the Analysis
+  host (`router.js` `ANALYSIS_KEYS`, on that screen only: on Studies a delete clears it and the list must not be
+  rebuilt), so the host remounts for the new film exactly as a click on the list does, with `swap`'s focus restore
+  keeping a clicked Next focused; the screen's module-scope subscription skips an update whose `openId` is not its
+  mount's. A film opened from the Parameters tab navigates by the Find list's order too.
+- **Every unsegmented film's X-ray** (`2020b27`). Only cervical and full-spine films loaded their original before a
+  run (`previewOriginal`, the anterior-side evidence); a lumbar film opened to a dark stage under the UNSEGMENTED card.
+  Now every real film with no result is decoded at its default window through `ensureFilm`, the level editor's
+  loader (`screens/analysis.js` `showOriginal`; `loadOriginal` dispatches by region, for the open and after a Region
+  change), the region note reading `Loading original radiograph…` then clearing, or `Original preview unavailable:
+  <reason>` when the original cannot be read, in which case the full card stays and its Run segmentation offers the
+  relocate picker. Once the X-ray is on the stage the card keeps its classes and its button but is drawn as a STRIP
+  along the bottom (`components/viewer.js` `describeCard` `strip` -> `.run-card-strip`): no scrim, the film fully
+  visible, the eyebrow UNSEGMENTED, the title and the Run segmentation button on one line, the footer watermark lifted
+  above it. The header pill says Unsegmented above; the strip says it below. Window / level works on the decoded film.
+  Running, Queued, Failed, Unsupported-view, Loading and Film-unavailable keep their full cards. (The chat design said
+  the button would move to the region bar; the strip keeps it on the stage, where every suite and every habit finds
+  it, and is the "bottom bar" the owner asked for.)
+- **Counts** (2026-10-19, this worktree, scratch profiles under the session scratchpad, synthetic films, no
+  screenshots). Unit 1113 -> 1123 (`test/find.test.js`: the status filter, the order, the neighbour and the position;
+  `test/analysis.test.js`: `positionLabel`, `NAV_STEP`). `tools/smoke/smoke-reviewer.mjs` (new) 64/64, twice;
+  `smoke-parameters.mjs` 58/58; `smoke-studies.mjs` 151/151 on a fresh launch (146/151 when run after
+  `smoke-parameters.mjs` on one launch, which found the two fixes in `9dbb63c`: the return-to-row scroll fired on a
+  short list and pushed the search box off the top, and a Failed lumbar film's note gained the decode failure);
+  `smoke-workspace.mjs` 100/100; `smoke-persist.mjs` 42/42 then 55/55 across its restart (pass the suite
+  `SPINE_CONTOUR_USER_DATA` as well as the launcher: it checks the label file under that folder); `smoke-levels.mjs`
+  phase dom 145/145; `smoke-bundle.mjs` 17/17, 18/18, 9/9 across its three launches. Not run: `smoke-levels.mjs`
+  phase film (a real film), the gate suites of plan 04, a packaged build.
+- **Not done, on purpose.** No version bump and no CHANGELOG entry: the release is the owner's step after their gate
+  (`docs/release-main.md`). A draft entry for the release notes: *Previous and next on the Analysis screen: the arrow
+  keys (Left/Up, Right/Down) and two header buttons step through the Find list exactly as it is filtered and sorted,
+  with the film's place shown as `3 / 42`; the Find list filters by status, with a Not reviewed option; every
+  unsegmented film opens on its X-ray, with the UNSEGMENTED strip along the bottom of the stage and window / level
+  available; ticking a row far down the list no longer scrolls the app off the window, and Back from a film lands on
+  its row.*
+- **The gate.** On real films: open a film, press Right and Left through the list with a workspace filter set, then
+  set Status to Not reviewed, open the first, Mark reviewed, press Right; check the `3 / 42` and the greyed arrows at
+  the ends; open an unsegmented lumbar film and confirm the X-ray shows with the strip, then Run segmentation from the
+  strip; a DICOM unsegmented film too; tick a row near the bottom of a long list and confirm nothing jumps; Back from a
+  film far down the list lands on its row. In edit mode the arrows still nudge handles and the header arrows are
+  greyed.
+
+### Annotation bundles: export a folder of studies, import it into another library: RELEASED as v1.2.0 (PR #66, merge `cc1b548`, 2026-10-16) (branch `worktree-annotation-round-2`, worktree `.claude/worktrees/annotation-round-2`, on top of the editor round, off `origin/main` @ `06c8cdd`, v1.1.1)
 
 2026-10-15. A study's data lives in four places (its row in `studies.json`, the prediction sidecar, the label record, the
 original film at an external path) and nothing moved them; the only export was the measurements CSV, which cannot be

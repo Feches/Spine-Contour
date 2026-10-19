@@ -829,6 +829,51 @@ exactly the two films. Each phase ends with the harness's no-console-errors chec
 processor; the three phases in order on fresh `%TEMP%` profiles as above, one app at a time; DOM, store and file reads
 only, no screenshots): phase a **17/17**, phase b **18/18**, phase c **9/9**.
 
+## Running the reviewer navigation suite
+
+`smoke-reviewer.mjs` (2026-10-19) drives the four pieces of the reviewer navigation work against the real app: the
+Studies list's scroll fix, its status filter, the Analysis screen's previous / next (the arrow keys and the header
+group) over the list's filtered order, and an unsegmented film's X-ray on the stage with the UNSEGMENTED strip. No
+model runs; section 4 decodes the sample film through the real `/decode`, so the backend must be up. Reads the DOM and
+the store only; no screenshots.
+
+```
+node tools/smoke/launch.mjs
+node tools/smoke/smoke-reviewer.mjs
+node tools/smoke/cdp.mjs --quit
+```
+
+- **Ids** `SP-9500`–`SP-9539`, forty unsegmented records injected at the start with paths that point nowhere (the scroll
+  and navigation sections need rows, not films), newest first by `addedAt` under the default sort, removed in
+  `finally`; section 4 injects `SP-9000` through `inject-study.js`, as the other suites do, and leaves it.
+- **Any profile, any screen.** Section 3 reads the list's own row order under the Unsegmented filter as its
+  expectation, so unsegmented films earlier suites left (`SP-9004`, `SP-9010`) only lengthen the list. It may follow
+  `smoke-studies.mjs` on one launch; never between `smoke-persist.mjs --phase run` and `--phase restart` (it writes
+  the store).
+- **What it checks** (64). (1) The document never grows past the window while the list holds forty rows (the hidden
+  tick inputs used to escape the list's clipping, `styles/components.css` `.checkbox-row`), ticking the last row
+  leaves the app shell in place, and Back from a row near the bottom lands with that row in view. (2) The status
+  dropdown's nine options in order; Unsegmented, Segmented and Failed filter by the pill each row shows; the filters
+  empty copy; the summary still counts the whole library; the dropdown keeps focus through the rebuilds. (3) Under
+  Unsegmented: `1 / n` with Previous disabled, the titles naming the neighbours, ArrowRight/Down and ArrowLeft/Up,
+  nothing past either end, Shift+arrow and arrows inside the name field ignored, the header buttons (Next keeps
+  focus across the remount), the position following a filter change, an en dash for a hidden film whose ArrowLeft
+  still opens the previous shown row, review-then-ArrowRight under Not reviewed, edit mode disabling both buttons and
+  refusing the keys, and Back after twenty arrows landing on the film last open with the dropdown still showing the
+  filter. (4) `SP-9000` decodes onto the static canvas (157x280), the card becomes the strip along the bottom of the
+  stage, under 70 px, the footer above it, the header pill Unsegmented, the note clear, window / level enabled; a film
+  whose path points nowhere keeps the full card with `Original preview unavailable: The source film could not be
+  found.` in the note; reopened from the list, `SP-9000` shows the strip at once from the cache.
+
+Run on 2026-10-19 (worktree `reviewer-navigation`): 64/64 on a fresh scratch profile after `smoke-parameters.mjs`
+(58/58), and 64/64 again after `smoke-studies.mjs` (151/151) on another fresh launch; `smoke-workspace.mjs` 100/100,
+`smoke-persist.mjs` 42/42 then 55/55 and `smoke-levels.mjs` phase dom 145/145 on the same tree. One lesson from that
+run, now also in the persistence section's spirit: `smoke-persist.mjs` reads `SPINE_CONTOUR_USER_DATA` itself for the
+label file it checks after Save edits, so pass the launcher's folder to the suite too, or its phase-1 check 11 reads a
+file in the wrong profile and reports 41/42. And `smoke-studies.mjs` straight after `smoke-parameters.mjs` on one
+launch (the documented order) is what found `9dbb63c`: the Studies screen's return-to-row scroll (2026-10-19) must
+leave a row already in view alone, or a short list scrolls its own search box off the top.
+
 ## Library
 
 `cdp-lib.mjs` exports `connect()`, whose returned object provides trusted-input helpers

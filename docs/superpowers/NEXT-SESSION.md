@@ -1,5 +1,14 @@
 # Next session — no queued prompt
 
+**2026-10-19:** the reviewer navigation round (previous / next over the Find list's filtered order, the status filter,
+every unsegmented film's X-ray, the list's scroll fix) is BUILT on branch `worktree-reviewer-navigation` in the
+worktree `.claude/worktrees/reviewer-navigation`, off `origin/main` @ `cc1b548` (v1.2.0), and waits at the owner's gate,
+not pushed. On "gate passed": push the branch, hand over the compare link
+`https://github.com/Feches/Spine-Contour/compare/main...worktree-reviewer-navigation?expand=1`, and the release (the
+version bump, the CHANGELOG entry drafted in HANDOFF's first section, `docs/releases/<version>.md`) is a separate commit
+the owner asks for; fetch tags first. The record is HANDOFF's first "Where things stand" section and the top paragraph
+of `CLAUDE.md`.
+
 Written 2026-10-02 at the close of the Failed-status additions on 1.0.13 (issue #39 follow-up). That work is done:
 executed, reviewed, through the human gate, merged with v1.0.14 and released as 1.0.15 on branch
 `claude/issue-39-failed-status-port` (release commit `2687cf5`), pushed to `origin`; v1.0.15 publishes when its PR to

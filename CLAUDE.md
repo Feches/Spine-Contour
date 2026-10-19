@@ -1,5 +1,36 @@
 # Spine Contour
 
+**2026-10-19 reviewer navigation (BUILT, at the owner's gate, not pushed):** branch `worktree-reviewer-navigation` in
+worktree `.claude/worktrees/reviewer-navigation`, off `origin/main` @ `cc1b548` (v1.2.0). The owner's ask: flip through
+films with the arrow keys instead of going back to the list, over the list as filtered; filter the list by status;
+unsegmented lumbar films opened to a dark stage; ticking a row far down the list scrolled the app off the window. Four
+commits, each verified over CDP on a scratch profile: (1) `d670f0d` the scroll fix -- the tick box's hidden native
+input is absolutely positioned and had no positioned ancestor, so forty rows made the DOCUMENT scrollable to the last
+row's depth and a tick near the bottom focused that input and slid the shell off the top; `.checkbox-row` is now
+`position: relative` (load-bearing comment in `styles/components.css`), and the Studies screen centres the open study's
+row on the frame after the router places it (`revealRow`), so Back lands on the film you left; (2) `a81de5c` the
+status filter -- a third dropdown after Folder, `state.findStatus` (session-only, like `findSort`), options All
+statuses, Not reviewed (Segmented, Needs review or Hand-placed) and the seven pills in workflow order (`data/find.js`
+`STATUS_FILTERS`, `matchesStatus` by the pill the row shows, `normaliseStatusFilter`); (3) `3146038` previous / next
+-- `data/find.js` `findOrder`, `findVisible`, `findNeighbour`, `findPosition` are the ONE definition of the list's
+order and filters (`matchesQuery` moved there from `screens/studies.js`, which re-exports it); on the Analysis screen
+Left/Up and Right/Down open the row before and after the open study, stepping from its own place in the order whether
+or not it still passes the filters (review-then-arrow goes straight down a Not reviewed list), no wrap, ignored inside
+text entry, dropdowns, sliders, with a modifier and in edit mode (the viewer nudges handles); the header carries
+Previous and Next buttons with `3 / 42` between them (an en dash when the filters hide the film); `openId` is a key of
+the Analysis host (`router.js` `ANALYSIS_KEYS`, that screen only) so the host remounts for the new film as a click on
+the list does, and the module-scope subscription skips an update whose openId is not its mount's; (4) `2020b27` every
+real film with no result shows its X-ray by default (`showOriginal` through `ensureFilm`, the level editor's loader;
+`loadOriginal` dispatches by region, cervical and full spine keeping `previewOriginal`), the region note reading the
+progress or why the original could not be read, and the UNSEGMENTED card drawn as a STRIP along the bottom of the
+stage once the film is there (`components/viewer.js` `describeCard` `strip`, `.run-card-strip`, the same classes and
+button, so the harness drives an unsegmented film as before; the footer watermark lifts above it); then `9dbb63c`, two
+fixes the re-run suites found (the return-to-row scroll leaves a row already in view alone; a Failed lumbar film's
+note keeps to its stored reason). Unit 1113 -> 1123; `tools/smoke/smoke-reviewer.mjs` (new) 64/64, `smoke-parameters`
+58/58, `smoke-studies` 151/151, `smoke-workspace` 100/100, `smoke-persist` 42/42 then 55/55, `smoke-levels` dom
+145/145 (the bundle suite's counts in HANDOFF). No version bump: the release is the owner's step after their gate. See
+HANDOFF's first "Where things stand" section.
+
 **2026-10-15 annotation bundle export and import (BUILT and through its final review, at the owner's gate (plan Task
 9), on top of the gated editor round, not pushed):** the same branch `worktree-annotation-round-2` in worktree
 `.claude/worktrees/annotation-round-2`, on top of the editor round below (its tip `7dec644` is the 1.2.0 release commit,
