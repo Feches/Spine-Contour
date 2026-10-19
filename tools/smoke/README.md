@@ -936,7 +936,12 @@ Run on 2026-10-19 (worktree `reviewer-navigation`, the header filters round): 11
 `smoke-parameters.mjs` (58/58) and `smoke-studies.mjs` (155/155) on one launch, the documented order; then
 `smoke-workspace.mjs` 100/100 on the same launch; `smoke-seeding.mjs` 36/36 on its own launch, `smoke-persist.mjs`
 42/42 then 55/55 across its restart, `smoke-levels.mjs` phase dom 145/145 and `smoke-bundle.mjs` 17/17, 18/18 and 9/9
-on the same tree, each on a fresh scratch profile. The earlier reviewer round's own runs were 64/64 (twice) with the
+on the same tree, each on a fresh scratch profile. Not run that day, because they need real films or model runs:
+`smoke-global-sva.mjs` (its `Spine region` pin now reads `Full spine`; a real full-spine run), `smoke-cervical.mjs` (its
+CSV pin now reads `Cervical,<side>`; a real cervical film), `smoke-accuracy.mjs`, `smoke-onnx-localizer.mjs`,
+`smoke-processing.mjs` and `smoke-partial-segmentation.mjs` (model runs on real films or the ONNX localizer; their edit is
+the reset of `findFilters` in place of `paramFilters`, syntax-checked only) and `smoke-levels.mjs` phase film (a real
+film). The earlier reviewer round's own runs were 64/64 (twice) with the
 status dropdown, and the header filters round's section 2 read 97/97 when it was rewritten (Task 6) before sections 5
 and 6 and the two Escape / row-click checks (Task 7) brought it to 119. One lesson from the reviewer round, now also in
 the persistence section's spirit: `smoke-persist.mjs` reads `SPINE_CONTOUR_USER_DATA` itself for the

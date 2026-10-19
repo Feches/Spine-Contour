@@ -11,7 +11,10 @@ over the compare link
 version bump, the CHANGELOG entry drafted in HANDOFF's first section, with the reviewer round's draft in its second,
 `docs/releases/<version>.md`) is a separate commit the owner asks for; fetch tags first. The gate steps for the owner are
 in HANDOFF's first section (the second has the reviewer round's own). The record is HANDOFF's first two "Where things
-stand" sections and the top two paragraphs of `CLAUDE.md`.
+stand" sections and the top two paragraphs of `CLAUDE.md`. The suites run, with their counts, and the suites not run are
+named in HANDOFF's first section: `smoke-global-sva.mjs`, `smoke-cervical.mjs` (each had a one-token pin changed),
+`smoke-accuracy.mjs`, `smoke-onnx-localizer.mjs`, `smoke-processing.mjs`, `smoke-partial-segmentation.mjs` (a mechanical
+`findFilters` reset) and `smoke-levels.mjs` phase film were not run, because they need real films or model runs.
 
 Written 2026-10-02 at the close of the Failed-status additions on 1.0.13 (issue #39 follow-up). That work is done:
 executed, reviewed, through the human gate, merged with v1.0.14 and released as 1.0.15 on branch

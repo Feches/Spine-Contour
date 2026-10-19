@@ -140,6 +140,11 @@ untracked):
   (bubble phase, so the menu's own handler, which stops the event, still takes focus inside it) together with the
   outside-press `pointerdown`, and removes both together; it closes the menu by the menu's own path, so focus lands on the
   funnel. Cost if wrong: nothing.
+- **R12** At the default 1180 px window the REGION track pushes a row's Delete button past the viewport edge, so the Find
+  table scrolls sideways about 100 px sooner than before (`smoke-levels.mjs` section 11 first read 143/145 until the suite
+  scrolled the control into view). Accepted: the spec sized the track, the owner's window is wider (their screenshot is
+  about 2000 px), and the smoke README already records the overflow at 1180 px. Cost if wrong: a sideways scroll to reach
+  Delete on a narrow window, which the final review and the owner's gate will see.
 
 **What each task built** (commits on the branch, in order):
 
@@ -163,8 +168,9 @@ untracked):
 6. `91f9b53` The header menus: `components/filter-menu.js`, the funnel in every header but STUDY and DATE, the menu
    mounted on the table host (the table clips anything below its header row), the bar without its dropdowns,
    `findStatus` and `UNREVIEWED` removed, `findPredicate` and the Analysis `navKey` reading `findFilters`.
-7. The commits of this task: the Escape listener and the outside-press comment (R10, R11), `smoke-reviewer.mjs`
-   sections 5 and 6, the other suites' pins, and these records.
+7. `2b251a0` the Escape listener and the outside-press comment (R10, R11), `smoke-reviewer.mjs` sections 5 and 6 and the
+   other suites' pins; `fa466d1` these records and the counts; and the review's docs fix, `docs: ruling R12 and the unrun
+   suites in the records` (R12 above, the unrun suites named in the smoke README and NEXT-SESSION).
 
 **The suites' changed pins** (fixed to the new truth, none loosened): `smoke-studies.mjs` section 2's header row gains
 `REGION`, and section 10's Workspace / Folder selects became the WORKSPACE and FOLDER menus (their options, ticks, the
