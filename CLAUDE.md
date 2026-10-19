@@ -26,14 +26,24 @@ Unknown last), and the CSV's `Spine region` cell reads the label; (6) every head
 directions in the column's words, a close button; SUBJECT's menu is a text box; the bar's Workspace, Folder and Status
 dropdowns and `findStatus` are gone (the grid keeps `paramFilters` and its own bar); a menu stays open through its own
 ticks, closes on another change to what it shows, on Escape (from anywhere, a document-level listener registered with
-the outside-press one), a press outside (which only closes: the pointerdown rebuild replaces the row before its click
-arrives, so a row is not also opened) or opening a film; (7) the other suites, the records, the whole-branch run. Unit
-1123 -> 1142; `smoke-reviewer` 119/119, `smoke-parameters` 58/58, `smoke-studies` 155/155, `smoke-workspace` 100/100,
-`smoke-seeding` 36/36, `smoke-persist` 42/42 then 55/55, `smoke-levels` dom 145/145, `smoke-bundle` 17/17, 18/18 and 9/9
-(the suites not run and why are in HANDOFF). Known limits: a 1.2.0 build refuses a library in which this build stored a null view
-(F8); SUBJECT's text matches `subjectId` only, as the grid's does; Processing is never a STATUS option; the table's
-minimum width grew 100 px. No version bump: the release is the owner's step after their gate. See HANDOFF's first
-"Where things stand" section.
+the outside-press one), a press outside (a press on a row only closes: the pointerdown rebuild replaces the row before
+its click arrives, so a row is not also opened; since the final review, R16, a press on the bar or a header closes the
+menu in place and its click goes through) or opening a film; (7) the other suites, the records, the whole-branch run.
+Unit 1123 -> 1142; `smoke-reviewer` 119/119, `smoke-parameters` 58/58, `smoke-studies` 155/155, `smoke-workspace` 100/100, `smoke-seeding` 36/36, `smoke-persist` 42/42 then 55/55, `smoke-levels` dom 145/145,
+`smoke-bundle` 17/17, 18/18 and 9/9 (the suites not run and why are in HANDOFF). The final whole-branch review returned
+"With fixes", and one fix wave (`1528bcf`) built rulings R13-R16: the STATUS and REGION menus always offer their whole
+vocabulary (the seven pills, Processing included, and the four regions), so a tick on them never dissolves and a
+review queue reviewed to its end reads the empty copy and `– / 0` (R13); the region bar's two selects yield the arrow
+keys, which navigate instead of changing the region (R14); opening a film neither parks its bytes nor starts a preview
+or decode until a 150 ms settle on the same mount (R15); and `Unknown` typed in the drawer or in a CSV View cell stores
+null, the Analysis header reads `UNKNOWN` for an undetected Auto detect film, a bundle update keeps the local view under
+a null one, and WORKSPACE rows carry the root path on their title (R16). Unit 1147; `smoke-reviewer` 131/131,
+`smoke-studies` 157/157, `smoke-levels` dom 145/145. Known limits: a 1.2.0 build refuses a library in which this build
+stored a null view (F8); bundles exported with Unknown views import only into this version or later (a 1.2.0 build skips
+those films as malformed, because its `validate` refuses a non-string view), and a 1.2.0 library in which the drawer had
+cleared a view to `''` gets a null view on this build's first save, so 1.2.0 can no longer read it either; SUBJECT's
+text matches `subjectId` only, as the grid's does; the table's minimum width grew 100 px. No version bump: the release
+is the owner's step after their gate. See HANDOFF's first "Where things stand" section.
 
 **2026-10-19 reviewer navigation (BUILT, at the owner's gate, not pushed; its status dropdown and `findStatus` were replaced by the header menus above before release):** branch `worktree-reviewer-navigation` in
 worktree `.claude/worktrees/reviewer-navigation`, off `origin/main` @ `cc1b548` (v1.2.0). The owner's ask: flip through
@@ -51,15 +61,19 @@ statuses, Not reviewed (Segmented, Needs review or Hand-placed) and the seven pi
 order and filters (`matchesQuery` moved there from `screens/studies.js`, which re-exports it); on the Analysis screen
 Left/Up and Right/Down open the row before and after the open study, stepping from its own place in the order whether
 or not it still passes the filters (review-then-arrow goes straight down a Not reviewed list), no wrap, ignored inside
-text entry, dropdowns, sliders, with a modifier and in edit mode (the viewer nudges handles); the header carries
+text entry, dropdowns (but not the region bar's two selects, final review R14), sliders, with a modifier and in edit
+mode (the viewer nudges handles); the header carries
 Previous and Next buttons with `3 / 42` between them (an en dash when the filters hide the film); `openId` is a key of
 the Analysis host (`router.js` `ANALYSIS_KEYS`, that screen only) so the host remounts for the new film as a click on
-the list does, and the module-scope subscription skips an update whose openId is not its mount's; (4) `2020b27` every
-real film with no result shows its X-ray by default (`showOriginal` through `ensureFilm`, the level editor's loader;
-`loadOriginal` dispatches by region, cervical and full spine keeping `previewOriginal`), the region note reading the
-progress or why the original could not be read, and the UNSEGMENTED card drawn as a STRIP along the bottom of the
-stage once the film is there (`components/viewer.js` `describeCard` `strip`, `.run-card-strip`, the same classes and
-button, so the harness drives an unsegmented film as before; the footer watermark lifts above it); then `9dbb63c`, two
+the list does, and the module-scope subscription skips an update whose openId is not its mount's; (4) `2020b27` an
+unsegmented lumbar film (a requested region of Lumbar, or an Auto detect run that found lumbar) shows its X-ray by
+default (`showOriginal` through `ensureFilm`, the level editor's loader; `loadOriginal` dispatches by region), the
+region note reading the progress or why the original could not be read, and the UNSEGMENTED card drawn as a STRIP
+along the bottom of the stage once the film is there (`components/viewer.js` `describeCard` `strip`,
+`.run-card-strip`, the same classes and button, so the harness drives an unsegmented film as before; the footer
+watermark lifts above it). An Auto detect, cervical or full-spine unsegmented film (every new film is Auto detect)
+keeps `previewOriginal`: the backend's preview, no card, Run segmentation on the region bar, as before (corrected at
+the final review, which found "every unsegmented film … the strip" in these records); then `9dbb63c`, two
 fixes the re-run suites found (the return-to-row scroll leaves a row already in view alone; a Failed lumbar film's
 note keeps to its stored reason). Unit 1113 -> 1123; `tools/smoke/smoke-reviewer.mjs` (new) 64/64, `smoke-parameters`
 58/58, `smoke-studies` 151/151, `smoke-workspace` 100/100, `smoke-persist` 42/42 then 55/55, `smoke-levels` dom

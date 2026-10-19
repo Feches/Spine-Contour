@@ -79,7 +79,8 @@ be easier and chose the funnel-menu form after seeing two mock-ups. Designed in 
 review after each, every task verified over CDP on a scratch profile with synthetic films, no screenshots. This round
 sits on the reviewer navigation round below: the two rewrite the same list, so they ship as one release (the way the
 editor round and the bundle round shipped as 1.2.0); that round's status dropdown, its `Not reviewed` option and
-`findStatus` were replaced by this round's header menus before anything was released.
+`findStatus` were replaced by this round's header menus before anything was released. The final whole-branch review
+over both rounds returned "With fixes"; its one fix wave (rulings R13-R16, the counts) is recorded below.
 
 **The decisions** (spec section 2; the owner's F1-F5, then the designer's F6-F9, each with its reason in the spec):
 
@@ -101,6 +102,12 @@ editor round and the bundle round shipped as 1.2.0); that round's status dropdow
 - **F8** Unknown is stored as `null`: the view is `string | null`, `validateStudy` accepts null, no `STORE_VERSION`
   bump. Accepted limitation: a 1.2.0 build reading a library in which this build has stored a null view refuses the
   store ("missing view"), as it would for any newer field it cannot read; the owner runs one build at a time.
+  (2026-10-19, final review; R16) Two more consequences of the same field:
+  - Bundles exported with Unknown views import only into this version or later. A 1.2.0 build skips those films as
+    malformed, because its `validate` refuses a non-string view (`renderer/data/bundle.js` `trustedStudy` runs
+    `validate`).
+  - A 1.2.0 library in which the drawer had cleared a view to `''` gets a null view on this build's first save
+    (`validateStudy` reads `''` as Unknown), so that library too becomes unreadable by 1.2.0 afterwards.
 - **F9** The run fills the region, never the view: standing versus supine cannot be read from the pixels, so the view
   stays Unknown until a person sets it (the import table, the drawer, a folder or file name token, the CSV).
 
@@ -123,14 +130,16 @@ untracked):
   puts a failure first. Cost if wrong: a reorder of one list.
 - **R6** Processing is never a STATUS option: options are computed with no run, so a menu does not change under a running
   batch; the spec's "those present" would offer Processing only while a run is up and drop the tick when it ends. Cost
-  if wrong: the running films cannot be filtered to, which the bar's progress already names.
+  if wrong: the running films cannot be filtered to, which the bar's progress already names. (Superseded by R13 at the
+  final review: every pill is offered, Processing among them.)
 - **R7** A menu stays open through its OWN ticks (the table repaints behind it) and closes on any other change to what it
   shows (a run ending adds a status, a delete removes a folder, a write from elsewhere): read literally, the plan's
   keep-open sentence would close it on every tick, which the spec's "a tick applies at once" forbids. Cost if wrong:
   nothing.
 - **R8** The SUBJECT menu has no All / None: it holds a text box, not values. Cost if wrong: nothing.
 - **R9** A click outside an open menu only closes it; it does not also open the row clicked. Cost if wrong: one extra
-  click (a stray navigation while filtering is the worse failure).
+  click (a stray navigation while filtering is the worse failure). (Narrowed by R16 at the final review: only a press
+  on the rows is swallowed; a press on the bar or a header closes the menu and does what it says.)
 - **R10** R9 rests on the pointerdown rebuild replacing the row before its click arrives, which was undocumented and
   unpinned: the outside-press handler's comment now says so, and `smoke-reviewer.mjs` section 2 clicks a row with a menu
   open and reads that the menu closed and `screen` is still `studies`. Cost if wrong: a stray navigation if the rebuild
@@ -145,6 +154,37 @@ untracked):
   scrolled the control into view). Accepted: the spec sized the track, the owner's window is wider (their screenshot is
   about 2000 px), and the smoke README already records the overflow at 1180 px. Cost if wrong: a sideways scroll to reach
   Delete on a narrow window, which the final review and the owner's gate will see.
+
+The final whole-branch review (`cc1b548..697f721`) returned "With fixes", with 4 Important and 9 Minor findings, and
+the controller ruled on each (R13-R16 below; the ledger lines begin `Final: Ruling` in the same `progress.md`):
+
+- **R13** STATUS and REGION are fixed vocabularies: their menus always offer every value (the seven pills, the four
+  regions), and their ticks are normalised against the vocabulary, never against "those present", so a ticked Needs
+  review stays ticked when its last film is marked and the list reads the empty copy with Next disabled; this
+  supersedes R6 (Processing is now offered, and matches the running and queued films). The spec's "those present" rule,
+  written for roots and folders, dissolved the review queue's filter at its last film: the whole library showed, the
+  header read `4 / 5`, the arrows opened films outside the queue, and the stored tick came back unseen with the next
+  Needs review film (Important #1). Cost if wrong: a menu lists values no film has.
+- **R14** The region bar's two selects (Region, Orientation) do not own the arrow keys: with focus on one, an arrow is
+  prevented (no value change) and navigates, and at either end it is still prevented; the dropdown opened with Space or
+  Alt+Down still takes its own arrows inside its popup. On a closed select Chromium's arrow picks the next option, and a
+  Right pressed by habit wiped a result through `changeRegion` (Important #2). Cost if wrong: a keyboard user opens the
+  dropdown to change the region.
+- **R15** `previewOriginal` reads the film with `park: false`, and `render()` starts a film's preview or decode only
+  after a 150 ms settle, and only if the mount still shows that study; the restore and the kept window's redecode stay
+  immediate. Arrow-stepping through hundreds of unsegmented films parked every file for the session and queued every
+  decode (Important #3). Cost if wrong: a run re-reads the file from its path, as a batch already does, and a film's
+  X-ray reaches the stage about 150 ms later, the run card covering the toolbar that much longer.
+- **R16** The records say that bundles exported with Unknown views import only into this version or later (1.2.0 skips
+  those films as malformed) and that a 1.2.0 library with a drawer-cleared `''` view becomes unreadable by 1.2.0 after
+  this build's first save (Important #4); the word `Unknown` typed in the drawer or carried by a CSV View cell is stored
+  as `null` (Minor #5); a press on the bar or a header while a menu is open closes the menu without swallowing the
+  click, the rebuild only for a press on the table's rows, R9's case (Minor #6); the Analysis header reads `UNKNOWN`
+  for an undetected Auto detect film (Minor #8); a bundle update keeps the local view when the bundle's is null (Minor
+  #9); the WORKSPACE menu's rows carry the root's full path on their title (Minor #10); the records say the strip is the
+  lumbar film's and the preview the others' (Minor #12). Deferred: Tab wrapping inside the menu (#11), wasted decodes
+  under a full card (#13), the arrows from the Parameters tab ignoring the grid's filters (#7: a gate step below and
+  the owner's call). Cost if wrong: each fix is local; the deferred three are the open ends.
 
 **What each task built** (commits on the branch, in order):
 
@@ -171,6 +211,8 @@ untracked):
 7. `2b251a0` the Escape listener and the outside-press comment (R10, R11), `smoke-reviewer.mjs` sections 5 and 6 and the
    other suites' pins; `fa466d1` these records and the counts; and the review's docs fix, `docs: ruling R12 and the unrun
    suites in the records` (R12 above, the unrun suites named in the smoke README and NEXT-SESSION).
+8. The final review's fix wave: `1528bcf`, R13-R16 in code, tests, suites and the spec's dated notes (3.1, 4, 5.1);
+   then `docs: the final review and its fix wave in the records` (these records, CLAUDE.md, the smoke README).
 
 **The suites' changed pins** (fixed to the new truth, none loosened): `smoke-studies.mjs` section 2's header row gains
 `REGION`, and section 10's Workspace / Folder selects became the WORKSPACE and FOLDER menus (their options, ticks, the
@@ -208,6 +250,32 @@ owner scrolls the table sideways to reach Delete, the overflow the README alread
 suite edits (a `JSON.parse` of a JS literal in `smoke-studies.mjs`, a backtick inside a template literal in
 `smoke-seeding.mjs`) that stopped those suites before any check ran.
 
+**The final review and its fix wave** (2026-10-19). The final whole-branch review returned "With fixes" (4 Important, 9
+Minor), and one fix wave (`1528bcf`) built rulings R13-R16 above. Counts, from this worktree on fresh scratch profiles,
+synthetic films, no screenshots:
+- Unit: 1142 -> 1147 (`test/find.test.js` +3: the whole vocabulary whatever the library, a status tick surviving
+  normalisation, the queue reviewed to its end; `test/csv.test.js` +1, a View cell reading unknown; `test/bundle.test.js`
+  +1, an update keeping the local view under a null bundle view).
+- `smoke-reviewer.mjs`: 119 -> 131/131. Section 2: the STATUS options pinned to the seven pills, the REGION options to
+  the four regions, and a header's sort button clicked with a menu open closing it and sorting on that one click (R16).
+  Section 3: the Region select yielding ArrowRight with the film's region untouched (R14), and the queue reviewed to
+  its end (`– / 0`, both arrows disabled, the arrows staying put, the ticks kept, the list's empty copy and the funnel's
+  `3`; the marks then put back). Section 4: the header meta line reading `UNKNOWN · UNKNOWN · —`, and `Unknown` typed in
+  the drawer storing null.
+- `smoke-studies.mjs`: 155 -> 157/157. Section 10 reads the WORKSPACE root row's title. Section 7 waits for the strip
+  before clicking Run segmentation: the decode now lands after the settle and moved the button out from under the
+  click, 137/156 on one run.
+- `smoke-studies.mjs` then `smoke-reviewer.mjs` ran on one fresh launch (profile `fix-g`). `smoke-levels.mjs` phase dom
+  read 145/145 on its own fresh launch (`fix-f`) once its `enterEdit` waited until the Edit tool was the topmost
+  element at its centre. Before that it read 130/145: the run card covers the toolbar until the film is on the stage,
+  and a pointer log showed the Edit click landing on `DIV.run-card` at +148 ms. With the settle switched off as a test
+  it read 145/145, so the settle (R15) is the cause, and the suite's click was the fault, not the app.
+
+Not re-run, and why: `smoke-parameters`, `smoke-workspace` and `smoke-seeding` read nothing the wave changed (no menu,
+no View cell reading unknown, no film opened and read before its load). `smoke-persist` reads SP-9000's card at open,
+and the full card and the strip both pass; it runs through `run-and-wait.js`'s DOM click, and its later opens are
+restores, which stay immediate. `smoke-bundle` imports films with stored images (restores) and views that are labels.
+
 **Not run:** `smoke-global-sva.mjs` (its `Spine region` pin was changed to `Full spine` in Task 5; it needs a real
 full-spine run), `smoke-cervical.mjs` (the `Cervical,<side>` pin above; a real cervical film),
 `smoke-accuracy.mjs`, `smoke-onnx-localizer.mjs`, `smoke-processing.mjs` and `smoke-partial-segmentation.mjs` (model runs
@@ -220,11 +288,16 @@ find a demo study's `pt` label that the SUBJECT cell shows; the search box can. 
 `close` or `text` (a folder named `none`) collides with the menu's own hooks. A menu's position is computed per rebuild,
 so it does not follow a sideways scroll of the table or a window resize while open. `studies.js` is about 1400 lines (the
 roughly 110 lines of menu wiring could move to their own module). `findPredicate` rebuilds the options per call (O(n)).
-The Unknown typed into the drawer's VIEW box is stored as the string `Unknown` and sits beside the sentinel in the grid
-filter. A 1.2.0 build refuses a library with a null view (F8).
+~~The Unknown typed into the drawer's VIEW box is stored as the string `Unknown` and sits beside the sentinel in the grid
+filter.~~ (Fixed at the final review, R16: it stores null, as a CSV View cell reading Unknown does.) A 1.2.0 build
+refuses a library with a null view (F8), skips this build's bundle films whose view is Unknown, and cannot read a 1.2.0
+library this build has saved once if the drawer had cleared a view there (F8's two notes). Deferred at the final review:
+Tab wrapping inside an open menu (#11), wasted decodes under a full card (#13), and a film opened from the Parameters
+grid stepping through the Find list's filters, not the grid's (#7).
 
 **Draft entry for the release notes:** *The Find list filters from its column headers: every header but STUDY and DATE
-has a funnel opening a menu of the values in your library, with several ticks at once (two regions, three statuses) and
+has a funnel opening a menu of the values in your library (the Status and Region menus always list every status and
+region, so a tick stays put when its last film changes), with several ticks at once (two regions, three statuses) and
 the sort directions; SUBJECT's menu is a text box; the bar's Workspace, Folder and Status dropdowns and the Not reviewed
 option are replaced by the menus (the Status menu ticks Segmented, Needs review and Hand-placed together). A new REGION
 column reads Unknown, Lumbar, Cervical or Full spine, fills in when a run finishes, and sorts and filters like the rest.
@@ -232,7 +305,9 @@ A film's view is Unknown until a folder name, a file name or you set it (the imp
 Unknown, and the Parameters grid's View filter offers Unknown), and an Unknown view no longer blocks segmentation: the
 run works out the region itself. The CSV exports write the region as Cervical, Lumbar, Full spine or Unknown, and an
 empty view cell for an Unknown view. Previous and next on the Analysis screen follow the menus. A library saved by this
-version with an Unknown view cannot be opened by 1.2.0.* (Together with the reviewer navigation round's entry below.)
+version with an Unknown view cannot be opened by 1.2.0, and neither can a 1.2.0 library in which a view had been
+cleared in the drawer, once this version has saved it; bundles exported with Unknown views import only into this
+version or later (1.2.0 skips those films).* (Together with the reviewer navigation round's entry below.)
 
 **The gate.** On real films: tick two regions at once in the REGION menu and confirm the list shows both and the funnel
 reads `2`; tick two statuses (say Needs review and Hand-placed), open the first row and arrow through them, with
@@ -243,12 +318,18 @@ REGION cells fill in as the runs finish; sort by REGION in both directions (Unkn
 Escape (focus on the funnel), by clicking elsewhere (a click on a row only closes the menu, and does not open it), and by
 opening a film; tick a workspace and confirm FOLDER offers only its folders; type in SUBJECT's box; export a CSV and read
 the Spine region and View cells; open the Parameters tab and confirm its own dropdowns still work and the list's menus
-are untouched by them.
+are untouched by them. (2026-10-19, final review, three more:)
+- With focus on the Analysis screen's Region select, press Right: it must open the next film, not change the region.
+- Arrow through about thirty unsegmented real films and watch the app's memory and the latency of each step.
+- Open a film from the Parameters grid with a workspace filter set there and press Right: the arrows follow the Find
+  list's filters, not the grid's. Whether that should change is the owner's call (deferred minor #7).
 
 ### Reviewer navigation: previous / next over the filtered list, a status filter, every unsegmented film's X-ray, the scroll fix: BUILT, at the owner's gate, not pushed, part of the same release as the section above (branch `worktree-reviewer-navigation`, worktree `.claude/worktrees/reviewer-navigation`, off `origin/main` @ `cc1b548`, v1.2.0)
 
 (2026-10-19, header filters round: the status dropdown, its `Not reviewed` option and `state.findStatus` described below were
-replaced by the header menus above before release; everything else here stands. The counts below are the reviewer round's own.)
+replaced by the header menus above before release; everything else here stands. The counts below are the reviewer round's own.
+The final whole-branch review's corrections to this section are marked inline: R14 on the arrow keys, the strip being
+the lumbar film's.)
 
 2026-10-19. The owner, reviewing segmentations: "Right now I have to click back to studies to see another image. I
 want to be able to click through it with my arrow keys", over the list as filtered by workspace or folder, and by a
@@ -283,6 +364,8 @@ screenshots.
   where it sat, so review-then-arrow goes straight down the list); nothing past either end, no wrap. The keys are
   ignored inside text entry, dropdowns and sliders (`KEEPS_ARROWS`), with any modifier, when another handler already
   took the event, and in edit mode, where the viewer's own window listener (registered first) nudges handles.
+  (2026-10-19, final review, R14: except the region bar's Region and Orientation selects, where an arrow is prevented and
+  navigates, since a closed select's arrow picked the next region and wiped the result.)
   Beside Back the header carries Previous and Next (`.analysis-nav-prev`, `.analysis-nav-next`, `icon-btn`) with the
   position between them (`.analysis-position`: `3 / 42`, or `– / 42` for a film the filters hide, the count on its
   title), disabled at the ends and while editing, each title naming its neighbour. `openId` is a key of the Analysis
@@ -303,6 +386,12 @@ screenshots.
   Running, Queued, Failed, Unsupported-view, Loading and Film-unavailable keep their full cards. (The chat design said
   the button would move to the region bar; the strip keeps it on the stage, where every suite and every habit finds
   it, and is the "bottom bar" the owner asked for.)
+  **Correction (2026-10-19, final review):** "every real film with no result is decoded" above is too wide. The
+  decode and the UNSEGMENTED strip are the lumbar film's: a requested region of Lumbar (a record with no region field
+  reads Lumbar) or an Auto detect run that detected lumbar. An Auto detect, cervical or full-spine unsegmented film
+  shows the backend's preview (`previewOriginal`), with no card and the Run segmentation button on the region bar, as
+  before this round. Every new film is Auto detect, so that is what a freshly loaded film shows. Since R15 either load
+  starts after a 150 ms settle.
 - **Counts** (2026-10-19, this worktree, scratch profiles under the session scratchpad, synthetic films, no
   screenshots). Unit 1113 -> 1123 (`test/find.test.js`: the status filter, the order, the neighbour and the position;
   `test/analysis.test.js`: `positionLabel`, `NAV_STEP`). `tools/smoke/smoke-reviewer.mjs` (new) 64/64, twice;
@@ -316,10 +405,11 @@ screenshots.
 - **Not done, on purpose.** No version bump and no CHANGELOG entry: the release is the owner's step after their gate
   (`docs/release-main.md`). A draft entry for the release notes: *Previous and next on the Analysis screen: the arrow
   keys (Left/Up, Right/Down) and two header buttons step through the Find list exactly as it is filtered and sorted,
-  with the film's place shown as `3 / 42`; the Find list filters by status, with a Not reviewed option; every
-  unsegmented film opens on its X-ray, with the UNSEGMENTED strip along the bottom of the stage and window / level
-  available; ticking a row far down the list no longer scrolls the app off the window, and Back from a film lands on
-  its row.*
+  with the film's place shown as `3 / 42`; the Find list filters by status, with a Not reviewed option; an
+  unsegmented lumbar film opens on its X-ray, with the UNSEGMENTED strip along the bottom of the stage and window /
+  level available (Auto detect, cervical and full-spine films show the original's preview, as before); ticking a row
+  far down the list no longer scrolls the app off the window, and Back from a film lands on its row.* (2026-10-19,
+  final review: corrected from "every unsegmented film opens on its X-ray, with the UNSEGMENTED strip".)
 - **The gate.** On real films: open a film, press Right and Left through the list with a workspace filter set, then
   set Status to Not reviewed, open the first, Mark reviewed, press Right; check the `3 / 42` and the greyed arrows at
   the ends; open an unsegmented lumbar film and confirm the X-ray shows with the strip, then Run segmentation from the

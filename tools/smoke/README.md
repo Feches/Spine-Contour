@@ -189,6 +189,14 @@ workspace All leaves the folder tick, still offered, keeping its one film) and E
 grid's key, which the list no longer reads); section 10's own reset also writes `findFilters` to its default. Measured
 155/155 on a fresh scratch launch after `smoke-parameters.mjs` (58/58), the two documented race checks included.
 
+**2026-10-19 (the final review's fix wave): `smoke-studies.mjs` goes from 155 to 157 checks.** Section 10 reads the
+WORKSPACE root row's `title`, the root's full path (`C:\smoke\Fusion2025`; Added by hand has none, ruling R16). Section 7
+now waits (`waitForDom`, up to 15 s) for SP-9000's card to settle into the UNSEGMENTED strip before it reads the Run
+segmentation button's place and clicks it. Since ruling R15 the film's decode starts 150 ms after the open, so it could
+land between that read and the click and move the button to the strip at the bottom of the stage. One run read 137/156
+that way: the click hit the film, no run started, and every check that needed the run failed after it. Measured
+157/157 on a fresh scratch launch, run first on it (`smoke-reviewer.mjs` followed on the same launch).
+
 `smoke-persist.mjs` runs in three phases across two real restarts, and phases 2 and 3
 read `out/persist-state.json` written by phase 1:
 
@@ -466,6 +474,13 @@ node tools/smoke/cdp.mjs --quit
   sideways; the REGION column made it 100 px wider), and a click at a rect outside the viewport lands on nothing, so the
   suite scrolls each into view (`scrollIntoView`, as `smoke-studies.mjs`'s `clickAt` does) before clicking. Without that
   the dom phase read 143/145 (the stash check and the disk check after the delete); with it, 145/145.
+- **Edit waits until it can take the click** (2026-10-19, the final review's fix wave). `enterEdit` waits until the
+  Edit tool is enabled AND is the topmost element at its own centre. Until a film is on the stage, its run card covers
+  the toolbar. Since ruling R15, an unsegmented film's preview or decode starts 150 ms after it opens, so section 12's
+  click on Edit for `SP-9301` (an Auto detect film whose run failed) landed on the FAILED card at about +148 ms, and
+  edit mode never started. The dom phase read 130/145: the level summary, the placement, the record and Mark reviewed
+  all followed from that one missed click. A capture-phase pointer log showed the target as `DIV.run-card`, and with
+  the settle switched off as a test the phase read 145/145. With the wait, 145/145.
 - **Phase `dom`** (the default) runs no model and reads no real film: two canvas-drawn 600x800 films. `SP-9300` is a
   segmented fixture with the prototype's geometry (L1, L2, L4, L5, S1 and two heads; L3 missing; an all-zero mask),
   measured by the real `/measure`, with a sidecar and a prediction id so it restores like a model result. `SP-9301`
@@ -899,38 +914,47 @@ node tools/smoke/cdp.mjs --quit
   funnel (`data-find-key` `filter-<column>`, unless `aria-expanded` already says it is open) and clicks the value's row
   (the label round its box, `filter-<column>-<value key>`); a click on a menu control scrolls it into view first, since
   the header row scrolls with the list. The other suites reuse the idiom (`smoke-studies.mjs` section 10).
-- **What it checks** (119). (1) The document never grows past the window while the list holds forty rows (the hidden
-  tick inputs used to escape the list's clipping, `styles/components.css` `.checkbox-row`), ticking the last row
-  leaves the app shell in place, and Back from a row near the bottom lands with that row in view. (2) The header
-  menus: a funnel on every header but STUDY and DATE and no select left in the bar; the STATUS funnel's names, its
-  menu opening with focus on All and drawn whole (inside the window, below the header row, nothing over it); the
-  options read the pills present in workflow order; ticking Unsegmented, then Segmented, keeps the rows whose pill
-  reads those (count and title on the funnel, the store holding the ticks, the menu staying open behind each tick);
-  None clears; Escape, the close button, a click outside and the sort items close the menu with focus on the funnel;
-  **Escape from anywhere (R11)**: Shift+Tab from All takes focus out of the open menu, which stays open, and Escape then
-  closes it with focus on the funnel, as does Escape with focus in the search box (focus moved there without a press,
-  since a click on it would close the menu itself); **a row click with a menu open (R10)** closes the menu and `screen`
-  stays `studies`; one menu at a time; REGION's `Unknown` under the `__unknown__` key, its tick, All and sort items
-  (Z to A with Unknown last); SUBJECT's text box (focused, keeps its caret through each rebuild, a dot on its funnel,
-  empty filters nothing); with a demo study made Needs review, ticking Needs review and Segmented and arrowing through
-  exactly those rows in the list's order; the filters empty copy under an impossible combination; the summary still
-  counting the whole library. (3) Under Unsegmented: `1 / n` with Previous disabled, the titles naming the neighbours,
-  ArrowRight/Down and ArrowLeft/Up, nothing past either end, Shift+arrow and arrows inside the name field ignored, the
-  header buttons (Next keeps focus across the remount), the position following a filter change, an en dash for a
-  hidden film whose ArrowLeft still opens the previous shown row, review-then-ArrowRight under the three ticks
-  Segmented, Needs review and Hand-placed, edit mode disabling both buttons and refusing the keys, and Back after
-  twenty arrows landing on the film last open with the STATUS funnel still reading the tick. (4) `SP-9000` decodes onto
-  the static canvas (157x280), the card becomes the strip along the bottom of the stage, under 70 px, the footer
-  above it, the header pill Unsegmented, the note clear, window / level enabled; a film whose path points nowhere
-  keeps the full card with `Original preview unavailable: The source film could not be found.` in the note; reopened
-  from the list, `SP-9000` shows the strip at once from the cache. (5) The REGION column after a run: `SP-9000` reads
-  `Unknown`, muted, before; one real run of the sample film through `run-and-wait.js`; it reads `Lumbar` after, the
-  REGION menu offers `Lumbar` under `filter-region-lumbar`, ticking it keeps only rows reading Lumbar (SP-9000 among
-  them, the unsegmented films gone) and the funnel reads `Filtered: Lumbar`. (6) The import table's Unknown default:
-  seeded folder rows over synthetic paths (`pre-op/`, `post-op/`, `flexion/`), the pre-op and post-op VIEW selects
-  read `Unknown` (the empty option value), `flexion` still reads `Flexion lateral` from its name, every VIEW select
-  offers Unknown first and then the five suggestions, the Set all select too, and the store holds `null` for the
-  folders that name no view.
+- **What it checks** (131 since the final review's fix wave; 119 before it). (1) The document never grows past the
+  window while the list holds forty rows (the hidden tick inputs used to escape the list's clipping,
+  `styles/components.css` `.checkbox-row`), ticking the last row leaves the app shell in place, and Back from a row
+  near the bottom lands with that row in view. (2) The header menus: a funnel on every header but STUDY and DATE and
+  no select left in the bar; the STATUS funnel's names, its menu opening with focus on All and drawn whole (inside the
+  window, below the header row, nothing over it); the options read all seven pills in workflow order, Processing
+  included, whatever the library holds (R13; they read the pills present before it); ticking Unsegmented, then
+  Segmented, keeps the rows whose pill reads those (count and title on the funnel, the store holding the ticks, the
+  menu staying open behind each tick); None clears; Escape, the close button, a click outside and the sort items close
+  the menu with focus on the funnel; **Escape from anywhere (R11)**: Shift+Tab from All takes focus out of the open
+  menu, which stays open, and Escape then closes it with focus on the funnel, as does Escape with focus in the search
+  box (focus moved there without a press, since a click on it would close the menu itself); **a row click with a menu
+  open (R10)** closes the menu and `screen` stays `studies`; **a header click with a menu open (R16)**: a click on
+  DATE's sort button closes the menu and sorts on that one click; one menu at a time; REGION's four regions (R13),
+  `Unknown` under the `__unknown__` key, its tick, All and sort items (Z to A with Unknown last); SUBJECT's text box
+  (focused, keeps its caret through each rebuild, a dot on its funnel, empty filters nothing); with a demo study made
+  Needs review, ticking Needs review and Segmented and arrowing through exactly those rows in the list's order; the
+  filters empty copy under an impossible combination; the summary still counting the whole library. (3) Under
+  Unsegmented: `1 / n` with Previous disabled, the titles naming the neighbours, ArrowRight/Down and ArrowLeft/Up,
+  nothing past either end, Shift+arrow and arrows inside the name field ignored, the header buttons (Next keeps focus
+  across the remount), **the Region select yielding the arrows (R14)**: with focus put on it, ArrowRight opens the
+  next row and the film left keeps its region (the select had a next option to pick), the position following a filter
+  change, an en dash for a hidden film whose ArrowLeft still opens the previous shown row, review-then-ArrowRight
+  under the three ticks Segmented, Needs review and Hand-placed, edit mode disabling both buttons and refusing the
+  keys, **the queue reviewed to its end (R13)**: every film those three ticks keep marked reviewed in the store, the
+  header reads `– / 0` with both arrows disabled and the keys going nowhere, the store keeps the three ticks, and Back
+  shows no rows, the filters empty copy and the funnel's `3` (the marks then put back as they were, the ticks cleared,
+  the film reopened), and Back after twenty arrows landing on the film last open with the STATUS funnel still reading
+  the tick. (4) `SP-9000` decodes onto the static canvas (157x280), the card becomes the strip along the bottom of the
+  stage, under 70 px, the footer above it, the header pill Unsegmented, the note clear, window / level enabled; a film
+  whose path points nowhere keeps the full card with `Original preview unavailable: The source film could not be
+  found.` in the note, its header meta line reads `UNKNOWN · UNKNOWN · —` (an Auto detect film no run placed, no
+  view), and `Unknown` typed in its drawer's VIEW cell (over a view set first) stores `null`; reopened from the list,
+  `SP-9000` shows the strip at once from the cache. (5) The REGION column after a run: `SP-9000` reads `Unknown`,
+  muted, before; one real run of the sample film through `run-and-wait.js`; it reads `Lumbar` after, the REGION menu
+  offers `Lumbar` under `filter-region-lumbar`, ticking it keeps only rows reading Lumbar (SP-9000 among them, the
+  unsegmented films gone) and the funnel reads `Filtered: Lumbar`. (6) The import table's Unknown default: seeded
+  folder rows over synthetic paths (`pre-op/`, `post-op/`, `flexion/`), the pre-op and post-op VIEW selects read
+  `Unknown` (the empty option value), `flexion` still reads `Flexion lateral` from its name, every VIEW select offers
+  Unknown first and then the five suggestions, the Set all select too, and the store holds `null` for the folders that
+  name no view.
 
 Run on 2026-10-19 (worktree `reviewer-navigation`, the header filters round): 119/119 on a fresh scratch profile after
 `smoke-parameters.mjs` (58/58) and `smoke-studies.mjs` (155/155) on one launch, the documented order; then
@@ -943,7 +967,10 @@ CSV pin now reads `Cervical,<side>`; a real cervical film), `smoke-accuracy.mjs`
 the reset of `findFilters` in place of `paramFilters`, syntax-checked only) and `smoke-levels.mjs` phase film (a real
 film). The earlier reviewer round's own runs were 64/64 (twice) with the
 status dropdown, and the header filters round's section 2 read 97/97 when it was rewritten (Task 6) before sections 5
-and 6 and the two Escape / row-click checks (Task 7) brought it to 119. One lesson from the reviewer round, now also in
+and 6 and the two Escape / row-click checks (Task 7) brought it to 119. The final review's fix wave (2026-10-19)
+brought it to 131: 131/131 on a fresh scratch profile after `smoke-studies.mjs` (157/157) on one launch, with
+`smoke-levels.mjs` phase dom 145/145 on its own fresh launch; the other suites were not re-run, since the wave touched
+nothing they read (HANDOFF's first section says why for each). One lesson from the reviewer round, now also in
 the persistence section's spirit: `smoke-persist.mjs` reads `SPINE_CONTOUR_USER_DATA` itself for the
 label file it checks after Save edits, so pass the launcher's folder to the suite too, or its phase-1 check 11 reads a
 file in the wrong profile and reports 41/42. And `smoke-studies.mjs` straight after `smoke-parameters.mjs` on one
