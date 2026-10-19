@@ -1242,7 +1242,7 @@ export function render(state) {
 
     // (2026-10-19) Previous / next and the position, from the Find list's order under its filters (data/find.js): every
     // store key that order reads is in the gate, and edit mode disables both buttons (openNeighbour refuses it too).
-    const navKey = [live.studies, live.query, live.paramFilters, live.findSort, live.findStatus, live.running, live.batch, editing];
+    const navKey = [live.studies, live.query, live.findSort, live.findFilters, live.running, live.batch, editing];
     if (!sameConfidenceKey(navKey, lastNav)) {
       lastNav = navKey;
       const place = findPosition(live, open.id);

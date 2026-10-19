@@ -26,14 +26,12 @@ let state = {
   // 'folder'|'date'|'status', dir 'asc'|'desc'. Replaced wholesale on change; session-only, never persisted;
   // read by the Studies screen's own subscription, never by SCREEN_KEYS. The grid's paramSort is separate.
   findSort: { key: 'date', dir: 'desc' },
-  // (2026-10-19, reviewer navigation) the Find list's status filter: null (every status), 'unreviewed' or a pill key
-  // (data/find.js STATUS_FILTERS). Replaced wholesale; session-only, never persisted; read by the Studies screen's own
-  // subscription and by the Analysis screen's previous/next, never by SCREEN_KEYS. The grid's segmentedOnly is separate.
-  findStatus: null,
   // (2026-10-19, header filters; spec F6) the Find list's own per-column ticks, one list per header menu plus the
-  // SUBJECT menu's text (data/find.js DEFAULT_FIND_FILTERS). Replaced wholesale; session-only, never persisted; read
-  // through data/find.js by the Studies screen's rows and the Analysis screen's previous/next, never by SCREEN_KEYS.
-  // Task 6 builds the menus that write it and removes findStatus above, whose job the STATUS menu takes over.
+  // SUBJECT menu's text (data/find.js DEFAULT_FIND_FILTERS). Replaced wholesale; session-only, never persisted; written
+  // by the Studies screen's header menus and read through data/find.js by its rows and the Analysis screen's
+  // previous/next, never by SCREEN_KEYS. It replaced the list's share of paramFilters (workspace, folder) and the
+  // reviewer navigation round's single status filter, whose job the STATUS menu took over. The grid keeps paramFilters
+  // and its own segmentedOnly.
   findFilters: { subject: '', region: [], view: [], workspace: [], folder: [], status: [] },
   openId: null,
   compareId: null,

@@ -144,6 +144,182 @@
   min-width: 0;
 }
 
+/* The header filter menus (2026-10-19, header filters; spec F1, section 3.2). A filterable header cell holds the sort
+   button and, after it, the funnel that opens the column's menu; an active column's funnel reads in the accent with
+   its tick count (a dot for the SUBJECT text). The menu hangs from the table's host, which is its containing block,
+   not from the cell: .studies-table scrolls sideways and so clips anything below its header row. Positioned against
+   the host, the menu scrolls with the list. */
+.studies-th-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.studies-table-host {
+  position: relative;
+}
+
+.studies-funnel {
+  all: unset;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 3px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--muted);
+  font: inherit;
+  letter-spacing: 0;
+}
+
+.studies-funnel:hover,
+.studies-funnel.is-open {
+  color: var(--ink);
+}
+
+.studies-funnel.is-active {
+  color: var(--accent);
+}
+
+.studies-funnel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.studies-funnel-icon {
+  display: inline-flex;
+}
+
+.studies-filter-count {
+  font-weight: 600;
+}
+
+.studies-filter-menu {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+  max-width: 280px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 8px 24px var(--shadow);
+  font: 400 13.5px 'Source Sans 3', sans-serif;
+  color: var(--body);
+  cursor: default;
+}
+
+/* All and None, with room on the right for the close button, which sits in the corner though it comes last in the
+   Tab order. */
+.studies-filter-quick {
+  display: flex;
+  gap: 4px;
+  padding-right: 30px;
+}
+
+.studies-filter-item {
+  all: unset;
+  padding: 5px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  font: 600 13px 'Source Sans 3', sans-serif;
+  color: var(--body);
+}
+
+.studies-filter-item:hover {
+  background: var(--well);
+  color: var(--ink);
+}
+
+.studies-filter-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* The sort direction the list is in now. */
+.studies-filter-item.is-active {
+  color: var(--accent);
+}
+
+/* A long list of folders scrolls inside the menu rather than growing it past the window. */
+.studies-filter-options {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+/* The menu's tick rows (components/checkbox.js variant 'menu'): the grid's 16px box, the whole row the target. */
+.menu-check {
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 7px;
+}
+
+.menu-check:hover {
+  background: var(--well);
+}
+
+.menu-check .checkbox-box {
+  width: 16px;
+  height: 16px;
+  margin-top: 0;
+}
+
+.menu-check-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+
+.studies-filter-divider {
+  height: 1px;
+  margin: 2px 0;
+  background: var(--border);
+}
+
+.studies-filter-sort {
+  display: flex;
+  flex-direction: column;
+}
+
+.studies-filter-caption {
+  padding: 2px 8px 4px;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.studies-filter-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+/* SUBJECT's "contains" box, the search box's look at the grid's size. */
+.studies-filter-text {
+  margin-right: 30px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  font: 400 13.5px 'Source Sans 3', sans-serif;
+}
+
+.studies-filter-text:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 /* Provenance. WORKSPACE is the root the film was loaded from and is an em dash for anything
    added by hand; FOLDER is the folder the film actually sits in, so a film the recursive scan
    found below the root shows the subfolder. Together they separate two same-named films under
@@ -651,9 +827,10 @@
   border-top: 2px solid color-mix(in srgb, var(--ink) 30%, var(--border));
 }
 
-/* The Find tab's filter bar (batch spec 7.1): the grid's Workspace and Folder selects over the
-   same shared keys, then the segment button with its note (the grid's export-group and note
-   classes), or -- while a batch runs -- the progress group. Wraps like .param-bar. */
+/* The Find tab's bar (batch spec 7.1): Delete and Export, then the segment button with its note (the
+   grid's export-group and note classes), or -- while a batch runs -- the progress group. Wraps like
+   .param-bar. (2026-10-19, header filters) Its Workspace, Folder and Status selects went: the list
+   filters from its header menus. */
 .studies-filters {
   display: flex;
   align-items: center;

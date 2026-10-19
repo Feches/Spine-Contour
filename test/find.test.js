@@ -154,14 +154,15 @@ test('an unknown key keeps the input order', () => {
   assert.deepEqual(ids(sortFindRows(rows, { key: 'lordosis', dir: 'asc' })), ['SP-1001', 'SP-1000']);
 });
 
-// (2026-10-19, reviewer navigation) the Find list's status filter: Not reviewed, then every pill in workflow order.
+// (2026-10-19, reviewer navigation) the STATUS column's vocabulary: every pill in workflow order. (2026-10-19, header
+// filters; spec F2) Not reviewed went with the bar's dropdown: the STATUS menu ticks its three pills together.
 const OK = { ...SEG, reviewedAt: '2026-10-19T10:00:00.000Z' };
 const FAIL = { processingError: 'boom', processingErrorAt: '2026-10-19T10:00:00.000Z' };
 
-test('STATUS_FILTERS: Not reviewed first, then the seven pills in workflow order, labelled as the pills are', () => {
-  assert.deepEqual(STATUS_FILTERS.map((option) => option.value), ['unreviewed', 'unseg', 'proc', 'fail', 'rev', 'hand', 'seg', 'ok']);
+test('STATUS_FILTERS: the seven pills in workflow order, labelled as the pills are', () => {
+  assert.deepEqual(STATUS_FILTERS.map((option) => option.value), ['unseg', 'proc', 'fail', 'rev', 'hand', 'seg', 'ok']);
   assert.deepEqual(STATUS_FILTERS.map((option) => option.label),
-    ['Not reviewed', 'Unsegmented', 'Processing', 'Failed', 'Needs review', 'Hand-placed', 'Segmented', 'Reviewed']);
+    ['Unsegmented', 'Processing', 'Failed', 'Needs review', 'Hand-placed', 'Segmented', 'Reviewed']);
   assert.ok(Object.isFrozen(STATUS_FILTERS));
 });
 
@@ -183,25 +184,12 @@ test('matchesStatus: no filter matches everything; a status matches exactly the 
   assert.equal(matchesStatus(study('SP-1006', { ...SEG, ...FAIL }), 'seg'), false);
 });
 
-test('matchesStatus: Not reviewed is a result nobody has marked -- Segmented, Needs review or Hand-placed', () => {
-  assert.equal(matchesStatus(study('SP-1001', SEG), 'unreviewed'), true);
-  assert.equal(matchesStatus(study('SP-1002', REV), 'unreviewed'), true);
-  assert.equal(matchesStatus(study('SP-1005', HAND), 'unreviewed'), true);
-  assert.equal(matchesStatus(study('SP-1004', OK), 'unreviewed'), false);
-  assert.equal(matchesStatus(study('SP-1000'), 'unreviewed'), false);
-  assert.equal(matchesStatus(study('SP-1003', FAIL), 'unreviewed'), false);
-  // Unmarked again, it is back in the set.
-  assert.equal(matchesStatus(study('SP-1004', { ...OK, reviewedAt: null }), 'unreviewed'), true);
-});
-
 test('matchesStatus: Processing follows state.running and the waiting batch, as the pill does', () => {
   const seg = study('SP-1001', SEG);
   const unseg = study('SP-1000');
   assert.equal(matchesStatus(seg, 'proc'), false);
   assert.equal(matchesStatus(seg, 'proc', 'SP-1001'), true);
   assert.equal(matchesStatus(seg, 'seg', 'SP-1001'), false);
-  // While it runs, a Segmented film is not Not reviewed either: the pill says Processing.
-  assert.equal(matchesStatus(seg, 'unreviewed', 'SP-1001'), false);
   const batch = newBatch(['SP-1001', 'SP-1000']);
   assert.equal(matchesStatus(unseg, 'proc', 'SP-1001', batch), true, 'waiting in the batch reads Processing');
   assert.equal(matchesStatus(unseg, 'unseg', 'SP-1001', batch), false);
@@ -220,28 +208,33 @@ const LIB = [
   study('SP-1001', { addedAt: day(3), name: 'beta' }),
 ];
 const snapshot = (patch = {}) => ({
-  studies: LIB, query: '', paramFilters: null, findSort: { key: 'date', dir: 'desc' }, findStatus: null,
-  findFilters: DEFAULT_FIND_FILTERS, running: null, batch: null, ...patch,
+  studies: LIB, query: '', findSort: { key: 'date', dir: 'desc' }, findFilters: DEFAULT_FIND_FILTERS, running: null,
+  batch: null, ...patch,
 });
+// The header menus' ticks on one column, over the defaults.
+const ticks = (patch) => ({ findFilters: { ...DEFAULT_FIND_FILTERS, ...patch } });
 
-test('findOrder and findVisible: the Find list\'s order, then its search, location and status filters', () => {
+test('findOrder and findVisible: the Find list\'s order, then its search and its header ticks', () => {
   assert.deepEqual(ids(findOrder(snapshot())), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
   assert.deepEqual(ids(findVisible(snapshot())), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
   assert.deepEqual(ids(findVisible(snapshot({ findSort: { key: 'study', dir: 'asc' } }))), ['SP-1000', 'SP-1001', 'SP-1003', 'SP-1002']);
-  assert.deepEqual(ids(findVisible(snapshot({ findStatus: 'unseg' }))), ['SP-1001', 'SP-1003']);
-  assert.deepEqual(ids(findVisible(snapshot({ findStatus: 'unreviewed' }))), ['SP-1000', 'SP-1002']);
+  assert.deepEqual(ids(findVisible(snapshot(ticks({ status: ['unseg'] })))), ['SP-1001', 'SP-1003']);
   // The search box matches every searchable field, the view included ('ta' is in 'Standing lateral'); 'eta' is beta's alone.
   assert.deepEqual(ids(findVisible(snapshot({ query: 'ta' }))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
   assert.deepEqual(ids(findVisible(snapshot({ query: 'eta' }))), ['SP-1001'], 'the search box: beta');
-  assert.deepEqual(ids(findVisible(snapshot({ query: 'a', findStatus: 'unseg', findSort: { key: 'study', dir: 'asc' } }))), ['SP-1001', 'SP-1003']);
-  // The location filter: every study here sits under one root, so another root hides them all; a stale root is no filter.
-  assert.deepEqual(ids(findVisible(snapshot({ paramFilters: { workspace: 'C:\\films\\Cohort' } }))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
-  assert.deepEqual(ids(findVisible(snapshot({ paramFilters: { workspace: 'C:\\films\\Cohort', folder: 'Elsewhere' } }))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
-  // Added by hand is an option only while a film with no root is in the library; with none it is no filter either.
-  assert.deepEqual(ids(findVisible(snapshot({ paramFilters: { workspace: '__hand__' } }))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
+  assert.deepEqual(ids(findVisible(snapshot({ query: 'a', ...ticks({ status: ['unseg'] }), findSort: { key: 'study', dir: 'asc' } }))), ['SP-1001', 'SP-1003']);
+  // The WORKSPACE and FOLDER ticks: every study here sits under one root and in one folder, so ticking it keeps them
+  // all; a folder no film sits in is no filter.
+  assert.deepEqual(ids(findVisible(snapshot(ticks({ workspace: ['C:\\films\\Cohort'] })))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
+  assert.deepEqual(ids(findVisible(snapshot(ticks({ workspace: ['C:\\films\\Cohort'], folder: ['Elsewhere'] })))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
+  // Added by hand is offered only while a film with no root is in the library; with none it is no filter either.
+  assert.deepEqual(ids(findVisible(snapshot(ticks({ workspace: [HAND_ADDED] })))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
   const hand = study('SP-1004', { addedAt: day(5), name: 'epsilon', workspaceFolder: null, filePath: null });
-  assert.deepEqual(ids(findVisible(snapshot({ studies: [...LIB, hand], paramFilters: { workspace: '__hand__' } }))), ['SP-1004']);
-  assert.deepEqual(ids(findVisible(snapshot({ studies: [...LIB, hand], paramFilters: { workspace: 'C:\\films\\Cohort' } }))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
+  assert.deepEqual(ids(findVisible(snapshot({ studies: [...LIB, hand], ...ticks({ workspace: [HAND_ADDED] }) }))), ['SP-1004']);
+  assert.deepEqual(ids(findVisible(snapshot({ studies: [...LIB, hand], ...ticks({ workspace: ['C:\\films\\Cohort'] }) }))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
+  // (2026-10-19, header filters; spec F6) The Parameters grid's paramFilters no longer narrows the list.
+  assert.deepEqual(ids(findVisible(snapshot({ studies: [...LIB, hand], paramFilters: { workspace: HAND_ADDED } }))),
+    ['SP-1004', 'SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
   assert.deepEqual(ids(findVisible({ studies: null })), []);
   assert.deepEqual(ids(findOrder({})), []);
 });
@@ -255,12 +248,12 @@ test('findNeighbour: the next or previous row the list shows, from the open stud
   assert.equal(findNeighbour(s, 'SP-9999', 1), null, 'a study not in the library has no neighbours');
   assert.equal(findNeighbour(s, null, 1), null);
   // Under a filter the keys skip the hidden rows.
-  const unseg = snapshot({ findStatus: 'unseg' });
+  const unseg = snapshot(ticks({ status: ['unseg'] }));
   assert.equal(findNeighbour(unseg, 'SP-1001', 1)?.id, 'SP-1003');
   assert.equal(findNeighbour(unseg, 'SP-1003', -1)?.id, 'SP-1001');
   assert.equal(findNeighbour(unseg, 'SP-1001', -1), null);
-  // The open study itself fell out of the filter (marked reviewed under Not reviewed): next and previous still step
-  // from where it sat, so review-then-arrow goes straight down the list.
+  // The open study itself is not one of the rows the filter keeps (as a film marked reviewed under the Needs review
+  // tick is not): next and previous still step from where it sat, so review-then-arrow goes straight down the list.
   assert.equal(findNeighbour(unseg, 'SP-1000', 1)?.id, 'SP-1001');
   assert.equal(findNeighbour(unseg, 'SP-1002', 1)?.id, 'SP-1003');
   assert.equal(findNeighbour(unseg, 'SP-1002', -1)?.id, 'SP-1001');
@@ -274,8 +267,8 @@ test('findNeighbour: the next or previous row the list shows, from the open stud
 test('findPosition: the open study\'s 1-based place among the rows the list shows, or null outside the filter', () => {
   assert.deepEqual(findPosition(snapshot(), 'SP-1000'), { index: 1, count: 4 });
   assert.deepEqual(findPosition(snapshot(), 'SP-1003'), { index: 4, count: 4 });
-  assert.deepEqual(findPosition(snapshot({ findStatus: 'unseg' }), 'SP-1003'), { index: 2, count: 2 });
-  assert.deepEqual(findPosition(snapshot({ findStatus: 'unseg' }), 'SP-1000'), { index: null, count: 2 });
+  assert.deepEqual(findPosition(snapshot(ticks({ status: ['unseg'] })), 'SP-1003'), { index: 2, count: 2 });
+  assert.deepEqual(findPosition(snapshot(ticks({ status: ['unseg'] })), 'SP-1000'), { index: null, count: 2 });
   assert.deepEqual(findPosition(snapshot(), 'SP-9999'), { index: null, count: 4 });
   assert.deepEqual(findPosition({ studies: [] }, 'SP-1000'), { index: null, count: 0 });
 });
@@ -462,10 +455,10 @@ test('findVisible, findNeighbour and findPosition read findFilters', () => {
   assert.deepEqual(ids(findVisible(snapshot({ studies: queue, findFilters: toReview, running: 'SP-1000' }))), ['SP-1002', 'SP-1004']);
   // The ticks are normalised against the library, as the menus show them: a region no film has is no filter.
   assert.deepEqual(ids(findVisible(snapshot({ findFilters: { ...DEFAULT_FIND_FILTERS, region: ['cervical'] } }))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
-  // The columns AND with the search box and, until the menus replace the bar, with the bar's status filter.
+  // The columns AND with the search box and with each other.
   assert.deepEqual(ids(findVisible(snapshot({ findFilters: { ...DEFAULT_FIND_FILTERS, region: [NO_VIEW] } }))), ['SP-1001', 'SP-1003']);
   assert.deepEqual(ids(findVisible(snapshot({ query: 'eta', findFilters: { ...DEFAULT_FIND_FILTERS, region: [NO_VIEW] } }))), ['SP-1001']);
-  assert.deepEqual(ids(findVisible(snapshot({ findStatus: 'unseg', findFilters: { ...DEFAULT_FIND_FILTERS, region: ['lumbar'] } }))), []);
+  assert.deepEqual(ids(findVisible(snapshot({ findFilters: { ...DEFAULT_FIND_FILTERS, status: ['unseg'], region: ['lumbar'] } }))), []);
 });
 
 test('activeColumns names the ticked columns in column order', () => {

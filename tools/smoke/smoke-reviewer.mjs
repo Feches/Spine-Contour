@@ -1,9 +1,12 @@
-// Reviewer navigation smoke (2026-10-19): the Studies list's scroll fix, its status filter, the Analysis screen's
-// previous / next (the arrow keys and the header group) over the list's filtered order, and an unsegmented film's
-// X-ray on the stage with the UNSEGMENTED strip. Precondition: the app is running, any screen; the Python backend up
-// (section 4 decodes a film through it). Forty unsegmented records SP-9500..SP-9539 are injected at the start, with
-// paths that point nowhere (the scroll and navigation sections need rows, not films), and removed at the end; section 4
-// injects SP-9000 through inject-study.js, as the other suites do, and leaves it, as they do.
+// Reviewer navigation smoke (2026-10-19): the Studies list's scroll fix, its header filter menus (section 2, rewritten
+// 2026-10-19 when the menus replaced the bar's status dropdown), the Analysis screen's previous / next (the arrow keys
+// and the header group) over the list's filtered order, and an unsegmented film's X-ray on the stage with the
+// UNSEGMENTED strip. Precondition: the app is running, any screen; the Python backend up (section 4 decodes a film
+// through it). Forty unsegmented records SP-9500..SP-9539 are injected at the start, with paths that point nowhere (the
+// scroll and navigation sections need rows, not films), and removed at the end; the first three carry the subjects
+// RVW-NAV-0..2 for the SUBJECT menu. Section 2 makes one demo study Needs review in the store (demo studies are never
+// saved) and restores it. Section 4 injects SP-9000 through inject-study.js, as the other suites do, and leaves it, as
+// they do.
 //
 // Reads the DOM and the store only; no screenshots.
 import fs from 'node:fs';
@@ -22,6 +25,11 @@ const FIRST = 9500;
 const COUNT = 40;
 const injectedId = (i) => `SP-${FIRST + i}`;
 const INJECTED = /^SP-95[0-3]\d$/;
+// The header menus' filters with only STATUS ticked (none: no filter), as a store patch, for the steps taken on the
+// Analysis screen, where the menus are not on screen.
+const statusOnly = (...status) => `{ findFilters: { subject: '', region: [], view: [], workspace: [], folder: [], status: ${JSON.stringify(status)} } }`;
+// The demo study section 2 makes Needs review, with its own qc, so the finally block can restore it.
+let demoPatched = null;
 
 const cdp = await connect();
 
@@ -86,6 +94,50 @@ async function clickBack() {
   await cdp.settle(300);
 }
 
+// ---- The header filter menus (2026-10-19), driven as a person drives them -----------------------------------------
+// A column's funnel: its names, whether its menu is open, and whether it reads active (the count and the title).
+const funnel = (column) => cdp.evaluate(`(() => {
+  const f = document.querySelector('[data-find-key="filter-${column}"]');
+  if (!f) return null;
+  return { label: f.getAttribute('aria-label'), popup: f.getAttribute('aria-haspopup'), expanded: f.getAttribute('aria-expanded'),
+    active: f.classList.contains('is-active'), count: f.querySelector('.studies-filter-count')?.textContent ?? null, title: f.title };
+})()`);
+// The open menu, or null: its names, its tick boxes and sort items, and whether it is drawn whole -- inside the window,
+// below the header row, and the topmost thing at its own centre (nothing clips it or paints over it).
+const menu = () => cdp.evaluate(`(() => {
+  const menus = document.querySelectorAll('.studies-filter-menu');
+  const m = menus[0];
+  if (!m) return null;
+  const r = m.getBoundingClientRect();
+  const head = document.querySelector('.studies-table-head').getBoundingClientRect();
+  return { count: menus.length, column: m.dataset.filterMenu, role: m.getAttribute('role'), label: m.getAttribute('aria-label'),
+    rect: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)], window: [innerWidth, innerHeight],
+    inWindow: r.width > 0 && r.height > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+    belowHeader: r.top >= head.bottom, onTop: m.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)),
+    options: [...m.querySelectorAll('.menu-check')].map((l) => { const i = l.querySelector('input'); return [i.dataset.findKey, l.textContent, i.checked]; }),
+    sorts: [...m.querySelectorAll('[data-find-key^="sort-"]')].map((b) => [b.dataset.findKey, b.textContent]) };
+})()`);
+const focusedKey = () => cdp.evaluate("document.activeElement?.getAttribute('data-find-key') ?? null");
+// A click on the control keyed `key` (scrolled into the list's view first: the header row scrolls with the list).
+async function press(key, selector = `[data-find-key="${key}"]`) {
+  await cdp.evaluate(`document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({ block: 'nearest' })`);
+  const r = await cdp.rect(selector);
+  if (!r) return false;
+  await cdp.click(r.cx, r.cy);
+  await cdp.settle(150);
+  return true;
+}
+// Opens a column's menu through its funnel, unless it is open already.
+async function openMenu(column) {
+  if ((await funnel(column))?.expanded !== 'true') await press(`filter-${column}`);
+}
+// A tick as a person makes one: the column's menu open, then a click on the value's row (the label round its box).
+async function tick(column, value) {
+  await openMenu(column);
+  return press(null, `label:has(> [data-find-key="filter-${column}-${value}"])`);
+}
+const badges = () => cdp.evaluate("[...document.querySelectorAll('.studies-row')].map((r) => r.querySelector('.badge')?.className)");
+
 try {
   // 0. Forty unsegmented records, newest first by their addedAt, on the Find tab with no filters.
   await cdp.evaluate(`(async () => {
@@ -95,10 +147,10 @@ try {
     for (let i = 0; i < ${COUNT}; i += 1) {
       const n = String(${FIRST} + i);
       injected.push({ ...studies.newStudy({ id: 'SP-' + n, fileName: 'film-' + n + '.png', filePath: 'C:\\\\nowhere\\\\film-' + n + '.png' }),
-        addedAt: new Date(Date.UTC(2026, 0, 1 + i)).toISOString() });
+        addedAt: new Date(Date.UTC(2026, 0, 1 + i)).toISOString(), subjectId: i < 3 ? 'RVW-NAV-' + i : null });
     }
-    store.setState((s) => ({ ack: true, screen: 'studies', studiesTab: 'find', query: '', paramSelected: [], findStatus: null,
-      findSort: { key: 'date', dir: 'desc' }, paramFilters: { ...s.paramFilters, workspace: null, folder: null },
+    store.setState((s) => ({ ack: true, screen: 'studies', studiesTab: 'find', query: '', paramSelected: [],
+      findSort: { key: 'date', dir: 'desc' }, findFilters: { subject: '', region: [], view: [], workspace: [], folder: [], status: [] },
       studies: [...injected, ...s.studies.filter((x) => !${INJECTED}.test(x.id))] }));
     return true;
   })()`);
@@ -139,40 +191,163 @@ try {
   const first = await rowPlace((await cdp.evaluate("document.querySelector('.studies-row').dataset.studyId")));
   check('1. (the list did scroll to reach it: the first row is above the window)', first && first.top < 0, first);
 
-  // 2. The status filter.
-  const options = await cdp.evaluate("[...document.querySelector('[data-find-key=\"status\"]').options].map((o) => [o.value, o.textContent])");
-  check('2. the status dropdown offers All statuses, Not reviewed, then the seven pills in workflow order',
-    JSON.stringify(options) === JSON.stringify([['', 'All statuses'], ['unreviewed', 'Not reviewed'], ['unseg', 'Unsegmented'], ['proc', 'Processing'],
-      ['fail', 'Failed'], ['rev', 'Needs review'], ['hand', 'Hand-placed'], ['seg', 'Segmented'], ['ok', 'Reviewed']]), options);
-  // A pick as the keyboard makes one: the dropdown focused, its value set, its change event fired.
-  const pick = async (value) => {
-    await cdp.evaluate(`(() => { const s = document.querySelector('[data-find-key="status"]'); s.focus(); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
-    await cdp.settle(150);
-  };
+  // 2. The header filter menus (header filters spec 2026-10-19, section 3.2): a funnel opens its column's menu, a tick
+  // applies at once behind it, ticks OR within a column and AND across columns.
+  await scrollListTo('top');
+  await cdp.settle(100);
   const all = await rows();
-  await pick('unseg');
-  const unsegRows = await cdp.evaluate("[...document.querySelectorAll('.studies-row')].map((r) => r.querySelector('.badge')?.className)");
-  check('2. Unsegmented keeps only rows with the Unsegmented pill', unsegRows.length >= COUNT && unsegRows.every((c) => c === 'badge badge-unseg'), { count: unsegRows.length, classes: [...new Set(unsegRows)] });
-  check('2. the store holds the filter', (await cdp.state()).findStatus === 'unseg', (await cdp.state()).findStatus);
-  await pick('seg');
-  const segRows = await cdp.evaluate("[...document.querySelectorAll('.studies-row')].map((r) => r.querySelector('.badge')?.className)");
-  check('2. Segmented keeps only rows with the Segmented pill (the demo studies)', segRows.length > 0 && segRows.every((c) => c === 'badge badge-seg'), { count: segRows.length, classes: [...new Set(segRows)] });
-  await pick('fail');
+  const headers = await cdp.evaluate("['study', 'subject', 'region', 'view', 'workspace', 'folder', 'date', 'status'].map((c) => Boolean(document.querySelector('[data-find-key=\"filter-' + c + '\"]')))");
+  check('2. every header but STUDY and DATE has a funnel', JSON.stringify(headers) === JSON.stringify([false, true, true, true, true, true, false, true]), headers);
+  check('2. the bar has no Workspace, Folder or Status dropdown', (await cdp.evaluate("document.querySelectorAll('.studies-filters select').length")) === 0);
+  let fn = await funnel('status');
+  check('2. the STATUS funnel: Filter by status, a dialog popup, closed and plain', fn && fn.label === 'Filter by status' && fn.popup === 'dialog'
+    && fn.expanded === 'false' && !fn.active && fn.title === 'Filter by status', fn);
+  await press('filter-status');
+  fn = await funnel('status');
+  let m = await menu();
+  check('2. the funnel opens the STATUS menu: aria-expanded true, one dialog named Filter by status', fn.expanded === 'true' && m && m.count === 1
+    && m.column === 'status' && m.role === 'dialog' && m.label === 'Filter by status', { fn, m });
+  check('2. focus lands on the menu\'s first control, All', (await focusedKey()) === 'filter-status-all', await focusedKey());
+  check('2. the menu is drawn whole: inside the window, below the header row, nothing over it', m.inWindow && m.belowHeader && m.onTop, m);
+  const pills = await cdp.evaluate(`import('./renderer/data/find.js').then(async (f) => f.findFilterOptions((await import('./renderer/store.js')).getState().studies).status.map((o) => ['filter-status-' + o.value, o.label, false]))`);
+  check('2. the options read the pills present, in workflow order, none ticked', JSON.stringify(m.options) === JSON.stringify(pills)
+    && pills.some((p) => p[1] === 'Unsegmented') && pills.some((p) => p[1] === 'Segmented'), { options: m.options, pills });
+  check('2. the STATUS sort items read Workflow order and Reverse', JSON.stringify(m.sorts) === JSON.stringify([['sort-status-asc', 'Workflow order'], ['sort-status-desc', 'Reverse']]), m.sorts);
+
+  await tick('status', 'unseg');
+  const unsegRows = await badges();
+  check('2. ticking Unsegmented keeps only rows with the Unsegmented pill', unsegRows.length >= COUNT && unsegRows.every((c) => c === 'badge badge-unseg'), { count: unsegRows.length, classes: [...new Set(unsegRows)] });
+  fn = await funnel('status');
+  check('2. the funnel reads active with count 1, its title naming the tick', fn.active && fn.count === '1' && fn.title === 'Filtered: Unsegmented', fn);
+  check('2. the store holds the tick', JSON.stringify((await cdp.state()).findFilters.status) === '["unseg"]', (await cdp.state()).findFilters);
+  m = await menu();
+  check('2. the menu stays open behind the tick, the box ticked and focused', m?.column === 'status'
+    && m.options.some(([key, , on]) => key === 'filter-status-unseg' && on) && (await focusedKey()) === 'filter-status-unseg', { m, focus: await focusedKey() });
+  await tick('status', 'seg');
+  const bothRows = await badges();
+  check('2. ticking Segmented too shows both', bothRows.length > unsegRows.length && bothRows.includes('badge badge-seg') && bothRows.includes('badge badge-unseg')
+    && bothRows.every((c) => c === 'badge badge-unseg' || c === 'badge badge-seg'), { count: bothRows.length, classes: [...new Set(bothRows)] });
+  fn = await funnel('status');
+  check('2. count 2, the title naming both in the menu\'s order', fn.count === '2' && fn.title === 'Filtered: Unsegmented, Segmented', fn);
+  await press('filter-status-none');
+  fn = await funnel('status');
+  check('2. None clears the column: every row back, the funnel plain, the menu still open', (await rows()) === all && !fn.active
+    && (await cdp.state()).findFilters.status.length === 0 && (await menu())?.column === 'status', { rows: await rows(), fn });
+  await cdp.key('Escape'); await cdp.settle(150);
+  check('2. Escape closes the menu and returns focus to the funnel', (await menu()) === null && (await funnel('status')).expanded === 'false'
+    && (await focusedKey()) === 'filter-status', { menu: await menu(), focus: await focusedKey() });
+  await press('filter-status');
+  check('2. the funnel opens it again', (await menu())?.column === 'status', await menu());
+  await press(null, '.studies-heading');
+  check('2. a click outside closes it', (await menu()) === null && (await funnel('status')).expanded === 'false', await menu());
+  await press('filter-status');
+  await press('filter-region');
+  m = await menu();
+  check('2. opening the REGION menu closes the STATUS menu: one menu at a time', m?.count === 1 && m.column === 'region'
+    && (await funnel('status')).expanded === 'false' && (await funnel('region')).expanded === 'true', { m, status: await funnel('status') });
+
+  // REGION: the none key, a tick, All, the close button.
+  check('2. the REGION menu offers Unknown under the none key', m.options.some(([key, label]) => key === 'filter-region-__unknown__' && label === 'Unknown'), m.options);
+  await tick('region', '__unknown__');
+  const unknownRows = await cdp.evaluate("[...document.querySelectorAll('.studies-row .studies-cell-region')].map((c) => [c.textContent, c.classList.contains('studies-cell-unknown')])");
+  check('2. ticking Unknown keeps only rows whose REGION reads Unknown', unknownRows.length >= COUNT && unknownRows.every(([text, muted]) => text === 'Unknown' && muted), { count: unknownRows.length });
+  fn = await funnel('region');
+  check('2. the REGION funnel reads active with count 1', fn.active && fn.count === '1' && fn.title === 'Filtered: Unknown', fn);
+  await press('filter-region-all');
+  check('2. All clears the column too', (await rows()) === all && !(await funnel('region')).active, await rows());
+  await press('filter-region-close');
+  check('2. the close button closes the menu and returns focus to the funnel', (await menu()) === null && (await focusedKey()) === 'filter-region', await focusedKey());
+
+  // SUBJECT: the text box in place of the ticks.
+  await press('filter-subject');
+  m = await menu();
+  check('2. the SUBJECT menu holds the text box, focused, and no tick boxes', m?.column === 'subject' && m.options.length === 0
+    && (await focusedKey()) === 'filter-subject-text', { m, focus: await focusedKey() });
+  await cdp.typeText('rvw-'); await cdp.settle(150);
+  await cdp.typeText('nav'); await cdp.settle(150);
+  const subjects = await cdp.evaluate("[...document.querySelectorAll('.studies-row .studies-cell-subject')].map((c) => c.textContent)");
+  check('2. the SUBJECT box narrows to the subjects that contain its text', subjects.length === 3 && subjects.every((s) => s.startsWith('RVW-NAV-')), subjects);
+  const subjectBox = await cdp.evaluate("(() => { const b = document.querySelector('[data-find-key=\"filter-subject-text\"]'); return { value: b.value, focused: document.activeElement === b, caret: b.selectionStart }; })()");
+  check('2. the box keeps its focus and caret through the rebuild each keystroke makes', subjectBox.value === 'rvw-nav' && subjectBox.focused && subjectBox.caret === 7, subjectBox);
+  fn = await funnel('subject');
+  check('2. the SUBJECT funnel reads active with a dot, its title quoting the text', fn.active && fn.count === '•' && fn.title === 'Filtered: "rvw-nav"', fn);
+  // Emptied as the keyboard empties it: the box's value cleared, its input event fired.
+  await cdp.evaluate("(() => { const b = document.querySelector('[data-find-key=\"filter-subject-text\"]'); b.value = ''; b.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  await cdp.settle(150);
+  check('2. emptied, the box filters nothing', (await rows()) === all && !(await funnel('subject')).active, await rows());
+  await cdp.key('Escape'); await cdp.settle(100);
+
+  // A sort item: Z to A on REGION sorts the list and closes the menu.
+  await press('filter-region');
+  m = await menu();
+  check('2. the REGION menu sorts A to Z and Z to A', JSON.stringify(m?.sorts) === JSON.stringify([['sort-region-asc', 'A to Z'], ['sort-region-desc', 'Z to A']]), m?.sorts);
+  await press('sort-region-desc');
+  const sorted = (await cdp.state()).findSort;
+  const regionOrder = await cdp.evaluate("[...document.querySelectorAll('.studies-row .studies-cell-region')].map((c) => c.textContent)");
+  const known = regionOrder.filter((r) => r !== 'Unknown');
+  const zToA = known.every((r, i) => i === 0 || known[i - 1].toLowerCase() >= r.toLowerCase())
+    && regionOrder.slice(known.length).every((r) => r === 'Unknown');
+  check('2. Z to A sorts the list by region descending, Unknown last', sorted.key === 'region' && sorted.dir === 'desc' && known.length > 0 && zToA,
+    { sorted, first: regionOrder.slice(0, 2), last: regionOrder.slice(-2) });
+  check('2. and closes the menu, focus on the funnel', (await menu()) === null && (await focusedKey()) === 'filter-region', await focusedKey());
+  const sortButton = await cdp.evaluate("(() => { const b = document.querySelector('[data-find-key=\"sort-region\"]'); return { active: b.classList.contains('is-active'), mark: b.querySelector('.param-sort-mark').textContent }; })()");
+  check('2. the header\'s own sort button reads the new sort', sortButton.active && sortButton.mark === ' ▾', sortButton);
+  await cdp.setState("{ findSort: { key: 'date', dir: 'desc' } }"); await cdp.settle(150);
+
+  // The list's previous / next follows the menus: ticked Needs review and Segmented, the arrows step through exactly
+  // those rows in the list's order. One demo study is made Needs review for it (a low femoral confidence, in the store
+  // only) and restored afterwards.
+  demoPatched = await cdp.evaluate(`import('./renderer/store.js').then((m) => {
+    const demo = m.getState().studies.find((x) => x.source === 'demo');
+    if (!demo) return null;
+    m.setState((s) => ({ studies: s.studies.map((x) => (x.id === demo.id ? { ...x, qc: { femoral: { confidence: 0.2 } } } : x)) }));
+    return { id: demo.id, qc: demo.qc };
+  })`);
+  await cdp.settle(150);
+  check('2. a demo study reads Needs review for the next steps', Boolean(demoPatched), demoPatched);
+  await scrollListTo('top');
+  await tick('status', 'rev');
+  await tick('status', 'seg');
+  await cdp.key('Escape'); await cdp.settle(100);
+  const reviewOrder = await cdp.evaluate("[...document.querySelectorAll('.studies-row')].map((r) => ({ id: r.dataset.studyId, badge: r.querySelector('.badge')?.className }))");
+  check('2. ticked Needs review and Segmented, the list shows exactly those pills', reviewOrder.length >= 2 && reviewOrder.some((r) => r.badge === 'badge badge-rev')
+    && reviewOrder.every((r) => r.badge === 'badge badge-rev' || r.badge === 'badge badge-seg'), reviewOrder);
+  await clickRow(reviewOrder[0].id);
+  const stepped = [await openId()];
+  for (let i = 1; i < reviewOrder.length; i += 1) { await cdp.key('ArrowRight'); await cdp.settle(150); stepped.push(await openId()); }
+  await cdp.key('ArrowRight'); await cdp.settle(150);
+  const pastEnd = await openId();
+  check('2. the arrows step through exactly those rows, in the list\'s order, and stop at the last', JSON.stringify(stepped) === JSON.stringify(reviewOrder.map((r) => r.id))
+    && pastEnd === stepped[stepped.length - 1], { stepped, expected: reviewOrder.map((r) => r.id), pastEnd });
+  const h2 = await header();
+  check('2. the position counts those rows', h2.position === `${reviewOrder.length} / ${reviewOrder.length}`, h2);
+  await clickBack();
+
+  // An impossible combination: the Unknown region (unsegmented films only) under Needs review and Segmented.
+  await scrollListTo('top');
+  await tick('region', '__unknown__');
+  await cdp.key('Escape'); await cdp.settle(100);
   const empty = await cdp.evaluate("document.querySelector('.studies-empty')?.textContent ?? null");
-  check('2. a status with no rows reads the filters empty copy', (await rows()) === 0 && empty === 'No studies match these filters.', { rows: await rows(), empty });
+  check('2. an impossible combination reads the filters empty copy', (await rows()) === 0 && empty === 'No studies match these filters.', { rows: await rows(), empty });
   const summary = await cdp.evaluate("document.querySelector('.studies-summary').textContent");
   check('2. the summary still counts the whole library', new RegExp(`^${all} STUDIES `).test(summary), summary);
-  await pick('');
-  check('2. All statuses brings every row back', (await rows()) === all, await rows());
-  const focusAfter = await cdp.evaluate("document.activeElement?.getAttribute('data-find-key') ?? null");
-  check('2. the dropdown keeps focus through the rebuilds', focusAfter === 'status', focusAfter);
+  await press('filter-region'); await press('filter-region-all');
+  await press('filter-status'); await press('filter-status-none');
+  await cdp.key('Escape'); await cdp.settle(100);
+  check('2. All and None bring every row back', (await rows()) === all && JSON.stringify((await cdp.state()).findFilters.status) === '[]'
+    && JSON.stringify((await cdp.state()).findFilters.region) === '[]', await rows());
+  await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (x.id === ${JSON.stringify(demoPatched?.id)} ? { ...x, qc: ${JSON.stringify(demoPatched?.qc ?? null)} } : x)) })))`);
+  demoPatched = null;
+  await cdp.settle(100);
 
   // 3. Previous / next, over the rows the list shows under Unsegmented, in the order it shows them (the DOM's own
   // order is the expectation, so the section holds on any profile: the forty injected films, plus whatever unsegmented
-  // films earlier suites left, all real films with enabled name fields).
-  await pick('unseg');
+  // films earlier suites left, all real films with enabled name fields). The tick goes through the STATUS menu, which
+  // Escape then closes: a row click with a menu open would only close the menu.
   await scrollListTo('top');
   await cdp.settle(100);
+  await tick('status', 'unseg');
+  await cdp.key('Escape'); await cdp.settle(100);
   const order = await cdp.evaluate("[...document.querySelectorAll('.studies-row')].map((r) => ({ id: r.dataset.studyId, name: r.querySelector('.studies-name').textContent }))");
   const total = order.length;
   check('3. under Unsegmented the list holds at least the forty injected films', total >= COUNT && order.some((r) => r.id === injectedId(COUNT - 1)), { total, first: order[0] });
@@ -224,12 +399,13 @@ try {
   await cdp.key('ArrowRight'); await cdp.settle(100);
   check('3. ArrowRight at the last row stays put', (await openId()) === lastOpen, await openId());
 
-  // The filter changes under the open film: the position follows it, and a hidden film still has neighbours.
-  await cdp.setState('{ findStatus: null }'); await cdp.settle(150);
+  // The filter changes under the open film: the position follows it, and a hidden film still has neighbours. The menus
+  // are not on this screen, so the ticks are written to the store as the STATUS menu writes them.
+  await cdp.setState(statusOnly()); await cdp.settle(150);
   h = await header();
   const whole = await cdp.evaluate(`import('./renderer/data/find.js').then(async (f) => f.findVisible((await import('./renderer/store.js')).getState()).length)`);
   check('3. without the filter the position counts the whole list', h.position === `${whole} / ${whole}` || /^\d+ \/ \d+$/.test(h.position), h);
-  await cdp.setState('{ findStatus: "seg" }'); await cdp.settle(150);
+  await cdp.setState(statusOnly('seg')); await cdp.settle(150);
   h = await header();
   const segCount = await cdp.evaluate(`import('./renderer/data/find.js').then(async (f) => f.findVisible((await import('./renderer/store.js')).getState()).length)`);
   check('3. under Segmented an unsegmented open film reads an en dash over the count', h.position === `\u2013 / ${segCount}`, h);
@@ -239,17 +415,19 @@ try {
   h = await header();
   check('3. and the position is its place among them', h.position === `${segCount} / ${segCount}`, h);
 
-  // Review-then-next: under Not reviewed, the open film marked reviewed leaves the list and its next still works.
-  await cdp.setState('{ findStatus: "unreviewed" }'); await cdp.settle(150);
+  // Review-then-next: under the three results nobody has marked, ticked together (Segmented, Needs review,
+  // Hand-placed; the ticks no film shows are no filter), the open film marked reviewed leaves the list and its next
+  // still works.
+  await cdp.setState(statusOnly('seg', 'rev', 'hand')); await cdp.settle(150);
   await cdp.key('ArrowLeft'); await cdp.settle(150);
   const midId = await openId();
   const unrevCount = await cdp.evaluate(`import('./renderer/data/find.js').then(async (f) => f.findVisible((await import('./renderer/store.js')).getState()).length)`);
   await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (x.id === ${JSON.stringify(midId)} ? { ...x, reviewedAt: '2026-10-19T10:00:00.000Z' } : x)) })))`);
   await cdp.settle(150);
   h = await header();
-  check('3. marked reviewed, the open film leaves the Not reviewed list', h.position === `\u2013 / ${unrevCount - 1}`, h);
+  check('3. marked reviewed, the open film leaves the Segmented / Needs review / Hand-placed list', h.position === `\u2013 / ${unrevCount - 1}`, h);
   await cdp.key('ArrowRight'); await cdp.settle(150);
-  check('3. ArrowRight from the reviewed film opens the next unreviewed row', (await openId()) === demoId, { midId, now: await openId() });
+  check('3. ArrowRight from the reviewed film opens the next row those ticks keep', (await openId()) === demoId, { midId, now: await openId() });
   await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (x.id === ${JSON.stringify(midId)} ? { ...x, reviewedAt: null } : x)) })))`);
 
   // Edit mode refuses the keys and disables the buttons.
@@ -262,7 +440,7 @@ try {
   await cdp.setState('{ editing: false }'); await cdp.settle(100);
 
   // Back after a run of arrows lands on the film last open, with the filter still showing.
-  await cdp.setState('{ findStatus: "unseg" }'); await cdp.settle(100);
+  await cdp.setState(statusOnly('unseg')); await cdp.settle(100);
   for (let i = 0; i < 20; i += 1) await cdp.key('ArrowRight');
   await cdp.settle(150);
   const lastSeen = await openId();
@@ -270,10 +448,14 @@ try {
   const landed = await rowPlace(lastSeen);
   sc = await scrolls();
   check('3. Back lands with the film last open in view, the document unscrolled', landed && landed.inView && sc.docScrollTop === 0, { lastSeen, landed, sc });
-  const shown = await cdp.evaluate("document.querySelector('[data-find-key=\"status\"]').value");
-  check('3. the status dropdown still shows the filter after the trip', shown === 'unseg', shown);
+  const shown = await funnel('status');
+  check('3. the STATUS funnel still reads the tick after the trip', shown.active && shown.count === '1' && shown.title === 'Filtered: Unsegmented', shown);
+  await openMenu('status');
+  const tickedKeys = (await menu())?.options.filter(([, , on]) => on).map(([key]) => key);
+  check('3. and its menu shows Unsegmented ticked', JSON.stringify(tickedKeys) === '["filter-status-unseg"]', tickedKeys);
   check('3. no page errors', cdp.errors.length === 0, cdp.errors);
-  await cdp.setState('{ findStatus: null }'); await cdp.settle(100);
+  await press('filter-status-none');
+  await cdp.key('Escape'); await cdp.settle(100);
 
   // 4. An unsegmented film shows its X-ray. SP-9000 with its bytes parked, opened as inject-study.js opens it.
   const injected = await cdp.evaluate(fs.readFileSync(path.join(__dirname, 'inject-study.js'), 'utf8'));
@@ -309,9 +491,12 @@ try {
   await clickBack();
   check('4. no page errors', cdp.errors.length === 0, cdp.errors);
 } finally {
-  // The injected records go; SP-9000 stays, as every suite leaves it.
+  // The injected records go, and a demo study section 2 left Needs review gets its own qc back; SP-9000 stays, as every
+  // suite leaves it.
   try {
-    await cdp.evaluate(`import('./renderer/store.js').then((m) => { m.setState((s) => ({ studies: s.studies.filter((x) => !${INJECTED}.test(x.id)), paramSelected: [], findStatus: null, query: '' })); return true; })`);
+    await cdp.evaluate(`import('./renderer/store.js').then((m) => { m.setState((s) => ({
+      studies: s.studies.filter((x) => !${INJECTED}.test(x.id)).map((x) => (x.id === ${JSON.stringify(demoPatched?.id ?? null)} ? { ...x, qc: ${JSON.stringify(demoPatched?.qc ?? null)} } : x)),
+      paramSelected: [], query: '', findFilters: { subject: '', region: [], view: [], workspace: [], folder: [], status: [] } })); return true; })`);
   } catch (_error) { /* the app may be gone */ }
   cdp.close();
   const passed = results.filter((r) => r.ok).length;

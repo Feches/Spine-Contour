@@ -13,7 +13,7 @@
  */
 import { displayStatus, statusLabel } from './status.js';
 import { studyName, workspaceLabel, folderLabel, subjectLabel } from './labels.js';
-import { normaliseFilters, matchesLocation, matchesSubject, workspaceOptions, folderOptions, NO_VIEW } from './parameters.js';
+import { matchesLocation, matchesSubject, workspaceOptions, folderOptions, NO_VIEW } from './parameters.js';
 import { regionKey, regionLabel, REGION_KEYS } from './cervical.js';
 
 const DASH = '\u2014';
@@ -42,34 +42,26 @@ export function matchesQuery(study, query) {
     .includes(needle);
 }
 
-// (2026-10-19, reviewer navigation) The Find list's status filter. `unreviewed` is a result nobody has marked --
-// Segmented, Needs review or Hand-placed, the set a reviewer works through -- and the rest are the pills themselves,
-// in PILLS' order, labelled as the pills are (data/status.js statusLabel) so the dropdown and the
-// STATUS column can never disagree. The chosen value is state.findStatus: session-only, replaced wholesale, null for
-// no filter; the Parameters grid has its own `segmentedOnly` and never reads it.
-export const UNREVIEWED = 'unreviewed';
-// (2026-10-19, header filters) The seven pills in the order the status dropdown and the STATUS menu list them (spec
-// section 3.1), one list so the two cannot drift. It is not STATUS_RANK's sort order, which puts a failure first.
+// (2026-10-19, reviewer navigation) The STATUS column's vocabulary: the seven pills in the order the STATUS menu lists
+// them (spec section 3.1), one list so the menu and these filters cannot drift, labelled as the pills are
+// (data/status.js statusLabel) so a menu and the STATUS cells can never disagree. It is not STATUS_RANK's sort order,
+// which puts a failure first. (2026-10-19, header filters; spec F2) The combined Not reviewed option the bar's status
+// dropdown offered went with that dropdown: the STATUS menu ticks Segmented, Needs review and Hand-placed together.
 const PILLS = Object.freeze(['unseg', 'proc', 'fail', 'rev', 'hand', 'seg', 'ok']);
-export const STATUS_FILTERS = Object.freeze([
-  Object.freeze({ value: UNREVIEWED, label: 'Not reviewed' }),
-  ...PILLS.map((status) => Object.freeze({ value: status, label: statusLabel(status) })),
-]);
+export const STATUS_FILTERS = Object.freeze(PILLS.map((status) => Object.freeze({ value: status, label: statusLabel(status) })));
 
-// A value the dropdown can show, else null (no filter): the normaliseFilters rule, for a stored or typed value.
+// A pill key, else null (no filter): the normaliseFilters rule, for a stored or typed value.
 export function normaliseStatusFilter(value) {
   return STATUS_FILTERS.some((option) => option.value === value) ? value : null;
 }
 
-// Whether a row passes the status filter: by the pill it SHOWS (displayStatus with state.running and state.batch), so
-// a film waiting in a batch is Processing here as it is in its cell, and a Segmented film being re-run is not Not
-// reviewed until its run ends. No filter passes everything.
+// Whether a row passes a status filter: by the pill it SHOWS (displayStatus with state.running and state.batch), so
+// a film waiting in a batch is Processing here as it is in its cell, and a Segmented film being re-run is not
+// Segmented until its run ends. No filter passes everything.
 export function matchesStatus(study, filter, runningId = null, batch = null) {
   const wanted = normaliseStatusFilter(filter);
   if (wanted === null) return true;
-  const status = displayStatus(study, runningId, batch);
-  if (wanted === UNREVIEWED) return status === 'seg' || status === 'rev' || status === 'hand';
-  return status === wanted;
+  return displayStatus(study, runningId, batch) === wanted;
 }
 
 export const DEFAULT_FIND_SORT = Object.freeze({ key: 'date', dir: 'desc' });
@@ -214,8 +206,9 @@ export function normaliseFindFilters(filters, studies) {
 }
 
 // How a menu's change is merged into the stored ticks: over what the menus show, so the change always wins and a stale
-// tick never rides back in with it (patchFilters' reason). A tick is
-// patchFindFilters(f, studies, { [column]: toggleId(f[column], value) }).
+// tick never rides back in with it (patchFilters' reason). A tick toggles over the NORMALISED column, never the raw
+// stored array, so a stale tick for a value no longer offered cannot ride back in through the toggle either:
+// patchFindFilters(f, studies, { [column]: toggleId(normaliseFindFilters(f, studies)[column], value) }).
 export function patchFindFilters(filters, studies, patch) {
   return { ...normaliseFindFilters(filters, studies), ...patch };
 }
@@ -249,28 +242,24 @@ export function activeColumns(filters) {
 // ---- The list as one snapshot (2026-10-19, reviewer navigation) -------------------------------------------
 // The Find list's order and its filters from a store snapshot, shared by the Studies screen (its rows) and the
 // Analysis screen (previous / next, the position in the header), so the keys step through exactly the rows the list
-// shows, in the order it shows them. `state` needs studies, query, paramFilters, findSort, findStatus, findFilters,
-// running, batch. (2026-10-19, header filters) findFilters, the header menus' ticks, joined the bar's filters; Task 6
-// removes the bar's two (paramFilters' workspace and folder, and findStatus) when the menus replace its dropdowns.
+// shows, in the order it shows them. `state` needs studies, query, findSort, findFilters, running, batch.
+// (2026-10-19, header filters) The filters are the header menus' ticks, findFilters, alone: the bar's workspace,
+// folder and status dropdowns they replaced are gone.
 
 // Every study in the list's order, filtered or not.
 export function findOrder(state) {
   return sortFindRows(state?.studies ?? [], state?.findSort, state?.running ?? null, state?.batch ?? null);
 }
 
-// Whether a study is a row the list shows: the search box, then the workspace and folder filters (normalised against
-// the library, as the bar shows them), then the status filter, then the header menus' ticks (normalised against the
+// Whether a study is a row the list shows: the search box, then the header menus' ticks (normalised against the
 // library, as the menus show them).
 function findPredicate(state) {
   const studies = state?.studies ?? [];
   const query = state?.query ?? '';
-  const filters = normaliseFilters(state?.paramFilters, studies);
-  const status = normaliseStatusFilter(state?.findStatus);
   const columns = normaliseFindFilters(state?.findFilters, studies);
   const running = state?.running ?? null;
   const batch = state?.batch ?? null;
-  return (study) => matchesQuery(study, query) && matchesLocation(study, filters)
-    && matchesStatus(study, status, running, batch) && matchesFindFilters(study, columns, running, batch);
+  return (study) => matchesQuery(study, query) && matchesFindFilters(study, columns, running, batch);
 }
 
 // The rows the list shows, in table order.
@@ -280,7 +269,7 @@ export function findVisible(state) {
 
 // The row the list shows after (`step` 1) or before (`step` -1) the study `id`, or null at either end -- no wrap.
 // It steps from the study's OWN place in the full order, whether or not the study still passes the filters: a film
-// marked reviewed under Not reviewed has left the list, and its next is still the row after where it sat, so
+// marked reviewed under the Needs review tick has left the list, and its next is still the row after where it sat, so
 // review-then-arrow goes straight down the list. A study not in the library has no neighbours.
 export function findNeighbour(state, id, step) {
   const order = findOrder(state);
