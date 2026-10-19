@@ -19,6 +19,7 @@ test('getState returns the documented initial shape', () => {
   assert.equal(state.paramLevels, false);
   assert.deepEqual(state.paramSelected, []);
   assert.deepEqual(state.findSort, { key: 'date', dir: 'desc' });
+  assert.deepEqual(state.findFilters, { subject: '', region: [], view: [], workspace: [], folder: [], status: [] });
   assert.equal(state.openId, null);
   assert.equal(state.compareId, null);
   assert.equal(state.tab, 'meas');

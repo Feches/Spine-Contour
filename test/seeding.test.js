@@ -107,7 +107,8 @@ test('inferFromStem reads the plain fields after the recognised ones as the note
 // Every row of the spec's §8.1 table, through seedFields with no CSV, no stored record and no
 // user-set folder row -- the values the load assigns to a fresh workspace untouched on the card.
 test('seedFields reproduces the §8.1 table for a fresh film', () => {
-  const D = 'Standing lateral';
+  // (2026-10-19) A name that says no view leaves it Unknown (null), not Standing lateral.
+  const D = null;
   const rows = [
     ['pre-op/S001.png', 'S001', 'Pre-op', D],
     ['S001/pre-op.png', 'S001', 'Pre-op', D],
@@ -127,7 +128,7 @@ test('seedFields reproduces the §8.1 table for a fresh film', () => {
 });
 
 test('seedFields takes the film date and the note from the stem, behind a stored value or the CSV', () => {
-  const D = 'Standing lateral';
+  const D = null;
   assert.deepEqual(seed('sub225_post-op_3-22-2024.jpg'),
     { subjectId: 'sub225', timepoint: 'Post-op', filmDate: '2024-03-22', view: D, note: null });
   assert.deepEqual(seed('sub225_pre-op_10-23-2023_femoral heads.jpg'),
@@ -141,7 +142,7 @@ test('seedFields takes the film date and the note from the stem, behind a stored
   assert.equal(seed('sub225_post-op_3-22-2024_femoral heads.jpg', { existing: { note: 'typed' } }).note, 'typed');
   assert.equal(seed('sub225_post-op_3-22-2024_femoral heads.jpg', { existing: { note: '' } }).note, 'femoral heads');
   const { sources } = seedFields({ filePath: film('sub225_post-op_3-22-2024_femoral heads.jpg'), root: ROOT });
-  assert.deepEqual(sources, { subjectId: 'stem', timepoint: 'stem', filmDate: 'stem', view: 'row', note: 'stem' });
+  assert.deepEqual(sources, { subjectId: 'stem', timepoint: 'stem', filmDate: 'stem', view: null, note: 'stem' });
 });
 
 test('folderRows lists each folder directly holding a film, in scan order, with its count and inferred values', () => {
@@ -150,15 +151,15 @@ test('folderRows lists each folder directly holding a film, in scan order, with 
     film('flexion/S003.png'), film('CohortA/1yr/S001.png'),
   ];
   assert.deepEqual(folderRows(files, ROOT), [
-    { folder: '.', count: 1, timepoint: null, view: 'Standing lateral' },
-    { folder: 'pre-op', count: 2, timepoint: 'Pre-op', view: 'Standing lateral' },
-    { folder: 'post-op', count: 1, timepoint: 'Post-op', view: 'Standing lateral' },
+    { folder: '.', count: 1, timepoint: null, view: null },
+    { folder: 'pre-op', count: 2, timepoint: 'Pre-op', view: null },
+    { folder: 'post-op', count: 1, timepoint: 'Post-op', view: null },
     { folder: 'flexion', count: 1, timepoint: null, view: 'Flexion lateral' },
-    { folder: 'CohortA/1yr', count: 1, timepoint: '1 yr', view: 'Standing lateral' },
+    { folder: 'CohortA/1yr', count: 1, timepoint: '1 yr', view: null },
   ]);
   assert.deepEqual(folderRows([], ROOT), []);
   // A root with no subfolders is one row.
-  assert.deepEqual(folderRows([film('a.png'), film('b.png')], ROOT), [{ folder: '.', count: 2, timepoint: null, view: 'Standing lateral' }]);
+  assert.deepEqual(folderRows([film('a.png'), film('b.png')], ROOT), [{ folder: '.', count: 2, timepoint: null, view: null }]);
 });
 
 test('seedFields applies §8.3: stored beats CSV beats stem beats the folder row beats the default', () => {
@@ -191,13 +192,28 @@ test('seedFields reports where each value came from', () => {
   const csv = { subjectId: null, timepoint: null, filmDate: '2025-03-02', view: null, badDate: false };
   const { sources } = seedFields({ filePath: film('pre-op/S001_ext.png'), root: ROOT, row, csv });
   assert.deepEqual(sources, { subjectId: 'stem', timepoint: 'row', filmDate: 'csv', view: 'stem', note: null });
-  // With no row given, seedFields derives the row as folderRows does (view defaulting to Standing
-  // lateral), so a defaulted view reports 'row' too; 'default' is reachable only for a row object
-  // that carries no view (controller ruling, 2026-09-07).
+  // With no row given, seedFields derives the row as folderRows does. (2026-10-19) A name that says no
+  // view leaves the view null with a null source: there is no default for it to come from.
   const fresh = seedFields({ filePath: film('S001.png'), root: ROOT });
-  assert.deepEqual(fresh.sources, { subjectId: 'stem', timepoint: null, filmDate: null, view: 'row', note: null });
+  assert.deepEqual(fresh.sources, { subjectId: 'stem', timepoint: null, filmDate: null, view: null, note: null });
   const folderSubject = seedFields({ filePath: film('S001/post-op/lateral.dcm'), root: ROOT });
-  assert.deepEqual(folderSubject.sources, { subjectId: 'folder', timepoint: 'row', filmDate: null, view: 'row', note: null });
+  assert.deepEqual(folderSubject.sources, { subjectId: 'folder', timepoint: 'row', filmDate: null, view: null, note: null });
   const stored = seedFields({ filePath: film('S001.png'), root: ROOT, existing: { subjectId: 'X', timepoint: 'Pre-op', filmDate: '2025-01-01', view: 'Standing lateral', note: 'n' } });
   assert.deepEqual(stored.sources, { subjectId: 'stored', timepoint: 'stored', filmDate: 'stored', view: 'stored', note: 'stored' });
+});
+
+// (2026-10-19) The view is Unknown (null) until a folder or file name, the CSV, a stored value or a
+// person says otherwise; nothing defaults it to Standing lateral any more.
+test('folderRows seeds no view for a folder that names none', () => {
+  assert.equal(folderRows(['root/pre-op/a.png'], 'root')[0].view, null);
+  assert.equal(folderRows(['root/flexion/a.png'], 'root')[0].view, 'Flexion lateral');
+});
+
+test('seedFields: nothing names a view -> null with a null source; a stored view wins over a blank CSV cell', () => {
+  const none = seedFields({ filePath: 'root/S001/a.png', root: 'root' });
+  assert.equal(none.fields.view, null);
+  assert.equal(none.sources.view, null);
+  const stored = seedFields({ filePath: 'root/a.png', root: 'root', existing: { view: 'Supine lateral' }, csv: { view: null } });
+  assert.equal(stored.fields.view, 'Supine lateral');
+  assert.equal(stored.sources.view, 'stored');
 });

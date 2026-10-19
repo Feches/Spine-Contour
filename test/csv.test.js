@@ -53,6 +53,15 @@ test('toCsv exports absent measurements as empty cells, never 0', () => {
   for (let i = 6; i < 6 + 10; i += 1) assert.equal(cells[i], '');
 });
 
+// (2026-10-19) An Unknown view (null) is an empty cell, never the text "null".
+test('toCsv writes an empty View cell for a film with none', () => {
+  const lines = toCsv([study({ view: null })]).split('\r\n');
+  const header = lines[2].split(',');
+  const cells = lines[3].split(',');
+  assert.equal(header[1], 'View');
+  assert.equal(cells[1], '');
+});
+
 test('toCsv exports real measurements including the derived PI-LL mismatch column', () => {
   const measurements = {
     SS: 38.2, PI: 52.7, PT: 14.6, L1PA: 21.3,
@@ -216,6 +225,17 @@ test('toCsv writes Subject, Timepoint, Film date and Note after View, empty when
   assert.deepEqual(lines[2].split(',').slice(0, 6), ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date', 'Note']);
   assert.ok(lines[3].startsWith('SP-1000,Standing lateral,S001,Pre-op,2025-03-02,femoral heads,'), lines[3]);
   assert.ok(lines[4].startsWith('SP-1001,Standing lateral,,,,,'), lines[4]);
+});
+
+// (2026-10-19) The Spine region cell reads the label the REGION column shows -- Cervical, not the stored key
+// `cervical` -- and a film no one has set and no run has measured reads Unknown, not the requested mode `auto`.
+test('the Spine region cell reads the region label, Unknown for a film with no run', () => {
+  const csv = toCsv([
+    study({ id: 'SP-1000', region: 'cervical', anteriorSide: 'left', measurements: { C2C7_COBB: 12 }, geometry: { region: 'cervical', anterior_side: 'left' } }),
+    study({ id: 'SP-1001', region: 'auto' }),
+  ]);
+  const { rows } = parse(csv.split('\r\n').slice(2).join('\r\n'));
+  assert.deepEqual(rows.map((row) => row['Spine region']), ['Cervical', 'Unknown']);
 });
 
 // ---------------------------------------------------------------------------
@@ -566,6 +586,18 @@ test('structuralFromRow trims, normalises a known timepoint or view, keeps a cus
     { subjectId: 'S004', timepoint: null, filmDate: null, view: null, badDate: false });
 });
 
+// (2026-10-19, final review) The word Unknown in a View cell is the Unknown view, null, as a blank cell is: stored as the
+// string, it would sit beside the sentinel as a second "Unknown" in the VIEW menu and the grid's View filter.
+test('structuralFromRow seeds no view from a View cell reading unknown, in any case', () => {
+  const structural = findStructuralHeaders(['subject_id', 'view']);
+  for (const cell of ['unknown', 'Unknown', ' UNKNOWN ']) {
+    assert.deepEqual(structuralFromRow({ subject_id: 'S001', view: cell }, structural),
+      { subjectId: 'S001', timepoint: null, filmDate: null, view: null, badDate: false }, JSON.stringify(cell));
+  }
+  // A view that only contains the word is kept as typed.
+  assert.equal(structuralFromRow({ subject_id: 'S001', view: 'Unknown position' }, structural).view, 'Unknown position');
+});
+
 test('autoMap never claims a structural header as a clinical field', () => {
   assert.deepEqual(autoMap(['subject_id', 'timepoint', 'film_date', 'view', 'age']), [
     { src: 'subject_id', dest: null }, { src: 'timepoint', dest: null }, { src: 'film_date', dest: null },
@@ -652,6 +684,16 @@ test('toPairedCsv leads with the comment block and writes the layout-B header ov
   // Two subjects written, then the trailing CRLF.
   assert.equal(lines.length, 6);
   assert.equal(lines[5], '');
+});
+
+// (2026-10-19) The paired file's per-visit region cell names the same label as the long file's Spine region cell.
+test('the paired regions and orientation cell reads the region label, Unknown for a film with no run', () => {
+  const pre = study({ id: 'SP-1000', subjectId: 'S001', timepoint: 'Pre-op', region: 'cervical', anteriorSide: 'left', measurements: { C2C7_COBB: 12 }, geometry: { region: 'cervical', anterior_side: 'left' } });
+  const post = study({ id: 'SP-1001', subjectId: 'S001', timepoint: 'Post-op', region: 'auto' });
+  const lines = toPairedCsv(pairStudies([pre, post])).split('\r\n');
+  const { rows } = parse(lines.slice(2).join('\r\n'));
+  assert.equal(rows[0]['Pre-op regions and orientation'], 'SP-1000: Cervical, anterior image left');
+  assert.equal(rows[0]['Post-op regions and orientation'], 'SP-1001: Unknown, anterior image unconfirmed');
 });
 
 test('toPairedCsv writes one row per subject with the deltas over the written one-decimal values and empty cells for a missing visit', () => {

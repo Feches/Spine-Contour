@@ -1,5 +1,23 @@
 # Next session — no queued prompt
 
+**2026-10-19 (late):** the owner's gate PASSED and the **1.3.0 release commit** is on the branch, which is PUSHED to
+`origin`; the owner opens the PR from the compare link below and merges with Create a merge commit, which publishes
+v1.3.0. After the merge: fetch tags, confirm the release, and the worktree can be removed. Earlier that day: two rounds
+were BUILT on branch `worktree-reviewer-navigation` in the worktree
+`.claude/worktrees/reviewer-navigation`, off `origin/main` @ `cc1b548` (v1.2.0); they ship as one release. The reviewer navigation round (previous / next over the Find list's filtered order,
+every unsegmented film's X-ray, the list's scroll fix) came first; the header filters round sits on top of it (every
+Find header filters from a funnel menu with multi-select ticks, a REGION column, the view Unknown until a person or a
+name sets it, `findFilters` in place of the bar's dropdowns and `findStatus`). On "gate passed": push the branch, hand
+over the compare link
+`https://github.com/Feches/Spine-Contour/compare/main...worktree-reviewer-navigation?expand=1`, and the release (the
+version bump, the CHANGELOG entry drafted in HANDOFF's first section, with the reviewer round's draft in its second,
+`docs/releases/<version>.md`) is a separate commit the owner asks for; fetch tags first. The gate steps for the owner are
+in HANDOFF's first section (the second has the reviewer round's own). The record is HANDOFF's first two "Where things
+stand" sections and the top two paragraphs of `CLAUDE.md`. The suites run, with their counts, and the suites not run are
+named in HANDOFF's first section: `smoke-global-sva.mjs`, `smoke-cervical.mjs` (each had a one-token pin changed),
+`smoke-accuracy.mjs`, `smoke-onnx-localizer.mjs`, `smoke-processing.mjs`, `smoke-partial-segmentation.mjs` (a mechanical
+`findFilters` reset) and `smoke-levels.mjs` phase film were not run, because they need real films or model runs.
+
 Written 2026-10-02 at the close of the Failed-status additions on 1.0.13 (issue #39 follow-up). That work is done:
 executed, reviewed, through the human gate, merged with v1.0.14 and released as 1.0.15 on branch
 `claude/issue-39-failed-status-port` (release commit `2687cf5`), pushed to `origin`; v1.0.15 publishes when its PR to

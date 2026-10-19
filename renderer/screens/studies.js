@@ -9,6 +9,9 @@
  * or visible real rows; the dropzone's Import bundle… reads one, plans adds, updates and skips, and confirms them in
  * the bar's inline prompt before the files are placed and the store patched once (exportBundleTo, importBundleFrom,
  * confirmImport).
+ * (2026-10-19, header filters spec F1, section 3) The list filters from its headers: a funnel in each filterable
+ * header cell opens that column's menu (components/filter-menu.js) of multi-select ticks and its two sort directions,
+ * and the bar lost its Workspace, Folder and Status dropdowns.
  */
 
 import { deleteStudyBatch } from '../data/delete-studies.js';
@@ -22,22 +25,24 @@ import { showToast } from '../components/toast.js';
 import { displayStatus } from '../data/status.js';
 import { failureTitle } from '../data/failure.js';
 import { inferenceView } from '../data/inference-view.js';
+import { regionKey, regionLabel } from '../data/cervical.js';
 import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle, subjectLabel } from '../data/labels.js';
 import { nextId } from '../data/persistence.js';
-import { DEFAULT_VIEW } from '../data/timepoints.js';
 import { seedFields } from '../data/seeding.js';
-import {
-  withIds, toggleId, selectedVisible, rowsToExport, workspaceOptions, folderOptions, normaliseFilters, patchFilters, matchesLocation, HAND_ADDED,
-} from '../data/parameters.js';
+import { withIds, toggleId, selectedVisible, rowsToExport } from '../data/parameters.js';
 import {
   planExport, exportMessage, localFilmHash, planImport, applyImport, importPromptText, importMessage,
   nothingToImportMessage,
 } from '../data/bundle.js';
 import { appVersion } from '../data/label-record.js';
 import { planBatch, progressText, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
-import { sortFindRows, toggleFindSort, summaryCounts } from '../data/find.js';
+import {
+  toggleFindSort, summaryCounts, matchesQuery, findVisible, findFilterOptions, normaliseFindFilters, patchFindFilters,
+  activeColumns,
+} from '../data/find.js';
 import { progressTitle, progressDetail } from '../data/processing.js';
 import { checkbox } from '../components/checkbox.js';
+import { filterMenu } from '../components/filter-menu.js';
 import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
 import { startBatch, stopBatch } from '../batch.js';
 import { setFilePayload, releaseStudy } from './analysis.js';
@@ -52,6 +57,9 @@ const UPLOAD_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" 
 // Same 24-unit stroke-icon convention as UPLOAD_SVG and components/viewer.js's toolbar.
 const TRASH_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 H20"></path><path d="M9 7 V4 H15 V7"></path><path d="M6 7 L7 20 H17 L18 7"></path><path d="M10 11 V16"></path><path d="M14 11 V16"></path></svg>';
 
+// The header cells' filter funnel (2026-10-19, header filters), in the same convention.
+const FUNNEL_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5 H20 L14 12.5 V19 L10 21 V12.5 Z"></path></svg>';
+
 const dateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 export function formatDate(iso) {
@@ -61,27 +69,9 @@ export function formatDate(iso) {
   return dateFormatter.format(date);
 }
 
-// Case-insensitive substring match over id, view, the demo set's own patient/diagnosis labels,
-// and every CLINICAL VALUE on the record. Normalises the query itself, so the export is safe to
-// call with raw input. The clinical values are what makes the search box's promise true on real
-// studies: `pt`/`dx` exist only on the nine compiled-in demo records, so without them a
-// diagnosis the user imported a minute ago could be typed here and find nothing. Values are
-// user text of any shape, so the string filter below still guards the join. The study's name,
-// its workspace and its containing folder are searchable because the table shows all three and
-// a visible column you cannot search reads as broken. The subject, timepoint and film date are
-// on the Parameters grid, which the box also filters; the note is in the drawer, and is what
-// tells two same-day films of one subject apart. The FULL file path is still not: only the two
-// folder names the cells actually display are matched. The label record's comment (`labelComment`,
-// annotation round 2) is searchable too, though no column shows it: it is what flags a film for a reader.
-export function matchesQuery(study, query) {
-  const needle = (query ?? '').trim().toLowerCase();
-  if (!needle) return true;
-  return [study.id, studyName(study), study.subjectId, study.timepoint, study.filmDate, study.note, study.labelComment, workspaceLabel(study), folderLabel(study), study.pt, study.dx, study.view, ...Object.values(study.clinical ?? {})]
-    .filter((value) => typeof value === 'string')
-    .join(' ')
-    .toLowerCase()
-    .includes(needle);
-}
+// The search box's match (2026-10-19: now data/find.js matchesQuery, so the Analysis screen's previous / next can apply
+// the same search without importing this screen); re-exported here for its callers and test/studies.test.js.
+export { matchesQuery };
 
 // An unsegmented real Study. Bytes are NOT on the record (screens/analysis.js's payload map);
 // measurements, geometry, qc and thumbnail arrive when the run completes.
@@ -102,7 +92,8 @@ export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
     labelComment: null,
     // (2026-09-10, studies-table spec 8.1) the review mark; set on the Analysis screen, cleared by every write that changes the numbers.
     reviewedAt: null,
-    addedAt: new Date().toISOString(), view: DEFAULT_VIEW, thumbnail: null,
+    // (2026-10-19) the view is Unknown (null) until the film's name, a workspace load or the drawer says otherwise.
+    addedAt: new Date().toISOString(), view: null, thumbnail: null,
     region: 'auto', anteriorSide: null,
     measurements: null, geometry: null, qc: null, clinical: {},
     // (1.0.13) the last failed attempt's reason; (2026-10-01, issue #39) and when it failed.
@@ -112,7 +103,7 @@ export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
 
 // A picked or dropped film's record: newStudy plus the fields its own name supplies (spec §8.1
 // rule 3, user decision 2026-09-11). No root and no folder table, so only the stem is read and
-// the view falls to Standing lateral; a workspace load builds its records itself, with both.
+// the view stays Unknown unless the name says one; a workspace load builds its records itself, with both.
 export function studyFromFile({ id, fileName, filePath }) {
   const { fields } = seedFields({ filePath: filePath ?? fileName, root: null });
   return { ...newStudy({ id, fileName, filePath }), ...fields };
@@ -330,11 +321,11 @@ function buildRow(study, runningId, selected, batch) {
   const unsupported = study.source === 'real' && study.measurements == null
     && runningId !== study.id && !inferenceView(study.view);
   // While this row is confirming a delete, the prompt takes every cell from WORKSPACE rightwards
-  // (see .studies-cell-actions-confirming); the study, subject and view cells stay visible.
-  // Those four are nulled together and the prompt's grid-column start is the 4th track, so the
-  // placement cursor is still at 4 when the action cell is laid out. Adding a VISIBLE cell
-  // before the prompt without moving that start line would push the cursor past it and wrap the
-  // prompt onto a second row.
+  // (see .studies-cell-actions-confirming); the study, subject, region and view cells stay visible.
+  // Those four are nulled together and the prompt's grid-column start is the 5th track, so the
+  // placement cursor is still at 5 when the action cell is laid out (2026-10-19: the REGION cell
+  // moved it from 4). Adding a VISIBLE cell before the prompt without moving that start line
+  // would push the cursor past it and wrap the prompt onto a second row.
   const confirming = confirmingId === study.id;
   const row = el('div', {
     class: 'studies-row', role: 'button', tabindex: '0', 'data-study-id': study.id,
@@ -367,7 +358,11 @@ function buildRow(study, runningId, selected, batch) {
         : null,
       el('span', { class: 'studies-name study-name' }, studyName(study))),
     subjectCell(study),
-    el('div', { class: 'studies-cell-view' }, study.view || '—'),
+    // The region a person set on the Analysis screen, else the one the run detected, else `Unknown`,
+    // muted like an Unknown view (2026-10-19). cervical.js's regionKey owns the rule.
+    el('div', { class: `studies-cell-region${regionKey(study) === 'unknown' ? ' studies-cell-unknown' : ''}` }, regionLabel(regionKey(study))),
+    // A film with no view reads `Unknown`, muted (2026-10-19).
+    el('div', { class: `studies-cell-view${study.view == null ? ' studies-cell-unknown' : ''}` }, study.view ?? 'Unknown'),
     confirming ? null : el('div', { class: 'studies-cell-workspace' }, workspaceLabel(study)),
     confirming ? null : el('div', { class: 'studies-cell-folder', ...(pathTitle(study) ? { title: pathTitle(study) } : {}) }, folderLabel(study)),
     confirming ? null : el('div', { class: 'studies-cell-date' }, formatDate(study.addedAt)),
@@ -381,7 +376,8 @@ function buildRow(study, runningId, selected, batch) {
 // to be one sentence, because the nine demo studies made a genuinely empty library unreachable, and
 // now that an installed app opens with nothing, "No studies match that search." over a library the
 // user has not filled yet would blame a search they never made. 'filters' is new -- a workspace or
-// folder set with nothing left. The search wording is pinned by tools/smoke/smoke-studies.mjs --
+// folder set with nothing left; (2026-10-19, header filters) now any header menu active, since only a combination
+// of ticks can leave nothing. The search wording is pinned by tools/smoke/smoke-studies.mjs --
 // keep it exactly. The 'none' string is byte-identical to the one the file always carried.
 const EMPTY_COPY = {
   search: 'No studies match that search.',
@@ -407,9 +403,45 @@ function sortableHeader(key, label, sort, lead) {
   return el('div', { class: key === 'study' ? 'studies-head-study' : 'studies-th' }, lead ?? null, button);
 }
 
+// The words each menu's sort items read (spec section 3.2): the text columns sort A to Z, STATUS in workflow order.
+const SORT_LABELS = Object.freeze({ status: Object.freeze(['Workflow order', 'Reverse']) });
+const TEXT_SORT_LABELS = Object.freeze(['A to Z', 'Z to A']);
+
+// What an active funnel's title says it keeps (spec section 3.2): the ticked labels in the menu's order, or the
+// SUBJECT text as the contains rule applies it.
+function filteredTitle(column, filters, options) {
+  if (column === 'subject') return `Filtered: "${filters.subject.trim()}"`;
+  const labels = (options[column] ?? []).filter((option) => filters[column].includes(option.value)).map((option) => option.label);
+  return `Filtered: ${labels.join(', ')}`;
+}
+
+// A filterable header cell (2026-10-19, header filters; spec F1, section 3.2): the sort button exactly as
+// sortableHeader builds it, then the funnel that opens the column's menu. `filters` is normaliseFindFilters' output
+// and `options` findFilterOptions'. An active column (activeColumns: any tick, or SUBJECT text) reads in the accent
+// with the number of its ticks, or a dot for the text. The menu itself is not mounted here but on the table's host
+// (update()), because the table clips anything that hangs below its header row.
+function filterHeader(column, label, sort, filters, options) {
+  const cell = sortableHeader(column, label, sort);
+  cell.classList.add('studies-th-filter');
+  const name = label.toLowerCase();
+  const active = activeColumns(filters).includes(column);
+  const open = openMenu === column;
+  cell.append(el('button', {
+    type: 'button', class: `studies-funnel${active ? ' is-active' : ''}${open ? ' is-open' : ''}`,
+    'data-find-key': `filter-${column}`, 'aria-haspopup': 'dialog', 'aria-expanded': String(open),
+    'aria-label': `Filter by ${name}`, title: active ? filteredTitle(column, filters, options) : `Filter by ${name}`,
+    onClick: () => toggleMenu(column),
+  },
+    el('span', { class: 'studies-funnel-icon', 'aria-hidden': 'true', innerHTML: FUNNEL_SVG }),
+    active ? el('span', { class: 'studies-filter-count', 'aria-hidden': 'true' },
+      column === 'subject' ? '\u2022' : String(filters[column].length)) : null));
+  return cell;
+}
+
 // `emptyKind` is null (the library is empty), 'search' or 'filters'. `selected` is paramSelected.
-// `sort` is state.findSort; the rows arrive already sorted by it. `batch` is state.batch.
-function buildTable(studies, runningId, emptyKind, selected, sort, batch) {
+// `sort` is state.findSort; the rows arrive already sorted by it. `batch` is state.batch. `filters` and `options` are
+// the header menus' normalised ticks and offered values, for the funnels.
+function buildTable(studies, runningId, emptyKind, selected, sort, batch, filters, options) {
   // An explicit arrow, not `studies.map(buildRow)`: map passes the index as the second
   // argument, so every row would receive its own position as `runningId` and the running
   // study would silently never be badged Processing. The arrow is load-bearing.
@@ -435,13 +467,15 @@ function buildTable(studies, runningId, emptyKind, selected, sort, batch) {
     : null;
   return el('div', { class: 'studies-table card' },
     el('div', { class: 'studies-table-head' },
+      // STUDY and DATE have no menu (spec section 3.1): the search box covers the name.
       sortableHeader('study', 'STUDY', sort, selectAll),
-      sortableHeader('subject', 'SUBJECT', sort),
-      sortableHeader('view', 'VIEW', sort),
-      sortableHeader('workspace', 'WORKSPACE', sort),
-      sortableHeader('folder', 'FOLDER', sort),
+      filterHeader('subject', 'SUBJECT', sort, filters, options),
+      filterHeader('region', 'REGION', sort, filters, options),
+      filterHeader('view', 'VIEW', sort, filters, options),
+      filterHeader('workspace', 'WORKSPACE', sort, filters, options),
+      filterHeader('folder', 'FOLDER', sort, filters, options),
       sortableHeader('date', 'DATE', sort),
-      sortableHeader('status', 'STATUS', sort),
+      filterHeader('status', 'STATUS', sort, filters, options),
       el('div', {})),
     ...body);
 }
@@ -453,12 +487,16 @@ function sameKey(a, b) {
 // The Find table's rows from a store snapshot: searched, filtered, then sorted (studies-table spec 2026-09-10,
 // section 6), so `visible` is in the order the table shows it and the bar's buttons act in. One computation for
 // update() and the export (bundle spec 4.2), so a bundle holds exactly the rows the person is looking at.
+// (2026-10-19) The rows themselves come from data/find.js findVisible -- the one definition of the list's order,
+// which the Analysis screen's previous / next steps through. `queried` (the search alone) is what the Parameters grid
+// takes. (2026-10-19, header filters) The filters are the header menus' ticks, findFilters, normalised against the
+// library as the menus show them; the list no longer reads the grid's paramFilters.
 function findRows(live) {
   const studies = live.studies || [];
   const query = (live.query || '').trim().toLowerCase();
   const queried = studies.filter((study) => matchesQuery(study, query));
-  const filters = normaliseFilters(live.paramFilters, studies);
-  const visible = sortFindRows(queried.filter((study) => matchesLocation(study, filters)), live.findSort, live.running, live.batch);
+  const filters = normaliseFindFilters(live.findFilters, studies);
+  const visible = findVisible(live);
   return { studies, query, queried, filters, visible };
 }
 
@@ -509,16 +547,146 @@ let exporting = false;
 let importing = false;
 let pendingImport = null;
 let importButton = null;
+// (2026-10-19, header filters; spec section 3.2) The column whose header menu is open, or null: one menu at a time.
+// Module scope like confirmingId and listed in update()'s key with it. `menuShows` is what the open menu was last
+// drawn from (its column's offered values and ticks, as JSON), so update() can close it when something else changes
+// what it shows; `menuWriting` is true across the menu's own store write, whose change the redrawn menu shows anyway.
+let openMenu = null;
+let menuShows = null;
+let menuWriting = false;
 
 subscribe((state) => {
-  // Navigation withdraws an open prompt and an open editor along with the mount. The import prompt goes too: a plan
-  // left pending while a study is opened in edit mode would update it on return (its `editing` set is the click's).
+  // Navigation withdraws an open prompt, an open editor and an open header menu along with the mount (opening a film
+  // closes the menu, spec 3.2). The import prompt goes too: a plan left pending while a study is opened in edit mode
+  // would update it on return (its `editing` set is the click's).
   if (state.screen !== 'studies') {
     mounted = null; confirmingId = null; confirmingSelected = null; editingSubject = null; pendingImport = null;
+    openMenu = null; menuShows = null; listenOutside(false);
     return;
   }
   if (mounted) mounted.update(state);
 });
+
+// ---- The header menus (2026-10-19, header filters; spec F1, section 3.2) ------------------------------------------
+
+// The funnel's click: opens its column's menu, closing any other, with focus on the menu's first control; on the
+// open menu's own funnel it closes it.
+function toggleMenu(column) {
+  if (openMenu === column) { closeMenu(column); return; }
+  openMenu = column;
+  menuShows = null;
+  refreshTable(`[data-filter-menu="${column}"] [data-find-key]`);
+}
+
+// Escape, the close button and a sort item: the menu goes and focus returns to its funnel.
+function closeMenu(column) {
+  openMenu = null;
+  menuShows = null;
+  refreshTable(`[data-find-key="filter-${column}"]`);
+}
+
+// The menu's own writes to findFilters, merged over the normalised ticks (patchFindFilters' rule). `patch` receives
+// the store state and returns the columns to replace.
+function writeFindFilters(patch) {
+  menuWriting = true;
+  try {
+    setState((s) => ({ findFilters: patchFindFilters(s.findFilters, s.studies, patch(s)) }));
+  } finally {
+    menuWriting = false;
+  }
+}
+
+// A press outside the open menu closes it. A press on a funnel is left to that funnel's click, so another column's
+// funnel opens its own menu in one click. Captured, so nothing on the page can stop it first.
+// A press on the table's rows closes the menu and does NOT also open the row (ruling R9), but only because of how this
+// works: the refreshTable() below rebuilds the table on the pointerdown, so the row the press landed on is replaced
+// before its click arrives and the click finds nothing to open. Nothing else here guards the row; if the rebuild ever
+// stopped replacing the row, that click would open it as well. smoke-reviewer.mjs section 2 pins the behaviour.
+// (2026-10-19, final review; ruling R16) Only a press on the rows is swallowed that way. A press anywhere else -- the
+// bar's Delete, Export or Segment, a column header's sort button or the select-all box, the search box, the tabs --
+// closes the menu without a rebuild (its node goes, its funnel reads closed) and its click proceeds to its control, so
+// one click both closes the menu and does what it says. The rebuilt header the click would otherwise land on is a new
+// node, which is why the header is excluded from the rebuild along with everything outside the table.
+function closeMenuOnOutsidePress(event) {
+  if (openMenu === null) { listenOutside(false); return; }
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest('.studies-filter-menu, .studies-funnel')) return;
+  const column = openMenu;
+  openMenu = null;
+  menuShows = null;
+  const onRows = Boolean(target && mounted?.host.contains(target) && !target.closest('.studies-table-head'));
+  if (onRows) { refreshTable(); return; }
+  listenOutside(false);
+  if (!mounted) return;
+  mounted.host.querySelectorAll('.studies-filter-menu').forEach((menu) => menu.remove());
+  const funnel = mounted.host.querySelector(`[data-find-key="filter-${column}"]`);
+  funnel?.setAttribute('aria-expanded', 'false');
+  funnel?.classList.remove('is-open');
+  mounted.menuClosedInPlace();
+}
+
+// Escape closes the open menu from wherever focus is (ruling R11): the menu's own Escape handler covers focus inside it
+// and stops the event there, so this one, on the document in the bubble phase, takes the rest -- focus that left the
+// menu by Shift+Tab from All, a click on its padding, the search box. It goes the menu's own way, closeMenu(), so focus
+// lands on the funnel.
+function closeMenuOnEscape(event) {
+  if (openMenu === null) { listenOutside(false); return; }
+  if (event.key !== 'Escape') return;
+  event.preventDefault();
+  closeMenu(openMenu);
+}
+
+// Both listeners are registered only while a menu is open, together: update() keeps them in step with openMenu, and
+// navigation removes them.
+let listeningOutside = false;
+function listenOutside(on) {
+  if (on === listeningOutside) return;
+  listeningOutside = on;
+  if (on) {
+    document.addEventListener('pointerdown', closeMenuOnOutsidePress, true);
+    document.addEventListener('keydown', closeMenuOnEscape);
+  } else {
+    document.removeEventListener('pointerdown', closeMenuOnOutsidePress, true);
+    document.removeEventListener('keydown', closeMenuOnEscape);
+  }
+}
+
+// The open menu for `column`, its callbacks writing the store. A tick toggles over the NORMALISED column, so a stale
+// tick for a value no longer offered never rides back in; All and None both clear the column (spec 3.1). A sort item
+// sets the list's sort wholesale and closes the menu.
+function buildMenu(column, live, filters, options) {
+  return filterMenu({
+    column, label: column, options: options[column] ?? [], ticked: column === 'subject' ? [] : filters[column],
+    subjectText: filters.subject, sortKey: live.findSort?.key, sortDir: live.findSort?.dir,
+    sortLabels: SORT_LABELS[column] ?? TEXT_SORT_LABELS,
+    onToggle: (value) => writeFindFilters((s) => ({ [column]: toggleId(normaliseFindFilters(s.findFilters, s.studies)[column], value) })),
+    onAll: () => writeFindFilters(() => ({ [column]: [] })),
+    onNone: () => writeFindFilters(() => ({ [column]: [] })),
+    onSubject: (subject) => writeFindFilters(() => ({ subject })),
+    // Closed before the write, so the sort's own repaint already draws the list without the menu.
+    onSort: (dir) => {
+      openMenu = null;
+      setState({ findSort: { key: column, dir } });
+      closeMenu(column);
+    },
+    onClose: () => closeMenu(column),
+  });
+}
+
+// Mounts the menu as the table host's last child, just below the header row and from its column's header cell. Inside
+// the table it would be clipped: .studies-table scrolls sideways and so clips below its header row. Positioned against
+// the host, it scrolls with the list; it is kept inside the host's width, so the STATUS menu opens leftwards from the
+// right edge.
+function placeMenu(host, menu, column) {
+  host.append(menu);
+  const cell = host.querySelector(`[data-find-key="filter-${column}"]`)?.closest('.studies-th');
+  const head = cell?.closest('.studies-table-head');
+  if (!cell || !head) return;
+  const hostRect = host.getBoundingClientRect();
+  const left = Math.max(0, Math.min(cell.getBoundingClientRect().left - hostRect.left, hostRect.width - menu.offsetWidth));
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(head.getBoundingClientRect().bottom - hostRect.top + 4)}px`;
+}
 
 // Repaint the bar and the table from the current store after module-scope UI state changes.
 // Called from DOM event handlers only, never from inside a subscriber. The repaint replaces the
@@ -949,9 +1117,10 @@ function commitSubject(id, mode, focusKey = null) {
   if (study && study.source === 'real' && (study.subjectId ?? null) !== next) {
     setState((s) => ({ studies: s.studies.map((x) => (x.id === id ? { ...x, subjectId: next } : x)) }));
   }
+  // The key is escaped: a header menu's keys carry stored values (a workspace path, a view typed by hand).
   refreshTable(below ? `[data-find-key="subject-input-${below}"]`
     : mode === 'next' ? `[data-find-key="subject-${id}"]`
-      : focusKey ? `[data-find-key="${focusKey}"]`
+      : focusKey ? `[data-find-key="${CSS.escape(focusKey)}"]`
         : null);
 }
 
@@ -960,6 +1129,9 @@ export function render(state) {
   confirmingSelected = null;
   editingSubject = null;
   pendingImport = null;
+  openMenu = null;
+  menuShows = null;
+  listenOutside(false);
   const summary = el('div', { class: 'studies-summary' });
   const search = el('input', {
     type: 'search', class: 'studies-search', value: state.query || '',
@@ -996,22 +1168,15 @@ export function render(state) {
   });
   const parameters = mountParameters(parametersHost, { onOpen: openStudy });
 
-  // Filters are one object replaced wholesale. The patch is merged over the NORMALISED filters --
-  // the ones the selects are showing -- exactly as screens/parameters.js does; patchFilters owns
-  // that rule and is tested. These two keys are shared with the grid (batch spec decision 4).
-  function setFilters(patch) {
-    setState((s) => ({ paramFilters: patchFilters(s.paramFilters, s.studies, patch) }));
-  }
-
-  // The bar (batch spec 7.1, 7.3, 7.4; studies-table spec 2026-09-10, section 5): the grid's Workspace and
-  // Folder selects over the same shared keys, then Delete over the ticked visible rows and Export
-  // (annotation bundle spec 2026-10-15, section 4.1), a spacer, then the segment button with its note --
+  // The bar (batch spec 7.1, 7.3, 7.4; studies-table spec 2026-09-10, section 5): Delete over the ticked visible rows
+  // and Export (annotation bundle spec 2026-10-15, section 4.1), a spacer, then the segment button with its note --
   // or, while a batch runs, the progress group. While the Delete prompt is up it takes the bar's place
   // (spec 5.3). Chromium shows no tooltip on a disabled control, so the segment button's reason is a
   // visible note beside it; Delete's and Export's reasons are on their titles, because their labels
-  // already say what they would do (ruling S23). Options come from the whole library, not the searched
-  // subset, as the grid's do. `visible` is the table's rows, in table order: the id list the buttons run.
-  function buildFilterBar(live, filters, visible) {
+  // already say what they would do (ruling S23). `visible` is the table's rows, in table order: the id list the
+  // buttons run. (2026-10-19, header filters; spec section 3.2) The Workspace, Folder and Status dropdowns that led
+  // the bar went: the list filters from its header menus, and the grid keeps its own bar.
+  function buildFilterBar(live, visible) {
     const blocked = barBlocked(live);
     // The ticked VISIBLE real rows, the segment button's own rule (selectedVisible), so a tick the
     // search or a filter is hiding is never deleted.
@@ -1054,29 +1219,6 @@ export function render(state) {
             onClick: () => cancelDeleteSelected(),
           }, 'Cancel')));
     }
-
-    const workspaceSelect = el('select', {
-      class: 'param-select', 'aria-label': 'Filter by workspace', 'data-find-key': 'workspace',
-      // Changing the workspace clears the folder: a folder is only meaningful within its root.
-      onChange: (event) => setFilters({ workspace: event.target.value === '' ? null : event.target.value, folder: null }),
-    });
-    workspaceSelect.append(el('option', { value: '' }, 'All workspaces'));
-    for (const option of workspaceOptions(live.studies)) {
-      workspaceSelect.append(el('option', {
-        value: option.value, ...(option.value === HAND_ADDED ? {} : { title: option.value }),
-      }, option.label));
-    }
-    workspaceSelect.value = filters.workspace ?? '';
-
-    const folderSelect = el('select', {
-      class: 'param-select', 'aria-label': 'Filter by folder', 'data-find-key': 'folder',
-      onChange: (event) => setFilters({ folder: event.target.value === '' ? null : event.target.value }),
-    });
-    folderSelect.append(el('option', { value: '' }, 'All folders'));
-    for (const option of folderOptions(live.studies, filters.workspace)) {
-      folderSelect.append(el('option', { value: option.value }, option.label));
-    }
-    folderSelect.value = filters.folder ?? '';
 
     // Delete and Export share the first three reasons (waitTitle); each then names its own empty case.
     const wait = waitTitle(live);
@@ -1126,7 +1268,7 @@ export function render(state) {
         plan.note ? el('span', { class: 'param-export-note', 'data-find-key': 'segment-note' }, plan.note) : null);
     }
     return el('div', { class: 'studies-filters' },
-      workspaceSelect, folderSelect, deleteButton, exportButton, el('div', { class: 'studies-header-spacer' }), action);
+      deleteButton, exportButton, el('div', { class: 'studies-header-spacer' }), action);
   }
 
   let lastKey = null;
@@ -1171,6 +1313,24 @@ export function render(state) {
     if (pendingImport && (live.studiesTab === 'parameters' || live.studies !== pendingImport.studies)) {
       pendingImport = null;
     }
+    // (2026-10-19, header filters; spec 3.2) The open header menu does not survive a change to what it shows -- its
+    // column's offered values and ticks, compared as JSON with what it was last drawn from, once per update and only
+    // while a menu is open: a delete can take a folder away, a load can add a root. (2026-10-19, final review; R13) The
+    // REGION and STATUS menus offer their whole vocabulary, so a run ending no longer changes them. The menu's own write
+    // (menuWriting) is the change the person just made, which the redrawn menu shows, so it becomes the new baseline.
+    // Leaving for the Parameters tab closes it too, as it withdraws the Delete prompt: the hidden panel has no layout
+    // to place it by.
+    let options = null;
+    if (openMenu !== null) {
+      options = findFilterOptions(studies, filters);
+      const shows = JSON.stringify([options[openMenu] ?? null, filters[openMenu]]);
+      if (live.studiesTab === 'parameters' || (menuShows !== null && !menuWriting && shows !== menuShows)) {
+        openMenu = null;
+        menuShows = null;
+      } else {
+        menuShows = shows;
+      }
+    }
     // Import bundle… lives in the dropzone, which no rebuild replaces, so its state is set here on
     // every notification: refused as the bar's actions are, and while an export runs or a plan
     // waits (the Global Constraints); it reads Importing… while an import reads or places, as
@@ -1183,15 +1343,19 @@ export function render(state) {
     }
 
     // live.running is in the key so the table repaints when a run starts or ends: the row badge is
-    // derived from it. confirmingId, confirmingSelected, editingSubject, exporting, importing and
-    // pendingImport are module scope, not store state; listing them here is what lets a
+    // derived from it. confirmingId, confirmingSelected, editingSubject, exporting, importing,
+    // pendingImport and openMenu are module scope, not store state; listing them here is what lets a
     // refreshTable() after a change to them get past the gate, while a notification that changed
-    // nothing the table shows (a pan frame, a toast) still returns early. paramFilters,
-    // paramSelected, batch and findSort are what the bar, the ticks and the header read;
-    // deletingStudies is what Delete and Export read: every store key this screen reads must be
-    // here, or it silently stops repainting for it.
+    // nothing the table shows (a pan frame, a toast) still returns early. paramSelected, batch,
+    // findSort and findFilters are what the bar, the ticks, the header and its menus read
+    // (2026-10-19: findFilters replaced the bar's location and status filters); deletingStudies is
+    // what Delete and Export read: every store key this screen reads must be here, or it silently
+    // stops repainting for it. openMenu is the LAST entry on purpose (2026-10-19, final review; R16):
+    // menuClosedInPlace() below rewrites that one slot when an outside press closes the menu without a
+    // rebuild.
     const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, editingSubject, exporting,
-      importing, pendingImport, live.deletingStudies, live.paramFilters, live.paramSelected, live.batch, live.findSort];
+      importing, pendingImport, live.deletingStudies, live.paramSelected, live.batch, live.findSort,
+      live.findFilters, openMenu];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
     // The summary always describes the whole library, not the filtered view, and counts with
@@ -1203,31 +1367,49 @@ export function render(state) {
     const { unsegmented, toReview } = summaryCounts(studies, live.running, live.batch);
     summary.textContent = `${studies.length} STUDIES · ${unsegmented} UNSEGMENTED \u00B7 ${toReview} TO REVIEW`;
 
-    const emptyKind = filters.workspace !== null || filters.folder !== null ? 'filters' : (query !== '' ? 'search' : null);
+    const emptyKind = activeColumns(filters).length > 0 ? 'filters' : (query !== '' ? 'search' : null);
+    const shown = options ?? findFilterOptions(studies, filters);
 
     // Focus snapshot, restored by data-find-key after the rebuild (screens/parameters.js does the
-    // same with data-param-key): a select change, a tick, a sort click or a keystroke's commit
+    // same with data-param-key): a tick, a sort click, a menu's control or a keystroke's commit
     // rebuilds the bar and the table, which drops keyboard focus to <body>. Only when focus is
     // inside them -- a rebuild must never steal focus from the search box or the tab strip. An
-    // open SUBJECT editor keeps its caret too: a batch finishing mid-word must not move it.
+    // open SUBJECT editor keeps its caret too: a batch finishing mid-word must not move it, and the
+    // SUBJECT menu's box likewise, since each keystroke in it rebuilds the table.
     // refreshTable() restores the row's delete controls, which carry no key, by its own selector.
     const active = document.activeElement;
     const focusKey = (barHost.contains(active) || tableHost.contains(active)) ? active.getAttribute('data-find-key') : null;
-    const caret = focusKey !== null && focusKey.startsWith('subject-input-') && typeof active.selectionStart === 'number'
-      ? [active.selectionStart, active.selectionEnd] : null;
-    mount(barHost, buildFilterBar(live, filters, visible));
-    mount(tableHost, buildTable(visible, live.running, emptyKind, selected, live.findSort, live.batch));
+    const caret = focusKey !== null && (focusKey.startsWith('subject-input-') || focusKey === 'filter-subject-text')
+      && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
+    // The header menu the focus was in, if any: when this rebuild closed it, focus goes back to its funnel (spec 3.2).
+    const menuColumn = focusKey !== null ? active.closest('.studies-filter-menu')?.getAttribute('data-filter-menu') ?? null : null;
+    mount(barHost, buildFilterBar(live, visible));
+    mount(tableHost, buildTable(visible, live.running, emptyKind, selected, live.findSort, live.batch, filters, shown));
+    if (openMenu !== null) placeMenu(tableHost, buildMenu(openMenu, live, filters, shown), openMenu);
+    listenOutside(openMenu !== null);
     if (focusKey !== null) {
       // The control that was focused may be gone: clicking Segment replaces the button with the
       // progress group, and the batch's end replaces the group with the button. Land on the other.
+      // The key is escaped: a header menu's keys carry stored values (a workspace path, a view typed by hand).
       const fallback = { segment: 'stop', stop: 'segment' }[focusKey] ?? null;
-      const target = barHost.querySelector(`[data-find-key="${focusKey}"]`) ?? tableHost.querySelector(`[data-find-key="${focusKey}"]`)
-        ?? (fallback ? barHost.querySelector(`[data-find-key="${fallback}"]`) : null);
+      const byKey = (host, k) => host.querySelector(`[data-find-key="${CSS.escape(k)}"]`);
+      const target = byKey(barHost, focusKey) ?? byKey(tableHost, focusKey)
+        ?? (fallback ? byKey(barHost, fallback) : null)
+        ?? (menuColumn ? byKey(tableHost, `filter-${menuColumn}`) : null);
       if (target) {
         target.focus();
         if (caret && typeof target.setSelectionRange === 'function') target.setSelectionRange(caret[0], caret[1]);
       }
     }
+  }
+
+  // (2026-10-19, final review; R16) An outside press that closes the menu without a rebuild (closeMenuOnOutsidePress)
+  // leaves the table exactly as a rebuild with no menu would draw it, so the gate's key is told so: its last slot, the
+  // open menu, becomes null. Left saying the menu was open, the gate would take the funnel reopening that same menu for
+  // no change and draw nothing; cleared wholesale instead, the next notification of any kind would rebuild, and one
+  // landing between the press and its click would swallow the click again.
+  function menuClosedInPlace() {
+    if (lastKey !== null) lastKey = [...lastKey.slice(0, -1), null];
   }
 
   const root = el('main', { class: 'studies-page' },
@@ -1239,7 +1421,35 @@ export function render(state) {
       tabs,
       findPanel,
       parametersHost));
-  mounted = { update, host: tableHost, bar: barHost, zone };
+  mounted = { update, host: tableHost, bar: barHost, zone, menuClosedInPlace };
   update(state);
+  // (2026-10-19) Back from a study lands on its row. The panel is rebuilt on every trip, so a fresh mount starts at
+  // the top, and a reviewer returning from the fortieth film had to scroll down to it again. render() returns a
+  // detached tree and the router places it afterwards, so the row is centred on a zero-delay timer, which runs after
+  // the store notification that placed the panel and so finds it laid out; only this panel's own scroll moves, never
+  // the document's. A timer, not requestAnimationFrame (gate feedback G1 of the header-filters round, 2026-10-19):
+  // Chromium stops animation frames in a hidden or fully covered window, so the scroll never happened while the app
+  // sat behind another window, and the smoke suite driving it could not see the row land. Nothing happens when the
+  // study is not a row (filtered out, deleted, the Parameters tab up) or when this mount was replaced meanwhile.
+  if (state.openId) {
+    const openId = state.openId;
+    setTimeout(() => {
+      if (!mounted || mounted.host !== tableHost || !root.isConnected) return;
+      revealRow(root, tableHost, openId);
+    }, 0);
+  }
   return root;
+}
+
+// Scrolls `page` (the list's scroll container) so the row for `id` sits in the middle of it -- only when the row is
+// not already fully in view: a short list, or a row near the top, keeps the heading, the search box and the bar where
+// they are. A row without layout (the Find panel hidden behind the Parameters tab) measures zero and is left alone.
+function revealRow(page, host, id) {
+  const row = host.querySelector(`.studies-row[data-study-id="${id}"]`);
+  if (!row) return;
+  const rowRect = row.getBoundingClientRect();
+  if (rowRect.height === 0) return;
+  const pageRect = page.getBoundingClientRect();
+  if (rowRect.top >= pageRect.top && rowRect.bottom <= pageRect.bottom) return;
+  page.scrollTop += rowRect.top - pageRect.top - (page.clientHeight - rowRect.height) / 2;
 }

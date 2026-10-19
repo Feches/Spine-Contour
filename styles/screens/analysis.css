@@ -68,6 +68,28 @@
 
 .analysis-spacer { flex: 1; }
 
+/* (2026-10-19, reviewer navigation) Previous / next beside Back, the open study's place in the Find list between
+   them in the header's mono eyebrow face. The group pulls in from the header's gap so it reads as one control with
+   Back; a disabled arrow (the first or last row, or edit mode) fades rather than vanishing, so the pair never shifts. */
+.analysis-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: -6px;
+}
+.analysis-position {
+  min-width: 58px;
+  text-align: center;
+}
+.analysis-nav .icon-btn:disabled {
+  opacity: .35;
+  cursor: default;
+}
+.analysis-nav .icon-btn:disabled:hover {
+  color: var(--muted);
+  background: var(--card);
+}
+
 .confidence-badge {
   display: flex;
   align-items: center;
@@ -445,6 +467,38 @@
   backdrop-filter: blur(2px);
 }
 .run-card.is-hidden { display: none; }
+
+/* (2026-10-19, reviewer navigation) The UNSEGMENTED card as a STRIP along the bottom of the stage once the film's
+   X-ray is on it (components/viewer.js describeCard `strip`): no scrim and no blur, the film fully visible above;
+   the eyebrow, the title, the body and the Run segmentation button on one line, the button at the right. The card
+   keeps its class names and its button, so the harness drives an unsegmented film exactly as before. The footer
+   watermark moves up above the strip. */
+.run-card.run-card-strip {
+  inset: auto 0 0 0;
+  align-items: stretch;
+  justify-content: stretch;
+  background: none;
+  backdrop-filter: none;
+  pointer-events: none;
+}
+.run-card-strip .run-card-inner {
+  pointer-events: auto;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  border-radius: 0;
+  border-width: 1px 0 0;
+  background: color-mix(in srgb, var(--stage-card) 90%, transparent);
+  text-align: left;
+}
+.run-card-strip .run-title { margin-top: 0; flex: 1; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The body repeats the button on one line; in a narrow stage it wrapped the strip to three lines. */
+.run-card-strip .run-body { display: none; }
+.run-card-strip .run-button { margin-top: 0; width: auto; flex-shrink: 0; padding: 7px 14px; }
+.run-card-strip .run-spinner { display: none; }
+.viewer-stage:has(.run-card-strip:not(.is-hidden)) .viewer-footer { bottom: 66px; }
 
 .run-card-inner {
   width: 340px;

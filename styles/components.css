@@ -178,7 +178,14 @@
 }
 
 /* Checkbox */
+/* `position: relative` is LOAD-BEARING (2026-10-19). The hidden native input below is absolutely positioned, and
+   with no positioned ancestor its containing block was the page itself: every tick box in the Studies list left
+   its 1px input at the list's CONTENT coordinates, outside the list's own scroll clipping, so forty rows made the
+   whole document scrollable to the last row's depth. Ticking a row near the bottom then focused that input, the
+   document scrolled to it and the app shell slid off the top of the window. The label as the containing block
+   keeps the input inside the box it belongs to, clipped and scrolled with the list. */
 .checkbox-row {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 12px;

@@ -27,6 +27,10 @@ export const HAND_ADDED = '__hand__';
 // pattern: a sentinel, because null means "no timepoint filter".
 export const NO_TIMEPOINT = '__none__';
 
+// The view filter's value for "this film has no view" -- the same pattern (the Unknown view,
+// 2026-10-19): a sentinel, because null means "no view filter".
+export const NO_VIEW = '__unknown__';
+
 // The paired-with filter's value for "any labelled film that is not Pre-op" (user decision at the
 // Task 9 gate, 2026-09-07): a follow-up study labels its post films 6 wk, 1 yr, 2 yr as often as
 // Post-op, and a pair should not need its label picked first. A film with no timepoint never pairs.
@@ -170,14 +174,25 @@ export function timepointOptions(studies) {
   return options;
 }
 
-// Views present, first seen first. A cleared view ('') is not an option: the column shows a dash.
+// A film's view, or null when it has none: a missing, blank or non-string view is the Unknown view
+// (2026-10-19), which validateStudy stores as null and the screens print as `Unknown`.
+function viewOf(study) {
+  const view = study?.view;
+  return typeof view === 'string' && view.trim() !== '' ? view : null;
+}
+
+// Views present, first seen first, then `Unknown` last when any film has none.
 export function viewOptions(studies) {
   const seen = [];
+  let missing = false;
   for (const study of studies) {
-    const view = study?.view;
-    if (typeof view === 'string' && view.trim() !== '' && !seen.includes(view)) seen.push(view);
+    const view = viewOf(study);
+    if (view === null) { missing = true; continue; }
+    if (!seen.includes(view)) seen.push(view);
   }
-  return seen.map((value) => ({ value, label: value }));
+  const options = seen.map((value) => ({ value, label: value }));
+  if (missing) options.push({ value: NO_VIEW, label: 'Unknown' });
+  return options;
 }
 
 // The post side of a pair: `All paired` first (the default), then Post-op (always offered),
@@ -215,7 +230,14 @@ function matchesTimepoint(study, timepoint) {
   return timepoint === NO_TIMEPOINT ? label === null : label === timepoint;
 }
 
-function matchesSubject(study, needle) {
+function matchesView(study, view) {
+  if (!view) return true;
+  return view === NO_VIEW ? viewOf(study) === null : study.view === view;
+}
+
+// (2026-10-19) Exported for the Find list's SUBJECT menu (data/find.js), so the list and the grid share one contains
+// rule rather than two copies of it.
+export function matchesSubject(study, needle) {
   const query = String(needle ?? '').trim().toLowerCase();
   if (query === '') return true;
   const key = subjectKey(study);
@@ -284,7 +306,7 @@ export function filterParameters(studies, filters) {
   const f = { ...DEFAULT_FILTERS, ...(filters ?? {}) };
   const kept = studies.filter((study) => matchesLocation(study, f)
     && (!f.segmentedOnly || isSegmented(study))
-    && (!f.view || study.view === f.view)
+    && matchesView(study, f.view)
     && matchesSubject(study, f.subject));
   const paired = f.pairedOnly ? pairedSubjects(kept, f.pairedWith || ANY_POST) : null;
   return kept.filter((study) => (paired === null || paired.has(subjectKey(study)))

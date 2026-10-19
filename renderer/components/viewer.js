@@ -1176,6 +1176,17 @@ export function mountViewer(container) {
         button: { text: 'Run segmentation', disabled: Boolean(state.running) || Boolean(batch), title: waitTitle },
       };
     }
+    // (2026-10-19) An unsegmented film whose X-ray is on the stage (screens/analysis.js showOriginal decodes every
+    // real film with no result) keeps its card, but as a STRIP along the bottom of the stage: the same eyebrow, title
+    // and Run segmentation button, no scrim over the film. The header pill says Unsegmented above; this says it below.
+    // Running and queued films keep the full card, so the spinner and Cancel stay where they always were.
+    if (!hasResult && !busy && !queued && currentImages) {
+      return {
+        eyebrow: 'UNSEGMENTED', title: 'No segmentation yet', body: 'Run segmentation to generate measurements.',
+        spinner: false, strip: true,
+        button: { text: 'Run segmentation', disabled: Boolean(state.running) || Boolean(batch), title: waitTitle },
+      };
+    }
     if (!hasResult || busy) {
       return {
         eyebrow: busy ? 'RUNNING' : (queued ? 'QUEUED' : 'UNSEGMENTED'),
@@ -1216,6 +1227,8 @@ export function mountViewer(container) {
   // The ONLY writer of the card's nodes. Writes every property on every call.
   function applyCard(card) {
     runCard.classList.toggle('is-hidden', !card);
+    // (2026-10-19) The strip form, for an unsegmented film with its X-ray on the stage (describeCard).
+    runCard.classList.toggle('run-card-strip', Boolean(card?.strip));
     if (!card) return;
     runEyebrow.textContent = card.eyebrow;
     runTitle.textContent = card.title;

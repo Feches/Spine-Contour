@@ -51,11 +51,13 @@ function writeFixture() {
 }
 
 const at = (relative) => path.join(FIXTURE, ...relative.split('/'));
+// 2026-10-19 (header filters, the Unknown view): a folder whose name names no view reads null, the Unknown view, not
+// Standing lateral; only `flexion` names one.
 const ROWS_AT_SCAN = [
-  { folder: '.', count: 1, timepoint: null, view: 'Standing lateral' },
+  { folder: '.', count: 1, timepoint: null, view: null },
   { folder: 'flexion', count: 1, timepoint: null, view: 'Flexion lateral' },
-  { folder: 'post-op', count: 1, timepoint: 'Post-op', view: 'Standing lateral' },
-  { folder: 'pre-op', count: 2, timepoint: 'Pre-op', view: 'Standing lateral' },
+  { folder: 'post-op', count: 1, timepoint: 'Post-op', view: null },
+  { folder: 'pre-op', count: 2, timepoint: 'Pre-op', view: null },
 ];
 const TOAST_LOAD = 'Workspace loaded — 5 studies added · clinical data linked (3 matched)'
   + ' · subject, timepoint, film date, view or note read from folder or file names for 5 films'
@@ -107,12 +109,13 @@ async function waitForState(predicateSource, timeoutMs) {
 }
 const fixtureFilter = `(x) => x.source === 'real' && x.workspaceFolder === ${JSON.stringify(FIXTURE)}`;
 const fixtureRecords = () => store(`s.studies.filter(${fixtureFilter}).map((x) => ({ id: x.id, filePath: x.filePath, subjectId: x.subjectId, timepoint: x.timepoint, filmDate: x.filmDate, view: x.view, clinical: x.clinical }))`);
-// The folder table as it reads: one entry per data-ws-folder row.
+// The folder table as it reads: one entry per data-ws-folder row. (2026-10-19) The VIEW select rests on Unknown, whose
+// option value is the empty string, so `|| null` reads it as the row model does, null.
 const tableRows = () => cdp.evaluate(`[...document.querySelectorAll('.workspace-folders tbody tr[data-ws-folder]')].map((r) => ({
   folder: r.dataset.wsFolder,
   count: Number(r.querySelector('.workspace-folders-num')?.textContent),
   timepoint: r.querySelector('[data-ws-key^="tp:"]')?.value || null,
-  view: r.querySelector('[data-ws-key^="view:"]')?.value ?? null,
+  view: r.querySelector('[data-ws-key^="view:"]')?.value || null,
 }))`);
 // Set a folder-table select the way the DOM would, with focus on it first so the rebuild's
 // focus restore has something to restore.
@@ -177,9 +180,9 @@ try {
   s = await cdp.state();
   check('the rows read back: root none, flexion none, post-op Post-op, pre-op Pre-op + Extension lateral',
     same(s.wsFolderRows, [
-      { folder: '.', count: 1, timepoint: null, view: 'Standing lateral' },
+      { folder: '.', count: 1, timepoint: null, view: null },
       { folder: 'flexion', count: 1, timepoint: null, view: 'Flexion lateral' },
-      { folder: 'post-op', count: 1, timepoint: 'Post-op', view: 'Standing lateral' },
+      { folder: 'post-op', count: 1, timepoint: 'Post-op', view: null },
       { folder: 'pre-op', count: 2, timepoint: 'Pre-op', view: 'Extension lateral' },
     ]), s.wsFolderRows);
 
@@ -216,7 +219,7 @@ try {
   check('flexion/S003: subject from the stem, no timepoint, the folder\'s view, its Age; the bad date not written',
     same(fields(byPath('flexion/S003.png')), { subjectId: 'S003', timepoint: null, filmDate: null, view: 'Flexion lateral', clinical: { Age: '61' } }), fields(byPath('flexion/S003.png')));
   check('post-op/S001: the ambiguous stem took no CSV row; subject and timepoint from the layout',
-    same(fields(byPath('post-op/S001.png')), { subjectId: 'S001', timepoint: 'Post-op', filmDate: null, view: 'Standing lateral', clinical: {} }), fields(byPath('post-op/S001.png')));
+    same(fields(byPath('post-op/S001.png')), { subjectId: 'S001', timepoint: 'Post-op', filmDate: null, view: null, clinical: {} }), fields(byPath('post-op/S001.png')));
   check('pre-op/S001: the changed row\'s view applied to a film whose own name says nothing',
     same(fields(byPath('pre-op/S001.png')), { subjectId: 'S001', timepoint: 'Pre-op', filmDate: null, view: 'Extension lateral', clinical: {} }), fields(byPath('pre-op/S001.png')));
   check('pre-op/S002: the CSV\'s preop and US date, the row\'s view, its Age',
@@ -280,13 +283,15 @@ try {
   // scan order, so post-op/S001 (scanned before pre-op/) is first. Study ID is the film's stem
   // (2026-09-12) and the record id appears nowhere in the file. The first four cells are the name,
   // view, subject and timepoint; then the film date and the note read empty, the Spine region reads
-  // auto (the fixture films were never run, so their region is the requested one) and the Anterior
-  // image side reads empty; every measurement column and Age after them read empty too. The count of
+  // Unknown (the fixture films were never run and name no region, so the list's REGION label is Unknown; 2026-10-19
+  // the cell reads the label, where it once wrote the requested `auto`) and the Anterior
+  // image side reads empty; every measurement column and Age after them read empty too. The view cell reads empty
+  // too: the film's view is the Unknown view, null (2026-10-19), which the export writes as an empty cell. The count of
   // those trailing empty cells is derived from EXPORT_HEADER's own column count (2026-10-11: seven
   // cells are already written) so this stays in step with the header above.
   const emptyCells = ','.repeat(EXPORT_HEADER.split(',').length - 7);
-  check('the first row (post-op/S001, by name then store order) reads its name, view, subject and timepoint, region auto, with empty numbers and no record id',
-    exported[3] === `S001,Standing lateral,S001,Post-op,,,auto${emptyCells}` && !exported[3].includes(idOf('post-op/S001.png')), exported[3]);
+  check('the first row (post-op/S001, by name then store order) reads its name, an empty view, subject and timepoint, region Unknown, with empty numbers and no record id',
+    exported[3] === `S001,,S001,Post-op,,,Unknown${emptyCells}` && !exported[3].includes(idOf('post-op/S001.png')), exported[3]);
 
   // 8. The drawer on Analysis for pre-op/S002: the Study group's cells, the datalists, a typed
   // timepoint that normalises, a date set on the date input.
@@ -326,8 +331,9 @@ try {
   check('a date set on the FILM DATE input commits as YYYY-MM-DD', dateCommitted === true, await store(`s.studies.find((x) => x.id === ${JSON.stringify(S002)})?.filmDate`));
   // cdp-lib's key() knows no Backspace; clear the cell the way the date was set -- value, then change.
   await cdp.evaluate("(() => { const e = document.querySelector('.clinical-cell[data-kind=\"study\"][data-field=\"view\"]'); e.value = ''; e.dispatchEvent(new Event('change', { bubbles: true })); })()");
-  const viewCleared = await waitForState(`(s.studies.find((x) => x.id === ${JSON.stringify(S002)}) || {}).view === ''`, 3000);
-  check('a cleared VIEW cell stores an empty string, never null', viewCleared === true, await store(`s.studies.find((x) => x.id === ${JSON.stringify(S002)})?.view`));
+  // 2026-10-19: an emptied view is the Unknown view, null (it was an empty string before that, and null once threw).
+  const viewCleared = await waitForState(`(s.studies.find((x) => x.id === ${JSON.stringify(S002)}) || {}).view === null`, 3000);
+  check('a cleared VIEW cell stores null, the Unknown view', viewCleared === true, await store(`s.studies.find((x) => x.id === ${JSON.stringify(S002)})?.view`));
   const cellAfter = await cdp.evaluate("(() => { const e = document.querySelector('.clinical-cell[data-kind=\"study\"][data-field=\"timepoint\"]'); return e ? e.value : null; })()");
   check('the TIMEPOINT cell shows the committed label', cellAfter === '6 wk', cellAfter);
 

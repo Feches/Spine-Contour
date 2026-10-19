@@ -18,7 +18,10 @@ const CHECK_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" s
 // -- lands on the label and toggles the control.
 // `variant: 'level'` (2026-10-10, the level editor's panel) gives the label 'checkbox-row level-check' and none
 // of the param-* classes, so the Studies screen's sizing and placement rules never reach it; with no variant
-// the output is exactly what it always was.
+// the output is exactly what it always was. `variant: 'menu'` (2026-10-19, the Find list's header filter menus) does
+// the same with 'checkbox-row menu-check', and its text span is 'menu-check-label', since the menu's rows carry text.
+const VARIANT_CLASS = { level: 'checkbox-row level-check', menu: 'checkbox-row menu-check' };
+
 export function checkbox({ key, keyAttr = 'data-param-key', label, checked, note, ariaLabel, indeterminate, onChange, onClick, variant }) {
   const input = el('input', {
     type: 'checkbox', checked, [keyAttr]: key, onChange,
@@ -27,11 +30,11 @@ export function checkbox({ key, keyAttr = 'data-param-key', label, checked, note
   // A property, not an attribute, and it has no markup form: it must be assigned on the node.
   if (indeterminate === true) input.indeterminate = true;
   return el('label', {
-    class: variant === 'level' ? 'checkbox-row level-check' : `checkbox-row param-check${label === null ? ' param-pick' : ''}`,
+    class: VARIANT_CLASS[variant] ?? `checkbox-row param-check${label === null ? ' param-pick' : ''}`,
     ...(onClick ? { onClick } : {}),
   },
     input,
     el('span', { class: 'checkbox-box', innerHTML: CHECK_SVG }),
     label === null ? null
-      : el('span', { class: 'param-check-label' }, label, note ? el('span', { class: 'param-check-note' }, note) : null));
+      : el('span', { class: variant === 'menu' ? 'menu-check-label' : 'param-check-label' }, label, note ? el('span', { class: 'param-check-note' }, note) : null));
 }

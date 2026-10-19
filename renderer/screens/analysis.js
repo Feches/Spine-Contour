@@ -1,5 +1,5 @@
 import { predictionMatchesStudy, isHandPlaced, hasStoredImage } from '../data/predictions.js';
-import { studyRegion, requestedRegion, studyRegionLabel, requiresAnteriorSide, regionRunReason, validAnteriorSide } from '../data/cervical.js';
+import { studyRegion, requestedRegion, studyRegionLabel, requiresAnteriorSide, regionRunReason, validAnteriorSide, regionKey, regionLabel } from '../data/cervical.js';
 import { imageConfidence, scorePercent } from '../data/confidence.js';
 import { el, mount } from '../dom.js';
 import { getState, setState, subscribe } from '../store.js';
@@ -26,8 +26,45 @@ import { mountLevelEditor } from '../components/level-editor.js';
 import { mountClinicalData } from '../components/clinical-data.js';
 import { calibrationForStudy } from '../calibration.js';
 import { preferReviewedCalibration } from '../data/calibration.js';
+import { findNeighbour, findPosition } from '../data/find.js';
+import { FRESH_VIEW } from '../data/demo-visibility.js';
 
 const BACK_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12 H5"></path><path d="M11 6 L5 12 L11 18"></path></svg>';
+// (2026-10-19, reviewer navigation) Previous and next, the same 24-unit stroke convention as BACK_SVG.
+const PREV_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 L8 12 L15 19"></path></svg>';
+const NEXT_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5 L16 12 L9 19"></path></svg>';
+
+// (2026-10-19) Which arrow goes where: Left and Up to the previous row of the Find list, Right and Down to the next.
+export const NAV_STEP = Object.freeze({ ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 });
+// Controls whose own arrows win over navigation: text entry, dropdowns and sliders (the viewer's TEXT_ENTRY plus the
+// window / level sliders and the tick boxes, which Space and the arrows reach through the browser). (2026-10-19, final
+// review; ruling R14) Except the region bar's two selects, REGION_BAR_SELECT: handleNavKey says why.
+const KEEPS_ARROWS = 'input, select, textarea, [contenteditable="true"]';
+const REGION_BAR_SELECT = '.analysis-region-bar select';
+// (2026-10-19, final review; ruling R15) How long a film must stay open before its original is previewed or decoded
+// (render()'s film-loading chain): long enough for a held or repeated arrow key to pass over a film without loading it,
+// short enough that a film opened to be looked at starts loading at once.
+const FILM_SETTLE_MS = 150;
+
+// (2026-10-19) The header's place in the Find list: `3 / 42`, or an en dash for a study the list's filters hide.
+export function positionLabel({ index, count }) {
+  return `${index === null ? '–' : index} / ${count}`;
+}
+
+// (2026-10-19) Opens the row before (`step` -1) or after (`step` 1) the open study in the Find list's order -- its
+// search, its workspace, folder and status filters and its column sort (data/find.js findNeighbour) -- with the fresh
+// view every opener gives a study (FRESH_VIEW, the data copy of screens/studies.js's). openId is a key of this screen's
+// host (router.js ANALYSIS_KEYS), so the host remounts for the new film exactly as a click on the list does. Refused
+// while editing: the arrows nudge handles there, and a switch would drop unsaved levels without the exit prompt. True
+// when a study was opened.
+export function openNeighbour(step) {
+  const live = getState();
+  if (live.screen !== 'analysis' || live.editing) return false;
+  const next = findNeighbour(live, live.openId, step);
+  if (!next) return false;
+  setState({ openId: next.id, ...FRESH_VIEW });
+  return true;
+}
 
 export function formatConfidence(qc) {
   return scorePercent(qc?.femoral?.confidence);
@@ -152,6 +189,7 @@ function sameConfidenceKey(a, b) {
 function teardown() {
   if (!mounted) return;
   mounted.viewer.detach();
+  mounted.detachKeys();
   mounted = null;
   // imageCache deliberately survives -- that is the whole point of it.
 }
@@ -179,6 +217,10 @@ subscribe((state) => {
     return;
   }
   if (!mounted) return; // render() has not run for this navigation yet
+  // (2026-10-19) Another study is opening (previous / next): the router remounts this screen for it in this same
+  // notification, openId being one of its keys for this screen, so the outgoing mount is not updated with the
+  // incoming study's record over the outgoing film.
+  if (state.openId !== mounted.studyId) return;
   mounted.update();
 });
 
@@ -763,7 +805,11 @@ async function previewOriginal(studyId) {
   mounted.previewMessage = 'Loading original radiograph…';
   mounted.update();
   try {
-    const data = await filmBytes(start);
+    // (2026-10-19, final review; ruling R15) Not parked: opening a film is not a run, and arrow-stepping through
+    // hundreds of unsegmented films (every new film is Auto detect, which previews here) parked every file in
+    // filePayloads for the session, released only on delete. A later run re-reads the film from its filePath, as a
+    // batch does; a film dropped with no path was parked when it was added and is found there.
+    const data = await filmBytes(start, { park: false });
     if (!live()) return;
     if (!data) throw new Error('The source film could not be found.');
     const response = await calibrate({ name: start.fileName, data, previewOnly: true });
@@ -782,6 +828,34 @@ async function previewOriginal(studyId) {
     mounted.previewMessage = `Original preview unavailable: ${error.message}`;
     mounted.update();
   }
+}
+
+// (2026-10-19) A film with no result shows its X-ray by default: the decoded original at its default window (ensureFilm,
+// the level editor's loader, which hands the images to the live viewer itself). (2026-10-19, final review) Only a lumbar
+// film comes here (requestedRegion lumbar, or an Auto detect run that found lumbar): an Auto detect, cervical or full-spine
+// film takes previewOriginal (loadOriginal, render()), as it did before, so the UNSEGMENTED strip is the lumbar film's. The
+// region note reads the progress and, when the original cannot be read, why; the UNSEGMENTED card then stays as it
+// was, its Run segmentation offering the relocate picker. Guarded like previewOriginal: nothing is written to a mount
+// that has moved on. Never throws: ensureFilm resolves an outcome.
+async function showOriginal(studyId) {
+  const live = () => mounted?.studyId === studyId && getState().screen === 'analysis';
+  if (!live()) return;
+  mounted.previewMessage = 'Loading original radiograph…';
+  mounted.update();
+  const outcome = await ensureFilm(studyId);
+  if (!live()) return;
+  mounted.previewMessage = outcome.superseded || outcome.images ? '' : `Original preview unavailable: ${outcome.reason}`;
+  mounted.update();
+}
+
+// (2026-10-19) The original for a real film with no result: cervical and full-spine films keep previewOriginal (the
+// backend's clean preview, the evidence for the anterior-side choice, with its own guards); every other film is
+// decoded here (showOriginal). Nothing for a demo study, which has no film, or a film with a result.
+function loadOriginal(studyId) {
+  const study = getState().studies.find((s) => s.id === studyId);
+  if (!study || study.source !== 'real' || study.geometry) return;
+  if (requiresAnteriorSide(study)) previewOriginal(studyId);
+  else showOriginal(studyId);
 }
 
 export function render(state) {
@@ -877,8 +951,26 @@ export function render(state) {
   // The same DEMO pill the Studies list puts beside the patient. A demo study's numbers are
   // fabricated for exploring the interface; the header is where the user is looking when they
   // read them, so the pill belongs beside the id, not only back on the list.
+  // (2026-10-19) Previous / next beside Back, with the open study's place in the Find list between them: what the
+  // arrow keys do (handleNavKey below), for the mouse, and where you are. update() keeps the three current.
+  const prevButton = el('button', {
+    type: 'button', class: 'icon-btn analysis-nav-prev', 'aria-label': 'Previous study', innerHTML: PREV_SVG,
+    onClick: () => openNeighbour(-1),
+  });
+  const nextButton = el('button', {
+    type: 'button', class: 'icon-btn analysis-nav-next', 'aria-label': 'Next study', innerHTML: NEXT_SVG,
+    onClick: () => openNeighbour(1),
+  });
+  const position = el('span', { class: 'analysis-meta analysis-position' });
+  const navGroup = el('div', { class: 'analysis-nav', role: 'group', 'aria-label': 'Previous and next study' },
+    prevButton, position, nextButton);
+  // What the group was last built from; update() runs on every notification, pan frames included, and the list's
+  // order is a sort over the library, so it is recomputed only when one of its inputs changes.
+  let lastNav = null;
+
   const header = el('header', { class: 'analysis-header' },
     backButton,
+    navGroup,
     nameField,
     headerMeta,
     study.source === 'demo' ? el('span', { class: 'pill-demo' }, 'DEMO') : null,
@@ -963,7 +1055,9 @@ export function render(state) {
     // (2026-10-11, gate feedback G3) So does the film on the stage, and its window with it.
     forgetFilmWindow(open.id);
     mounted?.viewer.setFilmStatus(null);
-    previewOriginal(open.id);
+    // (2026-10-19) The film comes back for the new region: the backend's preview for cervical and full spine, the
+    // decoded original otherwise.
+    loadOriginal(open.id);
   }
   const regionSelect = el('select', { 'aria-label': 'Spine region', class: 'workspace-folder-select',
     onChange: e => changeRegion({ region: e.target.value, anteriorSide: null }) },
@@ -1077,9 +1171,12 @@ export function render(state) {
     previewButton.hidden = alignmentRunButton.hidden = !alignmentSetup;
     previewButton.disabled = Boolean(live.running || live.batch);
     alignmentRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view) || live.editing);
-    // The preview message shows only during alignment setup: it is not cleared when a preview is
-    // abandoned, so its being set is not enough.
-    const previewNote = mounted?.previewMessage && alignmentSetup ? mounted.previewMessage : '';
+    // The preview message shows only while the film has no result (2026-10-19: for every real film, since every one
+    // now loads its original -- showOriginal -- not only the alignment setup's): it is not cleared when a preview is
+    // abandoned, so its being set is not enough. A failed lumbar film keeps its note to the stored reason (port spec 6):
+    // the FAILED card covers the stage, and a film the run could not find is not also "unavailable" after it.
+    const previewNote = mounted?.previewMessage && open.source === 'real' && !open.measurements
+      && (requiresAnteriorSide(open) || !open.processingError) ? mounted.previewMessage : '';
     // (2026-10-01, issue #39) Read here for the region note as well as for the header pill below. A
     // film whose pill reads Failed says why here, in --danger, next to the controls that fix most
     // failures, ahead of the ordinary guidance (port spec 6).
@@ -1106,8 +1203,10 @@ export function render(state) {
     // The rest of the header line. The name leads because that is what the user recognises; the
     // SP-nnnn id stays reachable on the title rather than disappearing entirely.
     // Where the models ran, from the providers the result recorded; nothing for older records.
+    // (2026-10-19, final review) The region reads as the Find list's REGION cell does (data/cervical.js regionKey and
+    // regionLabel), so an Auto detect film no run has placed reads UNKNOWN here too, not AUTO.
     const processedOn = describeProcessor(open.qc);
-    headerMeta.textContent = `${studyRegionLabel(open).toUpperCase()} · ${(open.view || '—').toUpperCase()} · ${open.pt ?? '—'}`
+    headerMeta.textContent = `${regionLabel(regionKey(open)).toUpperCase()} · ${(open.view || 'Unknown').toUpperCase()} · ${open.pt ?? '—'}`
       + (produced ? ` · ${produced.toUpperCase()}` : '') + (processedOn ? ` · ${processedOn}` : '');
     headerMeta.title = processorTitle(open.qc);
     // A run in flight counts as pending too: the numbers on the record are the PREVIOUS run's,
@@ -1155,6 +1254,26 @@ export function render(state) {
     commentText.textContent = comment ?? '';
     commentBlock.classList.toggle('is-hidden', editing || comment === null);
 
+    // (2026-10-19) Previous / next and the position, from the Find list's order under its filters (data/find.js): every
+    // store key that order reads is in the gate, and edit mode disables both buttons (openNeighbour refuses it too).
+    const navKey = [live.studies, live.query, live.findSort, live.findFilters, live.running, live.batch, editing];
+    if (!sameConfidenceKey(navKey, lastNav)) {
+      lastNav = navKey;
+      const place = findPosition(live, open.id);
+      const before = findNeighbour(live, open.id, -1);
+      const after = findNeighbour(live, open.id, 1);
+      position.textContent = positionLabel(place);
+      position.title = place.index === null
+        ? `Not in the Find list under its current filters, which show ${place.count} ${place.count === 1 ? 'study' : 'studies'}`
+        : `Study ${place.index} of ${place.count} in the Find list`;
+      prevButton.disabled = editing || !before;
+      nextButton.disabled = editing || !after;
+      prevButton.title = editing ? 'Finish editing before moving to another study'
+        : before ? `Previous: ${studyName(before)} (←)` : 'First study in the list';
+      nextButton.title = editing ? 'Finish editing before moving to another study'
+        : after ? `Next: ${studyName(after)} (→)` : 'Last study in the list';
+    }
+
     // The list's badge, on the list's rule (screens/studies.js buildRow): headerBadge's `unsupported`,
     // `status` and `badgeKey`, read above for the region note. A Failed pill carries the dated reason
     // as its tooltip (2026-10-01, issue #39).
@@ -1187,27 +1306,69 @@ export function render(state) {
     clinical.update();
   }
 
+  // (2026-10-19) The arrow keys, on window like the viewer's shortcuts: Left/Up the previous row of the Find list,
+  // Right/Down the next, wherever focus is except inside a control that owns its arrows (KEEPS_ARROWS), with no
+  // modifier, and never in edit mode, where the viewer's own handler -- registered first, by mountViewer above --
+  // nudges handles with them (openNeighbour refuses edit mode). A key with nowhere to go is left alone, so it keeps
+  // whatever it did before. teardown() removes the listener with the mount.
+  // (2026-10-19, final review; ruling R14) The region bar's Region and Orientation selects do NOT own the arrows. On a
+  // closed select Chromium's default for an arrow is "pick the next option", which fires `change`, and changeRegion then
+  // wipes the film's result (geometry, measurements, qc, the review mark) with no confirmation: a Right pressed by habit
+  // after choosing a region destroyed a segmentation. So with focus on one of them the key is always prevented, which
+  // stops the value change, and navigates as from anywhere else; at either end of the list it is still prevented and so
+  // changes nothing. The dropdown opened with Space or Alt+Down (Alt returns above) takes its own arrows inside its
+  // popup, which Chromium handles before the page sees a keydown, so choosing a region from the keyboard still works.
+  // Every other select, input, textarea and contenteditable keeps its arrows.
+  function handleNavKey(event) {
+    const step = NAV_STEP[event.key];
+    if (!step || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target && target.closest(REGION_BAR_SELECT)) {
+      event.preventDefault();
+      openNeighbour(step);
+      return;
+    }
+    if (target && target.closest(KEEPS_ARROWS)) return;
+    if (openNeighbour(step)) event.preventDefault();
+  }
+  window.addEventListener('keydown', handleNavKey);
+
   // mounted.studyId is refreshed ONLY here, and render() runs only when the router sees a
-  // SCREEN_KEYS ('screen', 'calibrationRequest') change. Every writer that changes state.openId today also
-  // sets screen, so the two stay in step. A future writer that changes openId WITHOUT screen
-  // would leave a stale studyId behind and mis-gate all three of its readers -- the
-  // setImages guard (~l.203), live() (~l.230) and needsRestore -- drawing one study's
-  // geometry over another study's film. Add openId to SCREEN_KEYS, or refresh this in
-  // update(), before writing such a caller.
-  mounted = { viewer, update, studyId: study.id };
+  // SCREEN_KEYS ('screen', 'calibrationRequest') change or, on this screen, an openId change (router.js
+  // ANALYSIS_KEYS, 2026-10-19: previous / next change openId with the screen unchanged). So the two stay in step:
+  // every opener remounts this host, and the module-scope subscription above skips an update whose openId is not
+  // this mount's. The three readers of studyId -- the setImages guard (~l.203), live() (~l.230) and needsRestore --
+  // depend on that, or one study's geometry would be drawn over another study's film.
+  mounted = { viewer, update, studyId: study.id, detachKeys: () => window.removeEventListener('keydown', handleNavKey) };
   update();
   // (2026-10-11, ruling R35) A window the view kept for this film (Back, then the sidebar's OPEN STUDY card) over images
   // with no decoded original -- another study's run took the single cache entry meanwhile, so the restore below would
   // hand the viewer the stored image alone -- would read W / L on the chip while the film layer draws the stored image.
   // ensureFilm (through redecodeKeptWindow) restores the stored image, attaches the decode and hands both to this
   // viewer, so the window is drawn again; if no original comes back the window is forgotten.
+  // (2026-10-19, final review; ruling R15) The restore and the kept window's redecode start at once: they are a segmented
+  // film's own stored image. The three branches after them -- the backend's preview, the hand-placed or level-editor
+  // film's decode, and an unsegmented lumbar film's decode -- are chosen here but started only after a short settle
+  // (FILM_SETTLE_MS), and only if this mount is still the one on screen: arrow-stepping through a long list of
+  // unsegmented films otherwise fired a backend preview or a full decode for every film passed over on the way. The
+  // stage shows the UNSEGMENTED (or FAILED) card meanwhile, over the toolbar as during the decode, so the film is on the
+  // stage about 150 ms later than before: a click on the Edit tool in that time lands on the card.
+  const thisMount = mounted;
+  const settled = (load) => setTimeout(() => {
+    if (mounted === thisMount && mounted.studyId === study.id) load(study.id);
+  }, FILM_SETTLE_MS);
   if (windowNeedsDecode(getState(), study, cachedImages(study.id))) redecodeKeptWindow(study.id);
   else if (needsRestore) restoreFilm(study.id);
-  else if (!study.geometry && requiresAnteriorSide(study) && !(imageCache?.studyId === study.id && imageCache.images?.preview)) previewOriginal(study.id);
+  else if (!study.geometry && requiresAnteriorSide(study) && !(imageCache?.studyId === study.id && imageCache.images?.preview)) settled(previewOriginal);
   // (2026-10-10) Back on the screen still editing (the sidebar's OPEN STUDY card keeps the level editor) with
   // no film cached for this study: load it, as entering edit mode did.
   // (2026-10-10, ruling R16) A study whose geometry came from the level editor alone has no sidecar and is shown
   // from its decoded original, the image its levels were placed on.
-  else if ((handPlaced || getState().levelEditor?.studyId === study.id) && !(imageCache?.studyId === study.id)) ensureFilm(study.id);
+  else if ((handPlaced || getState().levelEditor?.studyId === study.id) && !(imageCache?.studyId === study.id)) settled(ensureFilm);
+  // (2026-10-19) Every other real film with no result shows its X-ray by default (showOriginal): the decoded original
+  // at its default window, with the UNSEGMENTED card drawn as a strip along the bottom of the stage once it is there
+  // (components/viewer.js describeCard). The cache check is the same as the branches above: a film already decoded was
+  // re-handed to the viewer by the setImages call at the top of this section.
+  else if (study.source === 'real' && !study.geometry && !(imageCache?.studyId === study.id)) settled(showOriginal);
   return root;
 }

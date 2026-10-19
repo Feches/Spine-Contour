@@ -181,9 +181,6 @@ function validateStudy(entry, index) {
   if (typeof entry.addedAt !== 'string') {
     throw new Error(`Study ${entry.id} is missing addedAt.`);
   }
-  if (typeof entry.view !== 'string') {
-    throw new Error(`Study ${entry.id} is missing view.`);
-  }
 
   const measurements = isValidMeasurements(entry.measurements) ? entry.measurements : null;
   const geometry = isValidGeometry(entry.geometry) ? entry.geometry : null;
@@ -221,10 +218,19 @@ function validateStudy(entry, index) {
   if (errorAtValue !== undefined && errorAtValue !== null && processingErrorAt === null) {
     console.warn(`persistence: ${entry.id} has a malformed processing-error time; it is dropped.`);
   }
+  // (2026-10-19) the view is Unknown (null) until a person or a name sets it, so a record may carry
+  // none and a missing, empty or non-string one loads as null instead of failing the record (it
+  // used to throw, which is why the drawer stored '' for an emptied view). A value that was present
+  // but is not a usable label is dropped with a warning; an absent key or null is just Unknown and
+  // warns nothing. A stored label is kept as it is: nothing rewrites a view already on disk.
+  const view = optionalText(entry.view);
+  if (entry.view !== undefined && entry.view !== null && view === null) {
+    console.warn(`persistence: ${entry.id} has a view that is not a label; it is read as Unknown.`);
+  }
   return {
     id: entry.id, source: 'real',
     filePath: typeof entry.filePath === 'string' ? entry.filePath : null,
-    fileName: entry.fileName, addedAt: entry.addedAt, view: entry.view,
+    fileName: entry.fileName, addedAt: entry.addedAt, view,
     region: ['auto', 'lumbar', 'cervical', 'full_spine'].includes(entry.region) ? entry.region
       : ['cervical', 'full_spine'].includes(geometry?.region) ? geometry.region : 'lumbar',
     anteriorSide: validAnteriorSide(entry.anteriorSide) ? entry.anteriorSide

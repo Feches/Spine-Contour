@@ -1,6 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatConfidence, headerBadge, failedRunNote } from '../renderer/screens/analysis.js';
+import { formatConfidence, headerBadge, failedRunNote, positionLabel, NAV_STEP } from '../renderer/screens/analysis.js';
+
+// (2026-10-19, reviewer navigation) the header's place in the Find list, and which arrow goes where.
+test('positionLabel reads "3 / 42", and an en dash for a study the list\'s filters hide', () => {
+  assert.equal(positionLabel({ index: 3, count: 42 }), '3 / 42');
+  assert.equal(positionLabel({ index: 1, count: 1 }), '1 / 1');
+  assert.equal(positionLabel({ index: null, count: 42 }), '– / 42');
+  assert.equal(positionLabel({ index: null, count: 0 }), '– / 0');
+});
+
+test('NAV_STEP: Left and Up go to the previous row, Right and Down to the next, nothing else navigates', () => {
+  assert.deepEqual(NAV_STEP, { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 });
+  assert.ok(Object.isFrozen(NAV_STEP));
+  assert.equal(NAV_STEP.PageDown, undefined);
+});
 
 test('formatConfidence renders rounded percent from qc.femoral.confidence', () => {
   assert.equal(formatConfidence({ femoral: { confidence: 0.873 } }), '87%');

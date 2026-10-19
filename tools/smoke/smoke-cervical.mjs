@@ -93,7 +93,7 @@ try {
   check('CSV exports cervical columns and current calibrated values', await cdp.evaluate(`(async()=>{
     const s=(await import('./renderer/store.js')).getState().studies[0];
     const csv=(await import('./renderer/data/csv.js')).toCsv([s]);
-    return csv.includes('C2-C7 Cobb (deg)')&&csv.includes('C2-C7 SVA (mm)')&&csv.includes('cervical,${expectedSide}');
+    return csv.includes('C2-C7 Cobb (deg)')&&csv.includes('C2-C7 SVA (mm)')&&csv.includes('Cervical,${expectedSide}');
   })()`));
   await cdp.evaluate(`(async()=>{
     const s=(await import('./renderer/store.js')).getState().studies[0];

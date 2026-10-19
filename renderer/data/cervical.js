@@ -17,6 +17,19 @@ export function studyRegion(study) {
     ? study.geometry.region : requested;
 }
 export function studyRegionLabel(study) { return studyRegion(study).replace('_', ' '); }
+// The region the Studies list shows, filters and sorts by (2026-10-19). Unlike the two helpers above, a
+// study with nothing set and nothing detected is Unknown rather than lumbar, because the list should not
+// claim a region nobody chose and no run found. The one exception is a study that already carries a result:
+// only the old lumbar pipeline produced results without recording a region, so that result is lumbar.
+export const REGION_KEYS = Object.freeze(['unknown', 'lumbar', 'cervical', 'full_spine']);
+const REGION_LABELS = Object.freeze({ unknown: 'Unknown', lumbar: 'Lumbar', cervical: 'Cervical', full_spine: 'Full spine' });
+const KNOWN_REGIONS = ['lumbar', 'cervical', 'full_spine'];
+export function regionKey(study) {
+  if (KNOWN_REGIONS.includes(study?.region)) return study.region;
+  if (KNOWN_REGIONS.includes(study?.geometry?.region)) return study.geometry.region;
+  return study?.measurements != null ? 'lumbar' : 'unknown';
+}
+export function regionLabel(key) { return Object.hasOwn(REGION_LABELS, key) ? REGION_LABELS[key] : 'Unknown'; }
 export function requiresAnteriorSide(study) { return studyRegion(study) !== 'lumbar'; }
 export function validAnteriorSide(side) { return side === 'left' || side === 'right'; }
 export function regionRunReason(study) { return null; }

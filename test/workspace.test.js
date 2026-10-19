@@ -249,11 +249,12 @@ test('loadWorkspaceStudies seeds subject, timepoint and view from the layout, an
     wsFiles: [at('pre-op/S001.png'), at('post-op/S001.png'), at('flexion/S003.png'), at('S004_postop.png'), at('IMG_0001.png')],
   }));
   const by = (relative) => result.studies.find((s) => s.filePath === at(relative));
-  assert.deepEqual(pick(by('pre-op/S001.png')), { subjectId: 'S001', timepoint: 'Pre-op', filmDate: null, view: 'Standing lateral' });
-  assert.deepEqual(pick(by('post-op/S001.png')), { subjectId: 'S001', timepoint: 'Post-op', filmDate: null, view: 'Standing lateral' });
+  // (2026-10-19) A layout that names no view leaves it Unknown (null), not Standing lateral.
+  assert.deepEqual(pick(by('pre-op/S001.png')), { subjectId: 'S001', timepoint: 'Pre-op', filmDate: null, view: null });
+  assert.deepEqual(pick(by('post-op/S001.png')), { subjectId: 'S001', timepoint: 'Post-op', filmDate: null, view: null });
   assert.deepEqual(pick(by('flexion/S003.png')), { subjectId: 'S003', timepoint: null, filmDate: null, view: 'Flexion lateral' });
-  assert.deepEqual(pick(by('S004_postop.png')), { subjectId: 'S004', timepoint: 'Post-op', filmDate: null, view: 'Standing lateral' });
-  assert.deepEqual(pick(by('IMG_0001.png')), { subjectId: 'IMG_0001', timepoint: null, filmDate: null, view: 'Standing lateral' });
+  assert.deepEqual(pick(by('S004_postop.png')), { subjectId: 'S004', timepoint: 'Post-op', filmDate: null, view: null });
+  assert.deepEqual(pick(by('IMG_0001.png')), { subjectId: 'IMG_0001', timepoint: null, filmDate: null, view: null });
   assert.deepEqual(result.seeding, { fromFolders: 5, fromCsv: 0, noSubject: 0, noTimepoint: 2, badDates: 0 });
 });
 
@@ -271,6 +272,23 @@ test('loadWorkspaceStudies applies the folder table: a user-set row beats the de
   assert.deepEqual(pick(by('pre-op/S002_flexion.png')), { subjectId: 'S002', timepoint: 'Intra-op', filmDate: null, view: 'Flexion lateral' });
   assert.deepEqual(pick(by('S003.png')), { subjectId: 'S003', timepoint: null, filmDate: null, view: 'Standing lateral' });
   assert.deepEqual(result.seeding, { fromFolders: 3, fromCsv: 0, noSubject: 0, noTimepoint: 1, badDates: 0 });
+});
+
+test('loadWorkspaceStudies counts a view a folder-table row supplies as read, Standing lateral included, and a row with none as nothing', () => {
+  // Both records keep their stored subject and timepoint, so only the table row's view can count.
+  const stored = { subjectId: 'KEEP', timepoint: '1 yr', view: null };
+  const named = real('SP-1000', at('x/a.png'), {}, stored);
+  const unknown = real('SP-1001', at('y/b.png'), {}, stored);
+  const result = loadWorkspaceStudies(baseState({
+    studies: [named, unknown], wsFolder: WS, wsFiles: [at('x/a.png'), at('y/b.png')],
+    wsFolderRows: [
+      { folder: 'x', count: 1, timepoint: null, view: 'Standing lateral' },
+      { folder: 'y', count: 1, timepoint: null, view: null },
+    ],
+  }));
+  assert.equal(result.studies.find((s) => s.id === 'SP-1000').view, 'Standing lateral');
+  assert.equal(result.studies.find((s) => s.id === 'SP-1001'), unknown);
+  assert.equal(result.seeding.fromFolders, 1);
 });
 
 test('loadWorkspaceStudies fills a known record\'s blank study fields on a new object, never overwrites, and counts it', () => {
@@ -309,7 +327,7 @@ test('loadWorkspaceStudies takes the CSV\'s structural columns over the layout, 
   assert.deepEqual(pick(by('pre-op/S001.png')), { subjectId: 'P-1', timepoint: 'Pre-op', filmDate: '2025-03-02', view: 'Supine lateral' });
   assert.deepEqual(by('pre-op/S001.png').clinical, { Age: '58' });
   // Blank CSV cells supply nothing: the layout fills in, and the rejected date is counted, not stored.
-  assert.deepEqual(pick(by('post-op/S002.png')), { subjectId: 'S002', timepoint: 'Post-op', filmDate: null, view: 'Standing lateral' });
+  assert.deepEqual(pick(by('post-op/S002.png')), { subjectId: 'S002', timepoint: 'Post-op', filmDate: null, view: null });
   assert.deepEqual(by('post-op/S002.png').clinical, {});
   assert.deepEqual(result.seeding, { fromFolders: 1, fromCsv: 1, noSubject: 0, noTimepoint: 0, badDates: 1 });
 });
@@ -325,7 +343,7 @@ test('loadWorkspaceStudies reads the film date and note from a film\'s name, fil
   const by = (relative) => result.studies.find((s) => s.filePath === at(relative));
   const fresh = by('sub225_pre-op_10-23-2023_femoral heads.jpg');
   assert.deepEqual({ ...pick(fresh), note: fresh.note },
-    { subjectId: 'sub225', timepoint: 'Pre-op', filmDate: '2023-10-23', view: 'Standing lateral', note: 'femoral heads' });
+    { subjectId: 'sub225', timepoint: 'Pre-op', filmDate: '2023-10-23', view: null, note: 'femoral heads' });
   // The hand-set label stays; the blank date is filled from the name (fill-blanks, §8.3).
   assert.deepEqual(pick(by('sub226_post-op_5-31-2024.jpg')), { subjectId: 'sub226', timepoint: '1 yr', filmDate: '2024-05-31', view: 'Standing lateral' });
   // A subject the old parser stored as the whole stem is a stored value like any other: the load

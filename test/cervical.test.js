@@ -1,7 +1,7 @@
 import { predictionMatchesStudy } from '../renderer/data/predictions.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cervicalMeasurements, cervicalRows, cervicalMeasureGeometry, regionRunReason } from '../renderer/data/cervical.js';
+import { cervicalMeasurements, cervicalRows, cervicalMeasureGeometry, regionRunReason, regionKey, regionLabel, REGION_KEYS } from '../renderer/data/cervical.js';
 import { landmarkAt, setLandmarkAt } from '../renderer/viewer/geometry.js';
 import { constructionLabel } from '../renderer/viewer/canvas.js';
 import { STORE_VERSION, validate } from '../renderer/data/persistence.js';
@@ -106,7 +106,7 @@ test('current calibrated measurements agree across panel, parameter grid, CSV an
   let csv = table(toCsv([s]));
   assert.equal(csv.rows[0]['C2-C7 SVA (mm)'], '10');
   assert.equal(csv.rows[0]['PI'], '');
-  assert.equal(csv.rows[0]['Spine region'], 'cervical');
+  assert.equal(csv.rows[0]['Spine region'], 'Cervical');
   const post = { ...structuredClone(s), id: 'SP-9001', timepoint: 'Post-op', fileName: 'post.png' };
   post.geometry.c2_centroid[0] = 120;
   csv = table(toPairedCsv(pairStudies([s, post])));
@@ -180,4 +180,18 @@ test('persisted region/orientation disagreement discards a stale result without 
   s.anteriorSide = 'left'; s.region = 'lumbar';
   loaded = validate({ version: STORE_VERSION, studies: [s] })[0];
   assert.equal(loaded.region, 'lumbar'); assert.equal(loaded.geometry, null); assert.equal(loaded.measurements, null);
+});
+
+test('regionKey: the region set by a person, else the one the run detected, else a lumbar result with none, else unknown', () => {
+  assert.equal(regionKey({ region: 'cervical', geometry: { region: 'lumbar' } }), 'cervical');
+  assert.equal(regionKey({ region: 'auto', geometry: { region: 'full_spine' } }), 'full_spine');
+  assert.equal(regionKey({ region: 'auto', geometry: null, measurements: null }), 'unknown');
+  assert.equal(regionKey({ region: 'auto', geometry: { region: 'bogus' }, measurements: { PI: 50 } }), 'lumbar', 'a result that recorded no valid region is an old lumbar one');
+  assert.equal(regionKey({ source: 'demo', measurements: { PI: 50 } }), 'lumbar');
+  assert.equal(regionKey({}), 'unknown');
+  assert.equal(regionKey(null), 'unknown');
+});
+test('regionLabel reads the four labels and Unknown for anything else', () => {
+  assert.deepEqual(REGION_KEYS.map(regionLabel), ['Unknown', 'Lumbar', 'Cervical', 'Full spine']);
+  assert.equal(regionLabel('bogus'), 'Unknown');
 });

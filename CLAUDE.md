@@ -1,5 +1,88 @@
 # Spine Contour
 
+**2026-10-19 Find list header filters, the REGION column and the Unknown view (BUILT, at the owner's gate, not pushed,
+shipping as one release with the reviewer navigation round below):** the same branch `worktree-reviewer-navigation` and
+worktree, on top of that round, off `origin/main` @ `cc1b548` (v1.2.0). The owner's ask: the Find list's VIEW column read
+`Standing lateral` on a cervical film (the view is the patient position, seeded on import; the anatomical region a run
+detects was shown nowhere); the import made every folder choose a view, defaulting to Standing lateral, which is wrong
+for most films ("make it Unknown"); and filtering lived in a bar of dropdowns while sorting lived in the headers ("filter
+and sort every column from the headers"). Spec `docs/superpowers/specs/2026-10-19-find-list-header-filters-region-view-design.md`
+(F1-F9), plan `docs/superpowers/plans/2026-10-19-find-list-header-filters-region-view.md`, seven tasks, each reviewed:
+(1) `data/cervical.js` `regionKey(study)` (the region a person set, else the one the run detected, else a result with
+none is lumbar, else `unknown`) and `regionLabel`; (2) the view is `string | null`, `null` (Unknown) until a name or a
+person sets it -- `newStudy`, `rowForSegments` and `seedFields` seed null, `validateStudy` accepts null (no
+`STORE_VERSION` bump), and `inferenceView` reads null, blank and `unknown` as lateral so an Unknown view passes the
+segmentation gate (the backend classifies the film during the run; a non-lateral film fails with its own reason and the
+run never writes `view`); (3) `Unknown` on every screen (the list, the grid, the drawer's placeholder, the Analysis
+header and the sidebar line, the import table's VIEW selects with Unknown first and the default, the grid's View
+filter through `NO_VIEW`); (4) `data/find.js` owns `findFilters` (`{ subject, region, view, workspace, folder, status }`,
+session-only like `findSort`) with `findFilterOptions`, `normaliseFindFilters`, `patchFindFilters`, `matchesFindFilters`
+and `activeColumns` -- OR within a column, AND across columns, a column with no ticks passes everything -- and
+`findOrder` / `findVisible` / `findNeighbour` / `findPosition` read it, so previous / next follows the menus; (5) the
+REGION column between SUBJECT and VIEW (`Unknown`, `Lumbar`, `Cervical`, `Full spine`, muted for Unknown, sortable with
+Unknown last), and the CSV's `Spine region` cell reads the label; (6) every header but STUDY and DATE carries a funnel
+(`data-find-key` `filter-<column>`) that opens a menu (`components/filter-menu.js`): All, None, one checkbox per value
+(`filter-<column>-<value key>`, with `__unknown__` and `__hand__` for no view / region and no workspace root), the sort
+directions in the column's words, a close button; SUBJECT's menu is a text box; the bar's Workspace, Folder and Status
+dropdowns and `findStatus` are gone (the grid keeps `paramFilters` and its own bar); a menu stays open through its own
+ticks, closes on another change to what it shows, on Escape (from anywhere, a document-level listener registered with
+the outside-press one), a press outside (a press on a row only closes: the pointerdown rebuild replaces the row before
+its click arrives, so a row is not also opened; since the final review, R16, a press on the bar or a header closes the
+menu in place and its click goes through) or opening a film; (7) the other suites, the records, the whole-branch run.
+Unit 1123 -> 1142; `smoke-reviewer` 119/119, `smoke-parameters` 58/58, `smoke-studies` 155/155, `smoke-workspace` 100/100, `smoke-seeding` 36/36, `smoke-persist` 42/42 then 55/55, `smoke-levels` dom 145/145,
+`smoke-bundle` 17/17, 18/18 and 9/9 (the suites not run and why are in HANDOFF). The final whole-branch review returned
+"With fixes", and one fix wave (`1528bcf`) built rulings R13-R16: the STATUS and REGION menus always offer their whole
+vocabulary (the seven pills, Processing included, and the four regions), so a tick on them never dissolves and a
+review queue reviewed to its end reads the empty copy and `– / 0` (R13); the region bar's two selects yield the arrow
+keys, which navigate instead of changing the region (R14); opening a film neither parks its bytes nor starts a preview
+or decode until a 150 ms settle on the same mount (R15); and `Unknown` typed in the drawer or in a CSV View cell stores
+null, the Analysis header reads `UNKNOWN` for an undetected Auto detect film, a bundle update keeps the local view under
+a null one, and WORKSPACE rows carry the root path on their title (R16). Unit 1147; `smoke-reviewer` 131/131,
+`smoke-studies` 157/157, `smoke-levels` dom 145/145. Known limits: a 1.2.0 build refuses a library in which this build
+stored a null view (F8); bundles exported with Unknown views import only into this version or later (a 1.2.0 build skips
+those films as malformed, because its `validate` refuses a non-string view), and a 1.2.0 library in which the drawer had
+cleared a view to `''` gets a null view on this build's first save, so 1.2.0 can no longer read it either; SUBJECT's
+text matches `subjectId` only, as the grid's does. Gate feedback G1 (the owner's first look): the REGION track had pushed
+the table's floors past the page column's 1088 px cap, cutting off the actions column at every window; the floors are
+tightened to a 996 px sum, the trash cell is sticky at the right edge, and the return-to-row scroll waits on a timer
+instead of an animation frame (which a hidden window never fires). No version bump: the release is the owner's step
+after their gate. See HANDOFF's first "Where things stand" section.
+
+**2026-10-19 reviewer navigation (BUILT, at the owner's gate, not pushed; its status dropdown and `findStatus` were replaced by the header menus above before release):** branch `worktree-reviewer-navigation` in
+worktree `.claude/worktrees/reviewer-navigation`, off `origin/main` @ `cc1b548` (v1.2.0). The owner's ask: flip through
+films with the arrow keys instead of going back to the list, over the list as filtered; filter the list by status;
+unsegmented lumbar films opened to a dark stage; ticking a row far down the list scrolled the app off the window. Four
+commits, each verified over CDP on a scratch profile: (1) `d670f0d` the scroll fix -- the tick box's hidden native
+input is absolutely positioned and had no positioned ancestor, so forty rows made the DOCUMENT scrollable to the last
+row's depth and a tick near the bottom focused that input and slid the shell off the top; `.checkbox-row` is now
+`position: relative` (load-bearing comment in `styles/components.css`), and the Studies screen centres the open study's
+row on the frame after the router places it (`revealRow`), so Back lands on the film you left; (2) `a81de5c` the
+status filter -- a third dropdown after Folder, `state.findStatus` (session-only, like `findSort`), options All
+statuses, Not reviewed (Segmented, Needs review or Hand-placed) and the seven pills in workflow order (`data/find.js`
+`STATUS_FILTERS`, `matchesStatus` by the pill the row shows, `normaliseStatusFilter`); (3) `3146038` previous / next
+-- `data/find.js` `findOrder`, `findVisible`, `findNeighbour`, `findPosition` are the ONE definition of the list's
+order and filters (`matchesQuery` moved there from `screens/studies.js`, which re-exports it); on the Analysis screen
+Left/Up and Right/Down open the row before and after the open study, stepping from its own place in the order whether
+or not it still passes the filters (review-then-arrow goes straight down a Not reviewed list), no wrap, ignored inside
+text entry, dropdowns (but not the region bar's two selects, final review R14), sliders, with a modifier and in edit
+mode (the viewer nudges handles); the header carries
+Previous and Next buttons with `3 / 42` between them (an en dash when the filters hide the film); `openId` is a key of
+the Analysis host (`router.js` `ANALYSIS_KEYS`, that screen only) so the host remounts for the new film as a click on
+the list does, and the module-scope subscription skips an update whose openId is not its mount's; (4) `2020b27` an
+unsegmented lumbar film (a requested region of Lumbar, or an Auto detect run that found lumbar) shows its X-ray by
+default (`showOriginal` through `ensureFilm`, the level editor's loader; `loadOriginal` dispatches by region), the
+region note reading the progress or why the original could not be read, and the UNSEGMENTED card drawn as a STRIP
+along the bottom of the stage once the film is there (`components/viewer.js` `describeCard` `strip`,
+`.run-card-strip`, the same classes and button, so the harness drives an unsegmented film as before; the footer
+watermark lifts above it). An Auto detect, cervical or full-spine unsegmented film (every new film is Auto detect)
+keeps `previewOriginal`: the backend's preview, no card, Run segmentation on the region bar, as before (corrected at
+the final review, which found "every unsegmented film … the strip" in these records); then `9dbb63c`, two
+fixes the re-run suites found (the return-to-row scroll leaves a row already in view alone; a Failed lumbar film's
+note keeps to its stored reason). Unit 1113 -> 1123; `tools/smoke/smoke-reviewer.mjs` (new) 64/64, `smoke-parameters`
+58/58, `smoke-studies` 151/151, `smoke-workspace` 100/100, `smoke-persist` 42/42 then 55/55, `smoke-levels` dom
+145/145 (the bundle suite's counts in HANDOFF). No version bump: the release is the owner's step after their gate. See
+HANDOFF's first "Where things stand" section.
+
 **2026-10-15 annotation bundle export and import (BUILT and through its final review, at the owner's gate (plan Task
 9), on top of the gated editor round, not pushed):** the same branch `worktree-annotation-round-2` in worktree
 `.claude/worktrees/annotation-round-2`, on top of the editor round below (its tip `7dec644` is the 1.2.0 release commit,

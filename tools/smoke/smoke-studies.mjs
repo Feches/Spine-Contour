@@ -67,6 +67,16 @@ async function waitForState(predicateSource, timeoutMs) {
   return false;
 }
 
+// Polls a DOM expression the same way; false at the deadline, never a throw.
+async function waitForDom(expression, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await cdp.evaluate(expression)) return true;
+    await cdp.settle(150);
+  }
+  return false;
+}
+
 try {
   // 1. Land on Studies with an empty query; heading, summary shape, row count.
   await cdp.setState('{ ack: true, screen: "studies", query: "" }');
@@ -116,8 +126,9 @@ try {
     };
   })()`);
   check('the LORDOSIS column is gone from the list', cellDetail.lordosisGone === 0, cellDetail.lordosisGone);
-  check('the header row reads STUDY, SUBJECT, VIEW, WORKSPACE, FOLDER, DATE, STATUS',
-    JSON.stringify(cellDetail.headers) === JSON.stringify(['STUDY', 'SUBJECT', 'VIEW', 'WORKSPACE', 'FOLDER', 'DATE', 'STATUS', '']),
+  // (2026-10-19, header filters) REGION sits between SUBJECT and VIEW.
+  check('the header row reads STUDY, SUBJECT, REGION, VIEW, WORKSPACE, FOLDER, DATE, STATUS',
+    JSON.stringify(cellDetail.headers) === JSON.stringify(['STUDY', 'SUBJECT', 'REGION', 'VIEW', 'WORKSPACE', 'FOLDER', 'DATE', 'STATUS', '']),
     cellDetail.headers);
   check('SP-0042 date cell reads Aug 21, 2026', cellDetail.sp0042Date === 'Aug 21, 2026', cellDetail.sp0042Date);
   check('a demo study has an em dash for both workspace and folder',
@@ -290,6 +301,11 @@ try {
   check('SP-9000 row has layout', Boolean(sp9000Rect), sp9000Rect);
   await cdp.click(sp9000Rect.cx, sp9000Rect.cy);
   await cdp.settle(150);
+  // (2026-10-19, final review; R15) The film's decode starts only after a 150 ms settle, so it can land, and the full
+  // UNSEGMENTED card collapse into the strip along the bottom of the stage, between reading the Run button's place and
+  // clicking it: the click then hits the film. Wait for the strip first (SP-9000 is lumbar, its bytes parked).
+  const settled7 = await waitForDom("document.querySelector('.run-card')?.classList.contains('run-card-strip') === true", 15000);
+  check('SP-9000\'s X-ray lands and its card settles into the UNSEGMENTED strip', settled7 === true, settled7);
   const runCardButton = await cdp.evaluate(`(() => {
     const b = document.querySelector('.run-button');
     if (!b) return null;
@@ -466,9 +482,6 @@ try {
     sidebar: document.querySelector('.nav-row[aria-label="Studies"] .nav-sublabel')?.textContent ?? null,
     procRows: document.querySelectorAll('.studies-row .badge-proc').length,
   }))()`);
-  // A select is driven by setting its value and dispatching change (cdp-lib's key() cannot pick).
-  // A missing element returns null rather than throwing (see the comment above clickAt).
-  const pick = (key, value) => cdp.evaluate(`(() => { const el = document.querySelector('[data-find-key="${key}"]'); if (!el) return null; el.value = ${JSON.stringify(value)}; el.dispatchEvent(new Event('change', { bubbles: true })); return el.value; })()`);
   const summaryParts = async () => {
     const m = /^(\d+) STUDIES · (\d+) UNSEGMENTED \u00B7 (\d+) TO REVIEW$/.exec(((await text(cdp, '.studies-summary')) || '').trim());
     return m ? { studies: Number(m[1]), unsegmented: Number(m[2]) } : null;
@@ -482,52 +495,91 @@ try {
     const r = await cdp.rect(selector); if (r) await cdp.click(r.cx, r.cy); return Boolean(r);
   };
   const FILTERS_RESET = '{ workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: "", pairedOnly: false, pairedWith: "__any__" }';
+  // (2026-10-19, header filters) The Find list's own filters (findFilters), at their default: the grid's paramFilters
+  // above no longer reach the list.
+  const FIND_RESET = '{ subject: "", region: [], view: [], workspace: [], folder: [], status: [] }';
+  // The header menus, driven as a person drives them (smoke-reviewer.mjs section 2's idiom): a funnel opens its
+  // column's menu, a click on a value's row (the label round its box) ticks it, All clears the column, Escape closes
+  // the menu. A value key goes into an attribute selector, so a backslash in a root path is doubled for CSS.
+  const cssKey = (key) => key.replace(/\\/g, '\\\\');
+  const funnelOpen = (column) => cdp.evaluate(`document.querySelector('[data-find-key="filter-${column}"]')?.getAttribute('aria-expanded') === 'true'`);
+  const openFilterMenu = async (column) => {
+    if (!(await funnelOpen(column))) await clickAt(`[data-find-key="filter-${column}"]`);
+    await cdp.settle(150);
+  };
+  const tickValue = async (column, value) => {
+    await openFilterMenu(column);
+    const ok = await clickAt(`label:has(> [data-find-key="${cssKey(`filter-${column}-${value}`)}"])`);
+    await cdp.settle(150);
+    return ok;
+  };
+  const menuLabels = () => cdp.evaluate(`[...document.querySelectorAll('.studies-filter-menu .menu-check')].map((l) => l.textContent)`);
 
   // 10. The filter bar and the ticks. SP-9001 sits under a workspace root, with no bytes and no
   // such file; SP-9000 is segmented (section 8).
-  await cdp.setState(`{ screen: "studies", query: "", paramFilters: ${FILTERS_RESET}, paramSelected: [] }`);
+  await cdp.setState(`{ screen: "studies", query: "", paramFilters: ${FILTERS_RESET}, findFilters: ${FIND_RESET}, paramSelected: [] }`);
   await cdp.settle(200);
   const countBefore10 = (await cdp.state()).studies.length;
   await injectFilm({ id: 'SP-9001', fileName: 'S001.png', filePath: 'C:\\smoke\\Fusion2025\\pre-op\\S001.png', workspaceFolder: 'C:\\smoke\\Fusion2025', base64: null });
   await cdp.settle(200);
-  const bar10 = await cdp.evaluate(`(() => {
-    const opts = (key) => [...document.querySelectorAll('[data-find-key="' + key + '"] option')].map((o) => o.textContent);
-    return { workspace: opts('workspace'), folder: opts('folder'), rows: document.querySelectorAll('.studies-row').length };
-  })()`);
-  check('the Workspace select offers the injected root, then Added by hand', JSON.stringify(bar10.workspace) === JSON.stringify(['All workspaces', 'Fusion2025', 'Added by hand']), bar10.workspace);
-  check('the Folder select offers every folder shown, first seen first', JSON.stringify(bar10.folder) === JSON.stringify(['All folders', 'pre-op', 'design_src']), bar10.folder);
-  check('the injected film is a row', bar10.rows === countBefore10 + 1, bar10.rows);
+  const rows10 = await rowCount(cdp);
+  // (2026-10-19, header filters) The bar's Workspace and Folder selects are gone: the WORKSPACE and FOLDER header menus
+  // offer the same values (the roots, then Added by hand; the folders in first-seen order) as tick boxes.
+  check('the bar no longer holds the Workspace or Folder select', (await cdp.evaluate(`document.querySelectorAll('[data-find-key="workspace"], [data-find-key="folder"]').length`)) === 0);
+  await openFilterMenu('workspace');
+  const workspace10 = await menuLabels();
+  check('the WORKSPACE menu offers the injected root, then Added by hand', JSON.stringify(workspace10) === JSON.stringify(['Fusion2025', 'Added by hand']), workspace10);
+  // (2026-10-19, final review) A root's row names its full path on its title, as the bar's Workspace select did.
+  const workspaceTitles10 = await cdp.evaluate(`[...document.querySelectorAll('.studies-filter-menu .menu-check')].map((l) => l.title)`);
+  check('the WORKSPACE menu\'s root row carries the root\'s full path on its title, Added by hand none', JSON.stringify(workspaceTitles10) === JSON.stringify(['C:\\smoke\\Fusion2025', '']), workspaceTitles10);
+  await openFilterMenu('folder');
+  const folder10 = await menuLabels();
+  check('the FOLDER menu offers every folder in the library, first seen first', JSON.stringify(folder10) === JSON.stringify(['pre-op', 'design_src']), folder10);
+  check('the injected film is a row', rows10 === countBefore10 + 1, rows10);
+  await cdp.key('Escape');
+  await cdp.settle(100);
   const bar10Plain = await readBar();
   check('with nothing ticked the button offers every visible unsegmented film', bar10Plain.label === 'Segment 1 unsegmented' && bar10Plain.disabled === false && bar10Plain.note === null, bar10Plain);
 
-  await pick('workspace', 'C:\\smoke\\Fusion2025');
-  await cdp.settle(150);
+  await tickValue('workspace', 'C:\\smoke\\Fusion2025');
   const ws10 = await cdp.evaluate(`(() => {
-    const el = document.querySelector('[data-find-key="workspace"]');
+    const f = document.querySelector('[data-find-key="filter-workspace"]');
     return {
       rows: [...document.querySelectorAll('.studies-row')].map((r) => r.dataset.studyId),
-      folder: [...document.querySelectorAll('[data-find-key="folder"] option')].map((o) => o.textContent),
-      value: el ? el.value : null,
+      active: f ? f.classList.contains('is-active') : null, count: f?.querySelector('.studies-filter-count')?.textContent ?? null, title: f ? f.title : null,
     };
   })()`);
-  check('filtering by workspace leaves the one film under that root', JSON.stringify(ws10.rows) === JSON.stringify(['SP-9001']), ws10.rows);
-  check('the Folder select narrows to that root and the select keeps its value across the rebuild', JSON.stringify(ws10.folder) === JSON.stringify(['All folders', 'pre-op']) && ws10.value === 'C:\\smoke\\Fusion2025', ws10);
+  check('ticking the root in the WORKSPACE menu leaves the one film under it', JSON.stringify(ws10.rows) === JSON.stringify(['SP-9001']), ws10.rows);
+  check('the WORKSPACE funnel reads active with count 1, its title naming the root', ws10.active === true && ws10.count === '1' && ws10.title === 'Filtered: Fusion2025', ws10);
+  await openFilterMenu('folder');
+  const folder10Narrow = await menuLabels();
+  check('the FOLDER menu narrows to the ticked root', JSON.stringify(folder10Narrow) === JSON.stringify(['pre-op']), folder10Narrow);
   const summary10 = await summaryParts();
   check('the summary still describes the whole library', summary10 !== null && summary10.studies === countBefore10 + 1 && summary10.unsegmented === 1, summary10);
-  const shared10 = (await cdp.state()).paramFilters;
-  check('the filter lives in the shared paramFilters key', shared10.workspace === 'C:\\smoke\\Fusion2025' && shared10.folder === null, shared10);
-  await pick('folder', 'pre-op');
-  await cdp.settle(150);
-  check('filtering by folder keeps the film in it', (await rowCount(cdp)) === 1, await rowCount(cdp));
+  const shared10 = await cdp.state();
+  check('the ticks live in the Find list\'s own findFilters key, and the grid\'s paramFilters are untouched',
+    JSON.stringify(shared10.findFilters.workspace) === JSON.stringify(['C:\\smoke\\Fusion2025']) && shared10.findFilters.folder.length === 0
+    && shared10.paramFilters.workspace === null && shared10.paramFilters.folder === null, { findFilters: shared10.findFilters, paramFilters: shared10.paramFilters });
+  await tickValue('folder', 'pre-op');
+  check('ticking the folder keeps the film in it', (await rowCount(cdp)) === 1, await rowCount(cdp));
   await clickAt('.studies-search');
   await cdp.typeText('zzzznomatch');
   await cdp.settle();
   const empty10 = (await text(cdp, '.studies-empty') || '').trim();
   check('with a filter set and nothing left, the empty state names the filters', empty10 === 'No studies match these filters.', empty10);
   await clearSearch(cdp);
-  await pick('workspace', '');
+  await openFilterMenu('workspace');
+  await clickAt('[data-find-key="filter-workspace-all"]');
   await cdp.settle(150);
-  check('clearing the workspace clears the folder and restores every row', (await rowCount(cdp)) === countBefore10 + 1 && (await cdp.state()).paramFilters.folder === null, await rowCount(cdp));
+  check('All on WORKSPACE clears its ticks but the folder tick, still offered, keeps its one film',
+    (await cdp.state()).findFilters.workspace.length === 0 && JSON.stringify((await cdp.state()).findFilters.folder) === JSON.stringify(['pre-op']) && (await rowCount(cdp)) === 1, await rowCount(cdp));
+  await openFilterMenu('folder');
+  await clickAt('[data-find-key="filter-folder-all"]');
+  await cdp.settle(150);
+  check('All on FOLDER restores every row', (await rowCount(cdp)) === countBefore10 + 1 && JSON.stringify((await cdp.state()).findFilters) === JSON.stringify({ subject: '', region: [], view: [], workspace: [], folder: [], status: [] }), await rowCount(cdp));
+  await cdp.key('Escape');
+  await cdp.settle(100);
+  check('Escape closes the open menu', (await cdp.evaluate(`document.querySelectorAll('.studies-filter-menu').length`)) === 0);
 
   const tickRect = await cdp.rect('input[data-find-key="row-SP-9000"]');
   const demoTick = await cdp.evaluate(`Boolean(document.querySelector('input[data-find-key="row-SP-0042"]'))`);

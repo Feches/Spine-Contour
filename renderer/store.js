@@ -22,10 +22,17 @@ let state = {
   // The study ids ticked on the Parameters grid (addendum, 2026-09-07); replaced wholesale;
   // session-only, never persisted.
   paramSelected: [],
-  // (2026-09-10, studies-table spec 6.1) the Find list's sort: key 'study'|'subject'|'view'|'workspace'|
+  // (2026-09-10, studies-table spec 6.1) the Find list's sort: key 'study'|'subject'|'region'|'view'|'workspace'|
   // 'folder'|'date'|'status', dir 'asc'|'desc'. Replaced wholesale on change; session-only, never persisted;
   // read by the Studies screen's own subscription, never by SCREEN_KEYS. The grid's paramSort is separate.
   findSort: { key: 'date', dir: 'desc' },
+  // (2026-10-19, header filters; spec F6) the Find list's own per-column ticks, one list per header menu plus the
+  // SUBJECT menu's text (data/find.js DEFAULT_FIND_FILTERS). Replaced wholesale; session-only, never persisted; written
+  // by the Studies screen's header menus and read through data/find.js by its rows and the Analysis screen's
+  // previous/next, never by SCREEN_KEYS. It replaced the list's share of paramFilters (workspace, folder) and the
+  // reviewer navigation round's single status filter, whose job the STATUS menu took over. The grid keeps paramFilters
+  // and its own segmentedOnly.
+  findFilters: { subject: '', region: [], view: [], workspace: [], folder: [], status: [] },
   openId: null,
   compareId: null,
 

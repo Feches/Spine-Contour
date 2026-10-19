@@ -283,8 +283,16 @@ async function openFromList(id) {
   return opened;
 }
 
+// (2026-10-19, final review; R15) Enabled is not enough: until the film is on the stage the run card covers the toolbar,
+// and an unsegmented film's preview or decode now starts 150 ms after it opens, so a click in that time lands on the
+// card (section 12 read 130/145 that way). The tool must also be the topmost thing at its own centre.
 async function enterEdit() {
-  await until(`(() => { const b = document.querySelector(${js(EDIT_TOOL)}); return b && !b.disabled; })()`, 15000);
+  await until(`(() => {
+    const b = document.querySelector(${js(EDIT_TOOL)});
+    if (!b || b.disabled) return false;
+    const r = b.getBoundingClientRect();
+    return b.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+  })()`, 15000);
   await clickSelector(EDIT_TOOL);
   return until(`Boolean(document.querySelector('.lv-panel .lv-summary'))`, 10000);
 }
@@ -1299,7 +1307,13 @@ async function domPhase() {
   const stashedAgain = await ev(`window.__lv.hasStashedEditor(${js(SEG)})`);
   await clickSelector(STUDIES_NAV);
   await until(`document.querySelector(${js(`${row(SEG)} .studies-delete`)})`, 5000);
+  // (2026-10-19, header filters) The delete controls sit at the Find table's right end, past the window's edge at the
+  // default size (the table scrolls sideways, and the REGION column made it 100 px wider), so each is scrolled into
+  // view before its click, as smoke-studies.mjs's clickAt does.
+  const reach = (selector) => ev(`document.querySelector(${js(selector)})?.scrollIntoView({ block: 'nearest', inline: 'nearest' })`);
+  await reach(`${row(SEG)} .studies-delete`);
   await clickSelector(`${row(SEG)} .studies-delete`);
+  await reach(`${row(SEG)} .studies-delete-confirm`);
   await clickSelector(`${row(SEG)} .studies-delete-confirm`);
   const deleted = await until(`window.__lv.study(${js(SEG)}) === null`, 5000);
   check('11. deleting a study with a stashed editor drops the stash (hasStashedEditor false)',

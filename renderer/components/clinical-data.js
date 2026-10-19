@@ -37,7 +37,7 @@ const STUDY_COLUMNS = Object.freeze([
   { field: 'subjectId', head: 'SUBJECT', title: 'Subject', type: 'text', list: null },
   { field: 'timepoint', head: 'TIMEPOINT', title: 'Timepoint', type: 'text', list: 'clinical-timepoints' },
   { field: 'filmDate', head: 'FILM DATE', title: 'Film date', type: 'date', list: null },
-  { field: 'view', head: 'VIEW', title: 'View', type: 'text', list: 'clinical-views' },
+  { field: 'view', head: 'VIEW', title: 'View', type: 'text', list: 'clinical-views', placeholder: 'Unknown' },
   { field: 'note', head: 'NOTE', title: 'Note', type: 'text', list: null },
 ]);
 
@@ -169,14 +169,16 @@ export function mountClinicalData(host) {
   // that names a known position is stored as its label (`flexion` → Flexion lateral), anything
   // else as typed. A timepoint that names a known label is stored as that label (`preop` →
   // Pre-op, `6 weeks` → 6 wk) so a typed label pairs; anything else as typed. A date input's
-  // value is already YYYY-MM-DD. An emptied cell stores null -- except view, which validateStudy
-  // requires to be a string (it throws on anything else and would refuse the whole store at the
-  // next launch), so it stores '' and renders as an em dash (`normaliseView('')` is null, and the
-  // `?? text` keeps the empty string).
+  // value is already YYYY-MM-DD. An emptied cell stores null, view included: a view of null is the
+  // Unknown view (2026-10-19), which validateStudy stores as null and the screens print as
+  // `Unknown`. (Before that rule validateStudy threw on a non-string view, so an emptied view had
+  // to store '' and drew an em dash.) (2026-10-19, final review) The word Unknown typed in the cell,
+  // in any case, is that view too and stores null: stored as the word, it sat beside the sentinel as a
+  // second Unknown in the VIEW menu and the grid's View filter.
   function setStudyField(studyId, field, value) {
     const text = String(value ?? '').trim();
     let next;
-    if (field === 'view') next = normaliseView(text) ?? text;
+    if (field === 'view') next = text === '' || /^unknown$/i.test(text) ? null : (normaliseView(text) ?? text);
     else if (field === 'timepoint') next = text === '' ? null : (normaliseTimepoint(text) ?? text);
     else next = text === '' ? null : text;
     setState((s) => {
@@ -316,7 +318,8 @@ export function mountClinicalData(host) {
       class: `clinical-cell clinical-cell-study${column.type === 'date' ? ' clinical-cell-date' : ''}`,
       value: value != null ? String(value) : '',
       // A date input draws its own empty mask; a placeholder there is ignored.
-      placeholder: column.type === 'date' ? undefined : '—',
+      // An empty view is the Unknown view, so its placeholder says so; the other cells draw a dash.
+      placeholder: column.type === 'date' ? undefined : (column.placeholder ?? '—'),
       'aria-label': `${studyName(study)} ${column.title}`,
       'data-focus-key': `study:${study.id}:${column.field}`,
       'data-study-id': study.id,

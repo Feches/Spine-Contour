@@ -39,7 +39,7 @@ try {
       id:'SP-'+(9950+i),source:'real',fileName:file.split('/').pop(),filePath:file,
       addedAt:new Date().toISOString(),view:'Standing lateral',clinical:{},
       measurements:null,geometry:null,qc:null})),openId:null,studiesTab:'find',
-      paramSelected:[],paramFilters:{workspace:null,folder:null,segmentedOnly:false}});
+      paramSelected:[],findFilters:{subject:'',region:[],view:[],workspace:[],folder:[],status:[]}});
     window.onnxEvents=[];
     window.unsubscribeOnnxSmoke=subscribe(s=>{if(s.runStage)window.onnxEvents.push(structuredClone(s.runStage));});
     const {startBatch}=await import('./renderer/batch.js');

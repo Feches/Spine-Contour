@@ -18,7 +18,7 @@ import {
   KEEP_NAME, keepColumnName, keepUnmapped, keepableCount,
 } from '../data/csv.js';
 import { folderRows, folderKey, seedFields, STUDY_FIELDS } from '../data/seeding.js';
-import { DEFAULT_VIEW, TIMEPOINT_SUGGESTIONS, VIEW_SUGGESTIONS } from '../data/timepoints.js';
+import { TIMEPOINT_SUGGESTIONS, VIEW_SUGGESTIONS } from '../data/timepoints.js';
 import { nextId } from '../data/persistence.js';
 import { newStudy } from './studies.js';
 import { showToast } from '../components/toast.js';
@@ -132,8 +132,8 @@ export function loadWorkspaceStudies(state) {
       // Overrides newStudy()'s own stamp so every record from this load ties under the
       // newest-first sort and stays in scan order (stable sort keeps input order on a tie).
       addedAt,
-      // The seeded subject, timepoint, film date and view (§8.3). view is never null here: the
-      // folder row always holds one, and it was on screen before Load.
+      // The seeded subject, timepoint, film date and view (§8.3). view is null -- Unknown, as the
+      // folder table showed before Load -- when no folder, name, CSV row or table row gave one.
       ...seeded.fields,
       region: rowByFolder.get(folderKey(filePath, root))?.region ?? 'auto',
       anteriorSide: validAnteriorSide(rowByFolder.get(folderKey(filePath, root))?.anteriorSide)
@@ -150,13 +150,16 @@ export function loadWorkspaceStudies(state) {
 }
 
 // "read from folder or file names" counts a film when any field came from a folder segment, the
-// stem, or a folder-table row holding something other than the default view; "set from the CSV"
-// when any came from the row. A stored value counts for neither: nothing was read for it.
+// stem, or a folder-table row that holds a timepoint or a view; "set from the CSV" when any came
+// from the row. A stored value counts for neither: nothing was read for it. A row's view is always
+// a real inference (a folder named `standing/`) or the person's own choice on the card, because no
+// default view is seeded any more (2026-10-19); while one was, a row holding only that default
+// was left out so the count did not claim a view nobody had read.
 function countSeeding(seeding, seeded) {
   const sources = seeded.sources;
   const inferred = STUDY_FIELDS.some((field) => sources[field] === 'folder' || sources[field] === 'stem')
     || sources.timepoint === 'row'
-    || (sources.view === 'row' && seeded.fields.view !== DEFAULT_VIEW);
+    || sources.view === 'row';
   if (inferred) seeding.fromFolders += 1;
   if (STUDY_FIELDS.some((field) => sources[field] === 'csv')) seeding.fromCsv += 1;
 }
@@ -314,7 +317,7 @@ export function render(state) {
     refresh();
   }
 
-  // A row's dropdown: `none` as the first entry when given (the timepoint column), then the choices.
+  // A row's dropdown: `none` as the first entry when given (the timepoint and view columns), then the choices.
   function rowSelect({ key, label, value, choices, none, onChange }) {
     const select = el('select', { class: 'workspace-folder-select', 'aria-label': label, 'data-ws-key': key, onChange });
     if (none !== null) select.append(el('option', { value: '' }, none));
@@ -339,9 +342,10 @@ export function render(state) {
   }
 
   // §8.5: one row per folder holding films, showing what Load will assign to the films directly
-  // in it. Every value is on screen before Load -- that is what makes `Standing lateral` on a
-  // loaded film an honest label rather than a hard-coded one. The timepoint choices are the
-  // drawer's suggestions plus any label a folder name inferred that the list lacks (`3 mo`).
+  // in it. Every value is on screen before Load -- that is what makes the view on a loaded film
+  // (`Unknown` when nothing names one) an honest label rather than a hard-coded one. The timepoint
+  // choices are the drawer's suggestions plus any label a folder name inferred that the list lacks
+  // (`3 mo`).
   function buildFolderTable(live) {
     const rows = live.wsFolderRows ?? [];
     if (rows.length === 0) return null;
@@ -356,8 +360,8 @@ export function render(state) {
         onChange: (value) => setAllFolderRows({ timepoint: value === '' ? null : value }),
       })),
       el('th', { scope: 'col' }, 'VIEW', setAllSelect({
-        key: 'all-view', label: 'Set the view of every folder', choices: views, none: null,
-        onChange: (value) => setAllFolderRows({ view: value }),
+        key: 'all-view', label: 'Set the view of every folder', choices: views, none: 'Unknown',
+        onChange: (value) => setAllFolderRows({ view: value === '' ? null : value }),
       })));
     head.append(el('th', { scope: 'col' }, 'REGION', setAllSelect({
       key: 'all-region', label: 'Set the region of every folder', choices: ['auto', 'lumbar', 'cervical', 'full_spine'], none: null,
@@ -374,8 +378,8 @@ export function render(state) {
         onChange: (event) => setFolderRow(row.folder, { timepoint: event.target.value === '' ? null : event.target.value }),
       })),
       el('td', {}, rowSelect({
-        key: `view:${row.folder}`, label: `View for ${row.folder}`, value: row.view, choices: views, none: null,
-        onChange: (event) => setFolderRow(row.folder, { view: event.target.value }),
+        key: `view:${row.folder}`, label: `View for ${row.folder}`, value: row.view, choices: views, none: 'Unknown',
+        onChange: (event) => setFolderRow(row.folder, { view: event.target.value === '' ? null : event.target.value }),
       })),
       el('td', {}, rowSelect({
         key: `region:${row.folder}`, label: `Region for ${row.folder}`, value: row.region ?? 'auto', choices: ['auto', 'lumbar', 'cervical', 'full_spine'], none: null,

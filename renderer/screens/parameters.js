@@ -288,11 +288,12 @@ export function mountParameters(host, { onOpen }) {
     // A rule above the first row of each subject block under the subject sort (spec §10.3).
     return el('tr', { class: `param-row${isBreak ? ' param-row-break' : ''}`, 'data-study-id': study.id },
       nameCell,
-      // Subject, timepoint, view, film date (spec §10.2): text as stored, an em dash when absent;
-      // the film date as stored (YYYY-MM-DD), the Find tab's formatted DATE being the date added.
+      // Subject, timepoint, view, film date (spec §10.2): text as stored, an em dash when absent --
+      // except the view, whose absence reads `Unknown` (2026-10-19); the film date as stored
+      // (YYYY-MM-DD), the Find tab's formatted DATE being the date added.
       el('td', { class: 'param-cell-text' }, study.subjectId || DASH),
       el('td', { class: 'param-cell-text' }, study.timepoint || DASH),
-      el('td', { class: 'param-cell-text' }, study.view || DASH),
+      el('td', { class: `param-cell-text${study.view == null ? ' param-cell-unknown' : ''}` }, study.view ?? 'Unknown'),
       el('td', { class: 'param-cell-text param-cell-date' }, study.filmDate || DASH),
       ...columns.map((column) => {
         // The panel's consistency warning, on the PI cell: the residual |PI − (PT + SS)| is over

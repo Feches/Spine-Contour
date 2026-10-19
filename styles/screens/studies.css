@@ -65,7 +65,7 @@
 .studies-table-head,
 .studies-row {
   display: grid;
-  /* STUDY · SUBJECT · VIEW · WORKSPACE · FOLDER · DATE · STATUS · actions.
+  /* STUDY · SUBJECT · REGION · VIEW · WORKSPACE · FOLDER · DATE · STATUS · actions.
      STUDY was a fixed 112px when it held an SP-nnnn id, then a flexing share when it became a
      filename. Since 2026-09-12 it takes the widest share with a 200px floor, and the name inside
      it is capped at .study-name's 280px, so on any ordinary window the name wraps at the same
@@ -73,9 +73,18 @@
      needs (`Standing lateral`, `OLIF studies`, `Sep 12, 2026`, `Needs review`) instead of
      clipping, and only a window too narrow for all of them squeezes STUDY toward its floor.
      The 110px LORDOSIS track that used to sit before the actions is gone -- the list is for
-     finding a study, not for reading its numbers. */
-  grid-template-columns: minmax(200px, 2.2fr) minmax(96px, 1fr) minmax(120px, 1fr) minmax(104px, 1fr) minmax(90px, 1fr) minmax(94px, 0.85fr) minmax(124px, 1.05fr) 44px;
-  gap: 16px;
+     finding a study, not for reading its numbers.
+     (2026-10-19) REGION keeps room for its longest label, `Full spine`, at 80px.
+     (2026-10-19, gate feedback G1 of the header-filters round) The floors are LOAD-BEARING against
+     .studies-page-inner's 1160px cap: the page column gives the table at most 1088px, and the REGION
+     track's first 84px plus the 16px gap pushed the floors' sum to 1128px, so the actions column was
+     cut off at EVERY window and its Delete sat behind a horizontal scrollbar at the bottom of the list.
+     The sum here (160 + 90 + 80 + 100 + 96 + 84 + 90 + 112 + 44, eight 12px gaps, 44px of padding) is
+     996px: inside the cap with 92px to spare. STUDY's 160px floor is safe because the name wraps; a
+     window narrower than the sum still scrolls sideways, as it always did, and the actions cell is
+     sticky (below) so Delete stays in reach there too. */
+  grid-template-columns: minmax(160px, 2.2fr) minmax(90px, 1fr) minmax(80px, 0.8fr) minmax(100px, 1fr) minmax(96px, 1fr) minmax(84px, 1fr) minmax(90px, 0.85fr) minmax(112px, 1.05fr) 44px;
+  gap: 12px;
   align-items: center;
   padding: 13px 22px;
 }
@@ -141,6 +150,182 @@
    `all: unset` plus the head's inherited mono face. .studies-th is a plain cell holding one. */
 .studies-th {
   min-width: 0;
+}
+
+/* The header filter menus (2026-10-19, header filters; spec F1, section 3.2). A filterable header cell holds the sort
+   button and, after it, the funnel that opens the column's menu; an active column's funnel reads in the accent with
+   its tick count (a dot for the SUBJECT text). The menu hangs from the table's host, which is its containing block,
+   not from the cell: .studies-table scrolls sideways and so clips anything below its header row. Positioned against
+   the host, the menu scrolls with the list. */
+.studies-th-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.studies-table-host {
+  position: relative;
+}
+
+.studies-funnel {
+  all: unset;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 3px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--muted);
+  font: inherit;
+  letter-spacing: 0;
+}
+
+.studies-funnel:hover,
+.studies-funnel.is-open {
+  color: var(--ink);
+}
+
+.studies-funnel.is-active {
+  color: var(--accent);
+}
+
+.studies-funnel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.studies-funnel-icon {
+  display: inline-flex;
+}
+
+.studies-filter-count {
+  font-weight: 600;
+}
+
+.studies-filter-menu {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+  max-width: 280px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 8px 24px var(--shadow);
+  font: 400 13.5px 'Source Sans 3', sans-serif;
+  color: var(--body);
+  cursor: default;
+}
+
+/* All and None, with room on the right for the close button, which sits in the corner though it comes last in the
+   Tab order. */
+.studies-filter-quick {
+  display: flex;
+  gap: 4px;
+  padding-right: 30px;
+}
+
+.studies-filter-item {
+  all: unset;
+  padding: 5px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  font: 600 13px 'Source Sans 3', sans-serif;
+  color: var(--body);
+}
+
+.studies-filter-item:hover {
+  background: var(--well);
+  color: var(--ink);
+}
+
+.studies-filter-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* The sort direction the list is in now. */
+.studies-filter-item.is-active {
+  color: var(--accent);
+}
+
+/* A long list of folders scrolls inside the menu rather than growing it past the window. */
+.studies-filter-options {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+/* The menu's tick rows (components/checkbox.js variant 'menu'): the grid's 16px box, the whole row the target. */
+.menu-check {
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 7px;
+}
+
+.menu-check:hover {
+  background: var(--well);
+}
+
+.menu-check .checkbox-box {
+  width: 16px;
+  height: 16px;
+  margin-top: 0;
+}
+
+.menu-check-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+
+.studies-filter-divider {
+  height: 1px;
+  margin: 2px 0;
+  background: var(--border);
+}
+
+.studies-filter-sort {
+  display: flex;
+  flex-direction: column;
+}
+
+.studies-filter-caption {
+  padding: 2px 8px 4px;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.studies-filter-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+/* SUBJECT's "contains" box, the search box's look at the grid's size. */
+.studies-filter-text {
+  margin-right: 30px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  font: 400 13.5px 'Source Sans 3', sans-serif;
+}
+
+.studies-filter-text:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 /* Provenance. WORKSPACE is the root the film was loaded from and is an em dash for anything
@@ -225,10 +410,17 @@
   overflow: visible;
 }
 
-.studies-cell-view {
+.studies-cell-view,
+.studies-cell-region {
   font: 400 14px 'Source Sans 3', sans-serif;
   color: var(--body);
   white-space: nowrap;
+}
+
+/* A film with no view, or no region, reads Unknown in the muted ink, as a subject it has none of does. It
+   follows .studies-cell-view and .studies-cell-region so the equal-specificity colour wins. */
+.studies-cell-unknown {
+  color: var(--muted);
 }
 
 .studies-cell-date {
@@ -247,13 +439,30 @@
 
 /* Delete (plan 06 Task 7). The action cell is the trailing 44px column; while a row is
    confirming, the prompt takes the WORKSPACE, FOLDER, DATE and STATUS columns as well -- those
-   four cells are the ones screens/studies.js nulls, and `4 / -1` below is the 4th track, which
-   is where WORKSPACE starts. The two MUST stay in step: grid auto-placement walks items in
-   document order, so a cell left visible before a definite column-start that has already been
-   passed pushes the prompt onto a second implicit row. */
+   four cells are the ones screens/studies.js nulls, and `5 / -1` below is the 5th track, which
+   is where WORKSPACE starts (it was the 4th until 2026-10-19 put REGION before VIEW). The two MUST
+   stay in step: grid auto-placement walks items in document order, so a cell left visible before a
+   definite column-start that has already been passed pushes the prompt onto a second implicit row. */
 .studies-cell-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+/* (2026-10-19, gate feedback G1) On a window too narrow for every track the table scrolls sideways,
+   and its scrollbar sits under the LAST row -- hundreds of rows down. The trash cell sticks to the
+   scrollport's right edge instead, over the cells it slides across (hence the background, which
+   follows the row's hover), so Delete is always one click away. The confirming prompt spans the
+   row and is not sticky. */
+.studies-cell-actions:not(.studies-cell-actions-confirming) {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--card);
+  padding-left: 8px;
+}
+
+.studies-row:hover .studies-cell-actions:not(.studies-cell-actions-confirming) {
+  background: var(--well);
 }
 
 .studies-delete:hover,
@@ -263,7 +472,7 @@
 }
 
 .studies-cell-actions-confirming {
-  grid-column: 4 / -1;
+  grid-column: 5 / -1;
   align-items: center;
   gap: 8px;
   cursor: default;
@@ -534,6 +743,12 @@
   text-overflow: ellipsis;
 }
 
+/* The view cell of a film with no view (2026-10-19): the same muted ink as the other text cells,
+   kept as its own class so the screen and its smoke check can tell Unknown from a named view. */
+.param-cell-unknown {
+  color: var(--muted);
+}
+
 .param-export {
   flex: none;
 }
@@ -637,9 +852,10 @@
   border-top: 2px solid color-mix(in srgb, var(--ink) 30%, var(--border));
 }
 
-/* The Find tab's filter bar (batch spec 7.1): the grid's Workspace and Folder selects over the
-   same shared keys, then the segment button with its note (the grid's export-group and note
-   classes), or -- while a batch runs -- the progress group. Wraps like .param-bar. */
+/* The Find tab's bar (batch spec 7.1): Delete and Export, then the segment button with its note (the
+   grid's export-group and note classes), or -- while a batch runs -- the progress group. Wraps like
+   .param-bar. (2026-10-19, header filters) Its Workspace, Folder and Status selects went: the list
+   filters from its header menus. */
 .studies-filters {
   display: flex;
   align-items: center;
