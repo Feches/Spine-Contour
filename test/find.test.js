@@ -4,8 +4,10 @@ import {
   DEFAULT_FIND_SORT, FIND_SORT_KEYS, statusRank, toggleFindSort, sortFindRows, summaryCounts,
   STATUS_FILTERS, matchesStatus, normaliseStatusFilter,
   findOrder, findVisible, findNeighbour, findPosition,
+  DEFAULT_FIND_FILTERS, FILTER_COLUMNS, findFilterOptions, normaliseFindFilters, patchFindFilters, matchesFindFilters, activeColumns,
 } from '../renderer/data/find.js';
 import { newBatch, withStopping } from '../renderer/data/batch.js';
+import { NO_VIEW, HAND_ADDED, workspaceOptions, toggleId } from '../renderer/data/parameters.js';
 
 // A real study under a workspace root. Every override is a record field.
 function study(id, overrides = {}) {
@@ -23,10 +25,10 @@ const REV = { measurements: { PI: 50, PT: 10, SS: 40, LL: { 'L1-S1': 45 } }, qc:
 const HAND = { measurements: { PI: 50, PT: 10, SS: 40, LL: { 'L1-S1': 45 } }, geometry: {}, qc: null, predictionId: null };
 const ids = (rows) => rows.map((s) => s.id);
 
-test('the default sort is newest first and the keys are the seven columns', () => {
+test('the default sort is newest first and the keys are the eight columns', () => {
   assert.deepEqual(DEFAULT_FIND_SORT, { key: 'date', dir: 'desc' });
   assert.ok(Object.isFrozen(DEFAULT_FIND_SORT));
-  assert.deepEqual([...FIND_SORT_KEYS], ['study', 'subject', 'view', 'workspace', 'folder', 'date', 'status']);
+  assert.deepEqual([...FIND_SORT_KEYS], ['study', 'subject', 'region', 'view', 'workspace', 'folder', 'date', 'status']);
 });
 
 test('toggleFindSort flips the active key and starts another key ascending', () => {
@@ -77,6 +79,19 @@ test('by view, workspace and folder: the cell labels, em dash and blank last', (
   assert.deepEqual(ids(sortFindRows([hand, a, b], { key: 'folder', dir: 'asc' })), ['SP-1000', 'SP-1002', 'SP-1001']);
   assert.deepEqual(ids(sortFindRows([hand, a, b], { key: 'view', dir: 'asc' })), ['SP-1001', 'SP-1000', 'SP-1002']);
   assert.deepEqual(ids(sortFindRows([hand, a, b], { key: 'view', dir: 'desc' })), ['SP-1000', 'SP-1001', 'SP-1002']);
+});
+
+// (2026-10-19, header filters) the REGION column sorts by its label; Unknown is an absent value, so last both ways.
+test('sortFindRows by region puts Unknown last in both directions', () => {
+  const rows = [
+    study('SP-1000'), // nothing set, nothing detected, no result: Unknown
+    study('SP-1001', { ...SEG }), // a result that recorded no region: Lumbar
+    study('SP-1002', { geometry: { region: 'cervical' } }), // detected: Cervical
+    study('SP-1003', { region: 'full_spine' }), // set by a person: Full spine
+    study('SP-1004', { region: 'auto' }), // auto with nothing detected: Unknown
+  ];
+  assert.deepEqual(ids(sortFindRows(rows, { key: 'region', dir: 'asc' })), ['SP-1002', 'SP-1003', 'SP-1001', 'SP-1000', 'SP-1004']);
+  assert.deepEqual(ids(sortFindRows(rows, { key: 'region', dir: 'desc' })), ['SP-1001', 'SP-1003', 'SP-1002', 'SP-1000', 'SP-1004']);
 });
 
 test('by status: Failed, Processing, Unsegmented, Needs review, Hand-placed, Segmented, Reviewed; running reads Processing', () => {
@@ -206,7 +221,7 @@ const LIB = [
 ];
 const snapshot = (patch = {}) => ({
   studies: LIB, query: '', paramFilters: null, findSort: { key: 'date', dir: 'desc' }, findStatus: null,
-  running: null, batch: null, ...patch,
+  findFilters: DEFAULT_FIND_FILTERS, running: null, batch: null, ...patch,
 });
 
 test('findOrder and findVisible: the Find list\'s order, then its search, location and status filters', () => {
@@ -272,4 +287,196 @@ test('normaliseStatusFilter: a known value stays, anything else is no filter', (
   assert.equal(normaliseStatusFilter(undefined), null);
   assert.equal(normaliseStatusFilter(null), null);
   assert.equal(normaliseStatusFilter(42), null);
+});
+
+// ---- The header menus' filters (2026-10-19, header filters; spec F6, F7, section 3) ---------------------------------
+// Six films that differ in every column a menu filters, entered out of each menu's own order, so the order a menu
+// lists its values in is the rule's and not the library's.
+const MIXED = [
+  // Unsegmented; Full spine, set by a person; Standing lateral; the Alpha root, in pre-op.
+  study('SP-1000', { region: 'full_spine', workspaceFolder: 'C:\\films\\Alpha', filePath: 'C:\\films\\Alpha\\pre-op\\a.png', subjectId: 'S001' }),
+  // Segmented; Cervical, detected by the run; no view; the Cohort root.
+  study('SP-1001', { ...SEG, geometry: { region: 'cervical' }, view: null, subjectId: 's002' }),
+  // Needs review; Lumbar, a result that recorded no region; Flexion lateral.
+  study('SP-1002', { ...REV, view: 'Flexion lateral' }),
+  // Failed; Unknown region (nothing set, nothing detected, no result); a view stored in lower case.
+  study('SP-1003', { ...FAIL, view: 'extension lateral' }),
+  // Reviewed; Lumbar; added by hand from a loose folder.
+  study('SP-1004', { ...OK, workspaceFolder: null, filePath: 'D:\\loose\\e.png', subjectId: 'T100' }),
+  // Hand-placed; Lumbar.
+  study('SP-1005', HAND),
+];
+const option = (value, label = value) => ({ value, label });
+
+test('findFilterOptions: region in workflow order, view with Unknown first, folder under the workspace ticks, status in pill order', () => {
+  const options = findFilterOptions(MIXED, DEFAULT_FIND_FILTERS);
+  // REGION: Unknown, Lumbar, Cervical, Full spine, those present; Unknown's value is the one "none" key every menu uses.
+  assert.deepEqual(options.region, [option(NO_VIEW, 'Unknown'), option('lumbar', 'Lumbar'), option('cervical', 'Cervical'), option('full_spine', 'Full spine')]);
+  assert.deepEqual(findFilterOptions([MIXED[2], MIXED[1]]).region, [option('lumbar', 'Lumbar'), option('cervical', 'Cervical')], 'only the regions present');
+  // VIEW: Unknown first when a film has none, then the stored views A to Z, case-insensitively.
+  assert.deepEqual(options.view, [option(NO_VIEW, 'Unknown'), option('extension lateral'), option('Flexion lateral'), option('Standing lateral')]);
+  assert.deepEqual(findFilterOptions([MIXED[0], MIXED[2]]).view, [option('Flexion lateral'), option('Standing lateral')], 'no Unknown when every film has a view');
+  // WORKSPACE: the grid's options as they are -- the roots first seen first, then Added by hand.
+  assert.deepEqual(options.workspace, workspaceOptions(MIXED));
+  assert.deepEqual(options.workspace.map((o) => o.value), ['C:\\films\\Alpha', 'C:\\films\\Cohort', HAND_ADDED]);
+  // FOLDER: the folders first seen first among the films the WORKSPACE ticks keep; every film when none is ticked.
+  assert.deepEqual(options.folder, [option('pre-op'), option('Cohort'), option('loose')]);
+  const folders = (workspace) => findFilterOptions(MIXED, { ...DEFAULT_FIND_FILTERS, workspace }).folder.map((o) => o.value);
+  assert.deepEqual(folders(['C:\\films\\Cohort']), ['Cohort']);
+  assert.deepEqual(folders([HAND_ADDED]), ['loose']);
+  assert.deepEqual(folders([HAND_ADDED, 'C:\\films\\Alpha']), ['pre-op', 'loose'], 'library order, not tick order');
+  // A root no film carries any more is not a tick the WORKSPACE menu shows, so it keeps no folder out.
+  assert.deepEqual(folders(['C:\\films\\Gone']), ['pre-op', 'Cohort', 'loose']);
+  // STATUS: the pills some film shows, in the pills' order, labelled as the pills are. The options never depend on a
+  // run, so Processing is never offered.
+  assert.deepEqual(options.status, [option('unseg', 'Unsegmented'), option('fail', 'Failed'), option('rev', 'Needs review'),
+    option('hand', 'Hand-placed'), option('seg', 'Segmented'), option('ok', 'Reviewed')]);
+  const none = { region: [], view: [], workspace: [], folder: [], status: [] };
+  assert.deepEqual(findFilterOptions([]), none);
+  assert.deepEqual(findFilterOptions(null, null), none);
+});
+
+test('normaliseFindFilters drops a value no longer offered and a folder outside the ticked workspaces', () => {
+  assert.deepEqual(DEFAULT_FIND_FILTERS, { subject: '', region: [], view: [], workspace: [], folder: [], status: [] });
+  assert.ok(Object.isFrozen(DEFAULT_FIND_FILTERS));
+  // Defaults fill a missing, null or partial value.
+  assert.deepEqual(normaliseFindFilters(null, MIXED), DEFAULT_FIND_FILTERS);
+  assert.deepEqual(normaliseFindFilters(undefined, []), DEFAULT_FIND_FILTERS);
+  assert.deepEqual(normaliseFindFilters({ region: ['lumbar'] }, MIXED), { ...DEFAULT_FIND_FILTERS, region: ['lumbar'] });
+  // Review Focus 3. Every film in LIB sits under one root, and none in a folder called Elsewhere.
+  assert.deepEqual(normaliseFindFilters({ workspace: ['C:\\films\\Cohort'], folder: ['Elsewhere'] }, LIB),
+    { ...DEFAULT_FIND_FILTERS, workspace: ['C:\\films\\Cohort'], folder: [] });
+  // A folder the library holds, but outside the ticked workspaces, goes too; the one inside them stays.
+  assert.deepEqual(normaliseFindFilters({ workspace: ['C:\\films\\Alpha'], folder: ['Cohort', 'pre-op'] }, MIXED),
+    { ...DEFAULT_FIND_FILTERS, workspace: ['C:\\films\\Alpha'], folder: ['pre-op'] });
+  // A root no film carries goes first, so the folder ticks are kept against every film.
+  assert.deepEqual(normaliseFindFilters({ workspace: ['C:\\films\\Gone'], folder: ['Cohort'] }, MIXED),
+    { ...DEFAULT_FIND_FILTERS, folder: ['Cohort'] });
+  // Values no film shows any more: no cervical film left, the one Needs review film marked reviewed, every view known.
+  const left = [{ ...MIXED[2], reviewedAt: '2026-10-19T11:00:00.000Z' }, MIXED[4]];
+  assert.deepEqual(normaliseFindFilters({ region: ['cervical', 'lumbar'], status: ['rev', 'ok'], view: [NO_VIEW, 'Flexion lateral'] }, left),
+    { ...DEFAULT_FIND_FILTERS, region: ['lumbar'], status: ['ok'], view: ['Flexion lateral'] });
+  // Each column deduplicated in the order it was ticked; a value that is not a list is no ticks.
+  assert.deepEqual(normaliseFindFilters({ region: ['lumbar', NO_VIEW, 'lumbar'], status: 'rev', view: null }, MIXED),
+    { ...DEFAULT_FIND_FILTERS, region: ['lumbar', NO_VIEW] });
+  // The subject text is a string, kept as typed: the box shows it back, so trimming here would eat the space the user
+  // just typed between two words.
+  assert.equal(normaliseFindFilters({ subject: 'S0 ' }, MIXED).subject, 'S0 ');
+  assert.equal(normaliseFindFilters({ subject: 42 }, MIXED).subject, '');
+  // Pure: a stale stored value is not rewritten.
+  const stored = Object.freeze({ region: Object.freeze(['cervical']) });
+  assert.deepEqual(normaliseFindFilters(stored, LIB).region, []);
+  assert.deepEqual(stored.region, ['cervical']);
+  // patchFindFilters merges a menu's change over what the menus show, so a stale tick never rides back in with it, and
+  // a tick is toggleId over the column's ticks.
+  assert.deepEqual(patchFindFilters({ region: ['cervical'], view: ['Gone'] }, LIB, { status: ['unseg'] }), { ...DEFAULT_FIND_FILTERS, status: ['unseg'] });
+  let f = DEFAULT_FIND_FILTERS;
+  f = patchFindFilters(f, MIXED, { region: toggleId(f.region, 'cervical') });
+  f = patchFindFilters(f, MIXED, { region: toggleId(f.region, NO_VIEW) });
+  assert.deepEqual(f, { ...DEFAULT_FIND_FILTERS, region: ['cervical', NO_VIEW] });
+  f = patchFindFilters(f, MIXED, { region: toggleId(f.region, 'cervical') });
+  assert.deepEqual(f, { ...DEFAULT_FIND_FILTERS, region: [NO_VIEW] });
+  assert.deepEqual(DEFAULT_FIND_FILTERS.region, [], 'the default is never written through');
+});
+
+test('matchesFindFilters: OR within a column, AND across columns, no ticks passes everything', () => {
+  const pass = (filters) => ids(MIXED.filter((s) => matchesFindFilters(s, filters)));
+  const only = (patch) => pass({ ...DEFAULT_FIND_FILTERS, ...patch });
+  const all = ids(MIXED);
+  assert.deepEqual(pass(DEFAULT_FIND_FILTERS), all);
+  assert.deepEqual(pass(null), all);
+  assert.deepEqual(pass({}), all);
+  assert.deepEqual(only({ subject: '   ' }), all, 'subject text of spaces filters nothing');
+  // OR within a column: a row passes when its value is any of the ticks.
+  assert.deepEqual(only({ region: ['cervical', 'full_spine'] }), ['SP-1000', 'SP-1001']);
+  assert.deepEqual(only({ region: [NO_VIEW] }), ['SP-1003'], 'Unknown region');
+  assert.deepEqual(only({ region: ['lumbar'] }), ['SP-1002', 'SP-1004', 'SP-1005'], 'a result that recorded no region is Lumbar');
+  assert.deepEqual(only({ view: [NO_VIEW] }), ['SP-1001'], 'Unknown view');
+  assert.deepEqual(only({ view: ['Flexion lateral', NO_VIEW] }), ['SP-1001', 'SP-1002']);
+  assert.deepEqual(only({ workspace: [HAND_ADDED] }), ['SP-1004'], 'Added by hand is the film with no root');
+  assert.deepEqual(only({ workspace: ['C:\\films\\Alpha', HAND_ADDED] }), ['SP-1000', 'SP-1004']);
+  assert.deepEqual(only({ workspace: ['C:\\films\\Cohort'] }), ['SP-1001', 'SP-1002', 'SP-1003', 'SP-1005']);
+  assert.deepEqual(only({ folder: ['loose', 'pre-op'] }), ['SP-1000', 'SP-1004']);
+  assert.deepEqual(only({ status: ['rev', 'fail'] }), ['SP-1002', 'SP-1003']);
+  // SUBJECT: the grid's contains rule, trimmed and case-insensitive; a film with no subject never matches text.
+  assert.deepEqual(only({ subject: ' S00 ' }), ['SP-1000', 'SP-1001']);
+  assert.deepEqual(only({ subject: 't1' }), ['SP-1004']);
+  // AND across columns: a row passes every column that has ticks.
+  assert.deepEqual(only({ region: ['lumbar'], workspace: ['C:\\films\\Cohort'] }), ['SP-1002', 'SP-1005']);
+  assert.deepEqual(only({ region: ['lumbar'], workspace: ['C:\\films\\Cohort'], status: ['hand'] }), ['SP-1005']);
+  assert.deepEqual(only({ subject: 's00', region: ['cervical'] }), ['SP-1001']);
+  assert.deepEqual(only({ region: ['cervical'], status: ['rev'] }), [], 'each column keeps a film; together they keep none');
+});
+
+test('matchesFindFilters: status follows the pill the row shows, with the running film and the batch', () => {
+  const byStatus = (...status) => ({ ...DEFAULT_FIND_FILTERS, status });
+  const rows = {
+    unseg: study('SP-1000'), seg: study('SP-1001', SEG), rev: study('SP-1002', REV),
+    fail: study('SP-1003', FAIL), ok: study('SP-1004', OK), hand: study('SP-1005', HAND),
+  };
+  for (const [status, row] of Object.entries(rows)) {
+    for (const other of Object.keys(rows)) assert.equal(matchesFindFilters(row, byStatus(other)), other === status, `${status} row under the ${other} tick`);
+  }
+  // A failed re-run of a measured film reads Failed, as its pill does, so it is not Segmented.
+  assert.equal(matchesFindFilters(study('SP-1006', { ...SEG, ...FAIL }), byStatus('fail')), true);
+  assert.equal(matchesFindFilters(study('SP-1006', { ...SEG, ...FAIL }), byStatus('seg')), false);
+  const seg = study('SP-1001', SEG);
+  const unseg = study('SP-1000');
+  assert.equal(matchesFindFilters(seg, byStatus('proc')), false);
+  assert.equal(matchesFindFilters(seg, byStatus('proc'), 'SP-1001'), true, 'the running film reads Processing');
+  assert.equal(matchesFindFilters(seg, byStatus('seg'), 'SP-1001'), false);
+  // The three results nobody has marked, ticked together (F2): while it runs, a Segmented film is none of them.
+  assert.equal(matchesFindFilters(seg, byStatus('seg', 'rev', 'hand')), true);
+  assert.equal(matchesFindFilters(seg, byStatus('seg', 'rev', 'hand'), 'SP-1001'), false);
+  const batch = newBatch(['SP-1001', 'SP-1000']);
+  assert.equal(matchesFindFilters(unseg, byStatus('proc'), 'SP-1001', batch), true, 'waiting in the batch reads Processing');
+  assert.equal(matchesFindFilters(unseg, byStatus('unseg'), 'SP-1001', batch), false);
+  assert.equal(matchesFindFilters(unseg, byStatus('proc'), 'SP-1001', withStopping(batch)), false, 'a stopping batch: the film that will not run reads its own status');
+  assert.equal(matchesFindFilters(unseg, byStatus('unseg'), 'SP-1001', withStopping(batch)), true);
+});
+
+// Review Focus 5: the Analysis screen's previous / next follows the menus exactly as it followed the bar.
+test('findVisible, findNeighbour and findPosition read findFilters', () => {
+  // Newest first: three Needs review films among others, so Needs review is still offered after one is marked.
+  const queue = [
+    study('SP-1000', { addedAt: day(5), ...REV }),
+    study('SP-1001', { addedAt: day(4), ...SEG }),
+    study('SP-1002', { addedAt: day(3), ...REV }),
+    study('SP-1003', { addedAt: day(2) }),
+    study('SP-1004', { addedAt: day(1), ...REV }),
+  ];
+  const toReview = { ...DEFAULT_FIND_FILTERS, status: ['rev'] };
+  const before = snapshot({ studies: queue, findFilters: toReview });
+  assert.deepEqual(ids(findVisible(before)), ['SP-1000', 'SP-1002', 'SP-1004']);
+  assert.deepEqual(findPosition(before, 'SP-1002'), { index: 2, count: 3 });
+  assert.equal(findNeighbour(before, 'SP-1000', 1)?.id, 'SP-1002', 'the keys skip the rows the ticks hide');
+  // The open film is marked reviewed: it leaves the list and has no place in it, and it still has a next and a
+  // previous, stepped from where it sat.
+  const marked = queue.map((s) => (s.id === 'SP-1002' ? { ...s, reviewedAt: '2026-10-19T12:00:00.000Z' } : s));
+  const after = snapshot({ studies: marked, findFilters: toReview });
+  assert.deepEqual(ids(findVisible(after)), ['SP-1000', 'SP-1004']);
+  assert.deepEqual(findPosition(after, 'SP-1002'), { index: null, count: 2 });
+  assert.equal(findNeighbour(after, 'SP-1002', 1)?.id, 'SP-1004', 'next: the next Needs review film');
+  assert.equal(findNeighbour(after, 'SP-1002', -1)?.id, 'SP-1000', 'previous: the Needs review film before it');
+  // The tick matches the pill the row shows: the running film reads Processing and is out of the list while it runs.
+  assert.deepEqual(ids(findVisible(snapshot({ studies: queue, findFilters: toReview, running: 'SP-1000' }))), ['SP-1002', 'SP-1004']);
+  // The ticks are normalised against the library, as the menus show them: a region no film has is no filter.
+  assert.deepEqual(ids(findVisible(snapshot({ findFilters: { ...DEFAULT_FIND_FILTERS, region: ['cervical'] } }))), ['SP-1000', 'SP-1001', 'SP-1002', 'SP-1003']);
+  // The columns AND with the search box and, until the menus replace the bar, with the bar's status filter.
+  assert.deepEqual(ids(findVisible(snapshot({ findFilters: { ...DEFAULT_FIND_FILTERS, region: [NO_VIEW] } }))), ['SP-1001', 'SP-1003']);
+  assert.deepEqual(ids(findVisible(snapshot({ query: 'eta', findFilters: { ...DEFAULT_FIND_FILTERS, region: [NO_VIEW] } }))), ['SP-1001']);
+  assert.deepEqual(ids(findVisible(snapshot({ findStatus: 'unseg', findFilters: { ...DEFAULT_FIND_FILTERS, region: ['lumbar'] } }))), []);
+});
+
+test('activeColumns names the ticked columns in column order', () => {
+  assert.deepEqual([...FILTER_COLUMNS], ['subject', 'region', 'view', 'workspace', 'folder', 'status']);
+  assert.ok(Object.isFrozen(FILTER_COLUMNS));
+  assert.deepEqual(activeColumns(DEFAULT_FIND_FILTERS), []);
+  assert.deepEqual(activeColumns(null), []);
+  assert.deepEqual(activeColumns({}), []);
+  // Column order, not the order the keys were written in.
+  assert.deepEqual(activeColumns({ status: ['rev'], folder: ['Cohort'], region: [NO_VIEW], subject: 's0' }), ['subject', 'region', 'folder', 'status']);
+  // Subject text of spaces filters nothing (the contains rule trims it), so its column is not active.
+  assert.deepEqual(activeColumns({ ...DEFAULT_FIND_FILTERS, subject: '   ', view: [NO_VIEW] }), ['view']);
+  assert.deepEqual(activeColumns({ subject: 'x', region: ['lumbar'], view: [NO_VIEW], workspace: [HAND_ADDED], folder: ['loose'], status: ['ok'] }), [...FILTER_COLUMNS]);
 });

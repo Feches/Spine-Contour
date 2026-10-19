@@ -235,7 +235,9 @@ function matchesView(study, view) {
   return view === NO_VIEW ? viewOf(study) === null : study.view === view;
 }
 
-function matchesSubject(study, needle) {
+// (2026-10-19) Exported for the Find list's SUBJECT menu (data/find.js), so the list and the grid share one contains
+// rule rather than two copies of it.
+export function matchesSubject(study, needle) {
   const query = String(needle ?? '').trim().toLowerCase();
   if (query === '') return true;
   const key = subjectKey(study);
