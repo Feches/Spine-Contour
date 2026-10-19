@@ -53,6 +53,15 @@ test('toCsv exports absent measurements as empty cells, never 0', () => {
   for (let i = 6; i < 6 + 10; i += 1) assert.equal(cells[i], '');
 });
 
+// (2026-10-19) An Unknown view (null) is an empty cell, never the text "null".
+test('toCsv writes an empty View cell for a film with none', () => {
+  const lines = toCsv([study({ view: null })]).split('\r\n');
+  const header = lines[2].split(',');
+  const cells = lines[3].split(',');
+  assert.equal(header[1], 'View');
+  assert.equal(cells[1], '');
+});
+
 test('toCsv exports real measurements including the derived PI-LL mismatch column', () => {
   const measurements = {
     SS: 38.2, PI: 52.7, PT: 14.6, L1PA: 21.3,

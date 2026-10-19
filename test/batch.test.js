@@ -96,6 +96,14 @@ test('batch excludes unsupported views without falling back from an unsupported 
   assert.match(selected.note, /1 unsupported view excluded/);
 });
 
+// (2026-10-19) An Unknown view is the backend's to classify during the run, so the planner offers the
+// film and counts it nowhere among the unsupported views.
+test('planBatch offers a film whose view is unknown and never counts it unsupported', () => {
+  const plan = planBatch({ visible: [film('SP-1', { view: null })], selected: [], running: null });
+  assert.deepEqual(plan.ids, ['SP-1']);
+  assert.equal(plan.note, null);
+});
+
 // ---------------------------------------------------------------------------
 // the batch object (spec 8.1)
 // ---------------------------------------------------------------------------

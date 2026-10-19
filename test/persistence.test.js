@@ -412,6 +412,28 @@ test('validate round-trips the review mark, defaults it to null, and drops a non
   assert.match(warn.mock.calls[0].arguments[0], /SP-1002/);
 });
 
+// (2026-10-19) the view is Unknown (null) until a person or a name sets it, so a record may carry none: a
+// missing, empty or non-string view loads as null rather than failing the record. A present value that is
+// not a usable label is dropped with one warning; an absent key or null is simply Unknown and warns nothing.
+test('validate round-trips a null view, nulls an empty or non-string one with one warning, and keeps a stored label', (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const [unknown] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1001'), view: null }] });
+  assert.equal(unknown.view, null);
+  const { view: _omitted, ...absent } = identity('SP-1002');
+  assert.equal(validate({ version: STORE_VERSION, studies: [absent] })[0].view, null);
+  assert.equal(warn.mock.callCount(), 0, 'a null or absent view warns nothing');
+  const [kept] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1003'), view: 'Flexion lateral' }] });
+  assert.equal(kept.view, 'Flexion lateral');
+  assert.equal(warn.mock.callCount(), 0);
+  const [empty] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1004'), view: '' }] });
+  assert.equal(empty.view, null);
+  assert.equal(warn.mock.callCount(), 1);
+  assert.match(warn.mock.calls[0].arguments[0], /SP-1004/);
+  const [number] = validate({ version: STORE_VERSION, studies: [{ ...identity('SP-1005'), view: 42 }] });
+  assert.equal(number.view, null);
+  assert.equal(warn.mock.callCount(), 2);
+});
+
 // (2026-10-10, level editor) the film's label record file name: optional-null on the review mark's
 // terms, so no STORE_VERSION bump. Listed on validateStudy's returned object, or the saver writes it
 // and the next load drops it -- the record on disk would then be unreachable by delete and quarantine.

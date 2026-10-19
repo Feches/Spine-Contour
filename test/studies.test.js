@@ -72,7 +72,7 @@ test('newStudy builds an unsegmented real study with nulls, never zeros', () => 
   assert.equal(study.source, 'real');
   assert.equal(study.fileName, 'film.dcm');
   assert.equal(study.filePath, 'C:/films/film.dcm');
-  assert.equal(study.view, 'Standing lateral');
+  assert.equal(study.view, null);
   assert.equal(study.thumbnail, null);
   assert.equal(study.measurements, null);
   assert.equal(study.geometry, null);
@@ -111,7 +111,7 @@ test('studyFromFile seeds a picked or dropped film from its own name, the way a 
   assert.equal(study.subjectId, 'sub225');
   assert.equal(study.timepoint, 'Post-op');
   assert.equal(study.filmDate, '2024-03-22');
-  assert.equal(study.view, 'Standing lateral');
+  assert.equal(study.view, null);
   assert.equal(study.note, 'femoral heads');
   assert.equal(study.measurements, null);
   // A drop the OS gave no path for reads the name alone.
@@ -120,7 +120,14 @@ test('studyFromFile seeds a picked or dropped film from its own name, the way a 
   assert.deepEqual([dropped.subjectId, dropped.timepoint, dropped.filmDate, dropped.view, dropped.note], ['S001', 'Pre-op', null, 'Flexion lateral', null]);
   // A name with nothing to read is all subject, as the §8.1 table's last rows say.
   const plain = studyFromFile({ id: 'SP-1002', fileName: 'IMG_0001.png', filePath: null });
-  assert.deepEqual([plain.subjectId, plain.timepoint, plain.filmDate, plain.view, plain.note], ['IMG_0001', null, null, 'Standing lateral', null]);
+  assert.deepEqual([plain.subjectId, plain.timepoint, plain.filmDate, plain.view, plain.note], ['IMG_0001', null, null, null, null]);
+});
+
+// (2026-10-19) A new film's view is Unknown (null) until its name, a workspace load or the drawer says otherwise.
+test('newStudy seeds no view', () => {
+  assert.equal(newStudy({ id: 'SP-1000', fileName: 'a.png' }).view, null);
+  assert.equal(studyFromFile({ id: 'SP-1001', fileName: 'S1_flexion.png' }).view, 'Flexion lateral');
+  assert.equal(matchesQuery({ id: 'SP-1000', view: null }, 'sp-1000'), true);
 });
 
 test('matchesQuery finds a study by its note', () => {

@@ -142,7 +142,7 @@ export function toCsv(studies) {
   for (const study of rows) {
     const cells = [
       studyName(study),
-      study.view,
+      study.view ?? '',
       study.subjectId ?? '',
       study.timepoint ?? '',
       study.filmDate ?? '',

@@ -5,7 +5,7 @@
  * at Load; screens/studies.js runs a picked or dropped film through seedFields with no root; the
  * tests pin every row of the spec's §8.1 table.
  */
-import { normaliseTimepoint, normaliseView, parseFilmDate, DEFAULT_VIEW } from './timepoints.js';
+import { normaliseTimepoint, normaliseView, parseFilmDate } from './timepoints.js';
 import { fileStem } from './csv.js';
 
 const STUDY_FIELDS = ['subjectId', 'timepoint', 'filmDate', 'view', 'note'];
@@ -51,11 +51,13 @@ export function inferFromFolder(segments) {
 }
 
 // The folder table's row for a folder, derived from its own segments: the inferred timepoint (or
-// none) and the inferred view (or Standing lateral). folderRows builds every row through this,
-// and seedFields derives the same row when the caller gives none, so the two can never disagree.
+// none) and the inferred view (or none). folderRows builds every row through this, and seedFields
+// derives the same row when the caller gives none, so the two can never disagree. (2026-10-19) A
+// folder that names no view reads null, which is Unknown, not Standing lateral: nothing is
+// assumed about a film nobody has said anything about.
 function rowForSegments(segments) {
   const inferred = inferFromFolder(segments);
-  return { timepoint: inferred.timepoint, view: inferred.view ?? DEFAULT_VIEW };
+  return { timepoint: inferred.timepoint, view: inferred.view };
 }
 
 // The film-date forms a filename field can take: M-D-YYYY (Excel's US default with the one
@@ -103,8 +105,8 @@ export function inferFromStem(stem) {
 
 // One row per folder that directly holds at least one scanned film, in scan order: the folder
 // key, the film count, and the timepoint and view the folder's own path names (§8.1 rule 1 over
-// ITS segments), the view defaulting to Standing lateral. These are the values the Workspace
-// card shows and the user may change before Load (§8.5).
+// ITS segments), the view null (Unknown) when the path names none. These are the values the
+// Workspace card shows and the user may change before Load (§8.5).
 export function folderRows(files, root) {
   const rows = [];
   const byKey = new Map();
@@ -127,18 +129,18 @@ function present(value) {
 
 // §8.3, per field, most specific first: a stored value; else the CSV row's; else the film's own
 // stem; else, for timepoint and view, the folder table row (§8.5), which starts at the folder's
-// own inferred token and is whatever the user set it to; else null -- view falls to Standing
-// lateral. subjectId takes the folder's first plain segment before the stem (§8.1 rules 2–3)
-// and has no row step. The note has no CSV step: it comes from the stem or the drawer.
+// own inferred token and is whatever the user set it to; else null. (2026-10-19) That null is
+// final for the view too: it used to fall to Standing lateral, and now stays Unknown until a
+// person or a name sets it. subjectId takes the folder's first plain segment before the stem
+// (§8.1 rules 2–3) and has no row step. The note has no CSV step: it comes from the stem or the drawer.
 //
 //   existing  the record already in the library, or null for a new film
 //   csv       structuralFromRow's result for the film's CSV row, or null (data/csv.js)
 //   row       the folder table row for the film's folder, or null (then inferred from the path)
 //
 // Returns { fields: {subjectId, timepoint, filmDate, view, note}, sources: {…} }, each source one
-// of 'stored' | 'csv' | 'stem' | 'folder' | 'row' | 'default' | null -- 'default' fires only for a
-// row object that carries no view, since a derived row always holds one -- so the load message
-// can say how many films had something inferred.
+// of 'stored' | 'csv' | 'stem' | 'folder' | 'row' | null -- so the load message can say how many
+// films had something inferred. (2026-10-19) The 'default' source is gone with the default view.
 export function seedFields({ filePath, root, existing = null, csv = null, row = null }) {
   const segments = folderSegments(filePath, root);
   const folder = inferFromFolder(segments);
@@ -156,7 +158,7 @@ export function seedFields({ filePath, root, existing = null, csv = null, row = 
   pick('subjectId', [['stored', existing?.subjectId], ['csv', csv?.subjectId], ['folder', folder.subjectId], ['stem', stem.subjectId]]);
   pick('timepoint', [['stored', existing?.timepoint], ['csv', csv?.timepoint], ['stem', stem.timepoint], ['row', table.timepoint]]);
   pick('filmDate', [['stored', existing?.filmDate], ['csv', csv?.filmDate], ['stem', stem.filmDate]]);
-  pick('view', [['stored', existing?.view], ['csv', csv?.view], ['stem', stem.view], ['row', table.view], ['default', DEFAULT_VIEW]]);
+  pick('view', [['stored', existing?.view], ['csv', csv?.view], ['stem', stem.view], ['row', table.view]]);
   pick('note', [['stored', existing?.note], ['stem', stem.note]]);
   return { fields, sources };
 }

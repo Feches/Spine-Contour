@@ -24,7 +24,6 @@ import { failureTitle } from '../data/failure.js';
 import { inferenceView } from '../data/inference-view.js';
 import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle, subjectLabel } from '../data/labels.js';
 import { nextId } from '../data/persistence.js';
-import { DEFAULT_VIEW } from '../data/timepoints.js';
 import { seedFields } from '../data/seeding.js';
 import {
   withIds, toggleId, selectedVisible, rowsToExport, workspaceOptions, folderOptions, normaliseFilters, patchFilters, HAND_ADDED,
@@ -86,7 +85,8 @@ export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
     labelComment: null,
     // (2026-09-10, studies-table spec 8.1) the review mark; set on the Analysis screen, cleared by every write that changes the numbers.
     reviewedAt: null,
-    addedAt: new Date().toISOString(), view: DEFAULT_VIEW, thumbnail: null,
+    // (2026-10-19) the view is Unknown (null) until the film's name, a workspace load or the drawer says otherwise.
+    addedAt: new Date().toISOString(), view: null, thumbnail: null,
     region: 'auto', anteriorSide: null,
     measurements: null, geometry: null, qc: null, clinical: {},
     // (1.0.13) the last failed attempt's reason; (2026-10-01, issue #39) and when it failed.
@@ -96,7 +96,7 @@ export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
 
 // A picked or dropped film's record: newStudy plus the fields its own name supplies (spec §8.1
 // rule 3, user decision 2026-09-11). No root and no folder table, so only the stem is read and
-// the view falls to Standing lateral; a workspace load builds its records itself, with both.
+// the view stays Unknown unless the name says one; a workspace load builds its records itself, with both.
 export function studyFromFile({ id, fileName, filePath }) {
   const { fields } = seedFields({ filePath: filePath ?? fileName, root: null });
   return { ...newStudy({ id, fileName, filePath }), ...fields };
