@@ -1241,5 +1241,28 @@ export function render(state) {
       parametersHost));
   mounted = { update, host: tableHost, bar: barHost, zone };
   update(state);
+  // (2026-10-19) Back from a study lands on its row. The panel is rebuilt on every trip, so a fresh mount starts at
+  // the top, and a reviewer returning from the fortieth film had to scroll down to it again. render() returns a
+  // detached tree and the router places it afterwards, so the row is centred on the next frame, once the panel has
+  // layout; only this panel's own scroll moves, never the document's. Nothing happens when the study is not a row
+  // (filtered out, deleted, the Parameters tab up) or when this mount was replaced meanwhile.
+  if (state.openId) {
+    const openId = state.openId;
+    requestAnimationFrame(() => {
+      if (!mounted || mounted.host !== tableHost || !root.isConnected) return;
+      revealRow(root, tableHost, openId);
+    });
+  }
   return root;
+}
+
+// Scrolls `page` (the list's scroll container) so the row for `id` sits in the middle of it. A row without layout
+// (the Find panel hidden behind the Parameters tab) measures zero and is left alone.
+function revealRow(page, host, id) {
+  const row = host.querySelector(`.studies-row[data-study-id="${id}"]`);
+  if (!row) return;
+  const rowRect = row.getBoundingClientRect();
+  if (rowRect.height === 0) return;
+  const pageRect = page.getBoundingClientRect();
+  page.scrollTop += rowRect.top - pageRect.top - (page.clientHeight - rowRect.height) / 2;
 }
