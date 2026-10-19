@@ -106,7 +106,7 @@ test('current calibrated measurements agree across panel, parameter grid, CSV an
   let csv = table(toCsv([s]));
   assert.equal(csv.rows[0]['C2-C7 SVA (mm)'], '10');
   assert.equal(csv.rows[0]['PI'], '');
-  assert.equal(csv.rows[0]['Spine region'], 'cervical');
+  assert.equal(csv.rows[0]['Spine region'], 'Cervical');
   const post = { ...structuredClone(s), id: 'SP-9001', timepoint: 'Post-op', fileName: 'post.png' };
   post.geometry.c2_centroid[0] = 120;
   csv = table(toPairedCsv(pairStudies([s, post])));

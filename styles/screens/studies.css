@@ -65,7 +65,7 @@
 .studies-table-head,
 .studies-row {
   display: grid;
-  /* STUDY · SUBJECT · VIEW · WORKSPACE · FOLDER · DATE · STATUS · actions.
+  /* STUDY · SUBJECT · REGION · VIEW · WORKSPACE · FOLDER · DATE · STATUS · actions.
      STUDY was a fixed 112px when it held an SP-nnnn id, then a flexing share when it became a
      filename. Since 2026-09-12 it takes the widest share with a 200px floor, and the name inside
      it is capped at .study-name's 280px, so on any ordinary window the name wraps at the same
@@ -73,8 +73,9 @@
      needs (`Standing lateral`, `OLIF studies`, `Sep 12, 2026`, `Needs review`) instead of
      clipping, and only a window too narrow for all of them squeezes STUDY toward its floor.
      The 110px LORDOSIS track that used to sit before the actions is gone -- the list is for
-     finding a study, not for reading its numbers. */
-  grid-template-columns: minmax(200px, 2.2fr) minmax(96px, 1fr) minmax(120px, 1fr) minmax(104px, 1fr) minmax(90px, 1fr) minmax(94px, 0.85fr) minmax(124px, 1.05fr) 44px;
+     finding a study, not for reading its numbers.
+     (2026-10-19) REGION keeps room for its longest label, `Full spine`, at 84px. */
+  grid-template-columns: minmax(200px, 2.2fr) minmax(96px, 1fr) minmax(84px, 0.8fr) minmax(120px, 1fr) minmax(104px, 1fr) minmax(90px, 1fr) minmax(94px, 0.85fr) minmax(124px, 1.05fr) 44px;
   gap: 16px;
   align-items: center;
   padding: 13px 22px;
@@ -225,14 +226,15 @@
   overflow: visible;
 }
 
-.studies-cell-view {
+.studies-cell-view,
+.studies-cell-region {
   font: 400 14px 'Source Sans 3', sans-serif;
   color: var(--body);
   white-space: nowrap;
 }
 
-/* A film with no view reads Unknown in the muted ink, as a subject it has none of does. It follows
-   .studies-cell-view so the equal-specificity colour wins. */
+/* A film with no view, or no region, reads Unknown in the muted ink, as a subject it has none of does. It
+   follows .studies-cell-view and .studies-cell-region so the equal-specificity colour wins. */
 .studies-cell-unknown {
   color: var(--muted);
 }
@@ -253,10 +255,10 @@
 
 /* Delete (plan 06 Task 7). The action cell is the trailing 44px column; while a row is
    confirming, the prompt takes the WORKSPACE, FOLDER, DATE and STATUS columns as well -- those
-   four cells are the ones screens/studies.js nulls, and `4 / -1` below is the 4th track, which
-   is where WORKSPACE starts. The two MUST stay in step: grid auto-placement walks items in
-   document order, so a cell left visible before a definite column-start that has already been
-   passed pushes the prompt onto a second implicit row. */
+   four cells are the ones screens/studies.js nulls, and `5 / -1` below is the 5th track, which
+   is where WORKSPACE starts (it was the 4th until 2026-10-19 put REGION before VIEW). The two MUST
+   stay in step: grid auto-placement walks items in document order, so a cell left visible before a
+   definite column-start that has already been passed pushes the prompt onto a second implicit row. */
 .studies-cell-actions {
   display: flex;
   justify-content: flex-end;
@@ -269,7 +271,7 @@
 }
 
 .studies-cell-actions-confirming {
-  grid-column: 4 / -1;
+  grid-column: 5 / -1;
   align-items: center;
   gap: 8px;
   cursor: default;

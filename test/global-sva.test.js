@@ -132,7 +132,7 @@ test('global values stay separate in parameters and single/paired CSV, with blan
   assert.ok(exportMeasurementColumns([s]).includes('C2-C7 SVA (mm)'));
   let csv = table(toCsv([s]));
   assert.equal(csv.rows[0]['C7-S1 SVA (mm)'], '10');
-  assert.equal(csv.rows[0]['Spine region'], 'full_spine');
+  assert.equal(csv.rows[0]['Spine region'], 'Full spine');
   assert.equal(csv.rows[0]['Anterior image side'], 'left');
   assert.equal(csv.rows[0]['PI'], '');
   const post = { ...structuredClone(s), id: 'SP-9401', timepoint: 'Post-op', fileName: 'synthetic-post.png' };

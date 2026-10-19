@@ -22,6 +22,7 @@ import { showToast } from '../components/toast.js';
 import { displayStatus } from '../data/status.js';
 import { failureTitle } from '../data/failure.js';
 import { inferenceView } from '../data/inference-view.js';
+import { regionKey, regionLabel } from '../data/cervical.js';
 import { defaultName, studyName, workspaceLabel, folderLabel, pathTitle, subjectLabel } from '../data/labels.js';
 import { nextId } from '../data/persistence.js';
 import { seedFields } from '../data/seeding.js';
@@ -314,11 +315,11 @@ function buildRow(study, runningId, selected, batch) {
   const unsupported = study.source === 'real' && study.measurements == null
     && runningId !== study.id && !inferenceView(study.view);
   // While this row is confirming a delete, the prompt takes every cell from WORKSPACE rightwards
-  // (see .studies-cell-actions-confirming); the study, subject and view cells stay visible.
-  // Those four are nulled together and the prompt's grid-column start is the 4th track, so the
-  // placement cursor is still at 4 when the action cell is laid out. Adding a VISIBLE cell
-  // before the prompt without moving that start line would push the cursor past it and wrap the
-  // prompt onto a second row.
+  // (see .studies-cell-actions-confirming); the study, subject, region and view cells stay visible.
+  // Those four are nulled together and the prompt's grid-column start is the 5th track, so the
+  // placement cursor is still at 5 when the action cell is laid out (2026-10-19: the REGION cell
+  // moved it from 4). Adding a VISIBLE cell before the prompt without moving that start line
+  // would push the cursor past it and wrap the prompt onto a second row.
   const confirming = confirmingId === study.id;
   const row = el('div', {
     class: 'studies-row', role: 'button', tabindex: '0', 'data-study-id': study.id,
@@ -351,6 +352,9 @@ function buildRow(study, runningId, selected, batch) {
         : null,
       el('span', { class: 'studies-name study-name' }, studyName(study))),
     subjectCell(study),
+    // The region a person set on the Analysis screen, else the one the run detected, else `Unknown`,
+    // muted like an Unknown view (2026-10-19). cervical.js's regionKey owns the rule.
+    el('div', { class: `studies-cell-region${regionKey(study) === 'unknown' ? ' studies-cell-unknown' : ''}` }, regionLabel(regionKey(study))),
     // A film with no view reads `Unknown`, muted (2026-10-19).
     el('div', { class: `studies-cell-view${study.view == null ? ' studies-cell-unknown' : ''}` }, study.view ?? 'Unknown'),
     confirming ? null : el('div', { class: 'studies-cell-workspace' }, workspaceLabel(study)),
@@ -422,6 +426,7 @@ function buildTable(studies, runningId, emptyKind, selected, sort, batch) {
     el('div', { class: 'studies-table-head' },
       sortableHeader('study', 'STUDY', sort, selectAll),
       sortableHeader('subject', 'SUBJECT', sort),
+      sortableHeader('region', 'REGION', sort),
       sortableHeader('view', 'VIEW', sort),
       sortableHeader('workspace', 'WORKSPACE', sort),
       sortableHeader('folder', 'FOLDER', sort),

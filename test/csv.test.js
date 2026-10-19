@@ -227,6 +227,17 @@ test('toCsv writes Subject, Timepoint, Film date and Note after View, empty when
   assert.ok(lines[4].startsWith('SP-1001,Standing lateral,,,,,'), lines[4]);
 });
 
+// (2026-10-19) The Spine region cell reads the label the REGION column shows -- Cervical, not the stored key
+// `cervical` -- and a film no one has set and no run has measured reads Unknown, not the requested mode `auto`.
+test('the Spine region cell reads the region label, Unknown for a film with no run', () => {
+  const csv = toCsv([
+    study({ id: 'SP-1000', region: 'cervical', anteriorSide: 'left', measurements: { C2C7_COBB: 12 }, geometry: { region: 'cervical', anterior_side: 'left' } }),
+    study({ id: 'SP-1001', region: 'auto' }),
+  ]);
+  const { rows } = parse(csv.split('\r\n').slice(2).join('\r\n'));
+  assert.deepEqual(rows.map((row) => row['Spine region']), ['Cervical', 'Unknown']);
+});
+
 // ---------------------------------------------------------------------------
 // parse
 // ---------------------------------------------------------------------------
@@ -661,6 +672,16 @@ test('toPairedCsv leads with the comment block and writes the layout-B header ov
   // Two subjects written, then the trailing CRLF.
   assert.equal(lines.length, 6);
   assert.equal(lines[5], '');
+});
+
+// (2026-10-19) The paired file's per-visit region cell names the same label as the long file's Spine region cell.
+test('the paired regions and orientation cell reads the region label, Unknown for a film with no run', () => {
+  const pre = study({ id: 'SP-1000', subjectId: 'S001', timepoint: 'Pre-op', region: 'cervical', anteriorSide: 'left', measurements: { C2C7_COBB: 12 }, geometry: { region: 'cervical', anterior_side: 'left' } });
+  const post = study({ id: 'SP-1001', subjectId: 'S001', timepoint: 'Post-op', region: 'auto' });
+  const lines = toPairedCsv(pairStudies([pre, post])).split('\r\n');
+  const { rows } = parse(lines.slice(2).join('\r\n'));
+  assert.equal(rows[0]['Pre-op regions and orientation'], 'SP-1000: Cervical, anterior image left');
+  assert.equal(rows[0]['Post-op regions and orientation'], 'SP-1001: Unknown, anterior image unconfirmed');
 });
 
 test('toPairedCsv writes one row per subject with the deltas over the written one-decimal values and empty cells for a missing visit', () => {

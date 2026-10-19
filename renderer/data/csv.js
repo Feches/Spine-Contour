@@ -1,5 +1,5 @@
 import { segmentalColumns, segmentalRows } from './segmental.js';
-import { cervicalMeasurements, studyRegion } from './cervical.js';
+import { cervicalMeasurements, studyRegion, regionKey, regionLabel } from './cervical.js';
 import { globalSvaMeasurements } from './global-sva.js';
 import { normaliseTimepoint, normaliseView, parseFilmDate, PRE_OP } from './timepoints.js';
 import { normalizeCalibration } from './calibration.js';
@@ -147,7 +147,8 @@ export function toCsv(studies) {
       study.timepoint ?? '',
       study.filmDate ?? '',
       study.note ?? '',
-      ...(withRegions ? [studyRegion(study), studyRegion(study) !== 'lumbar' ? study.geometry?.anterior_side ?? study.anteriorSide ?? '' : ''] : []),
+      // (2026-10-19) The label the Find list's REGION column shows, not the stored key: a film with no run is Unknown, not 'auto'.
+      ...(withRegions ? [regionLabel(regionKey(study)), studyRegion(study) !== 'lumbar' ? study.geometry?.anterior_side ?? study.anteriorSide ?? '' : ''] : []),
       ...measurementValues(study, columns),
       ...fields.map((field) => (study.clinical && study.clinical[field] != null ? study.clinical[field] : '')),
       ...(withCalibration ? calibrationCells(study) : []),
@@ -220,7 +221,7 @@ export function toPairedCsv(pairing) {
       ...headers.map((name) => visit(name)?.films[0]?.view ?? ''),
       ...headers.map((name) => visit(name)?.filmDate ?? ''),
       ...(withRegions ? headers.map(name => (visit(name)?.films ?? []).map(study =>
-        `${studyName(study)}: ${studyRegion(study)}${studyRegion(study) !== 'lumbar' ? `, anterior image ${study.geometry?.anterior_side ?? study.anteriorSide ?? 'unconfirmed'}` : ''}`).join('; ')) : []),
+        `${studyName(study)}: ${regionLabel(regionKey(study))}${studyRegion(study) !== 'lumbar' ? `, anterior image ${study.geometry?.anterior_side ?? study.anteriorSide ?? 'unconfirmed'}` : ''}`).join('; ')) : []),
       ...(flagMerges ? headers.map((name) => (visit(name)?.disagreements ?? []).join('; ')) : []),
       ...(flagMerges ? headers.map((name) => (visit(name)?.derived ?? []).map((entry) => `${entry.column}: ${entry.note}`).join('; ')) : []),
       ...columns.flatMap((_column, index) => {
