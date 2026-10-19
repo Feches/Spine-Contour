@@ -274,6 +274,23 @@ test('loadWorkspaceStudies applies the folder table: a user-set row beats the de
   assert.deepEqual(result.seeding, { fromFolders: 3, fromCsv: 0, noSubject: 0, noTimepoint: 1, badDates: 0 });
 });
 
+test('loadWorkspaceStudies counts a view a folder-table row supplies as read, Standing lateral included, and a row with none as nothing', () => {
+  // Both records keep their stored subject and timepoint, so only the table row's view can count.
+  const stored = { subjectId: 'KEEP', timepoint: '1 yr', view: null };
+  const named = real('SP-1000', at('x/a.png'), {}, stored);
+  const unknown = real('SP-1001', at('y/b.png'), {}, stored);
+  const result = loadWorkspaceStudies(baseState({
+    studies: [named, unknown], wsFolder: WS, wsFiles: [at('x/a.png'), at('y/b.png')],
+    wsFolderRows: [
+      { folder: 'x', count: 1, timepoint: null, view: 'Standing lateral' },
+      { folder: 'y', count: 1, timepoint: null, view: null },
+    ],
+  }));
+  assert.equal(result.studies.find((s) => s.id === 'SP-1000').view, 'Standing lateral');
+  assert.equal(result.studies.find((s) => s.id === 'SP-1001'), unknown);
+  assert.equal(result.seeding.fromFolders, 1);
+});
+
 test('loadWorkspaceStudies fills a known record\'s blank study fields on a new object, never overwrites, and counts it', () => {
   const blank = real('SP-1000', at('pre-op/S001.png'));
   const full = real('SP-1001', at('flexion/S002.png'), {}, { subjectId: 'KEEP', timepoint: '6 wk', filmDate: '2020-01-01', view: 'Prone lateral' });

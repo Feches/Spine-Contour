@@ -1192,7 +1192,7 @@ export function render(state) {
     // SP-nnnn id stays reachable on the title rather than disappearing entirely.
     // Where the models ran, from the providers the result recorded; nothing for older records.
     const processedOn = describeProcessor(open.qc);
-    headerMeta.textContent = `${studyRegionLabel(open).toUpperCase()} · ${(open.view || '—').toUpperCase()} · ${open.pt ?? '—'}`
+    headerMeta.textContent = `${studyRegionLabel(open).toUpperCase()} · ${(open.view || 'Unknown').toUpperCase()} · ${open.pt ?? '—'}`
       + (produced ? ` · ${produced.toUpperCase()}` : '') + (processedOn ? ` · ${processedOn}` : '');
     headerMeta.title = processorTitle(open.qc);
     // A run in flight counts as pending too: the numbers on the record are the PREVIOUS run's,

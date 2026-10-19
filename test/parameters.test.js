@@ -2,7 +2,7 @@ import { segmentalColumns } from '../renderer/data/segmental.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  HAND_ADDED, NO_TIMEPOINT, ANY_POST, DEFAULT_FILTERS, DEFAULT_SORT, CORE_COLUMNS, LEVEL_COLUMNS, measurementColumns,
+  HAND_ADDED, NO_TIMEPOINT, NO_VIEW, ANY_POST, DEFAULT_FILTERS, DEFAULT_SORT, CORE_COLUMNS, LEVEL_COLUMNS, measurementColumns,
   parameterValues, formatParameter, isSegmented, workspaceOptions, folderOptions, normaliseFilters,
   patchFilters, filterParameters, matchesLocation, hiddenUnsegmented, sortParameters, emptyReason, exportFileName,
   toggleId, withIds, selectedVisible, rowsToExport,
@@ -427,8 +427,20 @@ test('timepointOptions lists the labels present in §7.2 order, then No timepoin
   assert.deepEqual(timepointOptions([]), []);
 });
 
-test('viewOptions lists the distinct views present, first seen first, skipping a cleared view', () => {
-  assert.deepEqual(viewOptions(COHORT), [{ value: 'Standing lateral', label: 'Standing lateral' }, { value: 'Flexion lateral', label: 'Flexion lateral' }]);
+test('viewOptions lists the views present and Unknown last when a film has none', () => {
+  assert.equal(NO_VIEW, '__unknown__');
+  assert.deepEqual(viewOptions([{ view: 'Supine lateral' }, { view: null }, { view: 'Supine lateral' }]),
+    [{ value: 'Supine lateral', label: 'Supine lateral' }, { value: NO_VIEW, label: 'Unknown' }]);
+  // No film without a view, no Unknown option.
+  assert.deepEqual(viewOptions([{ view: 'Supine lateral' }, { view: 'Prone lateral' }]),
+    [{ value: 'Supine lateral', label: 'Supine lateral' }, { value: 'Prone lateral', label: 'Prone lateral' }]);
+  assert.deepEqual(viewOptions([]), []);
+  // First seen first, a blank view counts as none (SP-1007), and Unknown is last however early the film with none came.
+  assert.deepEqual(viewOptions(COHORT), [
+    { value: 'Standing lateral', label: 'Standing lateral' }, { value: 'Flexion lateral', label: 'Flexion lateral' },
+    { value: NO_VIEW, label: 'Unknown' },
+  ]);
+  assert.deepEqual(viewOptions([{ view: null }, { view: 'AP' }]), [{ value: 'AP', label: 'AP' }, { value: NO_VIEW, label: 'Unknown' }]);
 });
 
 test('pairedWithOptions offers All paired first, then Post-op, then every other non-Pre-op label present in §7.2 order', () => {
@@ -474,6 +486,25 @@ test('filterParameters narrows by timepoint, by No timepoint, by view and by sub
   assert.deepEqual(ids({ workspace: ROOT, timepoint: 'Pre-op', subject: '2' }), ['SP-1002']);
 });
 
+test('filterParameters: the Unknown view option keeps only films with none', () => {
+  // B has a null view, C has none and no result, E holds a blank string; A and D have a view.
+  const films = [
+    S('A', 's1', 'Pre-op'),
+    S('B', null, null, { view: null }),
+    S('C', null, null, { view: null, measurements: null }),
+    S('D', 's2', 'Pre-op', { view: 'Flexion lateral' }),
+    S('E', null, 'Post-op', { view: '' }),
+  ];
+  const ids = (filters) => filterParameters(films, { segmentedOnly: false, ...filters }).map((s) => s.id);
+  assert.deepEqual(ids({ view: NO_VIEW }), ['B', 'C', 'E']);
+  assert.deepEqual(ids({ view: 'Flexion lateral' }), ['D']);
+  // With the segmented-only gate on, C (no result) drops out as it does under any view filter.
+  assert.deepEqual(filterParameters(films, { view: NO_VIEW }).map((s) => s.id), ['B', 'E']);
+  // Composes with the other filters, as a named view does.
+  assert.deepEqual(ids({ view: NO_VIEW, timepoint: NO_TIMEPOINT }), ['B', 'C']);
+  assert.deepEqual(ids({ view: NO_VIEW, timepoint: 'Pre-op' }), []);
+});
+
 test('filterParameters paired-only keeps paired subjects within the other filters, before the timepoint filter', () => {
   const ids = (filters) => filterParameters(COHORT, filters).map((s) => s.id);
   // The default pairs Pre-op with any later labelled film: S001 (Post-op), S002 (1 yr), S003 (Post-op).
@@ -503,6 +534,9 @@ test('normaliseFilters clears a timepoint or view no study carries any more', ()
     { ...DEFAULT_FILTERS, timepoint: 'Pre-op', view: 'Flexion lateral', subject: 'x', pairedOnly: true, pairedWith: '1 yr' });
   assert.deepEqual(normaliseFilters({ timepoint: NO_TIMEPOINT }, COHORT), { ...DEFAULT_FILTERS, timepoint: NO_TIMEPOINT });
   assert.deepEqual(normaliseFilters({ timepoint: NO_TIMEPOINT }, COHORT.slice(0, 2)), { ...DEFAULT_FILTERS });
+  // The Unknown view survives while a film has none and clears once none does.
+  assert.deepEqual(normaliseFilters({ view: NO_VIEW }, COHORT), { ...DEFAULT_FILTERS, view: NO_VIEW });
+  assert.deepEqual(normaliseFilters({ view: NO_VIEW }, COHORT.slice(0, 2)), { ...DEFAULT_FILTERS });
 });
 
 test('sortParameters by subject groups films by subject with no subject last in both directions, and Pre-op first inside a block', () => {

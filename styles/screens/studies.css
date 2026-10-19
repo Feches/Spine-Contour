@@ -231,6 +231,12 @@
   white-space: nowrap;
 }
 
+/* A film with no view reads Unknown in the muted ink, as a subject it has none of does. It follows
+   .studies-cell-view so the equal-specificity colour wins. */
+.studies-cell-unknown {
+  color: var(--muted);
+}
+
 .studies-cell-date {
   font: 400 13.5px 'Source Sans 3', sans-serif;
   font-variant-numeric: tabular-nums;
@@ -532,6 +538,12 @@
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The view cell of a film with no view (2026-10-19): the same muted ink as the other text cells,
+   kept as its own class so the screen and its smoke check can tell Unknown from a named view. */
+.param-cell-unknown {
+  color: var(--muted);
 }
 
 .param-export {

@@ -351,7 +351,8 @@ function buildRow(study, runningId, selected, batch) {
         : null,
       el('span', { class: 'studies-name study-name' }, studyName(study))),
     subjectCell(study),
-    el('div', { class: 'studies-cell-view' }, study.view || '—'),
+    // A film with no view reads `Unknown`, muted (2026-10-19).
+    el('div', { class: `studies-cell-view${study.view == null ? ' studies-cell-unknown' : ''}` }, study.view ?? 'Unknown'),
     confirming ? null : el('div', { class: 'studies-cell-workspace' }, workspaceLabel(study)),
     confirming ? null : el('div', { class: 'studies-cell-folder', ...(pathTitle(study) ? { title: pathTitle(study) } : {}) }, folderLabel(study)),
     confirming ? null : el('div', { class: 'studies-cell-date' }, formatDate(study.addedAt)),
