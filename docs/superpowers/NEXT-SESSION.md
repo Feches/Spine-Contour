@@ -1,8 +1,10 @@
 # Next session — no queued prompt
 
-**2026-10-19:** two rounds are BUILT on branch `worktree-reviewer-navigation` in the worktree
-`.claude/worktrees/reviewer-navigation`, off `origin/main` @ `cc1b548` (v1.2.0), and wait at the owner's gate, not
-pushed; they ship as one release. The reviewer navigation round (previous / next over the Find list's filtered order,
+**2026-10-19 (late):** the owner's gate PASSED and the **1.3.0 release commit** is on the branch, which is PUSHED to
+`origin`; the owner opens the PR from the compare link below and merges with Create a merge commit, which publishes
+v1.3.0. After the merge: fetch tags, confirm the release, and the worktree can be removed. Earlier that day: two rounds
+were BUILT on branch `worktree-reviewer-navigation` in the worktree
+`.claude/worktrees/reviewer-navigation`, off `origin/main` @ `cc1b548` (v1.2.0); they ship as one release. The reviewer navigation round (previous / next over the Find list's filtered order,
 every unsegmented film's X-ray, the list's scroll fix) came first; the header filters round sits on top of it (every
 Find header filters from a funnel menu with multi-select ticks, a REGION column, the view Unknown until a person or a
 name sets it, `findFilters` in place of the bar's dropdowns and `findStatus`). On "gate passed": push the branch, hand

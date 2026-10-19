@@ -3,8 +3,12 @@
 **Last updated:** 2026-10-19
 **Branch:** `worktree-reviewer-navigation` in the worktree `.claude\worktrees\reviewer-navigation` of the main checkout,
 off `origin/main` @ `cc1b548` (v1.2.0): the reviewer navigation round (previous / next over the Find list's filtered
-order, the status filter, every unsegmented film's X-ray on the stage, the list's scroll fix) — BUILT, at the owner's
-gate, not pushed (first section under "Where things stand").
+order, every unsegmented film's X-ray on the stage, the list's scroll fix) and, on top of it, the header filters round
+(funnel menus on every Find header, the REGION column, the Unknown view) — the owner's gate PASSED on real films
+(2026-10-19, after gate feedback G1 on the table's width was fixed), the **1.3.0 release commit** is on the branch and
+the branch is PUSHED; the owner opens the PR from
+`https://github.com/Feches/Spine-Contour/compare/main...worktree-reviewer-navigation?expand=1` and merges with Create a
+merge commit, which publishes v1.3.0 (first two sections under "Where things stand").
 **2026-10-15 branch (released):** `worktree-annotation-round-2` in the worktree `.claude\worktrees\annotation-round-2` of the main checkout,
 off `origin/main` @ `06c8cdd` (v1.1.1): annotation editor round 2 (a comment on the label record, the Hand-placed
 status, REVERT per level) — its owner gate passed; its 1.2.0 release commit is `7dec644`, backed up on `origin`, no PR
