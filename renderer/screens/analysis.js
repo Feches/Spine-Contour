@@ -1161,8 +1161,10 @@ export function render(state) {
     alignmentRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view) || live.editing);
     // The preview message shows only while the film has no result (2026-10-19: for every real film, since every one
     // now loads its original -- showOriginal -- not only the alignment setup's): it is not cleared when a preview is
-    // abandoned, so its being set is not enough.
-    const previewNote = mounted?.previewMessage && open.source === 'real' && !open.measurements ? mounted.previewMessage : '';
+    // abandoned, so its being set is not enough. A failed lumbar film keeps its note to the stored reason (port spec 6):
+    // the FAILED card covers the stage, and a film the run could not find is not also "unavailable" after it.
+    const previewNote = mounted?.previewMessage && open.source === 'real' && !open.measurements
+      && (requiresAnteriorSide(open) || !open.processingError) ? mounted.previewMessage : '';
     // (2026-10-01, issue #39) Read here for the region note as well as for the header pill below. A
     // film whose pill reads Failed says why here, in --danger, next to the controls that fix most
     // failures, ahead of the ordinary guidance (port spec 6).
@@ -1248,7 +1250,7 @@ export function render(state) {
       const after = findNeighbour(live, open.id, 1);
       position.textContent = positionLabel(place);
       position.title = place.index === null
-        ? `This study is not in the Find list under its current filters (${place.count} ${place.count === 1 ? 'study' : 'studies'} are)`
+        ? `Not in the Find list under its current filters, which show ${place.count} ${place.count === 1 ? 'study' : 'studies'}`
         : `Study ${place.index} of ${place.count} in the Find list`;
       prevButton.disabled = editing || !before;
       nextButton.disabled = editing || !after;

@@ -1256,13 +1256,15 @@ export function render(state) {
   return root;
 }
 
-// Scrolls `page` (the list's scroll container) so the row for `id` sits in the middle of it. A row without layout
-// (the Find panel hidden behind the Parameters tab) measures zero and is left alone.
+// Scrolls `page` (the list's scroll container) so the row for `id` sits in the middle of it -- only when the row is
+// not already fully in view: a short list, or a row near the top, keeps the heading, the search box and the bar where
+// they are. A row without layout (the Find panel hidden behind the Parameters tab) measures zero and is left alone.
 function revealRow(page, host, id) {
   const row = host.querySelector(`.studies-row[data-study-id="${id}"]`);
   if (!row) return;
   const rowRect = row.getBoundingClientRect();
   if (rowRect.height === 0) return;
   const pageRect = page.getBoundingClientRect();
+  if (rowRect.top >= pageRect.top && rowRect.bottom <= pageRect.bottom) return;
   page.scrollTop += rowRect.top - pageRect.top - (page.clientHeight - rowRect.height) / 2;
 }
