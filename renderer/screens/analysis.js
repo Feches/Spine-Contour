@@ -820,6 +820,32 @@ async function previewOriginal(studyId) {
   }
 }
 
+// (2026-10-19) A film with no result shows its X-ray by default, whatever its region: the decoded original at its
+// default window (ensureFilm, the level editor's loader, which hands the images to the live viewer itself). The
+// region note reads the progress and, when the original cannot be read, why; the UNSEGMENTED card then stays as it
+// was, its Run segmentation offering the relocate picker. Guarded like previewOriginal: nothing is written to a mount
+// that has moved on. Never throws: ensureFilm resolves an outcome.
+async function showOriginal(studyId) {
+  const live = () => mounted?.studyId === studyId && getState().screen === 'analysis';
+  if (!live()) return;
+  mounted.previewMessage = 'Loading original radiograph…';
+  mounted.update();
+  const outcome = await ensureFilm(studyId);
+  if (!live()) return;
+  mounted.previewMessage = outcome.superseded || outcome.images ? '' : `Original preview unavailable: ${outcome.reason}`;
+  mounted.update();
+}
+
+// (2026-10-19) The original for a real film with no result: cervical and full-spine films keep previewOriginal (the
+// backend's clean preview, the evidence for the anterior-side choice, with its own guards); every other film is
+// decoded here (showOriginal). Nothing for a demo study, which has no film, or a film with a result.
+function loadOriginal(studyId) {
+  const study = getState().studies.find((s) => s.id === studyId);
+  if (!study || study.source !== 'real' || study.geometry) return;
+  if (requiresAnteriorSide(study)) previewOriginal(studyId);
+  else showOriginal(studyId);
+}
+
 export function render(state) {
   // A re-render (the router calls this whenever SCREEN_KEYS change) must not leave the
   // previous mount's listeners live.
@@ -1017,7 +1043,9 @@ export function render(state) {
     // (2026-10-11, gate feedback G3) So does the film on the stage, and its window with it.
     forgetFilmWindow(open.id);
     mounted?.viewer.setFilmStatus(null);
-    previewOriginal(open.id);
+    // (2026-10-19) The film comes back for the new region: the backend's preview for cervical and full spine, the
+    // decoded original otherwise.
+    loadOriginal(open.id);
   }
   const regionSelect = el('select', { 'aria-label': 'Spine region', class: 'workspace-folder-select',
     onChange: e => changeRegion({ region: e.target.value, anteriorSide: null }) },
@@ -1131,9 +1159,10 @@ export function render(state) {
     previewButton.hidden = alignmentRunButton.hidden = !alignmentSetup;
     previewButton.disabled = Boolean(live.running || live.batch);
     alignmentRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view) || live.editing);
-    // The preview message shows only during alignment setup: it is not cleared when a preview is
+    // The preview message shows only while the film has no result (2026-10-19: for every real film, since every one
+    // now loads its original -- showOriginal -- not only the alignment setup's): it is not cleared when a preview is
     // abandoned, so its being set is not enough.
-    const previewNote = mounted?.previewMessage && alignmentSetup ? mounted.previewMessage : '';
+    const previewNote = mounted?.previewMessage && open.source === 'real' && !open.measurements ? mounted.previewMessage : '';
     // (2026-10-01, issue #39) Read here for the region note as well as for the header pill below. A
     // film whose pill reads Failed says why here, in --danger, next to the controls that fix most
     // failures, ahead of the ordinary guidance (port spec 6).
@@ -1296,5 +1325,10 @@ export function render(state) {
   // (2026-10-10, ruling R16) A study whose geometry came from the level editor alone has no sidecar and is shown
   // from its decoded original, the image its levels were placed on.
   else if ((handPlaced || getState().levelEditor?.studyId === study.id) && !(imageCache?.studyId === study.id)) ensureFilm(study.id);
+  // (2026-10-19) Every other real film with no result shows its X-ray by default (showOriginal): the decoded original
+  // at its default window, with the UNSEGMENTED card drawn as a strip along the bottom of the stage once it is there
+  // (components/viewer.js describeCard). The cache check is the same as the branches above: a film already decoded was
+  // re-handed to the viewer by the setImages call at the top of this section.
+  else if (study.source === 'real' && !study.geometry && !(imageCache?.studyId === study.id)) showOriginal(study.id);
   return root;
 }
