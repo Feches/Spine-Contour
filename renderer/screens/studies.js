@@ -598,6 +598,10 @@ function writeFindFilters(patch) {
 
 // A press outside the open menu closes it. A press on a funnel is left to that funnel's click, so another column's
 // funnel opens its own menu in one click. Captured, so nothing on the page can stop it first.
+// A press on a row closes the menu and does NOT also open the row (ruling R9), but only because of how this works: the
+// refreshTable() below rebuilds the table on the pointerdown, so the row the press landed on is replaced before its
+// click arrives and the click finds nothing to open. Nothing else here guards the row; if the rebuild ever stopped
+// replacing the row, that click would open it as well. smoke-reviewer.mjs section 2 pins the behaviour.
 function closeMenuOnOutsidePress(event) {
   if (openMenu === null) { listenOutside(false); return; }
   if (event.target instanceof Element && event.target.closest('.studies-filter-menu, .studies-funnel')) return;
@@ -606,13 +610,30 @@ function closeMenuOnOutsidePress(event) {
   refreshTable();
 }
 
-// Registered only while a menu is open: update() keeps it in step with openMenu, and navigation removes it.
+// Escape closes the open menu from wherever focus is (ruling R11): the menu's own Escape handler covers focus inside it
+// and stops the event there, so this one, on the document in the bubble phase, takes the rest -- focus that left the
+// menu by Shift+Tab from All, a click on its padding, the search box. It goes the menu's own way, closeMenu(), so focus
+// lands on the funnel.
+function closeMenuOnEscape(event) {
+  if (openMenu === null) { listenOutside(false); return; }
+  if (event.key !== 'Escape') return;
+  event.preventDefault();
+  closeMenu(openMenu);
+}
+
+// Both listeners are registered only while a menu is open, together: update() keeps them in step with openMenu, and
+// navigation removes them.
 let listeningOutside = false;
 function listenOutside(on) {
   if (on === listeningOutside) return;
   listeningOutside = on;
-  if (on) document.addEventListener('pointerdown', closeMenuOnOutsidePress, true);
-  else document.removeEventListener('pointerdown', closeMenuOnOutsidePress, true);
+  if (on) {
+    document.addEventListener('pointerdown', closeMenuOnOutsidePress, true);
+    document.addEventListener('keydown', closeMenuOnEscape);
+  } else {
+    document.removeEventListener('pointerdown', closeMenuOnOutsidePress, true);
+    document.removeEventListener('keydown', closeMenuOnEscape);
+  }
 }
 
 // The open menu for `column`, its callbacks writing the store. A tick toggles over the NORMALISED column, so a stale

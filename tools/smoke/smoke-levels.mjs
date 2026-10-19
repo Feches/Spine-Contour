@@ -1299,7 +1299,13 @@ async function domPhase() {
   const stashedAgain = await ev(`window.__lv.hasStashedEditor(${js(SEG)})`);
   await clickSelector(STUDIES_NAV);
   await until(`document.querySelector(${js(`${row(SEG)} .studies-delete`)})`, 5000);
+  // (2026-10-19, header filters) The delete controls sit at the Find table's right end, past the window's edge at the
+  // default size (the table scrolls sideways, and the REGION column made it 100 px wider), so each is scrolled into
+  // view before its click, as smoke-studies.mjs's clickAt does.
+  const reach = (selector) => ev(`document.querySelector(${js(selector)})?.scrollIntoView({ block: 'nearest', inline: 'nearest' })`);
+  await reach(`${row(SEG)} .studies-delete`);
   await clickSelector(`${row(SEG)} .studies-delete`);
+  await reach(`${row(SEG)} .studies-delete-confirm`);
   await clickSelector(`${row(SEG)} .studies-delete-confirm`);
   const deleted = await until(`window.__lv.study(${js(SEG)}) === null`, 5000);
   check('11. deleting a study with a stashed editor drops the stash (hasStashedEditor false)',

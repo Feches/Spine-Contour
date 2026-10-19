@@ -412,8 +412,11 @@ try {
     loadedGrid && same(loadedGrid.heads.slice(0, 6), STUDY_HEADS) && same([...loadedGrid.heads.slice(6)].sort(), ['AGE', 'SEX', 'TREATMENT PLAN'])
     && loadedGrid.rows.length === 1 && loadedGrid.rows[0].id === 'a'
     && loadedCells.AGE?.value === '58' && loadedCells.SEX?.value === 'F' && loadedCells['TREATMENT PLAN']?.value === 'Fusion', { heads: loadedGrid?.heads, loadedCells });
-  check('the Study group cells hold the seeded subject and view, and an empty timepoint and film date',
-    loadedCells.SUBJECT?.value === 'a' && loadedCells.TIMEPOINT?.value === '' && loadedCells['FILM DATE']?.value === '' && loadedCells.VIEW?.value === 'Standing lateral'
+  // 2026-10-19 (header filters, the Unknown view): a film whose folder and name name no view loads with none, so the
+  // VIEW cell is empty and its placeholder reads Unknown, where it once read the seeded Standing lateral.
+  check('the Study group cells hold the seeded subject, an empty view reading Unknown, and an empty timepoint and film date',
+    loadedCells.SUBJECT?.value === 'a' && loadedCells.TIMEPOINT?.value === '' && loadedCells['FILM DATE']?.value === ''
+    && loadedCells.VIEW?.value === '' && loadedCells.VIEW?.placeholder === 'Unknown'
     && [loadedCells.SUBJECT, loadedCells.TIMEPOINT, loadedCells['FILM DATE'], loadedCells.VIEW].every((c) => c && c.disabled === false),
     { SUBJECT: loadedCells.SUBJECT, TIMEPOINT: loadedCells.TIMEPOINT, FILM: loadedCells['FILM DATE'], VIEW: loadedCells.VIEW });
   check('ADD FIELD offers the six known fields that are not columns yet, plus the custom input',

@@ -89,7 +89,7 @@ try {
       setState({studies:files.map((file,i)=>({id:'SP-'+(9950+i),source:'real',fileName:file.split('/').pop(),
         filePath:file,addedAt:new Date().toISOString(),view:'Standing lateral',clinical:{},
         measurements:null,geometry:null,qc:null})),screen:'studies',openId:null,editing:false,
-        studiesTab:'find',query:'',paramSelected:[],paramFilters:{workspace:null,folder:null,segmentedOnly:false}});
+        studiesTab:'find',query:'',paramSelected:[],findFilters:{subject:'',region:[],view:[],workspace:[],folder:[],status:[]}});
       const {startBatch}=await import('./renderer/batch.js');
       window.partialBatchPromise=startBatch(files.map((_,i)=>'SP-'+(9950+i)));
     })()`);

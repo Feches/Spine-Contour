@@ -132,7 +132,7 @@ try {
   // A mislabeled view is refused before even trying its nonexistent source path.
   await cdp.evaluate(`(async()=>{
     const {setState}=await import('./renderer/store.js');
-    setState(s=>({studies:[...s.studies,{...window.accuracyOriginal,id:'SP-8802',name:'Synthetic AP · excluded',view:'AP',fileName:'synthetic-ap.png',filePath:'/nonexistent/accuracy-ap.png',geometry:null,measurements:null,qc:null}],screen:'studies',query:'',studiesTab:'find',paramSelected:[],paramFilters:{workspace:null,folder:null,segmentedOnly:false}}));
+    setState(s=>({studies:[...s.studies,{...window.accuracyOriginal,id:'SP-8802',name:'Synthetic AP · excluded',view:'AP',fileName:'synthetic-ap.png',filePath:'/nonexistent/accuracy-ap.png',geometry:null,measurements:null,qc:null}],screen:'studies',query:'',studiesTab:'find',paramSelected:[],findFilters:{subject:'',region:[],view:[],workspace:[],folder:[],status:[]}}));
   })()`);
   check('batch plan visibly excludes AP', await cdp.evaluate("document.body.textContent.includes('1 unsupported view excluded')"));
   check('AP row is labelled unsupported, not processing', await cdp.evaluate("document.querySelector('[data-study-id=\"SP-8802\"] .badge').textContent==='Unsupported view'"));

@@ -1,12 +1,14 @@
 // Reviewer navigation smoke (2026-10-19): the Studies list's scroll fix, its header filter menus (section 2, rewritten
 // 2026-10-19 when the menus replaced the bar's status dropdown), the Analysis screen's previous / next (the arrow keys
-// and the header group) over the list's filtered order, and an unsegmented film's X-ray on the stage with the
-// UNSEGMENTED strip. Precondition: the app is running, any screen; the Python backend up (section 4 decodes a film
-// through it). Forty unsegmented records SP-9500..SP-9539 are injected at the start, with paths that point nowhere (the
-// scroll and navigation sections need rows, not films), and removed at the end; the first three carry the subjects
-// RVW-NAV-0..2 for the SUBJECT menu. Section 2 makes one demo study Needs review in the store (demo studies are never
-// saved) and restores it. Section 4 injects SP-9000 through inject-study.js, as the other suites do, and leaves it, as
-// they do.
+// and the header group) over the list's filtered order, an unsegmented film's X-ray on the stage with the UNSEGMENTED
+// strip, the REGION column after a run (section 5) and the import table's Unknown view default (section 6).
+// Precondition: the app is running, any screen; the Python backend up (section 4 decodes a film through it, section 5
+// runs one segmentation of the sample film, so the models must load). Forty unsegmented records SP-9500..SP-9539 are
+// injected at the start, with paths that point nowhere (the scroll and navigation sections need rows, not films), and
+// removed at the end; the first three carry the subjects RVW-NAV-0..2 for the SUBJECT menu. Section 2 makes one demo
+// study Needs review in the store (demo studies are never saved) and restores it. Section 4 injects SP-9000 through
+// inject-study.js, as the other suites do, and section 5 segments it; it is left, segmented, as smoke-studies.mjs
+// leaves it. Section 6 seeds the Workspace screen's folder table and clears it.
 //
 // Reads the DOM and the store only; no screenshots.
 import fs from 'node:fs';
@@ -240,6 +242,40 @@ try {
   check('2. the funnel opens it again', (await menu())?.column === 'status', await menu());
   await press(null, '.studies-heading');
   check('2. a click outside closes it', (await menu()) === null && (await funnel('status')).expanded === 'false', await menu());
+
+  // Escape from anywhere (ruling R11). The menu's own Escape handler covers focus inside it; a keyboard user whose focus
+  // has left it (Shift+Tab from All) or whose focus is in the search box must be able to close it too, focus landing on
+  // the funnel. A mouse click on the search box would be a press outside and close the menu by itself, so focus is
+  // moved there the way a keyboard moves it, without a press.
+  await press('filter-status');
+  await cdp.key('Tab', { shift: true }); await cdp.settle(100);
+  const strayed = await cdp.evaluate("(() => { const m = document.querySelector('.studies-filter-menu'); const a = document.activeElement; return { open: Boolean(m), inside: m ? m.contains(a) : null, active: a ? a.tagName + '.' + a.className : null }; })()");
+  check('2. Shift+Tab from All takes focus out of the menu, which stays open', strayed.open && strayed.inside === false, strayed);
+  await cdp.key('Escape'); await cdp.settle(150);
+  check('2. Escape with focus outside the menu closes it and returns focus to the funnel', (await menu()) === null && (await funnel('status')).expanded === 'false'
+    && (await focusedKey()) === 'filter-status', { menu: await menu(), focus: await focusedKey() });
+  await press('filter-status');
+  await cdp.evaluate("document.querySelector('.studies-search').focus()"); await cdp.settle(100);
+  const inSearch = await cdp.evaluate("({ open: Boolean(document.querySelector('.studies-filter-menu')), search: document.activeElement === document.querySelector('.studies-search') })");
+  check('2. with focus in the search box the menu is still open', inSearch.open && inSearch.search, inSearch);
+  await cdp.key('Escape'); await cdp.settle(150);
+  const afterSearchEscape = await cdp.evaluate("({ menu: document.querySelectorAll('.studies-filter-menu').length, expanded: document.querySelector('[data-find-key=\"filter-status\"]')?.getAttribute('aria-expanded'), active: document.activeElement?.getAttribute('data-find-key') ?? null })");
+  check('2. Escape in the search box closes the menu and puts focus on the funnel, not in the box', afterSearchEscape.menu === 0 && afterSearchEscape.expanded === 'false'
+    && afterSearchEscape.active === 'filter-status', afterSearchEscape);
+  // A row click with a menu open (ruling R10): the outside press closes the menu and its rebuild replaces the row
+  // before the click arrives, so the row is not opened.
+  await press('filter-status');
+  const clearRow = await cdp.evaluate(`(() => {
+    for (const r of document.querySelectorAll('.studies-row')) {
+      const c = r.querySelector('.studies-cell-view'); const b = c.getBoundingClientRect();
+      if (b.width > 0 && r.contains(document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2))) return r.dataset.studyId;
+    }
+    return null;
+  })()`);
+  check('2. a row not covered by the open menu to click', Boolean(clearRow), clearRow);
+  await clickRow(clearRow);
+  await cdp.settle(200);
+  check('2. a click on a row with a menu open closes the menu and does not open the row', (await menu()) === null && (await cdp.state()).screen === 'studies', { menu: await menu(), screen: (await cdp.state()).screen });
   await press('filter-status');
   await press('filter-region');
   m = await menu();
@@ -490,13 +526,84 @@ try {
   check('4. reopened, SP-9000 shows the strip at once from the cache', again.strip === true && again.base && again.base[0] === 157, again);
   await clickBack();
   check('4. no page errors', cdp.errors.length === 0, cdp.errors);
+
+  // 5. The REGION column after a run (2026-10-19, header filters; spec section 4). SP-9000 is unsegmented with its bytes
+  // parked (section 4), so its REGION cell reads Unknown, muted. One real run of the sample film, through
+  // run-and-wait.js as the other suites run it, and the cell reads Lumbar the moment the run is done: the completion
+  // write sets geometry.region, and a result with none is lumbar (data/cervical.js regionKey). The REGION menu offers
+  // Lumbar (the demo studies have measurements, so it offered Lumbar already; the tick below is what shows SP-9000 in it).
+  const regionCell = (id) => cdp.evaluate(`(() => { const c = document.querySelector('.studies-row[data-study-id="${id}"] .studies-cell-region'); return c ? { text: c.textContent, muted: c.classList.contains('studies-cell-unknown') } : null; })()`);
+  await scrollListTo('top');
+  await cdp.settle(100);
+  const before5 = await regionCell('SP-9000');
+  check('5. before its run SP-9000 reads Unknown in its REGION cell, muted', before5 && before5.text === 'Unknown' && before5.muted === true, before5);
+  check('5. SP-9000 opens', await clickRow('SP-9000'), 'SP-9000');
+  const ran = await cdp.evaluate(fs.readFileSync(path.join(__dirname, 'run-and-wait.js'), 'utf8'));
+  check('5. the run finishes with measurements', ran.result === 'done' && ran.measurements != null, { result: ran.result, seconds: ran.seconds, toast: ran.toast });
+  await clickBack();
+  await scrollListTo('top');
+  await cdp.settle(150);
+  const after5 = await regionCell('SP-9000');
+  check('5. after the run SP-9000 reads Lumbar in its REGION cell, no longer muted', after5 && after5.text === 'Lumbar' && after5.muted === false, after5);
+  await openMenu('region');
+  m = await menu();
+  check('5. the REGION menu offers Lumbar under its key', m?.column === 'region' && m.options.some(([key, label]) => key === 'filter-region-lumbar' && label === 'Lumbar'), m?.options);
+  const rows5 = await rows();
+  await tick('region', 'lumbar');
+  const lumbarRows = await cdp.evaluate("[...document.querySelectorAll('.studies-row')].map((r) => [r.dataset.studyId, r.querySelector('.studies-cell-region').textContent])");
+  check('5. ticking Lumbar keeps only rows whose REGION reads Lumbar, SP-9000 among them and the unsegmented films gone',
+    lumbarRows.length > 0 && lumbarRows.every(([, text]) => text === 'Lumbar') && lumbarRows.some(([id]) => id === 'SP-9000') && !lumbarRows.some(([id]) => INJECTED.test(id)), lumbarRows.slice(0, 5));
+  fn = await funnel('region');
+  check('5. the REGION funnel reads active with count 1, its title naming Lumbar', fn.active && fn.count === '1' && fn.title === 'Filtered: Lumbar', fn);
+  await press('filter-region-all');
+  await cdp.key('Escape'); await cdp.settle(100);
+  check('5. All brings every row back', (await rows()) === rows5, { rows: await rows(), rows5 });
+  check('5. no page errors', cdp.errors.length === 0, cdp.errors);
+
+  // 6. The import table's VIEW selects default to Unknown (2026-10-19, header filters; spec 5.1). The folder table is
+  // seeded the way smoke-seeding.mjs seeds it, from folderRows over a file list that points nowhere: only the `flexion`
+  // folder names a view, so its VIEW select reads Flexion lateral and the other folders' read Unknown, where they once
+  // all read Standing lateral. The Unknown option's value is the empty string and the row model says null.
+  const wsRoot = 'C:\\smoke\\reviewer-ws';
+  const wsFiles = ['pre-op\\r1.png', 'pre-op\\r2.png', 'post-op\\r3.png', 'flexion\\r4.png'].map((f) => `${wsRoot}\\${f}`);
+  await cdp.evaluate(`(async () => {
+    const store = await import('./renderer/store.js');
+    const seeding = await import('./renderer/data/seeding.js');
+    const files = ${JSON.stringify(wsFiles)};
+    store.setState({ wsFolder: ${JSON.stringify(wsRoot)}, wsFiles: files, wsFolderRows: seeding.folderRows(files, ${JSON.stringify(wsRoot)}), wsCsv: null, wsCsvHeaders: [], wsCsvRows: [], wsMapping: [] });
+    store.setState({ screen: 'workspace' });
+    return true;
+  })()`);
+  await cdp.settle(200);
+  const table6 = await cdp.evaluate(`(() => {
+    const selected = (s) => (s ? { value: s.value, text: s.options[s.selectedIndex]?.textContent ?? null } : null);
+    return {
+      rows: [...document.querySelectorAll('.workspace-folders tbody tr[data-ws-folder]')].map((r) => ({ folder: r.dataset.wsFolder, view: selected(r.querySelector('[data-ws-key^="view:"]')),
+        options: [...(r.querySelector('[data-ws-key^="view:"]')?.options ?? [])].map((o) => o.textContent) })),
+      all: [...(document.querySelector('[data-ws-key="all-view"]')?.options ?? [])].map((o) => o.textContent),
+    };
+  })()`);
+  const VIEW_CHOICES = ['Unknown', 'Standing lateral', 'Supine lateral', 'Prone lateral', 'Flexion lateral', 'Extension lateral'];
+  const viewOf = (folder) => table6.rows.find((r) => r.folder === folder)?.view;
+  check('6. the folder table lists the three folders', JSON.stringify(table6.rows.map((r) => r.folder).sort()) === JSON.stringify(['flexion', 'post-op', 'pre-op']), table6.rows.map((r) => r.folder));
+  check('6. the pre-op and post-op VIEW selects default to Unknown, the empty value',
+    ['pre-op', 'post-op'].every((f) => viewOf(f)?.value === '' && viewOf(f)?.text === 'Unknown'), table6.rows);
+  check('6. the flexion folder\'s name still sets its view', viewOf('flexion')?.value === 'Flexion lateral' && viewOf('flexion')?.text === 'Flexion lateral', viewOf('flexion'));
+  check('6. each VIEW select offers Unknown first, then the five suggestions', table6.rows.every((r) => JSON.stringify(r.options) === JSON.stringify(VIEW_CHOICES)), table6.rows.map((r) => r.options));
+  check('6. the Set all VIEW select offers Unknown after its placeholder', JSON.stringify(table6.all) === JSON.stringify(['Set all\u2026', ...VIEW_CHOICES]), table6.all);
+  const wsRowsInStore = (await cdp.state()).wsFolderRows.map((r) => [r.folder, r.view]);
+  check('6. the store\'s folder rows hold null for the folders that name no view', JSON.stringify(wsRowsInStore.sort()) === JSON.stringify([['flexion', 'Flexion lateral'], ['post-op', null], ['pre-op', null]]), wsRowsInStore);
+  await cdp.setState('{ wsFolder: null, wsFiles: [], wsFolderRows: [], wsCsv: null, wsCsvHeaders: [], wsCsvRows: [], wsMapping: [], screen: "studies" }');
+  await cdp.settle(150);
+  check('6. no page errors', cdp.errors.length === 0, cdp.errors);
 } finally {
   // The injected records go, and a demo study section 2 left Needs review gets its own qc back; SP-9000 stays, as every
   // suite leaves it.
   try {
     await cdp.evaluate(`import('./renderer/store.js').then((m) => { m.setState((s) => ({
       studies: s.studies.filter((x) => !${INJECTED}.test(x.id)).map((x) => (x.id === ${JSON.stringify(demoPatched?.id ?? null)} ? { ...x, qc: ${JSON.stringify(demoPatched?.qc ?? null)} } : x)),
-      paramSelected: [], query: '', findFilters: { subject: '', region: [], view: [], workspace: [], folder: [], status: [] } })); return true; })`);
+      paramSelected: [], query: '', findFilters: { subject: '', region: [], view: [], workspace: [], folder: [], status: [] },
+      wsFolder: null, wsFiles: [], wsFolderRows: [], wsCsv: null, wsCsvHeaders: [], wsCsvRows: [], wsMapping: [] })); return true; })`);
   } catch (_error) { /* the app may be gone */ }
   cdp.close();
   const passed = results.filter((r) => r.ok).length;
