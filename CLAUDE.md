@@ -42,8 +42,11 @@ a null one, and WORKSPACE rows carry the root path on their title (R16). Unit 11
 stored a null view (F8); bundles exported with Unknown views import only into this version or later (a 1.2.0 build skips
 those films as malformed, because its `validate` refuses a non-string view), and a 1.2.0 library in which the drawer had
 cleared a view to `''` gets a null view on this build's first save, so 1.2.0 can no longer read it either; SUBJECT's
-text matches `subjectId` only, as the grid's does; the table's minimum width grew 100 px. No version bump: the release
-is the owner's step after their gate. See HANDOFF's first "Where things stand" section.
+text matches `subjectId` only, as the grid's does. Gate feedback G1 (the owner's first look): the REGION track had pushed
+the table's floors past the page column's 1088 px cap, cutting off the actions column at every window; the floors are
+tightened to a 996 px sum, the trash cell is sticky at the right edge, and the return-to-row scroll waits on a timer
+instead of an animation frame (which a hidden window never fires). No version bump: the release is the owner's step
+after their gate. See HANDOFF's first "Where things stand" section.
 
 **2026-10-19 reviewer navigation (BUILT, at the owner's gate, not pushed; its status dropdown and `findStatus` were replaced by the header menus above before release):** branch `worktree-reviewer-navigation` in
 worktree `.claude/worktrees/reviewer-navigation`, off `origin/main` @ `cc1b548` (v1.2.0). The owner's ask: flip through

@@ -1425,15 +1425,18 @@ export function render(state) {
   update(state);
   // (2026-10-19) Back from a study lands on its row. The panel is rebuilt on every trip, so a fresh mount starts at
   // the top, and a reviewer returning from the fortieth film had to scroll down to it again. render() returns a
-  // detached tree and the router places it afterwards, so the row is centred on the next frame, once the panel has
-  // layout; only this panel's own scroll moves, never the document's. Nothing happens when the study is not a row
-  // (filtered out, deleted, the Parameters tab up) or when this mount was replaced meanwhile.
+  // detached tree and the router places it afterwards, so the row is centred on a zero-delay timer, which runs after
+  // the store notification that placed the panel and so finds it laid out; only this panel's own scroll moves, never
+  // the document's. A timer, not requestAnimationFrame (gate feedback G1 of the header-filters round, 2026-10-19):
+  // Chromium stops animation frames in a hidden or fully covered window, so the scroll never happened while the app
+  // sat behind another window, and the smoke suite driving it could not see the row land. Nothing happens when the
+  // study is not a row (filtered out, deleted, the Parameters tab up) or when this mount was replaced meanwhile.
   if (state.openId) {
     const openId = state.openId;
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       if (!mounted || mounted.host !== tableHost || !root.isConnected) return;
       revealRow(root, tableHost, openId);
-    });
+    }, 0);
   }
   return root;
 }

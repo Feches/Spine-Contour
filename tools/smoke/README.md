@@ -473,7 +473,14 @@ node tools/smoke/cdp.mjs --quit
   Confirm sit at the table's right end, past the window's edge at the default 1166 px viewport (the table scrolls
   sideways; the REGION column made it 100 px wider), and a click at a rect outside the viewport lands on nothing, so the
   suite scrolls each into view (`scrollIntoView`, as `smoke-studies.mjs`'s `clickAt` does) before clicking. Without that
-  the dom phase read 143/145 (the stash check and the disk check after the delete); with it, 145/145.
+  the dom phase read 143/145 (the stash check and the disk check after the delete); with it, 145/145. Gate feedback G1
+  then tightened the table's tracks (a 996 px sum inside the page column's 1088 px) and made the trash cell sticky at
+  the right edge, so the control is in reach without the scroll on an ordinary window; the suite's scroll stays, harmless.
+- **A hidden window stops animation frames** (2026-10-19, gate feedback G1). While the app sits behind another window,
+  Chromium fires no `requestAnimationFrame` and throttles timers, so a suite that waits on a frame never sees it and
+  every settle takes longer. The Studies screen's return-to-row scroll waits on a zero-delay timer for that reason.
+  Suites still pass in a hidden window (`smoke-reviewer.mjs` 131/131, `smoke-levels.mjs` 145/145 on 2026-10-19), but
+  slowly; bring the window to the front when nothing else is being driven on the machine.
 - **Edit waits until it can take the click** (2026-10-19, the final review's fix wave). `enterEdit` waits until the
   Edit tool is enabled AND is the topmost element at its own centre. Until a film is on the stage, its run card covers
   the toolbar. Since ruling R15, an unsegmented film's preview or decode starts 150 ms after it opens, so section 12's

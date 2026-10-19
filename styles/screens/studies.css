@@ -74,9 +74,17 @@
      clipping, and only a window too narrow for all of them squeezes STUDY toward its floor.
      The 110px LORDOSIS track that used to sit before the actions is gone -- the list is for
      finding a study, not for reading its numbers.
-     (2026-10-19) REGION keeps room for its longest label, `Full spine`, at 84px. */
-  grid-template-columns: minmax(200px, 2.2fr) minmax(96px, 1fr) minmax(84px, 0.8fr) minmax(120px, 1fr) minmax(104px, 1fr) minmax(90px, 1fr) minmax(94px, 0.85fr) minmax(124px, 1.05fr) 44px;
-  gap: 16px;
+     (2026-10-19) REGION keeps room for its longest label, `Full spine`, at 80px.
+     (2026-10-19, gate feedback G1 of the header-filters round) The floors are LOAD-BEARING against
+     .studies-page-inner's 1160px cap: the page column gives the table at most 1088px, and the REGION
+     track's first 84px plus the 16px gap pushed the floors' sum to 1128px, so the actions column was
+     cut off at EVERY window and its Delete sat behind a horizontal scrollbar at the bottom of the list.
+     The sum here (160 + 90 + 80 + 100 + 96 + 84 + 90 + 112 + 44, eight 12px gaps, 44px of padding) is
+     996px: inside the cap with 92px to spare. STUDY's 160px floor is safe because the name wraps; a
+     window narrower than the sum still scrolls sideways, as it always did, and the actions cell is
+     sticky (below) so Delete stays in reach there too. */
+  grid-template-columns: minmax(160px, 2.2fr) minmax(90px, 1fr) minmax(80px, 0.8fr) minmax(100px, 1fr) minmax(96px, 1fr) minmax(84px, 1fr) minmax(90px, 0.85fr) minmax(112px, 1.05fr) 44px;
+  gap: 12px;
   align-items: center;
   padding: 13px 22px;
 }
@@ -438,6 +446,23 @@
 .studies-cell-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+/* (2026-10-19, gate feedback G1) On a window too narrow for every track the table scrolls sideways,
+   and its scrollbar sits under the LAST row -- hundreds of rows down. The trash cell sticks to the
+   scrollport's right edge instead, over the cells it slides across (hence the background, which
+   follows the row's hover), so Delete is always one click away. The confirming prompt spans the
+   row and is not sticky. */
+.studies-cell-actions:not(.studies-cell-actions-confirming) {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--card);
+  padding-left: 8px;
+}
+
+.studies-row:hover .studies-cell-actions:not(.studies-cell-actions-confirming) {
+  background: var(--well);
 }
 
 .studies-delete:hover,

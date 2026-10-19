@@ -153,7 +153,9 @@ untracked):
   table scrolls sideways about 100 px sooner than before (`smoke-levels.mjs` section 11 first read 143/145 until the suite
   scrolled the control into view). Accepted: the spec sized the track, the owner's window is wider (their screenshot is
   about 2000 px), and the smoke README already records the overflow at 1180 px. Cost if wrong: a sideways scroll to reach
-  Delete on a narrow window, which the final review and the owner's gate will see.
+  Delete on a narrow window, which the final review and the owner's gate will see. *Superseded by gate feedback G1
+  (below): the reasoning was wrong, because the page column caps the table at 1088 px whatever the window, and the
+  floors' sum had passed it.*
 
 The final whole-branch review (`cc1b548..697f721`) returned "With fixes", with 4 Important and 9 Minor findings, and
 the controller ruled on each (R13-R16 below; the ledger lines begin `Final: Ruling` in the same `progress.md`):
@@ -288,8 +290,29 @@ full-spine run), `smoke-cervical.mjs` (the `Cervical,<side>` pin above; a real c
 on real films or the ONNX localizer; their edit is the mechanical `findFilters` reset), `smoke-levels.mjs` phase film
 (a real film), the plan-04 gate suites, a packaged build.
 
-**Known limits and deferred notes.** The Find table's minimum width grew by 100 px (the new track and its gap), and the
-README already notes it overflows at 1180 px. The SUBJECT box matches `subjectId` only (the grid's rule), so it cannot
+**Gate feedback G1 (2026-10-19), the owner's first look at real films:** "The table is now cut off horizontally and I
+have to scroll all the way to the bottom to see the delete on the right." The cause was R12's wrong premise:
+`.studies-page-inner` caps the page column at 1160 px, so the Find table has at most 1088 px at ANY window, and the
+REGION track (84 px) plus its 16 px gap had pushed the tracks' floors to 1128 px — the actions column was cut off for
+everyone, and the only way to it was the table's horizontal scrollbar, which sits under the last of hundreds of rows.
+Measured over CDP on a scratch profile: at the page cap the table overflowed by about 40 px (the 44 px actions track),
+at the default 1166 px viewport by 197 px. The fix (`styles/screens/studies.css`): the floors are tightened to 160 ·
+90 · 80 · 100 · 96 · 84 · 90 · 112 · 44 with 12 px gaps, a 996 px sum that fits the cap with 92 px to spare (STUDY's
+160 px floor is safe because the name wraps; VIEW keeps `Standing lateral` on one line at 100 px), the comment now names
+the cap as the load-bearing constraint; and the trash cell is `position: sticky; right: 0` with the row's background,
+so on a window narrower than the sum — where the table still scrolls sideways, as before this branch — Delete stays one
+click away instead of behind the scrollbar at the bottom. Also found while verifying: the Studies screen's
+return-to-row scroll waited for `requestAnimationFrame`, which Chromium never fires in a hidden or fully covered window,
+so the scroll did not happen while the app sat behind another window; it waits on a zero-delay timer now
+(`screens/studies.js` render()). Verified over CDP: at a 1400 px viewport the table's scroll width equals its client
+width (no overflow) and the trash button is the element under its own centre; at the default viewport the sticky trash
+cell sits inside the table with its button on top; the delete prompt opens on one line (35 px) inside the row; unit
+1147/1147; `smoke-reviewer.mjs` 131/131 and `smoke-levels.mjs` phase dom 145/145, both run in the hidden window (pass
+`SPINE_CONTOUR_USER_DATA` to the levels suite as to the persistence suite, or its record reads miss the profile).
+
+**Known limits and deferred notes.** The Find table's floors sum to 996 px, inside the page column's 1088 px; a window
+narrower than that still scrolls the table sideways, as before this branch, with Delete sticky at the right edge. The
+SUBJECT box matches `subjectId` only (the grid's rule), so it cannot
 find a demo study's `pt` label that the SUBJECT cell shows; the search box can. A value key equal to `all`, `none`,
 `close` or `text` (a folder named `none`) collides with the menu's own hooks. A menu's position is computed per rebuild,
 so it does not follow a sideways scroll of the table or a window resize while open. `studies.js` is about 1400 lines (the
