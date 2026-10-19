@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.3.0
+
+- **Previous and next on the Analysis screen.** The arrow keys (Left or Up for the previous film, Right or Down for
+  the next) and two header buttons beside Back step through the Find list exactly as it is filtered and sorted, with
+  the film's place shown between them (`3 / 42`, an en dash for a film the filters hide). A film that leaves the
+  filtered list, such as one you just marked reviewed, still has a next and a previous. The keys are left alone in text
+  fields, dropdowns, sliders and edit mode, and with focus on the Region or Orientation select they navigate instead of
+  changing the region.
+- **Filters in the column headers.** Every Find header but STUDY and DATE has a funnel opening a menu of the values in
+  your library, with several ticks at once (two regions, three statuses), All, None and the two sort directions;
+  SUBJECT's menu is a text box. The Status and Region menus always list every status and region, so a tick stays put
+  when its last film changes. The bar's Workspace and Folder dropdowns are replaced by the menus; a filter with nothing
+  left reads `No studies match these filters.`; Escape or a click elsewhere closes a menu.
+- **A REGION column** reads Unknown, Lumbar, Cervical or Full spine (the region you set, else the one the run
+  detected), fills in when a run finishes, and sorts and filters like the rest. The CSV exports' region cell reads the
+  same label.
+- **The view is Unknown until set.** A film's view (the patient position) is Unknown until a folder name, a file name,
+  the CSV, the import table or the drawer sets it; the import table's VIEW selects default to Unknown, the Parameters
+  grid's View filter offers Unknown, and an Unknown view no longer blocks segmentation: the run works out the region
+  itself. The CSV writes an empty view cell for Unknown and reads a blank or `Unknown` cell as Unknown.
+- **An unsegmented lumbar film opens on its X-ray**, decoded from the original, with the UNSEGMENTED notice as a strip
+  along the bottom of the stage and window / level available; Auto detect, cervical and full-spine films show the
+  original's preview as before.
+- **Fixes.** Ticking a row far down the Studies list no longer scrolls the app off the window (the tick box's hidden
+  input escaped the list's clipping). Back from a film lands on its row. The Find table fits the page column again
+  after the new column, and its Delete control stays at the right edge on a narrow window instead of behind the
+  scrollbar at the bottom of the list.
+
+[Release notes](docs/releases/1.3.0.md)
+
 ## 1.2.0
 
 - The Vertebral levels panel has a **COMMENT** box: whatever you type is saved with Save edits into the film's label
