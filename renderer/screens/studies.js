@@ -35,7 +35,7 @@ import {
 } from '../data/bundle.js';
 import { appVersion } from '../data/label-record.js';
 import { planBatch, progressText, WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
-import { sortFindRows, toggleFindSort, summaryCounts } from '../data/find.js';
+import { sortFindRows, toggleFindSort, summaryCounts, STATUS_FILTERS, matchesStatus, normaliseStatusFilter } from '../data/find.js';
 import { progressTitle, progressDetail } from '../data/processing.js';
 import { checkbox } from '../components/checkbox.js';
 import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
@@ -453,13 +453,17 @@ function sameKey(a, b) {
 // The Find table's rows from a store snapshot: searched, filtered, then sorted (studies-table spec 2026-09-10,
 // section 6), so `visible` is in the order the table shows it and the bar's buttons act in. One computation for
 // update() and the export (bundle spec 4.2), so a bundle holds exactly the rows the person is looking at.
+// (2026-10-19) The status filter (data/find.js matchesStatus) is the third filter, by the pill each row shows.
 function findRows(live) {
   const studies = live.studies || [];
   const query = (live.query || '').trim().toLowerCase();
   const queried = studies.filter((study) => matchesQuery(study, query));
   const filters = normaliseFilters(live.paramFilters, studies);
-  const visible = sortFindRows(queried.filter((study) => matchesLocation(study, filters)), live.findSort, live.running, live.batch);
-  return { studies, query, queried, filters, visible };
+  const status = normaliseStatusFilter(live.findStatus);
+  const visible = sortFindRows(
+    queried.filter((study) => matchesLocation(study, filters) && matchesStatus(study, status, live.running, live.batch)),
+    live.findSort, live.running, live.batch);
+  return { studies, query, queried, filters, status, visible };
 }
 
 // What refuses the bar's Delete and Export alike: a run, a batch or a bulk delete in flight, or studies not being
@@ -1011,7 +1015,7 @@ export function render(state) {
   // visible note beside it; Delete's and Export's reasons are on their titles, because their labels
   // already say what they would do (ruling S23). Options come from the whole library, not the searched
   // subset, as the grid's do. `visible` is the table's rows, in table order: the id list the buttons run.
-  function buildFilterBar(live, filters, visible) {
+  function buildFilterBar(live, filters, status, visible) {
     const blocked = barBlocked(live);
     // The ticked VISIBLE real rows, the segment button's own rule (selectedVisible), so a tick the
     // search or a filter is hiding is never deleted.
@@ -1078,6 +1082,17 @@ export function render(state) {
     }
     folderSelect.value = filters.folder ?? '';
 
+    // (2026-10-19) The status filter: All statuses, Not reviewed, then the seven pills (data/find.js STATUS_FILTERS).
+    // Its own store key, findStatus, not paramFilters: the grid never reads it. The change goes through
+    // normaliseStatusFilter so a value the dropdown cannot show is no filter.
+    const statusSelect = el('select', {
+      class: 'param-select', 'aria-label': 'Filter by status', 'data-find-key': 'status',
+      onChange: (event) => setState({ findStatus: normaliseStatusFilter(event.target.value) }),
+    });
+    statusSelect.append(el('option', { value: '' }, 'All statuses'));
+    for (const option of STATUS_FILTERS) statusSelect.append(el('option', { value: option.value }, option.label));
+    statusSelect.value = status ?? '';
+
     // Delete and Export share the first three reasons (waitTitle); each then names its own empty case.
     const wait = waitTitle(live);
     const deleteTitle = wait || (targets.length === 0 ? 'Tick studies to delete' : '');
@@ -1126,7 +1141,7 @@ export function render(state) {
         plan.note ? el('span', { class: 'param-export-note', 'data-find-key': 'segment-note' }, plan.note) : null);
     }
     return el('div', { class: 'studies-filters' },
-      workspaceSelect, folderSelect, deleteButton, exportButton, el('div', { class: 'studies-header-spacer' }), action);
+      workspaceSelect, folderSelect, statusSelect, deleteButton, exportButton, el('div', { class: 'studies-header-spacer' }), action);
   }
 
   let lastKey = null;
@@ -1148,7 +1163,7 @@ export function render(state) {
 
     // Searched, filtered, then sorted (findRows): `visible` is the rows in the order the table shows them, which is
     // the order the Segment, Delete and Export buttons act in.
-    const { studies, query, queried, filters, visible } = findRows(live);
+    const { studies, query, queried, filters, status, visible } = findRows(live);
     // The grid keeps its own reference-keyed gate; the search result is computed once here and
     // shared with the list below.
     parameters.update(live, queried);
@@ -1187,11 +1202,12 @@ export function render(state) {
     // pendingImport are module scope, not store state; listing them here is what lets a
     // refreshTable() after a change to them get past the gate, while a notification that changed
     // nothing the table shows (a pan frame, a toast) still returns early. paramFilters,
-    // paramSelected, batch and findSort are what the bar, the ticks and the header read;
+    // paramSelected, batch, findSort and findStatus are what the bar, the ticks and the header read;
     // deletingStudies is what Delete and Export read: every store key this screen reads must be
     // here, or it silently stops repainting for it.
     const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, editingSubject, exporting,
-      importing, pendingImport, live.deletingStudies, live.paramFilters, live.paramSelected, live.batch, live.findSort];
+      importing, pendingImport, live.deletingStudies, live.paramFilters, live.paramSelected, live.batch, live.findSort,
+      live.findStatus];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
     // The summary always describes the whole library, not the filtered view, and counts with
@@ -1203,7 +1219,7 @@ export function render(state) {
     const { unsegmented, toReview } = summaryCounts(studies, live.running, live.batch);
     summary.textContent = `${studies.length} STUDIES · ${unsegmented} UNSEGMENTED \u00B7 ${toReview} TO REVIEW`;
 
-    const emptyKind = filters.workspace !== null || filters.folder !== null ? 'filters' : (query !== '' ? 'search' : null);
+    const emptyKind = filters.workspace !== null || filters.folder !== null || status !== null ? 'filters' : (query !== '' ? 'search' : null);
 
     // Focus snapshot, restored by data-find-key after the rebuild (screens/parameters.js does the
     // same with data-param-key): a select change, a tick, a sort click or a keystroke's commit
@@ -1215,7 +1231,7 @@ export function render(state) {
     const focusKey = (barHost.contains(active) || tableHost.contains(active)) ? active.getAttribute('data-find-key') : null;
     const caret = focusKey !== null && focusKey.startsWith('subject-input-') && typeof active.selectionStart === 'number'
       ? [active.selectionStart, active.selectionEnd] : null;
-    mount(barHost, buildFilterBar(live, filters, visible));
+    mount(barHost, buildFilterBar(live, filters, status, visible));
     mount(tableHost, buildTable(visible, live.running, emptyKind, selected, live.findSort, live.batch));
     if (focusKey !== null) {
       // The control that was focused may be gone: clicking Segment replaces the button with the

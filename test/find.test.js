@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_FIND_SORT, FIND_SORT_KEYS, statusRank, toggleFindSort, sortFindRows, summaryCounts } from '../renderer/data/find.js';
+import {
+  DEFAULT_FIND_SORT, FIND_SORT_KEYS, statusRank, toggleFindSort, sortFindRows, summaryCounts,
+  STATUS_FILTERS, matchesStatus, normaliseStatusFilter,
+} from '../renderer/data/find.js';
 import { newBatch, withStopping } from '../renderer/data/batch.js';
 
 // A real study under a workspace root. Every override is a record field.
@@ -133,4 +136,68 @@ test('summaryCounts: a Hand-placed film counts in TO REVIEW and not in UNSEGMENT
 test('an unknown key keeps the input order', () => {
   const rows = [study('SP-1001'), study('SP-1000')];
   assert.deepEqual(ids(sortFindRows(rows, { key: 'lordosis', dir: 'asc' })), ['SP-1001', 'SP-1000']);
+});
+
+// (2026-10-19, reviewer navigation) the Find list's status filter: Not reviewed, then every pill in workflow order.
+const OK = { ...SEG, reviewedAt: '2026-10-19T10:00:00.000Z' };
+const FAIL = { processingError: 'boom', processingErrorAt: '2026-10-19T10:00:00.000Z' };
+
+test('STATUS_FILTERS: Not reviewed first, then the seven pills in workflow order, labelled as the pills are', () => {
+  assert.deepEqual(STATUS_FILTERS.map((option) => option.value), ['unreviewed', 'unseg', 'proc', 'fail', 'rev', 'hand', 'seg', 'ok']);
+  assert.deepEqual(STATUS_FILTERS.map((option) => option.label),
+    ['Not reviewed', 'Unsegmented', 'Processing', 'Failed', 'Needs review', 'Hand-placed', 'Segmented', 'Reviewed']);
+  assert.ok(Object.isFrozen(STATUS_FILTERS));
+});
+
+test('matchesStatus: no filter matches everything; a status matches exactly the pill the row shows', () => {
+  const rows = {
+    unseg: study('SP-1000'), seg: study('SP-1001', SEG), rev: study('SP-1002', REV),
+    fail: study('SP-1003', FAIL), ok: study('SP-1004', OK), hand: study('SP-1005', HAND),
+  };
+  for (const row of Object.values(rows)) {
+    assert.equal(matchesStatus(row, null), true);
+    assert.equal(matchesStatus(row, undefined), true);
+    assert.equal(matchesStatus(row, ''), true);
+  }
+  for (const [status, row] of Object.entries(rows)) {
+    for (const other of Object.keys(rows)) assert.equal(matchesStatus(row, other), other === status, `${status} row under the ${other} filter`);
+  }
+  // A failed re-run of a measured film reads Failed, as its pill does, so it is not Segmented.
+  assert.equal(matchesStatus(study('SP-1006', { ...SEG, ...FAIL }), 'fail'), true);
+  assert.equal(matchesStatus(study('SP-1006', { ...SEG, ...FAIL }), 'seg'), false);
+});
+
+test('matchesStatus: Not reviewed is a result nobody has marked -- Segmented, Needs review or Hand-placed', () => {
+  assert.equal(matchesStatus(study('SP-1001', SEG), 'unreviewed'), true);
+  assert.equal(matchesStatus(study('SP-1002', REV), 'unreviewed'), true);
+  assert.equal(matchesStatus(study('SP-1005', HAND), 'unreviewed'), true);
+  assert.equal(matchesStatus(study('SP-1004', OK), 'unreviewed'), false);
+  assert.equal(matchesStatus(study('SP-1000'), 'unreviewed'), false);
+  assert.equal(matchesStatus(study('SP-1003', FAIL), 'unreviewed'), false);
+  // Unmarked again, it is back in the set.
+  assert.equal(matchesStatus(study('SP-1004', { ...OK, reviewedAt: null }), 'unreviewed'), true);
+});
+
+test('matchesStatus: Processing follows state.running and the waiting batch, as the pill does', () => {
+  const seg = study('SP-1001', SEG);
+  const unseg = study('SP-1000');
+  assert.equal(matchesStatus(seg, 'proc'), false);
+  assert.equal(matchesStatus(seg, 'proc', 'SP-1001'), true);
+  assert.equal(matchesStatus(seg, 'seg', 'SP-1001'), false);
+  // While it runs, a Segmented film is not Not reviewed either: the pill says Processing.
+  assert.equal(matchesStatus(seg, 'unreviewed', 'SP-1001'), false);
+  const batch = newBatch(['SP-1001', 'SP-1000']);
+  assert.equal(matchesStatus(unseg, 'proc', 'SP-1001', batch), true, 'waiting in the batch reads Processing');
+  assert.equal(matchesStatus(unseg, 'unseg', 'SP-1001', batch), false);
+  assert.equal(matchesStatus(unseg, 'proc', 'SP-1001', withStopping(batch)), false, 'a stopping batch: the film that will not run reads its own status');
+  assert.equal(matchesStatus(unseg, 'unseg', 'SP-1001', withStopping(batch)), true);
+});
+
+test('normaliseStatusFilter: a known value stays, anything else is no filter', () => {
+  for (const option of STATUS_FILTERS) assert.equal(normaliseStatusFilter(option.value), option.value);
+  assert.equal(normaliseStatusFilter('bogus'), null);
+  assert.equal(normaliseStatusFilter(''), null);
+  assert.equal(normaliseStatusFilter(undefined), null);
+  assert.equal(normaliseStatusFilter(null), null);
+  assert.equal(normaliseStatusFilter(42), null);
 });

@@ -26,6 +26,10 @@ let state = {
   // 'folder'|'date'|'status', dir 'asc'|'desc'. Replaced wholesale on change; session-only, never persisted;
   // read by the Studies screen's own subscription, never by SCREEN_KEYS. The grid's paramSort is separate.
   findSort: { key: 'date', dir: 'desc' },
+  // (2026-10-19, reviewer navigation) the Find list's status filter: null (every status), 'unreviewed' or a pill key
+  // (data/find.js STATUS_FILTERS). Replaced wholesale; session-only, never persisted; read by the Studies screen's own
+  // subscription and by the Analysis screen's previous/next, never by SCREEN_KEYS. The grid's segmentedOnly is separate.
+  findStatus: null,
   openId: null,
   compareId: null,
 

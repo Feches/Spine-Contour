@@ -8,10 +8,37 @@
  * because a dash is not a small string; ties keep the incoming order, so a stable sort never
  * shuffles the list under the user.
  */
-import { displayStatus } from './status.js';
+import { displayStatus, statusLabel } from './status.js';
 import { studyName, workspaceLabel, folderLabel, subjectLabel } from './labels.js';
 
 const DASH = '\u2014';
+
+// (2026-10-19, reviewer navigation) The Find list's status filter. `unreviewed` is a result nobody has marked --
+// Segmented, Needs review or Hand-placed, the set a reviewer works through -- and the rest are the pills themselves,
+// in STATUS_RANK's workflow order, labelled as the pills are (data/status.js statusLabel) so the dropdown and the
+// STATUS column can never disagree. The chosen value is state.findStatus: session-only, replaced wholesale, null for
+// no filter; the Parameters grid has its own `segmentedOnly` and never reads it.
+export const UNREVIEWED = 'unreviewed';
+export const STATUS_FILTERS = Object.freeze([
+  Object.freeze({ value: UNREVIEWED, label: 'Not reviewed' }),
+  ...['unseg', 'proc', 'fail', 'rev', 'hand', 'seg', 'ok'].map((status) => Object.freeze({ value: status, label: statusLabel(status) })),
+]);
+
+// A value the dropdown can show, else null (no filter): the normaliseFilters rule, for a stored or typed value.
+export function normaliseStatusFilter(value) {
+  return STATUS_FILTERS.some((option) => option.value === value) ? value : null;
+}
+
+// Whether a row passes the status filter: by the pill it SHOWS (displayStatus with state.running and state.batch), so
+// a film waiting in a batch is Processing here as it is in its cell, and a Segmented film being re-run is not Not
+// reviewed until its run ends. No filter passes everything.
+export function matchesStatus(study, filter, runningId = null, batch = null) {
+  const wanted = normaliseStatusFilter(filter);
+  if (wanted === null) return true;
+  const status = displayStatus(study, runningId, batch);
+  if (wanted === UNREVIEWED) return status === 'seg' || status === 'rev' || status === 'hand';
+  return status === wanted;
+}
 
 export const DEFAULT_FIND_SORT = Object.freeze({ key: 'date', dir: 'desc' });
 export const FIND_SORT_KEYS = Object.freeze(['study', 'subject', 'view', 'workspace', 'folder', 'date', 'status']);
