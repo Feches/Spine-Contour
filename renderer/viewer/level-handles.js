@@ -10,7 +10,7 @@
 // the geometry's own (read them, do not change them); `moveHandle` and `nudgeHandle` never mutate their
 // input and return a NEW geometry with new arrays along the changed path.
 
-import { LEVEL_CODES, MIN_RADIUS, kindOf, fitRim, synthesizeRim } from '../data/levels.js';
+import { LEVEL_CODES, MIN_RADIUS, kindOf, fitRim, synthesizeRim, placementSteps } from '../data/levels.js';
 import { imageToClient } from './geometry.js';
 
 export const RIM_HANDLES = ['R0', 'R1', 'R2', 'R3'];
@@ -89,6 +89,31 @@ export function levelHandles(code, geometry) {
 /** The point of one handle, or null when the level has no such handle. */
 export function handleAt(code, geometry, handle) {
   return levelHandles(code, geometry).find(entry => entry.handle === handle)?.point ?? null;
+}
+
+/**
+ * (2026-10-20) The edit bar's chips for the selected placed level while no placement is in progress: one per
+ * handle of that level in Tab order (`levelHandles`), labelled as the level's placement steps are (a body's SA SP
+ * IA IP; C2's IA IP CENTROID; an endplate's ANT POST; CENTROID; a head's P1..P4, one per rim point), coloured as
+ * the handle is (`colorKey`), the focused handle marked. The chips read the same whether the level was placed by
+ * the model or by hand, which is the point: before, only a placement in progress showed its points in the bar.
+ * Null while a placement is in progress (its own step chips show then), with nothing selected, or when the
+ * selected level is hidden or unplaced.
+ * @returns {{code: string, chips: {handle: string, label: string, colorKey: string, focused: boolean}[]}|null}
+ */
+export function selectedLevelChips(editor) {
+  if (!editor || editor.placing) return null;
+  const code = editor.selected;
+  const entry = code ? editor.levels?.[code] : null;
+  if (!entry?.visible || !entry.geometry) return null;
+  const { steps } = placementSteps(code);
+  const chips = levelHandles(code, entry.geometry).map(({ handle, colorKey }, index) => ({
+    handle,
+    label: steps[index]?.label ?? handle,
+    colorKey,
+    focused: editor.handle?.code === code && editor.handle.handle === handle,
+  }));
+  return chips.length > 0 ? { code, chips } : null;
 }
 
 /**

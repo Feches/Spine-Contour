@@ -987,6 +987,38 @@ async function domPhase() {
   const afterL3 = await studyOf(SEG);
   check("3. once measured the study has L3 and LL['L3-S1'] is a number",
     l3Measured && Boolean(afterL3?.geometry?.vertebrae?.L3) && Number.isFinite(afterL3?.measurements?.LL?.['L3-S1']), { measured: l3Measured, ll: afterL3?.measurements?.LL });
+  // (2026-10-20) The chip row stays once the placement ends, now listing the selected level's points: L3's four, every
+  // dot filled and none current (a finished placement focuses no handle), under EDITING SEGMENTATION; a chip click
+  // focuses its handle (IP); L4's row, a level the model placed, lists its four points with SA, the row's first
+  // handle, current, and the help line says a point can be picked; then L3's row again, so section 19 finds L3 selected.
+  const placedChips = await ev(`(() => {
+    const chips = [...document.querySelectorAll('.viewer-steps:not(.is-hidden) .viewer-step')];
+    return { label: document.querySelector('.viewer-editbar-label')?.textContent, n: chips.length,
+      text: chips.map((c) => c.textContent).join(' '), done: chips.every((c) => c.classList.contains('is-done')),
+      current: chips.filter((c) => c.classList.contains('is-current')).length, buttons: chips.every((c) => c.tagName === 'BUTTON'),
+      handle: window.__lv.editor()?.handle ?? null };
+  })()`);
+  check('3. L3 placed keeps four chips, SA SP IA IP, every dot filled and none current, under EDITING SEGMENTATION',
+    placedChips.label === 'EDITING SEGMENTATION' && placedChips.n === 4 && placedChips.text === 'SA SP IA IP'
+      && placedChips.done === true && placedChips.current === 0 && placedChips.buttons === true && placedChips.handle === null, placedChips);
+  await clickSelector(CHIP_IP);
+  const ipFocused = await chipState(CHIP_IP);
+  const ipHandle = await ev('window.__lv.editor()?.handle ?? null');
+  check("3. clicking L3's IP chip focuses that handle: the chip is done and current with aria-current true",
+    ipFocused?.done === true && ipFocused.current === true && ipFocused.aria === 'true' && ipFocused.title === 'Select IP; the arrow keys nudge it'
+      && ipHandle?.code === 'L3' && ipHandle?.handle === 'IP', { chip: ipFocused, handle: ipHandle });
+  await clickSelector('[data-level-key="L4"]');
+  const l4Chips = await ev(`(() => {
+    const chips = [...document.querySelectorAll('.viewer-steps:not(.is-hidden) .viewer-step')];
+    return { n: chips.length, current: chips.map((c) => c.classList.contains('is-current')).join(), handle: window.__lv.editor()?.handle ?? null,
+      help: document.querySelector('.viewer-edit-help')?.textContent };
+  })()`);
+  check('3. selecting L4, a level the model placed, lists its four points with SA current and says so in the help line',
+    l4Chips.n === 4 && l4Chips.current === 'true,false,false,false' && l4Chips.handle?.code === 'L4' && l4Chips.handle?.handle === 'SA'
+      && l4Chips.help === `L4 selected ${DASH} drag a handle to adjust it, or pick a point and nudge it with the arrow keys.`, l4Chips);
+  await clickSelector('[data-level-key="L3"]');
+  const l3Again = await ev('window.__lv.editor()?.handle ?? null');
+  check("3. L3's row again selects it with SA focused", l3Again?.code === 'L3' && l3Again?.handle === 'SA', l3Again);
 
   // 19 (gate feedback G7, D20). The level plates, here where L3 has just been placed; it leaves SP-9300 in edit mode
   // with the same one unsaved change, so section 5 goes on from where section 3 left it.

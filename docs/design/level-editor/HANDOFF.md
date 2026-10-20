@@ -139,6 +139,13 @@ The state is **derived** from three things: the visibility flag, the current geo
   - the label in `mono-micro` (`stage-accent`)
   - help text at 12px in `stage-body`
   - during placement only: step chips, FIT (femoral only), UNDO and CANCEL as `viewer-tool viewer-tool-text`
+  - *Amended 2026-10-20 (the owner's ask: a selected level that was already placed listed no points):* outside a
+    placement the chip row lists the selected placed level's points instead, whether the model or a hand placed it:
+    one chip per handle in Tab order, in the placement's labels and colours (`viewer/level-handles.js`
+    `selectedLevelChips`), every dot filled, the focused handle on the accent ground with `aria-current="true"`. Each
+    chip is a button that focuses its handle (`setFocusedHandle`), so the arrow keys nudge it; disabled while the
+    study's run is in flight. The row is empty with nothing selected, for an unplaced or hidden level, and while the
+    window / level panel is open. The help line adds "or pick a point and nudge it with the arrow keys".
 - **Step chip:** mono 9px, padding 5×8, `radius-control`, with a 7px dot in the step's handle colour. Its three states:
   - **done:** filled dot, `stage-ink` text
   - **current:** `stage-accent-soft` ground and `stage-accent` text

@@ -124,7 +124,8 @@ click the next empty step is current again (the one after it, wrapping round to 
 any order; the level is placed once every step has its point. Clicking the chip of a point already placed and then the
 film moves that point (re-placing it). A chip whose dot is filled is placed; the chip on the accent ground is the
 current one, and a placed point chosen again shows both. A femoral head's chips only show progress and cannot be
-clicked: its rim points are unordered.
+clicked: its rim points are unordered. Once the level is placed, and whenever a placed level is selected, the same
+row lists that level's points with every dot filled (since 2026-10-20; see Handles and the keyboard).
 
 A click within one pixel of any other point of the placement is ignored (R26), so a double-click counts once and no
 corner can land on another (a zero-length endplate is a measurement error); a re-placed point may land beside its own
@@ -153,8 +154,14 @@ PREDICTION for the whole study. An Edited level can also be returned to the mode
 ## Handles and the keyboard
 
 Selecting a row gives that level its handles on the stage (only the selected level has handles) and focuses its first
-handle; the help line says `L3 selected — drag a handle to adjust it.`. A corner handle carries its corner's colour, a
-centroid the level's colour, a rim point the trace yellow. A handle is 6 px in radius on screen at 1:1; zoomed in
+handle; the help line says `L3 selected — drag a handle to adjust it, or pick a point and nudge it with the arrow
+keys.`. Since 2026-10-20 the edit bar also lists the selected level's points as chips, whether the model placed the
+level or a hand did: `SA SP IA IP` for a body (C2's `IA IP CENTROID`, an endplate's `ANT POST`, a centroid, a head's
+`P1`–`P4`, one per rim point), each dot in the handle's colour and filled, the focused handle on the accent ground.
+Clicking a chip focuses that handle, as a press on it or Tab would, so the arrow keys nudge it. Before, the chips
+showed only while a level was being placed, so a level the model found never listed its points. The row is empty with
+nothing selected, for an unplaced or unchecked level, and while the W/L panel is open. A corner handle carries its
+corner's colour, a centroid the level's colour, a rim point the trace yellow. A handle is 6 px in radius on screen at 1:1; zoomed in
 past 1:1 it grows with the square root of the zoom (8.5 px at 2x, 12 at 4x, 17 at 8x) rather than with the film, so a
 zoomed-in cervical body is neither dwarfed by its handles nor left with specks beside the magnified outline (gate
 feedback G9, D22); on a film zoomed out below 1:1 it shrinks with it to a floor of 3 px, its outline and its focus

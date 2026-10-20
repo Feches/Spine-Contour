@@ -18,7 +18,7 @@ import { inferenceView, unsupportedViewReason } from '../data/inference-view.js'
 import { progressTitle, progressDetail } from '../data/processing.js';
 import { cancelProcessing } from '../processing.js';
 import { kindOf, rowName, placementSteps, placingLabel, placingHelp, canFinishPlacing } from '../data/levels.js';
-import { levelHandles, hitTestLevelHandles, moveHandle, nudgeHandle, nextLevelHandle, handleAt, handleRadiusImagePx } from '../viewer/level-handles.js';
+import { levelHandles, hitTestLevelHandles, moveHandle, nudgeHandle, nextLevelHandle, handleAt, handleRadiusImagePx, selectedLevelChips } from '../viewer/level-handles.js';
 import { plateAnteriorSide, plateAt, plateOffset, movePlate, resetPlate } from '../viewer/level-labels.js';
 import { dragWindow, windowText } from '../viewer/window-level.js';
 import {
@@ -226,9 +226,10 @@ function editHelpText(editor, windowOpen) {
   const entry = code ? editor.levels[code] : null;
   if (!entry?.visible || !entry.geometry) return IDLE_HELP;
   const name = rowName(code).replace('Head', 'Femoral head');
+  // (2026-10-20) The level's points are listed as chips beside this line: one can be picked there and nudged.
   return kindOf(code) === 'circle'
-    ? `${name} selected \u2014 drag a rim point to refit it.`
-    : `${name} selected \u2014 drag a handle to adjust it.`;
+    ? `${name} selected \u2014 drag a rim point to refit it, or pick one and nudge it with the arrow keys.`
+    : `${name} selected \u2014 drag a handle to adjust it, or pick a point and nudge it with the arrow keys.`;
 }
 
 export function mountViewer(container) {
@@ -302,7 +303,8 @@ export function mountViewer(container) {
 
   // The edit bar (handoff §3): the label, the help line, then -- while placing, and not while the window
   // / level panel is open -- the step chips, FIT (femoral heads), UNDO and CANCEL; then RESET TO PREDICTION
-  // (D14) and DONE, always.
+  // (D14) and DONE, always. (2026-10-20) With no placement in progress the same chip row lists the selected
+  // placed level's points instead (selectedLevelChips), so a level the model found reads like one placed by hand.
   const editLabel = el('div', { class: 'viewer-editbar-label' }, EDIT_LABEL);
   const editHelp = el('div', { class: 'viewer-edit-help' });
   const steps = el('div', { class: 'viewer-steps is-hidden' });
@@ -1051,6 +1053,25 @@ export function mountViewer(container) {
     });
   }
 
+  // (2026-10-20) The chips of the selected placed level, in the placement's chip row while nothing is being placed:
+  // one per handle, every dot filled (the point is there), the focused handle on the accent ground. Each is a button
+  // that focuses its handle, as a press on the handle or Tab would, so the arrow keys nudge it; disabled while this
+  // study's run is in flight, like the placement's chips. `aria-current` marks the focused one.
+  function buildHandleChips({ code, chips }, busy) {
+    return chips.map(({ handle, label, colorKey, focused }) => {
+      const dot = el('span', { class: 'viewer-step-dot' });
+      dot.style.setProperty('--step-color', colorFor(colorKey, code));
+      return el('button', {
+        type: 'button',
+        class: `viewer-step is-done${focused ? ' is-current' : ''}`,
+        title: `Select ${label}; the arrow keys nudge it`,
+        'aria-current': focused ? 'true' : undefined,
+        disabled: busy,
+        onClick: () => setFocusedHandle({ code, handle }),
+      }, dot, label);
+    });
+  }
+
   // Edit-bar contents and button states (handoff §3). Called from updateViewer on every
   // notification; it only writes DOM, never the store.
   function updateEditBar(state, study) {
@@ -1061,21 +1082,27 @@ export function mountViewer(container) {
     const windowOpen = Boolean(editor) && Boolean(windowFor(state, study)?.open);
     const placing = editor?.placing ?? null;
     const showPlacement = Boolean(placing) && !windowOpen;
+    // (2026-10-20) With nothing being placed, the selected placed level's points take the chip row; the window /
+    // level panel hides them as it hides the placement's.
+    const handleChips = !showPlacement && !windowOpen ? selectedLevelChips(editor) : null;
+    const showChips = showPlacement || Boolean(handleChips);
     setText(editLabel, windowOpen ? (placing ? WINDOW_PAUSED_LABEL : WINDOW_LABEL)
       : placing ? placingLabel(editor) : EDIT_LABEL);
     setText(editHelp, editHelpText(editor, windowOpen));
-    // Rebuilt on every placing change (a new object per step) and when a run starts or ends (the chips' disabled state).
-    const stepsKey = [showPlacement ? placing : null, busy];
+    // Rebuilt on every placing change (a new object per step), when the selected level, its geometry or the focused
+    // handle changes (the level's chips), and when a run starts or ends (the chips' disabled state).
+    const stepsKey = [showPlacement ? placing : null, handleChips?.code ?? null,
+      handleChips ? editor.levels[handleChips.code].geometry : null, handleChips ? editor.handle : null, busy];
     if (!sameKey(stepsKey, lastSteps)) {
       lastSteps = stepsKey;
       // A chip chosen from the keyboard is replaced by the rebuild; its successor at the same place keeps the focus.
       const focused = [...steps.children].indexOf(document.activeElement);
-      steps.replaceChildren(...(showPlacement ? buildSteps(editor, busy) : []));
+      steps.replaceChildren(...(showPlacement ? buildSteps(editor, busy) : handleChips ? buildHandleChips(handleChips, busy) : []));
       const successor = focused >= 0 ? steps.children[focused] : null;
       if (successor instanceof HTMLButtonElement && !successor.disabled) successor.focus();
     }
     const circle = showPlacement && kindOf(placing.code) === 'circle';
-    steps.classList.toggle('is-hidden', !showPlacement);
+    steps.classList.toggle('is-hidden', !showChips);
     fitButton.classList.toggle('is-hidden', !circle);
     // (R22) FIT follows finishPlacing's own rule: enough rim points, and a fit with a radius of at least 0.5 px.
     fitButton.disabled = busy || !circle || !canFinishPlacing(editor, imageSize());
@@ -1084,7 +1111,7 @@ export function mountViewer(container) {
     undoButton.disabled = busy || !placing || placing.history.length === 0;
     placeCancelButton.classList.toggle('is-hidden', !showPlacement);
     placeCancelButton.disabled = busy;
-    placeDivider.classList.toggle('is-hidden', !showPlacement);
+    placeDivider.classList.toggle('is-hidden', !showChips);
     resetButton.disabled = busy || !study || !predictions.has(study.id);
     doneButton.disabled = busy;
   }
