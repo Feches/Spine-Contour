@@ -15,7 +15,7 @@ import { configureLevelEditor, forgetLevelEditor, requestExit, writeReviewRecord
 import { configureFilmWindow, forgetFilmWindow, windowNeedsDecode, redecodeKeptWindow } from '../film-window.js';
 import { describeModels } from '../data/models.js';
 import { describeProcessor, processorTitle } from '../data/processing.js';
-import { WAIT_FOR_BATCH } from '../data/batch.js';
+import { WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
 import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
 import { studyName, defaultName } from '../data/labels.js';
 import { displayStatus, isReviewed, reviewedLabel, reviewBlockedReason } from '../data/status.js';
@@ -90,6 +90,24 @@ export function failedRunNote(open, { unsupported, status }, previewNote = '') {
   if (unsupported || status !== 'fail') return null;
   const note = `Last run failed: ${open.processingError}`;
   return previewNote ? `${note} ${previewNote}` : note;
+}
+
+// (2026-10-20, issue #68) Whether the region bar's Region and Orientation selects may change the open film, and the
+// tooltip that says why not. Before, ANY run or batch anywhere in the library disabled both, with no tooltip, so a
+// reviewer stepping through a library while its batch ran over the rest could not change a film the run had labelled
+// lumbar to cervical, and the Measurements panel kept the lumbar parameters. The change itself starts no run: it
+// clears the film's result and sets the region (changeRegion), so only the film's OWN turn locks it -- its run in
+// flight, or next up in the running batch, where the change would supersede the result the backend is about to
+// return and the batch would count that turn as a failure. A film later in the queue is free: its turn reads the
+// region afresh. A stopping batch starts no further turn. Edit mode locks both (ruling R21: the change wipes the
+// levels under the editor), and a demo study has no film to run. `what` is 'region' or 'orientation', for the title.
+export function regionLock(open, state, what = 'region') {
+  if (!open || open.source !== 'real') return { locked: true, title: '' };
+  if (state.editing) return { locked: true, title: `Finish editing before changing the ${what}` };
+  const batch = state.batch;
+  const turn = state.running === open.id || Boolean(batch && !batch.stopping && batch.ids.indexOf(open.id) === batch.done);
+  if (turn) return { locked: true, title: `Wait for this film's segmentation to finish before changing the ${what}` };
+  return { locked: false, title: '' };
 }
 
 // ---------------------------------------------------------------------------
@@ -1038,7 +1056,8 @@ export function render(state) {
     const live = getState(), open = currentStudy(live);
     // (2026-10-10, ruling R21) Not while editing: the change wipes the study's levels and drops the open editor
     // without the exit prompt. Both selects are disabled then (update() below); this covers a keyboard activation.
-    if (!open || live.running || live.batch || live.editing || open.source !== 'real') return;
+    // (2026-10-20, issue #68) Nor during this film's own turn; a run or batch on OTHER films no longer refuses it.
+    if (!open || regionLock(open, live).locked) return;
     // Invalidate any sidecar restoration already awaiting I/O as well as pending edits.
     runsByStudy.set(open.id, (runsByStudy.get(open.id) ?? 0) + 1);
     forgetPrediction(open.id);
@@ -1163,14 +1182,22 @@ export function render(state) {
     anteriorSelect.options[0].textContent = 'Auto detect';
     anteriorSelect.setAttribute('aria-label', requestedRegion(open) === 'auto' ? 'Anterior image side'
       : studyRegion(open) === 'full_spine' ? 'Full spine anterior image side' : 'Cervical anterior image side');
-    regionSelect.disabled = anteriorSelect.disabled = Boolean(live.running || live.batch || open.source === 'demo' || live.editing);
-    // (2026-10-10, ruling R21) Changing either wipes the study, levels included, so it waits for edit mode to end.
-    regionSelect.title = live.editing ? 'Finish editing before changing the region' : '';
-    anteriorSelect.title = live.editing ? 'Finish editing before changing the orientation' : '';
+    // (2026-10-20, issue #68) Locked for this film's own turn, edit mode (ruling R21: changing either wipes the study,
+    // levels included) and a demo study, each with its tooltip; a run or batch on other films leaves both live.
+    const lock = regionLock(open, live, 'region');
+    const orientationLock = regionLock(open, live, 'orientation');
+    regionSelect.disabled = lock.locked;
+    regionSelect.title = lock.title;
+    anteriorSelect.disabled = orientationLock.locked;
+    anteriorSelect.title = orientationLock.title;
     const alignmentSetup = requiresAnteriorSide(open) && !open.measurements;
     previewButton.hidden = alignmentRunButton.hidden = !alignmentSetup;
     previewButton.disabled = Boolean(live.running || live.batch);
+    // One run at a time, and none while a batch is up (batch spec 9) or while editing (ruling R17); the tooltip says
+    // which, as the stage card's button does, since a region changed under a batch lands here with its run to wait for.
     alignmentRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view) || live.editing);
+    alignmentRunButton.title = live.editing ? 'Finish editing before re-running segmentation'
+      : live.batch ? WAIT_FOR_BATCH : live.running ? WAIT_FOR_RUN : '';
     // The preview message shows only while the film has no result (2026-10-19: for every real film, since every one
     // now loads its original -- showOriginal -- not only the alignment setup's): it is not cleared when a preview is
     // abandoned, so its being set is not enough. A failed lumbar film keeps its note to the stored reason (port spec 6):

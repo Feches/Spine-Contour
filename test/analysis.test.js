@@ -1,6 +1,42 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatConfidence, headerBadge, failedRunNote, positionLabel, NAV_STEP } from '../renderer/screens/analysis.js';
+import { formatConfidence, headerBadge, failedRunNote, positionLabel, NAV_STEP, regionLock } from '../renderer/screens/analysis.js';
+
+// (2026-10-20, issue #68) What locks the region bar's Region and Orientation selects, and the tooltip that says why.
+// Before, any run or batch anywhere in the library disabled both with no tooltip, so a region Auto detect got wrong
+// could not be corrected while a batch ran over the rest of the library.
+const real = (patch = {}) => ({ id: 'SP-1000', source: 'real', view: 'Standing lateral', measurements: {}, geometry: { region: 'lumbar' }, ...patch });
+const idle = { editing: false, running: null, batch: null };
+const batchOf = (ids, done = 0, stopping = false) => ({ ids, done, failed: [], warnings: [], skipped: 0, stopping });
+
+test('regionLock: an idle real film may change its region and orientation, with no tooltip', () => {
+  assert.deepEqual(regionLock(real(), idle), { locked: false, title: '' });
+  assert.deepEqual(regionLock(real(), idle, 'orientation'), { locked: false, title: '' });
+});
+
+test('regionLock: a demo study, no study, or edit mode locks both', () => {
+  assert.deepEqual(regionLock(real({ source: 'demo' }), idle), { locked: true, title: '' });
+  assert.deepEqual(regionLock(null, idle), { locked: true, title: '' });
+  assert.deepEqual(regionLock(real(), { ...idle, editing: true }), { locked: true, title: 'Finish editing before changing the region' });
+  assert.deepEqual(regionLock(real(), { ...idle, editing: true }, 'orientation'), { locked: true, title: 'Finish editing before changing the orientation' });
+});
+
+test('regionLock: only THIS film\'s run in flight locks it; a run on another film does not', () => {
+  const title = "Wait for this film's segmentation to finish before changing the region";
+  assert.deepEqual(regionLock(real(), { ...idle, running: 'SP-1000' }), { locked: true, title });
+  assert.deepEqual(regionLock(real(), { ...idle, running: 'SP-1001' }), { locked: false, title: '' });
+});
+
+test('regionLock: a batch locks the film whose turn it is, not the films already done, later in the queue, or outside it', () => {
+  const title = "Wait for this film's segmentation to finish before changing the region";
+  assert.deepEqual(regionLock(real(), { ...idle, batch: batchOf(['SP-1000', 'SP-1001'], 0) }), { locked: true, title });
+  assert.deepEqual(regionLock(real(), { ...idle, batch: batchOf(['SP-1000', 'SP-1001'], 1) }), { locked: false, title: '' });
+  assert.deepEqual(regionLock(real(), { ...idle, batch: batchOf(['SP-1001', 'SP-1000'], 0) }), { locked: false, title: '' });
+  assert.deepEqual(regionLock(real(), { ...idle, batch: batchOf(['SP-1001', 'SP-1002'], 0) }), { locked: false, title: '' });
+  // A stopping batch starts no further turn, so the film next up is free; one in flight still is not.
+  assert.deepEqual(regionLock(real(), { ...idle, batch: batchOf(['SP-1000'], 0, true) }), { locked: false, title: '' });
+  assert.equal(regionLock(real(), { ...idle, running: 'SP-1000', batch: batchOf(['SP-1000'], 0, true) }).locked, true);
+});
 
 // (2026-10-19, reviewer navigation) the header's place in the Find list, and which arrow goes where.
 test('positionLabel reads "3 / 42", and an en dash for a study the list\'s filters hide', () => {

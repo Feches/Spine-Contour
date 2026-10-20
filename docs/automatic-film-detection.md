@@ -6,6 +6,15 @@ lumbar or standing/full-spine inference. The saved preference stays Auto while t
 result geometry records its resolved region, so subsequent runs still detect the
 film. Select a region explicitly to override the choice.
 
+**Correcting a wrong detection** (2026-10-20, issue #68). On the Analysis screen the region bar's Region select
+overrides Auto detect for the open film: choosing Cervical on a film the run labelled lumbar clears that result,
+lists the cervical parameters in the Measurements panel and offers Run segmentation; the Orientation select does the
+same for the anterior side. The two selects are locked only during the film's own turn (its run in flight, or next up
+in the running batch), in edit mode and for a demo study, each with a tooltip that says so. A run or batch over other
+films leaves them live, so a library's wrong detections can be corrected while its batch runs; Run segmentation
+itself still waits for the batch or the current run to finish, and its tooltip says which. Before 1.3.1 any run or
+batch anywhere disabled both selects with no tooltip.
+
 Standing films also default to automatic anterior-side detection. Both horizontal
 orientations are checked for consistent lumbar landmark chains and anatomical S1
 endpoint order. A uniquely supported orientation is accepted; tied or absent evidence asks
