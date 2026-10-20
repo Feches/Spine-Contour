@@ -1,5 +1,28 @@
 # Spine Contour
 
+**2026-10-20 release 1.3.1 (the selected level's points in the edit bar; BUILT, at the owner's gate, not pushed):**
+branch `claude/segmentation-points-display-2df267` (worktree `.claude/worktrees/design-system-extraction-eaac17`,
+moved off upstream `92c8e87` onto `fork/main` @ `eac0eb9`, v1.3.0, with `checkout -B`). The owner's ask: in edit mode
+the SA / SP / IA / IP chips appeared only while a level was being placed by hand, so selecting a level that was already
+placed (L5) listed nothing. `renderer/viewer/level-handles.js` `selectedLevelChips(editor)` (pure: one chip per handle
+of the selected placed level in Tab order, in the placement's labels and colours, the focused handle marked; null while
+placing, with nothing selected, or for a hidden or unplaced level) and `renderer/components/viewer.js`
+`buildHandleChips` / `updateEditBar` (the chip row keyed on the placing, the selected code, its geometry and the
+focused handle; a chip click is `setFocusedHandle`; hidden while the W/L panel is open; the divider follows the chips).
+The help line adds "or pick a point and nudge it with the arrow keys". Unit 1152/1152; `smoke-levels.mjs` (dom)
+149/149 with four new checks in section 3. Docs: `docs/level-editor.md` and HANDOFF §3 amended. **Second fix on the
+branch, issue #68** (the owner: a film Auto detect labelled lumbar could not be changed to cervical, nor the parameters
+shown). Reproduced over CDP on a synthetic Auto detect film with a lumbar result: idle, the pick works (the result
+clears, the cervical rows list, Run segmentation appears); the select was disabled, with no tooltip, whenever ANY run
+or batch was in flight anywhere (`regionSelect.disabled = running || batch || demo || editing`), which on a 477-film
+library under its batch is the report. Now `screens/analysis.js` `regionLock(open, state, what)` (pure, exported,
+four tests in `test/analysis.test.js`): locked for the film's own turn (`running === id`, or `batch.ids[done]` of a
+non-stopping batch), edit mode (R21) and a demo study, each with its title; a run or batch on other films leaves both
+selects live; `changeRegion` and `update()` read it, and the bar's Run segmentation carries `WAIT_FOR_BATCH` /
+`WAIT_FOR_RUN` / the editing title. New `tools/smoke/smoke-region-change.mjs` 15/15 (batches and runs simulated in
+the store; README section). Unit 1156/1156. Docs: `docs/automatic-film-detection.md`. The 1.3.1 release commit is on
+the branch; the owner checks the dev build, pushes to `fork` and opens the PR to `main`, whose merge publishes v1.3.1.
+
 **2026-10-19 Find list header filters, the REGION column and the Unknown view (BUILT, at the owner's gate, not pushed,
 shipping as one release with the reviewer navigation round below):** the same branch `worktree-reviewer-navigation` and
 worktree, on top of that round, off `origin/main` @ `cc1b548` (v1.2.0). The owner's ask: the Find list's VIEW column read
