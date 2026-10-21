@@ -497,12 +497,15 @@ export function colorFor(colorKey, code) {
 function shapeParts(code, geometry, pixelRatio) {
   if (!geometry) return [];
   switch (kindOf(code)) {
-    case 'body':
-      return isPair(geometry.superior) && isPair(geometry.inferior)
-        ? [{ line: quadrilateral(geometry), closed: true, area: true }] : [];
-    case 'c2':
-      return isPair(geometry.inferior) && isPoint(geometry.centroid)
-        ? [{ line: geometry.inferior }, { arc: geometry.centroid, radius: C2_CENTROID_RADIUS_PX * pixelRatio, area: true, dot: true }] : [];
+    case 'body': // (2026-10-21, partial endplates, spec §5) both pairs: the quadrilateral; one: that line alone
+      if (isPair(geometry.superior) && isPair(geometry.inferior)) return [{ line: quadrilateral(geometry), closed: true, area: true }];
+      if (isPair(geometry.superior)) return [{ line: geometry.superior }];
+      return isPair(geometry.inferior) ? [{ line: geometry.inferior }] : [];
+    case 'c2': // (2026-10-21, partial endplates, spec §5) its line and/or its dot, whichever exists
+      return [
+        ...(isPair(geometry.inferior) ? [{ line: geometry.inferior }] : []),
+        ...(isPoint(geometry.centroid) ? [{ arc: geometry.centroid, radius: C2_CENTROID_RADIUS_PX * pixelRatio, area: true, dot: true }] : []),
+      ];
     case 'endplate':
       return isPair(geometry.superior) ? [{ line: geometry.superior }] : [];
     case 'centroid':
@@ -749,7 +752,7 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
       : LEVEL_RGB[level] ? `rgb(${LEVEL_RGB[level].join(',')})` : STAGE_LINE_COLOR;
     ctx.lineWidth = selected ? lineWidth * 1.6 : lineWidth;
     ctx.beginPath();
-    const outline = body.quadrilateral ?? body.inferior;
+    const outline = body.quadrilateral ?? body.inferior ?? body.superior; // (2026-10-21, partial endplates, spec §5)
     if (!outline) continue;
     outline.forEach((point, index) => (index ? ctx.lineTo(...point) : ctx.moveTo(...point)));
     if (body.quadrilateral) ctx.closePath();

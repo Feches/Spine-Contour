@@ -39,8 +39,9 @@ function sideOf(difference, anteriorSide) {
 function hasPlateGeometry(code, geometry) {
   if (!geometry) return false;
   switch (kindOf(code)) {
-    case 'body': return isPair(geometry.superior) && isPair(geometry.inferior);
-    case 'c2': return isPair(geometry.inferior) && isPoint(geometry.centroid);
+    // (2026-10-21, partial endplates, spec §5) a body needs one pair; C2 its pair or its centroid
+    case 'body': return isPair(geometry.superior) || isPair(geometry.inferior);
+    case 'c2': return isPair(geometry.inferior) || isPoint(geometry.centroid);
     case 'endplate': return isPair(geometry.superior);
     case 'centroid': return isPoint(geometry.centroid);
     default: return false;
@@ -55,8 +56,10 @@ function hasPlateGeometry(code, geometry) {
 export function labelAnchor(code, geometry) {
   if (!hasPlateGeometry(code, geometry)) return null;
   switch (kindOf(code)) {
-    case 'body': return midpoint(geometry.superior[1], geometry.inferior[1]);
-    case 'c2': return copy(geometry.inferior[1]);
+    case 'body':
+      if (isPair(geometry.superior) && isPair(geometry.inferior)) return midpoint(geometry.superior[1], geometry.inferior[1]);
+      return copy((isPair(geometry.superior) ? geometry.superior : geometry.inferior)[1]);
+    case 'c2': return isPair(geometry.inferior) ? copy(geometry.inferior[1]) : copy(geometry.centroid);
     case 'endplate': return copy(geometry.superior[1]);
     default: return copy(geometry.centroid);
   }
@@ -79,11 +82,18 @@ export function labelPlacement(code, geometry, anteriorSide) {
   if (!anchor) return null;
   switch (kindOf(code)) {
     case 'body': {
+      if (!(isPair(geometry.superior) && isPair(geometry.inferior))) {
+        const pair = isPair(geometry.superior) ? geometry.superior : geometry.inferior;
+        return { anchor, side: sideOf(pair[1][0] - pair[0][0], anteriorSide) };
+      }
       const corners = [...geometry.superior, ...geometry.inferior];
       const meanX = corners.reduce((sum, point) => sum + point[0], 0) / corners.length;
       return { anchor, side: sideOf(anchor[0] - meanX, anteriorSide) };
     }
-    case 'c2': return { anchor, side: sideOf(geometry.inferior[1][0] - geometry.centroid[0], anteriorSide) };
+    case 'c2':
+      if (!isPair(geometry.inferior)) return { anchor, side: filmSide(anteriorSide) };
+      if (!isPoint(geometry.centroid)) return { anchor, side: sideOf(geometry.inferior[1][0] - geometry.inferior[0][0], anteriorSide) };
+      return { anchor, side: sideOf(geometry.inferior[1][0] - geometry.centroid[0], anteriorSide) };
     case 'endplate': return { anchor, side: sideOf(geometry.superior[1][0] - geometry.superior[0][0], anteriorSide) };
     default: return { anchor, side: filmSide(anteriorSide) };
   }

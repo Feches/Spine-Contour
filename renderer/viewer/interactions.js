@@ -127,7 +127,10 @@ export function vertebraAt(geometry, point, radius = 20) {
   if (geometry.region === 'cervical') return null; // alignment constructions are selected by measurement row
   for (const level of ['L1', 'L2', 'L3', 'L4', 'L5']) {
     const body = geometry.vertebrae?.[level];
-    if (body && pointInPolygon(point, body.quadrilateral)) return level;
+    if (body && body.quadrilateral && pointInPolygon(point, body.quadrilateral)) return level;
+    // (2026-10-21, partial endplates, spec §5) a body with one endplate is hit near that line
+    const plate = body && (body.superior ?? body.inferior);
+    if (plate && distanceToSegment(point, plate[0], plate[1]) <= radius) return level;
   }
   if (!geometry.s1_superior) return null;
   const [sa, sp] = geometry.s1_superior;

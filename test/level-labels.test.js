@@ -76,8 +76,8 @@ test('the femoral heads have no plate, and a geometry that is not what its kind 
   assert.equal(labelPlacement('FH1', { center: [10, 10], radius: 5, rim: null }, 'right'), null);
   assert.equal(labelPlacement('FH2', { center: [10, 10], radius: 5, rim: null }, null), null);
   assert.equal(labelPlacement('L3', null, null), null);
-  assert.equal(labelPlacement('L3', { superior: [[30, 20], [60, 20]] }, null), null, 'a body with no inferior endplate');
-  assert.equal(labelPlacement('C2', { inferior: [[30, 50], [60, 54]] }, null), null, 'C2 with no centroid');
+  assert.equal(labelPlacement('L3', { superior: [[30, 20]] }, null), null, 'a body whose only endplate is not a pair');
+  assert.equal(labelPlacement('C2', { inferior: [[30, 50]] }, null), null, 'C2 with neither a pair nor a centroid');
   assert.equal(labelPlacement('S1', { superior: [[30, 50]] }, null), null);
   assert.equal(labelPlacement('T4', { centroid: [NaN, 3] }, null), null);
   assert.equal(labelPlacement('XX', LEFT_BODY, null), null, 'not a level');
@@ -159,4 +159,18 @@ test('resetPlate removes a level\'s offset on a new object, and hands back the s
   assert.deepEqual(positions, { L1: [1, 2], L3: [5, -4] });
   assert.equal(resetPlate(positions, 'L4'), positions, 'nothing to reset: the same reference, so nothing repaints');
   assert.equal(resetPlate(null, 'L3'), null);
+});
+
+
+test('a body with one endplate anchors its plate on that endplate\'s posterior corner and reads its side from the pair', () => {
+  assert.deepEqual(labelPlacement('L3', { superior: [[30, 20], [60, 20]], inferior: null }, null), { anchor: [60, 20], side: 1 });
+  assert.deepEqual(labelPlacement('L3', { superior: null, inferior: [[90, 50], [60, 50]] }, null), { anchor: [60, 50], side: -1 });
+  assert.deepEqual(labelPlacement('L3', { superior: [[40, 20], [40.5, 20]], inferior: null }, 'right'), { anchor: [40.5, 20], side: -1 }, 'under 1 px: the film\'s side');
+});
+
+test('C2 without its pair anchors on its centroid with the film\'s side; without its centroid it reads the side from IP against IA', () => {
+  assert.deepEqual(labelPlacement('C2', { inferior: null, centroid: [45, 12] }, 'right'), { anchor: [45, 12], side: -1 });
+  assert.deepEqual(labelPlacement('C2', { inferior: null, centroid: [45, 12] }, null), { anchor: [45, 12], side: 1 });
+  assert.deepEqual(labelPlacement('C2', { inferior: [[40, 20], [50, 20]], centroid: null }, null), { anchor: [50, 20], side: 1 });
+  assert.equal(labelPlacement('C2', { inferior: null, centroid: null }, null), null);
 });

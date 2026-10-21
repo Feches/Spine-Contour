@@ -310,7 +310,7 @@ test('the selected level handles are drawn above every level, including the ones
 });
 
 test('a level whose geometry is not what its kind says draws nothing and does not throw', () => {
-  for (const [code, geometry] of [['L3', { superior: [[1, 2]] }], ['C2', { inferior: [[1, 2], [3, 4]] }], ['T4', { centroid: [1] }],
+  for (const [code, geometry] of [['L3', { superior: [[1, 2]] }], ['C2', { inferior: [[1, 2]] }], ['T4', { centroid: [1] }],
     ['FH1', { center: [1, 2], radius: -3, rim: null }], ['S1', {}]]) {
     const editor = selectLevel(setLevelGeometry(emptyEditor(), code, geometry), code);
     const { calls, painted } = drawEditor(editor);
@@ -387,6 +387,40 @@ test('overlays on: every visible placed level is filled at the slider opacity an
   assert.equal(full.fillStyle, rgba(LEVEL_RGB.L1, BASE_OVERLAY_ALPHA / 255));
   const none = drawEditor(lumbarEditor(), { overlayOpacity: 0 }).painted.find(p => p.name === 'fill');
   assert.equal(none.fillStyle, rgba(LEVEL_RGB.L1, 0));
+});
+
+test('a body with one endplate is drawn as that line, open and unfilled; C2 with its centroid alone is the dot alone', () => {
+  const upper = setLevelGeometry(lumbarEditor('L3'), 'L3', { superior: [[30, 20], [60, 20]], inferior: null });
+  const rec = drawEditor(upper);
+  const whole = drawEditor(lumbarEditor('L3')).calls; // the fixture's other levels are whole, so compare with the same film un-edited
+  const count = (calls, wanted) => calls.filter(([name]) => name === wanted).length;
+  const moves = rec.calls.filter(([name]) => name === 'moveTo').map(([, args]) => args);
+  assert.deepEqual(moves.filter(([x, y]) => x === 30 && y === 20).length, 1, 'the superior line starts at SA');
+  assert.equal(count(rec.calls, 'closePath'), count(whole, 'closePath'), 'L3 itself is not closed: the model ghost of it is the one closed path standing in');
+  assert.equal(count(rec.calls, 'fill'), count(whole, 'fill') - 3, 'L3 loses its area fill and its two inferior handle discs; the line has no area to fill');
+  const handleArcs = arcsOf(rec.calls).filter(([x, y]) => y === 20 && (x === 30 || x === 60));
+  assert.equal(handleArcs.length, 2, 'handles at SA and SP');
+  assert.equal(arcsOf(rec.calls).some(([, y]) => y === 50), false, 'no handle where the inferior pair would be');
+  const c2 = setLevelGeometry(emptyEditor(), 'C2', { inferior: null, centroid: [45, 12] });
+  const dots = arcsOf(drawEditor(c2).calls).filter(([x, y]) => x === 45 && y === 12);
+  assert.equal(dots.length >= 1, true, 'the centroid dot');
+  assert.equal(drawEditor(c2).calls.some(([name]) => name === 'moveTo'), false, 'no inferior line');
+});
+
+test('outside edit mode a body with one endplate is outlined as that line, open', () => {
+  const closes = (geometry) => {
+    const rec = recordingContext();
+    drawDynamicLayer(rec.ctx, EDITOR_CANVAS, geometry, { selectedLevel: null, measurements: null });
+    return { rec, closed: rec.calls.filter(([name]) => name === 'closePath').length };
+  };
+  const whole = closes(fakeGeometry()).closed;
+  const geometry = fakeGeometry();
+  const [code] = Object.keys(geometry.vertebrae);
+  geometry.vertebrae[code] = { superior: [[10, 30], [20, 30]], inferior: null, quadrilateral: null };
+  const { rec, closed } = closes(geometry);
+  assert.equal(rec.calls.some(([name, args]) => name === 'moveTo' && args[0] === 10 && args[1] === 30), true, 'the line starts at SA');
+  assert.equal(rec.calls.some(([name, args]) => name === 'lineTo' && args[0] === 20 && args[1] === 30), true, 'and reaches SP');
+  assert.equal(closed, whole - 1, 'one body fewer closes its path');
 });
 
 test('a body is the closed quadrilateral SA SP IP IA; c2, an endplate, a centroid and a circle have their own shapes', () => {

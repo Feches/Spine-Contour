@@ -144,6 +144,12 @@ test('vertebraAt returns S1 near the S1 superior segment and null elsewhere', ()
   assert.equal(vertebraAt(geometry, [5000, 5000]), null);
 });
 
+test('vertebraAt hits a body with no quadrilateral within the radius of its one endplate', () => {
+  const geometry = { region: 'lumbar', vertebrae: { L2: { superior: [[0, 20], [40, 20]], inferior: null, quadrilateral: null } }, s1_superior: null };
+  assert.equal(vertebraAt(geometry, [20, 25]), 'L2');
+  assert.equal(vertebraAt(geometry, [20, 60]), null);
+});
+
 test('arrowKeyDelta maps arrow keys to 1px deltas', () => {
   assert.deepEqual(arrowKeyDelta('ArrowUp', false), { dx: 0, dy: -1 });
   assert.deepEqual(arrowKeyDelta('ArrowDown', false), { dx: 0, dy: 1 });
