@@ -20,10 +20,13 @@ const SIDE_ORDER = [...CERVICAL_LEVELS, ...LUMBAR_BODIES, 'T1', 'S1'];
 
 const copyPoint = p => [p[0], p[1]];
 const copyPair = pair => [copyPoint(pair[0]), copyPoint(pair[1])];
+const copyPairOrNull = pair => (pair ? copyPair(pair) : null);
 const mean = points => [0, 1].map(axis => points.reduce((sum, p) => sum + p[axis], 0) / points.length);
 
 /** `[SA, SP, IP, IA]`: the superior pair, then the inferior pair reversed (the order `setLandmarkAt` keeps). */
 export function quadrilateral(body) {
+  // (2026-10-21, partial endplates, spec §6) A body holding one pair has no quadrilateral: null, never a guess.
+  if (!body.superior || !body.inferior) return null;
   return [body.superior[0], body.superior[1], body.inferior[1], body.inferior[0]].map(copyPoint);
 }
 
@@ -88,7 +91,11 @@ export function anteriorSideFrom(editor, fallback) {
   for (const code of SIDE_ORDER) {
     const entry = placed(editor, code);
     if (!entry) continue;
-    const [anterior, posterior] = kindOf(code) === 'c2' ? entry.geometry.inferior : entry.geometry.superior;
+    // (2026-10-21, partial endplates, spec §6) A body gives its superior pair, else its inferior; C2 its inferior
+    // pair, and a C2 holding only its centroid gives none.
+    const pair = kindOf(code) === 'c2' ? entry.geometry.inferior : (entry.geometry.superior ?? entry.geometry.inferior);
+    if (!pair) continue;
+    const [anterior, posterior] = pair;
     if (anterior[0] !== posterior[0]) return anterior[0] < posterior[0] ? 'left' : 'right';
   }
   return validAnteriorSide(fallback) ? fallback : null;
@@ -104,14 +111,15 @@ function cervicalPart(editor) {
     if (!entry) continue;
     const { geometry } = entry;
     if (code === 'C2') {
-      vertebrae.C2 = { superior: null, inferior: copyPair(geometry.inferior), quadrilateral: null };
-      c2Centroid = copyPoint(geometry.centroid);
+      // (2026-10-21, partial endplates, spec §6) C2 writes its vertebra only with its inferior pair, its centroid only with one.
+      if (geometry.inferior) vertebrae.C2 = { superior: null, inferior: copyPair(geometry.inferior), quadrilateral: null };
+      c2Centroid = geometry.centroid ? copyPoint(geometry.centroid) : null;
     } else {
-      vertebrae[code] = { superior: copyPair(geometry.superior), inferior: copyPair(geometry.inferior), quadrilateral: quadrilateral(geometry) };
+      vertebrae[code] = { superior: copyPairOrNull(geometry.superior), inferior: copyPairOrNull(geometry.inferior), quadrilateral: quadrilateral(geometry) };
     }
   }
   const c7 = vertebrae.C7;
-  return { vertebrae, c2_centroid: c2Centroid, c7_centroid: c7 ? mean(c7.quadrilateral) : null };
+  return { vertebrae, c2_centroid: c2Centroid, c7_centroid: c7?.quadrilateral ? mean(c7.quadrilateral) : null };
 }
 
 // A head the validator would reject (`r > 0`, finite) is left out rather than written: the persistence
@@ -126,8 +134,8 @@ function lumbarPart(editor, base) {
     if (!entry) continue;
     const { geometry } = entry;
     vertebrae[code] = {
-      superior: copyPair(geometry.superior),
-      inferior: copyPair(geometry.inferior),
+      superior: copyPairOrNull(geometry.superior),
+      inferior: copyPairOrNull(geometry.inferior),
       quadrilateral: quadrilateral(geometry),
       // the model's "this level's anterior is unconfirmed" flag holds only while the level is still the model's
       ...(base.vertebrae?.[code]?.anterior_confirmed === false && entry.source === 'model' ? { anterior_confirmed: false } : {}),
@@ -143,7 +151,7 @@ function lumbarPart(editor, base) {
     s1_superior: s1 ? copyPair(s1.geometry.superior) : null,
     femoral_circles: circles,
     // The backend recomputes both on /measure; the persistence validator needs them whenever L1 / two heads exist.
-    l1_center: vertebrae.L1 ? mean(vertebrae.L1.quadrilateral) : null,
+    l1_center: vertebrae.L1?.quadrilateral ? mean(vertebrae.L1.quadrilateral) : null,
     hip_midpoint: circles.length === 2 ? mean(circles.map(circle => circle.slice(0, 2))) : null,
   };
 }

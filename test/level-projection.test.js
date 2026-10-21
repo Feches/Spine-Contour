@@ -645,3 +645,62 @@ test('projecting changes neither the editor nor the study, and shares no points 
   assert.deepEqual(editor.levels.FH1.geometry, LUMBAR_PLACEMENTS.FH1);
   assert.deepEqual(editor.levels.S1.geometry, LUMBAR_PLACEMENTS.S1);
 });
+
+test('quadrilateral is null for a body with one endplate', () => {
+  assert.equal(quadrilateral({ superior: [[1, 1], [2, 1]], inferior: null }), null);
+  assert.equal(quadrilateral({ superior: null, inferior: [[1, 2], [2, 2]] }), null);
+});
+
+test('a cervical projection writes a partial C7 with its pair, the other null and no quadrilateral, and no C7 centroid', (t) => {
+  const editor = editorWith({ C7: { superior: [[10, 110], [20, 111]], inferior: null } }, { region: 'cervical' });
+  const g = projectGeometry(editor, { region: 'cervical', geometry: { anterior_side: 'left', ...IMAGE_FIELDS } });
+  assert.deepEqual(g.vertebrae.C7, { superior: [[10, 110], [20, 111]], inferior: null, quadrilateral: null });
+  assert.equal(g.c7_centroid, undefined, 'a cervical projection has no c7_centroid key');
+  const { study, warned } = reload(t, g, EMPTY_MEASUREMENTS.cervical);
+  assert.notEqual(study.geometry, null, 'the store validator accepts it');
+  assert.equal(warned, 0);
+});
+
+test('a full-spine projection leaves c7_centroid null for a partial C7 and l1_center null for a partial L1, and the validator accepts both', (t) => {
+  const editor = editorWith({
+    C7: { superior: [[10, 110], [20, 111]], inferior: null },
+    L1: { superior: null, inferior: [[10, 140], [20, 141]] },
+    S1: { superior: [[10, 200], [20, 200]] },
+  });
+  const g = projectGeometry(editor, { region: 'full_spine', geometry: { anterior_side: 'left', ...IMAGE_FIELDS } });
+  assert.equal(g.c7_centroid, null);
+  assert.equal(g.l1_center, null);
+  assert.deepEqual(g.vertebrae.L1, { superior: null, inferior: [[10, 140], [20, 141]], quadrilateral: null });
+  assert.notEqual(reload(t, g, EMPTY_MEASUREMENTS.full_spine).study.geometry, null);
+});
+
+test('C2 with its centroid alone writes c2_centroid and no C2 vertebra; with its pair alone the vertebra and a null centroid', () => {
+  const centroidOnly = projectGeometry(editorWith({ C2: { inferior: null, centroid: [45, 12] }, C7: CERVICAL_PLACEMENTS.C7 }, { region: 'cervical' }), { region: 'cervical', geometry: { anterior_side: 'left' } });
+  assert.deepEqual(centroidOnly.c2_centroid, [45, 12]);
+  assert.equal('C2' in centroidOnly.vertebrae, false);
+  const pairOnly = projectGeometry(editorWith({ C2: { inferior: [[40, 20], [50, 22]], centroid: null } }, { region: 'cervical' }), { region: 'cervical', geometry: { anterior_side: 'left' } });
+  assert.equal(pairOnly.c2_centroid, null);
+  assert.deepEqual(pairOnly.vertebrae.C2, { superior: null, inferior: [[40, 20], [50, 22]], quadrilateral: null });
+  assert.deepEqual(levelsFromGeometry(centroidOnly).C2, { inferior: null, centroid: [45, 12] }, 'and it reads back');
+  assert.deepEqual(levelsFromGeometry(pairOnly).C2, { inferior: [[40, 20], [50, 22]], centroid: null });
+});
+
+test('anteriorSideFrom reads a body\'s superior pair, else its inferior pair, and skips C2 without its pair', () => {
+  assert.equal(anteriorSideFrom(editorWith({ C7: { superior: null, inferior: [[10, 120], [20, 122]] } }), null), 'left');
+  assert.equal(anteriorSideFrom(editorWith({ C7: { superior: null, inferior: [[20, 120], [10, 122]] } }), null), 'right');
+  assert.equal(anteriorSideFrom(editorWith({ C2: { inferior: null, centroid: [45, 12] } }), null), null);
+  assert.equal(anteriorSideFrom(editorWith({ C2: { inferior: null, centroid: [45, 12] }, C3: { superior: [[10, 30], [20, 31]], inferior: null } }), null), 'left');
+});
+
+test('a lumbar projection writes a partial body with no quadrilateral and the validator accepts it; a half pair, no pair and a stray quadrilateral are rejected', (t) => {
+  const editor = editorWith({ L1: { superior: [[10, 10], [20, 11]], inferior: null }, L2: bodyAt(10, 30), S1: { superior: [[10, 200], [20, 200]] } }, { region: 'lumbar' });
+  const g = projectGeometry(editor, { geometry: IMAGE_FIELDS });
+  assert.deepEqual(g.vertebrae.L1, { superior: [[10, 10], [20, 11]], inferior: null, quadrilateral: null });
+  assert.equal(g.l1_center, null);
+  const kept = (geometry) => reload(t, geometry, EMPTY_MEASUREMENTS.lumbar).study.geometry;
+  assert.notEqual(kept(g), null);
+  assert.equal(kept({ ...g, vertebrae: { ...g.vertebrae, L1: { superior: [[10, 10]], inferior: null, quadrilateral: null } } }), null, 'half a pair is rejected');
+  assert.equal(kept({ ...g, vertebrae: { ...g.vertebrae, L1: { superior: null, inferior: null, quadrilateral: null } } }), null, 'no pair is rejected');
+  assert.equal(kept({ ...g, vertebrae: { ...g.vertebrae, L1: { ...g.vertebrae.L1, quadrilateral: [[0, 0], [1, 0], [1, 1], [0, 1]] } } }), null, 'a quadrilateral with a pair missing is rejected');
+  assert.equal(kept({ ...g, l1_center: [15, 10] }), null, 'l1_center with a partial L1 is rejected');
+});

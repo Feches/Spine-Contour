@@ -81,6 +81,16 @@ function isValidMeasurements(m) {
   return true;
 }
 
+// (2026-10-21, partial endplates, spec §6) A lumbar body holds one endplate pair or both, never none; its
+// quadrilateral exists exactly when both pairs do.
+function partialBody(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  const { superior, inferior, quadrilateral } = v;
+  if ((superior !== null && !points(superior, 2)) || (inferior !== null && !points(inferior, 2))) return false;
+  if (superior === null && inferior === null) return false;
+  return superior !== null && inferior !== null ? points(quadrilateral, 4) : quadrilateral == null;
+}
+
 function isValidGeometry(g) {
   if (!g || typeof g !== 'object') return false;
   if (g.region === 'full_spine') {
@@ -94,7 +104,7 @@ function isValidGeometry(g) {
           ? (body.superior == null || points(body.superior, 2))
             && (body.inferior == null || points(body.inferior, 2))
             && (body.quadrilateral == null || points(body.quadrilateral, 4))
-          : points(body.superior, 2) && points(body.inferior, 2) && points(body.quadrilateral, 4))))) return false;
+          : partialBody(body))))) return false;
     return (g.l1_center == null || point(g.l1_center)) && (g.hip_midpoint == null || point(g.hip_midpoint))
       && (g.femoral_circles == null || (Array.isArray(g.femoral_circles) && g.femoral_circles.length <= 2
         && g.femoral_circles.every(circle => Array.isArray(circle) && circle.length === 3 && circle.every(finite) && circle[2] > 0)));
@@ -111,14 +121,11 @@ function isValidGeometry(g) {
   }
   for (const [level, v] of Object.entries(g.vertebrae)) {
     if (!['L1', 'L2', 'L3', 'L4', 'L5'].includes(level)) return false;
-    if (!v || typeof v !== 'object') return false;
-    if (!points(v.superior, 2)) return false;
-    if (!points(v.inferior, 2)) return false;
-    if (!points(v.quadrilateral, 4)) return false;
+    if (!partialBody(v)) return false;
     if (v.anterior_confirmed != null && typeof v.anterior_confirmed !== 'boolean') return false;
   }
   if (g.s1_superior !== null && !points(g.s1_superior, 2)) return false;
-  if (g.vertebrae.L1 ? !point(g.l1_center) : g.l1_center !== null) return false;
+  if (g.vertebrae.L1?.quadrilateral ? !point(g.l1_center) : g.l1_center !== null) return false;
   if (!Array.isArray(g.femoral_circles) || ![0, 1, 2].includes(g.femoral_circles.length)) return false;
   if (g.femoral_circles.length === 2 ? !point(g.hip_midpoint) : g.hip_midpoint !== null) return false;
   for (const circle of g.femoral_circles) {
@@ -147,7 +154,7 @@ function measurementsHaveLandmarks(m, g) {
   if ((m.PI !== null || m.PT !== null) && (!g.s1_superior || !g.hip_midpoint)) return false;
   if (m.L1PA != null && (!g.l1_center || !g.s1_superior || !g.hip_midpoint)) return false;
   return ['L1', 'L2', 'L3', 'L4', 'L5'].every(level => m.LL[`${level}-S1`] == null
-    || Boolean(g.vertebrae[level] && g.s1_superior));
+    || Boolean(g.vertebrae[level]?.superior && g.s1_superior));
 }
 
 /**

@@ -218,6 +218,18 @@ test('validate accepts measurements with L1PA and the extra lordosis levels abse
   assert.deepEqual(study.geometry, raw.studies[0].geometry);
 });
 
+test('validate accepts a lumbar body with one endplate and ties LL to that body\'s superior endplate', (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const geometry = fullGeometry();
+  geometry.vertebrae.L1 = { superior: null, inferior: [[10, 20], [20, 20]], quadrilateral: null };
+  geometry.l1_center = null;
+  const ok = { version: STORE_VERSION, studies: [{ ...identity('SP-1000'), measurements: { PI: 50, PT: 20, SS: 30, LL: { 'L1-S1': null, 'L2-S1': 40 } }, geometry }] };
+  assert.notEqual(validate(ok)[0].geometry, null);
+  const claims = { version: STORE_VERSION, studies: [{ ...identity('SP-1001'), measurements: { PI: 50, PT: 20, SS: 30, LL: { 'L1-S1': 45 } }, geometry }] };
+  assert.equal(validate(claims)[0].measurements, null, 'an L1–S1 value with no L1 superior endplate has no landmark');
+  assert.equal(warn.mock.callCount(), 1);
+});
+
 test('validate rejects a femoral circle with a non-positive radius and a quadrilateral with three points', (t) => {
   t.mock.method(console, 'warn', () => {});
   const badRadius = fullGeometry(); badRadius.femoral_circles[1][2] = 0;
