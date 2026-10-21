@@ -287,8 +287,9 @@ function stepsFor(code) {
 }
 
 /**
- * What a placement needs: `need` clicks finish it; `fitFrom` is the fewest clicks that may be finished
- * early (a femoral head fits from 2 rim points; every other kind only at `need`).
+ * What a placement needs: `need` clicks finish it; `fitFrom` is the fewest clicks a femoral head may be fitted from
+ * (2 rim points; every other kind carries `need`). A body or C2 may also finish early, with one whole part (2 clicks
+ * for a body, 1 for C2: canFinishPlacing), which `fitFrom` does not describe.
  * @returns {{need: number, fitFrom: number, steps: {label: string, help: string, colorKey: string}[]}}
  */
 export function placementSteps(code) {
@@ -582,6 +583,8 @@ export function selectLevel(editor, code) {
 export function aimHandle(editor, code, handle) {
   const entry = editor.levels[code];
   if (editor.placing || !entry?.visible || !entry.geometry) return editor;
+  // (2026-10-21, partial endplates, spec §4) A point the level lacks (a null part, or a handle the kind has none of) is not armed.
+  if (kindOf(code) !== 'circle' && entry.geometry[partOfHandle(code, handle)] == null) return editor;
   if (editor.aiming && editor.handle?.code === code && editor.handle.handle === handle) return editor;
   return { ...editor, selected: code, handle: { code, handle }, aiming: true };
 }
@@ -696,11 +699,11 @@ export function cancelPlacing(editor) {
 // apart, the closest addPoint keeps, give 0.5.
 export const MIN_RADIUS = 0.5;
 
-// The geometry the placement would finish with now, or null when it may not finish: too few points set, a body, C2,
-// endplate or centroid with any step still empty, a body or C2 with no part whole or one half set, or a femoral head whose fitted radius is under MIN_RADIUS (or not
+// The geometry the placement would finish with now, or null when it may not finish: too few points set, an endplate or
+// centroid with any step still empty, a body or C2 with no part whole or one half set, or a femoral head whose fitted radius is under MIN_RADIUS (or not
 // finite). A head fits its placed rim points in slot order; every other kind passes its points in step order.
 function finishedGeometry(placing, imageSize) {
-  if (placedPoints(placing).length < (kindOf(placing.code) === 'circle' ? placementSteps(placing.code).fitFrom : 1)) return null;
+  if (kindOf(placing.code) === 'circle' && placedPoints(placing).length < placementSteps(placing.code).fitFrom) return null;
   // (2026-10-21, partial endplates, spec §3) A body or C2 may finish once a part is whole and none is half set; the
   // other kinds only at every slot. geometryFromPoints returns null exactly when the placement may not finish.
   const geometry = geometryFromPoints(placing.code, placing.points, imageSize);
@@ -711,14 +714,14 @@ function finishedGeometry(placing, imageSize) {
 
 /**
  * Whether the placement in progress may finish now: FIT's enabled state. False when nothing is being placed,
- * below `fitFrom` placed points, and for a femoral head whose fit would have a radius under 0.5 px (R22).
+ * below the minimum (a head's `fitFrom`; a body or C2 with no whole part), and for a femoral head whose fit would have a radius under 0.5 px (R22).
  */
 export function canFinishPlacing(editor, imageSize) {
   return Boolean(editor?.placing && finishedGeometry(editor.placing, imageSize));
 }
 
 /**
- * Finish the placement now (FIT for a femoral head from 2 points; any other kind only at `need`). A no-op
+ * Finish the placement now (FIT for a femoral head from 2 points; a body or C2 with one whole part; any other kind only at `need`). A no-op
  * whenever canFinishPlacing is false.
  */
 export function finishPlacing(editor, imageSize) {
@@ -745,7 +748,7 @@ export function removePart(editor, code, handle) {
   if (!key || entry.geometry[key] == null) return editor;
   const keys = partsOf(code).map(part => part.key);
   if (!keys.some(other => other !== key && entry.geometry[other] != null)) return editor;
-  const geometry = Object.fromEntries(keys.map(other => [other, other === key ? null : entry.geometry[other]]));
+  const geometry = Object.fromEntries(keys.map(other => [other, other === key ? null : copyGeometry(entry.geometry[other])]));
   return {
     ...setEntry(editor, code, { geometry, source: 'annotator' }),
     handle: { code, handle: firstHandle(code, geometry) },

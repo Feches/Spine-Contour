@@ -15,6 +15,12 @@ import { imageToClient } from './geometry.js';
 
 export const RIM_HANDLES = ['R0', 'R1', 'R2', 'R3'];
 
+// (2026-10-21, partial endplates, spec §4) Every handle of a kind in placement-step order, present or not: the chips of
+// a partial level list them all, the missing ones hollow. A head has no entry (its rim handles are RIM_HANDLES).
+export const STEP_HANDLES = {
+  body: ['SA', 'SP', 'IA', 'IP'], c2: ['IA', 'IP', 'CENTROID'], endplate: ['SA', 'SP'], centroid: ['CENTROID'],
+};
+
 /**
  * A handle's radius in CSS px at 1:1, from which it grows past 1:1 with the square root of the zoom (gate feedback G9,
  * decision D22 as amended), and the floor it shrinks to on a zoomed-out film (gate feedback G8, decision D21).
@@ -100,7 +106,7 @@ export function handleAt(code, geometry, handle) {
  * Null while a placement is in progress (its own step chips show then), with nothing selected, or when the
  * selected level is hidden or unplaced. (2026-10-21) `aiming`: the focused chip is armed, so the next film click
  * places that point (levels.js aimHandle).
- * @returns {{code: string, chips: {handle: string, label: string, colorKey: string, focused: boolean, aiming: boolean}[]}|null}
+ * @returns {{code: string, chips: {handle: string, label: string, colorKey: string, focused: boolean, aiming: boolean, placed: boolean}[]}|null}
  */
 export function selectedLevelChips(editor) {
   if (!editor || editor.placing) return null;
@@ -108,10 +114,15 @@ export function selectedLevelChips(editor) {
   const entry = code ? editor.levels?.[code] : null;
   if (!entry?.visible || !entry.geometry) return null;
   const { steps } = placementSteps(code);
-  const chips = levelHandles(code, entry.geometry).map(({ handle, colorKey }, index) => {
-    const focused = editor.handle?.code === code && editor.handle.handle === handle;
-    return { handle, label: steps[index]?.label ?? handle, colorKey, focused, aiming: focused && Boolean(editor.aiming) };
-  });
+  const chip = (handle, colorKey, index, placed) => {
+    const focused = placed && editor.handle?.code === code && editor.handle.handle === handle;
+    return { handle, label: steps[index]?.label ?? handle, colorKey, focused, aiming: focused && Boolean(editor.aiming), placed };
+  };
+  // (2026-10-21, partial endplates, spec §4) One chip per step of the kind; a missing point's chip is `placed: false`.
+  const names = STEP_HANDLES[kindOf(code)];
+  const chips = names
+    ? names.map((handle, index) => chip(handle, handle === 'CENTROID' ? 'level' : handle, index, handleAt(code, entry.geometry, handle) !== null))
+    : levelHandles(code, entry.geometry).map(({ handle, colorKey }, index) => chip(handle, colorKey, index, true));
   return chips.length > 0 ? { code, chips } : null;
 }
 

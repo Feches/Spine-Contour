@@ -2,11 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   RIM_HANDLES, levelHandles, handleAt, moveHandle, nudgeHandle, hitTestLevelHandles, handleOrder, nextLevelHandle,
-  HANDLE_RADIUS_CSS_PX, HANDLE_RADIUS_FLOOR_CSS_PX, handleRadiusImagePx, handleScale, selectedLevelChips, aimedStep,
+  HANDLE_RADIUS_CSS_PX, HANDLE_RADIUS_FLOOR_CSS_PX, handleRadiusImagePx, handleScale, selectedLevelChips, aimedStep, STEP_HANDLES,
 } from '../renderer/viewer/level-handles.js';
 import {
   LEVEL_CODES, openEditor, selectLevel, startPlacing, cancelPlacing, toggleVisible, toggleGroup,
-  synthesizeRim, fitRim, aimHandle, cancelAim,
+  synthesizeRim, fitRim, aimHandle, cancelAim, firstHandle, setLevelGeometry,
 } from '../renderer/data/levels.js';
 
 // ---------- fixtures (inline: the shapes the level model stores) ----------
@@ -563,4 +563,41 @@ test('no chips while placing, with nothing selected, or for a hidden or unplaced
   assert.equal(selectedLevelChips(startPlacing(selectLevel(editor, 'FH1'), 'FH1')), null);
   assert.equal(selectedLevelChips(selectLevel(editor, 'L3')), null);
   assert.equal(selectedLevelChips(toggleVisible(selectLevel(editor, 'L4'), 'L4')), null);
+});
+
+test('a partial body has the handles of its one endplate only, in Tab order, and Tab never reaches a missing point', () => {
+  const partial = { superior: null, inferior: [[30, 30], [60, 30]] };
+  assert.deepEqual(levelHandles('L3', partial).map((h) => h.handle), ['IA', 'IP']);
+  assert.equal(handleAt('L3', partial, 'SA'), null);
+  assert.equal(moveHandle('L3', partial, 'SA', [1, 1]), partial, 'a missing handle cannot be moved');
+  const editor = setLevelGeometry(lumbarEditor(), 'L3', partial);
+  assert.deepEqual(handleOrder(editor).filter((h) => h.code === 'L3').map((h) => h.handle), ['IA', 'IP']);
+  assert.deepEqual(levelHandles('C2', { inferior: null, centroid: [45, 12] }).map((h) => h.handle), ['CENTROID']);
+});
+
+test('selectedLevelChips lists every step of a partial level, the missing points hollow (placed false) and never focused or armed', () => {
+  const editor = selectLevel(setLevelGeometry(lumbarEditor(), 'L3', { superior: [[30, 20], [60, 20]], inferior: null }), 'L3');
+  const { chips } = selectedLevelChips(editor);
+  assert.deepEqual(chips.map((c) => [c.handle, c.label, c.placed, c.focused]), [['SA', 'SA', true, true], ['SP', 'SP', true, false], ['IA', 'IA', false, false], ['IP', 'IP', false, false]]);
+  assert.deepEqual(chips.map((c) => c.colorKey), ['SA', 'SP', 'IA', 'IP']);
+  const armed = aimHandle(editor, 'L3', 'IA');
+  assert.equal(armed, editor, 'a missing point cannot be armed');
+  assert.equal(aimedStep({ ...editor, aiming: true, handle: { code: 'L3', handle: 'IA' } }), null);
+  const c2Editor = selectLevel(setLevelGeometry(everyKindEditor(), 'C2', { inferior: null, centroid: [45, 12] }), 'C2');
+  assert.deepEqual(selectedLevelChips(c2Editor).chips.map((c) => [c.label, c.placed, c.focused]), [['IA', false, false], ['IP', false, false], ['CENTROID', true, true]]);
+});
+
+test('a whole level\'s chips all read placed, and a head\'s chips are unchanged', () => {
+  assert.deepEqual(selectedLevelChips(selectLevel(lumbarEditor(), 'L4')).chips.map((c) => c.placed), [true, true, true, true]);
+  assert.deepEqual(selectedLevelChips(selectLevel(lumbarEditor(), 'FH1')).chips.map((c) => [c.label, c.placed]), [['P1', true], ['P2', true], ['P3', true], ['P4', true]]);
+});
+
+test('STEP_HANDLES names each kind\'s handles in step order, and firstHandle agrees with levelHandles for every part', () => {
+  assert.deepEqual(STEP_HANDLES, { body: ['SA', 'SP', 'IA', 'IP'], c2: ['IA', 'IP', 'CENTROID'], endplate: ['SA', 'SP'], centroid: ['CENTROID'] });
+  const cases = [
+    ['L3', { superior: [[1, 1], [2, 1]], inferior: null }], ['L3', { superior: null, inferior: [[1, 2], [2, 2]] }], ['L3', body(1, 1)],
+    ['C2', { inferior: null, centroid: [1, 1] }], ['C2', { inferior: [[1, 2], [2, 2]], centroid: null }], ['C2', c2],
+    ['S1', endplate], ['T4', centroid], ['FH1', circle],
+  ];
+  for (const [code, geometry] of cases) assert.equal(firstHandle(code, geometry), levelHandles(code, geometry)[0].handle, code);
 });
