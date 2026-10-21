@@ -15,6 +15,12 @@ films leaves them live, so a library's wrong detections can be corrected while i
 itself still waits for the batch or the current run to finish, and its tooltip says which. Before 1.3.1 any run or
 batch anywhere disabled both selects with no tooltip.
 
+To annotate such a film by hand instead of running it again, set its Region first, then press Edit segmentation: the
+film opens on its original with that region's levels visible (C2–C7 and T1 for cervical), the levels you place are
+measured as that region's, and Save edits makes the film Hand-placed. Entering edit mode without changing the Region
+keeps the run's region: the model's wrong levels are there to uncheck, and cervical levels placed on a film the run
+called lumbar are saved in the label record but measure nothing, since a lumbar film measures L1–S1 and the heads.
+
 Standing films also default to automatic anterior-side detection. Both horizontal
 orientations are checked for consistent lumbar landmark chains and anatomical S1
 endpoint order. A uniquely supported orientation is accepted; tied or absent evidence asks

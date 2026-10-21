@@ -103,6 +103,13 @@ A film opens with the groups its type shows visible and the rest not visible (`s
 
 A level the model found is visible whatever its group. Any checkbox click makes the source `annotator`.
 
+A film whose run found the wrong region (a cervical film read as lumbar) keeps that region in edit mode: its
+measurements read the run's region, so cervical levels placed on it are saved in the label record but measure
+nothing. To annotate it as what it is, set the Region on the Analysis screen first (since 1.3.1 that works while a
+batch runs over other films; it clears the run's result), then press Edit: the editor opens on the original film
+with that region's defaults, the placed levels are measured as that region's, and Save edits makes the film
+Hand-placed. No run is needed.
+
 ### Unchecking a level
 
 Unchecking keeps the level's geometry in memory for the session, so checking it again restores it; the saved record
