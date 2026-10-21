@@ -8,6 +8,7 @@ import {
   finishPlacing, canFinishPlacing, clearLevel, setLevelGeometry, unsavedCount, canSave, unsavedText, summaryText,
   groupCountText, groupCheckState, trainingStatus, placingLabel, placingHelp, dependencyNote,
   markSaved, revertToBaseline, setPlacingStep, changedPoints, pointKeys, revertLevel, setComment, commentChanged,
+  aimHandle, cancelAim,
 } from '../renderer/data/levels.js';
 import { SEGMENTAL_PAIRS } from '../renderer/data/segmental.js';
 import { DISC_LEVEL_PAIRS } from '../renderer/data/disc-heights.js';
@@ -835,6 +836,34 @@ test('selectLevel selects the row and focuses its first handle', () => {
   const c2 = openEditor({ study: { id: 'x', geometry: cervicalGeometry() }, region: 'cervical', modelGeometry: null, saved: null });
   assert.deepEqual(selectLevel(c2, 'C2').handle, { code: 'C2', handle: 'IA' });
   assert.deepEqual(selectLevel(c2, 'C3').handle, { code: 'C3', handle: 'SA' });
+});
+
+// (2026-10-21) Arming a placed level's point from its chip in the edit bar: the next film click places it.
+test('aimHandle focuses the point and arms it; selectLevel, startPlacing, cancelAim and openEditor leave the editor unarmed', () => {
+  const e = lumbarEditor();
+  assert.equal(e.aiming, false);
+  const armed = aimHandle(e, 'L2', 'IP');
+  assert.notEqual(armed, e);
+  assert.deepEqual(armed.handle, { code: 'L2', handle: 'IP' });
+  assert.equal(armed.selected, 'L2');
+  assert.equal(armed.aiming, true);
+  assert.equal(armed.levels, e.levels, 'no level changed');
+  assert.equal(aimHandle(armed, 'L2', 'IP'), armed, 'armed at that point already: the editor unchanged');
+  assert.equal(selectLevel(armed, 'L4').aiming, false);
+  assert.equal(startPlacing(armed, 'FH1').aiming, false);
+  const kept = cancelAim(armed);
+  assert.equal(kept.aiming, false);
+  assert.deepEqual(kept.handle, { code: 'L2', handle: 'IP' }, 'the focus stays on the point');
+  assert.equal(cancelAim(e), e, 'not armed: the editor unchanged');
+});
+
+test('aimHandle refuses an unplaced or hidden level and waits out a placement in progress', () => {
+  const e = lumbarEditor();
+  assert.equal(aimHandle(e, 'L3', 'SA'), e, 'L3 has no geometry');
+  const hidden = toggleVisible(e, 'L2');
+  assert.equal(aimHandle(hidden, 'L2', 'SA'), hidden, 'a hidden level');
+  const placing = startPlacing(e, 'FH1');
+  assert.equal(aimHandle(placing, 'L2', 'SA'), placing, 'a placement in progress keeps its own chips');
 });
 
 test('selectLevel cancels a placement of another level but keeps a placement of the same one', () => {

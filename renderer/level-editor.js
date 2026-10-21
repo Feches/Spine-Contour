@@ -26,8 +26,9 @@ import { showToast } from './components/toast.js';
 import {
   LEVEL_CODES, openEditor, toggleVisible, toggleGroup, toggleOpen, selectLevel, startPlacing, addPoint, undoPoint,
   setPlacingStep, cancelPlacing, finishPlacing, clearLevel, revertLevel, setLevelGeometry, unsavedCount, canSave,
-  markSaved, revertToBaseline, sameGeometry, setComment,
+  markSaved, revertToBaseline, sameGeometry, setComment, aimHandle as armHandle, cancelAim as disarmHandle,
 } from './data/levels.js';
+import { moveHandle } from './viewer/level-handles.js';
 import { projectGeometry, projectsLevel, regionFollowsLevels, projectionIsEmpty } from './data/level-projection.js';
 import { toLabelRecord, recordLevels, recordComment, normalizeComment, labelFileName, appVersion } from './data/label-record.js';
 import { levelContours } from './data/contours.js';
@@ -159,7 +160,7 @@ function dropStaleHandle(editor) {
   const focus = editor.handle;
   if (!focus) return editor;
   const entry = editor.levels[focus.code];
-  return entry?.visible && entry.geometry && editor.placing?.code !== focus.code ? editor : { ...editor, handle: null };
+  return entry?.visible && entry.geometry && editor.placing?.code !== focus.code ? editor : { ...editor, handle: null, aiming: false };
 }
 
 // (Task 11 fix round 1, I1) The exit prompt asks about unsaved changes; once a step has undone the last of them it
@@ -618,12 +619,43 @@ export function fitPlacing(imageSize) {
   update((editor) => (windowPanelOpen(editor) ? editor : finishPlacing(editor, imageSize)), { edit: true });
 }
 
-/** The focused handle, `{code, handle}` or null. */
+/** The focused handle, `{code, handle}` or null. (2026-10-21) Moving the focus disarms an armed point. */
 export function setFocusedHandle(handle) {
   update((editor) => {
     const same = editor.handle?.code === handle?.code && editor.handle?.handle === handle?.handle;
-    return same ? editor : { ...editor, handle: handle ? { code: handle.code, handle: handle.handle } : null };
+    return same ? editor : { ...editor, handle: handle ? { code: handle.code, handle: handle.handle } : null, aiming: false };
   });
+}
+
+/**
+ * (2026-10-21) A chip of the selected placed level, clicked: the point is focused and armed, so the next film click
+ * places it (levels.js aimHandle). Nothing is committed.
+ */
+export function aimHandle(code, handle) {
+  update((editor) => armHandle(editor, code, handle));
+}
+
+/** Escape, or the armed chip clicked again: disarm, keeping the focus on the point. Nothing is committed. */
+export function cancelAim() {
+  update((editor) => disarmHandle(editor));
+}
+
+/**
+ * The film click that places the armed point (the viewer clamps `point` to the image): the level's geometry with that
+ * handle moved there, committed like a handle drag's release, and the point disarmed but still focused, so the arrow
+ * keys nudge it. Paused while the W/L panel is open, like a placement click. A move the handle refuses (a rim point
+ * that would leave the head under MIN_RADIUS) disarms and changes nothing.
+ */
+export function placeAimedPoint(point) {
+  update((editor) => {
+    if (!editor.aiming || !editor.handle || windowPanelOpen(editor)) return editor;
+    const { code, handle } = editor.handle;
+    const entry = editor.levels[code];
+    if (!entry?.visible || !entry.geometry) return disarmHandle(editor);
+    const moved = moveHandle(code, entry.geometry, handle, point);
+    const disarmed = disarmHandle(editor);
+    return moved === entry.geometry ? disarmed : setLevelGeometry(disarmed, code, moved);
+  }, { edit: true });
 }
 
 /** A handle drag's release or an arrow nudge: the level's new geometry, then the projection. */

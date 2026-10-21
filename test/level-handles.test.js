@@ -2,11 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   RIM_HANDLES, levelHandles, handleAt, moveHandle, nudgeHandle, hitTestLevelHandles, handleOrder, nextLevelHandle,
-  HANDLE_RADIUS_CSS_PX, HANDLE_RADIUS_FLOOR_CSS_PX, handleRadiusImagePx, handleScale, selectedLevelChips,
+  HANDLE_RADIUS_CSS_PX, HANDLE_RADIUS_FLOOR_CSS_PX, handleRadiusImagePx, handleScale, selectedLevelChips, aimedStep,
 } from '../renderer/viewer/level-handles.js';
 import {
   LEVEL_CODES, openEditor, selectLevel, startPlacing, cancelPlacing, toggleVisible, toggleGroup,
-  synthesizeRim, fitRim,
+  synthesizeRim, fitRim, aimHandle, cancelAim,
 } from '../renderer/data/levels.js';
 
 // ---------- fixtures (inline: the shapes the level model stores) ----------
@@ -529,6 +529,30 @@ test('a hand-placed head has one chip per rim point', () => {
   const rim = { center: [50, 50], radius: 10, rim: [[40, 50], [60, 50]] };
   const two = { ...editor, levels: { ...editor.levels, FH1: { visible: true, source: 'annotator', geometry: rim } } };
   assert.deepEqual(selectedLevelChips(selectLevel(two, 'FH1')).chips.map((c) => c.label), ['P1', 'P2']);
+});
+
+// (2026-10-21) An armed chip: the next film click places that point.
+test('selectedLevelChips marks the armed chip, and aimedStep names the point the next click places', () => {
+  const armed = aimHandle(lumbarEditor(), 'L4', 'IP');
+  assert.deepEqual(selectedLevelChips(armed).chips.map((c) => [c.focused, c.aiming]),
+    [[false, false], [false, false], [false, false], [true, true]]);
+  assert.deepEqual(selectedLevelChips(cancelAim(armed)).chips.map((c) => c.aiming), [false, false, false, false]);
+  assert.deepEqual(aimedStep(armed), { code: 'L4', handle: 'IP', label: 'IP', help: 'Click the inferior-posterior corner (IP).', title: 'PLACING L4 · IP' });
+  assert.equal(aimedStep(cancelAim(armed)), null);
+  assert.equal(aimedStep(null), null);
+  // The armed level hidden under the arm (the wiring drops the focus then; the step reads nothing either way).
+  assert.equal(aimedStep(toggleVisible(armed, 'L4')), null);
+});
+
+test('aimedStep for every kind of level: C2, an endplate, a centroid and a head', () => {
+  const editor = everyKindEditor();
+  const step = (code, handle) => aimedStep(aimHandle(editor, code, handle));
+  assert.deepEqual(step('C2', 'CENTROID'), { code: 'C2', handle: 'CENTROID', label: 'CENTROID', help: 'Click the centroid of the C2 body.', title: 'PLACING C2 · CENTROID' });
+  assert.deepEqual(step('T1', 'SP'), { code: 'T1', handle: 'SP', label: 'POST', help: 'Click the posterior corner of the T1 superior endplate.', title: 'PLACING T1 SUPERIOR ENDPLATE · POST' });
+  assert.deepEqual(step('T4', 'CENTROID'), { code: 'T4', handle: 'CENTROID', label: 'CENTROID', help: 'Click the centroid of T4.', title: 'PLACING T4 CENTROID · CENTROID' });
+  assert.deepEqual(step('FH1', 'R2'), { code: 'FH1', handle: 'R2', label: 'P3', help: 'Click where rim point P3 of femoral head 1 should be.', title: 'PLACING FEMORAL HEAD 1 · P3' });
+  // A handle the level does not have (a model head has four synthesised rim points; R4 is none of them).
+  assert.equal(aimedStep({ ...editor, selected: 'FH1', handle: { code: 'FH1', handle: 'R4' }, aiming: true }), null);
 });
 
 test('no chips while placing, with nothing selected, or for a hidden or unplaced level', () => {

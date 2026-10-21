@@ -146,6 +146,14 @@ The state is **derived** from three things: the visibility flag, the current geo
     chip is a button that focuses its handle (`setFocusedHandle`), so the arrow keys nudge it; disabled while the
     study's run is in flight. The row is empty with nothing selected, for an unplaced or hidden level, and while the
     window / level panel is open. The help line adds "or pick a point and nudge it with the arrow keys".
+  - *Amended 2026-10-21 (the owner: "select SA, then click on the image to place it"):* a chip click ARMS its point
+    (`levels.js` `aimHandle`, the editor's `aiming` flag; `level-editor.js` `aimHandle` / `cancelAim` /
+    `placeAimedPoint`): the bar's label reads `PLACING L4 · SA` (`level-handles.js` `aimedStep`), the help line the
+    step's own click text plus "Escape keeps the point where it is.", the chip `is-aiming` with a hollow dot and
+    `aria-pressed="true"`. The next primary click on the film (the viewer's `handleClick`; `handlePointerDown` starts
+    no handle or plate drag while armed) places the point there through `moveHandle`, committed like a drag release,
+    and disarms with the focus kept. Escape (before the W/L panel in the Escape order), the chip again, any other
+    focus (`setFocusedHandle`), a row selection or a placement disarms; a chord eats the click; the W/L panel pauses it.
 - **Step chip:** mono 9px, padding 5×8, `radius-control`, with a 7px dot in the step's handle colour. Its three states:
   - **done:** filled dot, `stage-ink` text
   - **current:** `stage-accent-soft` ground and `stage-accent` text

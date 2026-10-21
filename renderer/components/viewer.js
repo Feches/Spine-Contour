@@ -18,11 +18,12 @@ import { inferenceView, unsupportedViewReason } from '../data/inference-view.js'
 import { progressTitle, progressDetail } from '../data/processing.js';
 import { cancelProcessing } from '../processing.js';
 import { kindOf, rowName, placementSteps, placingLabel, placingHelp, canFinishPlacing } from '../data/levels.js';
-import { levelHandles, hitTestLevelHandles, moveHandle, nudgeHandle, nextLevelHandle, handleAt, handleRadiusImagePx, selectedLevelChips } from '../viewer/level-handles.js';
+import { levelHandles, hitTestLevelHandles, moveHandle, nudgeHandle, nextLevelHandle, handleAt, handleRadiusImagePx, selectedLevelChips, aimedStep } from '../viewer/level-handles.js';
 import { plateAnteriorSide, plateAt, plateOffset, movePlate, resetPlate } from '../viewer/level-labels.js';
 import { dragWindow, windowText } from '../viewer/window-level.js';
 import {
   enterLevelEditor, requestExit, keepEditing, placePoint, undoPlacedPoint, restorePlacing, selectPlacingStep, cancelPlace,
+  aimHandle, cancelAim, placeAimedPoint,
   fitPlacing, setFocusedHandle, selectLevelRow, commitHandleMove, resetLevelsToModel,
 } from '../level-editor.js';
 // (2026-10-11, gate feedback G3 and G4; plan D15-D17) The window / level belongs to the view, in every mode.
@@ -222,6 +223,9 @@ function editHelpText(editor, windowOpen) {
   if (!editor) return '';
   if (windowOpen) return WINDOW_HELP;
   if (editor.placing) return placingHelp(editor) ?? '';
+  // (2026-10-21) An armed point: the click it waits for, and the way out.
+  const aimed = aimedStep(editor);
+  if (aimed) return `${aimed.help} Escape keeps the point where it is.`;
   const code = editor.selected;
   const entry = code ? editor.levels[code] : null;
   if (!entry?.visible || !entry.geometry) return IDLE_HELP;
@@ -781,6 +785,12 @@ export function mountViewer(container) {
       placeAt(event);
       return;
     }
+    // (2026-10-21) An armed point outranks the handles and the plates: no drag starts, and the click that follows
+    // places it (handleClick). A chord that begins with this press pans instead and eats the click, so nothing moves.
+    if (editor.aiming) {
+      event.preventDefault();
+      return;
+    }
     const hit = selectedHandleAt(editor, event);
     if (!hit) {
       // (Gate feedback G7, R44) No handle under the press: a label plate there is dragged, or reset by a double-click.
@@ -998,7 +1008,15 @@ export function mountViewer(container) {
       suppressClick = false;
       return;
     }
-    if (getState().editing) return;
+    const live = getState();
+    // (2026-10-21) An armed point (its chip clicked) is placed where the film is clicked, clamped to the image and
+    // committed like a drag release; not under this study's own run, and not without the film on the stage.
+    const editor = editorFor(live, currentStudy());
+    if (editor?.aiming) {
+      if (live.running !== editor.studyId && currentImages) placeAimedPoint(clampToImage(clientToImage(event, dynamicCanvas)));
+      return;
+    }
+    if (live.editing) return;
     const study = currentStudy();
     if (!study || !study.geometry) return;
     const level = vertebraAt(study.geometry, clientToImage(event, dynamicCanvas));
@@ -1054,20 +1072,23 @@ export function mountViewer(container) {
   }
 
   // (2026-10-20) The chips of the selected placed level, in the placement's chip row while nothing is being placed:
-  // one per handle, every dot filled (the point is there), the focused handle on the accent ground. Each is a button
-  // that focuses its handle, as a press on the handle or Tab would, so the arrow keys nudge it; disabled while this
-  // study's run is in flight, like the placement's chips. `aria-current` marks the focused one.
+  // one per handle, every dot filled (the point is there), the focused handle on the accent ground. (2026-10-21, the
+  // owner) Each is a button that ARMS its point: the next film click places it there (renderer/level-editor.js
+  // aimHandle / placeAimedPoint), the armed chip's dot hollow until then, as a placement's current empty step is;
+  // the chip clicked again, Escape, Tab or a handle press disarms, and the focus stays so the arrow keys nudge it.
+  // Disabled while this study's run is in flight, like the placement's chips. `aria-current` marks the focused one.
   function buildHandleChips({ code, chips }, busy) {
-    return chips.map(({ handle, label, colorKey, focused }) => {
+    return chips.map(({ handle, label, colorKey, focused, aiming }) => {
       const dot = el('span', { class: 'viewer-step-dot' });
       dot.style.setProperty('--step-color', colorFor(colorKey, code));
       return el('button', {
         type: 'button',
-        class: `viewer-step is-done${focused ? ' is-current' : ''}`,
-        title: `Select ${label}; the arrow keys nudge it`,
+        class: `viewer-step is-done${focused ? ' is-current' : ''}${aiming ? ' is-aiming' : ''}`,
+        title: aiming ? `Click the film to place ${label}; click again to keep it where it is` : `Place ${label}: click here, then on the film`,
         'aria-current': focused ? 'true' : undefined,
+        'aria-pressed': String(aiming),
         disabled: busy,
-        onClick: () => setFocusedHandle({ code, handle }),
+        onClick: () => (aiming ? cancelAim() : aimHandle(code, handle)),
       }, dot, label);
     });
   }
@@ -1086,13 +1107,15 @@ export function mountViewer(container) {
     // level panel hides them as it hides the placement's.
     const handleChips = !showPlacement && !windowOpen ? selectedLevelChips(editor) : null;
     const showChips = showPlacement || Boolean(handleChips);
+    // (2026-10-21) An armed point reads as a placement of that one point.
+    const aimed = handleChips ? aimedStep(editor) : null;
     setText(editLabel, windowOpen ? (placing ? WINDOW_PAUSED_LABEL : WINDOW_LABEL)
-      : placing ? placingLabel(editor) : EDIT_LABEL);
+      : placing ? placingLabel(editor) : aimed ? aimed.title : EDIT_LABEL);
     setText(editHelp, editHelpText(editor, windowOpen));
-    // Rebuilt on every placing change (a new object per step), when the selected level, its geometry or the focused
-    // handle changes (the level's chips), and when a run starts or ends (the chips' disabled state).
+    // Rebuilt on every placing change (a new object per step), when the selected level, its geometry, the focused
+    // handle or its armed state changes (the level's chips), and when a run starts or ends (the chips' disabled state).
     const stepsKey = [showPlacement ? placing : null, handleChips?.code ?? null,
-      handleChips ? editor.levels[handleChips.code].geometry : null, handleChips ? editor.handle : null, busy];
+      handleChips ? editor.levels[handleChips.code].geometry : null, handleChips ? editor.handle : null, handleChips ? editor.aiming : null, busy];
     if (!sameKey(stepsKey, lastSteps)) {
       lastSteps = stepsKey;
       // A chip chosen from the keyboard is replaced by the rebuild; its successor at the same place keeps the focus.
@@ -1198,10 +1221,13 @@ export function mountViewer(container) {
     // (2026-10-01, issue #39; port spec 6) The last attempt failed: the stored reason, and
     // UNSEGMENTED's Run segmentation button under the same disabled rules and title. RUNNING and
     // QUEUED win -- a Failed film in a batch waits like any other. A film with results shows them;
-    // the header pill and the region note carry its failure.
+    // the header pill and the region note carry its failure. (2026-10-21) With the film on the stage
+    // this is a STRIP too, like UNSEGMENTED below: the full card's scrim covers the toolbar, and a
+    // failed film is exactly the one to open in edit mode and place by hand (R16); the strip hides
+    // the body, and the region note already reads the reason in red (failedRunNote).
     if (!hasResult && !busy && !queued && study.processingError) {
       return {
-        eyebrow: 'FAILED', title: 'Segmentation failed', body: study.processingError, spinner: false,
+        eyebrow: 'FAILED', title: 'Segmentation failed', body: study.processingError, spinner: false, strip: Boolean(currentImages),
         button: { text: 'Run segmentation', disabled: Boolean(state.running) || Boolean(batch), title: waitTitle },
       };
     }
@@ -1308,6 +1334,7 @@ export function mountViewer(container) {
       event.preventDefault();
       if (editor?.exitPrompt) keepEditing();
       else if (editor?.placing) cancelPlace();
+      else if (editor?.aiming) cancelAim();
       else if (windowOpen) closeWindowPanel();
       else requestExit();
       return;

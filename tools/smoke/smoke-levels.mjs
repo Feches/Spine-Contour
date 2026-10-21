@@ -1004,10 +1004,12 @@ async function domPhase() {
   await clickSelector(CHIP_IP);
   const ipFocused = await chipState(CHIP_IP);
   const ipHandle = await ev('window.__lv.editor()?.handle ?? null');
-  check("3. clicking L3's IP chip focuses that handle: the chip is done and current with aria-current true",
-    ipFocused?.done === true && ipFocused.current === true && ipFocused.aria === 'true' && ipFocused.title === 'Select IP; the arrow keys nudge it'
-      && ipHandle?.code === 'L3' && ipHandle?.handle === 'IP', { chip: ipFocused, handle: ipHandle });
+  // (2026-10-21) A chip click also ARMS the point (checked below on L4); L4's row, next, disarms it (selectLevel).
+  check("3. clicking L3's IP chip focuses and arms that handle: the chip is done and current with aria-current true",
+    ipFocused?.done === true && ipFocused.current === true && ipFocused.aria === 'true' && ipFocused.title === 'Click the film to place IP; click again to keep it where it is'
+      && ipHandle?.code === 'L3' && ipHandle?.handle === 'IP' && (await ev('window.__lv.editor()?.aiming')) === true, { chip: ipFocused, handle: ipHandle });
   await clickSelector('[data-level-key="L4"]');
+  check("3. selecting L4's row disarms L3's IP", (await ev('window.__lv.editor()?.aiming')) === false, await ev('window.__lv.editor()?.aiming'));
   const l4Chips = await ev(`(() => {
     const chips = [...document.querySelectorAll('.viewer-steps:not(.is-hidden) .viewer-step')];
     return { n: chips.length, current: chips.map((c) => c.classList.contains('is-current')).join(), handle: window.__lv.editor()?.handle ?? null,
@@ -1016,6 +1018,37 @@ async function domPhase() {
   check('3. selecting L4, a level the model placed, lists its four points with SA current and says so in the help line',
     l4Chips.n === 4 && l4Chips.current === 'true,false,false,false' && l4Chips.handle?.code === 'L4' && l4Chips.handle?.handle === 'SA'
       && l4Chips.help === `L4 selected ${DASH} drag a handle to adjust it, or pick a point and nudge it with the arrow keys.`, l4Chips);
+  // (2026-10-21, the owner) A chip ARMS its point: the next film click places it. L4's SA chip, then a click 12 px right
+  // and 8 px up of SA: while armed the bar reads PLACING L4 · SA with the step's help, the chip hollow and pressed; the
+  // click moves SA there and commits it through /measure (Edited, 2 UNSAVED CHANGES), disarms and keeps the focus;
+  // Escape disarms an armed IP without leaving edit mode; REVERT puts L4 back, so section 19 finds the one unsaved change.
+  await clickSelector(CHIP_SA);
+  const armed = await ev(`(() => {
+    const c = document.querySelector(${js(CHIP_SA)});
+    const e = window.__lv.editor();
+    return { aiming: e?.aiming ?? null, handle: e?.handle ?? null, label: document.querySelector('.viewer-editbar-label')?.textContent,
+      help: document.querySelector('.viewer-edit-help')?.textContent, chipAiming: c?.classList.contains('is-aiming'), pressed: c?.getAttribute('aria-pressed'),
+      sa: e?.levels?.L4?.geometry?.superior?.[0] ?? null };
+  })()`);
+  check(`3. clicking L4's SA chip arms it: PLACING L4 ${MID} SA, the step's help, the chip hollow and pressed`,
+    armed.aiming === true && armed.handle?.handle === 'SA' && armed.label === `PLACING L4 ${MID} SA`
+      && armed.help === 'Click the superior-anterior corner (SA). Escape keeps the point where it is.'
+      && armed.chipAiming === true && armed.pressed === 'true' && Array.isArray(armed.sa), armed);
+  const target = [armed.sa[0] + 12, armed.sa[1] - 8];
+  await clickImage(...target);
+  const placedSa = (await settled(SEG)) && await ev(`(() => { const e = window.__lv.editor(); return { aiming: e?.aiming, handle: e?.handle, sa: e?.levels?.L4?.geometry?.superior?.[0] ?? null }; })()`);
+  check('3. the film click places SA there (within 1 px), commits it (L4 Edited, 2 UNSAVED CHANGES), disarms and keeps the focus',
+    placedSa && placedSa.aiming === false && placedSa.handle?.handle === 'SA' && Array.isArray(placedSa.sa)
+      && Math.hypot(placedSa.sa[0] - target[0], placedSa.sa[1] - target[1]) <= 1
+      && (await badge('L4')) === 'Edited' && (await text('.lv-unsaved')) === '2 UNSAVED CHANGES',
+    { placedSa, target, badge: await badge('L4'), unsaved: await text('.lv-unsaved') });
+  await clickSelector(CHIP_IP);
+  await cdp.key('Escape'); await cdp.settle(150);
+  const escaped = await ev(`(() => { const e = window.__lv.editor(); return { aiming: e?.aiming ?? null, handle: e?.handle ?? null, editing: Boolean(e) }; })()`);
+  check('3. Escape disarms an armed IP without leaving edit mode, the focus kept', escaped.aiming === false && escaped.handle?.handle === 'IP' && escaped.editing === true, escaped);
+  await clickSelector('[data-level-key="revert:L4"]');
+  await settled(SEG);
+  check('3. REVERT puts L4 back: Segmented, 1 UNSAVED CHANGE', (await badge('L4')) === 'Segmented' && (await text('.lv-unsaved')) === '1 UNSAVED CHANGE', { L4: await badge('L4'), unsaved: await text('.lv-unsaved') });
   await clickSelector('[data-level-key="L3"]');
   const l3Again = await ev('window.__lv.editor()?.handle ?? null');
   check("3. L3's row again selects it with SA focused", l3Again?.code === 'L3' && l3Again?.handle === 'SA', l3Again);

@@ -10,7 +10,7 @@
 // the geometry's own (read them, do not change them); `moveHandle` and `nudgeHandle` never mutate their
 // input and return a NEW geometry with new arrays along the changed path.
 
-import { LEVEL_CODES, MIN_RADIUS, kindOf, fitRim, synthesizeRim, placementSteps } from '../data/levels.js';
+import { LEVEL_CODES, MIN_RADIUS, kindOf, fitRim, synthesizeRim, placementSteps, fullName } from '../data/levels.js';
 import { imageToClient } from './geometry.js';
 
 export const RIM_HANDLES = ['R0', 'R1', 'R2', 'R3'];
@@ -98,8 +98,9 @@ export function handleAt(code, geometry, handle) {
  * the handle is (`colorKey`), the focused handle marked. The chips read the same whether the level was placed by
  * the model or by hand, which is the point: before, only a placement in progress showed its points in the bar.
  * Null while a placement is in progress (its own step chips show then), with nothing selected, or when the
- * selected level is hidden or unplaced.
- * @returns {{code: string, chips: {handle: string, label: string, colorKey: string, focused: boolean}[]}|null}
+ * selected level is hidden or unplaced. (2026-10-21) `aiming`: the focused chip is armed, so the next film click
+ * places that point (levels.js aimHandle).
+ * @returns {{code: string, chips: {handle: string, label: string, colorKey: string, focused: boolean, aiming: boolean}[]}|null}
  */
 export function selectedLevelChips(editor) {
   if (!editor || editor.placing) return null;
@@ -107,13 +108,32 @@ export function selectedLevelChips(editor) {
   const entry = code ? editor.levels?.[code] : null;
   if (!entry?.visible || !entry.geometry) return null;
   const { steps } = placementSteps(code);
-  const chips = levelHandles(code, entry.geometry).map(({ handle, colorKey }, index) => ({
-    handle,
-    label: steps[index]?.label ?? handle,
-    colorKey,
-    focused: editor.handle?.code === code && editor.handle.handle === handle,
-  }));
+  const chips = levelHandles(code, entry.geometry).map(({ handle, colorKey }, index) => {
+    const focused = editor.handle?.code === code && editor.handle.handle === handle;
+    return { handle, label: steps[index]?.label ?? handle, colorKey, focused, aiming: focused && Boolean(editor.aiming) };
+  });
   return chips.length > 0 ? { code, chips } : null;
+}
+
+/**
+ * (2026-10-21) The armed point, for the edit bar: its chip label, the help line for the click (the placement step's
+ * own for a corner, an endplate point or a centroid; a rim point's names the head) and the bar's label
+ * (`PLACING L4 · IP`). Null when nothing is armed, or the armed level is hidden, unplaced or lacks that handle.
+ * @returns {{code: string, handle: string, label: string, help: string, title: string}|null}
+ */
+export function aimedStep(editor) {
+  if (!editor?.aiming || !editor.handle) return null;
+  const { code, handle } = editor.handle;
+  const entry = editor.levels?.[code];
+  if (!entry?.visible || !entry.geometry) return null;
+  const index = levelHandles(code, entry.geometry).findIndex((entry) => entry.handle === handle);
+  if (index < 0) return null;
+  const step = placementSteps(code).steps[index];
+  const label = step?.label ?? handle;
+  const help = kindOf(code) === 'circle'
+    ? `Click where rim point ${label} of ${fullName(code)} should be.`
+    : step?.help ?? `Click where ${label} should be.`;
+  return { code, handle, label, help, title: `PLACING ${fullName(code).toUpperCase()} · ${label}` };
 }
 
 /**

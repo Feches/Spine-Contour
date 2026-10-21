@@ -166,7 +166,12 @@ handle; the help line says `L3 selected — drag a handle to adjust it, or pick 
 keys.`. Since 2026-10-20 the edit bar also lists the selected level's points as chips, whether the model placed the
 level or a hand did: `SA SP IA IP` for a body (C2's `IA IP CENTROID`, an endplate's `ANT POST`, a centroid, a head's
 `P1`–`P4`, one per rim point), each dot in the handle's colour and filled, the focused handle on the accent ground.
-Clicking a chip focuses that handle, as a press on it or Tab would, so the arrow keys nudge it. Before, the chips
+Clicking a chip **arms** that point (since 2026-10-21): the bar reads `PLACING L4 · SA`, the help line names the
+click (`Click the superior-anterior corner (SA). Escape keeps the point where it is.`), the chip's dot shows hollow,
+and the next click on the film places the point there, clamped to the image and committed through `/measure` like a
+drag, the level reading Edited. The focus stays on the point, so the arrow keys nudge it afterwards. Escape, the chip
+clicked again, Tab or a press on a handle disarms without moving anything; a left+right chord that begins with the
+click pans instead and places nothing, and the click waits while the W/L panel is open. Before 2026-10-20 the chips
 showed only while a level was being placed, so a level the model found never listed its points. The row is empty with
 nothing selected, for an unplaced or unchecked level, and while the W/L panel is open. A corner handle carries its
 corner's colour, a centroid the level's colour, a rim point the trace yellow. A handle is 6 px in radius on screen at 1:1; zoomed in
