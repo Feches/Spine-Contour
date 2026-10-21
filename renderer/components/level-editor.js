@@ -15,7 +15,7 @@ import { el, clear } from '../dom.js';
 import { checkbox } from './checkbox.js';
 import {
   LEVEL_GROUPS, kindOf, rowName, fullName, levelState, badgeFor, summaryText, groupCountText, groupCheckState,
-  trainingStatus, unsavedCount, unsavedText, canSave, dependencyNote, commentChanged,
+  trainingStatus, unsavedCount, unsavedText, canSave, dependencyNote, commentChanged, isPartial,
 } from '../data/levels.js';
 import { LEVEL_RGB, FEMORAL_OVERLAY_COLOR } from '../viewer/canvas.js';
 import {
@@ -86,7 +86,10 @@ function levelRow(editor, code) {
   // Place… and CLEAR (ruling R18): `is-stacked` lays them out as a column, Place… above CLEAR, in the same 70px.
   // (Annotation editor round 2, spec §5.3) REVERT for an Edited level returns it to the model's output; an edited
   // head shows Place… and REVERT stacked the same way, Place… above. CLEAR (manual) and REVERT (edited) never meet.
-  const canPlace = !placing && (state === 'not_placed' || (circle && entry.visible));
+  // (2026-10-21, partial endplates, spec §4) Place... also for a partial body or C2: it resumes at the first missing
+  // step (startPlace), stacked above CLEAR or REVERT as a head's is.
+  const partial = entry.visible && Boolean(entry.geometry) && ['body', 'c2'].includes(kindOf(code)) && isPartial(code, entry.geometry);
+  const canPlace = !placing && (state === 'not_placed' || (circle && entry.visible) || partial);
   const canClear = !placing && state === 'manual';
   const canRevert = !placing && state === 'edited';
   const actions = el('div', { class: `lv-actions${canPlace && (canClear || canRevert) ? ' is-stacked' : ''}` },

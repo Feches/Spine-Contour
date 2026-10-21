@@ -66,6 +66,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual as deepEqual } from 'node:util';
 import { connect } from './cdp-lib.mjs';
 import { validateAgainst } from '../../test/fixtures/schema-check.js';
 
@@ -82,6 +83,7 @@ const HAND = 'SP-9301';  // the unsegmented synthetic film, placed by hand (dom)
 const REAL = 'SP-9302';  // the real film (film)
 const OTHER = 'SP-9303'; // a study with no film, opened and left in section 17 (dom)
 const REVIEW = 'SP-9304'; // a second copy of the segmented fixture, marked reviewed in section 18 (dom; G6)
+const PARTIAL = 'SP-9305'; // a second unsegmented synthetic film, placed in part (section 22)
 const SEG_FILE = 'levels-ui-check.png';
 const REVIEW_FILE = 'levels-review-check.png';
 const REVIEW_RECORD = 'levels-review-check.label.json';
@@ -90,6 +92,9 @@ const SAVED_TOAST = 'Saved the label record.';
 const REVIEW_WRITE_FAILED = 'Marked reviewed. The label record could not be written: ';
 const HAND_FILE = 'levels-hand-placed.png';
 const HAND_PATH = path.join(FILM_DIR, HAND_FILE);
+const PARTIAL_FILE = 'levels-partial.png';
+const PARTIAL_PATH = path.join(FILM_DIR, PARTIAL_FILE);
+const PARTIAL_RECORD = 'levels-partial.label.json';
 const HAND_FAILURE = 'No spine was found on this film.';   // SP-9301's seeded failure (round 2, spec §4.3)
 const HAND_FAILED_AT = '2026-10-10T08:00:00.000Z';         // and when it was recorded
 const PREDICTION_ID = 'smoke-levels-fixture';
@@ -117,11 +122,28 @@ const CIRCLES = [[214, 690, 40], [233, 677, 42]];
 const results = [];
 function check(name, ok, detail) {
   results.push({ name, ok: Boolean(ok), detail });
+  lastProgress = Date.now();
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `  -> ${JSON.stringify(detail)}`}`);
 }
 
 const cdp = await connect();
-const ev = (source) => cdp.evaluate(source);
+// (2026-10-21, partial endplates) Every evaluate is bounded: a page promise that never settles, or a blocked page,
+// rejects after 90 s (the run then FAILs "ran to the end without throwing") instead of hanging the suite.
+const EV_TIMEOUT_MS = 90000;
+const ev = (source) => {
+  let timer = null;
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`evaluate timed out after ${EV_TIMEOUT_MS} ms: ${source.slice(0, 160)}`)), EV_TIMEOUT_MS);
+  });
+  return Promise.race([cdp.evaluate(source), timeout]).finally(() => clearTimeout(timer));
+};
+// And a watchdog for the raw cdp calls (rect, click, key): no check printed for 180 s ends the run as a FAIL.
+let lastProgress = Date.now();
+setInterval(() => {
+  if (Date.now() - lastProgress < 180000) return;
+  console.log(`FAIL  the suite printed no check for 180 s (a hung await after the last one)  -> ${JSON.stringify(results.at(-1)?.name ?? null)}`);
+  process.exit(1);
+}, 5000).unref();
 const js = (value) => JSON.stringify(value);
 
 // Polls a page expression until it is truthy; false on timeout (never throws, so later checks still run).
@@ -253,9 +275,11 @@ function editsFromEntries(record) {
 }
 
 // The edit bar's buttons have no class of their own; their order is fixed by components/viewer.js:
-// FIT, UNDO, CANCEL, RESET TO PREDICTION, DONE. FIT carries an aria-label.
+// FIT, FINISH, UNDO, CANCEL, RESET TO PREDICTION, DONE. FIT and FINISH carry an aria-label.
 const EDITBAR_FIT = '.viewer-editbar [aria-label="Fit the circle to the rim points"]';
-const EDITBAR_UNDO = '.viewer-editbar > button:nth-of-type(2)';
+// (2026-10-21, partial endplates, spec §4) FINISH ends a body or C2 placement with the points placed (section 22).
+const EDITBAR_FINISH = '.viewer-editbar [aria-label="Finish with the points placed; the rest are not on this film"]';
+const EDITBAR_UNDO = '.viewer-editbar > button:nth-of-type(3)';
 const EDITBAR_DONE = '.viewer-editbar > button:last-of-type';
 const EDIT_TOOL = '.viewer-tool[aria-label="Edit segmentation"]';
 const RERUN_TOOL = '.viewer-tool[aria-label="Re-run segmentation"]';
@@ -263,6 +287,7 @@ const WL_TOOL = '.viewer-tool[aria-label="Window / level"]';
 // The step chips while placing a body (gate feedback G2): buttons in step order SA, SP, IA, IP.
 const CHIP_SA = '.viewer-steps .viewer-step:nth-child(1)';
 const CHIP_IP = '.viewer-steps .viewer-step:nth-child(4)';
+const CHIP = (n) => `.viewer-steps .viewer-step:nth-child(${n})`;
 const WL_DONE = '.viewer-wl-head > button:last-of-type';
 const WL_RESET = '.viewer-wl [aria-label="Reset to the file\'s default window"]';
 const WL_WIDTH = '.viewer-wl [aria-label="Window width"]';
@@ -667,6 +692,10 @@ const middleOf = (rect) => [rect.x + rect.width / 2, rect.y + rect.height / 2];
 const inRect = (rect, [x, y]) => x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
 const near = (a, b, tolerance = 0.01) => Math.abs(a - b) <= tolerance;
 const geometryText = (code) => ev(`JSON.stringify(window.__lv.editor()?.levels?.${code}?.geometry ?? null)`);
+// (2026-10-21, partial endplates) A clicked point lands within a few 1e-5 px of its image point (image px to client px
+// and back); section 22 compares its clicked points to 0.01 px.
+const rounded = (value) => JSON.parse(JSON.stringify(value ?? null, (_key, v) => (typeof v === 'number' ? Math.round(v * 100) / 100 : v)));
+const geometryRounded = async (code) => js(rounded(JSON.parse(await geometryText(code))));
 
 // Whether a rect and a convex polygon share any point: the separating-axis test, image px.
 function rectMeetsPolygon(rect, polygon) {
@@ -797,6 +826,150 @@ async function plateChecks() {
     { l1Moved, away, unsavedBack, again });
 }
 
+// 22 (2026-10-21, partial endplates, spec §4). A level placed in part, on SP-9305, a second unsegmented synthetic film
+// (an Auto film never run): C2's centroid alone and C7's superior endplate alone, each ended by FINISH; the study's
+// geometry and measurements, the saved record's null corners; a hollow chip resumes C7 and completes it; Delete
+// removes the focused endplate and refuses the last one. Leaves edit mode by the prompt's Discard.
+async function partialChecks() {
+  fs.rmSync(path.join(LABELS, PARTIAL_RECORD), { force: true });   // a crashed run's leftover, never this run's
+  await ev(`(async () => {
+    const store = await import('./renderer/store.js');
+    const { newStudy } = await import('./renderer/screens/studies.js');
+    const study = { ...newStudy({ id: ${js(PARTIAL)}, fileName: ${js(PARTIAL_FILE)}, filePath: ${js(PARTIAL_PATH)} }), labelFile: null };
+    store.setState((s) => ({ studies: [study, ...s.studies.filter((x) => x.id !== ${js(PARTIAL)})] }));
+    return true;
+  })()`);
+  await openFromList(PARTIAL);
+  await enterEdit();
+  await until(`document.querySelector('.viewer-canvas-dynamic')?.width === 600 && document.querySelector('.viewer-canvas-dynamic')?.height === 800`, 20000);
+  if (!(await present('[data-level-key="place:C2"]'))) await clickSelector('[data-level-key="open:cervical"]');
+
+  // The chip row's state classes and labels, and FINISH's state.
+  const chipRow = () => ev(`[...document.querySelectorAll('.viewer-steps .viewer-step')].map((c) => ({
+    classes: [...c.classList].filter((k) => k !== 'viewer-step').join(' '), label: c.textContent.trim() }))`);
+  const finish = () => ev(`(() => { const b = document.querySelector(${js(EDITBAR_FINISH)}); return b ? { hidden: b.classList.contains('is-hidden'), disabled: b.disabled } : null; })()`);
+  const focusNow = () => ev('window.__lv.editor()?.handle ?? null');
+  // cdp-lib.mjs's key map has no Delete; the trusted key event is sent directly (VK_DELETE 46).
+  const pressDelete = async () => {
+    for (const type of ['keyDown', 'keyUp']) await cdp.send('Input.dispatchKeyEvent', { type, key: 'Delete', code: 'Delete', windowsVirtualKeyCode: 46 });
+    await cdp.settle(120);
+  };
+
+  // 1. C2's centroid alone: Place… C2, its CENTROID chip, one click, FINISH.
+  await clickSelector('[data-level-key="place:C2"]');
+  await clickSelector(CHIP(3));
+  const c2Label = await editLabel();
+  await clickImage(300, 120);
+  const c2Finish = await finish();
+  await clickSelector(EDITBAR_FINISH);
+  check(`22. Place${ELLIPSIS} C2, its CENTROID chip, one click: FINISH is shown and enabled, and ends C2 Manual with its centroid alone`,
+    c2Label === `PLACING C2 ${MID} 3 OF 3` && c2Finish?.hidden === false && c2Finish.disabled === false
+      && (await badge('C2')) === 'Manual' && (await geometryRounded('C2')) === '{"inferior":null,"centroid":[300,120]}',
+    { c2Label, c2Finish, badge: await badge('C2'), geometry: await geometryRounded('C2') });
+
+  // 2. C7's superior endplate alone: FINISH waits for the endplate's second corner.
+  await clickSelector('[data-level-key="place:C7"]');
+  await clickImage(200, 400);
+  const oneCorner = await finish();
+  await clickImage(400, 405);
+  const twoCorners = await finish();
+  check('22. placing C7: FINISH is disabled with one corner and enabled once the superior endplate is whole',
+    oneCorner?.hidden === false && oneCorner.disabled === true && twoCorners?.hidden === false && twoCorners.disabled === false, { oneCorner, twoCorners });
+  await clickSelector(EDITBAR_FINISH);
+  const c7Chips = await chipRow();
+  check('22. FINISH ends C7 Manual; its chips read SA SP IA IP, done, done, missing, missing',
+    (await badge('C7')) === 'Manual' && js(c7Chips.map((c) => c.classes)) === js(['is-done', 'is-done', 'is-missing', 'is-missing'])
+      && c7Chips.map((c) => c.label).join(' ') === 'SA SP IA IP',
+    { badge: await badge('C7'), c7Chips });
+  check(`22. after FINISH the bar reads EDITING SEGMENTATION and C7's row offers Place${ELLIPSIS} again`,
+    (await editLabel()) === 'EDITING SEGMENTATION' && (await present('[data-level-key="place:C7"]')), { label: await editLabel(), place: await present('[data-level-key="place:C7"]') });
+
+  // 3. The study's geometry and measurements.
+  await settled(PARTIAL);
+  const partialStudy = await studyOf(PARTIAL);
+  const g = partialStudy?.geometry;
+  check('22. the study is cervical with C7 superior only, C2\'s centroid, a C2–C7 SVA and no C2–C7 Cobb',
+    g?.region === 'cervical' && deepEqual(rounded(g.vertebrae?.C7), { superior: [[200, 400], [400, 405]], inferior: null, quadrilateral: null })
+      && deepEqual(rounded(g.c2_centroid), [300, 120]) && Number.isFinite(partialStudy.measurements?.C2C7_SVA_PX) && partialStudy.measurements?.C2C7_COBB === null,
+    g && { region: g.region, C7: g.vertebrae?.C7, c2: g.c2_centroid, sva: partialStudy.measurements?.C2C7_SVA_PX, cobb: partialStudy.measurements?.C2C7_COBB });
+
+  // 4. Save: the record holds the missing corners as null.
+  await clearToasts();
+  await clickSelector('.lv-save');
+  check('22. Save edits toasts Saved 2 edits to the label record.', await toastSeen('Saved 2 edits to the label record.'), await ev('window.__lv.toasts'));
+  await untilNode(() => fs.existsSync(path.join(LABELS, PARTIAL_RECORD)));
+  let record = null;
+  try { record = readRecord(PARTIAL_RECORD); } catch (_error) { record = null; }
+  const valid = record ? validateAgainst(SCHEMA, record) : { ok: false, errors: ['unreadable'] };
+  check(`22. ${PARTIAL_RECORD} is written and validates against the label record schema`, valid.ok, valid.errors.slice(0, 5));
+  const c7 = record?.levels?.C7;
+  const c2 = record?.levels?.C2;
+  check('22. the record: C7 corners sa, sp placed and ia, ip null; C2 centroid alone; edits.points_placed 3',
+    deepEqual(rounded(c7?.corners), { sa: [200, 400], sp: [400, 405], ia: null, ip: null }) && deepEqual(c7?.edited_points, ['sa', 'sp'])
+      && deepEqual(c2?.corners, { ia: null, ip: null }) && deepEqual(rounded(c2?.centroid), [300, 120]) && deepEqual(c2?.edited_points, ['centroid'])
+      && record?.edits?.points_placed === 3,
+    { C7: c7 && { corners: c7.corners, edited: c7.edited_points }, C2: c2 && { corners: c2.corners, centroid: c2.centroid, edited: c2.edited_points }, edits: record?.edits });
+
+  // 5. Out of edit mode and back: the saved partial level reads the same, its first point focused.
+  await cdp.key('Escape');
+  await cdp.settle(150);
+  await enterEdit();
+  if (!(await present('[data-level-key="C7"]'))) await clickSelector('[data-level-key="open:cervical"]');
+  await clickSelector('[data-level-key="C7"]');
+  const reopened = await chipRow();
+  const reopenedFocus = await focusNow();
+  check('22. back in edit mode, C7 selected: its chips read SA SP IA IP, done, done, missing, missing, with SA focused',
+    js(reopened.map((c) => c.classes.split(' ').filter((k) => k === 'is-done' || k === 'is-missing').join(' '))) === js(['is-done', 'is-done', 'is-missing', 'is-missing'])
+      && reopened.map((c) => c.label).join(' ') === 'SA SP IA IP' && deepEqual(reopenedFocus, { code: 'C7', handle: 'SA' }),
+    { reopened, reopenedFocus });
+
+  // 6. The hollow IA chip resumes C7 at IA; two clicks complete it.
+  await clickSelector(CHIP(3));
+  const resumedLabel = await editLabel();
+  const resumedChips = await chipRow();
+  check(`22. the hollow IA chip resumes C7 at its third step (PLACING C7 ${MID} 3 OF 4), SA and SP done`,
+    resumedLabel === `PLACING C7 ${MID} 3 OF 4` && js(resumedChips.map((c) => c.classes)) === js(['is-done', 'is-done', 'is-current', '']),
+    { resumedLabel, resumedChips });
+  await clickImage(205, 470);
+  await clickImage(405, 475);
+  let whole = null;
+  try { whole = rounded(JSON.parse(await geometryText('C7'))); } catch (_error) { whole = null; }
+  check('22. two clicks complete C7: Manual, both endplates in its geometry',
+    (await badge('C7')) === 'Manual' && deepEqual(whole?.superior, [[200, 400], [400, 405]]) && deepEqual(whole?.inferior, [[205, 470], [405, 475]]),
+    { badge: await badge('C7'), whole });
+  await settled(PARTIAL);
+  const completed = await studyOf(PARTIAL);
+  check('22. the study\'s C7 has its quadrilateral, and the C2–C7 Cobb stays null (C2 has no inferior endplate)',
+    completed?.geometry?.vertebrae?.C7?.quadrilateral?.length === 4 && completed.measurements?.C2C7_COBB === null,
+    { quadrilateral: completed?.geometry?.vertebrae?.C7?.quadrilateral, cobb: completed?.measurements?.C2C7_COBB });
+
+  // 7. Delete removes the focused endplate; the last one stays.
+  await clickSelector('[data-level-key="C7"]');
+  await ev('(() => { const a = document.activeElement; if (a && a.blur) a.blur(); return true; })()');
+  await pressDelete();
+  const afterDelete = await geometryRounded('C7');
+  const focusAfter = await focusNow();
+  check('22. Delete with SA focused removes C7\'s superior endplate and focuses IA',
+    afterDelete === '{"superior":null,"inferior":[[205,470],[405,475]]}' && deepEqual(focusAfter, { code: 'C7', handle: 'IA' }), { afterDelete, focusAfter });
+  await settled(PARTIAL);
+  const removed = await studyOf(PARTIAL);
+  check('22. the study\'s C7 has no superior endplate and the C2–C7 SVA is null',
+    removed?.geometry?.vertebrae?.C7?.superior === null && removed.measurements?.C2C7_SVA_PX === null,
+    { C7: removed?.geometry?.vertebrae?.C7, sva: removed?.measurements?.C2C7_SVA_PX });
+  const unsavedBefore = await ev('window.__lv.unsaved()');
+  await pressDelete();
+  check('22. Delete again leaves C7\'s last endplate and the unsaved count as they were',
+    (await geometryRounded('C7')) === afterDelete && (await ev('window.__lv.unsaved()')) === unsavedBefore,
+    { geometry: await geometryRounded('C7'), unsavedBefore, unsaved: await ev('window.__lv.unsaved()') });
+
+  // 8. Leave edit mode through the prompt's Discard (the edits since the save are unsaved).
+  await cdp.key('Escape');
+  await cdp.settle(120);
+  await until(`Boolean(document.querySelector('[data-level-key="prompt:discard"]'))`, 3000);
+  await clickSelector('[data-level-key="prompt:discard"]');
+  await until(`import('./renderer/store.js').then((m) => m.getState().editing === false)`, 5000);
+}
+
 // ---------------------------------------------------------------------------
 // Phase `dom`.
 
@@ -820,6 +993,7 @@ async function domPhase() {
   })()`);
   fs.mkdirSync(FILM_DIR, { recursive: true });
   fs.writeFileSync(HAND_PATH, Buffer.from(films.hand, 'base64'));
+  fs.writeFileSync(PARTIAL_PATH, Buffer.from(films.hand, 'base64'));   // SP-9305's film (section 22)
 
   const injected = await ev(`(async () => {
     const store = await import('./renderer/store.js');
@@ -840,7 +1014,7 @@ async function domPhase() {
     // (Annotation editor round 2, spec §4.3) A film whose run failed: the first hand-placed commit clears the failure.
     const hand = { ...newStudy({ id: ${js(HAND)}, fileName: ${js(HAND_FILE)}, filePath: ${js(HAND_PATH)} }), labelFile: null,
       processingError: ${js(HAND_FAILURE)}, processingErrorAt: ${js(HAND_FAILED_AT)} };
-    const ours = new Set([${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}, ${js(REVIEW)}]);
+    const ours = new Set([${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}, ${js(REVIEW)}, ${js(PARTIAL)}]);
     store.setState((s) => ({ ack: true, studies: [seg, hand, ...s.studies.filter((x) => !ours.has(x.id))], screen: 'studies',
       studiesTab: 'find', query: '', openId: null, editing: false, levelEditor: null, selection: null, measurementDrafts: {},
       running: null, batch: null, tab: 'meas', overlays: true }));
@@ -1497,6 +1671,9 @@ async function domPhase() {
   const cleaned = await ev(`import('./renderer/api.js').then((api) => api.saveLabelRecord('..', {}).then(() => 'fulfilled', (e) => e.message))`);
   check('13. the api wrapper hands the rejection on as the display-ready Invalid label file name.', cleaned === 'Invalid label file name.', cleaned);
 
+  // 22 (2026-10-21, partial endplates). A study of its own, left out of edit mode.
+  await partialChecks();
+
   // 18 (gate feedback G6, D19). Last: it opens a study of its own and leaves the rest of the run as it was.
   await reviewRecordChecks(films);
 }
@@ -1516,7 +1693,7 @@ async function filmPhase() {
     const store = await import('./renderer/store.js');
     const { newStudy } = await import('./renderer/screens/studies.js');
     const study = { ...newStudy({ id: ${js(REAL)}, fileName: ${js(fileName)}, filePath: ${js(film)} }), region: 'lumbar', labelFile: null };
-    const ours = new Set([${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}, ${js(REVIEW)}]);
+    const ours = new Set([${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}, ${js(REVIEW)}, ${js(PARTIAL)}]);
     store.setState((s) => ({ ack: true, studies: [study, ...s.studies.filter((x) => !ours.has(x.id))], screen: 'studies',
       studiesTab: 'find', query: '', openId: null, editing: false, levelEditor: null, selection: null, measurementDrafts: {},
       running: null, batch: null, tab: 'meas' }));
@@ -1627,7 +1804,7 @@ try {
       const store = await import('./renderer/store.js');
       const api = await import('./renderer/api.js');
       const wiring = await import('./renderer/level-editor.js');
-      const ids = [${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}, ${js(REVIEW)}];
+      const ids = [${js(SEG)}, ${js(HAND)}, ${js(REAL)}, ${js(OTHER)}, ${js(REVIEW)}, ${js(PARTIAL)}];
       const s = store.getState();
       const names = s.studies.filter((x) => ids.includes(x.id) && x.labelFile).map((x) => x.labelFile);
       store.setState({ editing: false, levelEditor: null, filmWindow: null, platePositions: {}, selection: null, screen: 'studies', openId: null, measurementDrafts: {} });
@@ -1638,10 +1815,10 @@ try {
       delete window.__lv; delete window.__lvRun; delete window.__lvRunOutcome;
       return names;
     })()`);
-    for (const name of ['levels-ui-check.label.json', 'levels-hand-placed.label.json', REVIEW_RECORD, ...(leftovers ?? [])]) {
+    for (const name of ['levels-ui-check.label.json', 'levels-hand-placed.label.json', REVIEW_RECORD, PARTIAL_RECORD, ...(leftovers ?? [])]) {
       fs.rmSync(path.join(LABELS, name), { force: true });
     }
-    if (PHASE !== 'film') fs.rmSync(HAND_PATH, { force: true });
+    if (PHASE !== 'film') { fs.rmSync(HAND_PATH, { force: true }); fs.rmSync(PARTIAL_PATH, { force: true }); }
   } catch (error) {
     console.log(`cleanup failed: ${error.message}`);
   }

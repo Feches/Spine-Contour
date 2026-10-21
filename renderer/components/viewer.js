@@ -23,7 +23,7 @@ import { plateAnteriorSide, plateAt, plateOffset, movePlate, resetPlate } from '
 import { dragWindow, windowText } from '../viewer/window-level.js';
 import {
   enterLevelEditor, requestExit, keepEditing, placePoint, undoPlacedPoint, restorePlacing, selectPlacingStep, cancelPlace,
-  aimHandle, cancelAim, placeAimedPoint,
+  aimHandle, cancelAim, placeAimedPoint, resumePlace, removeFocusedPart,
   fitPlacing, setFocusedHandle, selectLevelRow, commitHandleMove, resetLevelsToModel,
 } from '../level-editor.js';
 // (2026-10-11, gate feedback G3 and G4; plan D15-D17) The window / level belongs to the view, in every mode.
@@ -313,6 +313,13 @@ export function mountViewer(container) {
   const editHelp = el('div', { class: 'viewer-edit-help' });
   const steps = el('div', { class: 'viewer-steps is-hidden' });
   const fitButton = textButton('FIT', () => fitPlacing(imageSize()), { 'aria-label': 'Fit the circle to the rim points', class: 'viewer-tool viewer-tool-text is-active is-hidden' });
+  // (2026-10-21, partial endplates, spec §4) FINISH: a body or C2 placement ends with the points placed (a whole
+  // endplate, or C2's one part); the rest are not on this film. Shown only while a body or C2 is being placed.
+  const finishButton = textButton('FINISH', () => fitPlacing(imageSize()), {
+    'aria-label': 'Finish with the points placed; the rest are not on this film',
+    title: 'Finish with the points placed; the rest are not on this film',
+    class: 'viewer-tool viewer-tool-text is-active is-hidden',
+  });
   const undoButton = textButton('UNDO', () => undoPlacedPoint(), { class: 'viewer-tool viewer-tool-text is-hidden' });
   const placeCancelButton = textButton('CANCEL', () => cancelPlace(), { class: 'viewer-tool viewer-tool-text is-hidden' });
   const placeDivider = el('div', { class: 'viewer-divider is-hidden' });
@@ -323,6 +330,7 @@ export function mountViewer(container) {
     editHelp,
     steps,
     fitButton,
+    finishButton,
     undoButton,
     placeCancelButton,
     placeDivider,
@@ -1077,14 +1085,28 @@ export function mountViewer(container) {
   // aimHandle / placeAimedPoint), the armed chip's dot hollow until then, as a placement's current empty step is;
   // the chip clicked again, Escape, Tab or a handle press disarms, and the focus stays so the arrow keys nudge it.
   // Disabled while this study's run is in flight, like the placement's chips. `aria-current` marks the focused one.
+  // (2026-10-21, partial endplates, spec §4) A missing point of a partial body or C2 reads as a hollow chip: clicked, the
+  // placement resumes with that step current (resumePlace). A placed chip of a body or C2 says Delete removes its part.
   function buildHandleChips({ code, chips }, busy) {
-    return chips.map(({ handle, label, colorKey, focused, aiming }) => {
+    const kind = kindOf(code);
+    const partKind = kind === 'body' || kind === 'c2';
+    return chips.map(({ handle, label, colorKey, focused, aiming, placed }, index) => {
       const dot = el('span', { class: 'viewer-step-dot' });
       dot.style.setProperty('--step-color', colorFor(colorKey, code));
+      if (placed === false) {
+        return el('button', {
+          type: 'button',
+          class: 'viewer-step is-missing',
+          title: `Place ${label}: click here, then on the film`,
+          disabled: busy,
+          onClick: () => resumePlace(code, index),
+        }, dot, label);
+      }
+      const removes = !partKind ? '' : handle === 'CENTROID' ? '; Delete removes it' : '; Delete removes its endplate';
       return el('button', {
         type: 'button',
         class: `viewer-step is-done${focused ? ' is-current' : ''}${aiming ? ' is-aiming' : ''}`,
-        title: aiming ? `Click the film to place ${label}; click again to keep it where it is` : `Place ${label}: click here, then on the film`,
+        title: aiming ? `Click the film to place ${label}; click again to keep it where it is` : `Place ${label}: click here, then on the film${removes}`,
         'aria-current': focused ? 'true' : undefined,
         'aria-pressed': String(aiming),
         disabled: busy,
@@ -1129,6 +1151,10 @@ export function mountViewer(container) {
     fitButton.classList.toggle('is-hidden', !circle);
     // (R22) FIT follows finishPlacing's own rule: enough rim points, and a fit with a radius of at least 0.5 px.
     fitButton.disabled = busy || !circle || !canFinishPlacing(editor, imageSize());
+    // (2026-10-21, partial endplates, spec §4) FINISH: a body or C2 placement with a whole part and no half part.
+    const partialKind = showPlacement && ['body', 'c2'].includes(kindOf(placing.code));
+    finishButton.classList.toggle('is-hidden', !partialKind);
+    finishButton.disabled = busy || !partialKind || !canFinishPlacing(editor, imageSize());
     undoButton.classList.toggle('is-hidden', !showPlacement);
     // (G2) UNDO clears the most recently set point, so it is live while any point is set.
     undoButton.disabled = busy || !placing || placing.history.length === 0;
@@ -1352,8 +1378,16 @@ export function mountViewer(container) {
       setFocusedHandle(next);
       return;
     }
+    // (2026-10-21, partial endplates, spec §4) Delete and Backspace remove the focused point's part (its endplate, or
+    // C2's centroid), committed like a drag; the level model refuses the last part and a one-part kind.
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      if (!editor.handle || !currentImages) return;
+      event.preventDefault();
+      removeFocusedPart();
+      return;
+    }
     // Arrows nudge the focused handle by 1 px (Shift: 10), clamped to the film. A focused slider keeps
-    // its own arrows. Delete and Backspace do nothing in the level editor.
+    // its own arrows.
     const delta = arrowKeyDelta(event.key, event.shiftKey);
     if (!delta || !editor.handle || !currentImages) return;
     if (target && target.matches('input[type="range"]')) return;

@@ -604,7 +604,9 @@
   color: var(--stage-accent);
 }
 .viewer-edit-help {
-  flex: 1 1 220px;
+  /* (2026-10-21, partial endplates, spec §4) 160px, not 220px: with FINISH in the placing row the bar still fits one
+     row at the smoke's 1600px window (a second row covered the film's top); a long help line wraps in its own box. */
+  flex: 1 1 160px;
   min-width: 0;
   font-size: 12px;
   line-height: 1.4;
@@ -658,6 +660,9 @@
 /* (2026-10-21) A placed level's chip armed from the bar: the next film click places that point, so its dot is
    hollow until then, as a placement's current empty step is. */
 .viewer-step.is-aiming .viewer-step-dot { background: transparent; }
+/* (2026-10-21, partial endplates, spec §4) A missing point of a partial level: a hollow ring in the point's colour;
+   clicked, the placement resumes at that step. */
+.viewer-step.is-missing .viewer-step-dot { border-color: var(--step-color); background: transparent; }
 /* A body, C2, endplate or centroid chip is a button that makes its step the one the next film click
    sets (G2); a femoral head's chips stay spans. The button's own chrome is reset so it looks like the
    span; .viewer-step.is-current (0,2,0) still wins the ground over this rule (0,1,1). */
