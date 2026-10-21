@@ -8,7 +8,7 @@ import {
   finishPlacing, canFinishPlacing, clearLevel, setLevelGeometry, unsavedCount, canSave, unsavedText, summaryText,
   groupCountText, groupCheckState, trainingStatus, placingLabel, placingHelp, dependencyNote,
   markSaved, revertToBaseline, setPlacingStep, changedPoints, pointKeys, revertLevel, setComment, commentChanged,
-  aimHandle, cancelAim,
+  aimHandle, cancelAim, partsOf, partOfHandle, missingParts, isPartial, resumePlacing, removePart,
 } from '../renderer/data/levels.js';
 import { SEGMENTAL_PAIRS } from '../renderer/data/segmental.js';
 import { DISC_LEVEL_PAIRS } from '../renderer/data/disc-heights.js';
@@ -140,6 +140,7 @@ test('sameGeometry compares within eps and treats null as equal to null', () => 
   assert.equal(sameGeometry(g, nudged), false);
   assert.equal(sameGeometry(g, nudged, 0.1), true, 'a looser eps');
   assert.equal(sameGeometry(g, { superior: g.superior }), false, 'a missing pair is a difference');
+  assert.equal(sameGeometry({ superior: g.superior, inferior: null }, { superior: g.superior }), false, 'a null part and an absent one differ: the canonical shape matters');
   const c2 = { inferior: [[1, 2], [3, 4]], centroid: [2, 1] };
   assert.equal(sameGeometry(c2, { ...c2, centroid: [2, 1.5] }), false);
 });
@@ -444,7 +445,7 @@ test('levelsFromGeometry reads the lumbar fixture and leaves the missing level n
   for (const code of ['C2', 'C3', 'C7', 'T1', 'T4']) assert.equal(levels[code], null, code);
 });
 
-test('levelsFromGeometry reads C2 only when both its inferior pair and centroid exist', () => {
+test('levelsFromGeometry reads C2 from its inferior pair and centroid, either alone, and from neither as null', () => {
   const levels = levelsFromGeometry(cervicalGeometry());
   assert.deepEqual(levels.C2, { inferior: [[40, 20], [50, 20]], centroid: [45, 12] });
   assert.deepEqual(levels.C3, { superior: [[10, 30], [20, 30]], inferior: [[10, 40], [20, 40]] });
@@ -452,19 +453,21 @@ test('levelsFromGeometry reads C2 only when both its inferior pair and centroid 
   assert.equal(levels.FH1, null);
   const noCentroid = cervicalGeometry();
   noCentroid.c2_centroid = null;
-  assert.equal(levelsFromGeometry(noCentroid).C2, null);
+  assert.deepEqual(levelsFromGeometry(noCentroid).C2, { inferior: [[40, 20], [50, 20]], centroid: null });
   const noInferior = cervicalGeometry();
   noInferior.vertebrae.C2.inferior = null;
+  assert.deepEqual(levelsFromGeometry(noInferior).C2, { inferior: null, centroid: [45, 12] });
+  noInferior.c2_centroid = null;
   assert.equal(levelsFromGeometry(noInferior).C2, null);
 });
 
-test('levelsFromGeometry needs both pairs of a body, and always leaves T1 and T4 null', () => {
+test('levelsFromGeometry reads a body with one pair, and always leaves T1 and T4 null', () => {
   const geometry = lumbarGeometry();
   geometry.vertebrae.L3 = { superior: [[10, 50], [20, 50]], inferior: null, quadrilateral: null };
   geometry.vertebrae.T1 = body(10, 0);
   geometry.vertebrae.T4 = body(10, 5);
   const levels = levelsFromGeometry(geometry);
-  assert.equal(levels.L3, null);
+  assert.deepEqual(levels.L3, { superior: [[10, 50], [20, 50]], inferior: null });
   assert.equal(levels.T1, null);
   assert.equal(levels.T4, null);
 });
@@ -969,7 +972,7 @@ test('canFinishPlacing follows fitFrom and need, and is false with nothing being
   assert.equal(canFinishPlacing(fh, IMAGE), true, 'two rim points 1 px apart: radius 0.5, the floor');
   let body3 = startPlacing(blankEditor('lumbar'), 'L3');
   body3 = addPoint(addPoint(addPoint(body3, [10, 10], IMAGE), [30, 10], IMAGE), [10, 30], IMAGE);
-  assert.equal(canFinishPlacing(body3, IMAGE), false, 'a body needs all four corners');
+  assert.equal(canFinishPlacing(body3, IMAGE), false, 'three corners: a half endplate');
 });
 
 test('addPoint finishes a femoral head on the fourth rim point and fits the circle', () => {
@@ -1655,4 +1658,163 @@ test('no operation mutates the editor or the inputs it was given', () => {
   next(x => markSaved(x, 'g.label.json'));
   next(x => revertToBaseline(x));
   assert.equal(e.record.file, 'g.label.json');
+});
+
+test('partsOf names each kind\'s parts and the steps that place them; partOfHandle maps a handle to its part', () => {
+  assert.deepEqual(partsOf('L3'), [{ key: 'superior', steps: [0, 1] }, { key: 'inferior', steps: [2, 3] }]);
+  assert.deepEqual(partsOf('C2'), [{ key: 'inferior', steps: [0, 1] }, { key: 'centroid', steps: [2] }]);
+  assert.deepEqual(partsOf('S1'), [{ key: 'superior', steps: [0, 1] }]);
+  assert.deepEqual(partsOf('T4'), [{ key: 'centroid', steps: [0] }]);
+  assert.deepEqual(partsOf('FH1'), []);
+  assert.notEqual(partsOf('L3'), partsOf('L3'), 'a fresh array');
+  assert.equal(partOfHandle('L3', 'SA'), 'superior');
+  assert.equal(partOfHandle('L3', 'IP'), 'inferior');
+  assert.equal(partOfHandle('C2', 'CENTROID'), 'centroid');
+  assert.equal(partOfHandle('C2', 'SA'), null, 'C2 has no superior pair');
+  assert.equal(partOfHandle('FH1', 'R0'), null);
+});
+
+test('levelsFromGeometry reads a body with one endplate, and C2 with its pair or its centroid alone, in the canonical shape', () => {
+  const g = cervicalGeometry();
+  g.vertebrae.C7 = { superior: [[10, 110], [20, 110]], inferior: null, quadrilateral: null };
+  g.vertebrae.C6 = { superior: null, inferior: [[10, 100], [20, 100]], quadrilateral: null };
+  const levels = levelsFromGeometry(g);
+  assert.deepEqual(levels.C7, { superior: [[10, 110], [20, 110]], inferior: null });
+  assert.deepEqual(levels.C6, { superior: null, inferior: [[10, 100], [20, 100]] });
+  assert.deepEqual(levelsFromGeometry({ region: 'cervical', vertebrae: {}, c2_centroid: [45, 12] }).C2, { inferior: null, centroid: [45, 12] });
+  assert.deepEqual(levelsFromGeometry({ region: 'cervical', vertebrae: { C2: { inferior: [[40, 20], [50, 20]] } }, c2_centroid: null }).C2,
+    { inferior: [[40, 20], [50, 20]], centroid: null });
+  assert.equal(levelsFromGeometry({ region: 'lumbar', vertebrae: { L1: { superior: [[1, 1]], inferior: null } } }).L1, null, 'half a pair is not a geometry');
+  assert.equal(levelsFromGeometry({ region: 'lumbar', vertebrae: { L1: { superior: null, inferior: null } } }).L1, null, 'no part is not a geometry');
+  assert.deepEqual(missingParts('C7', levels.C7), ['inferior']);
+  assert.deepEqual(missingParts('C6', levels.C6), ['superior']);
+  assert.deepEqual(missingParts('C3', levels.C3), []);
+  assert.deepEqual(missingParts('C7', null), []);
+  assert.equal(isPartial('C7', levels.C7), true);
+  assert.equal(isPartial('S1', { superior: [[1, 1], [2, 2]] }), false);
+});
+
+test('the model\'s own partial output reads Segmented, is Edited once completed, and REVERT returns it to the partial output', () => {
+  const partial = { superior: [[10, 110], [20, 110]], inferior: null };
+  const study = { id: 'SP-0002', geometry: { region: 'cervical', vertebrae: { C7: { ...partial, quadrilateral: null } }, c2_centroid: null } };
+  let e = openEditor({ study, region: 'cervical', modelGeometry: study.geometry, saved: null });
+  assert.equal(levelState(e.levels.C7, e.model.C7), 'segmented');
+  const whole = { superior: partial.superior, inferior: [[10, 120], [20, 120]] };
+  e = setLevelGeometry(e, 'C7', whole);
+  assert.equal(levelState(e.levels.C7, e.model.C7), 'edited');
+  assert.deepEqual(changedPoints('C7', whole, e.model.C7), ['ia', 'ip']);
+  e = revertLevel(e, 'C7');
+  assert.deepEqual(e.levels.C7.geometry, partial);
+  assert.equal(levelState(e.levels.C7, e.model.C7), 'segmented');
+  assert.deepEqual(changedPoints('C7', { superior: null, inferior: whole.inferior }, whole), ['sa', 'sp'], 'a removed endplate lists its keys');
+  assert.deepEqual(changedPoints('C7', partial, null), ['sa', 'sp'], 'a manual partial body lists its placed keys only');
+});
+
+test('geometryFromPoints takes the slot array: a whole part is written, an empty part is null, a half part makes no geometry', () => {
+  const sa = [1, 1], sp = [2, 1], ia = [1, 2], ip = [2, 2];
+  assert.deepEqual(geometryFromPoints('L3', [sa, sp, null, null], IMAGE), { superior: [sa, sp], inferior: null });
+  assert.deepEqual(geometryFromPoints('L3', [null, null, ia, ip], IMAGE), { superior: null, inferior: [ia, ip] });
+  assert.deepEqual(geometryFromPoints('L3', [sa, sp, ia, ip], IMAGE), { superior: [sa, sp], inferior: [ia, ip] });
+  assert.equal(geometryFromPoints('L3', [sa, null, ia, ip], IMAGE), null, 'half a superior pair');
+  assert.equal(geometryFromPoints('L3', [null, null, null, null], IMAGE), null);
+  assert.deepEqual(geometryFromPoints('C2', [null, null, [5, 5]], IMAGE), { inferior: null, centroid: [5, 5] });
+  assert.deepEqual(geometryFromPoints('C2', [ia, ip, null], IMAGE), { inferior: [ia, ip], centroid: null });
+  assert.equal(geometryFromPoints('S1', [sa, null], IMAGE), null, 'an endplate has one part');
+  assert.equal(geometryFromPoints('T4', [null], IMAGE), null);
+  assert.deepEqual(geometryFromPoints('FH1', [[0, 10], null, [20, 10], null], IMAGE).center, [10, 10], 'a head fits the points it has');
+});
+
+test('a body or C2 may finish early once an endplate is whole and no part is half set; it still finishes by itself at every slot', () => {
+  let e = startPlacing(blankEditor('cervical'), 'C7');
+  assert.equal(canFinishPlacing(e, IMAGE), false, 'nothing set');
+  e = addPoint(e, [10, 10], IMAGE);
+  assert.equal(canFinishPlacing(e, IMAGE), false, 'one corner is half an endplate');
+  e = addPoint(e, [30, 10], IMAGE);
+  assert.equal(canFinishPlacing(e, IMAGE), true, 'SA and SP');
+  const done = finishPlacing(e, IMAGE);
+  assert.equal(done.placing, null);
+  assert.deepEqual(done.levels.C7.geometry, { superior: [[10, 10], [30, 10]], inferior: null });
+  assert.equal(done.levels.C7.source, 'annotator');
+  assert.equal(levelState(done.levels.C7, done.model.C7), 'manual');
+  e = addPoint(e, [10, 30], IMAGE);
+  assert.equal(canFinishPlacing(e, IMAGE), false, 'three corners: the inferior pair is half set');
+  assert.equal(finishPlacing(e, IMAGE), e, 'and FINISH is a no-op');
+  e = addPoint(e, [30, 30], IMAGE);
+  assert.equal(e.placing, null, 'the fourth corner finishes by itself');
+  let lower = setPlacingStep(startPlacing(blankEditor('lumbar'), 'L1'), 2);
+  lower = addPoint(addPoint(lower, [10, 30], IMAGE), [30, 30], IMAGE);
+  assert.equal(canFinishPlacing(lower, IMAGE), true, 'IA and IP alone');
+  assert.deepEqual(finishPlacing(lower, IMAGE).levels.L1.geometry, { superior: null, inferior: [[10, 30], [30, 30]] });
+  let c2 = setPlacingStep(startPlacing(blankEditor('cervical'), 'C2'), 2);
+  c2 = addPoint(c2, [45, 12], IMAGE);
+  assert.equal(canFinishPlacing(c2, IMAGE), true, 'the centroid alone');
+  assert.deepEqual(finishPlacing(c2, IMAGE).levels.C2.geometry, { inferior: null, centroid: [45, 12] });
+  let s1 = addPoint(startPlacing(blankEditor('lumbar'), 'S1'), [10, 10], IMAGE);
+  assert.equal(canFinishPlacing(s1, IMAGE), false, 'an endplate cannot finish early');
+});
+
+test('resumePlacing pre-fills the set slots of a partial level, with the given empty step or the first one current, and nothing to undo', () => {
+  const partial = { superior: [[10, 10], [30, 10]], inferior: null };
+  let e = setLevelGeometry(blankEditor('cervical'), 'C7', partial);
+  const resumed = resumePlacing(e, 'C7');
+  assert.deepEqual(resumed.placing, { code: 'C7', points: [[10, 10], [30, 10], null, null], current: 2, history: [] });
+  assert.equal(resumed.selected, 'C7');
+  assert.equal(resumed.handle, null);
+  assert.equal(resumed.aiming, false);
+  assert.deepEqual(resumed.levels.C7.geometry, partial, 'the level keeps its geometry while the placement runs');
+  assert.deepEqual(resumePlacing(e, 'C7', 3).placing.current, 3, 'a chosen empty step');
+  assert.deepEqual(resumePlacing(e, 'C7', 0).placing.current, 2, 'a set step is not chosen: the first empty one is');
+  assert.equal(undoPoint(resumed), resumed, 'nothing to undo');
+  const whole = addPoint(addPoint(resumed, [10, 30], IMAGE), [30, 30], IMAGE);
+  assert.equal(whole.placing, null);
+  assert.deepEqual(whole.levels.C7.geometry, { superior: [[10, 10], [30, 10]], inferior: [[10, 30], [30, 30]] });
+  assert.deepEqual(cancelPlacing(resumed).levels.C7.geometry, partial, 'CANCEL leaves the level as it was');
+  const finished = finishPlacing(resumed, IMAGE);
+  assert.equal(finished.placing, null);
+  assert.deepEqual(finished.levels.C7.geometry, partial, 'FINISH with nothing new writes the same shape');
+  assert.equal(resumePlacing(e, 'C3'), e, 'an unplaced level is not resumed');
+  const wholeC3 = setLevelGeometry(e, 'C3', { superior: [[1, 1], [2, 1]], inferior: [[1, 2], [2, 2]] });
+  assert.equal(resumePlacing(wholeC3, 'C3'), wholeC3, 'a whole level is not resumed');
+  const hidden = toggleVisible(e, 'C7');
+  assert.equal(resumePlacing(hidden, 'C7'), hidden, 'a hidden level is not resumed');
+  const placingC3 = startPlacing(e, 'C3');
+  assert.equal(resumePlacing(placingC3, 'C7'), placingC3, 'not while a placement runs');
+  const c2 = setLevelGeometry(e, 'C2', { inferior: null, centroid: [45, 12] });
+  assert.deepEqual(resumePlacing(c2, 'C2').placing, { code: 'C2', points: [null, null, [45, 12]], current: 0, history: [] });
+});
+
+test('removePart nulls the focused handle\'s part and moves the focus; the last part, a one-part kind, a placement and a missing handle are refused', () => {
+  const whole = { superior: [[10, 10], [30, 10]], inferior: [[10, 30], [30, 30]] };
+  let e = selectLevel(setLevelGeometry(blankEditor('cervical'), 'C7', whole), 'C7');
+  assert.deepEqual(e.handle, { code: 'C7', handle: 'SA' });
+  const upperGone = removePart(e, 'C7', 'SP');
+  assert.deepEqual(upperGone.levels.C7.geometry, { superior: null, inferior: whole.inferior });
+  assert.equal(upperGone.levels.C7.source, 'annotator');
+  assert.deepEqual(upperGone.handle, { code: 'C7', handle: 'IA' }, 'the first remaining handle');
+  assert.equal(upperGone.aiming, false);
+  assert.equal(removePart(upperGone, 'C7', 'IA'), upperGone, 'the last part stays');
+  assert.equal(removePart(e, 'C7', 'CENTROID'), e, 'a handle the kind lacks');
+  const placingC7 = startPlacing(e, 'C7');
+  assert.equal(removePart(placingC7, 'C7', 'SA'), placingC7, 'not while it is being placed');
+  const s1 = selectLevel(setLevelGeometry(e, 'S1', { superior: [[1, 1], [2, 1]] }), 'S1');
+  assert.equal(removePart(s1, 'S1', 'SA'), s1, 'an endplate has one part');
+  const fh = selectLevel(setLevelGeometry(e, 'FH1', { center: [50, 50], radius: 10, rim: null }), 'FH1');
+  assert.equal(removePart(fh, 'FH1', 'R0'), fh, 'a head has none');
+  const c2 = selectLevel(setLevelGeometry(e, 'C2', { inferior: [[40, 20], [50, 20]], centroid: [45, 12] }), 'C2');
+  assert.deepEqual(removePart(c2, 'C2', 'CENTROID').levels.C2.geometry, { inferior: [[40, 20], [50, 20]], centroid: null });
+  assert.deepEqual(removePart(c2, 'C2', 'IP').levels.C2.geometry, { inferior: null, centroid: [45, 12] });
+  assert.deepEqual(removePart(c2, 'C2', 'IP').handle, { code: 'C2', handle: 'CENTROID' });
+});
+
+test('selectLevel focuses the level\'s first existing handle, so a body without its superior pair focuses IA', () => {
+  const e = setLevelGeometry(blankEditor('cervical'), 'C7', { superior: null, inferior: [[10, 30], [30, 30]] });
+  assert.deepEqual(selectLevel(e, 'C7').handle, { code: 'C7', handle: 'IA' });
+  const c2 = setLevelGeometry(e, 'C2', { inferior: null, centroid: [45, 12] });
+  assert.deepEqual(selectLevel(c2, 'C2').handle, { code: 'C2', handle: 'CENTROID' });
+});
+
+test('a partial level counts as placed and leaves the training label complete', () => {
+  const e = setLevelGeometry(blankEditor('cervical'), 'C7', { superior: [[10, 10], [30, 10]], inferior: null });
+  assert.equal(summaryText(e).startsWith('1 PLACED'), true);
+  assert.equal(trainingStatus(e).missing.includes('C7'), false);
 });

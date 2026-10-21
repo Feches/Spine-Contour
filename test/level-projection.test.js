@@ -148,11 +148,12 @@ test('levelsFromGeometry reads bodies, S1 and C2, and leaves T1, T4 and absent l
   assert.equal(levels.T4, null);
 });
 
-test('levelsFromGeometry needs both of C2\'s parts, a body\'s two pairs, and a null geometry gives all null', () => {
+test('levelsFromGeometry reads one part of C2 or of a body, and a null geometry gives all null', () => {
   const noCentroid = { region: 'cervical', vertebrae: { C2: { superior: null, inferior: [[40, 20], [50, 20]], quadrilateral: null } } };
-  assert.equal(levelsFromGeometry(noCentroid).C2, null);
-  const halfBody = { region: 'lumbar', vertebrae: { L1: { superior: [[1, 1], [2, 2]], inferior: null } } };
-  assert.equal(levelsFromGeometry(halfBody).L1, null);
+  assert.deepEqual(levelsFromGeometry(noCentroid).C2, { inferior: [[40, 20], [50, 20]], centroid: null });
+  const oneEndplate = { region: 'lumbar', vertebrae: { L1: { superior: [[1, 1], [2, 2]], inferior: null } } };
+  assert.deepEqual(levelsFromGeometry(oneEndplate).L1, { superior: [[1, 1], [2, 2]], inferior: null });
+  assert.equal(levelsFromGeometry({ region: 'lumbar', vertebrae: { L1: { superior: [[1, 1]], inferior: null } } }).L1, null, 'half a pair is not a geometry');
   const none = levelsFromGeometry(null);
   assert.equal(Object.keys(none).length, 16);
   assert.ok(Object.values(none).every(value => value === null));

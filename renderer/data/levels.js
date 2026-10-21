@@ -8,8 +8,8 @@
 // Points are [x, y] in pixels of the stored image, origin top-left.
 //
 /** @typedef {[number, number]} Pt */
-/** @typedef {{superior: [Pt, Pt], inferior: [Pt, Pt]}} BodyGeometry   superior = [SA, SP], inferior = [IA, IP] */
-/** @typedef {{inferior: [Pt, Pt], centroid: Pt}} C2Geometry */
+/** @typedef {{superior: [Pt, Pt]|null, inferior: [Pt, Pt]|null}} BodyGeometry   superior = [SA, SP], inferior = [IA, IP]; (2026-10-21, partial endplates, spec §3) either may be null, never absent */
+/** @typedef {{inferior: [Pt, Pt]|null, centroid: Pt|null}} C2Geometry   (2026-10-21) either part may be null, never absent */
 /** @typedef {{superior: [Pt, Pt]}} EndplateGeometry   T1 and S1 */
 /** @typedef {{centroid: Pt}} CentroidGeometry   T4 */
 /** @typedef {{center: Pt, radius: number, rim: Pt[]|null}} CircleGeometry   rim: 2-4 points, null for unedited model output */
@@ -80,6 +80,58 @@ const KINDS = new Map(LEVEL_CODES.map(code => [code,
 export function kindOf(code) { return KINDS.get(code); }
 
 export function groupOf(code) { return GROUP_OF.get(code); }
+
+// (2026-10-21, partial endplates, spec §3) The parts of each kind and the placement steps that set them. A part is
+// whole or null: a body's superior pair and inferior pair, C2's inferior pair and centroid.
+const PART_STEPS = new Map([
+  ['body', [['superior', [0, 1]], ['inferior', [2, 3]]]],
+  ['c2', [['inferior', [0, 1]], ['centroid', [2]]]],
+  ['endplate', [['superior', [0, 1]]]],
+  ['centroid', [['centroid', [0]]]],
+  ['circle', []],
+]);
+const HANDLE_PARTS = { SA: 'superior', SP: 'superior', IA: 'inferior', IP: 'inferior', CENTROID: 'centroid' };
+
+/**
+ * (2026-10-21, partial endplates, spec §3) The parts of a kind, in placement order, with the steps that place each.
+ * A fresh array each call.
+ * @returns {{key: string, steps: number[]}[]}
+ */
+export function partsOf(code) {
+  return (PART_STEPS.get(kindOf(code)) ?? []).map(([key, steps]) => ({ key, steps: [...steps] }));
+}
+
+/** (2026-10-21, spec §3) The part a handle belongs to, or null for a rim handle or a handle the kind lacks (C2 has no SA). */
+export function partOfHandle(code, handle) {
+  const key = HANDLE_PARTS[handle];
+  return key && partsOf(code).some(part => part.key === key) ? key : null;
+}
+
+/** (2026-10-21, spec §3) The keys of the parts a placed level lacks; [] for a whole level, a circle and null geometry. */
+export function missingParts(code, geometry) {
+  if (!geometry) return [];
+  return partsOf(code).filter(part => geometry[part.key] == null).map(part => part.key);
+}
+
+/** (2026-10-21, spec §3) Whether a placed level lacks a part. */
+export function isPartial(code, geometry) { return missingParts(code, geometry).length > 0; }
+
+// The first handle of each part, by kind.
+const PART_HANDLE = new Map([['body', { superior: 'SA', inferior: 'IA' }], ['c2', { inferior: 'IA', centroid: 'CENTROID' }],
+  ['endplate', { superior: 'SA' }], ['centroid', { centroid: 'CENTROID' }]]);
+
+/**
+ * (2026-10-21, spec §3) The handle a selected level focuses: the first handle of its first part that exists (R0 for a
+ * head). Defined here, not read from viewer/level-handles.js, because that file imports this one; a test pins that
+ * the two agree.
+ * @returns {string|null}
+ */
+export function firstHandle(code, geometry) {
+  const kind = kindOf(code);
+  if (kind === 'circle') return 'R0';
+  const part = geometry ? partsOf(code).find(({ key }) => geometry[key] != null) : null;
+  return part ? PART_HANDLE.get(kind)[part.key] : null;
+}
 
 const ROW_NAMES = new Map([['T1', 'T1 endplate'], ['T4', 'T4 centroid'], ['FH1', 'Head 1'], ['FH2', 'Head 2']]);
 const FULL_NAMES = new Map([['T1', 'T1 superior endplate'], ['T4', 'T4 centroid'],
@@ -175,14 +227,15 @@ export function pointKeys(code) {
  * The points of `geometry` that differ from `modelGeometry`, as record keys in pointKeys order (D18): each point (a
  * head's radius, a number) is compared by the test levelState uses, within the same eps, so for the geometry the
  * editor holds `levelState(...) === 'edited'` exactly when this is not empty (R38). A head compares its centre, then
- * its radius, never its rim: a rim-only change lists nothing. No model geometry: every key (a manual level). No
+ * its radius, never its rim: a rim-only change lists nothing. No model geometry: every key the geometry holds (a manual level). No
  * geometry: nothing. Pure; a fresh array each call.
  * @returns {string[]}
  */
 export function changedPoints(code, geometry, modelGeometry) {
   if (geometry == null) return [];
   const points = pointsOf(code);
-  if (modelGeometry == null) return points.map(([key]) => key);
+  // (2026-10-21, partial endplates) a manual level lists the points it holds: a part that is null lists nothing.
+  if (modelGeometry == null) return points.filter(([, at]) => at(geometry) != null).map(([key]) => key);
   return points.filter(([, at]) => !near(at(geometry), at(modelGeometry), SAME_EPS)).map(([key]) => key);
 }
 
@@ -303,15 +356,23 @@ export function synthesizeRim(circle) {
  * @returns {LevelGeometry|null}
  */
 export function geometryFromPoints(code, points, imageSize) {
-  const p = points.map(copyPoint);
-  switch (kindOf(code)) {
-    case 'body': return { superior: [p[0], p[1]], inferior: [p[2], p[3]] };
-    case 'c2': return { inferior: [p[0], p[1]], centroid: p[2] };
-    case 'endplate': return { superior: [p[0], p[1]] };
-    case 'centroid': return { centroid: p[0] };
-    case 'circle': return fitRim(p, imageSize ? Math.hypot(imageSize.width, imageSize.height) : Infinity);
-    default: return null;
+  const kind = kindOf(code);
+  if (kind === 'circle') {
+    return fitRim(points.filter(Boolean).map(copyPoint), imageSize ? Math.hypot(imageSize.width, imageSize.height) : Infinity);
   }
+  const parts = PART_STEPS.get(kind);
+  if (!parts) return null;
+  // (2026-10-21, partial endplates, spec §3) `points` is the slot array with nulls. Per part: every slot set -> written,
+  // every slot empty -> null, else (half a part) no geometry. A body or C2 may hold one part; an endplate or a centroid
+  // has one part and needs it whole. The canonical shape carries every key of the kind, the missing ones null.
+  const geometry = {};
+  for (const [key, steps] of parts) {
+    const slots = steps.map(step => points[step] ?? null);
+    if (slots.every(slot => slot === null)) geometry[key] = null;
+    else if (slots.some(slot => slot === null)) return null;
+    else geometry[key] = steps.length === 1 ? copyPoint(slots[0]) : slots.map(copyPoint);
+  }
+  return Object.values(geometry).some(value => value !== null) ? geometry : null;
 }
 
 // ---------- reading the study geometry ----------
@@ -319,9 +380,22 @@ export function geometryFromPoints(code, points, imageSize) {
 const isPoint = p => Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]);
 const isPair = pair => Array.isArray(pair) && pair.length === 2 && isPoint(pair[0]) && isPoint(pair[1]);
 
+// (2026-10-21, partial endplates, spec §3) One stored part: a copy when it is well formed, null when absent, and
+// undefined (reject the level) when it is present but malformed, such as half a pair.
+const partFrom = (value, valid, copy) => (value == null ? null : valid(value) ? copy(value) : undefined);
+
+// A body or C2 keeps whichever of its parts are whole; with no part at all it is no geometry. The shape is canonical:
+// every key present, a missing part null.
+function partialFrom(parts) {
+  const values = Object.values(parts);
+  return values.some(value => value === undefined) || values.every(value => value === null) ? null : parts;
+}
+
 function bodyFrom(vertebra) {
-  return isPair(vertebra?.superior) && isPair(vertebra?.inferior)
-    ? { superior: copyPair(vertebra.superior), inferior: copyPair(vertebra.inferior) } : null;
+  return partialFrom({
+    superior: partFrom(vertebra?.superior, isPair, copyPair),
+    inferior: partFrom(vertebra?.inferior, isPair, copyPair),
+  });
 }
 
 function circleFrom(circle) {
@@ -332,10 +406,10 @@ function circleFrom(circle) {
 function levelFromGeometry(code, geometry) {
   switch (code) {
     case 'C2': {
-      const inferior = geometry.vertebrae?.C2?.inferior;
-      const centroid = geometry.c2_centroid;
-      return isPair(inferior) && isPoint(centroid)
-        ? { inferior: copyPair(inferior), centroid: copyPoint(centroid) } : null;
+      return partialFrom({
+        inferior: partFrom(geometry.vertebrae?.C2?.inferior, isPair, copyPair),
+        centroid: partFrom(geometry.c2_centroid, isPoint, copyPoint),
+      });
     }
     case 'S1': return isPair(geometry.s1_superior) ? { superior: copyPair(geometry.s1_superior) } : null;
     case 'FH1': return circleFrom(geometry.femoral_circles?.[0]);
@@ -491,13 +565,11 @@ export function groupCheckState(editor, groupKey) {
 
 // ---------- selecting and placing ----------
 
-const FIRST_HANDLE = new Map([['body', 'SA'], ['c2', 'IA'], ['endplate', 'SA'], ['centroid', 'CENTROID'], ['circle', 'R0']]);
-
 /** Select a row. Another level's placement is cancelled; a visible level with geometry focuses its first handle. */
 export function selectLevel(editor, code) {
   const placing = editor.placing && editor.placing.code !== code ? null : editor.placing;
   const entry = editor.levels[code];
-  const handle = !placing && entry?.visible && entry.geometry ? { code, handle: FIRST_HANDLE.get(kindOf(code)) } : null;
+  const handle = !placing && entry?.visible && entry.geometry ? { code, handle: firstHandle(code, entry.geometry) } : null;
   return { ...editor, selected: code, placing, handle, aiming: false };
 }
 
@@ -523,6 +595,27 @@ export function cancelAim(editor) {
 export function startPlacing(editor, code) {
   const { need } = placementSteps(code);
   return { ...editor, placing: { code, points: Array(need).fill(null), current: 0, history: [] }, selected: code, handle: null, aiming: false };
+}
+
+/**
+ * (2026-10-21, partial endplates, spec §3) Resume a visible, partially placed body or C2: a placement with its set
+ * slots pre-filled and nothing to undo. `step` names the empty slot that is current; any other value (a set slot, none)
+ * leaves the first empty one current. Refused (the editor unchanged) while a placement runs, for a hidden, unplaced,
+ * whole or other-kind level.
+ */
+export function resumePlacing(editor, code, step = null) {
+  const entry = editor.levels[code];
+  const kind = kindOf(code);
+  if (editor.placing || !entry?.visible || !entry.geometry || (kind !== 'body' && kind !== 'c2')) return editor;
+  if (!isPartial(code, entry.geometry)) return editor;
+  const points = Array(placementSteps(code).need).fill(null);
+  for (const { key, steps } of partsOf(code)) {
+    const value = entry.geometry[key];
+    if (value == null) continue;
+    steps.forEach((slot, index) => { points[slot] = copyPoint(steps.length === 1 ? value : value[index]); });
+  }
+  const current = Number.isInteger(step) && points[step] === null ? step : points.indexOf(null);
+  return { ...editor, placing: { code, points, current, history: [] }, selected: code, handle: null, aiming: false };
 }
 
 const clampPoint = (point, size) => (size
@@ -604,13 +697,13 @@ export function cancelPlacing(editor) {
 export const MIN_RADIUS = 0.5;
 
 // The geometry the placement would finish with now, or null when it may not finish: too few points set, a body, C2,
-// endplate or centroid with any step still empty, or a femoral head whose fitted radius is under MIN_RADIUS (or not
+// endplate or centroid with any step still empty, a body or C2 with no part whole or one half set, or a femoral head whose fitted radius is under MIN_RADIUS (or not
 // finite). A head fits its placed rim points in slot order; every other kind passes its points in step order.
 function finishedGeometry(placing, imageSize) {
-  const placed = placedPoints(placing);
-  if (placed.length < placementSteps(placing.code).fitFrom) return null;
-  if (kindOf(placing.code) !== 'circle' && placed.length < placing.points.length) return null;
-  const geometry = geometryFromPoints(placing.code, placed, imageSize);
+  if (placedPoints(placing).length < (kindOf(placing.code) === 'circle' ? placementSteps(placing.code).fitFrom : 1)) return null;
+  // (2026-10-21, partial endplates, spec §3) A body or C2 may finish once a part is whole and none is half set; the
+  // other kinds only at every slot. geometryFromPoints returns null exactly when the placement may not finish.
+  const geometry = geometryFromPoints(placing.code, placing.points, imageSize);
   if (!geometry) return null;
   if (kindOf(placing.code) === 'circle' && !(Number.isFinite(geometry.radius) && geometry.radius >= MIN_RADIUS)) return null;
   return geometry;
@@ -637,6 +730,26 @@ export function finishPlacing(editor, imageSize) {
     ...setEntry(editor, placing.code, { visible: true, source: 'annotator', geometry }),
     placing: null,
     selected: placing.code,
+  };
+}
+
+/**
+ * (2026-10-21, partial endplates, spec §3) Null the part of a placed body or C2 that the focused handle belongs to.
+ * Refused (the editor unchanged) for a hidden or unplaced level, while it is being placed, for a handle with no part,
+ * a part already null, or the last part standing. The focus moves to the first handle that remains.
+ */
+export function removePart(editor, code, handle) {
+  const entry = editor.levels[code];
+  if (!entry?.visible || !entry.geometry || editor.placing?.code === code) return editor;
+  const key = partOfHandle(code, handle);
+  if (!key || entry.geometry[key] == null) return editor;
+  const keys = partsOf(code).map(part => part.key);
+  if (!keys.some(other => other !== key && entry.geometry[other] != null)) return editor;
+  const geometry = Object.fromEntries(keys.map(other => [other, other === key ? null : entry.geometry[other]]));
+  return {
+    ...setEntry(editor, code, { geometry, source: 'annotator' }),
+    handle: { code, handle: firstHandle(code, geometry) },
+    aiming: false,
   };
 }
 
