@@ -110,3 +110,62 @@ def test_removing_heads_preserves_independent_angles_and_never_uses_one_as_hip_a
         assert result['measurements'][key] == original['measurements'][key]
     assert result['qc']['coverage']['missing'] == ['femoral heads']
     assert 'femoral heads' not in result['qc']['coverage']['available']
+
+
+
+def partial(top, keep):
+    whole = body(top)
+    return {'superior': whole['superior'] if keep == 'superior' else None,
+            'inferior': whole['inferior'] if keep == 'inferior' else None,
+            'quadrilateral': None}
+
+
+def test_a_body_with_its_superior_endplate_alone_gives_its_lordosis_and_a_whole_l1_still_gives_l1pa():
+    vertebrae, s1, circles = anatomy(NAMES)
+    vertebrae['L3'] = partial(50, 'superior')
+    result = spinopelvic_measurements_from_geometry(vertebrae, s1, circles)
+    complete = spinopelvic_measurements_from_geometry(*anatomy(NAMES))
+    assert result['measurements']['LL']['L3-S1'] == complete['measurements']['LL']['L3-S1']
+    assert result['measurements']['L1PA'] == complete['measurements']['L1PA']
+    assert result['geometry']['vertebrae']['L3'] == vertebrae['L3']
+    assert result['qc']['coverage']['available'] == list(NAMES)
+
+
+def test_a_body_with_its_inferior_endplate_alone_gives_no_lordosis_and_a_partial_l1_gives_no_l1pa():
+    vertebrae, s1, circles = anatomy(NAMES)
+    vertebrae['L1'] = partial(10, 'inferior')
+    result = spinopelvic_measurements_from_geometry(vertebrae, s1, circles)
+    assert result['measurements']['LL']['L1-S1'] is None
+    assert result['measurements']['L1PA'] is None
+    assert result['geometry']['l1_center'] is None
+    assert result['measurements']['LL']['L2-S1'] is not None
+    assert result['measurements']['PI'] is not None
+    import json
+    json.dumps(result, allow_nan=False)
+
+
+@pytest.mark.parametrize('bad', [
+    {'superior': None, 'inferior': None, 'quadrilateral': None},
+    {'superior': [[20, 10]], 'inferior': None, 'quadrilateral': None},
+    {'superior': [[20, 10], [80, 10]], 'inferior': None, 'quadrilateral': [[20, 10], [80, 10], [80, 20], [20, 20]]},
+    {'superior': [[20, 10], [80, 10]], 'inferior': [[20, 20], [80, 20]], 'quadrilateral': None},
+    {'superior': [[20, 10], [20, 10]], 'inferior': None, 'quadrilateral': None},
+])
+def test_a_body_with_no_endplate_a_half_pair_or_a_quadrilateral_that_does_not_match_its_pairs_is_rejected(bad):
+    vertebrae, s1, circles = anatomy(NAMES)
+    vertebrae['L2'] = bad
+    with pytest.raises(ValueError):
+        spinopelvic_measurements_from_geometry(vertebrae, s1, circles)
+
+
+def test_a_full_spine_film_passes_a_partial_lumbar_body_through():
+    from backend.global_sva_measurements import global_sva_measurements_from_geometry
+    vertebrae, s1, circles = anatomy(NAMES)
+    vertebrae['L1'] = partial(10, 'inferior')
+    result = global_sva_measurements_from_geometry({
+        'region': 'full_spine', 'anterior_side': 'left', 'vertebrae': vertebrae,
+        's1_superior': s1, 'femoral_circles': circles, 'c7_centroid': None, 'c2_centroid': None})
+    assert result['measurements']['LL']['L1-S1'] is None
+    assert result['measurements']['L1PA'] is None
+    assert result['measurements']['GLOBAL_SVA_PX'] is None
+    assert result['geometry']['l1_center'] is None
