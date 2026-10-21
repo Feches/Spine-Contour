@@ -12,7 +12,12 @@
   library, so a film the run had labelled lumbar could not be changed to cervical and the Measurements panel kept the
   lumbar parameters. Now only the film's own turn (its run in flight, or next up in the running batch), edit mode and
   a demo study lock them, each with a tooltip that says so. Changing the region still clears the result and asks for
-  a run; the region bar's Run segmentation keeps waiting for the batch or the current run, and now says which.
+  a run; Run segmentation keeps waiting for the batch or the current run, and now says which.
+- **Run segmentation in one place.** An unsegmented cervical, full-spine or Auto detect film now shows the
+  **UNSEGMENTED** strip along the bottom of the stage with its Run segmentation once its preview is on the stage, as
+  a lumbar film has since 1.3.0 with its X-ray. The region bar keeps View original and the Region and Orientation
+  selects and no longer has a run button of its own, so the button is in the same place whatever the region. A film
+  whose preview or X-ray cannot be read keeps the full card.
 - No model, measurement or record change.
 
 [Release notes](docs/releases/1.3.1.md)
