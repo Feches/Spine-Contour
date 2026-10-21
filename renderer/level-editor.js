@@ -27,6 +27,7 @@ import {
   LEVEL_CODES, openEditor, toggleVisible, toggleGroup, toggleOpen, selectLevel, startPlacing, addPoint, undoPoint,
   setPlacingStep, cancelPlacing, finishPlacing, clearLevel, revertLevel, setLevelGeometry, unsavedCount, canSave,
   markSaved, revertToBaseline, sameGeometry, setComment, aimHandle as armHandle, cancelAim as disarmHandle,
+  resumePlacing, removePart, isPartial, kindOf,
 } from './data/levels.js';
 import { moveHandle } from './viewer/level-handles.js';
 import { projectGeometry, projectsLevel, regionFollowsLevels, projectionIsEmpty } from './data/level-projection.js';
@@ -561,7 +562,31 @@ export function selectLevelRow(code) {
 }
 
 export function startPlace(code) {
-  update((editor) => (editor.levels[code] ? startPlacing(editor, code) : editor), { edit: true });
+  update((editor) => {
+    const entry = editor.levels[code];
+    if (!entry) return editor;
+    // (2026-10-21, partial endplates, spec §4) Place... on a partial body or C2 resumes it at its first missing step.
+    return entry.visible && isPartial(code, entry.geometry) && ['body', 'c2'].includes(kindOf(code))
+      ? resumePlacing(editor, code)
+      : startPlacing(editor, code);
+  }, { edit: true });
+}
+
+/**
+ * (2026-10-21, partial endplates, spec §4) A hollow chip of a partial level, clicked: the placement resumes at that
+ * step (or at the first missing one with no step). Nothing is committed until the placement finishes.
+ */
+export function resumePlace(code, step = null) {
+  update((editor) => resumePlacing(editor, code, step), { edit: true });
+}
+
+/**
+ * (2026-10-21, partial endplates, spec §4) Delete with a point focused: that endplate (or the head's rim) is removed
+ * from the level, the focus moves to a remaining point, and a projected level commits through sync. The last part, a
+ * placement in flight and a one-part kind are refused by the level model.
+ */
+export function removeFocusedPart() {
+  update((editor) => (editor.handle ? removePart(editor, editor.handle.code, editor.handle.handle) : editor), { edit: true });
 }
 
 export function clearPlacedLevel(code) {

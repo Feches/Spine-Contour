@@ -21,7 +21,7 @@ import {
   configureLevelEditor, enterLevelEditor, exitNow, startPlace, placePoint, toggleLevelVisible, selectPlacingStep,
   restorePlacing, fitPlacing, writeReviewRecord, saveLevelEdits, hasStashedEditor, forgetLevelEditor, commitHandleMove,
   revertPlacedLevel, setLevelComment, discardLevelEdits, resetLevelsToModel, clearPlacedLevel, toggleLevelGroup,
-  aimHandle, cancelAim, placeAimedPoint, setFocusedHandle,
+  aimHandle, cancelAim, placeAimedPoint, setFocusedHandle, cancelPlace, resumePlace, removeFocusedPart,
 } from '../renderer/level-editor.js';
 import { projectionIsEmpty } from '../renderer/data/level-projection.js';
 import { deriveStatus } from '../renderer/data/status.js';
@@ -1236,4 +1236,101 @@ test('RESET TO PREDICTION leaves the comment and savedComment alone (spec §3.3)
     assert.equal(unsavedCount(editor), 1, 'the levels are back on the model; the comment remains the one change');
     assert.equal(commits.length, 1, 'the reset commits nothing');
   });
+});
+
+// (2026-10-21, partial endplates, spec §4) FINISH, resume and Delete through the real store.
+test('FINISH after SA and SP commits a C7 with its superior endplate alone, as a cervical film with its side from that pair', async () => {
+  const commits = [];
+  wire(commits);
+  await withStore(failedAutoFilm('SP-9560'), async () => {
+    await enterLevelEditor('SP-9560');
+    startPlace('C7');
+    placePoint([100, 300], IMAGE);
+    placePoint([140, 302], IMAGE);
+    fitPlacing(IMAGE);
+    await settle();
+    assert.equal(commits.length, 1);
+    const { geometry } = commits[0];
+    assert.equal(geometry.region, 'cervical');
+    assert.equal(geometry.anterior_side, 'left');
+    assert.deepEqual(geometry.vertebrae.C7, { superior: [[100, 300], [140, 302]], inferior: null, quadrilateral: null });
+    assert.equal(getState().levelEditor.placing, null);
+    assert.equal(levelState(getState().levelEditor.levels.C7, null), 'manual');
+    assert.deepEqual(studyOf('SP-9560').geometry.vertebrae.C7.inferior, null, 'the study took it through the queue');
+  });
+});
+
+test('Place… on a partial level resumes it at its first missing step, and the completing clicks commit the whole body', async () => {
+  const commits = [];
+  wire(commits);
+  await withStore(failedAutoFilm('SP-9561'), async () => {
+    await enterLevelEditor('SP-9561');
+    startPlace('C7');
+    placePoint([100, 300], IMAGE);
+    placePoint([140, 302], IMAGE);
+    fitPlacing(IMAGE);
+    await settle();
+    startPlace('C7');
+    assert.deepEqual(getState().levelEditor.placing, { code: 'C7', points: [[100, 300], [140, 302], null, null], current: 2, history: [] }, 'Place… resumes at the first missing step');
+    cancelPlace();
+    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null }, 'CANCEL left the level as it was');
+    resumePlace('C7', 3);
+    assert.equal(getState().levelEditor.placing.current, 3, 'a hollow chip chooses its step');
+    placePoint([142, 332], IMAGE);
+    placePoint([102, 330], IMAGE);
+    await settle();
+    assert.equal(commits.length, 2);
+    assert.deepEqual(commits[1].geometry.vertebrae.C7.quadrilateral, [[100, 300], [140, 302], [142, 332], [102, 330]]);
+    assert.equal(getState().levelEditor.placing, null);
+  });
+});
+
+test('Delete with a point focused removes its endplate and commits; the last part, a placement and a head are refused and commit nothing', async () => {
+  const commits = [];
+  wire(commits);
+  await withStore(failedAutoFilm('SP-9562'), async () => {
+    await enterLevelEditor('SP-9562');
+    placeBody('C7', [100, 300]);
+    await settle();
+    assert.equal(commits.length, 1);
+    setFocusedHandle({ code: 'C7', handle: 'IP' });
+    removeFocusedPart();
+    await settle();
+    assert.equal(commits.length, 2);
+    assert.deepEqual(commits[1].geometry.vertebrae.C7, { superior: [[100, 300], [140, 302]], inferior: null, quadrilateral: null });
+    assert.deepEqual(getState().levelEditor.handle, { code: 'C7', handle: 'SA' });
+    removeFocusedPart();
+    await settle();
+    assert.equal(commits.length, 2, 'the last part stays');
+    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null });
+    startPlace('C7');
+    setFocusedHandle({ code: 'C7', handle: 'SA' });
+    removeFocusedPart();
+    assert.equal(commits.length, 2, 'not while placing');
+    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null });
+  });
+});
+
+test('a partial level saves a record with nullable corners that validates, and Edit again reads it back intact', async () => {
+  const commits = [];
+  wire(commits);
+  const bridge = labelBridge();
+  bridge.spineContour.loadLabelRecord = async (name) => bridge.saved.find((entry) => entry.name === name)?.record ?? null;
+  await withBridge(bridge, () => withStore(failedAutoFilm('SP-9563'), async () => {
+    await enterLevelEditor('SP-9563');
+    startPlace('C7');
+    placePoint([100, 300], IMAGE);
+    placePoint([140, 302], IMAGE);
+    fitPlacing(IMAGE);
+    await settle();
+    await saveLevelEdits();
+    assert.equal(bridge.saved.length, 1);
+    const { record } = bridge.saved[0];
+    assert.deepEqual(record.levels.C7.corners, { sa: [100, 300], sp: [140, 302], ia: null, ip: null });
+    assert.deepEqual(validateAgainst(SCHEMA, record).errors, []);
+    exitNow();
+    await enterLevelEditor('SP-9563');
+    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null });
+    assert.equal(unsavedCount(getState().levelEditor), 0);
+  }));
 });
