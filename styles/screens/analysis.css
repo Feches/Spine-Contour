@@ -655,6 +655,9 @@
   border-color: var(--step-color);
   background: var(--step-color);
 }
+/* (2026-10-21) A placed level's chip armed from the bar: the next film click places that point, so its dot is
+   hollow until then, as a placement's current empty step is. */
+.viewer-step.is-aiming .viewer-step-dot { background: transparent; }
 /* A body, C2, endplate or centroid chip is a button that makes its step the one the next film click
    sets (G2); a femoral head's chips stay spans. The button's own chrome is reset so it looks like the
    span; .viewer-step.is-current (0,2,0) still wins the ground over this rule (0,1,1). */

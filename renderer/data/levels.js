@@ -26,6 +26,7 @@
  *  @property {{file: string|null, exists: boolean}} record           the label record on disk for this study
  *  @property {string|null} selected                                 the selected row's code
  *  @property {{code: string, handle: string}|null} handle           the focused handle: 'SA'|'SP'|'IA'|'IP'|'CENTROID'|'R0'..'R3'
+ *  @property {boolean} aiming                                       (2026-10-21) the focused handle is armed from its chip: the next film click places it
  *  @property {Placing|null} placing                                  the placement in progress
  *  @property {{cervical: boolean, thoracic: boolean, lumbar: boolean, sacral: boolean, femoral: boolean}} open
  *  @property {{then: 'exit'|'back'}|null} exitPrompt
@@ -436,6 +437,7 @@ export function openEditor({ study, region, modelGeometry, saved }) {
     record: { file: saved?.file ?? study?.labelFile ?? null, exists: Boolean(saved) },
     selected: null,
     handle: null,
+    aiming: false,
     placing: null,
     open: Object.fromEntries(LEVEL_GROUPS.map(group => [group.key, group.codes.some(code => levels[code].visible)])),
     exitPrompt: null,
@@ -496,13 +498,31 @@ export function selectLevel(editor, code) {
   const placing = editor.placing && editor.placing.code !== code ? null : editor.placing;
   const entry = editor.levels[code];
   const handle = !placing && entry?.visible && entry.geometry ? { code, handle: FIRST_HANDLE.get(kindOf(code)) } : null;
-  return { ...editor, selected: code, placing, handle };
+  return { ...editor, selected: code, placing, handle, aiming: false };
+}
+
+/**
+ * (2026-10-21) A chip of the selected placed level, clicked: the point is focused and ARMED, so the next film click
+ * places it there (the wiring's placeAimedPoint, through viewer/level-handles.js moveHandle). The level must be
+ * visible and placed; a placement in progress keeps its own chips, so nothing is armed under one. Armed at that
+ * point already: the editor unchanged. Any other focus, a row selection or a placement disarms.
+ */
+export function aimHandle(editor, code, handle) {
+  const entry = editor.levels[code];
+  if (editor.placing || !entry?.visible || !entry.geometry) return editor;
+  if (editor.aiming && editor.handle?.code === code && editor.handle.handle === handle) return editor;
+  return { ...editor, selected: code, handle: { code, handle }, aiming: true };
+}
+
+/** Disarm, keeping the focus on the point (Escape, the chip clicked again, the click that placed it). */
+export function cancelAim(editor) {
+  return editor.aiming ? { ...editor, aiming: false } : editor;
 }
 
 /** Begin a placement: every slot empty, the first step current, nothing to undo. */
 export function startPlacing(editor, code) {
   const { need } = placementSteps(code);
-  return { ...editor, placing: { code, points: Array(need).fill(null), current: 0, history: [] }, selected: code, handle: null };
+  return { ...editor, placing: { code, points: Array(need).fill(null), current: 0, history: [] }, selected: code, handle: null, aiming: false };
 }
 
 const clampPoint = (point, size) => (size

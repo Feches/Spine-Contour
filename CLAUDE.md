@@ -1,5 +1,48 @@
 # Spine Contour
 
+**2026-10-20 release 1.3.1 (the selected level's points in the edit bar; BUILT, at the owner's gate, not pushed):**
+branch `claude/segmentation-points-display-2df267` (worktree `.claude/worktrees/design-system-extraction-eaac17`,
+moved off upstream `92c8e87` onto `fork/main` @ `eac0eb9`, v1.3.0, with `checkout -B`). The owner's ask: in edit mode
+the SA / SP / IA / IP chips appeared only while a level was being placed by hand, so selecting a level that was already
+placed (L5) listed nothing. `renderer/viewer/level-handles.js` `selectedLevelChips(editor)` (pure: one chip per handle
+of the selected placed level in Tab order, in the placement's labels and colours, the focused handle marked; null while
+placing, with nothing selected, or for a hidden or unplaced level) and `renderer/components/viewer.js`
+`buildHandleChips` / `updateEditBar` (the chip row keyed on the placing, the selected code, its geometry and the
+focused handle; a chip click is `setFocusedHandle`; hidden while the W/L panel is open; the divider follows the chips).
+The help line adds "or pick a point and nudge it with the arrow keys". Unit 1152/1152; `smoke-levels.mjs` (dom)
+149/149 with four new checks in section 3. Docs: `docs/level-editor.md` and HANDOFF §3 amended. **Second fix on the
+branch, issue #68** (the owner: a film Auto detect labelled lumbar could not be changed to cervical, nor the parameters
+shown). Reproduced over CDP on a synthetic Auto detect film with a lumbar result: idle, the pick works (the result
+clears, the cervical rows list, Run segmentation appears); the select was disabled, with no tooltip, whenever ANY run
+or batch was in flight anywhere (`regionSelect.disabled = running || batch || demo || editing`), which on a 477-film
+library under its batch is the report. Now `screens/analysis.js` `regionLock(open, state, what)` (pure, exported,
+four tests in `test/analysis.test.js`): locked for the film's own turn (`running === id`, or `batch.ids[done]` of a
+non-stopping batch), edit mode (R21) and a demo study, each with its title; a run or batch on other films leaves both
+selects live; `changeRegion` and `update()` read it, and the bar's Run segmentation carries `WAIT_FOR_BATCH` /
+`WAIT_FOR_RUN` / the editing title. New `tools/smoke/smoke-region-change.mjs` 15/15 (batches and runs simulated in
+the store; README section). Unit 1156/1156. Docs: `docs/automatic-film-detection.md`. **Third fix (2026-10-21, the
+owner's choice "strip for every film"):** Run segmentation sat in the UNSEGMENTED strip for a lumbar film (1.3.0) but
+on the region bar for a cervical, full-spine or Auto detect film; now `describeCard`'s null branch for a previewed
+film is gone, so the strip serves every unsegmented film with its film on the stage (`currentImages`, the backend
+preview included), and the bar's `alignmentRunButton` is removed (View original and the two selects stay); a film
+whose preview or decode fails keeps the full card. `smoke-region-change.mjs` 16/16 (the fixture film written to
+`%TEMP%` so the preview-only `/calibrate` can read it); `smoke-reviewer.mjs` 128/131, its three misses in section 5's
+real run, which fails on this laptop's stale `backend/onnx/femoral.onnx` (a 768-input graph; the backend feeds 640)
+before any screen read. Docs: `docs/level-editor.md`, `docs/automatic-film-detection.md`, HANDOFF's 2026-10-19
+strip decision amended. **Fourth (2026-10-21, the owner: "select SA, then click on the image to place it"):** a chip
+of the selected placed level ARMS its point: `levels.js` `aimHandle` / `cancelAim` and the editor's `aiming` flag
+(cleared by `selectLevel`, `startPlacing`, `setFocusedHandle` to another handle and `dropStaleHandle`);
+`level-handles.js` `aimedStep` (the bar's `PLACING L4 · SA`, the step's help, `aiming` on the chip);
+`level-editor.js` `aimHandle` / `cancelAim` / `placeAimedPoint` (the clamped film click moved through `moveHandle`,
+committed like a drag release, paused while the W/L panel is open); the viewer's `handlePointerDown` starts no drag
+while armed and `handleClick` places, Escape disarms ahead of the W/L panel, the chip `is-aiming` (hollow dot,
+`aria-pressed`). The FAILED card is a strip too once the film is on the stage (the full card's scrim covered the
+toolbar, so a failed Auto film's Edit was unreachable after the strip change; `smoke-levels.mjs` §12 caught it).
+Unit 1161/1161; `smoke-levels.mjs` dom 154/154 (five new checks in section 3, L4 reverted after);
+`smoke-region-change.mjs` 16/16 on the same launch.
+The 1.3.1 release commit is on the branch; the owner checks the dev build, pushes to `fork` and opens the PR to
+`main`, whose merge publishes v1.3.1.
+
 **2026-10-19 Find list header filters, the REGION column and the Unknown view (BUILT, at the owner's gate, not pushed,
 shipping as one release with the reviewer navigation round below):** the same branch `worktree-reviewer-navigation` and
 worktree, on top of that round, off `origin/main` @ `cc1b548` (v1.2.0). The owner's ask: the Find list's VIEW column read

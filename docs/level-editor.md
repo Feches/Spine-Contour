@@ -21,8 +21,9 @@ The toolbar's pencil (**Edit segmentation**) enters edit mode. The right panel's
 the Measurements panel give way to the **Vertebral levels** panel; the header shows `EDITING SEGMENTATION`; the edit bar
 across the top of the stage reads `EDITING SEGMENTATION` with a help line, then RESET TO PREDICTION and DONE. Entering
 edit mode turns the Pan toggle off (the middle button and the left+right chord still pan). While editing, the toolbar's
-Re-run segmentation and the region bar's Run segmentation are disabled, titled `Finish editing before re-running
-segmentation` (R17): a run would replace the levels under the editor. The region bar's Region and Orientation selects
+Re-run segmentation is disabled, titled `Finish editing before re-running segmentation` (R17), and the stage's
+UNSEGMENTED strip or card, with its Run segmentation, is hidden (since 2026-10-21 the strip serves every unsegmented
+film; the region bar's own Run segmentation is gone): a run would replace the levels under the editor. The region bar's Region and Orientation selects
 are disabled too, titled `Finish editing before changing the region` and `Finish editing before changing the
 orientation` (R21): either change clears the study, its levels included.
 
@@ -103,6 +104,13 @@ A film opens with the groups its type shows visible and the rest not visible (`s
 
 A level the model found is visible whatever its group. Any checkbox click makes the source `annotator`.
 
+A film whose run found the wrong region (a cervical film read as lumbar) keeps that region in edit mode: its
+measurements read the run's region, so cervical levels placed on it are saved in the label record but measure
+nothing. To annotate it as what it is, set the Region on the Analysis screen first (since 1.3.1 that works while a
+batch runs over other films; it clears the run's result), then press Edit: the editor opens on the original film
+with that region's defaults, the placed levels are measured as that region's, and Save edits makes the film
+Hand-placed. No run is needed.
+
 ### Unchecking a level
 
 Unchecking keeps the level's geometry in memory for the session, so checking it again restores it; the saved record
@@ -124,7 +132,8 @@ click the next empty step is current again (the one after it, wrapping round to 
 any order; the level is placed once every step has its point. Clicking the chip of a point already placed and then the
 film moves that point (re-placing it). A chip whose dot is filled is placed; the chip on the accent ground is the
 current one, and a placed point chosen again shows both. A femoral head's chips only show progress and cannot be
-clicked: its rim points are unordered.
+clicked: its rim points are unordered. Once the level is placed, and whenever a placed level is selected, the same
+row lists that level's points with every dot filled (since 2026-10-20; see Handles and the keyboard).
 
 A click within one pixel of any other point of the placement is ignored (R26), so a double-click counts once and no
 corner can land on another (a zero-length endplate is a measurement error); a re-placed point may land beside its own
@@ -153,8 +162,19 @@ PREDICTION for the whole study. An Edited level can also be returned to the mode
 ## Handles and the keyboard
 
 Selecting a row gives that level its handles on the stage (only the selected level has handles) and focuses its first
-handle; the help line says `L3 selected — drag a handle to adjust it.`. A corner handle carries its corner's colour, a
-centroid the level's colour, a rim point the trace yellow. A handle is 6 px in radius on screen at 1:1; zoomed in
+handle; the help line says `L3 selected — drag a handle to adjust it, or pick a point and nudge it with the arrow
+keys.`. Since 2026-10-20 the edit bar also lists the selected level's points as chips, whether the model placed the
+level or a hand did: `SA SP IA IP` for a body (C2's `IA IP CENTROID`, an endplate's `ANT POST`, a centroid, a head's
+`P1`–`P4`, one per rim point), each dot in the handle's colour and filled, the focused handle on the accent ground.
+Clicking a chip **arms** that point (since 2026-10-21): the bar reads `PLACING L4 · SA`, the help line names the
+click (`Click the superior-anterior corner (SA). Escape keeps the point where it is.`), the chip's dot shows hollow,
+and the next click on the film places the point there, clamped to the image and committed through `/measure` like a
+drag, the level reading Edited. The focus stays on the point, so the arrow keys nudge it afterwards. Escape, the chip
+clicked again, Tab or a press on a handle disarms without moving anything; a left+right chord that begins with the
+click pans instead and places nothing, and the click waits while the W/L panel is open. Before 2026-10-20 the chips
+showed only while a level was being placed, so a level the model found never listed its points. The row is empty with
+nothing selected, for an unplaced or unchecked level, and while the W/L panel is open. A corner handle carries its
+corner's colour, a centroid the level's colour, a rim point the trace yellow. A handle is 6 px in radius on screen at 1:1; zoomed in
 past 1:1 it grows with the square root of the zoom (8.5 px at 2x, 12 at 4x, 17 at 8x) rather than with the film, so a
 zoomed-in cervical body is neither dwarfed by its handles nor left with specks beside the magnified outline (gate
 feedback G9, D22); on a film zoomed out below 1:1 it shrinks with it to a floor of 3 px, its outline and its focus

@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.3.1
+
+- In edit mode the edit bar lists the **selected level's points** — `SA SP IA IP` for a vertebral body, each dot in
+  its handle's colour — for every placed level, whether the model placed it or a hand did. Before, the chips showed
+  only while a level was being placed, so selecting a level the model had found (L5, say) listed nothing. Clicking a
+  chip arms that point: the bar reads `PLACING L4 · SA`, and the next click on the film places the point there, as a
+  drag would; Escape or the chip again keeps it where it is, and the arrow keys nudge the point either way. A
+  placement in progress keeps its own step chips.
+- **A wrong Auto detect region can be corrected while a batch runs** (issue #68). The Analysis screen's Region and
+  Orientation selects used to be disabled, with no tooltip, whenever any run or batch was in flight anywhere in the
+  library, so a film the run had labelled lumbar could not be changed to cervical and the Measurements panel kept the
+  lumbar parameters. Now only the film's own turn (its run in flight, or next up in the running batch), edit mode and
+  a demo study lock them, each with a tooltip that says so. Changing the region still clears the result and asks for
+  a run; Run segmentation keeps waiting for the batch or the current run, and now says which.
+- **Run segmentation in one place.** An unsegmented cervical, full-spine or Auto detect film now shows the
+  **UNSEGMENTED** strip along the bottom of the stage with its Run segmentation once its preview is on the stage, as
+  a lumbar film has since 1.3.0 with its X-ray. The region bar keeps View original and the Region and Orientation
+  selects and no longer has a run button of its own, so the button is in the same place whatever the region. A
+  **Failed** film with its film on the stage shows a FAILED strip the same way, its reason in the region note, so
+  Edit segmentation stays reachable to place the film by hand. A film whose preview or X-ray cannot be read keeps the
+  full card.
+- No model, measurement or record change.
+
+[Release notes](docs/releases/1.3.1.md)
+
 ## 1.3.0
 
 - **Previous and next on the Analysis screen.** The arrow keys (Left or Up for the previous film, Right or Down for

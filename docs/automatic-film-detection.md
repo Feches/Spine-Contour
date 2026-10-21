@@ -6,6 +6,23 @@ lumbar or standing/full-spine inference. The saved preference stays Auto while t
 result geometry records its resolved region, so subsequent runs still detect the
 film. Select a region explicitly to override the choice.
 
+**Correcting a wrong detection** (2026-10-20, issue #68). On the Analysis screen the region bar's Region select
+overrides Auto detect for the open film: choosing Cervical on a film the run labelled lumbar clears that result,
+lists the cervical parameters in the Measurements panel and offers Run segmentation in the UNSEGMENTED strip along the
+bottom of the stage (since 2026-10-21 the strip serves every region; before, a cervical, full-spine or Auto detect
+film had the button on the region bar and a lumbar film in the strip); the Orientation select does the same for the
+anterior side. The two selects are locked only during the film's own turn (its run in flight, or next up
+in the running batch), in edit mode and for a demo study, each with a tooltip that says so. A run or batch over other
+films leaves them live, so a library's wrong detections can be corrected while its batch runs; Run segmentation
+itself still waits for the batch or the current run to finish, and its tooltip says which. Before 1.3.1 any run or
+batch anywhere disabled both selects with no tooltip.
+
+To annotate such a film by hand instead of running it again, set its Region first, then press Edit segmentation: the
+film opens on its original with that region's levels visible (C2–C7 and T1 for cervical), the levels you place are
+measured as that region's, and Save edits makes the film Hand-placed. Entering edit mode without changing the Region
+keeps the run's region: the model's wrong levels are there to uncheck, and cervical levels placed on a film the run
+called lumbar are saved in the label record but measure nothing, since a lumbar film measures L1–S1 and the heads.
+
 Standing films also default to automatic anterior-side detection. Both horizontal
 orientations are checked for consistent lumbar landmark chains and anatomical S1
 endpoint order. A uniquely supported orientation is accepted; tied or absent evidence asks

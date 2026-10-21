@@ -21,6 +21,7 @@ import {
   configureLevelEditor, enterLevelEditor, exitNow, startPlace, placePoint, toggleLevelVisible, selectPlacingStep,
   restorePlacing, fitPlacing, writeReviewRecord, saveLevelEdits, hasStashedEditor, forgetLevelEditor, commitHandleMove,
   revertPlacedLevel, setLevelComment, discardLevelEdits, resetLevelsToModel, clearPlacedLevel, toggleLevelGroup,
+  aimHandle, cancelAim, placeAimedPoint, setFocusedHandle,
 } from '../renderer/level-editor.js';
 import { projectionIsEmpty } from '../renderer/data/level-projection.js';
 import { deriveStatus } from '../renderer/data/status.js';
@@ -224,6 +225,52 @@ test('a step chip (selectPlacingStep) chooses the next point, commits nothing, a
     assert.deepEqual(commits[0].geometry.vertebrae.L3.superior, [[100, 400], [140, 402]]);
     assert.deepEqual(commits[0].geometry.vertebrae.L3.inferior, [[102, 430], [142, 432]]);
     assert.equal(getState().levelEditor.placing, null);
+  });
+});
+
+// (2026-10-21) A placed level's point armed from its chip is placed by the next film click, committed like a drag.
+test('an armed point (aimHandle) is placed by the next film click (placeAimedPoint) and committed; the W/L panel, a moved focus and the chip itself disarm', async () => {
+  const study = failedAutoFilm('SP-9510');
+  const commits = [];
+  wire(commits);
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    placeBody('L3', [100, 400]);
+    await settle();
+    assert.equal(commits.length, 1);
+    aimHandle('L3', 'SA');
+    const armed = getState().levelEditor;
+    assert.equal(armed.aiming, true);
+    assert.deepEqual(armed.handle, { code: 'L3', handle: 'SA' });
+    aimHandle('L3', 'SA');
+    assert.equal(getState().levelEditor, armed, 'armed at that point already: nothing written');
+
+    openWindowPanel();
+    placeAimedPoint([90, 390]);
+    assert.equal(getState().levelEditor, armed, 'a click waits while the window / level panel is open');
+    closeWindowPanel();
+
+    placeAimedPoint([90, 390]);
+    await settle();
+    const placed = getState().levelEditor;
+    assert.equal(placed.aiming, false, 'disarmed by the click');
+    assert.deepEqual(placed.handle, { code: 'L3', handle: 'SA' }, 'the focus stays on the point');
+    assert.deepEqual(placed.levels.L3.geometry.superior[0], [90, 390]);
+    assert.equal(placed.levels.L3.source, 'annotator');
+    assert.equal(commits.length, 2, 'committed like a drag release');
+    assert.deepEqual(commits[1].geometry.vertebrae.L3.superior[0], [90, 390]);
+    placeAimedPoint([10, 10]);
+    assert.equal(getState().levelEditor, placed, 'not armed: a click places nothing');
+
+    aimHandle('L3', 'IP');
+    setFocusedHandle({ code: 'L3', handle: 'IA' });
+    assert.equal(getState().levelEditor.aiming, false, 'moving the focus disarms');
+    aimHandle('L3', 'IP');
+    assert.equal(getState().levelEditor.aiming, true);
+    cancelAim();
+    assert.equal(getState().levelEditor.aiming, false);
+    assert.deepEqual(getState().levelEditor.handle, { code: 'L3', handle: 'IP' }, 'cancelling keeps the focus');
+    assert.equal(commits.length, 2, 'arming, moving the focus and cancelling commit nothing');
   });
 });
 

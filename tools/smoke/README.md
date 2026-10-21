@@ -984,6 +984,27 @@ file in the wrong profile and reports 41/42. And `smoke-studies.mjs` straight af
 launch (the documented order) is what found `9dbb63c`: the Studies screen's return-to-row scroll (2026-10-19) must
 leave a row already in view alone, or a short list scrolls its own search box off the top.
 
+## Running the region-change suite
+
+`smoke-region-change.mjs` (2026-10-20, issue #68; 2026-10-21, the strip for every film) drives the Analysis
+screen's Region select on a film whose Auto detect run found the wrong region: a synthetic 600x800 film (SP-9400)
+written to `%TEMP%` with a lumbar result measured by the real `/measure` and a record reading Auto detect, plus an
+unsegmented SP-9401 whose path points nowhere. It picks Cervical when the app is idle (the result clears, the
+cervical parameters list, the backend's preview-only `/calibrate` puts the film on the stage and the UNSEGMENTED
+strip carries an enabled Run segmentation while the bar offers View original only), under a batch simulated in the
+store over SP-9401 (the pick still works; the strip's Run segmentation waits with its tooltip), with the film next up
+in that batch, done, later in the queue and under a stopping batch, with its own and another film's run in flight,
+and in edit mode. Nothing calls the batch driver, so no run starts. Store and DOM reads only; the injected studies
+and the `%TEMP%` film are removed at the end.
+
+```
+node tools/smoke/launch.mjs
+node tools/smoke/smoke-region-change.mjs
+node tools/smoke/cdp.mjs --quit
+```
+
+**Known baseline:** 16/16 on a fresh scratch launch (2026-10-21; 15/15 before the strip check).
+
 ## Library
 
 `cdp-lib.mjs` exports `connect()`, whose returned object provides trusted-input helpers

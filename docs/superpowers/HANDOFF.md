@@ -425,6 +425,15 @@ screenshots.
   shows the backend's preview (`previewOriginal`), with no card and the Run segmentation button on the region bar, as
   before this round. Every new film is Auto detect, so that is what a freshly loaded film shows. Since R15 either load
   starts after a 150 ms settle.
+  **Amended 2026-10-21 (the owner, 1.3.1):** the strip serves every unsegmented film whose film is on the stage, the
+  backend's preview included, so Run segmentation is in one place whatever the region; `describeCard`'s null branch
+  for a previewed cervical, full-spine or Auto detect film is gone, and so is the region bar's own Run segmentation
+  (`screens/analysis.js`), which kept View original and the two selects. The FAILED card is a strip too once the
+  film is on the stage (`strip: Boolean(currentImages)`): the full card's `inset: 0` scrim paints over the toolbar,
+  so a failed Auto detect or cervical film, which before this round had no card over its preview, would have lost
+  Edit segmentation, the way to place it by hand (R16); `smoke-levels.mjs` section 12 caught it. The reason stays in
+  the region note (`failedRunNote`). A film whose preview or decode cannot be read keeps the full card, as before.
+  Checked by `tools/smoke/smoke-region-change.mjs` and `smoke-levels.mjs`.
 - **Counts** (2026-10-19, this worktree, scratch profiles under the session scratchpad, synthetic films, no
   screenshots). Unit 1113 -> 1123 (`test/find.test.js`: the status filter, the order, the neighbour and the position;
   `test/analysis.test.js`: `positionLabel`, `NAV_STEP`). `tools/smoke/smoke-reviewer.mjs` (new) 64/64, twice;
