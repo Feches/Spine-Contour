@@ -430,3 +430,46 @@ built.
 - **Smoke coverage.** `smoke-cervical.mjs` and `smoke-segmental.mjs` need a lateral cervical film this workstation does
   not have, and both screenshot the real film they run on, against the rule that no screenshot of a real film is taken;
   their screenshots should go before they run again.
+
+## 9. Placing only some of a level's points (2026-10-21, deferred by the owner to its own session)
+
+The owner's ask: "if you can only see the superior endplate of C7 you can place C7 SA, SP but not IA and IP". A level
+today is all of its points or nothing, from the placement flow to the record. What each layer assumes:
+
+- **Cervical and full-spine geometry already allows it.** `renderer/data/persistence.js` accepts a cervical body
+  with one endplate null (the HRNet model can return that), and `cervicalMeasurements` is null-safe: C2–C7 Cobb needs
+  the C2 and C7 inferior endplates, C2–C7 SVA the C7 superior posterior corner. The level editor cannot represent it:
+  `renderer/data/levels.js` `levelsFromGeometry` needs both pairs, so such a body reads Not placed; the canvas's
+  `shapeParts` draws nothing for it; `projectGeometry` writes full quadrilaterals only.
+- **Lumbar needs the backend.** `POST /measure` (`backend/utils.py`, the lumbar validator) requires superior, inferior
+  and quadrilateral for every lumbar body, a 422 otherwise; LL reads L1 superior and S1, segmental angles and disc
+  heights facing plates, L1PA a full L1 (`l1_center`).
+- **The label record requires all four corners** (`label-record.schema.json` `corners4`; a Manual body lists four
+  `edited_points`).
+
+### Decisions to make first (the recommendation first in each)
+
+| Decision | Recommended | Alternative |
+|---|---|---|
+| Granularity | Per endplate: a body is SA+SP, IA+IP or both; C2 its inferior pair, its centroid or both; T1, S1, T4 and the heads unchanged. | Per single point: cheaper, but a lone corner measures nothing and records an endplate the model should learn. |
+| Marking it | While placing, FINISH once an endplate is complete (the rest not visible); on a placed level, Delete on an armed chip clears its endplate; an armed hollow chip and a film click place a missing endplate later (the 1.3.1 `aimHandle` / `placeAimedPoint` path). | A checkbox per point in the panel's rows. |
+| Films | Cervical and full-spine first (editor, canvas, projection, record only); lumbar with the backend change, in the same release or routed to the backend developer. | Cervical only. |
+| The record | `corners` entries nullable, `edited_points` listing placed points only, under the `/1` id with a dated amendment (as R39 did for `edits`). | A `/2` schema id: explicit, but every earlier record fails a strict consumer. |
+
+The measurements then follow what is placed: a C7 with its superior endplate alone gives SVA but not Cobb, a dash for
+the rest.
+
+### Where the code is
+
+`renderer/data/levels.js` (the level model, `BodyGeometry`, `levelsFromGeometry`, `geometryFromPoints`,
+`finishedGeometry`, `levelState`, `changedPoints`), `renderer/data/level-projection.js` (`quadrilateral`,
+`projectGeometry`), `renderer/viewer/canvas.js` (`shapeParts`, `drawDynamicLayer`'s outline), `renderer/viewer/level-handles.js`
+(handles of a partial body), `renderer/data/label-record.js` and the schema, `renderer/components/viewer.js` (the
+placement flow's FINISH, the armed chips), `backend/utils.py` for lumbar. Tests: `test/levels.test.js`,
+`test/level-projection.test.js`, `test/label-record.test.js`, `test/canvas.test.js`, `tools/smoke/smoke-levels.mjs`.
+
+### Rough size
+
+A spec-and-plan round: the level model and projection, the canvas, the placement flow, the record and its schema,
+tests, smoke checks and docs; the backend's lumbar validator and measurements if lumbar is in. Released as its own
+version after 1.3.1.
