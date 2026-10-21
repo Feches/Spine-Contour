@@ -29,8 +29,19 @@ whose preview or decode fails keeps the full card. `smoke-region-change.mjs` 16/
 `%TEMP%` so the preview-only `/calibrate` can read it); `smoke-reviewer.mjs` 128/131, its three misses in section 5's
 real run, which fails on this laptop's stale `backend/onnx/femoral.onnx` (a 768-input graph; the backend feeds 640)
 before any screen read. Docs: `docs/level-editor.md`, `docs/automatic-film-detection.md`, HANDOFF's 2026-10-19
-strip decision amended. The 1.3.1 release commit is on the branch; the owner checks the dev build, pushes to `fork`
-and opens the PR to `main`, whose merge publishes v1.3.1.
+strip decision amended. **Fourth (2026-10-21, the owner: "select SA, then click on the image to place it"):** a chip
+of the selected placed level ARMS its point: `levels.js` `aimHandle` / `cancelAim` and the editor's `aiming` flag
+(cleared by `selectLevel`, `startPlacing`, `setFocusedHandle` to another handle and `dropStaleHandle`);
+`level-handles.js` `aimedStep` (the bar's `PLACING L4 · SA`, the step's help, `aiming` on the chip);
+`level-editor.js` `aimHandle` / `cancelAim` / `placeAimedPoint` (the clamped film click moved through `moveHandle`,
+committed like a drag release, paused while the W/L panel is open); the viewer's `handlePointerDown` starts no drag
+while armed and `handleClick` places, Escape disarms ahead of the W/L panel, the chip `is-aiming` (hollow dot,
+`aria-pressed`). The FAILED card is a strip too once the film is on the stage (the full card's scrim covered the
+toolbar, so a failed Auto film's Edit was unreachable after the strip change; `smoke-levels.mjs` §12 caught it).
+Unit 1161/1161; `smoke-levels.mjs` dom 154/154 (five new checks in section 3, L4 reverted after);
+`smoke-region-change.mjs` 16/16 on the same launch.
+The 1.3.1 release commit is on the branch; the owner checks the dev build, pushes to `fork` and opens the PR to
+`main`, whose merge publishes v1.3.1.
 
 **2026-10-19 Find list header filters, the REGION column and the Unknown view (BUILT, at the owner's gate, not pushed,
 shipping as one release with the reviewer navigation round below):** the same branch `worktree-reviewer-navigation` and
