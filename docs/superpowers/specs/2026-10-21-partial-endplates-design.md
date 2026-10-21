@@ -1,7 +1,7 @@
 # Placing only some of a level's points (partial endplates) — design
 
-**Status:** DRAFT, 2026-10-21. Written from ROADMAP §9's decisions table; the owner has not ruled on N1–N4 below.
-Nothing is built. Branch `claude/partial-endplates-ca5755` (worktree `.claude/worktrees/studies-ui-updates-bb040d`),
+**Status:** APPROVED 2026-10-21: the owner ruled N1–N4, all the recommended column ("N1 N2 N3 N4 all recommended").
+Plan `plans/2026-10-21-partial-endplates.md` (ten tasks). Nothing is built yet. Branch `claude/partial-endplates-ca5755` (worktree `.claude/worktrees/studies-ui-updates-bb040d`),
 cut from `claude/segmentation-points-display-2df267` @ `7e85035` (1.3.1, at the owner's gate, unpushed). Released as
 its own version after 1.3.1: **1.4.0**, since the label record's shape changes (as 1.1.0 and 1.2.0 did for the
 record).
@@ -103,7 +103,8 @@ N6 (planner). **FINISH.** A fourth edit-bar button beside FIT, UNDO and CANCEL, 
 placed (FIT shows for a head, as now; neither shows for T1, S1 or T4), enabled exactly when `canFinishPlacing` is true
 and the placement is not whole (then it has already finished by itself), disabled while this study's run is in flight
 and while the W/L panel is open, like the rest. Title `Finish with the points placed; the rest are not on this film`.
-Pressing it is `fitPlacing(imageSize)` under another name: one wiring export, `finishPlacing`, serves both buttons.
+Pressing it calls the wiring's existing `fitPlacing(imageSize)`, which serves both buttons (the wiring already imports
+the level model's `finishPlacing`, so that name is taken).
 
 - **The chips of a placed level** (`selectedLevelChips`): one per **step** of the kind, not per existing handle, each
   carrying `placed: true|false`. A placed point's chip is as in 1.3.1 (filled dot; a click arms it). A missing point's
@@ -150,7 +151,9 @@ placement that skips unticked steps; FINISH, Delete and the hollow chips are not
 - `quadrilateral(body)` returns null unless both pairs exist. `cervicalPart` and `lumbarPart` write `superior`,
   `inferior` and `quadrilateral` as they are, nulls included; `c7_centroid` is the mean of C7's quadrilateral and so
   null for a partial C7 (C7–S1 SVA then reads `—`: the plumb needs the whole body); `l1_center` likewise null for a
-  partial L1; C2 writes `inferior: null` or `c2_centroid: null` for the missing part.
+  partial L1; C2 is written into `vertebrae` only when it has its inferior pair (as `{superior: null, inferior,
+  quadrilateral: null}`), and `c2_centroid` is null when it has no centroid, so a C2 placed from its centroid alone
+  leaves `vertebrae` without a C2 entry.
 - `anteriorSideFrom` reads a level's first existing pair (a body: superior, else inferior; C2: inferior, else skipped),
   so a cervical film placed by hand from a C7 inferior endplate alone still gets its side.
 - `projectionIsEmpty`, `projectsLevel`, `regionFollowsLevels` and the stored-side rule are unchanged.
