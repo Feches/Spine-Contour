@@ -55,7 +55,7 @@
       "model_corners": null,
       "contour": null
     },
-    "T1": { "state": "not_placed", "source": "annotator", "edited_points": [] },
+    "T1": { "state": "not_placed", "source": "film_type", "edited_points": [] },
     "T4": { "state": "not_visible", "source": "film_type", "edited_points": [] },
     "L1": { "state": "not_visible", "source": "film_type", "edited_points": [] },
     "L2": { "state": "not_visible", "source": "film_type", "edited_points": [] },

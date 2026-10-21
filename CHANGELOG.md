@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.4.0
+
+- **Place only some of a level's points.** A vertebral body can be finished with one endplate (SA and SP, or IA and
+  IP) and C2 with its inferior pair or its centroid alone, for a part that is not on the film: the shoulders hide
+  C7's inferior endplate, a lumbar film is cut off above L1. Once such a part is whole, the edit bar's **FINISH**
+  (right after FIT) stores it and records the rest as not on this film. The level reads Manual or Edited, draws as its
+  endplate line, and measures what it has: with C7's superior endplate alone, C2–C7 SVA and C6–C7 segmental lordosis
+  read, and C2–C7 Cobb and C6–C7 disc angulation show —. A model result with one endplate now reads Segmented instead
+  of Not placed.
+- **Complete or remove an endplate later.** A partial level's chips in the edit bar list every point, the missing ones
+  with a hollow dot; clicking one, or the row's Place…, resumes the placement for that endplate (`PLACING C7 · 3 OF
+  4`). **Delete** or **Backspace** with a point of a body or C2 focused removes that point's endplate, refused for the
+  level's last part and for T1, S1, T4 and the heads.
+- **The label record's corners are nullable by endplate**, under the same schema id (amended 2026-10-21), and
+  `edited_points` lists the keys placed, moved or removed. The backend's lumbar validator accepts a body with one
+  endplate (LL and L1PA read — where their endplate is missing). A record saved before 1.4.0 reads unchanged; a 1.3.x
+  build reads a partial level as Not placed and a partial lumbar study as unsegmented, with a warning.
+
+[Release notes](docs/releases/1.4.0.md)
+
 ## 1.3.1
 
 - In edit mode the edit bar lists the **selected level's points** — `SA SP IA IP` for a vertebral body, each dot in

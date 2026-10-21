@@ -429,9 +429,17 @@ built.
   guard drift (Task 7).
 - **Smoke coverage.** `smoke-cervical.mjs` and `smoke-segmental.mjs` need a lateral cervical film this workstation does
   not have, and both screenshot the real film they run on, against the rule that no screenshot of a real film is taken;
-  their screenshots should go before they run again.
+  their screenshots should go before they run again. The levels dom suite (`smoke-levels`) hung intermittently on the
+  development laptop (2026-10-21: twice in five runs, once after section 18 and once after section 16, both around
+  backend-backed waits), never reproduced on demand, every fresh relaunch passing 169/169. It now bounds each call into
+  the page at 90 s and carries a dom-phase watchdog (120 s without a page answer fails the run, cleans up and exits);
+  run it as a bounded PowerShell job (`Start-Job` with `Wait-Job -Timeout 420`). The cause is not found.
 
-## 9. Placing only some of a level's points (2026-10-21, deferred by the owner to its own session)
+## 9. Placing only some of a level's points (2026-10-21, ~~deferred by the owner to its own session~~)
+
+Built 2026-10-21 on claude/partial-endplates-ca5755 (the owner's rulings N1–N4, all the recommended column; spec
+docs/superpowers/specs/2026-10-21-partial-endplates-design.md, plan plans/2026-10-21-partial-endplates.md), released as
+1.4.0. What follows is the record of the ask and of what was chosen.
 
 The owner's ask: "if you can only see the superior endplate of C7 you can place C7 SA, SP but not IA and IP". A level
 today is all of its points or nothing, from the placement flow to the record. What each layer assumes:

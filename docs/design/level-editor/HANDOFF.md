@@ -50,11 +50,11 @@ Files in this package:
 
 | Group | Levels | Geometry stored | Placement |
 |---|---|---|---|
-| Cervical | C2 | Inferior endplate `ia`, `ip` plus a `centroid` (amended 2026-10-10, D8; schema `$defs/c2`) | 3 clicks: IA, IP, then the centroid |
-| Cervical | C3–C7 | 4 corners: `sa`, `sp`, `ia`, `ip` | 4 clicks in order SA → SP → IA → IP |
+| Cervical | C2 | Inferior endplate `ia`, `ip` plus a `centroid` (amended 2026-10-10, D8; schema `$defs/c2`); either part may stand alone (2026-10-21, N1) | 3 clicks: IA, IP, then the centroid; or FINISH after the pair or the centroid (2026-10-21, N1) |
+| Cervical | C3–C7 | 4 corners: `sa`, `sp`, `ia`, `ip`, or one endplate alone (N1) | 4 clicks in order SA → SP → IA → IP, or FINISH after one endplate (N2) |
 | Thoracic | T1 | Superior endplate: `sa` (anterior), `sp` (posterior) | 2 clicks: anterior, then posterior |
 | Thoracic | T4 | Centroid: one point | 1 click |
-| Lumbar | L1–L5 | 4 corners | 4 clicks, SA → SP → IA → IP |
+| Lumbar | L1–L5 | 4 corners, or one endplate alone (N1) | 4 clicks, SA → SP → IA → IP, or FINISH after one endplate (N2) |
 | Sacral | S1 | Superior endplate: `sa`, `sp` | 2 clicks |
 | Femoral heads | Head 1, Head 2 | Centre and radius, **fitted** from 2–4 rim points (kept in `rim`) | 2–4 clicks on the rim, then Fit (or automatic on the 4th) |
 
@@ -87,6 +87,7 @@ The state is **derived** from three things: the visibility flag, the current geo
   did not have: that rule keeps its meaning for Place…, re-run and Reset, and the model's output is still not re-done
   one level at a time. Manual levels have nothing to revert to and keep Clear. An edited femoral head shows Place… and
   REVERT.
+- **Partial levels** (*added 2026-10-21, N1 and N2; spec `docs/superpowers/specs/2026-10-21-partial-endplates-design.md`*). A part is what can be present or absent: a body's superior or inferior endplate, C2's inferior pair or centroid; it is whole or null, never half. A body or C2 may be finished with one part (FINISH while placing), completed later from a hollow chip or Place…, and have a part removed (Delete on a focused point), and the measurements, the plates and the record follow what is there.
 - **Femoral heads are the exception.** They always show **Place…** while visible, including segmented ones. Placing rim points replaces the circle. If model output exists, the head becomes `edited` and the model circle is kept in `model_circle`.
 - **Unchecking keeps geometry in memory** for the session, so re-checking restores it. The saved record omits geometry for `not_visible`.
 - **Film-type defaults:**
@@ -233,11 +234,13 @@ All are in the Spine Contour design system. Use the app's CSS variables, not hex
 | Group header | Click | Expand / collapse. On open, groups matching the film type start expanded. |
 | Level checkbox | Click | Toggles visible. Sets `source: annotator`. Unchecking the level being placed cancels the placement. |
 | Level row | Click | Selects the level and shows its handles on the film. Selecting another level cancels any placement in progress. |
-| Place… | Click | Enters placement for that level: the badge becomes Placing… and the edit bar shows the label `PLACING L3 · 1 OF 4`, help text and step chips. Each click on the film adds the next point. Placement **finishes automatically** at 4 corners, 2 endplate points or 1 centroid. Femoral finishes on **FIT** (enabled from 2 points) or automatically at the 4th point. Result: `manual` if there's no model output, otherwise `edited`. *Amended 2026-10-11 (the owner's gate feedback, G2):* for every kind but a femoral head, a click on a step chip chooses which point the next film click sets, in any order, and a placed point chosen again is re-placed; after each click the next empty step is current (wrapping), and the placement finishes when every step is placed. A click within 1 px of any other point of the placement is ignored (R26). Femoral heads are unchanged. |
+| Place… | Click | Enters placement for that level: the badge becomes Placing… and the edit bar shows the label `PLACING L3 · 1 OF 4`, help text and step chips. Each click on the film adds the next point. Placement **finishes automatically** at 4 corners, 2 endplate points or 1 centroid. Femoral finishes on **FIT** (enabled from 2 points) or automatically at the 4th point. Result: `manual` if there's no model output, otherwise `edited`. *Amended 2026-10-11 (the owner's gate feedback, G2):* for every kind but a femoral head, a click on a step chip chooses which point the next film click sets, in any order, and a placed point chosen again is re-placed; after each click the next empty step is current (wrapping), and the placement finishes when every step is placed. A click within 1 px of any other point of the placement is ignored (R26). Femoral heads are unchanged. *Amended 2026-10-21 (N2):* for a body or C2 the edit bar also shows **FINISH**, right after FIT in the bar's order (FIT, FINISH, UNDO, CANCEL, RESET TO PREDICTION, DONE), enabled once an endplate (C2's pair or centroid) is whole and no part is half set, titled `Finish with the points placed; the rest are not on this film`; it stores the part placed. Place… on a partially placed body or C2 resumes the placement at the first missing step (`PLACING C7 · 3 OF 4`), its placed points pre-filled and UNDO reaching only the new clicks, stacked above CLEAR or REVERT as a head's is. |
 | UNDO | Click | Removes the last placed point. Disabled at 0 points. *Amended 2026-10-11 (G2):* removes the most recently set point and makes its step the current one; a re-placed point is cleared, not returned to its earlier position (R27). |
 | CANCEL | Click | Exits placement with no change. Shown in the edit bar and in the row's action column. |
 | CLEAR | Click (manual rows only) | Removes the geometry; the level becomes `not_placed`. |
 | REVERT | Click (edited rows only) | *Added 2026-10-15 (E3, E7, spec section 5):* returns the level to the model's geometry and sets `source` back to `model`; the badge reads Segmented, the dashed model ghost goes with it, and the measurements follow through `/measure` like a handle drag. The unsaved count follows the level's baseline (reverting an unsaved edit lowers it; reverting a saved edit raises it). |
+| Delete / Backspace | Key, with a point of a body or C2 focused | *Added 2026-10-21 (N2):* removes that point's endplate (C2's centroid, its centroid), committed through `/measure` like a drag; the level reads Manual or Edited, and the focus moves to its first remaining point. Refused for the level's last part (CLEAR or uncheck it), for T1, S1, T4 and the heads, while placing, while window / level is open and while the run is in flight. |
+| Hollow chip | Click | *Added 2026-10-21 (N2):* a placed level's chips list every step of its kind, a missing point's dot hollow, with the title `Place IA: click here, then on the film`; a click resumes the placement for that endplate, as Place… does. Focus, Tab and the arrow keys never reach a missing point. |
 | Handle | Drag | Moves that corner or point. A femoral rim point refits the circle live. Disabled while placing or while window / level is open. |
 | Save edits | Click | Writes the label record (section 9) and shows the toast "Saved N edits to the label record." Disabled with the visible reason `NOTHING TO SAVE` when there are 0 changes. |
 | Discard | Click | Reverts to the last save and cancels any placement. Toast: "Discarded N changes." |
@@ -383,9 +386,9 @@ Store everything in **image pixels of the stored image, origin top-left**. Conve
 | `edits` | (Added 2026-10-11, D18; optional in the schema, R39, always written by the app) Seven counts over the fourteen levels and two femoral heads together: `segmented`, `edited`, `manual`, `not_placed`, `not_visible` (entries per state), `points_moved` (the `edited` entries' `edited_points` added up) and `points_placed` (the `manual` entries'). Written after `complete`; computed from the entries, so it always agrees with them. |
 | `comment` | (Added 2026-10-15, E1, spec section 3.1; optional and nullable in the schema, as `edits` is optional, so a record written before it validates and reads as no comment; always written by the app) The annotator's free-text note on the film: the text trimmed, or `null` when blank. Written after `edits`. The study record keeps a display copy, `labelComment`, written in the same save (E5). Mark reviewed's zero-change record carries the study's current comment. |
 | `levels.<code>.state`, `source` | As in section 2 |
-| `levels.<code>.edited_points`, `femoral_heads[].edited_points` | (Added 2026-10-11, D18; optional in the schema, R39, always written by the app) The entry's own geometry keys the annotator gave it, in this order: a body `sa`, `sp`, `ia`, `ip`; C2 `ia`, `ip`, `centroid`; T1 and S1 `sa`, `sp`; T4 `centroid`; a femoral head `center`, `radius` (never its rim). `segmented`, `not_placed`, `not_visible`: `[]`. `edited`: the keys whose value differs from the model's by the test that derives the state (10⁻⁶ px), so `edited` exactly when the list is not empty (R38). `manual`: every key of the kind. |
-| `levels.<C3–C7, L1–L5>.corners` | `{sa, sp, ia, ip}`. Absent when `not_visible` or `not_placed`. |
-| `levels.C2.corners`, `levels.C2.centroid` | `{ia, ip}` (the inferior endplate) and `[x, y]` (amended 2026-10-10, D8: C2 has no superior endplate in the app's geometry; schema `$defs/c2`). Absent when `not_visible` or `not_placed`. |
+| `levels.<code>.edited_points`, `femoral_heads[].edited_points` | (Added 2026-10-11, D18; optional in the schema, R39, always written by the app) The entry's own geometry keys the annotator gave it, in this order: a body `sa`, `sp`, `ia`, `ip`; C2 `ia`, `ip`, `centroid`; T1 and S1 `sa`, `sp`; T4 `centroid`; a femoral head `center`, `radius` (never its rim). `segmented`, `not_placed`, `not_visible`: `[]`. `edited`: the keys whose value differs from the model's by the test that derives the state (10⁻⁶ px), so `edited` exactly when the list is not empty (R38). `manual`: every key of the kind. *Amended 2026-10-21 (N7):* `manual` lists every key the entry holds a point for (two for a partial body); `edited` also lists the keys of an endplate removed or added. |
+| `levels.<C3–C7, L1–L5>.corners` | `{sa, sp, ia, ip}`. Absent when `not_visible` or `not_placed`. *Amended 2026-10-21 (N4, N7):* each entry is a point or null, `sa` and `sp` null together, `ia` and `ip` null together, at least one pair present, every key written; `model_corners` the same. A record saved before 1.4.0 validates unchanged. |
+| `levels.C2.corners`, `levels.C2.centroid` | `{ia, ip}` (the inferior endplate) and `[x, y]` (amended 2026-10-10, D8: C2 has no superior endplate in the app's geometry; schema `$defs/c2`). Absent when `not_visible` or `not_placed`. *Amended 2026-10-21 (N4):* `corners` may be null with a `centroid`, or the centroid null with `corners`; at least one is present. |
 | `levels.<T1, S1>.corners` | `{sa, sp}`: superior endplate only |
 | `levels.T4.centroid` | `[x, y]` |
 | `model_corners`, `model_centroid` | The model's original geometry when `edited`; otherwise null |
@@ -492,6 +495,28 @@ E1–E7 are listed here one line each. Built on branch `worktree-annotation-roun
 **R24 is closed** (the open ruling of the level editor plan's Task 15 and ROADMAP section 8: should a hand-placed film that
 had failed keep reading Failed?): the owner's answer is E2, a status of its own, with the failure cleared by the first
 hand-placed commit (E6).
+
+---
+
+## 12b. Decisions (2026-10-21)
+
+Made on 2026-10-21 for placing only some of a level's points; the spec of record is
+`docs/superpowers/specs/2026-10-21-partial-endplates-design.md`, whose decisions N1–N7 are listed here one line each,
+and the plan is `docs/superpowers/plans/2026-10-21-partial-endplates.md` (ten tasks). Built on branch
+`claude/partial-endplates-ca5755`, released as 1.4.0. N1–N4 were ruled by the owner, each the recommended column.
+
+| # | Decision |
+|---|---|
+| N1 | **Per endplate** (owner). A body is SA+SP, IA+IP or both; C2 its inferior pair, its centroid or both; T1, S1, T4 and the heads stay all-or-nothing. Sections 2 and 6 amended. |
+| N2 | **FINISH while placing, Delete on a focused point, hollow chips to complete a level** (owner). The row's Place… also resumes a partial level. Sections 2 and 6 amended. |
+| N3 | **Lumbar in the same release** (owner), with the backend's lumbar validator relaxed to accept a body with one endplate; LL and L1PA read `—` where their endplate is missing. |
+| N4 | **Nullable corners under the `/1` schema id with a dated amendment** (owner; R39's precedent). Every record saved before 1.4.0 validates and reads unchanged; a 1.3.x build reads a partial level as Not placed. Section 9 amended. |
+| N5 | **A "part" is what can be present or absent** (planner): whole or null, never half, every key present in the record. |
+| N6 | **FINISH reuses the edit bar's `fitPlacing` path** (planner); a placed level's chips list every step with the missing ones hollow; Delete removes a part. |
+| N7 | **`edited_points` lists placed, moved or removed keys** (planner), never a key the model placed and the annotator left. |
+| (controller) | The endplate-line click hit-test outside edit mode applies only to a body with no quadrilateral. |
+| (controller) | A C2 placed from its centroid alone is left out of `vertebrae` in the projection; only `c2_centroid` is written. |
+| (controller) | The edit bar's help line box was narrowed (160 px basis) for FINISH, so a long help line wraps inside its box in every edit-bar state. |
 
 ---
 
