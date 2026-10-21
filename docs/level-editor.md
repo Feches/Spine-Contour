@@ -21,8 +21,9 @@ The toolbar's pencil (**Edit segmentation**) enters edit mode. The right panel's
 the Measurements panel give way to the **Vertebral levels** panel; the header shows `EDITING SEGMENTATION`; the edit bar
 across the top of the stage reads `EDITING SEGMENTATION` with a help line, then RESET TO PREDICTION and DONE. Entering
 edit mode turns the Pan toggle off (the middle button and the left+right chord still pan). While editing, the toolbar's
-Re-run segmentation and the region bar's Run segmentation are disabled, titled `Finish editing before re-running
-segmentation` (R17): a run would replace the levels under the editor. The region bar's Region and Orientation selects
+Re-run segmentation is disabled, titled `Finish editing before re-running segmentation` (R17), and the stage's
+UNSEGMENTED strip or card, with its Run segmentation, is hidden (since 2026-10-21 the strip serves every unsegmented
+film; the region bar's own Run segmentation is gone): a run would replace the levels under the editor. The region bar's Region and Orientation selects
 are disabled too, titled `Finish editing before changing the region` and `Finish editing before changing the
 orientation` (R21): either change clears the study, its levels included.
 

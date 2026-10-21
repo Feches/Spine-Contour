@@ -1,6 +1,6 @@
 import { segmentalValues } from '../data/segmental.js';
 import { globalSvaMeasurements } from '../data/global-sva.js';
-import { cervicalMeasurements, studyRegion, requiresAnteriorSide, regionRunReason } from '../data/cervical.js';
+import { cervicalMeasurements, studyRegion, regionRunReason } from '../data/cervical.js';
 import { el } from '../dom.js';
 import { getState, setState } from '../store.js';
 import { measure } from '../api.js';
@@ -1182,7 +1182,9 @@ export function mountViewer(container) {
     const batch = state.batch ?? null;
     const queued = !busy && isQueued(batch, study.id);
     const waitTitle = batch ? WAIT_FOR_BATCH : (otherRunning ? WAIT_FOR_RUN : '');
-    if (!hasResult && !busy && requiresAnteriorSide(study) && currentImages?.preview) return null;
+    // (2026-10-21) A cervical, full-spine or Auto detect film with the backend's preview on the stage used to return
+    // null here (no card, Run segmentation on the region bar), so the same action sat in two places depending on the
+    // region. It now takes the strip below like a lumbar film with its decoded X-ray: `currentImages` is either.
     if (!hasResult && !busy && regionRunReason(study)) {
       return { eyebrow: studyRegion(study) === 'full_spine' ? 'FULL SPINE SETUP' : 'CERVICAL SETUP', title: 'Confirm image orientation',
         body: regionRunReason(study), spinner: false, button: null };
@@ -1203,10 +1205,12 @@ export function mountViewer(container) {
         button: { text: 'Run segmentation', disabled: Boolean(state.running) || Boolean(batch), title: waitTitle },
       };
     }
-    // (2026-10-19) An unsegmented film whose X-ray is on the stage (screens/analysis.js showOriginal decodes every
-    // real film with no result) keeps its card, but as a STRIP along the bottom of the stage: the same eyebrow, title
-    // and Run segmentation button, no scrim over the film. The header pill says Unsegmented above; this says it below.
-    // Running and queued films keep the full card, so the spinner and Cancel stay where they always were.
+    // (2026-10-19) An unsegmented film whose film is on the stage -- a lumbar film's decoded X-ray (screens/analysis.js
+    // showOriginal) or, since 2026-10-21, a cervical, full-spine or Auto detect film's backend preview (previewOriginal)
+    // -- keeps its card, but as a STRIP along the bottom of the stage: the same eyebrow, title and Run segmentation
+    // button, no scrim over the film. The header pill says Unsegmented above; this says it below. Running and queued
+    // films keep the full card, so the spinner and Cancel stay where they always were. The strip is the one place
+    // Run segmentation lives for an unsegmented film; the region bar keeps View original and the two selects.
     if (!hasResult && !busy && !queued && currentImages) {
       return {
         eyebrow: 'UNSEGMENTED', title: 'No segmentation yet', body: 'Run segmentation to generate measurements.',

@@ -3,16 +3,24 @@
 // reviewer stepping through a library while its batch ran could not change a film the run had labelled lumbar to
 // cervical, and the Measurements panel kept the lumbar parameters. Now only the film's own turn (its run in flight,
 // or next up in the running batch), edit mode and a demo study lock the two selects, each with a tooltip that says so.
+// (2026-10-21) And the strip for every film: once the region is cervical the backend's preview reaches the stage and
+// the UNSEGMENTED strip along the bottom carries Run segmentation, as a lumbar film's decoded X-ray does; the region
+// bar keeps View original and no run button of its own.
 //
-//   node tools/smoke/launch.mjs            (SPINE_CONTOUR_PYTHON must point at the venv python; the backend answers /measure)
+//   node tools/smoke/launch.mjs            (SPINE_CONTOUR_PYTHON must point at the venv python; the backend answers
+//                                           /measure and the preview-only /calibrate)
 //   node tools/smoke/smoke-region-change.mjs
 //   node tools/smoke/cdp.mjs --quit
 //
-// Fixtures: SP-9400, a synthetic 600x800 film with a lumbar result measured by the real /measure, its record reading
-// Auto detect (`region: 'auto'`) with `geometry.region` lumbar, as an Auto detect run that found lumbar leaves it; and
-// SP-9401, an unsegmented film with a path that points nowhere. Batches and runs are simulated in the store (a batch
-// over SP-9401 never starts a run: nothing calls the driver). Reads the DOM and the store only; no screenshot. The
-// injected studies are removed at the end and the store put back. Exit code 1 on any failed check.
+// Fixtures: SP-9400, a synthetic 600x800 film written to %TEMP% (so the preview can read it) with a lumbar result
+// measured by the real /measure, its record reading Auto detect (`region: 'auto'`) with `geometry.region` lumbar, as an
+// Auto detect run that found lumbar leaves it; and SP-9401, an unsegmented film with a path that points nowhere.
+// Batches and runs are simulated in the store (a batch over SP-9401 never starts a run: nothing calls the driver).
+// Reads the DOM and the store only; no screenshot. The injected studies are removed at the end and the store put
+// back. Exit code 1 on any failed check.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { connect } from './cdp-lib.mjs';
 
 const results = [];
@@ -37,9 +45,10 @@ async function until(expression, timeoutMs = 15000, stepMs = 100) {
 const SEG = 'SP-9400';
 const OTHER = 'SP-9401';
 const PREDICTION_ID = 'smoke-region-change-fixture';
+const FILM_DIR = path.join(os.tmpdir(), 'spine-contour-region-change');
+const FILM_PATH = path.join(FILM_DIR, 'region-change-check.png');
 const WAIT_THIS_FILM = "Wait for this film's segmentation to finish before changing the region";
 const WAIT_FOR_BATCH = 'Wait for the batch to finish';
-const WAIT_FOR_RUN = 'Wait for the current segmentation to finish';
 
 // The lumbar result the fixture carries: five bodies, the S1 endplate and two heads, measured by the real /measure,
 // then given the region an Auto detect run writes. Called again to put the result back between scenarios.
@@ -58,13 +67,17 @@ const bar = () => ev(`(async () => {
   const open = s.studies.find((x) => x.id === s.openId) ?? null;
   const region = document.querySelector('[aria-label="Spine region"]');
   const orientation = document.querySelector('.analysis-region-bar select:not([aria-label="Spine region"])');
-  const run = [...document.querySelectorAll('.analysis-region-bar button')].find((b) => b.textContent === 'Run segmentation') ?? null;
+  const card = document.querySelector('.run-card');
+  const button = document.querySelector('.run-button');
   return {
     value: region?.value ?? null, disabled: region?.disabled ?? null, title: region?.title ?? null,
     orientationDisabled: orientation?.disabled ?? null, orientationTitle: orientation?.title ?? null,
     note: document.querySelector('.analysis-region-bar .meas-note')?.textContent ?? null,
+    barButtons: [...document.querySelectorAll('.analysis-region-bar button')].filter((b) => !b.hidden).map((b) => b.textContent),
     section: document.querySelector('.meas-section-title')?.textContent ?? null,
-    run: run ? { hidden: run.hidden, disabled: run.disabled, title: run.title } : null,
+    card: card ? { hidden: card.classList.contains('is-hidden'), strip: card.classList.contains('run-card-strip'),
+      eyebrow: document.querySelector('.run-eyebrow')?.textContent ?? null,
+      button: button ? { hidden: button.classList.contains('is-hidden'), disabled: button.disabled, title: button.title, text: button.textContent } : null } : null,
     study: open ? { region: open.region ?? null, geometryRegion: open.geometry?.region ?? null, measured: open.measurements != null } : null,
     running: s.running, batch: s.batch ? { ids: s.batch.ids, done: s.batch.done, stopping: s.batch.stopping } : null, editing: s.editing,
   };
@@ -76,6 +89,10 @@ const pick = (value) => ev(`(() => {
   if (e.disabled) return 'disabled';
   e.value = ${js(value)}; e.dispatchEvent(new Event('change', { bubbles: true })); return 'changed';
 })()`);
+
+const regionIs = (value) => until(`import('./renderer/store.js').then((m) => m.getState().studies.find((x) => x.id === ${js(SEG)})?.region === ${js(value)})`, 3000);
+// The backend's preview of the film reaches the stage and the card becomes the strip.
+const stripShown = () => until("document.querySelector('.run-card')?.classList.contains('run-card-strip') === true", 20000);
 
 const restoreResult = () => ev(`(async () => {
   const store = await import('./renderer/store.js');
@@ -100,6 +117,8 @@ try {
     const mask = canvas.toDataURL('image/png').split(',')[1];
     return { image, mask };
   })()`);
+  fs.mkdirSync(FILM_DIR, { recursive: true });
+  fs.writeFileSync(FILM_PATH, Buffer.from(films.image, 'base64'));
   const injected = await ev(`(async () => {
     const store = await import('./renderer/store.js');
     const api = await import('./renderer/api.js');
@@ -107,7 +126,7 @@ try {
     const result = await ${RESULT_SOURCE};
     await api.savePrediction(${js(SEG)}, { ...result, image_png: ${js(films.image)}, mask_png: ${js(films.mask)},
       labels: { L1: 20, L2: 21, L3: 22, L4: 23, L5: 24 }, prediction_id: ${js(PREDICTION_ID)} });
-    const seg = { ...newStudy({ id: ${js(SEG)}, fileName: 'region-change-check.png', filePath: '/test/region-change-check.png' }),
+    const seg = { ...newStudy({ id: ${js(SEG)}, fileName: 'region-change-check.png', filePath: ${js(FILM_PATH)} }),
       region: 'auto', view: 'Standing lateral', predictionId: ${js(PREDICTION_ID)}, labelFile: null,
       measurements: result.measurements, geometry: result.geometry, qc: result.qc ?? null };
     const other = { ...newStudy({ id: ${js(OTHER)}, fileName: 'region-change-other.png', filePath: '/test/region-change-other.png' }), region: 'auto', labelFile: null };
@@ -123,22 +142,26 @@ try {
 
   // 1. Idle: the select is live, the note says Detected lumbar, the panel lists the lumbar parameters.
   let b = await bar();
-  check('1. idle: the Region select reads Auto detect, enabled, no tooltip, the lumbar parameters listed',
-    b.value === 'auto' && b.disabled === false && b.title === '' && b.note.startsWith('Detected lumbar.') && b.section === '01 — SAGITTAL PARAMETERS', b);
-  check('1. picking Cervical clears the result, sets the region and lists the cervical parameters, with Run segmentation live',
-    (await pick('cervical')) === 'changed' && await until(`import('./renderer/store.js').then((m) => m.getState().studies.find((x) => x.id === ${js(SEG)})?.region === 'cervical')`, 3000)
-      && (b = await bar()).value === 'cervical' && b.study.region === 'cervical' && b.study.measured === false && b.section === '01 — CERVICAL ALIGNMENT'
-      && b.run?.hidden === false && b.run.disabled === false && b.run.title === '', b);
+  check('1. idle: the Region select reads Auto detect, enabled, no tooltip, the lumbar parameters listed, no card',
+    b.value === 'auto' && b.disabled === false && b.title === '' && b.note.startsWith('Detected lumbar.') && b.section === '01 — SAGITTAL PARAMETERS' && b.card?.hidden === true, b);
+  check('1. picking Cervical clears the result, sets the region and lists the cervical parameters',
+    (await pick('cervical')) === 'changed' && await regionIs('cervical')
+      && (b = await bar()).value === 'cervical' && b.study.region === 'cervical' && b.study.measured === false && b.section === '01 — CERVICAL ALIGNMENT', b);
+  // (2026-10-21) The strip for every film: the preview reaches the stage and Run segmentation sits in the strip, not the bar.
+  check('1. the backend preview reaches the stage and the UNSEGMENTED strip carries Run segmentation, enabled; the bar offers View original only',
+    await stripShown() && (b = await bar()).card.strip === true && b.card.eyebrow === 'UNSEGMENTED' && b.card.button?.text === 'Run segmentation'
+      && b.card.button.hidden === false && b.card.button.disabled === false && b.card.button.title === ''
+      && b.barButtons.join() === 'View original', b);
   await restoreResult(); await cdp.settle(200);
-  check('1. the fixture is back to Auto detect with its lumbar result', (b = await bar()).value === 'auto' && b.study.measured === true, b);
+  check('1. the fixture is back to Auto detect with its lumbar result, the card hidden', (b = await bar()).value === 'auto' && b.study.measured === true && b.card?.hidden === true, b);
 
   // 2. A batch runs over OTHER films (issue #68's case: a reviewer under a library-wide batch): this film is free to change.
   await batchOver([OTHER], 0); await cdp.settle(200);
   b = await bar();
   check('2. a batch over other films leaves the Region select enabled with no tooltip', b.disabled === false && b.title === '' && b.batch?.ids[0] === OTHER, b);
-  check('2. and picking Cervical works under the batch; Run segmentation waits for it with its tooltip',
-    (await pick('cervical')) === 'changed' && await until(`import('./renderer/store.js').then((m) => m.getState().studies.find((x) => x.id === ${js(SEG)})?.region === 'cervical')`, 3000)
-      && (b = await bar()).section === '01 — CERVICAL ALIGNMENT' && b.run?.hidden === false && b.run.disabled === true && b.run.title === WAIT_FOR_BATCH, b);
+  check("2. and picking Cervical works under the batch; the strip's Run segmentation waits for it with its tooltip",
+    (await pick('cervical')) === 'changed' && await regionIs('cervical') && await stripShown()
+      && (b = await bar()).section === '01 — CERVICAL ALIGNMENT' && b.card.strip === true && b.card.button?.disabled === true && b.card.button.title === WAIT_FOR_BATCH, b);
   await restoreResult(); await cdp.settle(200);
 
   // 3. This film's own turn: next up in the batch, or its run in flight. Then done, later in the queue, or a stopping batch.
@@ -155,9 +178,7 @@ try {
   await patch('{ batch: null, running: ' + js(SEG) + ' }'); await cdp.settle(200);
   check("3. this film's run in flight: disabled with the wait tooltip", (b = await bar()).disabled === true && b.title === WAIT_THIS_FILM, b);
   await patch('{ running: ' + js(OTHER) + ' }'); await cdp.settle(200);
-  b = await bar();
-  check("3. another film's run in flight: enabled, and the bar's Run segmentation would wait for that run",
-    b.disabled === false && b.title === '', b);
+  check("3. another film's run in flight: enabled", (b = await bar()).disabled === false && b.title === '', b);
   await patch('{ running: null }'); await cdp.settle(200);
 
   // 4. Edit mode locks both with the editing tooltips (ruling R21, unchanged).
@@ -170,11 +191,12 @@ try {
 
   check('no console errors or exceptions during the run', cdp.errors.length === 0, cdp.errors);
 } finally {
-  // Put the store back and drop the injected studies; the sidecar of SP-9400 goes with its record (deleteStudy's job
-  // elsewhere; here the saver never wrote it, so only the memory copy is removed).
+  // Put the store back and drop the injected studies (the saver never wrote them, so only the memory copies go) and
+  // the film written to %TEMP%.
   await ev(`import('./renderer/store.js').then((m) => { m.setState((s) => ({ screen: 'studies', openId: null, editing: false, selection: null, levelEditor: null,
     running: null, batch: null, studies: s.studies.filter((x) => ![${js(SEG)}, ${js(OTHER)}].includes(x.id)) })); return true; })`).catch(() => {});
   cdp.close();
+  fs.rmSync(FILM_DIR, { recursive: true, force: true });
 }
 
 const failed = results.filter((r) => !r.ok).length;

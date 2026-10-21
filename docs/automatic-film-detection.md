@@ -8,8 +8,10 @@ film. Select a region explicitly to override the choice.
 
 **Correcting a wrong detection** (2026-10-20, issue #68). On the Analysis screen the region bar's Region select
 overrides Auto detect for the open film: choosing Cervical on a film the run labelled lumbar clears that result,
-lists the cervical parameters in the Measurements panel and offers Run segmentation; the Orientation select does the
-same for the anterior side. The two selects are locked only during the film's own turn (its run in flight, or next up
+lists the cervical parameters in the Measurements panel and offers Run segmentation in the UNSEGMENTED strip along the
+bottom of the stage (since 2026-10-21 the strip serves every region; before, a cervical, full-spine or Auto detect
+film had the button on the region bar and a lumbar film in the strip); the Orientation select does the same for the
+anterior side. The two selects are locked only during the film's own turn (its run in flight, or next up
 in the running batch), in edit mode and for a demo study, each with a tooltip that says so. A run or batch over other
 films leaves them live, so a library's wrong detections can be corrected while its batch runs; Run segmentation
 itself still waits for the batch or the current run to finish, and its tooltip says which. Before 1.3.1 any run or

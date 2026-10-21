@@ -15,7 +15,7 @@ import { configureLevelEditor, forgetLevelEditor, requestExit, writeReviewRecord
 import { configureFilmWindow, forgetFilmWindow, windowNeedsDecode, redecodeKeptWindow } from '../film-window.js';
 import { describeModels } from '../data/models.js';
 import { describeProcessor, processorTitle } from '../data/processing.js';
-import { WAIT_FOR_BATCH, WAIT_FOR_RUN } from '../data/batch.js';
+import { WAIT_FOR_BATCH } from '../data/batch.js';
 import { inferenceView, unsupportedViewReason } from '../data/inference-view.js';
 import { studyName, defaultName } from '../data/labels.js';
 import { displayStatus, isReviewed, reviewedLabel, reviewBlockedReason } from '../data/status.js';
@@ -1090,10 +1090,11 @@ export function render(state) {
   const regionNote = el('span', { class: 'meas-note' });
   const previewButton = el('button', { type: 'button', class: 'btn btn-small',
     onClick: () => previewOriginal(getState().openId) }, 'View original');
-  // (2026-10-10, ruling R17) No run starts while editing, from here either: see the stage's run handler below.
-  const alignmentRunButton = el('button', { type: 'button', class: 'btn btn-small btn-primary',
-    onClick: () => { if (!getState().editing) segmentStudy(getState().openId); } }, 'Run segmentation');
-  const regionBar = el('div', { class: 'analysis-region-bar' }, el('label', {}, 'Region ', regionSelect), anteriorLabel, previewButton, alignmentRunButton, regionNote);
+  // (2026-10-21) The bar carried its own Run segmentation for cervical, full-spine and Auto detect films, while a
+  // lumbar film's sat in the UNSEGMENTED strip along the bottom of the stage (2026-10-19). The strip now serves every
+  // unsegmented film with its film on the stage, and the full card every other, so the bar's button is gone: one place
+  // for the action whatever the region. R17 (no run while editing) holds through the stage's card, hidden while editing.
+  const regionBar = el('div', { class: 'analysis-region-bar' }, el('label', {}, 'Region ', regionSelect), anteriorLabel, previewButton, regionNote);
   const root = el('main', { class: 'analysis-screen' }, header, regionBar, body, clinicalHost);
 
   const viewer = mountViewer(viewerHost);
@@ -1190,14 +1191,11 @@ export function render(state) {
     regionSelect.title = lock.title;
     anteriorSelect.disabled = orientationLock.locked;
     anteriorSelect.title = orientationLock.title;
+    // View original (the backend's preview, the evidence for the anterior-side choice) for a cervical, full-spine or
+    // Auto detect film with no result; Run segmentation is the stage's (the UNSEGMENTED strip or card, 2026-10-21).
     const alignmentSetup = requiresAnteriorSide(open) && !open.measurements;
-    previewButton.hidden = alignmentRunButton.hidden = !alignmentSetup;
+    previewButton.hidden = !alignmentSetup;
     previewButton.disabled = Boolean(live.running || live.batch);
-    // One run at a time, and none while a batch is up (batch spec 9) or while editing (ruling R17); the tooltip says
-    // which, as the stage card's button does, since a region changed under a batch lands here with its run to wait for.
-    alignmentRunButton.disabled = Boolean(live.running || live.batch || regionRunReason(open) || !inferenceView(open.view) || live.editing);
-    alignmentRunButton.title = live.editing ? 'Finish editing before re-running segmentation'
-      : live.batch ? WAIT_FOR_BATCH : live.running ? WAIT_FOR_RUN : '';
     // The preview message shows only while the film has no result (2026-10-19: for every real film, since every one
     // now loads its original -- showOriginal -- not only the alignment setup's): it is not cleared when a preview is
     // abandoned, so its being set is not enough. A failed lumbar film keeps its note to the stored reason (port spec 6):
