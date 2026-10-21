@@ -1,0 +1,71 @@
+{
+  "schema": "spinecontour.segmentation-label/1",
+  "study": "lateral_cervical_001",
+  "image": {
+    "file": "lateral_cervical_001.dcm",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "width_px": 1800,
+    "height_px": 2400
+  },
+  "film": { "region": "cervical", "view": "standing_lateral" },
+  "model": { "name": "HRNet", "version": "[MODEL VERSION]" },
+  "app_version": "[APP VERSION]",
+  "saved_at": "2026-10-21T15:00:00Z",
+  "complete": false,
+  "edits": {
+    "segmented": 4, "edited": 0, "manual": 2, "not_placed": 1, "not_visible": 9,
+    "points_moved": 0, "points_placed": 3
+  },
+  "comment": "C7's inferior endplate is behind the shoulders.",
+  "levels": {
+    "C2": {
+      "state": "manual", "source": "annotator", "edited_points": ["centroid"],
+      "corners": { "ia": null, "ip": null },
+      "centroid": [902, 318],
+      "model_corners": null,
+      "model_centroid": null
+    },
+    "C3": {
+      "state": "segmented", "source": "model", "edited_points": [],
+      "corners": { "sa": [958, 452], "sp": [832, 447], "ia": [956, 560], "ip": [826, 556] },
+      "model_corners": null,
+      "contour": null
+    },
+    "C4": {
+      "state": "segmented", "source": "model", "edited_points": [],
+      "corners": { "sa": [962, 596], "sp": [828, 590], "ia": [962, 706], "ip": [824, 702] },
+      "model_corners": null,
+      "contour": null
+    },
+    "C5": {
+      "state": "segmented", "source": "model", "edited_points": [],
+      "corners": { "sa": [968, 742], "sp": [830, 736], "ia": [970, 856], "ip": [826, 852] },
+      "model_corners": null,
+      "contour": null
+    },
+    "C6": {
+      "state": "segmented", "source": "model", "edited_points": [],
+      "corners": { "sa": [976, 894], "sp": [834, 888], "ia": [982, 1012], "ip": [830, 1008] },
+      "model_corners": null,
+      "contour": null
+    },
+    "C7": {
+      "state": "manual", "source": "annotator", "edited_points": ["sa", "sp"],
+      "corners": { "sa": [990, 1052], "sp": [840, 1046], "ia": null, "ip": null },
+      "model_corners": null,
+      "contour": null
+    },
+    "T1": { "state": "not_placed", "source": "annotator", "edited_points": [] },
+    "T4": { "state": "not_visible", "source": "film_type", "edited_points": [] },
+    "L1": { "state": "not_visible", "source": "film_type", "edited_points": [] },
+    "L2": { "state": "not_visible", "source": "film_type", "edited_points": [] },
+    "L3": { "state": "not_visible", "source": "film_type", "edited_points": [] },
+    "L4": { "state": "not_visible", "source": "film_type", "edited_points": [] },
+    "L5": { "state": "not_visible", "source": "film_type", "edited_points": [] },
+    "S1": { "state": "not_visible", "source": "film_type", "edited_points": [] }
+  },
+  "femoral_heads": [
+    { "id": 1, "state": "not_visible", "source": "film_type", "edited_points": [] },
+    { "id": 2, "state": "not_visible", "source": "film_type", "edited_points": [] }
+  ]
+}

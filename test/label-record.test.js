@@ -166,7 +166,8 @@ test('the amended schema holds C2 to {ia, ip}, a centroid and both model fields 
   failsAt(withC2(c2 => { delete c2.model_centroid; return c2; }), '/levels/C2/model_centroid');
   failsAt(withC2(c2 => { delete c2.model_corners; return c2; }), '/levels/C2/model_corners');
   failsAt(withC2(c2 => { c2.model_corners = null; return c2; }), '/levels/C2/model_corners');
-  failsAt(withC2(c2 => { c2.model_centroid = null; return c2; }), '/levels/C2/model_centroid');
+  // (2026-10-21, partial endplates) an edited C2's model_centroid may be null: the model placed none.
+  assertValid(withC2(c2 => { c2.model_centroid = null; return c2; }));
   failsAt(withC2(c2 => { c2.corners = { sa: [1, 1], sp: [2, 2], ia: [3, 3], ip: [4, 4] }; return c2; }), '/levels/C2/corners/sa');
   failsAt(withC2(c2 => { delete c2.corners.ip; return c2; }), '/levels/C2/corners/ip');
   failsAt(withC2(c2 => { c2.contour = null; return c2; }), '/levels/C2/contour');
@@ -175,7 +176,7 @@ test('the amended schema holds C2 to {ia, ip}, a centroid and both model fields 
     ...c2, state: 'manual', source: 'annotator', edited_points: ['ia', 'ip', 'centroid'], model_corners: null, model_centroid: null,
   }));
   assertValid(manual);
-  failsAt(withC2(c2 => ({ ...c2, state: 'manual', model_corners: null, model_centroid: null })), '/levels/C2/edited_points');
+  failsAt(withC2(c2 => ({ ...c2, state: 'manual', edited_points: [], model_corners: null, model_centroid: null })), '/levels/C2/edited_points');
   failsAt(withC2(() => ({ state: 'not_visible', source: 'film_type', centroid: [1, 1] })), '/levels/C2');
   failsAt(withC2(() => ({ state: 'not_placed', source: 'film_type', corners: { ia: [1, 1], ip: [2, 2] } })), '/levels/C2');
   assertValid(withC2(() => ({ state: 'not_placed', source: 'film_type' })));
@@ -730,7 +731,8 @@ test('the schema holds edited_points to each kind\'s keys, without repeats, in a
   patched('/levels/L2/edited_points', rec => { rec.levels.L2.edited_points = []; });
   patched('/femoral_heads/0/edited_points', rec => { rec.femoral_heads[0].edited_points = []; });
   patched('/levels/C3/edited_points', rec => { rec.levels.C3.edited_points = ['sa']; });
-  patched('/levels/L3/edited_points', rec => { rec.levels.L3.edited_points = ['sa', 'sp', 'ia']; });
+  // (2026-10-21, partial endplates) a manual body lists the keys it holds, so any list from one key is valid; none is not.
+  patched('/levels/L3/edited_points', rec => { rec.levels.L3.edited_points = []; });
   patched('/levels/T1/edited_points', rec => { rec.levels.T1.edited_points = ['sa']; });
   patched('/levels/C7/edited_points', rec => { rec.levels.C7.edited_points = ['sa']; });
   patched('/levels/T4/edited_points', rec => { rec.levels.T4.edited_points = ['centroid']; });
@@ -843,7 +845,7 @@ test('recordLevels leaves out what a damaged record does not say, and never inve
   assert.deepEqual(partial.L1, { visible: true, source: 'model', geometry: null }, 'a placed state without corners has no geometry');
   assert.equal(partial.L4.geometry, null, 'a corner that is not a point voids the geometry');
   assert.deepEqual(partial.L5, { visible: false, source: 'annotator', geometry: null }, 'not_visible never carries geometry');
-  assert.equal(partial.C2.geometry, null, 'C2 without a centroid has no geometry');
+  assert.deepEqual(partial.C2.geometry, { inferior: [[1, 1], [2, 2]], centroid: null }, 'C2 without a centroid keeps its inferior pair (partial endplates)');
   assert.equal(partial.T4.geometry, null);
   assert.equal(partial.FH2.geometry, null, 'a zero radius is no circle');
   assert.deepEqual(partial.FH1.geometry, { center: [5, 5], radius: 3, rim: null }, 'a one-point rim is dropped to null');
@@ -884,4 +886,77 @@ test('normalizeComment: " x " → "x", "   " → null, undefined → null', () =
   assert.equal(normalizeComment(42), null);
   assert.equal(normalizeComment({}), null);
   assert.equal(normalizeComment('a\n\nb'), 'a\n\nb', 'inner line breaks are kept');
+});
+
+const PARTIAL_EXAMPLE = JSON.parse(fs.readFileSync(new URL('../docs/design/level-editor/label-record.partial.example.json', import.meta.url), 'utf8'));
+
+test('a manual body with one endplate writes nullable corners by pair and lists its placed keys; the record validates and reads back', () => {
+  let editor = openEditor({ study: { id: 'SP-0003', geometry: null, labelFile: null }, region: 'cervical', modelGeometry: null, saved: null });
+  editor = setLevelGeometry(editor, 'C7', { superior: [[10, 110], [20, 110]], inferior: null });
+  editor = setLevelGeometry(editor, 'C2', { inferior: null, centroid: [45, 12] });
+  const record = toLabelRecord({ editor, study: { ...STUDY, region: 'cervical' }, image: IMAGE, model: MODEL, savedAt: SAVED_AT });
+  assert.deepEqual(record.levels.C7.corners, { sa: [10, 110], sp: [20, 110], ia: null, ip: null });
+  assert.deepEqual(record.levels.C7.edited_points, ['sa', 'sp']);
+  assert.equal(record.levels.C7.state, 'manual');
+  assert.deepEqual(record.levels.C2.corners, { ia: null, ip: null });
+  assert.deepEqual(record.levels.C2.centroid, [45, 12]);
+  assert.deepEqual(record.levels.C2.edited_points, ['centroid']);
+  assert.equal(record.edits.points_placed, 3);
+  assert.equal(record.complete, false, 'C3 to C6 and T1 are still visible and not placed');
+  const valid = validateAgainst(SCHEMA, record);
+  assert.deepEqual(valid.errors, []);
+  const back = recordLevels(record);
+  assert.deepEqual(back.C7.geometry, { superior: [[10, 110], [20, 110]], inferior: null });
+  assert.deepEqual(back.C2.geometry, { inferior: null, centroid: [45, 12] });
+});
+
+test('an endplate removed from a model body writes edited with the removed keys and a whole model_corners; one added writes partial model_corners', () => {
+  const whole = { superior: [[10, 110], [20, 110]], inferior: [[10, 120], [20, 120]] };
+  const study = { id: 'SP-0004', geometry: { region: 'cervical', vertebrae: { C7: { ...whole, quadrilateral: null } }, c2_centroid: null } };
+  let editor = openEditor({ study, region: 'cervical', modelGeometry: study.geometry, saved: null });
+  editor = setLevelGeometry(editor, 'C7', { superior: whole.superior, inferior: null });
+  let record = toLabelRecord({ editor, study: STUDY, image: IMAGE, model: MODEL, savedAt: SAVED_AT });
+  assert.equal(record.levels.C7.state, 'edited');
+  assert.deepEqual(record.levels.C7.edited_points, ['ia', 'ip']);
+  assert.deepEqual(record.levels.C7.corners, { sa: [10, 110], sp: [20, 110], ia: null, ip: null });
+  assert.deepEqual(record.levels.C7.model_corners, { sa: [10, 110], sp: [20, 110], ia: [10, 120], ip: [20, 120] });
+  assert.equal(record.edits.points_moved, 2);
+  assert.deepEqual(validateAgainst(SCHEMA, record).errors, []);
+  const partialStudy = { id: 'SP-0005', geometry: { region: 'cervical', vertebrae: { C7: { superior: whole.superior, inferior: null, quadrilateral: null } }, c2_centroid: null } };
+  editor = openEditor({ study: partialStudy, region: 'cervical', modelGeometry: partialStudy.geometry, saved: null });
+  editor = setLevelGeometry(editor, 'C7', whole);
+  record = toLabelRecord({ editor, study: STUDY, image: IMAGE, model: MODEL, savedAt: SAVED_AT });
+  assert.deepEqual(record.levels.C7.edited_points, ['ia', 'ip']);
+  assert.deepEqual(record.levels.C7.model_corners, { sa: [10, 110], sp: [20, 110], ia: null, ip: null });
+  assert.deepEqual(validateAgainst(SCHEMA, record).errors, []);
+});
+
+test('the schema holds a pair together: a half pair, no pair, and a C2 with neither its pair nor its centroid are rejected; the partial example validates', () => {
+  assert.deepEqual(validateAgainst(SCHEMA, PARTIAL_EXAMPLE).errors, []);
+  assert.deepEqual(validateAgainst(SCHEMA, EXAMPLE).errors, [], 'the whole example still validates');
+  const broken = (patch) => { const value = structuredClone(PARTIAL_EXAMPLE); patch(value); return validateAgainst(SCHEMA, value).ok; };
+  assert.equal(broken((v) => { v.levels.C7.corners.sp = null; }), false, 'sa without sp');
+  assert.equal(broken((v) => { v.levels.C7.corners.sa = null; v.levels.C7.corners.sp = null; }), false, 'no pair at all');
+  assert.equal(broken((v) => { v.levels.C7.corners.ia = [1, 1]; }), false, 'ia without ip');
+  assert.equal(broken((v) => { v.levels.C2.centroid = null; }), false, 'C2 with neither');
+  assert.equal(broken((v) => { v.levels.C2.corners.ia = [1, 1]; }), false, 'C2 half a pair');
+  assert.equal(broken((v) => { v.levels.C7.edited_points = []; }), false, 'a manual body lists at least one key');
+  assert.equal(broken((v) => { v.levels.C7.corners.ia = [1, 2]; v.levels.C7.corners.ip = [2, 2]; v.levels.C7.edited_points = ['sa', 'sp', 'ia', 'ip']; }), true, 'made whole');
+});
+
+test('recordLevels reads a half pair or an entry with no part as no geometry, without throwing', () => {
+  const record = structuredClone(PARTIAL_EXAMPLE);
+  record.levels.C7.corners.sp = null;
+  assert.equal(recordLevels(record).C7.geometry, null);
+  record.levels.C7.corners = { sa: null, sp: null, ia: null, ip: null };
+  assert.equal(recordLevels(record).C7.geometry, null);
+  record.levels.C2.centroid = null;
+  assert.equal(recordLevels(record).C2.geometry, null);
+  assert.equal(recordLevels(record).C7.visible, true, 'the state is still read');
+});
+
+test('the schema description records the partial-endplates amendment under the same id', () => {
+  assert.equal(SCHEMA.$id, 'spinecontour.segmentation-label/1');
+  assert.match(SCHEMA.description, /2026-10-21/);
+  assert.match(SCHEMA.description, /endplate/i);
 });
