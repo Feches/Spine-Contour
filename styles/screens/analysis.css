@@ -604,8 +604,9 @@
   color: var(--stage-accent);
 }
 .viewer-edit-help {
-  /* (2026-10-21, partial endplates, spec §4) 160px, not 220px: with FINISH in the placing row the bar still fits one
-     row at the smoke's 1600px window (a second row covered the film's top); a long help line wraps in its own box. */
+  /* (2026-10-21, partial endplates, spec §4) 160px, not 220px, in every edit-bar state: a long help line wraps inside
+     its own box instead of the bar taking a second row (which covered the film's top), so the bar keeps one row at the
+     smoke's 1600px window with FINISH in the placing row too. */
   flex: 1 1 160px;
   min-width: 0;
   font-size: 12px;

@@ -128,22 +128,33 @@ function check(name, ok, detail) {
 
 const cdp = await connect();
 // (2026-10-21, partial endplates) Every evaluate is bounded: a page promise that never settles, or a blocked page,
-// rejects after 90 s (the run then FAILs "ran to the end without throwing") instead of hanging the suite.
+// rejects after 90 s (the run then FAILs "ran to the end without throwing") instead of hanging the suite. A call that
+// answers (a value or a page exception) is progress for the watchdog below, so a long healthy wait never trips it.
 const EV_TIMEOUT_MS = 90000;
+let lastProgress = Date.now();
 const ev = (source) => {
   let timer = null;
   const timeout = new Promise((_resolve, reject) => {
     timer = setTimeout(() => reject(new Error(`evaluate timed out after ${EV_TIMEOUT_MS} ms: ${source.slice(0, 160)}`)), EV_TIMEOUT_MS);
   });
-  return Promise.race([cdp.evaluate(source), timeout]).finally(() => clearTimeout(timer));
+  const answered = cdp.evaluate(source).finally(() => { lastProgress = Date.now(); });
+  return Promise.race([answered, timeout]).finally(() => clearTimeout(timer));
 };
-// And a watchdog for the raw cdp calls (rect, click, key): no check printed for 180 s ends the run as a FAIL.
-let lastProgress = Date.now();
-setInterval(() => {
-  if (Date.now() - lastProgress < 180000) return;
-  console.log(`FAIL  the suite printed no check for 180 s (a hung await after the last one)  -> ${JSON.stringify(results.at(-1)?.name ?? null)}`);
-  process.exit(1);
-}, 5000).unref();
+// And, in the dom phase only (the film phase keeps its own 400 s run budget), a watchdog for the raw cdp calls (rect,
+// click, key): no check and no page answer for 120 s is a FAIL; the run's cleanup gets 15 s, the summary prints, exit 1.
+const WATCHDOG_MS = 120000;
+if (PHASE === 'dom') {
+  const watchdog = setInterval(async () => {
+    if (Date.now() - lastProgress < WATCHDOG_MS) return;
+    clearInterval(watchdog);
+    check('the suite made progress: a check or a page answer within 120 s', false, { lastCheck: results.at(-1)?.name ?? null });
+    await Promise.race([cleanupRun(), cdp.settle(15000)]).catch(() => {});
+    const failedNow = results.filter((r) => !r.ok).length;
+    console.log(`${results.length - failedNow}/${results.length} checks passed (phase ${PHASE})`);
+    process.exit(1);
+  }, 5000);
+  watchdog.unref();
+}
 const js = (value) => JSON.stringify(value);
 
 // Polls a page expression until it is truthy; false on timeout (never throws, so later checks still run).
@@ -1787,17 +1798,8 @@ async function filmPhase() {
 
 // ---------------------------------------------------------------------------
 
-let crashed = null;
-try {
-  await until(`document.querySelector('#app')?.childElementCount > 0`, 30000);
-  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1100, deviceScaleFactor: 1, mobile: false });
-  await cdp.send('Page.bringToFront');
-  if (PHASE === 'film') await filmPhase();
-  else await domPhase();
-} catch (error) {
-  crashed = error;
-  check('the suite ran to the end without throwing', false, String(error?.stack ?? error));
-} finally {
+// Remove what this run injected and reset the window size; the finally calls it, and the watchdog with a bound.
+async function cleanupRun() {
   // Remove what this run injected: the studies, their sidecars and label records, any stashed editor; reset the keys.
   try {
     const leftovers = await ev(`(async () => {
@@ -1823,6 +1825,20 @@ try {
     console.log(`cleanup failed: ${error.message}`);
   }
   await cdp.send('Emulation.clearDeviceMetricsOverride').catch(() => {});
+}
+
+let crashed = null;
+try {
+  await until(`document.querySelector('#app')?.childElementCount > 0`, 30000);
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1100, deviceScaleFactor: 1, mobile: false });
+  await cdp.send('Page.bringToFront');
+  if (PHASE === 'film') await filmPhase();
+  else await domPhase();
+} catch (error) {
+  crashed = error;
+  check('the suite ran to the end without throwing', false, String(error?.stack ?? error));
+} finally {
+  await cleanupRun();
   check('no console errors or exceptions during the run', cdp.errors.length === 0, cdp.errors);
   cdp.close();
 }
