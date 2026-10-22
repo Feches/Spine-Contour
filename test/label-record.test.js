@@ -892,7 +892,7 @@ const PARTIAL_EXAMPLE = JSON.parse(fs.readFileSync(new URL('../docs/design/level
 
 test('a manual body with one endplate writes nullable corners by pair and lists its placed keys; the record validates and reads back', () => {
   let editor = openEditor({ study: { id: 'SP-0003', geometry: null, labelFile: null }, region: 'cervical', modelGeometry: null, saved: null });
-  editor = setLevelGeometry(editor, 'C7', { superior: [[10, 110], [20, 110]], inferior: null });
+  editor = setLevelGeometry(editor, 'C7', { superior: [[10, 110], [20, 110]], inferior: null, centroid: null });
   editor = setLevelGeometry(editor, 'C2', { inferior: null, centroid: [45, 12] });
   const record = toLabelRecord({ editor, study: { ...STUDY, region: 'cervical' }, image: IMAGE, model: MODEL, savedAt: SAVED_AT });
   assert.deepEqual(record.levels.C7.corners, { sa: [10, 110], sp: [20, 110], ia: null, ip: null });
@@ -906,7 +906,7 @@ test('a manual body with one endplate writes nullable corners by pair and lists 
   const valid = validateAgainst(SCHEMA, record);
   assert.deepEqual(valid.errors, []);
   const back = recordLevels(record);
-  assert.deepEqual(back.C7.geometry, { superior: [[10, 110], [20, 110]], inferior: null });
+  assert.deepEqual(back.C7.geometry, { superior: [[10, 110], [20, 110]], inferior: null, centroid: null });
   assert.deepEqual(back.C2.geometry, { inferior: null, centroid: [45, 12] });
 });
 
@@ -914,7 +914,7 @@ test('an endplate removed from a model body writes edited with the removed keys 
   const whole = { superior: [[10, 110], [20, 110]], inferior: [[10, 120], [20, 120]] };
   const study = { id: 'SP-0004', geometry: { region: 'cervical', vertebrae: { C7: { ...whole, quadrilateral: null } }, c2_centroid: null } };
   let editor = openEditor({ study, region: 'cervical', modelGeometry: study.geometry, saved: null });
-  editor = setLevelGeometry(editor, 'C7', { superior: whole.superior, inferior: null });
+  editor = setLevelGeometry(editor, 'C7', { superior: whole.superior, inferior: null, centroid: null });
   let record = toLabelRecord({ editor, study: STUDY, image: IMAGE, model: MODEL, savedAt: SAVED_AT });
   assert.equal(record.levels.C7.state, 'edited');
   assert.deepEqual(record.levels.C7.edited_points, ['ia', 'ip']);
@@ -924,7 +924,7 @@ test('an endplate removed from a model body writes edited with the removed keys 
   assert.deepEqual(validateAgainst(SCHEMA, record).errors, []);
   const partialStudy = { id: 'SP-0005', geometry: { region: 'cervical', vertebrae: { C7: { superior: whole.superior, inferior: null, quadrilateral: null } }, c2_centroid: null } };
   editor = openEditor({ study: partialStudy, region: 'cervical', modelGeometry: partialStudy.geometry, saved: null });
-  editor = setLevelGeometry(editor, 'C7', whole);
+  editor = setLevelGeometry(editor, 'C7', { ...whole, centroid: null });
   record = toLabelRecord({ editor, study: STUDY, image: IMAGE, model: MODEL, savedAt: SAVED_AT });
   assert.deepEqual(record.levels.C7.edited_points, ['ia', 'ip']);
   assert.deepEqual(record.levels.C7.model_corners, { sa: [10, 110], sp: [20, 110], ia: null, ip: null });

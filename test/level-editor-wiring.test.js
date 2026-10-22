@@ -1271,12 +1271,14 @@ test('Place… on a partial level resumes it at its first missing step, and the 
     fitPlacing(IMAGE);
     await settle();
     startPlace('C7');
-    assert.deepEqual(getState().levelEditor.placing, { code: 'C7', points: [[100, 300], [140, 302], null, null], current: 2, history: [] }, 'Place… resumes at the first missing step');
+    assert.deepEqual(getState().levelEditor.placing, { code: 'C7', points: [[100, 300], [140, 302], null, null, null], current: 2, history: [] }, 'Place… resumes at the first missing step');
     cancelPlace();
-    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null }, 'CANCEL left the level as it was');
+    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null, centroid: null }, 'CANCEL left the level as it was');
     resumePlace('C7', 3);
     assert.equal(getState().levelEditor.placing.current, 3, 'a hollow chip chooses its step');
     placePoint([142, 332], IMAGE);
+    assert.equal(getState().levelEditor.placing.current, 4, 'C7 has a fifth step now: the click after IP moves on to the centroid');
+    selectPlacingStep(2);
     placePoint([102, 330], IMAGE);
     await settle();
     assert.equal(commits.length, 2);
@@ -1302,12 +1304,12 @@ test('Delete with a point focused removes its endplate and commits; the last par
     removeFocusedPart();
     await settle();
     assert.equal(commits.length, 2, 'the last part stays');
-    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null });
+    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null, centroid: null });
     startPlace('C7');
     setFocusedHandle({ code: 'C7', handle: 'SA' });
     removeFocusedPart();
     assert.equal(commits.length, 2, 'not while placing');
-    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null });
+    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null, centroid: null });
   });
 });
 
@@ -1330,7 +1332,7 @@ test('a partial level saves a record with nullable corners that validates, and E
     assert.deepEqual(validateAgainst(SCHEMA, record).errors, []);
     exitNow();
     await enterLevelEditor('SP-9563');
-    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null });
+    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null, centroid: null });
     assert.equal(unsavedCount(getState().levelEditor), 0);
   }));
 });

@@ -90,6 +90,18 @@ const PART_STEPS = new Map([
   ['centroid', [['centroid', [0]]]],
   ['circle', []],
 ]);
+// (2026-10-22, round 2, spec §12 N9) The bodies that carry an optional centroid part as a third part: C7 only. It stays
+// kind 'body'; the sites that enumerate a body's parts, steps, handles or keys consult the code.
+export const CENTROID_BODIES = ['C7'];
+
+/** (2026-10-22, round 2, N9) Whether a level carries an optional centroid part beside its endplates (C7). */
+export function hasCentroid(code) { return CENTROID_BODIES.includes(code); }
+
+// The part table of a level: its kind's, with the centroid appended for a centroid body.
+const partTable = code => {
+  const parts = PART_STEPS.get(kindOf(code));
+  return parts && hasCentroid(code) ? [...parts, ['centroid', [parts.reduce((n, [, steps]) => n + steps.length, 0)]]] : parts;
+};
 const HANDLE_PARTS = { SA: 'superior', SP: 'superior', IA: 'inferior', IP: 'inferior', CENTROID: 'centroid' };
 
 /**
@@ -98,7 +110,7 @@ const HANDLE_PARTS = { SA: 'superior', SP: 'superior', IA: 'inferior', IP: 'infe
  * @returns {{key: string, steps: number[]}[]}
  */
 export function partsOf(code) {
-  return (PART_STEPS.get(kindOf(code)) ?? []).map(([key, steps]) => ({ key, steps: [...steps] }));
+  return (partTable(code) ?? []).map(([key, steps]) => ({ key, steps: [...steps] }));
 }
 
 /** (2026-10-21, spec §3) The part a handle belongs to, or null for a rim handle or a handle the kind lacks (C2 has no SA). */
@@ -125,7 +137,7 @@ export function canResume(code, entry) {
 }
 
 // The first handle of each part, by kind.
-const PART_HANDLE = new Map([['body', { superior: 'SA', inferior: 'IA' }], ['c2', { inferior: 'IA', centroid: 'CENTROID' }],
+const PART_HANDLE = new Map([['body', { superior: 'SA', inferior: 'IA', centroid: 'CENTROID' }], ['c2', { inferior: 'IA', centroid: 'CENTROID' }],
   ['endplate', { superior: 'SA' }], ['centroid', { centroid: 'CENTROID' }]]);
 
 /**
@@ -221,7 +233,10 @@ const POINTS = {
   circle: [['center', g => g.center], ['radius', g => g.radius]],
 };
 
-const pointsOf = code => POINTS[kindOf(code)] ?? [];
+const pointsOf = code => {
+  const points = POINTS[kindOf(code)] ?? [];
+  return hasCentroid(code) ? [...points, ['centroid', g => g.centroid]] : points;   // (2026-10-22, N9) C7's fifth key
+};
 
 /**
  * The label record's geometry keys for a level, in record order (D18): a body 'sa', 'sp', 'ia', 'ip'; C2 'ia', 'ip',
@@ -273,6 +288,8 @@ function stepsFor(code) {
       step('SP', 'Click the superior-posterior corner (SP).', 'SP'),
       step('IA', 'Click the inferior-anterior corner (IA).', 'IA'),
       step('IP', 'Click the inferior-posterior corner (IP).', 'IP'),
+      // (2026-10-22, round 2, N9) C7's optional fifth step.
+      ...(hasCentroid(code) ? [step('CENTROID', `Click the centroid of the ${code} body.`, 'level')] : []),
     ];
     case 'c2': return [
       step('IA', 'Click the inferior-anterior corner of C2 (IA).', 'IA'),
@@ -369,7 +386,7 @@ export function geometryFromPoints(code, points, imageSize) {
   if (kind === 'circle') {
     return fitRim(points.filter(Boolean).map(copyPoint), imageSize ? Math.hypot(imageSize.width, imageSize.height) : Infinity);
   }
-  const parts = PART_STEPS.get(kind);
+  const parts = partTable(code);
   if (!parts) return null;
   // (2026-10-21, partial endplates, spec §3) `points` is the slot array with nulls. Per part: every slot set -> written,
   // every slot empty -> null, else (half a part) no geometry. A body or C2 may hold one part; an endplate or a centroid
@@ -400,10 +417,13 @@ function partialFrom(parts) {
   return values.some(value => value === undefined) || values.every(value => value === null) ? null : parts;
 }
 
-function bodyFrom(vertebra) {
+function bodyFrom(vertebra, withCentroid = false) {
   return partialFrom({
     superior: partFrom(vertebra?.superior, isPair, copyPair),
     inferior: partFrom(vertebra?.inferior, isPair, copyPair),
+    // (2026-10-22, round 2, N10) A centroid body's canonical shape carries the key; the study's c7_centroid is never
+    // read back as the part (it is the projection's derived mean), so it is null here.
+    ...(withCentroid ? { centroid: null } : {}),
   });
 }
 
@@ -423,7 +443,7 @@ function levelFromGeometry(code, geometry) {
     case 'S1': return isPair(geometry.s1_superior) ? { superior: copyPair(geometry.s1_superior) } : null;
     case 'FH1': return circleFrom(geometry.femoral_circles?.[0]);
     case 'FH2': return circleFrom(geometry.femoral_circles?.[1]);
-    default: return kindOf(code) === 'body' ? bodyFrom(geometry.vertebrae?.[code]) : null;   // T1, T4: never in a study
+    default: return kindOf(code) === 'body' ? bodyFrom(geometry.vertebrae?.[code], hasCentroid(code)) : null;   // T1, T4: never in a study
   }
 }
 
@@ -667,7 +687,9 @@ export function addPoint(editor, point, imageSize) {
   const points = placing.points.map((existing, index) => (index === slot ? clicked : existing));
   const history = [...placing.history.filter(index => index !== slot), slot];
   const next = { ...editor, placing: { code: placing.code, points, current: nextEmpty(points, slot), history } };
-  return points.includes(null) ? next : finishPlacing(next, imageSize);
+  // (2026-10-22, round 2, N9) A centroid body finishes by itself at its endplates: its centroid slot may stay empty.
+  const required = hasCentroid(placing.code) ? points.slice(0, points.length - 1) : points;
+  return required.includes(null) ? next : finishPlacing(next, imageSize);
 }
 
 /** UNDO: the most recently set point is cleared and its step becomes the current one; a no-op with nothing set. */
@@ -756,7 +778,7 @@ export function removePart(editor, code, handle) {
   if (!key || entry.geometry[key] == null) return editor;
   const keys = partsOf(code).map(part => part.key);
   if (!keys.some(other => other !== key && entry.geometry[other] != null)) return editor;
-  const geometry = Object.fromEntries(keys.map(other => [other, other === key ? null : copyGeometry(entry.geometry[other])]));
+  const geometry = Object.fromEntries(keys.map(other => [other, other === key ? null : copyGeometry(entry.geometry[other] ?? null)]));
   return {
     ...setEntry(editor, code, { geometry, source: 'annotator' }),
     handle: { code, handle: firstHandle(code, geometry) },

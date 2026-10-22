@@ -8,7 +8,7 @@
 //
 // Points are [x, y] in pixels of the stored image, origin top-left.
 
-import { LEVEL_CODES, kindOf, levelState, trainingStatus, changedPoints } from './levels.js';
+import { LEVEL_CODES, kindOf, hasCentroid, levelState, trainingStatus, changedPoints } from './levels.js';
 import { projectionRegion } from './level-projection.js';
 import { fileStem, safeStem } from './labels.js';
 import { VERSION_LABEL } from './version.js';
@@ -199,6 +199,14 @@ function geometryOf(code, raw) {
     case 'body': {
       const superior = pairOrNull(raw.corners?.sa, raw.corners?.sp);
       const inferior = pairOrNull(raw.corners?.ia, raw.corners?.ip);
+      // (2026-10-22, round 2, spec §12 N9/N11) C7's centroid part: a point, null when absent (an older record has no key),
+      // BAD when malformed. The canonical shape carries the key for a centroid body only, so a reopened record compares
+      // the same as the study's C7 (sameGeometry tells a missing key from a null).
+      if (hasCentroid(code)) {
+        const centroid = isPoint(raw.centroid) ? copyPoint(raw.centroid) : (raw.centroid == null ? null : BAD);
+        if (superior === BAD || inferior === BAD || centroid === BAD || (!superior && !inferior && !centroid)) return null;
+        return { superior, inferior, centroid };
+      }
       if (superior === BAD || inferior === BAD || (!superior && !inferior)) return null;
       return { superior, inferior };
     }
