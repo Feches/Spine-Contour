@@ -300,7 +300,7 @@ The canvas draws C7's centroid as a dot in C7's colour (C2's radius, `dot: true`
 outside edit mode the existing C7 cross already draws `c7_centroid` on a full-spine film. The plate of a C7 with only
 its centroid anchors on the centroid with the film's side, as T4's and a centroid-only C2's do. `trainingStatus`,
 `dependencyNote` and the panel's rows are unchanged, except that C7's row offers Place… while its centroid is unplaced,
-a whole C7 included (Place… resumes at the centroid step) (an optional part never makes the label incomplete).
+a whole C7 included, since Place… resumes at the centroid step (an optional part never makes the label incomplete).
 
 Verification adds: unit tests for the five-step placement and its four-click finish, the centroid-alone finish, the
 parts and handles of C7, the projection's three `c7_centroid` cases, the record's `c7` entry both ways and the schema,

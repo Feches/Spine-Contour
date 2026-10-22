@@ -375,8 +375,8 @@ saved before it validates and reads as no comment; the app writes it on every sa
 and the Find search read it without opening the file; a re-run, a Region change and Unmark reviewed leave it, since
 the record stays, and a delete removes both. A re-run keeps the record, so Edit merges the record's C7 centroid onto
 the new model's C7 corners; the point is in image coordinates and stays valid, and nothing commits until an edit.
-Opening the editor takes the comment from the record, else from
-`labelComment`. Mark reviewed's zero-change record carries the study's current comment, usually none.
+Opening the editor takes the comment from the record, else from `labelComment`. Mark reviewed's zero-change record
+carries the study's current comment, usually none.
 
 **The record travels in bundles** (annotation bundles, 2026-10-15, B1–B9). **Export all** on the Find tab copies each
 film's record, its `comment` with it, into that film's folder in the bundle, beside the film and its model result;
