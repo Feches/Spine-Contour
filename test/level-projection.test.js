@@ -747,3 +747,16 @@ test('staleStudyLevels never lists T1 or T4, and a C7 centroid over a study C7 w
   assert.deepEqual(staleStudyLevels(withCentroid, study), []);
   assert.deepEqual(staleStudyLevels(editorWith({ C7: c7, L3: bodyAt(10, 70) }, { hide: ['T1', 'T4'] }), study), []);
 });
+
+// (Fix wave 2, I1) The heads compare as a count: the study's circles are read by slot, the editor's matched by value.
+test('staleStudyLevels compares the two heads by count, never by code', () => {
+  const headFilm = (circles) => ({ region: 'full_spine', geometry: { anterior_side: 'left', ...IMAGE_FIELDS, vertebrae: {}, femoral_circles: circles } });
+  const head = (x) => ({ center: [x, 280], radius: 5, rim: null });
+  const oneCircle = headFilm([[10, 280, 5]]);
+  const twoCircles = headFilm([[10, 280, 5], [20, 280, 5]]);
+  const onlyHead2 = editorWith({ FH2: head(10) }, { hide: ['FH1'] });
+  assert.deepEqual(staleStudyLevels(onlyHead2, oneCircle), [], 'one circle the editor calls FH2 is not stale');
+  assert.equal(staleStudyLevels(editorWith({ FH1: head(10) }, { hide: ['FH2'] }), twoCircles).length, 1, 'two circles, one head placed');
+  assert.equal(staleStudyLevels(editorWith({}, { hide: ['FH1', 'FH2'] }), oneCircle).length, 1, 'one circle, no head visible');
+  assert.deepEqual(staleStudyLevels(editorWith({ FH1: head(10), FH2: head(20) }), twoCircles), [], 'both placed');
+});

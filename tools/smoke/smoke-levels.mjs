@@ -948,6 +948,11 @@ async function partialChecks() {
   check('22. two clicks complete C7: Manual, both endplates in its geometry',
     (await badge('C7')) === 'Manual' && deepEqual(whole?.superior, [[200, 400], [400, 405]]) && deepEqual(whole?.inferior, [[205, 470], [405, 475]]),
     { badge: await badge('C7'), whole });
+  // (Fix wave 2) Task 14: a whole C7 holds two endplates, so its placed chips say Delete removes the endplate.
+  await clickSelector('[data-level-key="C7"]');
+  const wholeTitles = await ev(`[...document.querySelectorAll('.viewer-steps .viewer-step.is-done')].map((c) => c.title)`);
+  check('22. a whole C7: its placed chips carry the Delete suffix in their title',
+    wholeTitles.length >= 2 && wholeTitles.every((t) => /; Delete removes its endplate$/.test(t)), wholeTitles);
   await settled(PARTIAL);
   const completed = await studyOf(PARTIAL);
   check('22. the study\'s C7 has its quadrilateral, and the C2–C7 Cobb stays null (C2 has no inferior endplate)',
@@ -1060,6 +1065,49 @@ async function partialChecks() {
   await clickSelector('[data-level-key="prompt:discard"]');
   const leftEdit = await until(`import('./renderer/store.js').then((m) => m.getState().editing === false)`, 5000);
   check('22. Escape with unsaved edits shows the exit prompt, and its Discard leaves edit mode', promptShown && leftEdit, { promptShown, leftEdit });
+}
+
+// 23 (2026-10-22, round 2, plan Task 16 step 5; fix wave 2). The heal, on SP-9305 straight after section 22: a level the
+// record hides that the study still carries (a lost /measure, simulated through the store) is projected out by one
+// commit on entry, with the Reviewed mark dropped, and the film opens with no phantom unsaved change.
+async function healChecks() {
+  const editorOpen = () => ev(`import('./renderer/store.js').then((m) => m.getState().editing === true)`);
+  if (!(await editorOpen())) await enterEdit();
+  if (!(await present(checkboxOf('C7')))) await clickSelector('[data-level-key="open:cervical"]');
+  const c7Before = (await studyOf(PARTIAL))?.geometry?.vertebrae?.C7 ?? null;
+  await clickSelector(checkboxOf('C7'));
+  const gone = await until(`window.__lv.study(${js(PARTIAL)})?.geometry?.vertebrae?.C7 === undefined`, 10000);
+  check('23. unchecking C7 commits it out of the study (/measure)', Boolean(c7Before) && gone, { c7Before, gone });
+  await settled(PARTIAL);
+  fs.rmSync(path.join(LABELS, PARTIAL_RECORD), { force: true });
+  await clickSelector('.lv-save');
+  await untilNode(() => fs.existsSync(path.join(LABELS, PARTIAL_RECORD)));
+  const saved = await until(`window.__lv.unsaved() === 0`, 10000);
+  check('23. Save edits writes the record and the editor reads 0 unsaved changes', saved, await ev('window.__lv.unsaved()'));
+  await clickSelector(EDITBAR_DONE);
+  const closed = await until(`import('./renderer/store.js').then((m) => m.getState().editing === false)`, 5000);
+  // The lost /measure: the study gets C7 back and a Reviewed mark through the store (a clone, never in place).
+  await ev(`(async () => {
+    const store = await import('./renderer/store.js');
+    const c7 = ${js(c7Before)};
+    store.setState((s) => ({ studies: s.studies.map((x) => (x.id !== ${js(PARTIAL)} ? x : {
+      ...x, reviewedAt: '2026-10-22T08:00:00.000Z',
+      geometry: { ...x.geometry, vertebrae: { ...x.geometry.vertebrae, C7: structuredClone(c7) } } })) }));
+    return true;
+  })()`);
+  const restored = await ev(`Boolean(window.__lv.study(${js(PARTIAL)})?.geometry?.vertebrae?.C7) && window.__lv.study(${js(PARTIAL)})?.reviewedAt != null`);
+  await enterEdit();
+  const healed = await until(`window.__lv.study(${js(PARTIAL)})?.geometry?.vertebrae?.C7 === undefined && window.__lv.study(${js(PARTIAL)})?.reviewedAt === null`, 10000);
+  check('23. Edit heals: C7 leaves the study again and the Reviewed mark is dropped', closed && restored && healed,
+    { closed, restored, healed, study: (await studyOf(PARTIAL))?.reviewedAt });
+  await settled(PARTIAL);
+  const unsaved = await ev('window.__lv.unsaved()');
+  check('23. the healed film opens with no unsaved change (the panel and the editor agree)',
+    unsaved === 0 && (await text('.lv-unsaved')) === 'NOTHING TO SAVE', { unsaved, panel: await text('.lv-unsaved') });
+  await clickSelector(EDITBAR_DONE);
+  const left = await until(`import('./renderer/store.js').then((m) => m.getState().editing === false)`, 5000);
+  check('23. DONE leaves edit mode with no exit prompt', left && !(await present('[data-level-key="prompt:save"]')),
+    { left, prompt: await present('[data-level-key="prompt:save"]') });
 }
 
 // ---------------------------------------------------------------------------
@@ -1765,6 +1813,9 @@ async function domPhase() {
 
   // 22 (2026-10-21, partial endplates). A study of its own, left out of edit mode.
   await partialChecks();
+
+  // 23 (2026-10-22, round 2, fix wave 2). The heal, on the same film.
+  await healChecks();
 
   // 18 (gate feedback G6, D19). Last: it opens a study of its own and leaves the rest of the run as it was.
   await reviewRecordChecks(films);

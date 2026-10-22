@@ -1385,6 +1385,7 @@ test('Task 16: Edit on a film whose record hides C3 while the study carries it c
     const now = studyOf(study.id);
     assert.equal(now.geometry.vertebrae.C3, undefined, 'the study follows');
     assert.ok(now.geometry.vertebrae.C4);
+    assert.equal(unsavedCount(getState().levelEditor), 0, 'a level hidden in the record and the editor is no unsaved change');
   }));
 });
 
@@ -1439,13 +1440,15 @@ test('Task 16: Save edits with the editor closed during the write commits nothin
     return { measurements: {}, geometry: structuredClone(request) };
   };
   wire(commits, NO_FILM, { getPrediction: snapshotOf(geometry), measureWith, imageInfo: maskedImage });
-  await withBridge(labelBridge(() => exitNow()), () => withStore(study, async () => {
+  const bridge = labelBridge(() => exitNow());
+  await withBridge(bridge, () => withStore(study, async () => {
     await enterLevelEditor(study.id);
     toggleLevelVisible('C3');
     await settle();
     assert.equal(commits.length, 1);
     await saveLevelEdits();
     await settle();
+    assert.equal(bridge.saved.length, 1, 'the record was written');
     assert.equal(commits.length, 1, 'no heal without an open editor');
   }));
 });
@@ -1473,4 +1476,34 @@ test('Task 16: a stashed editor that disagrees with the study heals once on re-e
     assert.equal(commits.length, 2, 'one heal commit');
     assert.equal(studyOf(study.id).geometry.vertebrae.C3, undefined);
   });
+});
+
+// (Fix wave 2, I1) One study circle the record calls Head 2: the heads agree by count, so entry heals nothing and the
+// Reviewed mark survives.
+test('Fix wave 2: Edit on a film holding one circle the record calls Head 2 commits nothing and keeps reviewedAt', async () => {
+  const id = 'SP-9575';
+  const base = { ...newStudy({ id, fileName: `${id}_full_spine.png`, filePath: null }), geometry: { ...FILM_FIELDS, region: 'full_spine' } };
+  let editor = openEditor({ study: base, region: 'full_spine', modelGeometry: null, saved: null });
+  for (const [code, geometry] of [['C3', fullBody(100, 60)], ['L3', fullBody(100, 300)], ['FH2', { center: [140, 400], radius: 20, rim: null }]]) {
+    editor = setLevelGeometry(editor, code, geometry);
+  }
+  const geometry = projectGeometry(editor, base);
+  assert.equal(geometry.femoral_circles.length, 1, 'precondition: one circle');
+  const study = {
+    ...base, predictionId: `prediction-${id}`, measurements: {}, geometry, qc: { models: { vertebrae: 'hrnet' } },
+    labelFile: 'full_9575.label.json', reviewedAt: '2026-10-22T06:00:00.000Z',
+  };
+  const record = recordHiding(study, editor, ['FH1']);
+  assert.equal(record.femoral_heads.find(h => h.id === 1).state, 'not_visible', 'precondition: the record hides Head 1');
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(geometry) });
+  const bridge = labelBridge();
+  bridge.spineContour.loadLabelRecord = async () => structuredClone(record);
+  await withBridge(bridge, () => withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    await settle();
+    assert.equal(commits.length, 0, 'no heal');
+    assert.equal(studyOf(study.id).reviewedAt, study.reviewedAt, 'the Reviewed mark survives');
+    assert.equal(unsavedCount(getState().levelEditor), 0);
+  }));
 });

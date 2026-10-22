@@ -873,7 +873,8 @@ export function unsavedCount(editor) {
   const levels = LEVEL_CODES.filter(code => {
     const entry = editor.levels[code];
     const base = editor.baseline?.[code];
-    return entry.visible !== base?.visible || !sameGeometry(entry.geometry, base?.geometry);
+    // (Fix wave 2, I2) The geometry of a level hidden in both is never saved (the record writes not_visible with none).
+    return entry.visible !== base?.visible || (entry.visible && !sameGeometry(entry.geometry, base?.geometry));
   }).length;
   return levels + (commentChanged(editor) ? 1 : 0);
 }

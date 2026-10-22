@@ -1943,3 +1943,16 @@ test('openEditor takes a saved C7 whole, centroid included, when the study has n
   const e = openEditor({ study, region: 'cervical', modelGeometry: null, saved });
   assert.deepEqual(e.levels.C7.geometry, geometry);
 });
+
+// (Fix wave 2, I2) A level hidden in both the baseline and the editor is no unsaved change, whatever geometry it holds.
+test('unsavedCount ignores the geometry of a level hidden in both, and counts a visibility change or a visible edit', () => {
+  const G = body(10, 10);
+  const H = body(30, 30);
+  const editorOf = (entry, base) => ({
+    levels: Object.fromEntries(LEVEL_CODES.map(code => [code, code === 'C3' ? entry : { visible: true, geometry: null }])),
+    baseline: Object.fromEntries(LEVEL_CODES.map(code => [code, code === 'C3' ? base : { visible: true, geometry: null }])),
+  });
+  assert.equal(unsavedCount(editorOf({ visible: false, geometry: G }, { visible: false, geometry: null })), 0);
+  assert.equal(unsavedCount(editorOf({ visible: true, geometry: G }, { visible: false, geometry: null })), 1);
+  assert.equal(unsavedCount(editorOf({ visible: true, geometry: H }, { visible: true, geometry: G })), 1);
+});

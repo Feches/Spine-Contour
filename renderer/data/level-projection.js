@@ -88,8 +88,18 @@ export function projectsLevel(code, editor, study) {
 export function staleStudyLevels(editor, study) {
   if (!editor || !study?.geometry) return [];
   const stored = levelsFromGeometry(study.geometry);
-  return LEVEL_CODES.filter((code) => projectsLevel(code, editor, study)
+  const stale = LEVEL_CODES.filter((code) => !FEMORAL_HEADS.includes(code) && projectsLevel(code, editor, study)
     && !placed(editor, code) && stored[code] != null);
+  // (Fix wave 2, I1) The two heads are compared as a COUNT, never by code: the study's circles are read by slot
+  // (the first is FH1) while the editor's are matched to the record by value, so a film holding one circle the
+  // record calls FH2 has FH2 placed and FH1 not, and a per-code test would call FH1 stale on every entry.
+  if (projectsLevel('FH1', editor, study)) {
+    const usable = geometry => geometry && usableCircle(geometry);
+    const storedHeads = FEMORAL_HEADS.filter(code => usable(stored[code])).length;
+    const editorHeads = FEMORAL_HEADS.filter(code => usable(placed(editor, code)?.geometry)).length;
+    if (storedHeads > editorHeads) stale.push(...FEMORAL_HEADS.slice(0, storedHeads - editorHeads));
+  }
+  return stale;
 }
 
 /**

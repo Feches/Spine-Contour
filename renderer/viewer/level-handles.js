@@ -17,6 +17,7 @@ export const RIM_HANDLES = ['R0', 'R1', 'R2', 'R3'];
 
 // (2026-10-21, partial endplates, spec §4) Every handle of a kind in placement-step order, present or not: the chips of
 // a partial level list them all, the missing ones hollow. A head has no entry (its rim handles are RIM_HANDLES).
+// C7's list adds CENTROID fifth (`stepHandlesFor`).
 export const STEP_HANDLES = {
   body: ['SA', 'SP', 'IA', 'IP'], c2: ['IA', 'IP', 'CENTROID'], endplate: ['SA', 'SP'], centroid: ['CENTROID'],
 };
