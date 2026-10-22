@@ -1111,6 +1111,124 @@ async function healChecks() {
 }
 
 // ---------------------------------------------------------------------------
+// 24 (2026-10-22, T1 slope and T4 pelvic angle, plan Task 5). On SP-9305 straight after section 23 (full spine: C2's
+// centroid and S1 are placed, C7 is hidden by the record): both heads, T1's endplate and T4's centroid are placed by
+// hand; the study gains `t1_superior` and `t4_centroid` and the two measurements; outside edit mode the panel's
+// T1 SLOPE and T4 PELVIC ANGLE rows read a number; unchecking T4 names T4PA in a dependency note and takes the T4 row
+// back to a dash; checking it brings the value back; DONE and a reopen keep both fields.
+async function thoracicChecks() {
+  const editingNow = () => ev(`import('./renderer/store.js').then((m) => m.getState().editing === true)`);
+  const reveal = async (code, group) => {
+    if (!(await present(`[data-level-key="place:${code}"]`))) await clickSelector(`[data-level-key="open:${group}"]`);
+  };
+  const rowValue = (key) => ev(`document.querySelector('[data-row-key="${key}"] .meas-value')?.textContent ?? null`);
+  const saveAndLeave = async () => {
+    if ((await ev('window.__lv.unsaved()')) > 0) {
+      await clickSelector('.lv-save');
+      await until(`window.__lv.unsaved() === 0`, 10000);
+    }
+    await clickSelector(EDITBAR_DONE);
+    return until(`import('./renderer/store.js').then((m) => m.getState().editing === false)`, 5000);
+  };
+  const DEGREES = /^\d+(\.\d)?°$/;
+  const DASH = '—';
+
+  if (!(await editingNow())) await enterEdit();
+  // Both heads: two rim points each, FIT (the hip axis is the mean of the two centres).
+  await reveal('FH1', 'femoral');
+  await clickSelector('[data-level-key="place:FH1"]');
+  await clickImage(180, 690);
+  await clickImage(260, 690);
+  await clickSelector(EDITBAR_FIT);
+  await clickSelector('[data-level-key="place:FH2"]');
+  await clickImage(340, 690);
+  await clickImage(420, 690);
+  await clickSelector(EDITBAR_FIT);
+  await settled(PARTIAL);
+  // T1 and T4 start visible on a full-spine film (filmTypeDefaults); tick them if a record had them off.
+  await reveal('T1', 'thoracic');
+  for (const code of ['T1', 'T4']) {
+    if ((await ev(`window.__lv.editor()?.levels?.${code}?.visible`)) === false) await clickSelector(checkboxOf(code));
+  }
+  await clickSelector('[data-level-key="place:T1"]');
+  await clickImage(250, 150);
+  await clickImage(350, 170);
+  await clickSelector('[data-level-key="place:T4"]');
+  await clickImage(300, 300);
+  const landed = await until(`(() => { const g = window.__lv.study(${js(PARTIAL)})?.geometry; return Array.isArray(g?.t1_superior) && Array.isArray(g?.t4_centroid); })()`, 10000);
+  await settled(PARTIAL);
+  const placedStudy = await studyOf(PARTIAL);
+  const pg = placedStudy?.geometry;
+  check('24. T1 and T4 placed by hand: the study gains t1_superior (a pair) and t4_centroid (a point) on a full-spine film',
+    landed && pg?.region === 'full_spine' && deepEqual(rounded(pg.t1_superior), [[250, 150], [350, 170]]) && deepEqual(rounded(pg.t4_centroid), [300, 300]),
+    pg && { region: pg.region, t1: pg.t1_superior, t4: pg.t4_centroid });
+  check('24. the study\'s measurements carry T1S and T4PA as finite numbers',
+    Number.isFinite(placedStudy?.measurements?.T1S) && Number.isFinite(placedStudy?.measurements?.T4PA),
+    { T1S: placedStudy?.measurements?.T1S, T4PA: placedStudy?.measurements?.T4PA });
+  const t1sStored = placedStudy?.measurements?.T1S;
+  check('24. T1S is the acute angle of the T1 line (250,150)-(350,170) to the horizontal, 11.31 degrees',
+    Number.isFinite(t1sStored) && Math.abs(t1sStored - 11.3099) < 0.01, t1sStored);
+
+  const left = await saveAndLeave();
+  await until(`Boolean(document.querySelector('[data-row-key="T1S"]'))`, 5000);
+  const t1Row = await rowValue('T1S');
+  const t4Row = await rowValue('T4PA');
+  check('24. outside edit mode the T1 SLOPE row reads a number with a degree sign', left && DEGREES.test(t1Row ?? ''), { left, t1Row });
+  check('24. outside edit mode the T4 PELVIC ANGLE row reads a number with a degree sign', DEGREES.test(t4Row ?? ''), t4Row);
+
+  // Unchecking T4: a note names T4PA, T4 leaves the study, and the T4 row reads a dash.
+  await enterEdit();
+  if (!(await present(checkboxOf('T4')))) await clickSelector('[data-level-key="open:thoracic"]');
+  await clickSelector(checkboxOf('T4'));
+  const gone = await until(`window.__lv.study(${js(PARTIAL)})?.geometry?.t4_centroid == null`, 10000);
+  await settled(PARTIAL);
+  const noteT4 = await ev(`[...document.querySelectorAll('.lv-note')].map((n) => n.textContent).find((t) => t.includes('T4PA')) ?? null`);
+  const afterUncheck = await studyOf(PARTIAL);
+  check('24. unchecking T4 takes t4_centroid off the study and T4PA to null', gone && afterUncheck?.measurements?.T4PA == null, { gone, T4PA: afterUncheck?.measurements?.T4PA });
+  check('24. the unchecked T4 row\'s dependency note names T4PA', typeof noteT4 === 'string' && noteT4.includes('T4PA'), noteT4);
+  // In the same session the point is kept while hidden: checking T4 again returns it, and unchecking leaves it out.
+  await clickSelector(checkboxOf('T4'));
+  const sameSession = await until(`Array.isArray(window.__lv.study(${js(PARTIAL)})?.geometry?.t4_centroid) && Number.isFinite(window.__lv.study(${js(PARTIAL)})?.measurements?.T4PA)`, 10000);
+  await settled(PARTIAL);
+  check('24. checking T4 again in the same edit session returns the centroid and T4PA (the point is kept while hidden)', sameSession,
+    { t4: (await studyOf(PARTIAL))?.geometry?.t4_centroid, T4PA: (await studyOf(PARTIAL))?.measurements?.T4PA });
+  await clickSelector(checkboxOf('T4'));
+  await until(`window.__lv.study(${js(PARTIAL)})?.geometry?.t4_centroid == null`, 10000);
+  await settled(PARTIAL);
+  const left2 = await saveAndLeave();
+  await until(`Boolean(document.querySelector('[data-row-key="T4PA"]'))`, 5000);
+  check('24. outside edit mode the T4 PELVIC ANGLE row reads a dash while T4 is unchecked, and T1 SLOPE still reads its number',
+    left2 && (await rowValue('T4PA')) === DASH && DEGREES.test((await rowValue('T1S')) ?? ''), { left2, t4: await rowValue('T4PA'), t1: await rowValue('T1S') });
+
+  // A hidden level saved and left is not kept (the record holds it not visible): checking T4 shows it unplaced, and
+  // Place... puts it back.
+  await enterEdit();
+  if (!(await present(checkboxOf('T4')))) await clickSelector('[data-level-key="open:thoracic"]');
+  await clickSelector(checkboxOf('T4'));
+  await clickSelector('[data-level-key="place:T4"]');
+  await clickImage(300, 300);
+  const back = await until(`Array.isArray(window.__lv.study(${js(PARTIAL)})?.geometry?.t4_centroid) && Number.isFinite(window.__lv.study(${js(PARTIAL)})?.measurements?.T4PA)`, 10000);
+  await settled(PARTIAL);
+  const left3 = await saveAndLeave();
+  await until(`Boolean(document.querySelector('[data-row-key="T4PA"]'))`, 5000);
+  check('24. placing T4 again after the save returns the centroid, T4PA and the T4 PELVIC ANGLE row\'s number', back && left3 && DEGREES.test((await rowValue('T4PA')) ?? ''), { back, left3, row: await rowValue('T4PA') });
+
+  // DONE and a reopen: both fields are still on the study, and an editor opened on it reads them back.
+  await openFromList(HAND);
+  await openFromList(PARTIAL);
+  const reopened = (await studyOf(PARTIAL))?.geometry;
+  check('24. after leaving and reopening the film both fields are still on the study',
+    deepEqual(rounded(reopened?.t1_superior), [[250, 150], [350, 170]]) && deepEqual(rounded(reopened?.t4_centroid), [300, 300]),
+    reopened && { t1: reopened.t1_superior, t4: reopened.t4_centroid });
+  await enterEdit();
+  const readBack = await ev(`({ t1: window.__lv.editor()?.levels?.T1?.geometry ?? null, t4: window.__lv.editor()?.levels?.T4?.geometry ?? null })`);
+  check('24. an editor opened on the study reads T1 and T4 back (the T1 endplate pair, the T4 centroid)',
+    deepEqual(rounded(readBack.t1?.superior), [[250, 150], [350, 170]]) && deepEqual(rounded(readBack.t4?.centroid), [300, 300]), readBack);
+  await clickSelector(EDITBAR_DONE);
+  await until(`import('./renderer/store.js').then((m) => m.getState().editing === false)`, 5000);
+}
+
+// ---------------------------------------------------------------------------
 // Phase `dom`.
 
 async function domPhase() {
@@ -1374,8 +1492,8 @@ async function domPhase() {
   // 5. Uncheck S1.
   await clickSelector(checkboxOf('S1'));
   const s1Note = await text('[data-group-key="sacral"] .lv-note');
-  check(`5. unchecking S1 notes LL, PI, PT, SS, PI–LL, L1PA and L5–S1 will show ${DASH}`,
-    s1Note === `LL, PI, PT, SS, PI–LL, L1PA and L5–S1 will show ${DASH}`, s1Note);
+  check(`5. unchecking S1 notes LL, PI, PT, SS, PI–LL, L1PA, T4PA and L5–S1 will show ${DASH}`,
+    s1Note === `LL, PI, PT, SS, PI–LL, L1PA, T4PA and L5–S1 will show ${DASH}`, s1Note);
   check('5. S1 reads Not visible', (await badge('S1')) === 'Not visible', await badge('S1'));
   const s1Measured = await settled(SEG);
   const afterS1 = await studyOf(SEG);
@@ -1677,11 +1795,13 @@ async function domPhase() {
   const escapedOut = await ev(`(async () => { const s = (await import('./renderer/store.js')).getState(); return { editing: s.editing, editor: s.levelEditor, prompt: Boolean(document.querySelector('.lv-prompt')) }; })()`);
   check('10. Escape with nothing open and nothing unsaved exits with no prompt', escapedOut.editing === false && escapedOut.editor === null && escapedOut.prompt === false, escapedOut);
 
-  // 11 (end). Stash again (T1 marked visible: one change, not projected), then delete SP-9300 from the list.
+  // 11 (end). Stash again (T1 marked visible: one change, projected -- T1 projects on every region, so the commit leaves t1_superior null on the study), then delete SP-9300 from the list.
   await enterEdit();
   await clickSelector('[data-level-key="open:thoracic"]');
   await clickSelector(checkboxOf('T1'));
   const t1Change = await ev('window.__lv.unsaved()');
+  const t1Settled = await settled(SEG);
+  const t1Field = (await studyOf(SEG))?.geometry?.t1_superior;
   await openFromList(HAND);
   const stashedAgain = await ev(`window.__lv.hasStashedEditor(${js(SEG)})`);
   await clickSelector(STUDIES_NAV);
@@ -1696,7 +1816,7 @@ async function domPhase() {
   await clickSelector(`${row(SEG)} .studies-delete-confirm`);
   const deleted = await until(`window.__lv.study(${js(SEG)}) === null`, 5000);
   check('11. deleting a study with a stashed editor drops the stash (hasStashedEditor false)',
-    t1Change === 1 && stashedAgain === true && deleted && (await ev(`window.__lv.hasStashedEditor(${js(SEG)})`)) === false, { t1Change, stashedAgain, deleted });
+    t1Change === 1 && t1Settled && t1Field === null && stashedAgain === true && deleted && (await ev(`window.__lv.hasStashedEditor(${js(SEG)})`)) === false, { t1Change, t1Settled, t1Field, stashedAgain, deleted });
   check('11. the delete removes the study’s label record and sidecar from disk',
     await untilNode(() => !fs.existsSync(path.join(LABELS, segRecordName)) && !fs.existsSync(path.join(USER_DATA, 'predictions', `${SEG}.json`))),
     { label: fs.existsSync(path.join(LABELS, segRecordName)), sidecar: fs.existsSync(path.join(USER_DATA, 'predictions', `${SEG}.json`)) });
@@ -1816,6 +1936,9 @@ async function domPhase() {
 
   // 23 (2026-10-22, round 2, fix wave 2). The heal, on the same film.
   await healChecks();
+
+  // 24 (2026-10-22, T1 slope and T4 pelvic angle). Both points placed, read and kept, on the same film.
+  await thoracicChecks();
 
   // 18 (gate feedback G6, D19). Last: it opens a study of its own and leaves the rest of the run as it was.
   await reviewRecordChecks(films);
