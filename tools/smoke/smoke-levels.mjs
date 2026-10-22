@@ -888,9 +888,9 @@ async function partialChecks() {
     oneCorner?.hidden === false && oneCorner.disabled === true && twoCorners?.hidden === false && twoCorners.disabled === false, { oneCorner, twoCorners });
   await clickSelector(EDITBAR_FINISH);
   const c7Chips = await chipRow();
-  check('22. FINISH ends C7 Manual; its chips read SA SP IA IP, done, done, missing, missing',
-    (await badge('C7')) === 'Manual' && js(c7Chips.map((c) => c.classes)) === js(['is-done', 'is-done', 'is-missing', 'is-missing'])
-      && c7Chips.map((c) => c.label).join(' ') === 'SA SP IA IP',
+  check('22. FINISH ends C7 Manual; its chips read SA SP IA IP CENTROID, done, done, missing, missing, missing',
+    (await badge('C7')) === 'Manual' && js(c7Chips.map((c) => c.classes)) === js(['is-done', 'is-done', 'is-missing', 'is-missing', 'is-missing'])
+      && c7Chips.map((c) => c.label).join(' ') === 'SA SP IA IP CENTROID',
     { badge: await badge('C7'), c7Chips });
   check(`22. after FINISH the bar reads EDITING SEGMENTATION and C7's row offers Place${ELLIPSIS} again`,
     (await editLabel()) === 'EDITING SEGMENTATION' && (await present('[data-level-key="place:C7"]')), { label: await editLabel(), place: await present('[data-level-key="place:C7"]') });
@@ -929,17 +929,17 @@ async function partialChecks() {
   await clickSelector('[data-level-key="C7"]');
   const reopened = await chipRow();
   const reopenedFocus = await focusNow();
-  check('22. back in edit mode, C7 selected: its chips read SA SP IA IP, done, done, missing, missing, with SA focused',
-    js(reopened.map((c) => c.classes.split(' ').filter((k) => k === 'is-done' || k === 'is-missing').join(' '))) === js(['is-done', 'is-done', 'is-missing', 'is-missing'])
-      && reopened.map((c) => c.label).join(' ') === 'SA SP IA IP' && deepEqual(reopenedFocus, { code: 'C7', handle: 'SA' }),
+  check('22. back in edit mode, C7 selected: its chips read SA SP IA IP CENTROID, done, done, missing, missing, missing, with SA focused',
+    js(reopened.map((c) => c.classes.split(' ').filter((k) => k === 'is-done' || k === 'is-missing').join(' '))) === js(['is-done', 'is-done', 'is-missing', 'is-missing', 'is-missing'])
+      && reopened.map((c) => c.label).join(' ') === 'SA SP IA IP CENTROID' && deepEqual(reopenedFocus, { code: 'C7', handle: 'SA' }),
     { reopened, reopenedFocus });
 
   // 6. The hollow IA chip resumes C7 at IA; two clicks complete it.
   await clickSelector(CHIP(3));
   const resumedLabel = await editLabel();
   const resumedChips = await chipRow();
-  check(`22. the hollow IA chip resumes C7 at its third step (PLACING C7 ${MID} 3 OF 4), SA and SP done`,
-    resumedLabel === `PLACING C7 ${MID} 3 OF 4` && js(resumedChips.map((c) => c.classes)) === js(['is-done', 'is-done', 'is-current', '']),
+  check(`22. the hollow IA chip resumes C7 at its third step (PLACING C7 ${MID} 3 OF 5), SA and SP done`,
+    resumedLabel === `PLACING C7 ${MID} 3 OF 5` && js(resumedChips.map((c) => c.classes)) === js(['is-done', 'is-done', 'is-current', '', '']),
     { resumedLabel, resumedChips });
   await clickImage(205, 470);
   await clickImage(405, 475);
@@ -970,7 +970,7 @@ async function partialChecks() {
   const afterDelete = await geometryRounded('C7');
   const focusAfter = await focusNow();
   check('22. Delete with SA focused removes C7\'s superior endplate and focuses IA',
-    afterDelete === '{"superior":null,"inferior":[[205,470],[405,475]]}' && deepEqual(focusAfter, { code: 'C7', handle: 'IA' }), { afterDelete, focusAfter });
+    afterDelete === '{"superior":null,"inferior":[[205,470],[405,475]],"centroid":null}' && deepEqual(focusAfter, { code: 'C7', handle: 'IA' }), { afterDelete, focusAfter });
   await settled(PARTIAL);
   const removed = await studyOf(PARTIAL);
   check('22. the study\'s C7 has no superior endplate and the C2–C7 SVA is null',
@@ -982,7 +982,77 @@ async function partialChecks() {
     (await geometryRounded('C7')) === afterDelete && (await ev('window.__lv.unsaved()')) === unsavedBefore,
     { geometry: await geometryRounded('C7'), unsavedBefore, unsaved: await ev('window.__lv.unsaved()') });
 
-  // 8. Leave edit mode through the prompt's Discard (the edits since the save are unsaved).
+  // 8. (2026-10-22, round 2, N8-N11) C7's centroid: the hollow fifth chip places it; the placement stays open while
+  // the superior endplate is missing, FINISH ends it.
+  const classesOf = (rows) => rows.map((c) => c.classes.split(' ').filter((k) => k === 'is-done' || k === 'is-missing').join(' '));
+  await clickSelector('[data-level-key="C7"]');
+  await clickSelector(CHIP(5));
+  const cenLabel = await editLabel();
+  await clickImage(300, 440);
+  const cenBar = await editLabel();
+  const cenFinish = await finish();
+  await clickSelector(EDITBAR_FINISH);
+  const cenChips = await chipRow();
+  const cenGeometry = await geometryRounded('C7');
+  check('22. the CENTROID chip (5 OF 5), one click: the placement stays open with FINISH enabled; FINISH keeps the inferior pair and the centroid',
+    cenLabel === `PLACING C7 ${MID} 5 OF 5` && /^PLACING C7/.test(cenBar ?? '') && cenFinish?.hidden === false && cenFinish.disabled === false
+      && cenGeometry === '{"superior":null,"inferior":[[205,470],[405,475]],"centroid":[300,440]}'
+      && js(classesOf(cenChips)) === js(['is-missing', 'is-missing', 'is-done', 'is-done', 'is-done'])
+      && cenChips.map((c) => c.label).join(' ') === 'SA SP IA IP CENTROID',
+    { cenLabel, cenBar, cenFinish, cenGeometry, cenChips });
+
+  // 9. Place S1: the region follows the placed levels to full spine and the plumb reads the placed centroid.
+  await clickSelector('[data-level-key="place:S1"]');
+  await clickImage(250, 700);
+  await clickImage(350, 700);
+  await settled(PARTIAL);
+  const fullStudy = await studyOf(PARTIAL);
+  check('22. Place S1: the film turns full spine, c7_centroid is the placed [300, 440] and the C7-S1 plumb (GLOBAL_SVA_PX) is a number',
+    fullStudy?.geometry?.region === 'full_spine' && deepEqual(rounded(fullStudy.geometry.c7_centroid), [300, 440])
+      && Number.isFinite(fullStudy.measurements?.GLOBAL_SVA_PX),
+    fullStudy && { region: fullStudy.geometry?.region, c7: fullStudy.geometry?.c7_centroid, sva: fullStudy.measurements?.GLOBAL_SVA_PX });
+
+  // 10. Save: the record carries the centroid.
+  fs.rmSync(path.join(LABELS, PARTIAL_RECORD), { force: true });
+  await clickSelector('.lv-save');
+  await untilNode(() => fs.existsSync(path.join(LABELS, PARTIAL_RECORD)));
+  let record2 = null;
+  try { record2 = readRecord(PARTIAL_RECORD); } catch (_error) { record2 = null; }
+  const valid2 = record2 ? validateAgainst(SCHEMA, record2) : { ok: false, errors: ['unreadable'] };
+  const rc7 = record2?.levels?.C7;
+  check('22. the saved record holds levels.C7.centroid [300, 440], edited_points ia ip centroid, and validates',
+    valid2.ok && deepEqual(rounded(rc7?.centroid), [300, 440]) && deepEqual(rc7?.edited_points, ['ia', 'ip', 'centroid']),
+    { errors: valid2.errors?.slice(0, 5), C7: rc7 && { centroid: rc7.centroid, edited: rc7.edited_points } });
+
+  // 11. Out and back in: the centroid reads back from the record.
+  await cdp.key('Escape');
+  await cdp.settle(150);
+  await enterEdit();
+  if (!(await present('[data-level-key="C7"]'))) await clickSelector('[data-level-key="open:cervical"]');
+  if (!(await present('[data-level-key="C7"]'))) await clickSelector('[data-level-key="open:full_spine"]');
+  await clickSelector('[data-level-key="C7"]');
+  const backChips = await chipRow();
+  const backGeometry = await geometryRounded('C7');
+  check('22. back in edit mode, C7 selected: the CENTROID chip is filled and the level holds the centroid',
+    backChips.length === 5 && backChips[4].classes.includes('is-done') && backGeometry?.includes('"centroid":[300,440]'),
+    { backChips, backGeometry });
+
+  // 12. Delete on the focused CENTROID removes it; the plumb goes with it.
+  await ev('(() => { const a = document.activeElement; if (a && a.blur) a.blur(); return true; })()');
+  let onCentroid = false;
+  for (let i = 0; i < 4 && !onCentroid; i += 1) {
+    await cdp.key('Tab');
+    onCentroid = deepEqual(await focusNow(), { code: 'C7', handle: 'CENTROID' });
+  }
+  await pressDelete();
+  const centroidGone = await geometryRounded('C7');
+  await settled(PARTIAL);
+  const noCentroid = await studyOf(PARTIAL);
+  check('22. Delete on the focused CENTROID removes it; the study\'s c7_centroid and GLOBAL_SVA_PX become null',
+    onCentroid && centroidGone?.includes('"centroid":null') && noCentroid?.geometry?.c7_centroid == null && noCentroid.measurements?.GLOBAL_SVA_PX == null,
+    { onCentroid, centroidGone, c7: noCentroid?.geometry?.c7_centroid, sva: noCentroid?.measurements?.GLOBAL_SVA_PX });
+
+  // 13. Leave edit mode through the prompt's Discard (the edits since the save are unsaved).
   await cdp.key('Escape');
   await cdp.settle(120);
   // (2026-10-22, the final review, M7) Both waits are checked, so a silent failure cannot leave section 18 in edit mode.

@@ -1105,7 +1105,11 @@ export function mountViewer(container) {
       }
       // (2026-10-22, the final review, M3) Only a whole level offers Delete: on a partial one it would remove the last
       // part, which the level model refuses.
-      const removable = partKind && chips.every((c) => c.placed);
+      // (2026-10-22, round 2) C7 and C2 carry an optional centroid, so a whole level can have a hollow CENTROID chip:
+      // count parts (a placed pair, or the centroid) instead of chips; Delete needs a second part to leave behind.
+      const on = (h) => chips.some((c) => c.handle === h && c.placed);
+      const parts = (on('SA') && on('SP') ? 1 : 0) + (on('IA') && on('IP') ? 1 : 0) + (on('CENTROID') ? 1 : 0);
+      const removable = partKind && parts >= 2;
       const removes = !removable ? '' : handle === 'CENTROID' ? '; Delete removes it' : '; Delete removes its endplate';
       return el('button', {
         type: 'button',
