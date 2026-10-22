@@ -174,3 +174,8 @@ test('C2 without its pair anchors on its centroid with the film\'s side; without
   assert.deepEqual(labelPlacement('C2', { inferior: [[40, 20], [50, 20]], centroid: null }, null), { anchor: [50, 20], side: 1 });
   assert.equal(labelPlacement('C2', { inferior: null, centroid: null }, null), null);
 });
+
+test('a C7 with only its centroid anchors its plate on the centroid with the film\'s side', () => {
+  assert.deepEqual(labelPlacement('C7', { superior: null, inferior: null, centroid: [45, 35] }, 'right'), { anchor: [45, 35], side: -1 });
+  assert.deepEqual(labelPlacement('C7', { superior: [[30, 20], [60, 20]], inferior: null, centroid: [45, 35] }, null), { anchor: [60, 20], side: 1 }, 'an endplate outranks the centroid');
+});

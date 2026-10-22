@@ -13,7 +13,7 @@
  * is view state, like zoom and pan: FRESH_VIEW resets it when another film opens, entering and leaving edit mode keep
  * it, and it is never persisted and never in the label record.
  */
-import { kindOf } from '../data/levels.js';
+import { kindOf, hasCentroid } from '../data/levels.js';
 import { validAnteriorSide } from '../data/cervical.js';
 import { anteriorSideFrom } from '../data/level-projection.js';
 
@@ -40,7 +40,8 @@ function hasPlateGeometry(code, geometry) {
   if (!geometry) return false;
   switch (kindOf(code)) {
     // (2026-10-21, partial endplates, spec §5) a body needs one pair; C2 its pair or its centroid
-    case 'body': return isPair(geometry.superior) || isPair(geometry.inferior);
+    // (2026-10-22, round 2, spec §12 N9) C7 also has a plate with only its centroid
+    case 'body': return isPair(geometry.superior) || isPair(geometry.inferior) || (hasCentroid(code) && isPoint(geometry.centroid));
     case 'c2': return isPair(geometry.inferior) || isPoint(geometry.centroid);
     case 'endplate': return isPair(geometry.superior);
     case 'centroid': return isPoint(geometry.centroid);
@@ -59,6 +60,7 @@ export function labelAnchor(code, geometry) {
   switch (kindOf(code)) {
     case 'body':
       if (isPair(geometry.superior) && isPair(geometry.inferior)) return midpoint(geometry.superior[1], geometry.inferior[1]);
+      if (!isPair(geometry.superior) && !isPair(geometry.inferior)) return copy(geometry.centroid);
       return copy((isPair(geometry.superior) ? geometry.superior : geometry.inferior)[1]);
     case 'c2': return isPair(geometry.inferior) ? copy(geometry.inferior[1]) : copy(geometry.centroid);
     case 'endplate': return copy(geometry.superior[1]);
@@ -83,6 +85,7 @@ export function labelPlacement(code, geometry, anteriorSide) {
   if (!anchor) return null;
   switch (kindOf(code)) {
     case 'body': {
+      if (!isPair(geometry.superior) && !isPair(geometry.inferior)) return { anchor, side: filmSide(anteriorSide) };
       if (!(isPair(geometry.superior) && isPair(geometry.inferior))) {
         const pair = isPair(geometry.superior) ? geometry.superior : geometry.inferior;
         return { anchor, side: sideOf(pair[1][0] - pair[0][0], anteriorSide) };

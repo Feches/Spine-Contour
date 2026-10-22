@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   RIM_HANDLES, levelHandles, handleAt, moveHandle, nudgeHandle, hitTestLevelHandles, handleOrder, nextLevelHandle,
-  HANDLE_RADIUS_CSS_PX, HANDLE_RADIUS_FLOOR_CSS_PX, handleRadiusImagePx, handleScale, selectedLevelChips, aimedStep, STEP_HANDLES,
+  HANDLE_RADIUS_CSS_PX, HANDLE_RADIUS_FLOOR_CSS_PX, handleRadiusImagePx, handleScale, selectedLevelChips, aimedStep, STEP_HANDLES, stepHandlesFor,
 } from '../renderer/viewer/level-handles.js';
 import {
   LEVEL_CODES, openEditor, selectLevel, startPlacing, cancelPlacing, toggleVisible, toggleGroup,
@@ -613,4 +613,18 @@ test('STEP_HANDLES names each kind\'s handles in step order, and firstHandle agr
     ['S1', endplate], ['T4', centroid], ['FH1', circle],
   ];
   for (const [code, geometry] of cases) assert.equal(firstHandle(code, geometry), levelHandles(code, geometry)[0].handle, code);
+});
+
+test('C7 lists a CENTROID handle and chip when it has one; the chip is hollow otherwise; aimedStep names it', () => {
+  const whole = { superior: [[30, 20], [60, 20]], inferior: [[30, 50], [60, 50]], centroid: null };
+  assert.deepEqual(stepHandlesFor('C7'), ['SA', 'SP', 'IA', 'IP', 'CENTROID']);
+  assert.deepEqual(stepHandlesFor('C6'), ['SA', 'SP', 'IA', 'IP']);
+  assert.deepEqual(levelHandles('C7', whole).map((h) => h.handle), ['SA', 'SP', 'IA', 'IP']);
+  const withCentroid = { ...whole, centroid: [45, 35] };
+  assert.deepEqual(levelHandles('C7', withCentroid).map((h) => [h.handle, h.colorKey]).at(-1), ['CENTROID', 'level']);
+  const editor = selectLevel(setLevelGeometry(everyKindEditor(), 'C7', whole), 'C7');
+  assert.deepEqual(selectedLevelChips(editor).chips.map((c) => [c.label, c.placed]), [['SA', true], ['SP', true], ['IA', true], ['IP', true], ['CENTROID', false]]);
+  const armed = aimHandle(setLevelGeometry(editor, 'C7', withCentroid), 'C7', 'CENTROID');
+  assert.deepEqual(aimedStep(armed), { code: 'C7', handle: 'CENTROID', label: 'CENTROID', help: 'Click the centroid of the C7 body.', title: 'PLACING C7 · CENTROID' });
+  assert.deepEqual(handleOrder(setLevelGeometry(everyKindEditor(), 'C7', { superior: null, inferior: null, centroid: [45, 35] })).filter((h) => h.code === 'C7'), [{ code: 'C7', handle: 'CENTROID' }]);
 });

@@ -704,3 +704,13 @@ test('a lumbar projection writes a partial body with no quadrilateral and the va
   assert.equal(kept({ ...g, vertebrae: { ...g.vertebrae, L1: { ...g.vertebrae.L1, quadrilateral: [[0, 0], [1, 0], [1, 1], [0, 1]] } } }), null, 'a quadrilateral with a pair missing is rejected');
   assert.equal(kept({ ...g, l1_center: [15, 10] }), null, 'l1_center with a partial L1 is rejected');
 });
+
+test('c7_centroid is the placed centroid, else the quadrilateral\'s mean, else null', () => {
+  const whole = { superior: [[10, 110], [20, 111]], inferior: [[11, 120], [21, 122]], centroid: null };
+  const film = { geometry: { anterior_side: 'left', ...IMAGE_FIELDS }, region: 'full_spine' };
+  assert.deepEqual(projectGeometry(editorWith({ C7: whole }), film).c7_centroid, [15.5, 115.75]);
+  assert.deepEqual(projectGeometry(editorWith({ C7: { ...whole, centroid: [16, 116] } }), film).c7_centroid, [16, 116]);
+  assert.deepEqual(projectGeometry(editorWith({ C7: { superior: whole.superior, inferior: null, centroid: [16, 116] } }), film).c7_centroid, [16, 116], 'a partial C7 with its centroid still gives the plumb its point');
+  assert.equal(projectGeometry(editorWith({ C7: { superior: whole.superior, inferior: null, centroid: null } }), film).c7_centroid, null);
+  assert.equal('c7_centroid' in projectGeometry(editorWith({ C7: whole }, { region: 'cervical' }), { ...film, region: 'cervical' }), false, 'the cervical projection keeps omitting the key');
+});

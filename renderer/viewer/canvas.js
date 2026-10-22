@@ -2,7 +2,7 @@ import { segmentalColumns, segmentalEndplates } from '../data/segmental.js';
 import { CERVICAL_LEVELS } from '../data/cervical.js';
 import { LEVELS, FEMORAL_SIDES } from './geometry.js';
 import { applyWindow } from './window-level.js';
-import { LEVEL_CODES, kindOf, levelState, placementSteps, fitRim } from '../data/levels.js';
+import { LEVEL_CODES, kindOf, hasCentroid, levelState, placementSteps, fitRim } from '../data/levels.js';
 import { quadrilateral } from '../data/level-projection.js';
 import { levelHandles, handleRadiusImagePx, handleScale } from './level-handles.js';
 import { labelPlacement, plateOffset } from './level-labels.js';
@@ -498,9 +498,13 @@ function shapeParts(code, geometry, pixelRatio) {
   if (!geometry) return [];
   switch (kindOf(code)) {
     case 'body': // (2026-10-21, partial endplates, spec §5) both pairs: the quadrilateral; one: that line alone
-      if (isPair(geometry.superior) && isPair(geometry.inferior)) return [{ line: quadrilateral(geometry), closed: true, area: true }];
-      if (isPair(geometry.superior)) return [{ line: geometry.superior }];
-      return isPair(geometry.inferior) ? [{ line: geometry.inferior }] : [];
+      // (2026-10-22, round 2, spec §12 N9) C7's optional centroid is a dot beside the outline, or alone
+      return [
+        ...(isPair(geometry.superior) && isPair(geometry.inferior) ? [{ line: quadrilateral(geometry), closed: true, area: true }]
+          : isPair(geometry.superior) ? [{ line: geometry.superior }]
+            : isPair(geometry.inferior) ? [{ line: geometry.inferior }] : []),
+        ...(hasCentroid(code) && isPoint(geometry.centroid) ? [{ arc: geometry.centroid, radius: C2_CENTROID_RADIUS_PX * pixelRatio, area: true, dot: true }] : []),
+      ];
     case 'c2': // (2026-10-21, partial endplates, spec §5) its line and/or its dot, whichever exists
       return [
         ...(isPair(geometry.inferior) ? [{ line: geometry.inferior }] : []),

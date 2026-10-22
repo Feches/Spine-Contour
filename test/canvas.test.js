@@ -1008,3 +1008,13 @@ test('disposeStudyImages closes bitmaps and tolerates a canvas image', () => {
   assert.doesNotThrow(() => disposeStudyImages({ image: { width: 2, height: 1 }, mask: null }));
   assert.doesNotThrow(() => disposeStudyImages(null));
 });
+
+test('C7 with a centroid draws its dot beside its outline; without one, no dot', () => {
+  const g = { superior: [[30, 20], [60, 20]], inferior: [[30, 50], [60, 50]], centroid: [45, 35] };
+  const rec = drawEditor(setLevelGeometry(emptyEditor(), 'C7', g));
+  assert.equal(arcsOf(rec.calls).some(([x, y]) => x === 45 && y === 35), true);
+  const bare = drawEditor(setLevelGeometry(emptyEditor(), 'C7', { ...g, centroid: null }));
+  assert.equal(arcsOf(bare.calls).some(([x, y]) => x === 45 && y === 35), false);
+  const alone = drawEditor(setLevelGeometry(emptyEditor(), 'C7', { superior: null, inferior: null, centroid: [45, 35] }));
+  assert.equal(arcsOf(alone.calls).some(([x, y]) => x === 45 && y === 35), true, 'the dot alone');
+});

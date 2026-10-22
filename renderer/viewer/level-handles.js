@@ -10,7 +10,7 @@
 // the geometry's own (read them, do not change them); `moveHandle` and `nudgeHandle` never mutate their
 // input and return a NEW geometry with new arrays along the changed path.
 
-import { LEVEL_CODES, MIN_RADIUS, kindOf, fitRim, synthesizeRim, placementSteps, fullName } from '../data/levels.js';
+import { LEVEL_CODES, MIN_RADIUS, kindOf, hasCentroid, fitRim, synthesizeRim, placementSteps, fullName } from '../data/levels.js';
 import { imageToClient } from './geometry.js';
 
 export const RIM_HANDLES = ['R0', 'R1', 'R2', 'R3'];
@@ -20,6 +20,16 @@ export const RIM_HANDLES = ['R0', 'R1', 'R2', 'R3'];
 export const STEP_HANDLES = {
   body: ['SA', 'SP', 'IA', 'IP'], c2: ['IA', 'IP', 'CENTROID'], endplate: ['SA', 'SP'], centroid: ['CENTROID'],
 };
+
+/**
+ * (2026-10-22, round 2, spec §12 N9) A level's handles in placement-step order: the kind's list (STEP_HANDLES), and a
+ * body that carries a centroid (C7) adds CENTROID. Null for a kind with no list (a head).
+ * @returns {string[]|null}
+ */
+export function stepHandlesFor(code) {
+  const names = STEP_HANDLES[kindOf(code)];
+  return names && hasCentroid(code) ? [...names, 'CENTROID'] : names ?? null;
+}
 
 /**
  * A handle's radius in CSS px at 1:1, from which it grows past 1:1 with the square root of the zoom (gate feedback G9,
@@ -71,7 +81,7 @@ function candidates(code, geometry) {
   const corner = name => ({ handle: name, point: geometry[SLOTS[name][0]]?.[SLOTS[name][1]], colorKey: name });
   const centroid = { handle: 'CENTROID', point: geometry.centroid, colorKey: 'level' };
   switch (kindOf(code)) {
-    case 'body': return ['SA', 'SP', 'IA', 'IP'].map(corner);
+    case 'body': return [...['SA', 'SP', 'IA', 'IP'].map(corner), ...(hasCentroid(code) ? [centroid] : [])];
     case 'c2': return [corner('IA'), corner('IP'), centroid];
     case 'endplate': return [corner('SA'), corner('SP')];
     case 'centroid': return [centroid];
@@ -120,7 +130,7 @@ export function selectedLevelChips(editor) {
     return { handle, label: steps[index]?.label ?? handle, colorKey, focused, aiming: focused && Boolean(editor.aiming), placed };
   };
   // (2026-10-21, partial endplates, spec §4) One chip per step of the kind; a missing point's chip is `placed: false`.
-  const names = STEP_HANDLES[kindOf(code)];
+  const names = stepHandlesFor(code);
   const chips = names
     ? names.map((handle, index) => chip(handle, handle === 'CENTROID' ? 'level' : handle, index, handleAt(code, entry.geometry, handle) !== null))
     : levelHandles(code, entry.geometry).map(({ handle, colorKey }, index) => chip(handle, colorKey, index, true));
@@ -142,7 +152,7 @@ export function aimedStep(editor) {
   // list (STEP_HANDLES), since `levelHandles` lists existing points only and its index is shifted on a partial level.
   // A head keeps the `levelHandles` index: its rim handles R0..R3 map to P1..P4 in order.
   if (handleAt(code, entry.geometry, handle) === null) return null;
-  const names = STEP_HANDLES[kindOf(code)];
+  const names = stepHandlesFor(code);
   const index = names
     ? names.indexOf(handle)
     : levelHandles(code, entry.geometry).findIndex((entry) => entry.handle === handle);

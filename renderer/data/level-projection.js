@@ -119,7 +119,9 @@ function cervicalPart(editor) {
     }
   }
   const c7 = vertebrae.C7;
-  return { vertebrae, c2_centroid: c2Centroid, c7_centroid: c7?.quadrilateral ? mean(c7.quadrilateral) : null };
+  // (2026-10-22, round 2, spec §12 N10) C7's placed centroid, else the mean of its quadrilateral, else null
+  const c7Centroid = placed(editor, 'C7')?.geometry.centroid;
+  return { vertebrae, c2_centroid: c2Centroid, c7_centroid: c7Centroid ? copyPoint(c7Centroid) : c7?.quadrilateral ? mean(c7.quadrilateral) : null };
 }
 
 // A head the validator would reject (`r > 0`, finite) is left out rather than written: the persistence
