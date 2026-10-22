@@ -127,7 +127,7 @@
       "type": "array", "uniqueItems": true, "items": { "enum": ["center", "radius"] }
     },
     "editedPointsRule": {
-      "description": "R38: edited_points lists something exactly when the state is edited; segmented, not_placed and not_visible list nothing; manual lists every key (each kind's own rule). Applies only when edited_points is present (R39).",
+      "description": "R38: edited_points lists something exactly when the state is edited; segmented, not_placed and not_visible list nothing; manual lists the keys it holds (each kind's own rule; 2026-10-21). Applies only when edited_points is present (R39).",
       "allOf": [
         {
           "if": { "properties": { "state": { "enum": ["segmented", "not_placed", "not_visible"] } }, "required": ["state"] },
@@ -188,7 +188,7 @@
       ]
     },
     "vertebra": {
-      "description": "C3–C7 and L1–L5: four body corners.",
+      "description": "C3–C7 and L1–L5: four body corners; either endplate may be null (2026-10-21).",
       "type": "object",
       "additionalProperties": false,
       "required": ["state", "source"],
@@ -214,7 +214,7 @@
       ]
     },
     "c2": {
-      "description": "C2: the inferior endplate (IA, IP) plus a centroid. Owner decision 2026-10-10. No contour.",
+      "description": "C2: the inferior endplate (IA, IP) plus a centroid; either part may be null (2026-10-21). Owner decision 2026-10-10. No contour.",
       "type": "object",
       "additionalProperties": false,
       "required": ["state", "source"],
