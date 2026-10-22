@@ -1085,3 +1085,223 @@ git commit -m "docs(release): 1.4.0, placing only some of a level's points"
 - [ ] **Step 4: The electron-builder allowlists** are untouched (no new file under `renderer/` or `styles/`; the new example lives under `docs/`, outside both allowlists): `git diff 7e85035 --stat -- package.json electron-builder.preview.yml` shows only the version line.
 - [ ] **Step 5: Check the counts in `docs/releases/1.4.0.md` and the spec's status line against Steps 1–3**; amend the docs commit if a number differs.
 - [ ] **Step 6: `git log --oneline 7e85035..HEAD`** lists one commit per task in order; `git status` is clean; nothing is pushed. Report the branch, the counts and the human gate's checklist (a real cervical film with C7's inferior endplate hidden: place C7 SA and SP, FINISH, read SVA with Cobb a dash, save, reopen, complete C7 from the IA chip, Delete an endplate) to the owner.
+
+---
+
+## Round 2 (2026-10-22): a placeable C7 centroid — spec §12, N8–N11
+
+Added after the owner's ask on 2026-10-22, on top of Tasks 1–10 and the final review's fix wave. C7 stays kind `body`
+and gains an optional third part, `centroid`; only C7 has it (`CENTROID_BODIES = ['C7']`). Every rule below is the
+spec's §12. The Global Constraints and the Review Focus above apply; two more lines of Review Focus:
+
+6. **A derived centroid never becomes a placed one.** After a whole C7 is committed (the projection writes the mean as
+   `c7_centroid`), reopening the editor shows C7's CENTROID chip hollow, and dragging a corner moves the mean. Task 12.
+7. **A record saved before this round** (C7 with no `centroid` key) reads with the centroid null and validates. Task 13.
+
+### Task 11: The level model's optional centroid part
+
+**Files:**
+- Modify: `renderer/data/levels.js` (`PART_STEPS`/`partsOf`, `partOfHandle`, `firstHandle`, `stepsFor`, `POINTS`/`pointKeys`, `geometryFromPoints`, `bodyFrom`, `finishedGeometry`/`addPoint`'s self-finish, `removePart`, `revertLevel`)
+- Test: `test/levels.test.js`
+
+**Interfaces:**
+- Produces: `CENTROID_BODIES` (exported, `['C7']`); `hasCentroid(code): boolean` (exported; true for C7 only); `partsOf('C7')` → `[{key: 'superior', steps: [0, 1]}, {key: 'inferior', steps: [2, 3]}, {key: 'centroid', steps: [4]}]`; `partOfHandle('C7', 'CENTROID')` → `'centroid'` (null for another body); `placementSteps('C7')` → five steps, the fifth `{label: 'CENTROID', help: 'Click the centroid of the C7 body.', colorKey: 'level'}`, `need` 5; `pointKeys('C7')` → `['sa', 'sp', 'ia', 'ip', 'centroid']`; C7's canonical geometry `{superior, inferior, centroid}` (centroid null when absent) from every writer; a C7 placement finishes by itself when slots 0–3 are all set (both endplates whole), the centroid set or not; `canFinishPlacing` true for C7 with at least one part whole and none half (a centroid alone included); `firstHandle('C7', g)` SA, else IA, else CENTROID; `removePart` on CENTROID; `revertLevel` copies the model's C7 with `centroid: null`.
+
+- [ ] **Step 1: Write the failing tests** in `test/levels.test.js`:
+
+```js
+test('C7 is a body with an optional centroid part: parts, steps, keys and the first handle', () => {
+  assert.deepEqual(CENTROID_BODIES, ['C7']);
+  assert.equal(hasCentroid('C7'), true);
+  assert.equal(hasCentroid('C6'), false);
+  assert.deepEqual(partsOf('C7'), [{ key: 'superior', steps: [0, 1] }, { key: 'inferior', steps: [2, 3] }, { key: 'centroid', steps: [4] }]);
+  assert.deepEqual(partsOf('L1'), [{ key: 'superior', steps: [0, 1] }, { key: 'inferior', steps: [2, 3] }]);
+  assert.equal(partOfHandle('C7', 'CENTROID'), 'centroid');
+  assert.equal(partOfHandle('C6', 'CENTROID'), null);
+  const { need, steps } = placementSteps('C7');
+  assert.equal(need, 5);
+  assert.deepEqual(steps[4], { label: 'CENTROID', help: 'Click the centroid of the C7 body.', colorKey: 'level' });
+  assert.equal(placementSteps('C6').need, 4);
+  assert.deepEqual(pointKeys('C7'), ['sa', 'sp', 'ia', 'ip', 'centroid']);
+  assert.deepEqual(pointKeys('L3'), ['sa', 'sp', 'ia', 'ip']);
+  assert.equal(firstHandle('C7', { superior: null, inferior: null, centroid: [5, 5] }), 'CENTROID');
+  assert.equal(firstHandle('C7', { superior: null, inferior: [[1, 2], [2, 2]], centroid: [5, 5] }), 'IA');
+});
+
+test('a C7 placement finishes by itself at its four corners, the centroid optional; FINISH takes a centroid alone', () => {
+  let e = startPlacing(blankEditor('cervical'), 'C7');
+  assert.deepEqual(e.placing.points, [null, null, null, null, null]);
+  for (const point of [[10, 10], [30, 10], [10, 30], [30, 30]]) e = addPoint(e, point, IMAGE);
+  assert.equal(e.placing, null, 'four corners finish by themselves');
+  assert.deepEqual(e.levels.C7.geometry, { superior: [[10, 10], [30, 10]], inferior: [[10, 30], [30, 30]], centroid: null });
+  let withCentroid = setPlacingStep(startPlacing(blankEditor('cervical'), 'C7'), 4);
+  withCentroid = addPoint(withCentroid, [20, 20], IMAGE);
+  assert.equal(withCentroid.placing.current, 0, 'back to the first empty step');
+  assert.equal(canFinishPlacing(withCentroid, IMAGE), true, 'a centroid alone may finish');
+  assert.deepEqual(finishPlacing(withCentroid, IMAGE).levels.C7.geometry, { superior: null, inferior: null, centroid: [20, 20] });
+  for (const point of [[10, 10], [30, 10], [10, 30], [30, 30]]) withCentroid = addPoint(withCentroid, point, IMAGE);
+  assert.equal(withCentroid.placing, null);
+  assert.deepEqual(withCentroid.levels.C7.geometry.centroid, [20, 20], 'the centroid rides along');
+  assert.equal(placingLabel(startPlacing(blankEditor('cervical'), 'C7')), 'PLACING C7 · 1 OF 5');
+  const half = addPoint(startPlacing(blankEditor('cervical'), 'C7'), [10, 10], IMAGE);
+  assert.equal(canFinishPlacing(half, IMAGE), false, 'a lone corner');
+});
+
+test('C7 geometry is read, written, resumed, reverted and removed with its centroid key, null when absent', () => {
+  const g = cervicalGeometry();
+  assert.deepEqual(levelsFromGeometry({ ...g, c7_centroid: [15, 115] }).C7, { ...body(10, 110), centroid: null }, 'the study\'s c7_centroid is never read as the part');
+  assert.deepEqual(geometryFromPoints('C7', [[1, 1], [2, 1], null, null, null], IMAGE), { superior: [[1, 1], [2, 1]], inferior: null, centroid: null });
+  assert.deepEqual(geometryFromPoints('C7', [null, null, null, null, [5, 5]], IMAGE), { superior: null, inferior: null, centroid: [5, 5] });
+  assert.equal(geometryFromPoints('C7', [null, null, null, null, null], IMAGE), null);
+  const whole = { superior: [[1, 1], [2, 1]], inferior: [[1, 2], [2, 2]], centroid: null };
+  let e = setLevelGeometry(blankEditor('cervical'), 'C7', whole);
+  assert.deepEqual(resumePlacing(e, 'C7', 4).placing, { code: 'C7', points: [[1, 1], [2, 1], [1, 2], [2, 2], null], current: 4, history: [] }, 'the hollow CENTROID chip resumes at its step');
+  assert.deepEqual(missingParts('C7', whole), ['centroid']);
+  assert.equal(isPartial('C7', whole), true);
+  const placed = setLevelGeometry(e, 'C7', { ...whole, centroid: [1.5, 1.5] });
+  assert.deepEqual(changedPoints('C7', placed.levels.C7.geometry, whole), ['centroid']);
+  assert.deepEqual(removePart(selectLevel(placed, 'C7'), 'C7', 'CENTROID').levels.C7.geometry, whole);
+  const model = { id: 'SP-0007', geometry: { region: 'full_spine', vertebrae: { C7: { ...body(10, 110), quadrilateral: null } }, c7_centroid: [15, 115] } };
+  let m = openEditor({ study: model, region: 'full_spine', modelGeometry: model.geometry, saved: null });
+  assert.deepEqual(m.model.C7.centroid, null, 'the model\'s C7 has no placed centroid');
+  m = setLevelGeometry(m, 'C7', { ...m.levels.C7.geometry, centroid: [15, 115] });
+  assert.equal(levelState(m.levels.C7, m.model.C7), 'edited');
+  assert.deepEqual(revertLevel(m, 'C7').levels.C7.geometry, { ...body(10, 110), centroid: null });
+});
+```
+(`body(x, y)` in this file returns the study shape with a `quadrilateral`; where a level-model shape is compared, spread only `superior` and `inferior` — adjust the two deepEquals that use `body(10, 110)` accordingly.)
+
+- [ ] **Step 2: Run** `node --test test/levels.test.js` → FAIL (no `CENTROID_BODIES`, four steps for C7, two parts).
+- [ ] **Step 3: Implement** in `levels.js`: `CENTROID_BODIES`, `hasCentroid`; `partsOf(code)` appends `['centroid', [4]]` for a centroid body; `PART_HANDLE`/`firstHandle` add `centroid: 'CENTROID'` for a body (C7 only reaches it); `stepsFor` appends the CENTROID step for a centroid body; `POINTS` for a centroid body appends `['centroid', g => g.centroid]` (make `pointsOf(code)` code-aware); `geometryFromPoints`'s body branch writes `centroid` (whole/null) for a centroid body and omits the key otherwise; `bodyFrom`/`levelFromGeometry` write `centroid: null` for C7 (never reading `c7_centroid`); `finishedGeometry`/`addPoint`: a body self-finishes when its two endplate parts are whole (`partsOf` filtered to `superior`/`inferior`), not when every slot is set; `removePart` and `revertLevel` keep the key.
+- [ ] **Step 4: Run** `node --test test/levels.test.js test/level-handles.test.js test/level-projection.test.js test/label-record.test.js` → the levels file passes; note which assertions in the other files now fail (Tasks 12–13 fix them) and leave them.
+- [ ] **Step 5: Commit** `feat(levels): C7 carries an optional centroid part; four corners still finish by themselves`.
+
+### Task 12: Handles, chips, canvas, plates and the projection for C7's centroid
+
+**Files:**
+- Modify: `renderer/viewer/level-handles.js` (`candidates`, `STEP_HANDLES` → `stepHandlesFor(code)`, `selectedLevelChips`, `aimedStep`), `renderer/viewer/canvas.js` (`shapeParts` body branch), `renderer/viewer/level-labels.js` (`hasPlateGeometry`, `labelAnchor`, `labelPlacement` for a body with a centroid only), `renderer/data/level-projection.js` (`cervicalPart`'s `c7_centroid`)
+- Test: `test/level-handles.test.js`, `test/canvas.test.js`, `test/level-labels.test.js`, `test/level-projection.test.js`
+
+**Interfaces:**
+- Produces: `stepHandlesFor(code): string[]` (exported; `['SA', 'SP', 'IA', 'IP', 'CENTROID']` for C7, the kind's list otherwise; `STEP_HANDLES` stays exported for the kinds); `levelHandles('C7', g)` lists `CENTROID` (colour key `level`) when `g.centroid` is a point; `selectedLevelChips` five chips for C7; `aimedStep` names CENTROID correctly on any C7; `shapeParts('C7', g)` adds `{arc: centroid, radius: C2_CENTROID_RADIUS_PX * pixelRatio, area: true, dot: true}` when present; a C7 with only its centroid has a plate anchored on it with the film's side; `projectGeometry`'s `c7_centroid` is the placed centroid, else the quadrilateral's mean, else null.
+
+- [ ] **Step 1: Write the failing tests**:
+
+```js
+// test/level-handles.test.js
+test('C7 lists a CENTROID handle and chip when it has one; the chip is hollow otherwise; aimedStep names it', () => {
+  const whole = { superior: [[30, 20], [60, 20]], inferior: [[30, 50], [60, 50]], centroid: null };
+  assert.deepEqual(stepHandlesFor('C7'), ['SA', 'SP', 'IA', 'IP', 'CENTROID']);
+  assert.deepEqual(stepHandlesFor('C6'), ['SA', 'SP', 'IA', 'IP']);
+  assert.deepEqual(levelHandles('C7', whole).map((h) => h.handle), ['SA', 'SP', 'IA', 'IP']);
+  const withCentroid = { ...whole, centroid: [45, 35] };
+  assert.deepEqual(levelHandles('C7', withCentroid).map((h) => [h.handle, h.colorKey]).at(-1), ['CENTROID', 'level']);
+  const editor = selectLevel(setLevelGeometry(everyKindEditor(), 'C7', whole), 'C7');
+  assert.deepEqual(selectedLevelChips(editor).chips.map((c) => [c.label, c.placed]), [['SA', true], ['SP', true], ['IA', true], ['IP', true], ['CENTROID', false]]);
+  const armed = aimHandle(setLevelGeometry(editor, 'C7', withCentroid), 'C7', 'CENTROID');
+  assert.deepEqual(aimedStep(armed), { code: 'C7', handle: 'CENTROID', label: 'CENTROID', help: 'Click the centroid of the C7 body.', title: 'PLACING C7 · CENTROID' });
+  assert.deepEqual(handleOrder(setLevelGeometry(everyKindEditor(), 'C7', { superior: null, inferior: null, centroid: [45, 35] })).filter((h) => h.code === 'C7'), [{ code: 'C7', handle: 'CENTROID' }]);
+});
+// test/canvas.test.js
+test('C7 with a centroid draws its dot beside its outline; without one, no dot', () => {
+  const g = { superior: [[30, 20], [60, 20]], inferior: [[30, 50], [60, 50]], centroid: [45, 35] };
+  const rec = drawEditor(setLevelGeometry(lumbarEditor('C7'), 'C7', g));
+  assert.equal(arcsOf(rec.calls).some(([x, y]) => x === 45 && y === 35), true);
+  const bare = drawEditor(setLevelGeometry(lumbarEditor('C7'), 'C7', { ...g, centroid: null }));
+  assert.equal(arcsOf(bare.calls).some(([x, y]) => x === 45 && y === 35), false);
+});
+// test/level-labels.test.js
+test('a C7 with only its centroid anchors its plate on the centroid with the film\'s side', () => {
+  assert.deepEqual(labelPlacement('C7', { superior: null, inferior: null, centroid: [45, 35] }, 'right'), { anchor: [45, 35], side: -1 });
+  assert.deepEqual(labelPlacement('C7', { superior: [[30, 20], [60, 20]], inferior: null, centroid: [45, 35] }, null), { anchor: [60, 20], side: 1 }, 'an endplate outranks the centroid');
+});
+// test/level-projection.test.js
+test('c7_centroid is the placed centroid, else the quadrilateral\'s mean, else null', () => {
+  const whole = { superior: [[10, 110], [20, 111]], inferior: [[11, 120], [21, 122]], centroid: null };
+  const film = { geometry: { anterior_side: 'left', ...IMAGE_FIELDS }, region: 'full_spine' };
+  assert.deepEqual(projectGeometry(editorWith({ C7: whole }), film).c7_centroid, [15.5, 115.75]);
+  assert.deepEqual(projectGeometry(editorWith({ C7: { ...whole, centroid: [16, 116] } }), film).c7_centroid, [16, 116]);
+  assert.deepEqual(projectGeometry(editorWith({ C7: { superior: whole.superior, inferior: null, centroid: [16, 116] } }), film).c7_centroid, [16, 116], 'a partial C7 with its centroid still gives the plumb its point');
+  assert.equal(projectGeometry(editorWith({ C7: { superior: whole.superior, inferior: null, centroid: null } }), film).c7_centroid, null);
+  assert.equal('c7_centroid' in projectGeometry(editorWith({ C7: whole }, { region: 'cervical' }), { ...film, region: 'cervical' }), false, 'the cervical projection keeps omitting the key');
+});
+```
+(The `lumbarEditor('C7')` fixture may hide C7: use the canvas file's `emptyEditor()` or toggle C7 visible as Task 5 did. `everyKindEditor()` is the handles file's fixture. Existing C7 fixtures in these files gain `centroid: null` where a deepEqual compares a C7 geometry; update them.)
+
+- [ ] **Step 2: Run** the four files → FAIL.
+- [ ] **Step 3: Implement**: `level-handles.js` `candidates` body branch appends the centroid handle for `hasCentroid(code)`; `stepHandlesFor(code)`; `selectedLevelChips` and `aimedStep` use it. `canvas.js` `shapeParts` body branch appends the dot when `isPoint(geometry.centroid)`. `level-labels.js`: `hasPlateGeometry` body → a pair or (centroid body and a centroid point); `labelAnchor` body → pairs as now, else the centroid; `labelPlacement` body → pairs as now, else `filmSide`. `level-projection.js` `cervicalPart`: `c7_centroid: c7Entry?.geometry.centroid ? copyPoint(...) : (c7?.quadrilateral ? mean(c7.quadrilateral) : null)`.
+- [ ] **Step 4: Run** `node --test test/*.test.js` → every test passes except the record file's (Task 13); note them.
+- [ ] **Step 5: Commit** `feat(viewer): C7's centroid as a handle, a chip, a dot and the plumb's point`.
+
+### Task 13: The record's `c7` entry, the schema and `openEditor`'s merge
+
+**Files:**
+- Modify: `renderer/data/label-record.js` (`levelRecord` body branch for a centroid body; `geometryOf` body branch), `docs/design/level-editor/label-record.schema.json` (`$defs/c7`, `editedPointsC7`, `levels.C7` → `#/$defs/c7`, the description's dated line), `docs/design/level-editor/label-record.partial.example.json` (C7 gains `"centroid": [x, y]`, `"model_centroid": null`, `edited_points ["sa", "sp", "centroid"]`, `points_placed` 4), `renderer/data/levels.js` (`openEditor`: the record's C7 centroid merged into the study's C7)
+- Test: `test/label-record.test.js`, `test/levels.test.js`
+
+**Interfaces:**
+- Produces: `toLabelRecord` writes `levels.C7.centroid` (point or null) and `model_centroid` (null unless the model had one), `edited_points` from `pointKeys('C7')`; `recordLevels` reads C7 with `centroid` (a missing key → null); the schema's `c7` def; `openEditor({ study, saved })` gives C7 the study's pairs and the record's centroid when the study holds C7's corners.
+
+- [ ] **Step 1: Write the failing tests**:
+
+```js
+// test/label-record.test.js
+test('C7 writes and reads its centroid; a record without the key reads null; the schema holds the c7 entry', () => {
+  const g = { superior: [[10, 110], [20, 110]], inferior: [[10, 120], [20, 120]], centroid: [15, 115] };
+  const editor = setLevelGeometry(openEditor({ study: { id: 'SP-0008', geometry: null, labelFile: null }, region: 'cervical', modelGeometry: null, saved: null }), 'C7', g);
+  const record = toLabelRecord({ editor, study: { ...STUDY, region: 'cervical' }, image: IMAGE, model: MODEL, savedAt: SAVED_AT });
+  assert.deepEqual(record.levels.C7.centroid, [15, 115]);
+  assert.equal(record.levels.C7.model_centroid, null);
+  assert.deepEqual(record.levels.C7.edited_points, ['sa', 'sp', 'ia', 'ip', 'centroid']);
+  assert.deepEqual(validateAgainst(SCHEMA, record).errors, []);
+  assert.deepEqual(recordLevels(record).C7.geometry, g);
+  const older = structuredClone(record);
+  delete older.levels.C7.centroid; delete older.levels.C7.model_centroid; older.levels.C7.edited_points = ['sa', 'sp', 'ia', 'ip'];
+  assert.deepEqual(validateAgainst(SCHEMA, older).errors, [], 'a record from before this round validates');
+  assert.deepEqual(recordLevels(older).C7.geometry, { ...g, centroid: null });
+  assert.equal(record.levels.C6.centroid, undefined, 'other bodies carry no centroid key');
+  assert.deepEqual(validateAgainst(SCHEMA, PARTIAL_EXAMPLE).errors, []);
+  const centroidOnly = structuredClone(record);
+  centroidOnly.levels.C7.corners = { sa: null, sp: null, ia: null, ip: null };
+  centroidOnly.levels.C7.edited_points = ['centroid'];
+  assert.deepEqual(validateAgainst(SCHEMA, centroidOnly).errors, [], 'a centroid alone is a placed C7');
+  centroidOnly.levels.C7.centroid = null;
+  assert.equal(validateAgainst(SCHEMA, centroidOnly).ok, false, 'no part at all is rejected');
+});
+// test/levels.test.js
+test('openEditor merges the record\'s C7 centroid into the study\'s C7 corners', () => {
+  const study = { id: 'SP-0009', geometry: { region: 'cervical', vertebrae: { C7: { ...body(10, 110) } } }, labelFile: 'x.label.json' };
+  const saved = { file: 'x.label.json', levels: { C7: { visible: true, source: 'annotator', geometry: { superior: [[10, 110], [20, 110]], inferior: [[10, 120], [20, 120]], centroid: [15, 115] } } }, comment: '' };
+  const e = openEditor({ study, region: 'cervical', modelGeometry: null, saved });
+  assert.deepEqual(e.levels.C7.geometry.centroid, [15, 115]);
+  assert.deepEqual(e.levels.C7.geometry.superior, study.geometry.vertebrae.C7.superior, 'the corners are the study\'s');
+});
+```
+
+- [ ] **Step 2: Run** `node --test test/label-record.test.js test/levels.test.js` → FAIL.
+- [ ] **Step 3: Implement**: `label-record.js` body branch: for `hasCentroid(code)` add `centroid: pointOrNull(g.centroid)` and `model_centroid: edited ? pointOrNull(model.centroid) : null`; `geometryOf` body: for a centroid body read `centroid` (point, null, or BAD when malformed; a missing key is null) and accept the entry when a pair or the centroid is present. Schema: `$defs/c7` (copy `vertebra`, add `centroid`/`model_centroid` nullable, `edited_points` → `editedPointsC7`, the placed-state rule "a pair or the centroid" as an `anyOf` inside the `then`, `required` adds `centroid` and `model_centroid` only when present? — NO: keep them optional so older records validate; the app always writes them); `levels.C7` → `$ref c7`; the description's second dated line. `levels.js` `openEditor`: after `assignHeads`, for each centroid body with `fromStudy[code]` and `saved?.levels?.[code]?.geometry?.centroid` a point, set the centroid (copied). The example's C7 gains its centroid.
+- [ ] **Step 4: Run** `node --test test/*.test.js` → all pass; record the count.
+- [ ] **Step 5: Commit** `feat(record): C7's centroid in the label record under the /1 schema; the editor reads it back`.
+
+### Task 14: The viewer's fifth chip and smoke section 22's continuation
+
+**Files:**
+- Modify: `renderer/components/viewer.js` (only if `buildHandleChips`/`buildSteps` need the code-aware `stepHandlesFor`; the Delete suffix for CENTROID `; Delete removes it` already keys on the handle name), `tools/smoke/smoke-levels.mjs` (section 22, after the Delete checks)
+- No panel or wiring change expected: `startPlace`/`canResume` and `resumePlace` are part-generic.
+
+- [ ] **Step 1: The viewer**: read `buildSteps` and `buildHandleChips`; they iterate `placementSteps(code).steps` and the chips, so the fifth step and chip appear by themselves; confirm the CENTROID chip's title suffix reads `; Delete removes it` (the C2 rule keyed on `handle === 'CENTROID'`).
+- [ ] **Step 2: Smoke section 22, continued** (after the current last check, with C7 holding its inferior pair only):
+  1. Click the hollow CENTROID chip (`CHIP(5)`); `editLabel()` reads `PLACING C7 ${MID} 5 OF 5`; `clickImage(300, 440)`; the placement finishes (both endplates are not whole, so it finishes because every slot that can be set is… NO — the self-finish needs both endplates; with only the inferior pair the centroid click leaves the placement open): check the bar still reads a placement and FINISH is enabled; click FINISH; `geometryText('C7')` is `{"superior":null,"inferior":[[205,470],[405,475]],"centroid":[300,440]}`; the chips read `SA SP` hollow, `IA IP CENTROID` filled.
+  2. Place… S1 (`[data-level-key="place:S1"]`), `clickImage(250, 700)`, `clickImage(350, 700)`; `settled(PARTIAL)`; the study's `geometry.region === 'full_spine'`, `geometry.c7_centroid` deep-equals `[300, 440]`, `Number.isFinite(measurements.GLOBAL_SVA_PX)`.
+  3. `clickSelector('.lv-save')`; the record's `levels.C7.centroid` is `[300, 440]`, `edited_points` is `['ia', 'ip', 'centroid']`, it validates.
+  4. Escape, Edit again, select C7: the CENTROID chip is filled, the editor's C7 geometry holds the centroid.
+  5. Focus CENTROID (click its chip, then the chip again to disarm, or Tab), Delete: the centroid goes, `c7_centroid` on the study becomes null after `settled` (C7 is partial), `GLOBAL_SVA_PX` null.
+- [ ] **Step 3: Run** the dom suite from a fresh launch with the bounded recipe (fix-wave-brief.md's "Verification" block) → `N/N checks passed (phase dom)`, N = the previous count plus these checks; `node --test test/*.test.js` once more.
+- [ ] **Step 4: Commit** `feat(editor): the CENTROID chip places C7's centroid; smoke section 22 reads the plumb from it`.
+
+### Task 15: Docs for round 2
+
+**Files:** `docs/level-editor.md` (the C7 row: four clicks, an optional fifth for the centroid; the chips paragraph; the record section's C7 entry), `docs/design/level-editor/HANDOFF.md` (§2's C7 row; §12b N8–N11), `docs/releases/1.4.0.md` and `CHANGELOG.md` (a bullet under the partial-endplates entry; the Verification counts), the spec's status line (BUILT through round 2 with the counts), `docs/ROADMAP.md` §9 (one sentence: the C7 centroid shipped with it).
+
+- [ ] **Step 1**: the edits above, in the project's voice; counts from Task 14's runs.
+- [ ] **Step 2**: `node --test test/*.test.js` once (the version test); commit `docs(release): 1.4.0 adds the placeable C7 centroid`.

@@ -250,3 +250,61 @@ Under N4's alternative the same shape ships under `spinecontour.segmentation-lab
 A measurement that reads a partial body's one endplate as the other (never), the model training on partial labels (the
 record carries what is needed), per-point granularity (N1's alternative), a superior endplate for C2 (D8 stands), and
 the roadmap's other level-editor items (§8).
+
+## 12. Addendum, 2026-10-22: a placeable C7 centroid (N8–N11)
+
+The owner, before testing the build above: "I also want to add C7 centroid selection". Today the C7 centroid is never
+placed: the projection writes `c7_centroid` as the mean of C7's four corners for a full-spine film, so the C7–S1
+plumb (`GLOBAL_SVA`) reads a dash whenever C7 is partial, and the model's own C7 centroid is replaced by that mean on
+the first commit. (A second ask the same day, a per-group display filter for the overlay in edit mode, was withdrawn:
+the overlay toggle had been off.)
+
+N8 (owner, 2026-10-22, from three options). **C7 gains a third, optional part, its centroid, like C2's.** A fifth chip,
+CENTROID, placed by clicking the hollow chip (or the row's Place…) or during the placement by choosing its step; drawn
+as a dot; saved in the record; nudged, armed and removed like any other part. When it is not placed and C7 is whole,
+the mean of the corners stands in, as today. The alternatives were a required centroid (five clicks for every C7 and a
+model C7 reading incomplete) and a centroid-only C7 (losing the endplates Cobb and SVA need).
+
+N9 (planner). **C7 stays a body.** A body may carry an optional centroid part, and only C7 does (`CENTROID_BODIES =
+['C7']` in `levels.js`). Every site that switches on `kindOf(code) === 'body'` keeps working; the sites that enumerate
+a body's parts, steps, handles or record keys consult the code: `partsOf('C7')` is `superior` [0, 1], `inferior`
+[2, 3], `centroid` [4]; `placementSteps('C7')` has five steps, the fifth `CENTROID`, `Click the centroid of the C7
+body.`, colour key `level`; `pointKeys('C7')` is `sa sp ia ip centroid`; the handles and chips are `SA SP IA IP
+CENTROID` (`stepHandlesFor(code)` replaces the kind-keyed `STEP_HANDLES` lookup); `firstHandle` prefers SA, then IA,
+then CENTROID. C7's canonical shape is `{superior, inferior, centroid}` with the centroid null when absent, written by
+every writer (`levelsFromGeometry`, `geometryFromPoints`, `removePart`, `recordLevels`, `revertLevel`'s copy); the
+other bodies keep two keys. **The placement finishes by itself when both endplates are whole** (the four corners, as
+today), the centroid set or not; FINISH is enabled when at least one part is whole and none is half set, so a C7 of
+its centroid alone is allowed, as C2's is (the plumb needs nothing else). `placingLabel` reads `PLACING C7 · n OF 5`.
+Delete on a focused CENTROID removes it (refused when it is the last part). The chips' Delete suffix for CENTROID is
+`; Delete removes it`, as C2's.
+
+N10 (planner). **The centroid lives in the level model and the label record; it is never read back from
+`study.geometry`.** The projection writes `c7_centroid` (full-spine films; the cervical projection keeps omitting the
+key) as the placed centroid when the part is present, else the mean of the quadrilateral when C7 is whole, else null;
+`levelsFromGeometry` reads C7's pairs from the study and leaves the centroid null, so a derived mean never becomes a
+"placed" point and never goes stale under a corner drag. `openEditor` merges the saved record's C7 centroid into the
+study's C7 when the study gives the corners (the rule `assignHeads` already applies to a head's rim); a C7 the record
+holds and the study does not comes whole from the record, as today. The model's C7 therefore always has `centroid:
+null`: a C7 whose centroid the annotator placed reads Edited with `edited_points ["centroid"]` and `model_centroid`
+null. The persistence validator (`c7_centroid` a nullable point on a full-spine film), the backend and the renderer's
+`globalSvaMeasurements` need no change: `GLOBAL_SVA` reads the centroid it is given.
+
+N11 (planner). **The record.** `levels.C7` takes a new `$defs/c7`: the `vertebra` fields plus `centroid` and
+`model_centroid` (each a point or null) and `edited_points` from `editedPointsC7` (`sa sp ia ip centroid`); when
+placed, at least one part present (a pair, or the centroid); `contour` as a body's; `model_centroid` a point only when
+the model had one (never today). Same schema id, a second dated line in the description; every record saved before
+this addendum validates unchanged (a C7 without the `centroid` key is read as centroid null).
+
+The canvas draws C7's centroid as a dot in C7's colour (C2's radius, `dot: true`) beside its lines or quadrilateral;
+outside edit mode the existing C7 cross already draws `c7_centroid` on a full-spine film. The plate of a C7 with only
+its centroid anchors on the centroid with the film's side, as T4's and a centroid-only C2's do. `trainingStatus`,
+`dependencyNote` and the panel's rows are unchanged (an optional part never makes the label incomplete).
+
+Verification adds: unit tests for the five-step placement and its four-click finish, the centroid-alone finish, the
+parts and handles of C7, the projection's three `c7_centroid` cases, the record's `c7` entry both ways and the schema,
+`openEditor`'s merge; smoke section 22 continues on the partial film: the hollow CENTROID chip and one click place it
+(C7 still partial), Place… S1 turns the film full spine and `GLOBAL_SVA_PX` reads from the placed centroid, Save edits
+writes `levels.C7.centroid` and `edited_points` listing it, Edit again reads it back. Docs: `docs/level-editor.md`'s C7
+row and chips, HANDOFF §2's C7 row and §12b N8–N11, the 1.4.0 release notes and CHANGELOG (the same release). Built as
+round 2 of the plan (Tasks 11–15).
