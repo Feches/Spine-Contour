@@ -35,9 +35,12 @@ export const BASE_OVERLAY_ALPHA = 116;
 // outlines; the stored image has never coloured S1 and has no T1 or T4, and still does not.
 const MASK_LEVELS = ['C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'L1', 'L2', 'L3', 'L4', 'L5'];
 
-export function buildLabelColorMap(labels) {
+// (2026-10-22, round 2, Task 17: the owner's report) `levels`, an array of codes, restricts the map to those levels
+// (the ones the study's geometry still holds); null colours every level, as before.
+export function buildLabelColorMap(labels, levels = null) {
   const map = {};
   for (const level of MASK_LEVELS) {
+    if (levels && !levels.includes(level)) continue;
     const id = labels?.[level];
     if (typeof id === 'number') map[id] = LEVEL_RGB[level];
   }
@@ -83,6 +86,22 @@ export async function loadStudyImages(predictResponse) {
   // `labels` ({ L1: 20, ... }) rides with `mask` so the label record can trace a level's outline from it later
   // (Task 12). The RGBA buffer read above is not kept: `mask` is the source and a film's buffer is 4 bytes a pixel.
   return { image, mask, overlayCanvas: scratch, width: image.width, height: image.height, labels: predictResponse.labels ?? null };
+}
+
+// The overlay canvas for a given set of level codes, rebuilt from the stored mask (null = every level). A new
+// canvas each call: the images object the screen caches is never changed in place.
+export function overlayCanvasFor(images, levels) {
+  if (!images?.mask) return images?.overlayCanvas ?? null;
+  const scratch = document.createElement('canvas');
+  scratch.width = images.width;
+  scratch.height = images.height;
+  const context = scratch.getContext('2d');
+  context.drawImage(images.mask, 0, 0);
+  const maskPixels = context.getImageData(0, 0, images.width, images.height).data;
+  const overlayPixels = buildOverlayPixels(maskPixels, null, buildLabelColorMap(images.labels, levels), BASE_OVERLAY_ALPHA);
+  context.clearRect(0, 0, images.width, images.height);
+  context.putImageData(new ImageData(overlayPixels, images.width, images.height), 0, 0);
+  return scratch;
 }
 
 // `image` is an ImageBitmap, except for a film shown from its decoded original (imagesFromRaw),
@@ -168,9 +187,10 @@ export function drawStaticLayer(ctx, canvas, images, opts) {
   } else {
     ctx.drawImage(images.image, 0, 0);
   }
-  if (opts.overlays && images.overlayCanvas && !opts.editing) {
+  const overlayCanvas = opts.overlayCanvas ?? images.overlayCanvas;
+  if (opts.overlays && overlayCanvas && !opts.editing) {
     ctx.globalAlpha = Math.max(0, Math.min(1, opts.overlayOpacity / 100));
-    ctx.drawImage(images.overlayCanvas, 0, 0);
+    ctx.drawImage(overlayCanvas, 0, 0);
     ctx.globalAlpha = 1;
   }
 }

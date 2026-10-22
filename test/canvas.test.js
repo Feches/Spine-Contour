@@ -17,6 +17,23 @@ test('buildLabelColorMap maps L1..L5 backend label ids to the fixed RGB ramp', (
   assert.equal(map[0], undefined);
 });
 
+// (2026-10-22, round 2, Task 17: the owner's report) Outside edit mode the overlay paints only the levels the study holds.
+test('buildLabelColorMap with levels colours only those codes; null colours every one', () => {
+  const labels = { L1: 20, L2: 21, C7: 16 };
+  const some = buildLabelColorMap(labels, ['L1', 'C7']);
+  assert.deepEqual(Object.keys(some).sort(), ['16', '20']);
+  assert.equal(some[21], undefined);
+  assert.deepEqual(Object.keys(buildLabelColorMap(labels, null)).sort(), ['16', '20', '21']);
+  assert.deepEqual(buildLabelColorMap(labels, []), {});
+});
+
+test('buildOverlayPixels leaves a pixel transparent when its id is not in the restricted map', () => {
+  const maskPixels = new Uint8ClampedArray([20, 20, 20, 255, 21, 21, 21, 255]);
+  const overlay = buildOverlayPixels(maskPixels, null, buildLabelColorMap({ L1: 20, L2: 21 }, ['L1']), BASE_OVERLAY_ALPHA);
+  assert.equal(overlay[3], BASE_OVERLAY_ALPHA);
+  assert.equal(overlay[7], 0);
+});
+
 test('full-spine and cervical vertebral outlines use the lumbar level palette', () => {
   const strokes = [];
   const ctx = new Proxy({ stroke() { strokes.push(this.strokeStyle); } }, {

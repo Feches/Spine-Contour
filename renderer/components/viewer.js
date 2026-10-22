@@ -6,7 +6,7 @@ import { getState, setState } from '../store.js';
 import { measure } from '../api.js';
 import { showToast } from './toast.js';
 import {
-  createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel, colorFor,
+  createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel, colorFor, overlayCanvasFor,
 } from '../viewer/canvas.js';
 import { clientToImage } from '../viewer/geometry.js';
 import {
@@ -381,6 +381,9 @@ export function mountViewer(container) {
   container.append(stage);
 
   let currentImages = null;
+  // (2026-10-22, round 2, Task 17: the owner's report) The overlay filtered to the levels the study holds, cached by
+  // that level set beside currentImages; the cached images object is never changed.
+  let levelOverlay = { levelsKey: null, canvas: null };
   let lastStatic = null;
   let lastDynamic = null;
   let lastSteps = null;
@@ -1473,6 +1476,7 @@ export function mountViewer(container) {
   function setImages(images) {
     if (images === currentImages) return;
     currentImages = images;
+    levelOverlay = { levelsKey: null, canvas: null };
     if (images) {
       // A film in hand ends whatever the sidecar read was reporting. The contract's sidecar
       // section says a re-run recreates a missing film; without this the FILM UNAVAILABLE card
@@ -1542,13 +1546,24 @@ export function mountViewer(container) {
     // D1/D11), in every mode since gate feedback G3 (D15): outside edit mode the mask overlay is drawn over it as
     // over the stored image; while editing the overlay stays off, the editor draws the levels.
     const wl = windowFor(state, study);
-    const staticKey = [state.overlays, state.overlayOpacity, currentImages, state.editing, wl?.width, wl?.level, wl?.status];
+    // (2026-10-22, round 2, Task 17: the owner's report) Outside edit mode a level's label is painted only while the
+    // study's geometry holds that level; no geometry keeps the full overlay.
+    const levelsKey = study.geometry?.vertebrae ? Object.keys(study.geometry.vertebrae).sort().join(',') : null;
+    const staticKey = [state.overlays, state.overlayOpacity, currentImages, state.editing, wl?.width, wl?.level, wl?.status, levelsKey];
     if (!sameKey(staticKey, lastStatic)) {
       lastStatic = staticKey;
+      let filtered = null;
+      if (levelsKey !== null && state.overlays && !state.editing && currentImages?.mask) {
+        if (levelOverlay.levelsKey !== levelsKey || !levelOverlay.canvas) {
+          levelOverlay = { levelsKey, canvas: overlayCanvasFor(currentImages, levelsKey ? levelsKey.split(',') : []) };
+        }
+        filtered = levelOverlay.canvas;
+      }
       drawStaticLayer(staticCtx, staticCanvas, currentImages, {
         overlays: state.overlays,
         overlayOpacity: state.overlayOpacity,
         editing: state.editing,
+        overlayCanvas: filtered,
         window: wl?.status === 'ready' ? { width: wl.width, level: wl.level } : null,
       });
     }

@@ -120,7 +120,9 @@ note never shows a value. Unchecking the level being placed cancels the placemen
 so they have no note (D12).
 
 Entering edit mode and Save edits re-apply the record's hidden levels to the stored geometry when the two disagree (a
-re-measure that failed, or a run that overtook the editor), so the stage and the record never keep different views.
+re-measure that failed, or a run that overtook the editor), so the stage and the record never keep different views. Outside edit mode the mask overlay colours a level only while
+the study's geometry holds it, so an unchecked level's pixels are no longer painted; checking it again or RESET TO
+PREDICTION brings the colour back (the stored image is untouched).
 
 ## Placing a level
 
