@@ -27,7 +27,7 @@ import {
   LEVEL_CODES, openEditor, toggleVisible, toggleGroup, toggleOpen, selectLevel, startPlacing, addPoint, undoPoint,
   setPlacingStep, cancelPlacing, finishPlacing, clearLevel, revertLevel, setLevelGeometry, unsavedCount, canSave,
   markSaved, revertToBaseline, sameGeometry, setComment, aimHandle as armHandle, cancelAim as disarmHandle,
-  resumePlacing, removePart, isPartial, kindOf,
+  resumePlacing, removePart, canResume,
 } from './data/levels.js';
 import { moveHandle } from './viewer/level-handles.js';
 import { projectGeometry, projectsLevel, regionFollowsLevels, projectionIsEmpty } from './data/level-projection.js';
@@ -566,7 +566,7 @@ export function startPlace(code) {
     const entry = editor.levels[code];
     if (!entry) return editor;
     // (2026-10-21, partial endplates, spec §4) Place... on a partial body or C2 resumes it at its first missing step.
-    return entry.visible && isPartial(code, entry.geometry) && ['body', 'c2'].includes(kindOf(code))
+    return canResume(code, entry) // (2026-10-22, the final review, M4) the panel's Place... shares it
       ? resumePlacing(editor, code)
       : startPlacing(editor, code);
   }, { edit: true });
@@ -581,9 +581,10 @@ export function resumePlace(code, step = null) {
 }
 
 /**
- * (2026-10-21, partial endplates, spec §4) Delete with a point focused: that endplate (or the head's rim) is removed
+ * (2026-10-21, partial endplates, spec §4) Delete with a point focused: that endplate (or C2's pair or centroid) is removed
  * from the level, the focus moves to a remaining point, and a projected level commits through sync. The last part, a
- * placement in flight and a one-part kind are refused by the level model.
+ * placement in flight, a one-part kind and a femoral head are refused by the level model (2026-10-22, the final
+ * review, M5: a head's rim is never removed).
  */
 export function removeFocusedPart() {
   update((editor) => (editor.handle ? removePart(editor, editor.handle.code, editor.handle.handle) : editor), { edit: true });
@@ -639,7 +640,8 @@ export function cancelPlace() {
   update((editor) => cancelPlacing(editor));
 }
 
-/** FIT: finish a femoral head from 2 or 3 rim points. */
+/** FIT: finish a femoral head from 2 or 3 rim points; FINISH: end a body's or C2's placement with what is placed
+ * (2026-10-22, the final review, M5). */
 export function fitPlacing(imageSize) {
   update((editor) => (windowPanelOpen(editor) ? editor : finishPlacing(editor, imageSize)), { edit: true });
 }

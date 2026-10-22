@@ -8,7 +8,7 @@ import {
   finishPlacing, canFinishPlacing, clearLevel, setLevelGeometry, unsavedCount, canSave, unsavedText, summaryText,
   groupCountText, groupCheckState, trainingStatus, placingLabel, placingHelp, dependencyNote,
   markSaved, revertToBaseline, setPlacingStep, changedPoints, pointKeys, revertLevel, setComment, commentChanged,
-  aimHandle, cancelAim, partsOf, partOfHandle, missingParts, isPartial, resumePlacing, removePart,
+  aimHandle, cancelAim, partsOf, partOfHandle, missingParts, isPartial, resumePlacing, removePart, canResume,
 } from '../renderer/data/levels.js';
 import { SEGMENTAL_PAIRS } from '../renderer/data/segmental.js';
 import { DISC_LEVEL_PAIRS } from '../renderer/data/disc-heights.js';
@@ -1307,6 +1307,36 @@ test('revertLevel on a femoral head takes the model circle with rim null and kee
   assert.equal(levelState(reverted.levels.FH1, reverted.model.FH1), 'segmented');
   assert.equal(reverted.handle, e.handle, 'the handle names a point that still exists');
   assert.notEqual(reverted.levels.FH1.geometry.center, e.model.FH1.center, 'the centre is a copy');
+});
+
+// (2026-10-22, the final review, M1) The model gave only the superior pair; the annotator completed the inferior pair,
+// focused IA (armed), then REVERT: the focus cannot stay on a point the model's geometry lacks.
+test('revertLevel moves a focus on a point the model lacks to the first handle and disarms it; a kept point keeps the focus', () => {
+  const base = lumbarEditor();
+  const partialModel = { superior: [[10, 75], [20, 75]], inferior: null };
+  let e = { ...base, model: { ...base.model, L4: partialModel } };
+  e = selectLevel(setLevelGeometry(e, 'L4', body(10, 75)), 'L4');
+  const armed = aimHandle(e, 'L4', 'IA');
+  assert.equal(armed.aiming, true);
+  const reverted = revertLevel(armed, 'L4');
+  assert.deepEqual(reverted.levels.L4.geometry, partialModel);
+  assert.deepEqual(reverted.handle, { code: 'L4', handle: 'SA' });
+  assert.equal(reverted.aiming, false);
+  const onSp = { ...e, handle: { code: 'L4', handle: 'SP' } };
+  assert.equal(revertLevel(onSp, 'L4').handle, onSp.handle, 'a point the model has keeps the focus');
+});
+
+// (2026-10-22, the final review, M4) Place... resumes a visible, placed, partial body or C2 only.
+test('canResume: a visible placed partial body or C2, and nothing else', () => {
+  const partialBody = { visible: true, geometry: { superior: [[1, 1], [2, 1]], inferior: null } };
+  assert.equal(canResume('L3', partialBody), true);
+  assert.equal(canResume('C2', { visible: true, geometry: { inferior: null, centroid: [1, 1] } }), true);
+  assert.equal(canResume('L3', { ...partialBody, visible: false }), false, 'hidden');
+  assert.equal(canResume('L3', { visible: true, geometry: null }), false, 'unplaced');
+  assert.equal(canResume('L3', { visible: true, geometry: body(1, 1) }), false, 'whole');
+  assert.equal(canResume('T1', { visible: true, geometry: { superior: null } }), false, 'an endplate has one part');
+  assert.equal(canResume('FH1', { visible: true, geometry: { center: [1, 1], radius: 2, rim: null } }), false, 'a head');
+  assert.equal(canResume('L3', undefined), false, 'no entry');
 });
 
 test('revertLevel is a no-op for segmented, manual, not placed, not visible and placing levels', () => {

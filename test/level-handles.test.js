@@ -587,6 +587,19 @@ test('selectedLevelChips lists every step of a partial level, the missing points
   assert.deepEqual(selectedLevelChips(c2Editor).chips.map((c) => [c.label, c.placed, c.focused]), [['IA', false, false], ['IP', false, false], ['CENTROID', true, true]]);
 });
 
+// (2026-10-22, the final review, I1) The armed step on a partial level is named from the kind's whole step list, not
+// from the index among the points the level holds.
+test('aimedStep names the armed point of a partial level, not the step at its index among the existing points', () => {
+  const inferiorOnly = selectLevel(setLevelGeometry(lumbarEditor(), 'L4', { superior: null, inferior: [[30, 60], [60, 60]] }), 'L4');
+  const { label, help, title } = aimedStep(aimHandle(inferiorOnly, 'L4', 'IA'));
+  assert.deepEqual({ label, help, title }, { label: 'IA', help: 'Click the inferior-anterior corner (IA).', title: 'PLACING L4 · IA' });
+  const centroidOnly = selectLevel(setLevelGeometry(everyKindEditor(), 'C2', { inferior: null, centroid: [45, 12] }), 'C2');
+  const c2Step = aimedStep(aimHandle(centroidOnly, 'C2', 'CENTROID'));
+  assert.equal(c2Step.label, 'CENTROID');
+  assert.equal(c2Step.title, 'PLACING C2 · CENTROID');
+  assert.equal(aimedStep(aimHandle(everyKindEditor(), 'FH1', 'R2')).label, 'P3', 'a head still maps R2 to P3');
+});
+
 test('a whole level\'s chips all read placed, and a head\'s chips are unchanged', () => {
   assert.deepEqual(selectedLevelChips(selectLevel(lumbarEditor(), 'L4')).chips.map((c) => c.placed), [true, true, true, true]);
   assert.deepEqual(selectedLevelChips(selectLevel(lumbarEditor(), 'FH1')).chips.map((c) => [c.label, c.placed]), [['P1', true], ['P2', true], ['P3', true], ['P4', true]]);

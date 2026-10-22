@@ -50,7 +50,8 @@ function hasPlateGeometry(code, geometry) {
 
 /**
  * A plate's anchor, as before G7: a body's posterior-edge midpoint (SP and IP), C2's IP, an endplate's SP, T4's
- * centroid; null for a femoral head (no plate) or a geometry that is not what its kind says. A fresh point.
+ * centroid; (2026-10-22, the final review, M5) a one-endplate body anchors on that endplate's posterior corner (SP or
+ * IP), and C2 without its pair on its centroid; null for a femoral head (no plate) or a geometry that is not what its kind says. A fresh point.
  * @returns {[number, number]|null}
  */
 export function labelAnchor(code, geometry) {

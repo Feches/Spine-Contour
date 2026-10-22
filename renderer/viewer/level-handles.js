@@ -99,7 +99,8 @@ export function handleAt(code, geometry, handle) {
 
 /**
  * (2026-10-20) The edit bar's chips for the selected placed level while no placement is in progress: one per
- * handle of that level in Tab order (`levelHandles`), labelled as the level's placement steps are (a body's SA SP
+ * placement step of the level's kind in Tab order (`STEP_HANDLES`; a missing point's chip is `placed: false`;
+ * 2026-10-22, the final review, M5), a head's one per rim point (`levelHandles`), labelled as the level's placement steps are (a body's SA SP
  * IA IP; C2's IA IP CENTROID; an endplate's ANT POST; CENTROID; a head's P1..P4, one per rim point), coloured as
  * the handle is (`colorKey`), the focused handle marked. The chips read the same whether the level was placed by
  * the model or by hand, which is the point: before, only a placement in progress showed its points in the bar.
@@ -137,7 +138,14 @@ export function aimedStep(editor) {
   const { code, handle } = editor.handle;
   const entry = editor.levels?.[code];
   if (!entry?.visible || !entry.geometry) return null;
-  const index = levelHandles(code, entry.geometry).findIndex((entry) => entry.handle === handle);
+  // (2026-10-22, the final review, I1) A missing point is never named; the step's index comes from the kind's whole step
+  // list (STEP_HANDLES), since `levelHandles` lists existing points only and its index is shifted on a partial level.
+  // A head keeps the `levelHandles` index: its rim handles R0..R3 map to P1..P4 in order.
+  if (handleAt(code, entry.geometry, handle) === null) return null;
+  const names = STEP_HANDLES[kindOf(code)];
+  const index = names
+    ? names.indexOf(handle)
+    : levelHandles(code, entry.geometry).findIndex((entry) => entry.handle === handle);
   if (index < 0) return null;
   const step = placementSteps(code).steps[index];
   const label = step?.label ?? handle;

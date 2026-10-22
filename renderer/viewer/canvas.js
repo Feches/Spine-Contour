@@ -286,7 +286,7 @@ export function constructionLabel(geometry, selectedLevel, measurements) {
     const body = geometry.vertebrae?.[selectedLevel];
     const key = `${selectedLevel}-S1`;
     const value = measurements.LL?.[key];
-    if (!body || value == null) return null;
+    if (!body?.superior || value == null) return null; // (2026-10-22, the final review, M2) a body with no superior pair
     return { text: `LL ${key} ${value.toFixed(1)}°`, ...beyondAnterior(body.superior[0], body.superior[1]) };
   }
   return null;
@@ -424,7 +424,7 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
       // all handled above; this branch is reached only for an actual vertebral level.
       const body = geometry.vertebrae?.[selectedLevel];
       const s1 = geometry.s1_superior;
-      if (body) {
+      if (body?.superior) { // (2026-10-22, the final review, M2) no superior pair, no LL line
         ctx.beginPath();
         ctx.moveTo(...body.superior[0]);
         ctx.lineTo(...body.superior[1]);

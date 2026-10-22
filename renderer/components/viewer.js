@@ -306,7 +306,8 @@ export function mountViewer(container) {
     rerunButton);
 
   // The edit bar (handoff §3): the label, the help line, then -- while placing, and not while the window
-  // / level panel is open -- the step chips, FIT (femoral heads), UNDO and CANCEL; then RESET TO PREDICTION
+  // / level panel is open -- the step chips, FIT (femoral heads), FINISH (a body or C2 with a whole part; 2026-10-22,
+  // the final review, M5), UNDO and CANCEL; then RESET TO PREDICTION
   // (D14) and DONE, always. (2026-10-20) With no placement in progress the same chip row lists the selected
   // placed level's points instead (selectedLevelChips), so a level the model found reads like one placed by hand.
   const editLabel = el('div', { class: 'viewer-editbar-label' }, EDIT_LABEL);
@@ -1086,7 +1087,7 @@ export function mountViewer(container) {
   // the chip clicked again, Escape, Tab or a handle press disarms, and the focus stays so the arrow keys nudge it.
   // Disabled while this study's run is in flight, like the placement's chips. `aria-current` marks the focused one.
   // (2026-10-21, partial endplates, spec §4) A missing point of a partial body or C2 reads as a hollow chip: clicked, the
-  // placement resumes with that step current (resumePlace). A placed chip of a body or C2 says Delete removes its part.
+  // placement resumes with that step current (resumePlace). A placed chip of a whole body or C2 says Delete removes its part.
   function buildHandleChips({ code, chips }, busy) {
     const kind = kindOf(code);
     const partKind = kind === 'body' || kind === 'c2';
@@ -1102,7 +1103,10 @@ export function mountViewer(container) {
           onClick: () => resumePlace(code, index),
         }, dot, label);
       }
-      const removes = !partKind ? '' : handle === 'CENTROID' ? '; Delete removes it' : '; Delete removes its endplate';
+      // (2026-10-22, the final review, M3) Only a whole level offers Delete: on a partial one it would remove the last
+      // part, which the level model refuses.
+      const removable = partKind && chips.every((c) => c.placed);
+      const removes = !removable ? '' : handle === 'CENTROID' ? '; Delete removes it' : '; Delete removes its endplate';
       return el('button', {
         type: 'button',
         class: `viewer-step is-done${focused ? ' is-current' : ''}${aiming ? ' is-aiming' : ''}`,
@@ -1365,8 +1369,9 @@ export function mountViewer(container) {
       else requestExit();
       return;
     }
-    // Handles are disabled while placing or while the window / level panel is open (handoff §6).
-    if (!editor || editor.placing || windowOpen) return;
+    // Handles are disabled while placing or while the window / level panel is open (handoff §6). (2026-10-22, the
+    // final review, I3) And while the exit prompt shows: nothing on the stage changes under it (Tab, Delete, arrows).
+    if (!editor || editor.placing || windowOpen || editor.exitPrompt) return;
     if (event.key === 'Tab') {
       // Inside the edit bar, the window / level panel and the levels panel, Tab stays ordinary focus
       // movement so their controls remain keyboard-operable once focus is there (BD-11 d).
@@ -1381,6 +1386,9 @@ export function mountViewer(container) {
     // (2026-10-21, partial endplates, spec §4) Delete and Backspace remove the focused point's part (its endplate, or
     // C2's centroid), committed like a drag; the level model refuses the last part and a one-part kind.
     if (event.key === 'Delete' || event.key === 'Backspace') {
+      // (2026-10-22, the final review, I2) A focused slider (the overlay opacity keeps focus after a drag) is not the
+      // stage: TEXT_ENTRY lets a range input through, so the Delete branch guards it as the arrow branch does.
+      if (target && target.matches('input[type="range"]')) return;
       if (!editor.handle || !currentImages) return;
       event.preventDefault();
       removeFocusedPart();

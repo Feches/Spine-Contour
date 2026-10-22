@@ -727,7 +727,7 @@ test('the schema holds edited_points to each kind\'s keys, without repeats, in a
   patched('/levels/T4/edited_points/0', rec => { rec.levels.T4.edited_points = ['sa']; });
   patched('/femoral_heads/0/edited_points/0', rec => { rec.femoral_heads[0].edited_points = ['rim']; });
   patched('/levels/L2/edited_points', rec => { rec.levels.L2.edited_points = 'sp'; });
-  // R38 in the schema: edited lists something, manual lists every key, every other state nothing.
+  // R38 in the schema: edited lists something, manual lists the keys it holds, every other state nothing (2026-10-22, the final review, M5).
   patched('/levels/L2/edited_points', rec => { rec.levels.L2.edited_points = []; });
   patched('/femoral_heads/0/edited_points', rec => { rec.femoral_heads[0].edited_points = []; });
   patched('/levels/C3/edited_points', rec => { rec.levels.C3.edited_points = ['sa']; });
@@ -936,6 +936,8 @@ test('the schema holds a pair together: a half pair, no pair, and a C2 with neit
   assert.deepEqual(validateAgainst(SCHEMA, EXAMPLE).errors, [], 'the whole example still validates');
   const broken = (patch) => { const value = structuredClone(PARTIAL_EXAMPLE); patch(value); return validateAgainst(SCHEMA, value).ok; };
   assert.equal(broken((v) => { v.levels.C7.corners.sp = null; }), false, 'sa without sp');
+  // (2026-10-22, the final review, M6) the pair rule's other direction: sp a point demands sa.
+  assert.equal(broken((v) => { v.levels.C7.corners.sa = null; }), false, 'sp without sa');
   assert.equal(broken((v) => { v.levels.C7.corners.sa = null; v.levels.C7.corners.sp = null; }), false, 'no pair at all');
   assert.equal(broken((v) => { v.levels.C7.corners.ia = [1, 1]; }), false, 'ia without ip');
   assert.equal(broken((v) => { v.levels.C2.centroid = null; }), false, 'C2 with neither');

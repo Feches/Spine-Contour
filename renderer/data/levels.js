@@ -116,6 +116,14 @@ export function missingParts(code, geometry) {
 /** (2026-10-21, spec §3) Whether a placed level lacks a part. */
 export function isPartial(code, geometry) { return missingParts(code, geometry).length > 0; }
 
+/**
+ * (2026-10-22, the final review, M4) Whether Place... resumes a level rather than starting it afresh: a visible,
+ * placed, partial body or C2. The panel's Place... and the wiring's startPlace share it.
+ */
+export function canResume(code, entry) {
+  return Boolean(entry?.visible && entry.geometry) && ['body', 'c2'].includes(kindOf(code)) && isPartial(code, entry.geometry);
+}
+
 // The first handle of each part, by kind.
 const PART_HANDLE = new Map([['body', { superior: 'SA', inferior: 'IA' }], ['c2', { inferior: 'IA', centroid: 'CENTROID' }],
   ['endplate', { superior: 'SA' }], ['centroid', { centroid: 'CENTROID' }]]);
@@ -773,9 +781,10 @@ const copyGeometry = value => (Array.isArray(value) ? value.map(copyGeometry)
  * REVERT (annotation editor round 2, spec §5.1): a no-op unless `levelState(entry, editor.model[code]) === 'edited'`
  * and no placement is running for `code`. Otherwise the entry's `geometry` becomes a copy of `editor.model[code]`
  * (point arrays copied; a femoral head takes the model circle's `center` and `radius` with `rim: null`) and its
- * `source` becomes `model` (E7). `visible`, the selection and the focused handle stay (the handle names a point that
- * still exists); nothing else on the editor changes. The level then reads Segmented, by the same sameGeometry test
- * that made it Edited. A no-op returns the editor itself.
+ * `source` becomes `model` (E7). `visible` and the selection stay; the focused handle stays when the model's geometry
+ * has that point, and otherwise (the focus was on a point the annotator added to a partial model level) moves to the
+ * level's first handle with `aiming` false (2026-10-22, the final review, M1); nothing else on the editor changes.
+ * The level then reads Segmented, by the same sameGeometry test that made it Edited. A no-op returns the editor itself.
  */
 export function revertLevel(editor, code) {
   const entry = editor.levels[code];
@@ -784,7 +793,12 @@ export function revertLevel(editor, code) {
   const geometry = kindOf(code) === 'circle'
     ? { center: copyPoint(model.center), radius: model.radius, rim: null }
     : copyGeometry(model);
-  return setEntry(editor, code, { geometry, source: 'model' });
+  const next = setEntry(editor, code, { geometry, source: 'model' });
+  // (2026-10-22, the final review, M1) A focus on a point the model's geometry lacks moves to the level's first handle.
+  const part = editor.handle?.code === code ? partOfHandle(code, editor.handle.handle) : null;
+  return part && geometry[part] == null
+    ? { ...next, handle: { code, handle: firstHandle(code, geometry) }, aiming: false }
+    : next;
 }
 
 export function setLevelGeometry(editor, code, geometry) {

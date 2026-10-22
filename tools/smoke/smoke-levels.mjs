@@ -956,6 +956,15 @@ async function partialChecks() {
 
   // 7. Delete removes the focused endplate; the last one stays.
   await clickSelector('[data-level-key="C7"]');
+  // (2026-10-22, the final review, I2) A focused range input (the toolbar's overlay opacity, live in edit mode and
+  // keeping focus after a drag) takes Delete for itself: the stage removes nothing.
+  const beforeSlider = await geometryText('C7');
+  const sliderFocused = await ev(`(() => { const s = document.querySelector('.viewer-fill-slider'); if (!s || s.disabled) return false; s.focus(); return document.activeElement === s; })()`);
+  await pressDelete();
+  const afterSlider = await geometryText('C7');
+  check('22. Delete with the overlay-opacity slider focused leaves C7 whole (a range input is not the stage)',
+    sliderFocused === true && afterSlider === beforeSlider && JSON.parse(afterSlider ?? 'null')?.superior != null,
+    { sliderFocused, beforeSlider, afterSlider });
   await ev('(() => { const a = document.activeElement; if (a && a.blur) a.blur(); return true; })()');
   await pressDelete();
   const afterDelete = await geometryRounded('C7');
@@ -976,9 +985,11 @@ async function partialChecks() {
   // 8. Leave edit mode through the prompt's Discard (the edits since the save are unsaved).
   await cdp.key('Escape');
   await cdp.settle(120);
-  await until(`Boolean(document.querySelector('[data-level-key="prompt:discard"]'))`, 3000);
+  // (2026-10-22, the final review, M7) Both waits are checked, so a silent failure cannot leave section 18 in edit mode.
+  const promptShown = await until(`Boolean(document.querySelector('[data-level-key="prompt:discard"]'))`, 3000);
   await clickSelector('[data-level-key="prompt:discard"]');
-  await until(`import('./renderer/store.js').then((m) => m.getState().editing === false)`, 5000);
+  const leftEdit = await until(`import('./renderer/store.js').then((m) => m.getState().editing === false)`, 5000);
+  check('22. Escape with unsaved edits shows the exit prompt, and its Discard leaves edit mode', promptShown && leftEdit, { promptShown, leftEdit });
 }
 
 // ---------------------------------------------------------------------------
