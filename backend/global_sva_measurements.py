@@ -70,7 +70,9 @@ def global_sva_measurements_from_geometry(geometry: dict) -> dict:
     Missing anchors remain absent; no centroid is inferred from other geometry.
 
     Source image_width/image_height, when supplied, must both be positive
-    integers. Pixel-center coordinates satisfy 0 <= x < width and 0 <= y < height.
+    integers. Pixel-center coordinates of the anchors and the vertebral points satisfy
+    0 <= x < width and 0 <= y < height; a femoral circle's centre is a fitted
+    quantity and may lie outside the film (finite values only, 2026-10-22).
     Without dimensions, only nonnegative finite coordinates can be validated.
     pixel_spacing is optional [row_mm, column_mm]; only column spacing converts
     this horizontal displacement to millimetres. Additional geometry/provenance
@@ -128,8 +130,10 @@ def global_sva_measurements_from_geometry(geometry: dict) -> dict:
         raise ValueError("femoral_circles must contain zero, one or two circles")
     normalized_circles = []
     for circle in circles:
+        # (2026-10-22) A circle's centre is a fitted quantity, not a placed point: a head cut off at the
+        # film's edge fits to a centre beyond it. Finite values only, as the lumbar path has always required;
+        # bounding the centre failed the whole measure for such a film.
         values = _numeric_array(circle, (3,), "Femoral circle")
-        _points(values[:2], (2,), "Femoral circle center", bounds)
         if values[2] <= 0:
             raise ValueError("Femoral circle radius must be positive")
         normalized_circles.append(values.tolist())

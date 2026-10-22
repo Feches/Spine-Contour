@@ -280,9 +280,27 @@ def test_all_standing_measurements_are_mirror_invariant_with_anatomical_endpoint
 
 @pytest.mark.parametrize('patch', [
     {'c2_centroid': [100, 2]}, {'c2_centroid': [True, 2]},
-    {'femoral_circles': [[1, 2, 0]]}, {'femoral_circles': [[100, 2, 3]]},
+    {'femoral_circles': [[1, 2, 0]]}, {'femoral_circles': [[np.nan, 2, 3]]},
     {'femoral_circles': [[True, 2, 3]]}, {'l1_center': [1, 120]},
 ])
 def test_regional_geometry_requires_finite_in_bounds_anatomical_points(patch):
     with pytest.raises(ValueError):
         measure({**regional_geometry(), **patch})
+
+
+def test_femoral_circle_centre_may_lie_outside_the_film():
+    """A head cut off at the film's edge fits to a centre beyond it (2026-10-22, the owner's film 0210: y 1103 on a
+    1097 px film); the lumbar path has always accepted such a circle, and the full-spine path must not fail the whole
+    measure for it. The explicit anchors and the vertebral points stay bounded."""
+    source = regional_geometry()
+    source['femoral_circles'] = [[20, 126.2, 5], [-3, 105, 5]]
+    inside = measure(regional_geometry())['measurements']
+    result = measure(source)
+    assert result['geometry']['femoral_circles'] == [[20, 126.2, 5], [-3, 105, 5]]
+    assert result['geometry']['hip_midpoint'] == [8.5, 115.6]
+    for key in ('SS', 'PI', 'PT', 'L1PA'):
+        assert result['measurements'][key] is not None
+    assert result['measurements']['SS'] == inside['SS']
+    assert result['measurements']['PI'] != inside['PI']
+    with pytest.raises(ValueError, match="inside the original image"):
+        measure({**source, 'l1_center': [20, 126.2]})

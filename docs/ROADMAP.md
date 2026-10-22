@@ -435,9 +435,12 @@ built.
   the page at 90 s and carries a dom-phase watchdog (120 s without a page answer fails the run, cleans up and exits);
   run it as a bounded PowerShell job (`Start-Job` with `Wait-Job -Timeout 420`). The cause is not found.
 - **Lost commits in a long session** (2026-10-22). The owner's dev server, up since the previous day, saved two label
-  records whose edits never reached the study (no toast). A fresh launch over a copy of the same library commits every
-  edit, the backend answers and the pure path commits, so the trigger lives in the running session's state and is
-  unexplained. 1.4.0 heals the split on Edit and after Save edits (N12) and filters the overlay (N13).
+  records whose edits never reached the study (no toast noticed). For the second film the cause was found at the gate:
+  a femoral head placed by hand at the film's bottom edge fits to a centre 6 px below the film, which the full-spine
+  measure path refused, so every later commit of that film failed (fixed in 1.4.0). For the first film, with no
+  hand-placed heads, a fresh launch over a copy of the same library commits every edit, the backend answers and the
+  pure path commits, so the trigger lives in the running session's state and is unexplained. 1.4.0 heals the split on
+  Edit and after Save edits (N12) and filters the overlay (N13).
 - **The exit prompt's Save edits can sit under the header** at a small window, so a click misses (seen in a CDP run at
   1600×1100 with the clinical header).
 - **Save edits from the exit prompt did nothing on one synthetic Auto-region film with no model** (one run, not
