@@ -39,7 +39,7 @@ Files in this package:
 
 - batch export of label records
 - retraining itself
-- new measurements from T1 or T4
+- ~~new measurements from T1 or T4~~ (superseded 2026-10-22: the T1 slope and the T4 pelvic angle, N14; a T1-T4 or T4-L1 kyphosis stays out of scope)
 - remembering window / level between sessions
 
 ---
@@ -283,9 +283,11 @@ All are in the Spine Contour design system. Use the app's CSS variables, not hex
 | L3 | L2–L3 and L3–L4 will show — |
 | L4 | L3–L4 and L4–L5 will show — |
 | L5 | L4–L5 and L5–S1 will show — |
-| S1 | PI, SS, PT, LL, SVA and L5–S1 will show — |
-| Femoral head 1 or 2 | PI and PT will show — |
-| C3–C6, T1, T4 | none (no current measurement depends on them) |
+| S1 | PI, SS, PT, LL, SVA, T4PA and L5–S1 will show — |
+| Femoral head 1 or 2 | PI, PT and T4PA will show — |
+| T1 | T1 slope will show — (cervical and full-spine films; 2026-10-22, N14) |
+| T4 | T4PA will show — (lumbar and full-spine films; 2026-10-22, N14) |
+| C3–C6 | none (no current measurement depends on them) |
 
 Check this mapping against the actual measurement code. It should be derived from what each measurement reads, not hard-coded if that can be avoided.
 
@@ -465,7 +467,7 @@ D20 on 2026-10-13 from G7 (branch `claude/level-plates`).
 | D9 | Overlay colours | The shipped `LEVEL_RGB` is kept (C2 purple, C3–C7 = L1–L5's colours) and extended with T1, T4 and S1; the L1-anchored cycle of the prototype is not adopted. |
 | D10 | Save with zero changes | The first save is allowed: Save is disabled with `NOTHING TO SAVE` only when a record already exists and nothing has changed since. |
 | D11 | Window / level persistence (old question 4) | Not persisted and not recorded: display only, reset when the study is reopened, not in the label record. (Its reset on entering edit mode is superseded by D15.) |
-| D12 | T1 and T4 (old question 5) | Both are placeable levels in the Thoracic group and written to the record. No measurement reads them today, so they have no dependency note; T1 slope and T4 angles are out of scope. |
+| D12 | T1 and T4 (old question 5) | Both are placeable levels in the Thoracic group and written to the record. No measurement reads them today, so they have no dependency note; T1 slope and T4 angles are out of scope. **Superseded 2026-10-22 (N14):** the owner chose to keep both points and to measure the T1 slope and the T4 pelvic angle from them, so both now reach `study.geometry`, feed `T1S` and `T4PA`, and have dependency notes. |
 | D13 | Clear (old question 6) | Kept on manual levels. |
 | D14 | RESET TO PREDICTION | Kept in the edit bar as the whole-study revert to the model's output, beside Discard. |
 | D15 | Window / level outside edit mode (2026-10-11, gate feedback G3) | Available outside edit mode too. The window belongs to the view, like zoom and pan: it resets where zoom and pan reset (FRESH_VIEW: another film opened from the list, or the open study closed); Back and the sidebar's return keep it, as they keep zoom and pan; entering and leaving edit mode keeps it. Still never persisted, never in the record. (Wording amended 2026-10-11 by the review of G3/G4 to follow the behaviour; R29.) |
@@ -523,6 +525,7 @@ and the plan is `docs/superpowers/plans/2026-10-21-partial-endplates.md` (ten ta
 | N11 | **The record** (planner): `levels.C7` takes `$defs/c7` with `centroid`, `model_centroid` and `edited_points` including `centroid`; same schema id, a second dated line; every earlier record validates unchanged. |
 | N12 (controller) | **The editor's view wins on entry and after a save** (2026-10-22, the owner's report on SP-1300): a level the editor holds hidden or unplaced that the study's geometry still carries is projected out by one `sync` (`staleStudyLevels`), so a dropped or failed `/measure` cannot leave the record and the stage disagreeing for good. The re-measure clears the Reviewed mark like any other; the two heads are compared as a count, because the study's circles are read by slot and the editor's are matched to the record by value (fix wave 2). |
 | N13 (controller) | **The mask overlay outside edit mode paints only the levels the study holds** (2026-10-22, round 2, Task 17, the owner's report): `drawStaticLayer` is handed an overlay rebuilt from the stored mask for the sorted level codes of `study.geometry.vertebrae` (`overlayCanvasFor`, cached by that key in the viewer; no geometry keeps the full overlay). The stored image and sidecar are untouched. |
+| N14 (owner, 2026-10-22) | **T4 centroid kept and drawn, T4 pelvic angle, T1 slope** (the owner, option C of three: "I want T1 slope otherwise no point in annotating T1"; the planner's P1-P16 in `docs/superpowers/specs/2026-10-22-t4pa-t1-slope-design.md`): `t1_superior` (pair) and `t4_centroid` (point) join `study.geometry` on every region, written by the projection and read back by the level model (the record's role is provenance only, schema unchanged); `T4PA` is L1PA's construction with the T4 centroid (unsigned 0-180, lumbar and full spine) and `T1S` is SS's rule on the T1 pair (unsigned acute 0-90, cervical and full spine, identical points read null); the backend computes both on every `/measure` path (`backend/thoracic_measurements.py`, no bounds check on either point) and `/predict` carries both keys null; new `selectedLevel` values `'T4PA'` and `'T1S'`; rows, grid columns, CSV columns `T4PA` and `T1 slope (deg)`, the stage draws both points outside edit mode; `MEASUREMENT_INPUTS` gains `T4PA` and `T1S` (D12 superseded). |
 | (controller) | The edit bar's help line box was narrowed (160 px basis) for FINISH, so a long help line wraps inside its box in every edit-bar state. |
 
 ---

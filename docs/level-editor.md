@@ -41,8 +41,8 @@ disclosure button:
 |---|---|---|
 | Cervical `C2–C7` | C2 | inferior endplate (IA, IP) and the body's centroid (D8); either may stand alone (2026-10-21, N1) |
 | | C3–C7 | four corners SA, SP, IA, IP, or one endplate alone (2026-10-21, N1); C7 also takes an optional centroid (2026-10-22, N8) |
-| Thoracic `T1 · T4` | T1 | superior endplate (anterior, posterior) |
-| | T4 | centroid |
+| Thoracic `T1 · T4` | T1 | superior endplate (anterior, posterior); feeds the T1 slope (2026-10-22) |
+| | T4 | centroid; feeds the T4 pelvic angle (2026-10-22) |
 | Lumbar `L1–L5` | L1–L5 | four corners, or one endplate alone (2026-10-21, N1) |
 | Sacral `S1 ENDPLATE` | S1 | superior endplate |
 | Femoral heads `2–4 RIM POINTS` | Head 1, Head 2 | centre and radius fitted from 2–4 rim points |
@@ -115,9 +115,12 @@ Hand-placed. No run is needed.
 
 Unchecking keeps the level's geometry in memory for the session, so checking it again restores it; the saved record
 omits the geometry of a level that is not visible. Under an unchecked row a note names the measurements it leaves as a
-dash, for that film type: unchecking S1 on a lumbar film says `LL, PI, PT, SS, PI–LL, L1PA and L5–S1 will show —`. The
-note never shows a value. Unchecking the level being placed cancels the placement. T1 and T4 feed no measurement today,
-so they have no note (D12).
+dash, for that film type: unchecking S1 on a lumbar film says `LL, PI, PT, SS, PI–LL, L1PA, T4PA and L5–S1 will show —`. The
+note never shows a value. Unchecking the level being placed cancels the placement. Since 2026-10-22 T1 and T4 feed
+measurements, so they have notes: unchecking T1 on a cervical or full-spine film says `T1 slope will show —`, and
+unchecking T4 on a lumbar or full-spine film says `T4PA will show —` (D12, which said T1 and T4 feed nothing, is
+superseded). On a film outside a measurement's family (T1 on a lumbar film, T4 on a cervical one) the point is kept
+and drawn but the note stays silent.
 
 Entering edit mode and Save edits re-apply the levels the editor holds hidden or unplaced to the stored geometry when
 the two disagree (a re-measure that failed, or a run that overtook the editor), so the stage and the record never keep
@@ -127,6 +130,32 @@ record agrees with.
 Outside edit mode the mask overlay colours a level only while the study's geometry holds it, so an unchecked level's
 pixels are no longer painted; checking it again or RESET TO PREDICTION brings the colour back (the stored image is
 untouched).
+
+### T1 slope and T4 pelvic angle
+
+(2026-10-22, 1.4.0.) The owner asked for the T4 centroid to be kept when it is added, and chose the T1 slope with it ("I
+want T1 slope otherwise no point in annotating T1"). A T1 superior endplate and a T4 centroid placed by hand now reach
+the study on every film (`geometry.t1_superior`, a pair, anterior then posterior; `geometry.t4_centroid`, a point; each
+null when the level is hidden or unplaced), so they survive leaving edit mode and reopening the film, and two measurements
+read from them. Both come from the backend's `/measure`; the renderer displays the stored value and computes nothing.
+
+- **T4 pelvic angle (`T4PA`)** is L1PA's construction with the T4 centroid: the angle at the hip axis (the mean of the two
+  femoral circle centres) between the line to the T4 centroid and the line to the S1 superior endplate midpoint, unsigned,
+  0 to 180 degrees. It belongs to the lumbar family (a lumbar or full-spine film). It needs the T4 centroid, both femoral
+  heads and S1.
+- **T1 slope (`T1S`)** is the acute angle between the T1 superior endplate line and the image horizontal, unsigned, 0 to 90
+  degrees (SS's rule on the T1 pair; the horizontal is the acquisition image's, not rotated to the anatomy). It belongs
+  to the cervical family (a cervical or full-spine film). It needs the T1 endplate with two distinct points.
+
+A measurement whose input is missing, or whose film is outside its family, reads a dash in the panel and the grid and
+an empty cell in the CSV, never a number. The Measurements panel gains **T4 PELVIC ANGLE** after L1 PELVIC ANGLE and
+**T1 SLOPE** after C2–C7 SVA; clicking a row selects its construction (`selectedLevel` `'T4PA'` or `'T1S'`): T4PA draws
+the two segments from the hip axis to the T4 centroid and to the S1 midpoint, T1S draws the T1 line with a dashed
+horizontal through its midpoint. Outside edit mode the stage draws the T1 endplate as a line in T1's colour and the T4
+centroid as a cross in T4's, on every region. The Parameters grid has a **T4PA** column and a **T1 slope** column, and
+both CSV exports carry `T4PA` and `T1 slope (deg)`. No model places T1 or T4, so a prediction never produces either
+value. A point hidden and then saved is not kept: the record holds the level not visible, so checking it after a reopen
+shows it unplaced and Place… puts it back (within one edit session the point is kept while hidden).
 
 ## Placing a level
 
@@ -488,7 +517,12 @@ chips, the record's null corners validating against the amended schema, Edit aga
 its refusal, and, for the C7 centroid (2026-10-22, N8), the hollow CENTROID chip and one click placing it with C7 still
 partial, Place… S1 turning the film full spine with `GLOBAL_SVA_PX` read from the placed centroid, Save edits writing
 `levels.C7.centroid` with `edited_points` listing it, and Edit again reading it back: section 22 holds 20 checks, 15 for
-the partial endplates and 5 for the centroid);
+the partial endplates and 5 for the centroid) and (2026-10-22) section 24 (both heads, T1 and T4 placed by hand on the
+full-spine film; the study gaining `t1_superior` and `t4_centroid` and finite `T1S` and `T4PA`; T1S equal to 11.31
+degrees for the placed line; the panel's T1 SLOPE and T4 PELVIC ANGLE rows reading a number outside edit mode; unchecking
+T4 naming `T4PA` in a note, taking the field and the value off the study and the row to a dash; checking it again
+returning them; DONE and a reopen keeping both fields; 12 checks), with the T1 toggle check in section 11 now reading
+`t1_superior` null on the study after the commit;
 the pure modules have unit tests (`test/levels`, `level-projection`, `level-handles`, `level-labels` for the plates,
 `window-level`, `label-record`, `contours`, and `interactions` for the double right-click; `canvas` draws the plates; 1.4.0 adds the partial-level groups in
 `levels`, `level-projection`, `persistence`, `level-handles`, `canvas`, `label-record` and the wiring, and

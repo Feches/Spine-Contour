@@ -1,6 +1,8 @@
 # T4 centroid kept and drawn, T4 pelvic angle, T1 slope — design
 
-**Status:** APPROVED 2026-10-22 (the owner: option C of three). Builds on the partial-endplates branch
+**Status:** BUILT 2026-10-22 (plan Tasks 1–5; unit 1244/1244, `smoke-levels` dom 194/194 with section 24's 12 checks,
+`smoke-seeding` 36/36, `smoke-parameters` 58/58, backend unit 657 passed 2 skipped; at the owner's gate, not pushed).
+APPROVED 2026-10-22 (the owner: option C of three). Builds on the partial-endplates branch
 `claude/partial-endplates-ca5755` ahead of the 1.4.0 gate (the owner did not say when; the planner's assumption, stated).
 Fact sheet: `.superpowers/sdd/2026-10-22-t4pa-t1-slope/fact-sheet.md` (line numbers at `5ec39d7`).
 
