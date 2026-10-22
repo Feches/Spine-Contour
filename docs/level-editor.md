@@ -193,8 +193,9 @@ PREDICTION for the whole study. An Edited level can also be returned to the mode
 Selecting a row gives that level its handles on the stage (only the selected level has handles) and focuses its first
 handle; the help line says `L3 selected — drag a handle to adjust it, or pick a point and nudge it with the arrow
 keys.`. Since 2026-10-20 the edit bar also lists the selected level's points as chips, whether the model placed the
-level or a hand did: `SA SP IA IP` for a body (C7's `SA SP IA IP CENTROID`, C2's `IA IP CENTROID`, an endplate's `ANT POST`, a centroid, a head's
-`P1`–`P4`, one per rim point), each dot in the handle's colour and filled, the focused handle on the accent ground.
+level or a hand did: `SA SP IA IP` for a body (C7's `SA SP IA IP CENTROID`, C2's `IA IP CENTROID`, an endplate's
+`ANT POST`, a centroid, a head's `P1`–`P4`, one per rim point), each dot in the handle's colour and filled, the focused
+handle on the accent ground.
 Clicking a chip **arms** that point (since 2026-10-21): the bar reads `PLACING L4 · SA`, the help line names the
 click (`Click the superior-anterior corner (SA). Escape keeps the point where it is.`), the chip's dot shows hollow,
 and the next click on the film places the point there, clamped to the image and committed through `/measure` like a
@@ -219,17 +220,17 @@ the missing ones with a hollow dot; focus, Tab and the arrow keys reach the poin
 chip, or the row's **Place…**, resumes the placement for that endplate: the bar reads `PLACING C7 · 3 OF 4`, the placed
 points are filled in already, and the next clicks on the film complete the level. UNDO reaches only the new clicks;
 CANCEL or Escape leaves the level as it was. **Delete** or **Backspace** with a point of a body or C2 focused removes
-that point's endplate (C2's and C7's centroid, the centroid alone), committed through `/measure` like a drag. It is refused for the
-level's last part (CLEAR the level, or uncheck it) and for T1, S1, T4 and the heads, and does nothing while a level is
-being placed, while the W/L panel is open or while the study's run is in flight. The edit bar's help line box is narrow,
-so a long help line wraps inside its box instead of the bar taking a second row.
+that point's endplate (C2's and C7's centroid, the centroid alone), committed through `/measure` like a drag. It is
+refused for the level's last part (CLEAR the level, or uncheck it) and for T1, S1, T4 and the heads, and does nothing
+while a level is being placed, while the W/L panel is open or while the study's run is in flight. The edit bar's help
+line box is narrow, so a long help line wraps inside its box instead of the bar taking a second row.
 
 | Key | In edit mode |
 |---|---|
 | Tab / Shift+Tab | the next / previous handle across every visible, placed level in panel order, selecting its level (inside the edit bar, the W/L panel and the levels panel Tab moves focus as usual) |
 | Arrow keys | nudge the focused handle 1 px; Shift: 10 px |
 | Escape | one thing at a time: closes the exit prompt (Keep editing), cancels a placement, closes the W/L panel, then leaves edit mode |
-| Delete, Backspace | removes the focused point's endplate on a body or C2 (its centroid on C2 and C7; `; Delete removes it` on the chip); nothing on the last part, on T1, S1, T4 or a head |
+| Delete, Backspace | removes the focused point's endplate on a body or C2 (its centroid on C2 and C7); nothing on the last part, on T1, S1, T4 or a head |
 
 Handles and placement clicks pause while the W/L panel is open. The left+right chord and the middle button pan in every
 mode; with the Pan toggle pressed, a primary drag pans even over a handle. The right button alone windows the film in
