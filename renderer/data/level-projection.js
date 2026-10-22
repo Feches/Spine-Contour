@@ -3,7 +3,8 @@
 // `levels.js` owns the level model (sixteen items, each { visible, source, geometry }); the app's measure
 // queue, the persistence validator and studies.json all speak `study.geometry`. `projectGeometry` writes the
 // levels a film's region measures into that shape; `levelsFromGeometry` (levels.js) reads it back. T1 and T4
-// are never projected: no measurement reads them, so they live in the level model and the label record only.
+// are projected on every region (2026-10-22): T1's superior endplate as `t1_superior` and T4's centroid as
+// `t4_centroid`, which the T1 slope and T4 pelvic angle read.
 //
 // Pure: no DOM, no store, no I/O. Nothing here mutates its arguments, and the result shares no point arrays
 // with the editor, so a later in-place edit of a cloned geometry cannot reach the level model.
@@ -66,12 +67,12 @@ export function projectionRegion(editor, study) {
 }
 
 /**
- * Whether a change to `code` can change this study's projection, so the level editor commits it: T1 and T4 never
- * do; a film whose region follows its levels takes every other code (placing C3 can turn a lumbar projection into
+ * Whether a change to `code` can change this study's projection, so the level editor commits it: T1 and T4 always
+ * do (on every region); a film whose region follows its levels takes every other code (placing C3 can turn a lumbar projection into
  * a full spine); a lumbar film L1-L5, S1 and the heads; a cervical one C2-C7; a full-spine film all of those.
  */
 export function projectsLevel(code, editor, study) {
-  if (code === 'T1' || code === 'T4') return false;
+  if (code === 'T1' || code === 'T4') return true;
   if (regionFollowsLevels(editor, study)) return true;
   const region = studyRegion(study);
   if (region === 'lumbar') return LUMBAR_LEVELS.includes(code);
@@ -152,6 +153,13 @@ function cervicalPart(editor) {
 const usableCircle = geometry => Array.isArray(geometry.center) && geometry.center.every(Number.isFinite)
   && Number.isFinite(geometry.radius) && geometry.radius > 0;
 
+// T1's superior endplate and T4's centroid, on every region: the placed, visible level's geometry copied, else null.
+function thoracicPart(editor) {
+  const t1 = placed(editor, 'T1')?.geometry.superior;
+  const t4 = placed(editor, 'T4')?.geometry.centroid;
+  return { t1_superior: t1 ? copyPair(t1) : null, t4_centroid: t4 ? copyPoint(t4) : null };
+}
+
 function lumbarPart(editor, base) {
   const vertebrae = {};
   for (const code of LUMBAR_BODIES) {
@@ -184,7 +192,7 @@ function lumbarPart(editor, base) {
 /**
  * (The final review of round 2, I1) Whether a projection places nothing at all: `manually_cleared` (a lumbar film
  * with nothing left), or none of what a projection writes from the levels: no vertebra (C2-C7 and L1-L5), no S1
- * endplate, no femoral circle, no C2 or C7 centroid. True for every region's empty projection (lumbar, cervical and
+ * endplate, no femoral circle, no C2 or C7 centroid, no T1 endplate and no T4 centroid. True for every region's empty projection (lumbar, cervical and
  * full spine) and for null. Pure.
  * @param {object|null} geometry   a `projectGeometry` result
  */
@@ -194,7 +202,8 @@ export function projectionIsEmpty(geometry) {
   const hasVertebra = Boolean(geometry.vertebrae) && Object.keys(geometry.vertebrae).length > 0;
   const hasCircle = Array.isArray(geometry.femoral_circles) && geometry.femoral_circles.length > 0;
   return !hasVertebra && geometry.s1_superior == null && !hasCircle
-    && geometry.c2_centroid == null && geometry.c7_centroid == null;
+    && geometry.c2_centroid == null && geometry.c7_centroid == null
+    && geometry.t1_superior == null && geometry.t4_centroid == null;
 }
 
 /**
@@ -212,11 +221,12 @@ export function projectGeometry(editor, study) {
   if (!editor) return null;
   const base = study?.geometry ?? {};
   const region = projectionRegion(editor, study);
-  const { c2_centroid: _c2, c7_centroid: _c7, manually_cleared: _cleared, ...kept } = base;
+  const { c2_centroid: _c2, c7_centroid: _c7, manually_cleared: _cleared, t1_superior: _t1, t4_centroid: _t4, ...kept } = base;
+  const thoracic = thoracicPart(editor);
   if (region === 'lumbar') {
     const lumbar = lumbarPart(editor, base);
     const empty = Object.keys(lumbar.vertebrae).length === 0 && lumbar.s1_superior === null && lumbar.femoral_circles.length === 0;
-    return { ...kept, region, ...lumbar, ...(empty ? { manually_cleared: true } : {}) };
+    return { ...kept, region, ...lumbar, ...thoracic, ...(empty ? { manually_cleared: true } : {}) };
   }
   const { vertebrae: cervicalBodies, c2_centroid, c7_centroid } = cervicalPart(editor);
   // The film's stored or chosen side is authoritative (the backend signs SVA by it and never checks it against
@@ -225,12 +235,12 @@ export function projectGeometry(editor, study) {
   if (region === 'cervical') {
     return {
       ...kept, region, anterior_side, c2_centroid, vertebrae: cervicalBodies,
-      s1_superior: null, femoral_circles: [], hip_midpoint: null, l1_center: null,
+      s1_superior: null, femoral_circles: [], hip_midpoint: null, l1_center: null, ...thoracic,
     };
   }
   const lumbar = lumbarPart(editor, base);
   return {
     ...kept, region, anterior_side, c2_centroid, c7_centroid,
-    ...lumbar, vertebrae: { ...cervicalBodies, ...lumbar.vertebrae },
+    ...lumbar, ...thoracic, vertebrae: { ...cervicalBodies, ...lumbar.vertebrae },
   };
 }

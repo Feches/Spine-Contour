@@ -1507,3 +1507,25 @@ test('Fix wave 2: Edit on a film holding one circle the record calls Head 2 comm
     assert.equal(unsavedCount(getState().levelEditor), 0);
   }));
 });
+
+// (2026-10-22, T4 pelvic angle and T1 slope) T1 projects on every region: two clicks on a lumbar model film commit a
+// geometry that carries the pair (anterior then posterior) and no T4 centroid.
+test('placing T1 by two clicks on a lumbar model film commits t1_superior and a null t4_centroid', async () => {
+  const study = segmentedFilm('SP-9576', { reviewedAt: null });
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(study.geometry) });
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    await settle();
+    const before = commits.length;
+    startPlace('T1');
+    placePoint([100, 40], IMAGE);
+    placePoint([160, 44], IMAGE);
+    await settle();
+    assert.ok(commits.length > before, 'the T1 placement commits');
+    const { geometry } = commits.at(-1);
+    assert.deepEqual(geometry.t1_superior, [[100, 40], [160, 44]]);
+    assert.equal(geometry.t4_centroid, null);
+    assert.equal(geometry.region, 'lumbar');
+  });
+});

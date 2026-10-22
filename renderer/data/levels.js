@@ -441,15 +441,19 @@ function levelFromGeometry(code, geometry) {
       });
     }
     case 'S1': return isPair(geometry.s1_superior) ? { superior: copyPair(geometry.s1_superior) } : null;
+    // (2026-10-22, T4 pelvic angle and T1 slope) T1 and T4 live in the study as their own fields, never as a vertebra.
+    case 'T1': return isPair(geometry.t1_superior) ? { superior: copyPair(geometry.t1_superior) } : null;
+    case 'T4': return isPoint(geometry.t4_centroid) ? { centroid: copyPoint(geometry.t4_centroid) } : null;
     case 'FH1': return circleFrom(geometry.femoral_circles?.[0]);
     case 'FH2': return circleFrom(geometry.femoral_circles?.[1]);
-    default: return kindOf(code) === 'body' ? bodyFrom(geometry.vertebrae?.[code], hasCentroid(code)) : null;   // T1, T4: never in a study
+    default: return kindOf(code) === 'body' ? bodyFrom(geometry.vertebrae?.[code], hasCentroid(code)) : null;
   }
 }
 
 /**
  * The level model's view of a study's geometry: one entry per code, null where the geometry carries
- * nothing usable. T1 and T4 are always null (no study geometry holds them). A fresh object each call.
+ * nothing usable. T1 reads `t1_superior` and T4 `t4_centroid` (null when the study has none; a `vertebrae.T1` or
+ * `.T4` entry is never read). A fresh object each call.
  * @returns {Object<string, LevelGeometry|null>}
  */
 export function levelsFromGeometry(geometry) {
@@ -1004,10 +1008,12 @@ export const MEASUREMENT_INPUTS = [
   input('SS', 'SS', LUMBAR_REGIONS, ['S1']),
   input('PILL', `PI${EN_DASH}LL`, LUMBAR_REGIONS, ['L1', 'S1', 'FH1', 'FH2']),
   input('L1PA', 'L1PA', LUMBAR_REGIONS, ['L1', 'S1', 'FH1', 'FH2']),
+  input('T4PA', 'T4PA', LUMBAR_REGIONS, ['T4', 'S1', 'FH1', 'FH2']),
   ...SEGMENTAL_PAIRS.cervical.map(pairInput(CERVICAL_REGIONS)),
   ...SEGMENTAL_PAIRS.lumbar.map(pairInput(LUMBAR_REGIONS)),
   input('C2C7_COBB', `C2${EN_DASH}C7 Cobb`, CERVICAL_REGIONS, ['C2', 'C7']),
   input('C2C7_SVA', `C2${EN_DASH}C7 SVA`, CERVICAL_REGIONS, ['C2', 'C7']),
+  input('T1S', 'T1 slope', CERVICAL_REGIONS, ['T1']),
   input('GLOBAL_SVA', `C7${EN_DASH}S1 SVA`, ['full_spine'], ['C7', 'S1']),
 ];
 

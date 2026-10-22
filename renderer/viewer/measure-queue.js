@@ -57,6 +57,8 @@ export function createMeasureQueue({ measure, getState, setState, showToast, deb
         vertebrae: geometry.vertebrae,
         s1_superior: geometry.s1_superior,
         femoral_circles: geometry.femoral_circles,
+        t1_superior: geometry.t1_superior ?? null,
+        t4_centroid: geometry.t4_centroid ?? null,
       });
       if (revision !== revisions.get(studyId)) return;
       // Legacy lumbar /measure responses omit region. Preserve Auto's resolved

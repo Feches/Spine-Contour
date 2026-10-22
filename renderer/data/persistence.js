@@ -63,6 +63,7 @@ function points(list, n) {
 function isValidMeasurements(m) {
   if (!m || typeof m !== 'object' || Array.isArray(m)) return false;
   const nullable = value => value === null || finite(value);
+  if (![m.T1S, m.T4PA].every(value => value == null || finite(value))) return false;
   if (m.region === 'cervical') return [m.C2C7_COBB, m.C2C7_SVA_PX, m.C2C7_SVA_MM].every(nullable);
   if (m.region === 'full_spine') {
     if (![m.GLOBAL_SVA_PX, m.GLOBAL_SVA_MM].every(nullable)) return false;
@@ -96,7 +97,8 @@ function isValidGeometry(g) {
   if (g.region === 'full_spine') {
     if (!validAnteriorSide(g.anterior_side) || (g.c7_centroid != null && !point(g.c7_centroid))
       || (g.c2_centroid != null && !point(g.c2_centroid))
-      || (g.s1_superior != null && !points(g.s1_superior, 2))) return false;
+      || (g.s1_superior != null && !points(g.s1_superior, 2))
+      || !((g.t1_superior == null || points(g.t1_superior, 2)) && (g.t4_centroid == null || point(g.t4_centroid)))) return false;
     if (g.vertebrae != null && (typeof g.vertebrae !== 'object' || Array.isArray(g.vertebrae)
       || !Object.entries(g.vertebrae).every(([level, body]) => [...CERVICAL_LEVELS, 'L1', 'L2', 'L3', 'L4', 'L5'].includes(level)
         && body && typeof body === 'object' && !Array.isArray(body)
@@ -112,6 +114,7 @@ function isValidGeometry(g) {
   if (!g.vertebrae || typeof g.vertebrae !== 'object' || Array.isArray(g.vertebrae)) return false;
   if (g.region === 'cervical') {
     if (!validAnteriorSide(g.anterior_side) || (g.c2_centroid !== null && !point(g.c2_centroid))) return false;
+    if (!((g.t1_superior == null || points(g.t1_superior, 2)) && (g.t4_centroid == null || point(g.t4_centroid)))) return false;
     if (g.s1_superior !== null || g.hip_midpoint !== null || g.l1_center !== null
         || !Array.isArray(g.femoral_circles) || g.femoral_circles.length) return false;
     return Object.entries(g.vertebrae).every(([level, v]) => CERVICAL_LEVELS.includes(level) && v
@@ -125,6 +128,7 @@ function isValidGeometry(g) {
     if (v.anterior_confirmed != null && typeof v.anterior_confirmed !== 'boolean') return false;
   }
   if (g.s1_superior !== null && !points(g.s1_superior, 2)) return false;
+  if (!((g.t1_superior == null || points(g.t1_superior, 2)) && (g.t4_centroid == null || point(g.t4_centroid)))) return false;
   if (g.vertebrae.L1?.quadrilateral ? !point(g.l1_center) : g.l1_center !== null) return false;
   if (!Array.isArray(g.femoral_circles) || ![0, 1, 2].includes(g.femoral_circles.length)) return false;
   if (g.femoral_circles.length === 2 ? !point(g.hip_midpoint) : g.hip_midpoint !== null) return false;
@@ -133,11 +137,14 @@ function isValidGeometry(g) {
     const [cx, cy, r] = circle;
     if (!finite(cx) || !finite(cy) || !finite(r) || !(r > 0)) return false;
   }
-  return Object.keys(g.vertebrae).length > 0 || g.s1_superior !== null || g.femoral_circles.length > 0 || g.manually_cleared === true;
+  return Object.keys(g.vertebrae).length > 0 || g.s1_superior !== null || g.femoral_circles.length > 0 || g.manually_cleared === true
+    || g.t1_superior != null || g.t4_centroid != null;
 }
 
 function measurementsHaveLandmarks(m, g) {
   if (!m || !g) return false;
+  if (Number.isFinite(m.T1S) && !points(g.t1_superior, 2)) return false;
+  if (Number.isFinite(m.T4PA) && !(point(g.t4_centroid) && point(g.hip_midpoint) && points(g.s1_superior, 2))) return false;
   if (m.region === 'full_spine' || g.region === 'full_spine') return m.region === g.region
     && ([m.GLOBAL_SVA_PX, m.GLOBAL_SVA_MM].every(v => v == null) || Boolean(g.c7_centroid && g.s1_superior))
     && (m.C2C7_COBB == null || Boolean(g.vertebrae?.C2?.inferior && g.vertebrae?.C7?.inferior))

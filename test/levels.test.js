@@ -462,7 +462,19 @@ test('levelsFromGeometry reads C2 from its inferior pair and centroid, either al
   assert.equal(levelsFromGeometry(noInferior).C2, null);
 });
 
-test('levelsFromGeometry reads a body with one pair, and always leaves T1 and T4 null', () => {
+test('levelsFromGeometry reads T1 from t1_superior and T4 from t4_centroid, as copies', () => {
+  const geometry = { ...lumbarGeometry(), t1_superior: [[1, 2], [3, 4]], t4_centroid: [5, 6] };
+  const levels = levelsFromGeometry(geometry);
+  assert.deepEqual(levels.T1, { superior: [[1, 2], [3, 4]] });
+  assert.deepEqual(levels.T4, { centroid: [5, 6] });
+  levels.T1.superior[0][0] = 99;
+  levels.T4.centroid[0] = 99;
+  assert.deepEqual(geometry.t1_superior, [[1, 2], [3, 4]]);
+  assert.deepEqual(geometry.t4_centroid, [5, 6]);
+  assert.equal(levelsFromGeometry({ ...lumbarGeometry(), t1_superior: [[1, 2]], t4_centroid: [5] }).T1, null);
+});
+
+test('levelsFromGeometry reads a body with one pair, and leaves T1 and T4 null while the fields are absent', () => {
   const geometry = lumbarGeometry();
   geometry.vertebrae.L3 = { superior: [[10, 50], [20, 50]], inferior: null, quadrilateral: null };
   geometry.vertebrae.T1 = body(10, 0);
@@ -1599,10 +1611,10 @@ test('placingHelp is the help for the next point, or null when idle', () => {
 
 test('MEASUREMENT_INPUTS lists the measurements in panel order, built from the segmental pairs', () => {
   assert.deepEqual(MEASUREMENT_INPUTS.map(m => m.label), [
-    'LL', 'PI', 'PT', 'SS', 'PI–LL', 'L1PA',
+    'LL', 'PI', 'PT', 'SS', 'PI–LL', 'L1PA', 'T4PA',
     'C2–C3', 'C3–C4', 'C4–C5', 'C5–C6', 'C6–C7',
     'L1–L2', 'L2–L3', 'L3–L4', 'L4–L5', 'L5–S1',
-    'C2–C7 Cobb', 'C2–C7 SVA', 'C7–S1 SVA',
+    'C2–C7 Cobb', 'C2–C7 SVA', 'T1 slope', 'C7–S1 SVA',
   ]);
   const byLabel = Object.fromEntries(MEASUREMENT_INPUTS.map(m => [m.label, m]));
   assert.deepEqual(byLabel.LL, { key: 'LL', label: 'LL', regions: ['lumbar', 'full_spine'], codes: ['L1', 'S1'] });
@@ -1637,8 +1649,8 @@ test('MEASUREMENT_INPUTS only names real levels and real regions, and shares no 
 
 test('dependencyNote names the measurements that will show an em dash', () => {
   assert.equal(dependencyNote('L1', 'lumbar'), 'LL, PI–LL, L1PA and L1–L2 will show \u2014');
-  assert.equal(dependencyNote('S1', 'lumbar'), 'LL, PI, PT, SS, PI–LL, L1PA and L5–S1 will show \u2014');
-  assert.equal(dependencyNote('FH1', 'lumbar'), 'PI, PT, PI–LL and L1PA will show \u2014');
+  assert.equal(dependencyNote('S1', 'lumbar'), 'LL, PI, PT, SS, PI–LL, L1PA, T4PA and L5–S1 will show \u2014');
+  assert.equal(dependencyNote('FH1', 'lumbar'), 'PI, PT, PI–LL, L1PA and T4PA will show \u2014');
   assert.equal(dependencyNote('FH2', 'lumbar'), dependencyNote('FH1', 'lumbar'));
   assert.equal(dependencyNote('C3', 'cervical'), 'C2–C3 and C3–C4 will show \u2014');
   assert.equal(dependencyNote('L3', 'lumbar'), 'L2–L3 and L3–L4 will show \u2014');
@@ -1646,14 +1658,17 @@ test('dependencyNote names the measurements that will show an em dash', () => {
 
 test('dependencyNote is null when no measurement of the film type reads the level', () => {
   assert.equal(dependencyNote('C3', 'lumbar'), null);
-  assert.equal(dependencyNote('T1', 'full_spine'), null);
-  assert.equal(dependencyNote('T4', 'lumbar'), null);
+  assert.equal(dependencyNote('T4', 'lumbar'), 'T4PA will show —');
+  assert.equal(dependencyNote('T1', 'cervical'), 'T1 slope will show —');
+  assert.equal(dependencyNote('T1', 'lumbar'), null);
+  assert.equal(dependencyNote('T4', 'cervical'), null);
   assert.equal(dependencyNote('S1', 'cervical'), null);
   assert.equal(dependencyNote('L1', 'cervical'), null);
 });
 
 test('dependencyNote counts an Auto region as every region', () => {
-  assert.equal(dependencyNote('T1', 'auto'), null);
+  assert.equal(dependencyNote('T1', 'auto'), 'T1 slope will show —');
+  assert.equal(dependencyNote('T4', 'auto'), 'T4PA will show —');
   assert.equal(dependencyNote('C7', 'full_spine'),
     'C6–C7, C2–C7 Cobb, C2–C7 SVA and C7–S1 SVA will show \u2014');
   assert.equal(dependencyNote('C7', 'auto'), dependencyNote('C7', 'full_spine'));
