@@ -133,11 +133,6 @@ function projectedChange(before, after, study) {
 // clearResult orphans any /measure still pending or in flight for it and, in one write, takes its result away and puts
 // back the failure it carried when edit mode was entered (`editor.entryFailure`), so it reads Failed again, or
 // Unsegmented if it never ran. Checked before the anterior side: an empty projection needs no orientation.
-// Commits the editor's projection once when the study still carries a level the editor holds hidden or unplaced.
-function healStudy(editor, study) {
-  if (staleStudyLevels(editor, study).length) sync(editor);
-}
-
 function sync(editor) {
   const study = studyOf(getState(), editor.studyId);
   if (!study) return;
@@ -158,6 +153,13 @@ function sync(editor) {
   // landed commit clears the failure the film carried. A model result's commit passes false, so a failed re-run over
   // old numbers still reads Failed; any other commit passes nothing.
   deps.commitGeometry(editor.studyId, geometry, { clearFailure: isHandPlaced(study) });
+}
+
+// (2026-10-22, round 2, Task 16: the owner's report) Commits the editor's projection once when the study still carries
+// a level the editor holds hidden or unplaced; never with no editor, and never while the study's own run is in flight.
+function healStudy(editor, study) {
+  if (!editor || !study || getState().running === study.id) return;
+  if (staleStudyLevels(editor, study).length) sync(editor);
 }
 
 // A focused handle on a level that is hidden, unplaced or being placed is dropped here, in one place, whatever
@@ -440,7 +442,7 @@ export async function saveLevelEdits() {
     }));
     stash.delete(studyId);
     // (2026-10-22, round 2, Task 16: the owner's report) The same heal after a save.
-    healStudy(open ?? current, studyOf(getState(), studyId));
+    if (open) healStudy(open, studyOf(getState(), studyId));
     showToast(savedText(n));
     if (open?.exitPrompt) exitNow(open.exitPrompt.then);
   } catch (error) {

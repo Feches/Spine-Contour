@@ -1427,3 +1427,50 @@ test('Task 16: a failed uncheck leaves the study with C3, and Save edits re-comm
     assert.ok(studyOf(study.id).geometry.vertebrae.C4);
   }));
 });
+
+// Task 16, fix round: the save heal needs an open editor and no run in flight; the stashed path heals on re-entry.
+test('Task 16: Save edits with the editor closed during the write commits nothing extra', async () => {
+  const { study, geometry } = modelFullSpine('SP-9573', { reviewedAt: null });
+  const commits = [];
+  let calls = 0;
+  const measureWith = async (request) => {
+    calls += 1;
+    if (calls === 1) throw new Error('boom');
+    return { measurements: {}, geometry: structuredClone(request) };
+  };
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(geometry), measureWith, imageInfo: maskedImage });
+  await withBridge(labelBridge(() => exitNow()), () => withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    toggleLevelVisible('C3');
+    await settle();
+    assert.equal(commits.length, 1);
+    await saveLevelEdits();
+    await settle();
+    assert.equal(commits.length, 1, 'no heal without an open editor');
+  }));
+});
+
+test('Task 16: a stashed editor that disagrees with the study heals once on re-entry', async () => {
+  const { study, geometry } = modelFullSpine('SP-9574', { reviewedAt: null });
+  const commits = [];
+  let calls = 0;
+  const measureWith = async (request) => {
+    calls += 1;
+    if (calls === 1) throw new Error('boom');
+    return { measurements: {}, geometry: structuredClone(request) };
+  };
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(geometry), measureWith });
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    toggleLevelVisible('C3');
+    await settle();
+    assert.ok(studyOf(study.id).geometry.vertebrae.C3, 'precondition: the failed uncheck left C3');
+    setState({ openId: null, editing: false, levelEditor: null });
+    assert.equal(hasStashedEditor(study.id), true, 'precondition: stashed');
+    setState({ openId: study.id });
+    await enterLevelEditor(study.id);
+    await settle();
+    assert.equal(commits.length, 2, 'one heal commit');
+    assert.equal(studyOf(study.id).geometry.vertebrae.C3, undefined);
+  });
+});
