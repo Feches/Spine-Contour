@@ -81,17 +81,33 @@ export function projectsLevel(code, editor, study) {
 }
 
 /**
+ * Whether the stored geometry holds `code` under its own key (not a head): a body (C3-C7, L1-L5) by its
+ * `vertebrae` entry, whatever its pairs; C2 by its entry or its centroid; S1 and T1 by their pair; T4 by its centroid.
+ */
+export function studyHolds(code, geometry) {
+  const g = geometry ?? {};
+  if (code === 'C2') return g.vertebrae?.C2 != null || isPoint(g.c2_centroid);
+  if (code === 'S1') return isPair(g.s1_superior);
+  if (code === 'T1') return isPair(g.t1_superior);
+  if (code === 'T4') return isPoint(g.t4_centroid);
+  return g.vertebrae?.[code] != null;
+}
+
+/**
  * (2026-10-22, round 2, Task 16: the owner's report) The levels the editor holds hidden or unplaced that the study's
  * stored geometry still carries, among those this study projects, and (closing wave, F3) the levels the editor shows
  * placed and visible that the study lacks: the editor's view wins in both directions, so these are the levels a
- * re-commit must drop. The comparison is presence, not equality. [] with no editor or no stored geometry.
+ * re-commit must drop. The comparison is presence, and presence is what the study HOLDS, by key (`studyHolds`), in
+ * both directions, never what the level model can read back: a centroid-only C7 is stored as a null-pair
+ * `vertebrae.C7` plus `c7_centroid`, which `levelsFromGeometry` reads as no level, so a read-back test would call it
+ * missing on every entry. The two heads are compared by count. [] with no editor or no stored geometry.
  * @returns {string[]}
  */
 export function staleStudyLevels(editor, study) {
   if (!editor || !study?.geometry) return [];
   const stored = levelsFromGeometry(study.geometry);
   const stale = LEVEL_CODES.filter((code) => !FEMORAL_HEADS.includes(code) && projectsLevel(code, editor, study)
-    && (placed(editor, code) ? stored[code] == null : stored[code] != null));
+    && (placed(editor, code) ? !studyHolds(code, study.geometry) : studyHolds(code, study.geometry)));
   // (Fix wave 2, I1) The two heads are compared as a COUNT, never by code: the study's circles are read by slot
   // (the first is FH1) while the editor's are matched to the record by value, so a film holding one circle the
   // record calls FH2 has FH2 placed and FH1 not, and a per-code test would call FH1 stale on every entry.
@@ -247,3 +263,6 @@ export function projectGeometry(editor, study) {
     ...lumbar, ...thoracic, vertebrae: { ...cervicalBodies, ...lumbar.vertebrae },
   };
 }
+
+const isPoint = p => Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]);
+const isPair = pair => Array.isArray(pair) && pair.length === 2 && isPoint(pair[0]) && isPoint(pair[1]);

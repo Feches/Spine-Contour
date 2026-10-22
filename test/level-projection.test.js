@@ -829,3 +829,19 @@ test('staleStudyLevels lists a placed visible level the study lacks, and the hea
   assert.equal(staleStudyLevels(editorWith({ FH1: head(10), FH2: head(20) }), headFilm([[10, 280, 5]])).length, 1, 'two heads, one circle');
   assert.deepEqual(staleStudyLevels(editorWith({ FH1: head(10) }, { hide: ['FH2'] }), headFilm([[10, 280, 5]])), [], 'equal');
 });
+
+// (Closing wave 2) Presence is judged by what the study HOLDS, by key, in both directions: a centroid-only C7 is
+// written as a null-pair vertebrae.C7 plus c7_centroid, which the level model cannot read back as a level.
+test('staleStudyLevels judges presence by key: a centroid-only C7 or C2 is held, a whole C7 absent is stale', () => {
+  const film = { geometry: { anterior_side: 'left', ...IMAGE_FIELDS }, region: 'full_spine' };
+  const nullPairs = { superior: null, inferior: null, quadrilateral: null };
+  const c7Only = { superior: null, inferior: null, centroid: [16, 116] };
+  const l3 = bodyAt(10, 70);
+  const withC7 = { ...film, geometry: { ...film.geometry, vertebrae: { C7: nullPairs, L3: projectGeometry(editorWith({ L3: l3 }), film).vertebrae.L3 }, c7_centroid: [16, 116] } };
+  assert.deepEqual(staleStudyLevels(editorWith({ C7: c7Only, L3: l3 }), withC7), [], 'centroid-only C7 over a null-pair entry');
+  const c2Study = { ...film, geometry: { ...film.geometry, vertebrae: { L3: withC7.geometry.vertebrae.L3 }, c2_centroid: [20, 30] } };
+  assert.deepEqual(staleStudyLevels(editorWith({ C2: { inferior: null, centroid: [20, 30] }, L3: l3 }), c2Study), [], 'centroid-only C2 over c2_centroid');
+  const bare = { ...film, geometry: { ...film.geometry, vertebrae: { L3: withC7.geometry.vertebrae.L3 } } };
+  assert.deepEqual(staleStudyLevels(editorWith({ C7: bodyAt(10, 110), L3: l3 }), bare), ['C7'], 'a whole C7 the study lacks');
+  assert.deepEqual(staleStudyLevels(editorWith({ C7: c7Only, L3: l3 }, { hide: ['C7'] }), withC7), ['C7'], 'hidden C7 over a null-pair entry');
+});

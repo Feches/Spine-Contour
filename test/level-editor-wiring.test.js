@@ -1570,3 +1570,33 @@ test('Edit on a lumbar film whose record places T4 while the study lacks it comm
     assert.equal(studyOf(base.id).reviewedAt, null);
   }));
 });
+
+// (Closing wave 2) A C7 the record holds as a centroid only is stored as a null-pair vertebrae.C7 plus c7_centroid:
+// presence is by what the study holds, so entry heals nothing and the Reviewed mark survives.
+test('Closing wave 2: Edit on a film whose C7 is a centroid only commits nothing and keeps reviewedAt', async () => {
+  const id = 'SP-9579';
+  const base = { ...newStudy({ id, fileName: `${id}_full_spine.png`, filePath: null }), geometry: { ...FILM_FIELDS, region: 'full_spine' } };
+  let editor = openEditor({ study: base, region: 'full_spine', modelGeometry: null, saved: null });
+  for (const [code, geometry] of [['C3', fullBody(100, 60)], ['C7', { superior: null, inferior: null, centroid: [120, 200] }], ['L3', fullBody(100, 300)]]) {
+    editor = setLevelGeometry(editor, code, geometry);
+  }
+  const geometry = projectGeometry(editor, base);
+  assert.deepEqual(geometry.vertebrae.C7, { superior: null, inferior: null, quadrilateral: null }, 'precondition: null pairs');
+  assert.deepEqual(geometry.c7_centroid, [120, 200], 'precondition: the centroid');
+  const study = {
+    ...base, predictionId: `prediction-${id}`, measurements: {}, geometry, qc: { models: { vertebrae: 'hrnet' } },
+    labelFile: 'full_9579.label.json', reviewedAt: '2026-10-22T06:00:00.000Z',
+  };
+  const record = recordHiding(study, editor, []);
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(geometry) });
+  const bridge = labelBridge();
+  bridge.spineContour.loadLabelRecord = async () => structuredClone(record);
+  await withBridge(bridge, () => withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    await settle();
+    assert.equal(getState().levelEditor.levels.C7.geometry.centroid != null, true, 'precondition: the editor holds C7');
+    assert.equal(commits.length, 0, 'no heal');
+    assert.equal(studyOf(study.id).reviewedAt, study.reviewedAt, 'the Reviewed mark survives');
+  }));
+});
