@@ -6,7 +6,7 @@ import { getState, setState } from '../store.js';
 import { measure } from '../api.js';
 import { showToast } from './toast.js';
 import {
-  createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel, colorFor, overlayCanvasFor,
+  createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel, colorFor, overlayCanvasFor, MASK_LEVELS,
 } from '../viewer/canvas.js';
 import { clientToImage } from '../viewer/geometry.js';
 import {
@@ -1553,9 +1553,12 @@ export function mountViewer(container) {
     if (!sameKey(staticKey, lastStatic)) {
       lastStatic = staticKey;
       let filtered = null;
-      if (levelsKey !== null && state.overlays && !state.editing && currentImages?.mask) {
+      // A study holding every level the mask labels draws the stored overlay: no duplicate canvas, no second getImageData.
+      const held = levelsKey ? levelsKey.split(',') : [];
+      const coversAll = Object.keys(currentImages?.labels ?? {}).every((code) => !MASK_LEVELS.includes(code) || held.includes(code));
+      if (levelsKey !== null && state.overlays && !state.editing && currentImages?.mask && !coversAll) {
         if (levelOverlay.levelsKey !== levelsKey || !levelOverlay.canvas) {
-          levelOverlay = { levelsKey, canvas: overlayCanvasFor(currentImages, levelsKey ? levelsKey.split(',') : []) };
+          levelOverlay = { levelsKey, canvas: overlayCanvasFor(currentImages, held) };
         }
         filtered = levelOverlay.canvas;
       }

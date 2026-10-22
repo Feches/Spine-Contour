@@ -33,7 +33,7 @@ export const BASE_OVERLAY_ALPHA = 116;
 
 // The levels the backend's mask paints. LEVEL_RGB also holds T1, T4 and S1 for the level editor's
 // outlines; the stored image has never coloured S1 and has no T1 or T4, and still does not.
-const MASK_LEVELS = ['C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'L1', 'L2', 'L3', 'L4', 'L5'];
+export const MASK_LEVELS = ['C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'L1', 'L2', 'L3', 'L4', 'L5'];
 
 // (2026-10-22, round 2, Task 17: the owner's report) `levels`, an array of codes, restricts the map to those levels
 // (the ones the study's geometry still holds); null colours every level, as before.

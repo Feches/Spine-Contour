@@ -122,9 +122,11 @@ so they have no note (D12).
 Entering edit mode and Save edits re-apply the levels the editor holds hidden or unplaced to the stored geometry when
 the two disagree (a re-measure that failed, or a run that overtook the editor), so the stage and the record never keep
 different views. Like any other re-measure it clears the film's Reviewed mark: the mark stands only over numbers the
-record agrees with. Outside edit mode the mask overlay colours a level only while
-the study's geometry holds it, so an unchecked level's pixels are no longer painted; checking it again or RESET TO
-PREDICTION brings the colour back (the stored image is untouched).
+record agrees with.
+
+Outside edit mode the mask overlay colours a level only while the study's geometry holds it, so an unchecked level's
+pixels are no longer painted; checking it again or RESET TO PREDICTION brings the colour back (the stored image is
+untouched).
 
 ## Placing a level
 
