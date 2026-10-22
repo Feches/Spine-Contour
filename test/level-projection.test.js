@@ -804,3 +804,28 @@ test('staleStudyLevels compares the two heads by count, never by code', () => {
   assert.equal(staleStudyLevels(editorWith({}, { hide: ['FH1', 'FH2'] }), oneCircle).length, 1, 'one circle, no head visible');
   assert.deepEqual(staleStudyLevels(editorWith({ FH1: head(10), FH2: head(20) }), twoCircles), [], 'both placed');
 });
+
+// (Closing wave, F1) A lumbar projection holding only T1 and/or T4 is not empty: the point must reach the study.
+test('a lumbar film holding only T4 is not cleared; with nothing placed it is (F1)', () => {
+  const film = { region: 'lumbar', geometry: { ...IMAGE_FIELDS } };
+  const only = editorWith({ T4: { centroid: [5, 6] } }, { region: 'full_spine' });
+  const geometry = projectGeometry(only, film);
+  assert.equal('manually_cleared' in geometry, false);
+  assert.deepEqual(geometry.t4_centroid, [5, 6]);
+  assert.equal(projectionIsEmpty(geometry), false);
+  const none = projectGeometry(editorWith({}, { region: 'full_spine' }), film);
+  assert.equal(none.manually_cleared, true);
+  assert.equal(projectionIsEmpty(none), true);
+});
+
+// (Closing wave, F3) The heal runs in both directions: a level the editor shows that the study lacks is listed.
+test('staleStudyLevels lists a placed visible level the study lacks, and the heads by count either way (F3)', () => {
+  const film = { geometry: { anterior_side: 'left', ...IMAGE_FIELDS }, region: 'full_spine' };
+  const bare = { ...film, geometry: projectGeometry(editorWith({ C7: bodyAt(10, 110), L3: bodyAt(10, 70) }), film) };
+  assert.deepEqual(staleStudyLevels(editorWith({ C7: bodyAt(10, 110), L3: bodyAt(10, 70), T4: { centroid: [5, 6] } }), bare), ['T4']);
+  assert.deepEqual(staleStudyLevels(editorWith({ C7: bodyAt(10, 110), L3: bodyAt(10, 70), L1: bodyAt(10, 20) }), bare), ['L1']);
+  const head = (x) => ({ center: [x, 280], radius: 5, rim: null });
+  const headFilm = (circles) => ({ region: 'full_spine', geometry: { anterior_side: 'left', ...IMAGE_FIELDS, vertebrae: {}, femoral_circles: circles } });
+  assert.equal(staleStudyLevels(editorWith({ FH1: head(10), FH2: head(20) }), headFilm([[10, 280, 5]])).length, 1, 'two heads, one circle');
+  assert.deepEqual(staleStudyLevels(editorWith({ FH1: head(10) }, { hide: ['FH2'] }), headFilm([[10, 280, 5]])), [], 'equal');
+});

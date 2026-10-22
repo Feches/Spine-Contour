@@ -895,3 +895,13 @@ test('toCsv writes T1 slope (deg) after C2-C7 SVA (px) for a cervical study', ()
   assert.equal(header[at + 1], 'T1 slope (deg)');
   assert.equal(lines[3].split(',')[at + 1], '24.4');
 });
+
+// (Closing wave, F2) A lumbar film's stored T1S is not exported: the T1 slope is cervical-family.
+test('toCsv leaves T1 slope (deg) empty for a lumbar study exported beside a cervical one (F2)', () => {
+  const cervical = study({ id: 'SP-1000', region: 'cervical', measurements: { C2C7_COBB: 12, T1S: 24.44 }, geometry: { region: 'cervical', t1_superior: [[0, 0], [10, 2]] } });
+  const lumbar = study({ id: 'SP-1001', region: 'lumbar', measurements: { L1PA: 21.3, T1S: 20 }, geometry: { region: 'lumbar', t1_superior: [[0, 0], [10, 2]] } });
+  const lines = toCsv([cervical, lumbar]).split('\r\n');
+  const at = lines[2].split(',').indexOf('T1 slope (deg)');
+  assert.equal(lines[3].split(',')[at], '24.4');
+  assert.equal(lines[4].split(',')[at], '');
+});

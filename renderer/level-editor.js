@@ -115,7 +115,7 @@ function windowPanelOpen(editor) {
 const placedGeometry = (entry) => (entry?.visible && entry.geometry ? entry.geometry : null);
 
 // Whether the step changed a level this study's projection reads (data/level-projection.js projectsLevel: T1 and T4
-// never; a lumbar film L1-L5, S1 and the heads; a cervical one C2-C7; a full-spine film, and an Auto film whose
+// always; a lumbar film L1-L5, S1 and the heads; a cervical one C2-C7; a full-spine film, and an Auto film whose
 // region follows its placed levels (R20), every other code).
 function projectedChange(before, after, study) {
   if (!study || before.levels === after.levels) return false;

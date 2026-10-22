@@ -82,7 +82,8 @@ export function projectsLevel(code, editor, study) {
 
 /**
  * (2026-10-22, round 2, Task 16: the owner's report) The levels the editor holds hidden or unplaced that the study's
- * stored geometry still carries, among those this study projects: the editor's view wins, so these are the levels a
+ * stored geometry still carries, among those this study projects, and (closing wave, F3) the levels the editor shows
+ * placed and visible that the study lacks: the editor's view wins in both directions, so these are the levels a
  * re-commit must drop. The comparison is presence, not equality. [] with no editor or no stored geometry.
  * @returns {string[]}
  */
@@ -90,7 +91,7 @@ export function staleStudyLevels(editor, study) {
   if (!editor || !study?.geometry) return [];
   const stored = levelsFromGeometry(study.geometry);
   const stale = LEVEL_CODES.filter((code) => !FEMORAL_HEADS.includes(code) && projectsLevel(code, editor, study)
-    && !placed(editor, code) && stored[code] != null);
+    && (placed(editor, code) ? stored[code] == null : stored[code] != null));
   // (Fix wave 2, I1) The two heads are compared as a COUNT, never by code: the study's circles are read by slot
   // (the first is FH1) while the editor's are matched to the record by value, so a film holding one circle the
   // record calls FH2 has FH2 placed and FH1 not, and a per-code test would call FH1 stale on every entry.
@@ -98,7 +99,7 @@ export function staleStudyLevels(editor, study) {
     const usable = geometry => geometry && usableCircle(geometry);
     const storedHeads = FEMORAL_HEADS.filter(code => usable(stored[code])).length;
     const editorHeads = FEMORAL_HEADS.filter(code => usable(placed(editor, code)?.geometry)).length;
-    if (storedHeads > editorHeads) stale.push(...FEMORAL_HEADS.slice(0, storedHeads - editorHeads));
+    if (storedHeads !== editorHeads) stale.push(...FEMORAL_HEADS.slice(0, Math.abs(storedHeads - editorHeads)));
   }
   return stale;
 }
@@ -225,7 +226,9 @@ export function projectGeometry(editor, study) {
   const thoracic = thoracicPart(editor);
   if (region === 'lumbar') {
     const lumbar = lumbarPart(editor, base);
-    const empty = Object.keys(lumbar.vertebrae).length === 0 && lumbar.s1_superior === null && lumbar.femoral_circles.length === 0;
+    // (Closing wave, F1; spec P4) T1 and T4 project on every region, so a lumbar film holding only them is not cleared.
+    const empty = Object.keys(lumbar.vertebrae).length === 0 && lumbar.s1_superior === null && lumbar.femoral_circles.length === 0
+      && thoracic.t1_superior === null && thoracic.t4_centroid === null;
     return { ...kept, region, ...lumbar, ...thoracic, ...(empty ? { manually_cleared: true } : {}) };
   }
   const { vertebrae: cervicalBodies, c2_centroid, c7_centroid } = cervicalPart(editor);

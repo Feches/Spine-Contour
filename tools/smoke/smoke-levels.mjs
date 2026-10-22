@@ -1226,6 +1226,22 @@ async function thoracicChecks() {
     deepEqual(rounded(readBack.t1?.superior), [[250, 150], [350, 170]]) && deepEqual(rounded(readBack.t4?.centroid), [300, 300]), readBack);
   await clickSelector(EDITBAR_DONE);
   await until(`import('./renderer/store.js').then((m) => m.getState().editing === false)`, 5000);
+
+  // (Closing wave, F3) The reverse heal: the record holds T4, the study lacks it (a clone, never a mutation) and
+  // reads Reviewed; the first Edit lands the point again and the queue's write clears the Reviewed mark.
+  await ev(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => {
+    if (x.id !== ${js(PARTIAL)}) return x;
+    const geometry = structuredClone(x.geometry); delete geometry.t4_centroid;
+    return { ...x, geometry, reviewedAt: '2026-10-22T08:00:00.000Z' };
+  }) })))`);
+  await enterEdit();
+  const healed = await until(`Array.isArray(window.__lv.study(${js(PARTIAL)})?.geometry?.t4_centroid) && window.__lv.study(${js(PARTIAL)})?.reviewedAt == null`, 10000);
+  await settled(PARTIAL);
+  const afterHeal = await studyOf(PARTIAL);
+  check('24. a study missing the record T4 gets it back on the first Edit, and the Reviewed mark is cleared (the reverse heal)',
+    healed, { t4: afterHeal?.geometry?.t4_centroid, reviewedAt: afterHeal?.reviewedAt });
+  await clickSelector(EDITBAR_DONE);
+  await until(`import('./renderer/store.js').then((m) => m.getState().editing === false)`, 5000);
 }
 
 // ---------------------------------------------------------------------------

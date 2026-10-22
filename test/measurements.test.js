@@ -117,7 +117,7 @@ test('lordosisRows returns L2-S1 through L5-S1 with values when present', () => 
   assert.deepEqual(rows.map((r) => r.key), ['L2-S1', 'L3-S1', 'L4-S1', 'L5-S1']);
   assert.equal(rows[0].value, 40.0);
   assert.equal(rows[0].label, 'LUMBAR LORDOSIS · L2–S1');
-  rows.filter((r) => r.key !== 'T4PA').forEach((r) => assert.equal(r.absent, false)); // MEASUREMENTS carries no T4PA
+  rows.forEach((r) => assert.equal(r.absent, false));
 });
 
 test('lordosisRows is absent when measurements is null', () => {

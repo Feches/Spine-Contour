@@ -53,7 +53,8 @@ export function boundCalibration(geometry, value) {
 // T1S (the T1 slope, 2026-10-22) is the exception: it is READ from the stored measurements, never recomputed. The
 // backend computes it on every /measure path and nothing in the renderer duplicates the formula.
 export function cervicalMeasurements(study) {
-  const stored = study?.measurements?.T1S;
+  // (Closing wave, F2; spec P3, section 7) The T1 slope is cervical-family: a lumbar film's stored T1S is not read.
+  const stored = ['cervical', 'full_spine'].includes(studyRegion(study)) ? study?.measurements?.T1S : null;
   const empty = { region: 'cervical', C2C7_COBB: null, C2C7_SVA_PX: null, C2C7_SVA_MM: null,
     T1S: typeof stored === 'number' && Number.isFinite(stored) ? stored : null };
   if (!['cervical', 'full_spine'].includes(studyRegion(study)) || !study?.geometry) return empty;

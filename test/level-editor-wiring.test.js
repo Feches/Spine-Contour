@@ -1529,3 +1529,44 @@ test('placing T1 by two clicks on a lumbar model film commits t1_superior and a 
     assert.equal(geometry.region, 'lumbar');
   });
 });
+
+// (Closing wave, F1) A hand-placed film holding only T4 is not "cleared": the point commits.
+test('placing T4 by one click on a hand-placed film commits t4_centroid and clears nothing (F1)', async () => {
+  const study = newStudy({ id: 'SP-9577', fileName: 'SP-9577_lumbar.png', filePath: null });
+  const commits = [];
+  const clears = [];
+  wire(commits, NO_FILM, { clears });
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    startPlace('T4');
+    placePoint([100, 40], IMAGE);
+    await settle();
+    assert.equal(clears.length, 0, 'not routed to clearResult');
+    assert.ok(commits.length >= 1);
+    assert.deepEqual(commits.at(-1).geometry.t4_centroid, [100, 40]);
+    assert.deepEqual(studyOf(study.id).geometry.t4_centroid, [100, 40]);
+  });
+});
+
+// (Closing wave, F3) A record that places T4 while the study lacks it heals on entry, and clears the Reviewed mark.
+test('Edit on a lumbar film whose record places T4 while the study lacks it commits t4_centroid once (F3)', async () => {
+  const base = segmentedFilm('SP-9578', { reviewedAt: MARKED_AT, labelFile: 'lumbar_9578.label.json' });
+  let editor = openEditor({ study: base, region: 'full_spine', modelGeometry: base.geometry, saved: null });
+  editor = setLevelGeometry(editor, 'T4', { centroid: [100, 40] });
+  const record = toLabelRecord({
+    editor, study: base, image: { file: 'x', sha256: SHA, width: IMAGE.width, height: IMAGE.height },
+    model: { name: 'unet', version: null }, savedAt: '2026-10-22T07:11:00.000Z',
+  });
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(base.geometry) });
+  const bridge = labelBridge();
+  bridge.spineContour.loadLabelRecord = async () => structuredClone(record);
+  await withBridge(bridge, () => withStore(base, async () => {
+    assert.equal(studyOf(base.id).geometry.t4_centroid, undefined, 'precondition');
+    await enterLevelEditor(base.id);
+    await settle();
+    assert.equal(commits.length, 1);
+    assert.deepEqual(commits[0].geometry.t4_centroid, [100, 40]);
+    assert.equal(studyOf(base.id).reviewedAt, null);
+  }));
+});

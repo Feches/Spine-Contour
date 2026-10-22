@@ -214,3 +214,10 @@ test('cervicalMeasurements reads T1S through; cervicalRows lists it third; absen
   assert.equal(cervicalMeasurements({ ...s, measurements: null }).T1S, null);
   assert.equal(cervicalMeasurements({ ...s, geometry: null, measurements: { T1S: 5 } }).T1S, 5);
 });
+
+// (Closing wave, F2) The T1 slope is cervical-family: a lumbar film's stored T1S is not read.
+test('cervicalMeasurements reads no T1S for a lumbar study (F2)', () => {
+  const lumbar = { region: 'lumbar', measurements: { T1S: 20 }, geometry: { region: 'lumbar' } };
+  assert.equal(cervicalMeasurements(lumbar).T1S, null);
+  assert.equal(cervicalMeasurements({ ...lumbar, region: 'cervical', geometry: { region: 'cervical' } }).T1S, 20);
+});

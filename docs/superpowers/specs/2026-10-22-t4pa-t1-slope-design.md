@@ -79,7 +79,7 @@ endplate. Everything below is the planner's, each a one-line reversal.
 - **P11 `selectedLevel`** gains `'T4PA'` and `'T1S'` (contract amendment). The T4PA construction is L1PA's: two solid
   segments from the hip axis to the T4 centroid and to the S1 midpoint, the label `T4PA 12.3°` at the hip–T4 midpoint.
   The T1S construction is SS's: the solid T1 line plus a dashed horizontal reference through its midpoint, the label
-  `T1S 25.0°` beyond the anterior corner. T1S needs no S1, so its branches sit ABOVE the canvas's `if (!s1) return null`
+  `T1 slope 25.0°` beyond the anterior corner. T1S needs no S1, so its branches sit ABOVE the canvas's `if (!s1) return null`
   gate. Both switches handle the two values explicitly (the contract's rule).
 - **P12 Outside edit mode** the stage draws `t1_superior` as a line in T1's colour and `t4_centroid` as a centroid
   cross in T4's colour (the C2/C7 cross) on every region, labelled while its measurement is selected, as C7's is.
