@@ -658,7 +658,18 @@ const within1px = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1;
 const placedPoints = placing => placing.points.filter(Boolean);
 
 // The first empty slot after `from`, wrapping to the start; `from` itself when no slot is empty.
-function nextEmpty(points, from) {
+// (2026-10-22, round 2, spec §12 N9) A centroid body's optional centroid slot (its last) is never current by default:
+// the next empty CORNER slot after `from` is (wrapping among the corners; a centroid click starts at the first corner),
+// and only with every corner set does an empty centroid slot become current. setPlacingStep(4) still chooses it.
+function nextEmpty(points, from, code) {
+  if (hasCentroid(code)) {
+    const corners = points.length - 1;
+    for (let step = 1; step <= corners; step += 1) {
+      const index = from >= corners ? step - 1 : (from + step) % corners;
+      if (points[index] === null) return index;
+    }
+    return points[corners] === null ? corners : from;
+  }
   for (let step = 1; step < points.length; step += 1) {
     const index = (from + step) % points.length;
     if (points[index] === null) return index;
@@ -686,7 +697,7 @@ export function addPoint(editor, point, imageSize) {
   if (placing.points.some((other, index) => index !== slot && other && within1px(clicked, other))) return editor;
   const points = placing.points.map((existing, index) => (index === slot ? clicked : existing));
   const history = [...placing.history.filter(index => index !== slot), slot];
-  const next = { ...editor, placing: { code: placing.code, points, current: nextEmpty(points, slot), history } };
+  const next = { ...editor, placing: { code: placing.code, points, current: nextEmpty(points, slot, placing.code), history } };
   // (2026-10-22, round 2, N9) A centroid body finishes by itself at its endplates: its centroid slot may stay empty.
   const required = hasCentroid(placing.code) ? points.slice(0, points.length - 1) : points;
   return required.includes(null) ? next : finishPlacing(next, imageSize);

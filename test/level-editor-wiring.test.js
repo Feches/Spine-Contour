@@ -1277,8 +1277,6 @@ test('Place… on a partial level resumes it at its first missing step, and the 
     resumePlace('C7', 3);
     assert.equal(getState().levelEditor.placing.current, 3, 'a hollow chip chooses its step');
     placePoint([142, 332], IMAGE);
-    assert.equal(getState().levelEditor.placing.current, 4, 'C7 has a fifth step now: the click after IP moves on to the centroid');
-    selectPlacingStep(2);
     placePoint([102, 330], IMAGE);
     await settle();
     assert.equal(commits.length, 2);

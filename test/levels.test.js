@@ -1911,3 +1911,18 @@ test('C7 geometry is read, written, resumed, reverted and removed with its centr
   assert.equal(levelState(m.levels.C7, m.model.C7), 'edited');
   assert.deepEqual(revertLevel(m, 'C7').levels.C7.geometry, c7);
 });
+
+test('a C7 placement never makes its optional centroid current by default; the CENTROID chip still does', () => {
+  const sup = { superior: [[1, 1], [2, 1]], inferior: null, centroid: null };
+  const e = setLevelGeometry(blankEditor('cervical'), 'C7', sup);
+  let r = resumePlacing(e, 'C7', 3);
+  assert.equal(r.placing.current, 3);
+  r = addPoint(r, [12, 30], IMAGE);
+  assert.equal(r.placing.current, 2, 'IA, not the centroid');
+  r = addPoint(r, [2, 30], IMAGE);
+  assert.equal(r.placing, null, 'both endplates whole finishes it');
+  assert.deepEqual(r.levels.C7.geometry, { superior: [[1, 1], [2, 1]], inferior: [[2, 30], [12, 30]], centroid: null });
+  let f = setPlacingStep(startPlacing(blankEditor('cervical'), 'C7'), 4);
+  f = addPoint(f, [20, 20], IMAGE);
+  assert.equal(f.placing.current, 0, 'after a centroid click the next empty corner');
+});
