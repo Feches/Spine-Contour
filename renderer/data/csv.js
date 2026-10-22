@@ -21,7 +21,7 @@ function calibrationCells(study) {
 }
 
 const ANGULAR_COLUMNS = [
-  'LL L1-S1', 'PI', 'PT', 'SS', 'PI-LL Mismatch', 'L1PA',
+  'LL L1-S1', 'PI', 'PT', 'SS', 'PI-LL Mismatch', 'L1PA', 'T4PA',
   'LL L2-S1', 'LL L3-S1', 'LL L4-S1', 'LL L5-S1',
 ];
 // Exported for data/pairing.js, which merges a visit's films per column in this order.
@@ -31,7 +31,7 @@ const BASE_MEASUREMENT_COLUMNS = [...ANGULAR_COLUMNS,
 
 export const MEASUREMENT_COLUMNS = [...BASE_MEASUREMENT_COLUMNS, ...segmentalColumns('lumbar').map(c => c.exportLabel)];
 
-export const CERVICAL_EXPORT_COLUMNS = ['C2-C7 Cobb (deg)', 'C2-C7 SVA (mm)', 'C2-C7 SVA (px)'];
+export const CERVICAL_EXPORT_COLUMNS = ['C2-C7 Cobb (deg)', 'C2-C7 SVA (mm)', 'C2-C7 SVA (px)', 'T1 slope (deg)'];
 export const GLOBAL_SVA_EXPORT_COLUMNS = ['C7-S1 SVA (mm)', 'C7-S1 SVA (px)'];
 export function exportMeasurementColumns(studies) {
   return [...MEASUREMENT_COLUMNS,
@@ -76,6 +76,7 @@ function measurementValue(study, column) {
       return round1(value);
     }
     case 'L1PA': return round1(m.L1PA);
+    case 'T4PA': return round1(m.T4PA);
     case 'LL L2-S1': return round1(ll?.['L2-S1']);
     case 'LL L3-S1': return round1(ll?.['L3-S1']);
     case 'LL L4-S1': return round1(ll?.['L4-S1']);
@@ -92,7 +93,7 @@ export function measurementValues(study, columns = MEASUREMENT_COLUMNS) {
     ...discRows(study).flatMap(row => DISC_POSITIONS.map(position => round1(row[position])))]
     : BASE_MEASUREMENT_COLUMNS.map(() => '');
   const m = study.measurements ? cervicalMeasurements(study) : null;
-  const cervical = [m?.C2C7_COBB, m?.C2C7_SVA_MM, m?.C2C7_SVA_PX].map(round1);
+  const cervical = [m?.C2C7_COBB, m?.C2C7_SVA_MM, m?.C2C7_SVA_PX, m?.T1S].map(round1);
   const global = study.measurements ? globalSvaMeasurements(study) : null;
   const globalValues = [global?.GLOBAL_SVA_MM, global?.GLOBAL_SVA_PX].map(round1);
   const all = Object.fromEntries([...BASE_MEASUREMENT_COLUMNS, ...CERVICAL_EXPORT_COLUMNS, ...GLOBAL_SVA_EXPORT_COLUMNS].map((key, index) =>

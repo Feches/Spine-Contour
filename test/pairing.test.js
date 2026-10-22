@@ -31,12 +31,12 @@ test('pairStudies under All paired gives one row per subject with a Pre-op film 
   assert.ok(s001.visits instanceof Map);
   assert.deepEqual([...s001.visits.keys()], ['Pre-op', 'Post-op', '1 yr']);
   // A visit: its header, its label, its date, its films (one here), the merged measurement values
-  // in MEASUREMENT_COLUMNS order (35 columns, all empty for an unsegmented film) and no disagreements.
+  // in MEASUREMENT_COLUMNS order (36 columns, all empty for an unsegmented film) and no disagreements.
   const post = s001.visits.get('Post-op');
   assert.deepEqual(post.films.map((f) => f.id), ['SP-4']);
   assert.deepEqual({ header: post.header, label: post.label, filmDate: post.filmDate, disagreements: post.disagreements },
     { header: 'Post-op', label: 'Post-op', filmDate: null, disagreements: [] });
-  assert.equal(post.values.length, 35);
+  assert.equal(post.values.length, 36);
   assert.ok(post.values.every((value) => value === ''));
   const s002 = pairing.subjects[0];
   assert.deepEqual([...s002.visits.keys()], ['Pre-op', '1 yr']);
@@ -102,7 +102,7 @@ test('pairStudies merges two same-day films of one visit: the unnoted film leads
   assert.deepEqual(pairing.subjects.map((s) => s.subject), ['sub225']);
   const pre = pairing.subjects[0].visits.get('Pre-op');
   assert.deepEqual(pre.films.map((f) => f.id), ['SP-1', 'SP-2']);
-  // MEASUREMENT_COLUMNS order: LL L1-S1, PI, PT, SS, PI-LL Mismatch, L1PA. LL from the unnoted film,
+  // MEASUREMENT_COLUMNS order: LL L1-S1, PI, PT, SS, PI-LL Mismatch, L1PA, T4PA. LL from the unnoted film,
   // PI and PT from the noted one, SS from the unnoted one (the noted film's 44.2 is set aside), and
   // the mismatch is derived from the merged PI and LL -- 62.3 - 56 -- and flagged as derived across
   // films, since neither film carried both (user decision 2026-09-11).
