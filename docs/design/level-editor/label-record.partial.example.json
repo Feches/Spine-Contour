@@ -14,7 +14,7 @@
   "complete": false,
   "edits": {
     "segmented": 4, "edited": 0, "manual": 2, "not_placed": 1, "not_visible": 9,
-    "points_moved": 0, "points_placed": 3
+    "points_moved": 0, "points_placed": 4
   },
   "comment": "C7's inferior endplate is behind the shoulders.",
   "levels": {
@@ -50,9 +50,11 @@
       "contour": null
     },
     "C7": {
-      "state": "manual", "source": "annotator", "edited_points": ["sa", "sp"],
+      "state": "manual", "source": "annotator", "edited_points": ["sa", "sp", "centroid"],
       "corners": { "sa": [990, 1052], "sp": [840, 1046], "ia": null, "ip": null },
+      "centroid": [915, 1100],
       "model_corners": null,
+      "model_centroid": null,
       "contour": null
     },
     "T1": { "state": "not_placed", "source": "film_type", "edited_points": [] },

@@ -1838,14 +1838,14 @@ test('removePart nulls the focused handle\'s part and moves the focus; the last 
 });
 
 test('selectLevel focuses the level\'s first existing handle, so a body without its superior pair focuses IA', () => {
-  const e = setLevelGeometry(blankEditor('cervical'), 'C7', { superior: null, inferior: [[10, 30], [30, 30]] });
+  const e = setLevelGeometry(blankEditor('cervical'), 'C7', { superior: null, inferior: [[10, 30], [30, 30]], centroid: null });
   assert.deepEqual(selectLevel(e, 'C7').handle, { code: 'C7', handle: 'IA' });
   const c2 = setLevelGeometry(e, 'C2', { inferior: null, centroid: [45, 12] });
   assert.deepEqual(selectLevel(c2, 'C2').handle, { code: 'C2', handle: 'CENTROID' });
 });
 
 test('a partial level counts as placed and leaves the training label complete', () => {
-  const e = setLevelGeometry(blankEditor('cervical'), 'C7', { superior: [[10, 10], [30, 10]], inferior: null });
+  const e = setLevelGeometry(blankEditor('cervical'), 'C7', { superior: [[10, 10], [30, 10]], inferior: null, centroid: null });
   assert.equal(summaryText(e).startsWith('1 PLACED'), true);
   assert.equal(trainingStatus(e).missing.includes('C7'), false);
 });
@@ -1925,4 +1925,13 @@ test('a C7 placement never makes its optional centroid current by default; the C
   let f = setPlacingStep(startPlacing(blankEditor('cervical'), 'C7'), 4);
   f = addPoint(f, [20, 20], IMAGE);
   assert.equal(f.placing.current, 0, 'after a centroid click the next empty corner');
+});
+
+// ---------- (2026-10-22, round 2, spec §12 N10) openEditor merges the record's C7 centroid ----------
+test('openEditor merges the record\'s C7 centroid into the study\'s C7 corners', () => {
+  const study = { id: 'SP-0009', geometry: { region: 'cervical', vertebrae: { C7: { ...body(10, 110) } } }, labelFile: 'x.label.json' };
+  const saved = { file: 'x.label.json', levels: { C7: { visible: true, source: 'annotator', geometry: { superior: [[10, 110], [20, 110]], inferior: [[10, 120], [20, 120]], centroid: [15, 115] } } }, comment: '' };
+  const e = openEditor({ study, region: 'cervical', modelGeometry: null, saved });
+  assert.deepEqual(e.levels.C7.geometry.centroid, [15, 115]);
+  assert.deepEqual(e.levels.C7.geometry.superior, study.geometry.vertebrae.C7.superior, 'the corners are the study\'s');
 });

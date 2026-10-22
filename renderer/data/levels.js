@@ -498,6 +498,20 @@ function assignHeads(fromStudy, saved) {
   return { ...fromStudy, ...slots };
 }
 
+// (2026-10-22, round 2, spec §12 N10) The study gives a centroid body its corners and never its centroid (a derived mean
+// is not a placed point), so the record's centroid is merged in when the study holds the body; a body the study lacks
+// comes whole from the record in openEditor, as before.
+function mergeCentroids(fromStudy, saved) {
+  const merged = { ...fromStudy };
+  for (const code of CENTROID_BODIES) {
+    const centroid = saved?.levels?.[code]?.geometry?.centroid;
+    if (merged[code] && Array.isArray(centroid) && centroid.length === 2 && centroid.every(Number.isFinite)) {
+      merged[code] = { ...merged[code], centroid: [...centroid] };
+    }
+  }
+  return merged;
+}
+
 /**
  * Start editing a study. `study` is read for `geometry`, `labelFile`, `labelComment`, the failure it carries
  * (`processingError`, `processingErrorAt`) and (optionally) `id`.
@@ -508,7 +522,7 @@ function assignHeads(fromStudy, saved) {
  * @returns {LevelEditor}
  */
 export function openEditor({ study, region, modelGeometry, saved }) {
-  const fromStudy = assignHeads(levelsFromGeometry(study?.geometry), saved);
+  const fromStudy = mergeCentroids(assignHeads(levelsFromGeometry(study?.geometry), saved), saved);
   const model = levelsFromGeometry(modelGeometry);
   const defaults = filmTypeDefaults(region);
   const levels = {};
@@ -657,7 +671,8 @@ const within1px = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1;
 
 const placedPoints = placing => placing.points.filter(Boolean);
 
-// The first empty slot after `from`, wrapping to the start; `from` itself when no slot is empty.
+// For every kind but a centroid body: the first empty slot after `from`, wrapping to the start; `from` itself when no
+// slot is empty.
 // (2026-10-22, round 2, spec §12 N9) A centroid body's optional centroid slot (its last) is never current by default:
 // the next empty CORNER slot after `from` is (wrapping among the corners; a centroid click starts at the first corner),
 // and only with every corner set does an empty centroid slot become current. setPlacingStep(4) still chooses it.

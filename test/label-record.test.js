@@ -938,7 +938,7 @@ test('the schema holds a pair together: a half pair, no pair, and a C2 with neit
   assert.equal(broken((v) => { v.levels.C7.corners.sp = null; }), false, 'sa without sp');
   // (2026-10-22, the final review, M6) the pair rule's other direction: sp a point demands sa.
   assert.equal(broken((v) => { v.levels.C7.corners.sa = null; }), false, 'sp without sa');
-  assert.equal(broken((v) => { v.levels.C7.corners.sa = null; v.levels.C7.corners.sp = null; }), false, 'no pair at all');
+  assert.equal(broken((v) => { v.levels.C7.corners.sa = null; v.levels.C7.corners.sp = null; v.levels.C7.centroid = null; }), false, 'no part at all');
   assert.equal(broken((v) => { v.levels.C7.corners.ia = [1, 1]; }), false, 'ia without ip');
   assert.equal(broken((v) => { v.levels.C2.centroid = null; }), false, 'C2 with neither');
   assert.equal(broken((v) => { v.levels.C2.corners.ia = [1, 1]; }), false, 'C2 half a pair');
@@ -951,6 +951,7 @@ test('recordLevels reads a half pair or an entry with no part as no geometry, wi
   record.levels.C7.corners.sp = null;
   assert.equal(recordLevels(record).C7.geometry, null);
   record.levels.C7.corners = { sa: null, sp: null, ia: null, ip: null };
+  record.levels.C7.centroid = null;   // (round 2, N11) a centroid alone is a part
   assert.equal(recordLevels(record).C7.geometry, null);
   record.levels.C2.centroid = null;
   assert.equal(recordLevels(record).C2.geometry, null);
@@ -961,4 +962,37 @@ test('the schema description records the partial-endplates amendment under the s
   assert.equal(SCHEMA.$id, 'spinecontour.segmentation-label/1');
   assert.match(SCHEMA.description, /2026-10-21/);
   assert.match(SCHEMA.description, /endplate/i);
+});
+
+// ---------- (2026-10-22, round 2, spec §12 N11) C7's centroid in the record ----------
+test('C7 writes and reads its centroid; a record without the key reads null; the schema holds the c7 entry', () => {
+  const g = { superior: [[10, 110], [20, 110]], inferior: [[10, 120], [20, 120]], centroid: [15, 115] };
+  const editor = setLevelGeometry(openEditor({ study: { id: 'SP-0008', geometry: null, labelFile: null }, region: 'cervical', modelGeometry: null, saved: null }), 'C7', g);
+  const record = toLabelRecord({ editor, study: { ...STUDY, region: 'cervical' }, image: IMAGE, model: MODEL, savedAt: SAVED_AT });
+  assert.deepEqual(record.levels.C7.centroid, [15, 115]);
+  assert.equal(record.levels.C7.model_centroid, null);
+  assert.deepEqual(record.levels.C7.edited_points, ['sa', 'sp', 'ia', 'ip', 'centroid']);
+  assert.deepEqual(validateAgainst(SCHEMA, record).errors, []);
+  assert.deepEqual(recordLevels(record).C7.geometry, g);
+  const older = structuredClone(record);
+  delete older.levels.C7.centroid; delete older.levels.C7.model_centroid; older.levels.C7.edited_points = ['sa', 'sp', 'ia', 'ip'];
+  assert.deepEqual(validateAgainst(SCHEMA, older).errors, [], 'a record from before this round validates');
+  assert.deepEqual(recordLevels(older).C7.geometry, { ...g, centroid: null });
+  assert.equal(record.levels.C6.centroid, undefined, 'other bodies carry no centroid key');
+  assert.deepEqual(validateAgainst(SCHEMA, PARTIAL_EXAMPLE).errors, []);
+  const centroidOnly = structuredClone(record);
+  centroidOnly.levels.C7.corners = { sa: null, sp: null, ia: null, ip: null };
+  centroidOnly.levels.C7.edited_points = ['centroid'];
+  assert.deepEqual(validateAgainst(SCHEMA, centroidOnly).errors, [], 'a centroid alone is a placed C7');
+  centroidOnly.levels.C7.centroid = null;
+  assert.equal(validateAgainst(SCHEMA, centroidOnly).ok, false, 'no part at all is rejected');
+});
+
+test('recordLevels drops a C7 entry whose centroid is malformed', () => {
+  const g = { superior: [[10, 110], [20, 110]], inferior: [[10, 120], [20, 120]], centroid: [15, 115] };
+  const editor = setLevelGeometry(openEditor({ study: { id: 'SP-0008', geometry: null, labelFile: null }, region: 'cervical', modelGeometry: null, saved: null }), 'C7', g);
+  const record = toLabelRecord({ editor, study: { ...STUDY, region: 'cervical' }, image: IMAGE, model: MODEL, savedAt: SAVED_AT });
+  assert.deepEqual(recordLevels(record).C7.geometry, g);
+  record.levels.C7.centroid = 'x';
+  assert.equal(recordLevels(record).C7.geometry, null);
 });

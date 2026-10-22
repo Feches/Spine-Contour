@@ -83,8 +83,10 @@ function levelRecord(code, entry, model, contours) {
   switch (kindOf(code)) {
     case 'body':
       // The contour is the model's mask outline, so it is written only while the level still is the model's (R10).
+      // (2026-10-22, round 2, spec §12 N11) C7 alone also writes its optional centroid and the model's (null today).
       return {
         ...head, corners: bodyCorners(g), model_corners: edited ? bodyCorners(model) : null,
+        ...(hasCentroid(code) ? { centroid: pointOrNull(g.centroid), model_centroid: edited ? pointOrNull(model.centroid) : null } : {}),
         contour: state === 'segmented' ? contourOf(contours?.[code]) : null,
       };
     case 'c2':
