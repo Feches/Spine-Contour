@@ -516,6 +516,7 @@ and the plan is `docs/superpowers/plans/2026-10-21-partial-endplates.md` (ten ta
 | N7 | **`edited_points` lists placed, moved or removed keys** (planner), never a key the model placed and the annotator left. |
 | (controller) | The endplate-line click hit-test outside edit mode applies only to a body with no quadrilateral. |
 | (controller) | A C2 placed from its centroid alone is left out of `vertebrae` in the projection; only `c2_centroid` is written. |
+| N12 (controller) | **The editor's view wins on entry and after a save** (2026-10-22, the owner's report on SP-1300): a level the editor holds hidden or unplaced that the study's geometry still carries is projected out by one `sync` (`staleStudyLevels`), so a dropped or failed `/measure` cannot leave the record and the stage disagreeing for good. |
 | (controller) | The edit bar's help line box was narrowed (160 px basis) for FINISH, so a long help line wraps inside its box in every edit-bar state. |
 
 ---

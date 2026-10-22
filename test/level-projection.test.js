@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   projectionRegion, anteriorSideFrom, quadrilateral, projectGeometry, regionFollowsLevels, projectsLevel,
-  projectionIsEmpty,
+  projectionIsEmpty, staleStudyLevels,
 } from '../renderer/data/level-projection.js';
 import {
   levelsFromGeometry, openEditor, setLevelGeometry, toggleVisible,
@@ -713,4 +713,37 @@ test('c7_centroid is the placed centroid, else the quadrilateral\'s mean, else n
   assert.deepEqual(projectGeometry(editorWith({ C7: { superior: whole.superior, inferior: null, centroid: [16, 116] } }), film).c7_centroid, [16, 116], 'a partial C7 with its centroid still gives the plumb its point');
   assert.equal(projectGeometry(editorWith({ C7: { superior: whole.superior, inferior: null, centroid: null } }), film).c7_centroid, null);
   assert.equal('c7_centroid' in projectGeometry(editorWith({ C7: whole }, { region: 'cervical' }), { ...film, region: 'cervical' }), false, 'the cervical projection keeps omitting the key');
+});
+
+// (2026-10-22, round 2, Task 16: the owner's report) The levels the editor holds hidden or unplaced that the study
+// still carries are the ones a re-commit must drop.
+test('staleStudyLevels lists a hidden level the study still carries, by presence and only where it is projected', () => {
+  const film = { geometry: { anterior_side: 'left', ...IMAGE_FIELDS }, region: 'full_spine' };
+  const placements = { C3: bodyAt(10, 30), C4: bodyAt(10, 50), L3: bodyAt(10, 70) };
+  const studyOf = (editor) => ({ ...film, geometry: projectGeometry(editor, film) });
+  const model = editorWith(placements);
+  const study = studyOf(model);
+  assert.deepEqual(staleStudyLevels(model, study), [], 'visible and placed: nothing');
+  const hidden = editorWith(placements, { hide: ['C3'] });
+  assert.deepEqual(staleStudyLevels(hidden, study), ['C3']);
+  assert.deepEqual(staleStudyLevels(hidden, studyOf(hidden)), [], 'the study without C3: nothing');
+  assert.deepEqual(staleStudyLevels(null, study), []);
+  assert.deepEqual(staleStudyLevels(hidden, { ...study, geometry: null }), []);
+  const unplaced = editorWith({ C4: bodyAt(10, 50), L3: bodyAt(10, 70) });
+  assert.deepEqual(staleStudyLevels(unplaced, study), ['C3'], 'a level with no geometry counts as unplaced');
+  const lumbar = { geometry: { ...fakeGeometry(), ...IMAGE_FIELDS }, region: 'lumbar' };
+  const lumbarEditor = editorWith({ L1: bodyAt(10, 10) }, { region: 'lumbar' });
+  const withC3 = { ...lumbar, geometry: { ...lumbar.geometry, vertebrae: { ...lumbar.geometry.vertebrae, C3: studyBody(10, 130) } } };
+  const stale = staleStudyLevels(lumbarEditor, withC3);
+  assert.equal(stale.includes('C3'), false, 'C3 is not projected on a lumbar film');
+  assert.equal(stale.includes('L2'), true, 'a lumbar level the editor does not place is');
+});
+
+test('staleStudyLevels never lists T1 or T4, and a C7 centroid over a study C7 without one is not stale', () => {
+  const film = { geometry: { anterior_side: 'left', ...IMAGE_FIELDS }, region: 'full_spine' };
+  const c7 = bodyAt(10, 110);
+  const study = { ...film, geometry: projectGeometry(editorWith({ C7: c7, L3: bodyAt(10, 70) }), film) };
+  const withCentroid = editorWith({ C7: { ...c7, centroid: [16, 116] }, L3: bodyAt(10, 70) });
+  assert.deepEqual(staleStudyLevels(withCentroid, study), []);
+  assert.deepEqual(staleStudyLevels(editorWith({ C7: c7, L3: bodyAt(10, 70) }, { hide: ['T1', 'T4'] }), study), []);
 });

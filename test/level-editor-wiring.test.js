@@ -23,7 +23,8 @@ import {
   revertPlacedLevel, setLevelComment, discardLevelEdits, resetLevelsToModel, clearPlacedLevel, toggleLevelGroup,
   aimHandle, cancelAim, placeAimedPoint, setFocusedHandle, cancelPlace, resumePlace, removeFocusedPart,
 } from '../renderer/level-editor.js';
-import { projectionIsEmpty } from '../renderer/data/level-projection.js';
+import { projectionIsEmpty, projectGeometry } from '../renderer/data/level-projection.js';
+import { openEditor, setLevelGeometry, toggleVisible } from '../renderer/data/levels.js';
 import { deriveStatus } from '../renderer/data/status.js';
 // (Gate feedback G3, 2026-10-11; plan D15) The window / level belongs to the view: renderer/film-window.js.
 import { configureFilmWindow, openWindowPanel, closeWindowPanel } from '../renderer/film-window.js';
@@ -1332,5 +1333,97 @@ test('a partial level saves a record with nullable corners that validates, and E
     await enterLevelEditor('SP-9563');
     assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null, centroid: null });
     assert.equal(unsavedCount(getState().levelEditor), 0);
+  }));
+});
+
+// ---------- Task 16 (2026-10-22, round 2: the owner's report) ----------
+// The editor's view wins on entry and after a save: a level the record hides that the study still carries is
+// projected out by one commit.
+
+const FILM_FIELDS = { image_width: IMAGE.width, image_height: IMAGE.height, source_sha256: SHA, coordinate_space: 'original_image', anterior_side: 'left' };
+const fullBody = (x, y) => ({ superior: [[x, y], [x + 40, y + 2]], inferior: [[x + 2, y + 30], [x + 42, y + 32]] });
+
+// A model full-spine film (not hand-placed) holding C3, C4 and L3, and the editor it opens as, with `hide` unchecked.
+function modelFullSpine(id, patch = {}) {
+  const base = { ...newStudy({ id, fileName: `${id}_full_spine.png`, filePath: null }), geometry: { ...FILM_FIELDS, region: 'full_spine' } };
+  let editor = openEditor({ study: base, region: 'full_spine', modelGeometry: null, saved: null });
+  for (const [code, geometry] of [['C3', fullBody(100, 60)], ['C4', fullBody(100, 110)], ['L3', fullBody(100, 300)]]) {
+    editor = setLevelGeometry(editor, code, geometry);
+  }
+  const geometry = projectGeometry(editor, base);
+  const study = {
+    ...base, predictionId: `prediction-${id}`, measurements: {}, geometry, qc: { models: { vertebrae: 'hrnet' } },
+    labelFile: null, ...patch,
+  };
+  return { study, geometry, editor };
+}
+
+function recordHiding(study, editor, codes) {
+  let hidden = editor;
+  for (const code of codes) hidden = toggleVisible(hidden, code);
+  return toLabelRecord({
+    editor: hidden, study, image: { file: 'x', sha256: SHA, width: IMAGE.width, height: IMAGE.height },
+    model: { name: 'hrnet', version: null }, savedAt: '2026-10-22T07:11:00.000Z',
+  });
+}
+
+test('Task 16: Edit on a film whose record hides C3 while the study carries it commits one projection without C3', async () => {
+  const { study: base, geometry, editor } = modelFullSpine('SP-9570');
+  const study = { ...base, labelFile: 'full_9570.label.json' };
+  const record = recordHiding(study, editor, ['C3']);
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(geometry) });
+  const bridge = labelBridge();
+  bridge.spineContour.loadLabelRecord = async () => structuredClone(record);
+  await withBridge(bridge, () => withStore(study, async () => {
+    assert.ok(studyOf(study.id).geometry.vertebrae.C3, 'precondition: the study carries C3');
+    await enterLevelEditor(study.id);
+    await settle();
+    assert.equal(commits.length, 1);
+    assert.equal(commits[0].geometry.vertebrae.C3, undefined);
+    assert.ok(commits[0].geometry.vertebrae.C4, 'the rest stays');
+    const now = studyOf(study.id);
+    assert.equal(now.geometry.vertebrae.C3, undefined, 'the study follows');
+    assert.ok(now.geometry.vertebrae.C4);
+  }));
+});
+
+test('Task 16: Edit on a film whose record agrees with the study commits nothing', async () => {
+  const { study: base, geometry, editor } = modelFullSpine('SP-9571');
+  const study = { ...base, labelFile: 'full_9571.label.json' };
+  const record = recordHiding(study, editor, []);
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(geometry) });
+  const bridge = labelBridge();
+  bridge.spineContour.loadLabelRecord = async () => structuredClone(record);
+  await withBridge(bridge, () => withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    await settle();
+    assert.equal(commits.length, 0);
+  }));
+});
+
+test('Task 16: a failed uncheck leaves the study with C3, and Save edits re-commits it out', async () => {
+  const { study, geometry } = modelFullSpine('SP-9572', { reviewedAt: null });
+  const commits = [];
+  let calls = 0;
+  const measureWith = async (request) => {
+    calls += 1;
+    if (calls === 1) throw new Error('boom');
+    return { measurements: {}, geometry: structuredClone(request) };
+  };
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(geometry), measureWith, imageInfo: maskedImage });
+  await withBridge(labelBridge(), () => withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    assert.equal(commits.length, 0, 'nothing to heal on entry');
+    toggleLevelVisible('C3');
+    await settle();
+    assert.equal(commits.length, 1);
+    assert.ok(studyOf(study.id).geometry.vertebrae.C3, 'the failed /measure left the study as it was');
+    await saveLevelEdits();
+    await settle();
+    assert.equal(commits.length, 2, 'the save re-commits');
+    assert.equal(studyOf(study.id).geometry.vertebrae.C3, undefined);
+    assert.ok(studyOf(study.id).geometry.vertebrae.C4);
   }));
 });

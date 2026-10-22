@@ -119,6 +119,9 @@ dash, for that film type: unchecking S1 on a lumbar film says `LL, PI, PT, SS, P
 note never shows a value. Unchecking the level being placed cancels the placement. T1 and T4 feed no measurement today,
 so they have no note (D12).
 
+Entering edit mode and Save edits re-apply the record's hidden levels to the stored geometry when the two disagree (a
+re-measure that failed, or a run that overtook the editor), so the stage and the record never keep different views.
+
 ## Placing a level
 
 **Place…** starts a placement; the edit bar reads `PLACING L3 · 1 OF 4` with a chip per step, UNDO and CANCEL, and the

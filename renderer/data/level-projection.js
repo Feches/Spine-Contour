@@ -8,7 +8,7 @@
 // Pure: no DOM, no store, no I/O. Nothing here mutates its arguments, and the result shares no point arrays
 // with the editor, so a later in-place edit of a cloned geometry cannot reach the level model.
 
-import { kindOf } from './levels.js';
+import { kindOf, levelsFromGeometry, LEVEL_CODES } from './levels.js';
 import { CERVICAL_LEVELS, requestedRegion, studyRegion, validAnteriorSide } from './cervical.js';
 import { isHandPlaced } from './predictions.js';
 
@@ -77,6 +77,19 @@ export function projectsLevel(code, editor, study) {
   if (region === 'lumbar') return LUMBAR_LEVELS.includes(code);
   if (region === 'cervical') return CERVICAL_LEVELS.includes(code);
   return true;
+}
+
+/**
+ * (2026-10-22, round 2, Task 16: the owner's report) The levels the editor holds hidden or unplaced that the study's
+ * stored geometry still carries, among those this study projects: the editor's view wins, so these are the levels a
+ * re-commit must drop. The comparison is presence, not equality. [] with no editor or no stored geometry.
+ * @returns {string[]}
+ */
+export function staleStudyLevels(editor, study) {
+  if (!editor || !study?.geometry) return [];
+  const stored = levelsFromGeometry(study.geometry);
+  return LEVEL_CODES.filter((code) => projectsLevel(code, editor, study)
+    && !placed(editor, code) && stored[code] != null);
 }
 
 /**

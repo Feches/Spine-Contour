@@ -30,7 +30,7 @@ import {
   resumePlacing, removePart, canResume,
 } from './data/levels.js';
 import { moveHandle } from './viewer/level-handles.js';
-import { projectGeometry, projectsLevel, regionFollowsLevels, projectionIsEmpty } from './data/level-projection.js';
+import { projectGeometry, projectsLevel, regionFollowsLevels, projectionIsEmpty, staleStudyLevels } from './data/level-projection.js';
 import { toLabelRecord, recordLevels, recordComment, normalizeComment, labelFileName, appVersion } from './data/label-record.js';
 import { levelContours } from './data/contours.js';
 import { studyRegion, validAnteriorSide } from './data/cervical.js';
@@ -133,6 +133,11 @@ function projectedChange(before, after, study) {
 // clearResult orphans any /measure still pending or in flight for it and, in one write, takes its result away and puts
 // back the failure it carried when edit mode was entered (`editor.entryFailure`), so it reads Failed again, or
 // Unsegmented if it never ran. Checked before the anterior side: an empty projection needs no orientation.
+// Commits the editor's projection once when the study still carries a level the editor holds hidden or unplaced.
+function healStudy(editor, study) {
+  if (staleStudyLevels(editor, study).length) sync(editor);
+}
+
 function sync(editor) {
   const study = studyOf(getState(), editor.studyId);
   if (!study) return;
@@ -244,6 +249,9 @@ export async function enterLevelEditor(studyId) {
   }
   // Entering edit mode drops the pan toggle (a primary drag would pan, and no handle press would ever land).
   setState({ editing: true, panMode: false, selection: null, levelEditor: editor });
+  // (2026-10-22, round 2, Task 16: the owner's report) A level the editor holds hidden that the study still carries
+  // (a re-measure that failed or was overtaken) is projected out now: the editor's view wins.
+  healStudy(editor, studyOf(getState(), studyId));
   showFilm(studyId);
 }
 
@@ -431,6 +439,8 @@ export async function saveLevelEdits() {
       ...(open ? { levelEditor: { ...open, baseline: saved.baseline, record: saved.record, savedComment: saved.savedComment } } : {}),
     }));
     stash.delete(studyId);
+    // (2026-10-22, round 2, Task 16: the owner's report) The same heal after a save.
+    healStudy(open ?? current, studyOf(getState(), studyId));
     showToast(savedText(n));
     if (open?.exitPrompt) exitNow(open.exitPrompt.then);
   } catch (error) {
