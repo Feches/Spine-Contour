@@ -445,6 +445,9 @@ built.
   1600×1100 with the clinical header).
 - **Save edits from the exit prompt did nothing on one synthetic Auto-region film with no model** (one run, not
   investigated).
+- **The cervical and full-spine `_points` validators raise on two identical endplate points.** A degenerate S1 or
+  vertebral pair fails the whole `/measure` rather than nulling that one measurement, unlike the T1 slope since 1.4.0.
+  A follow-up for the backend.
 
 ## 9. Placing only some of a level's points (2026-10-21, ~~deferred by the owner to its own session~~)
 

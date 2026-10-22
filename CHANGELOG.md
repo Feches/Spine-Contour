@@ -20,8 +20,8 @@
 - **T1 slope and T4 pelvic angle.** A placed T1 endplate and T4 centroid are now kept with the film and drawn outside
   edit mode, and read as two new measurements: the T4 pelvic angle (L1PA's construction with the T4 centroid; lumbar and
   full-spine films) and the T1 slope (the T1 endplate's angle to the horizontal; cervical and full-spine films). Panel
-  rows, Parameters grid columns and CSV columns `T4PA` and `T1 slope (deg)`; a missing input reads —, and no model places
-  either point.
+  rows, Parameters grid columns and CSV columns `T4PA` and `T1 slope (deg)`; a missing input reads —, and no model
+  places either point.
 - **A level hidden in the editor stays hidden on the stage.** Entering edit mode and Save edits re-apply the levels
   the editor holds hidden or unplaced to the stored geometry when they disagree, for example after a re-measure
   that failed; like any re-measure, this clears the film's Reviewed mark. The mask overlay outside edit mode no

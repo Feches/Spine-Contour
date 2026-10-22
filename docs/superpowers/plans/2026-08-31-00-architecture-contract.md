@@ -1997,7 +1997,8 @@ posterior) and `t4_centroid` (`[x,y]|null`). The renderer's projection writes th
 placed, else null; the level model reads them back (`levelsFromGeometry`), so an editor opened on the study shows them;
 every `/measure` path echoes them (the lumbar path, which rebuilds its geometry, now keeps them); the backend never
 bounds either point by the image (they are clamped clicks, and a fitted femoral centre may lie outside the film, see
-below). The persistence validator accepts each absent, null or well formed; `STORE_VERSION` stays 1 and the label record
+below). The persistence validator accepts each absent, null or well formed; A finite `T1S` needs a well-formed `t1_superior`, and a finite `T4PA` the centroid, the hip midpoint and the S1 pair
+(`measurementsHaveLandmarks`). `STORE_VERSION` stays 1 and the label record
 schema is unchanged (the record keeps T1 and T4 for provenance only). A 1.3.x build ignores the two fields.
 
 **`selectedLevel`.** The domain gains `'T4PA'` and `'T1S'`, each a construction of its own and never a vertebral level.

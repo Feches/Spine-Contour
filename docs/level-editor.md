@@ -115,17 +115,19 @@ Hand-placed. No run is needed.
 
 Unchecking keeps the level's geometry in memory for the session, so checking it again restores it; the saved record
 omits the geometry of a level that is not visible. Under an unchecked row a note names the measurements it leaves as a
-dash, for that film type: unchecking S1 on a lumbar film says `LL, PI, PT, SS, PI–LL, L1PA, T4PA and L5–S1 will show —`. The
-note never shows a value. Unchecking the level being placed cancels the placement. Since 2026-10-22 T1 and T4 feed
+dash, for that film type: unchecking S1 on a lumbar film says `LL, PI, PT, SS, PI–LL, L1PA, T4PA and L5–S1 will show —`.
+The note never shows a value. Unchecking the level being placed cancels the placement. Since 2026-10-22 T1 and T4 feed
 measurements, so they have notes: unchecking T1 on a cervical or full-spine film says `T1 slope will show —`, and
 unchecking T4 on a lumbar or full-spine film says `T4PA will show —` (D12, which said T1 and T4 feed nothing, is
-superseded). On a film outside a measurement's family (T1 on a lumbar film, T4 on a cervical one) the point is kept
-and drawn but the note stays silent.
+superseded). On a film outside a measurement's family (T1 on a lumbar film, T4 on a cervical one) the point is kept and
+drawn but the note stays silent.
 
 Entering edit mode and Save edits re-apply the levels the editor holds hidden or unplaced to the stored geometry when
 the two disagree (a re-measure that failed, or a run that overtook the editor), so the stage and the record never keep
-different views. Like any other re-measure it clears the film's Reviewed mark: the mark stands only over numbers the
-record agrees with.
+different views. The rule runs in both directions, presence only: a level the record holds placed and visible that
+the study lacks (a T1 or T4 placed before 1.4.0, or a hand-placed level whose commit was lost) lands on the first Edit,
+and the heads are compared by count. Like any other re-measure it clears the film's Reviewed mark: the mark stands
+only over numbers the record agrees with.
 
 Outside edit mode the mask overlay colours a level only while the study's geometry holds it, so an unchecked level's
 pixels are no longer painted; checking it again or RESET TO PREDICTION brings the colour back (the stored image is
