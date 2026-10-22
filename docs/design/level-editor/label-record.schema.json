@@ -256,7 +256,7 @@
             "anyOf": [
               { "properties": { "corners": { "properties": { "sa": { "$ref": "#/$defs/point" } } } } },
               { "properties": { "corners": { "properties": { "ia": { "$ref": "#/$defs/point" } } } } },
-              { "properties": { "centroid": { "$ref": "#/$defs/point" } } }
+              { "required": ["centroid"], "properties": { "centroid": { "$ref": "#/$defs/point" } } }
             ]
           },
           "else": {

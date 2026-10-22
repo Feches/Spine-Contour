@@ -1935,3 +1935,11 @@ test('openEditor merges the record\'s C7 centroid into the study\'s C7 corners',
   assert.deepEqual(e.levels.C7.geometry.centroid, [15, 115]);
   assert.deepEqual(e.levels.C7.geometry.superior, study.geometry.vertebrae.C7.superior, 'the corners are the study\'s');
 });
+
+test('openEditor takes a saved C7 whole, centroid included, when the study has no C7', () => {
+  const study = { id: 'SP-0011', geometry: null, labelFile: 'x.label.json' };
+  const geometry = { superior: [[10, 110], [20, 110]], inferior: [[10, 120], [20, 120]], centroid: [15, 115] };
+  const saved = { file: 'x.label.json', levels: { C7: { visible: true, source: 'annotator', geometry } }, comment: '' };
+  const e = openEditor({ study, region: 'cervical', modelGeometry: null, saved });
+  assert.deepEqual(e.levels.C7.geometry, geometry);
+});

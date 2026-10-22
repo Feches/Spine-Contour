@@ -986,6 +986,8 @@ test('C7 writes and reads its centroid; a record without the key reads null; the
   assert.deepEqual(validateAgainst(SCHEMA, centroidOnly).errors, [], 'a centroid alone is a placed C7');
   centroidOnly.levels.C7.centroid = null;
   assert.equal(validateAgainst(SCHEMA, centroidOnly).ok, false, 'no part at all is rejected');
+  delete centroidOnly.levels.C7.centroid;
+  assert.equal(validateAgainst(SCHEMA, centroidOnly).ok, false, 'no part, the centroid key absent, is rejected too');
 });
 
 test('recordLevels drops a C7 entry whose centroid is malformed', () => {
@@ -995,4 +997,17 @@ test('recordLevels drops a C7 entry whose centroid is malformed', () => {
   assert.deepEqual(recordLevels(record).C7.geometry, g);
   record.levels.C7.centroid = 'x';
   assert.equal(recordLevels(record).C7.geometry, null);
+});
+
+test('an edited C7 whose model had no centroid but the annotator placed one lists centroid and keeps a null model_centroid', () => {
+  const whole = { superior: [[10, 110], [20, 110]], inferior: [[10, 120], [20, 120]] };
+  const study = { id: 'SP-0010', geometry: { region: 'cervical', vertebrae: { C7: { ...whole, quadrilateral: null } }, c2_centroid: null } };
+  let editor = openEditor({ study, region: 'cervical', modelGeometry: study.geometry, saved: null });
+  editor = setLevelGeometry(editor, 'C7', { ...whole, centroid: [15, 115] });
+  const record = toLabelRecord({ editor, study: STUDY, image: IMAGE, model: MODEL, savedAt: SAVED_AT });
+  assert.equal(record.levels.C7.state, 'edited');
+  assert.ok(record.levels.C7.edited_points.includes('centroid'));
+  assert.equal(record.levels.C7.model_centroid, null);
+  assert.deepEqual(record.levels.C7.model_corners, { sa: [10, 110], sp: [20, 110], ia: [10, 120], ip: [20, 120] });
+  assert.deepEqual(validateAgainst(SCHEMA, record).errors, []);
 });
