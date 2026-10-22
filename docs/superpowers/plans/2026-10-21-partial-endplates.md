@@ -1305,3 +1305,41 @@ test('openEditor merges the record\'s C7 centroid into the study\'s C7 corners',
 
 - [ ] **Step 1**: the edits above, in the project's voice; counts from Task 14's runs.
 - [ ] **Step 2**: `node --test test/*.test.js` once (the version test); commit `docs(release): 1.4.0 adds the placeable C7 centroid`.
+
+### Task 16: A level hidden in the editor but still in the study is projected out on entry and after a save (the owner's 2026-10-22 report)
+
+**Why:** on a real full-spine film (SP-1300) the owner unchecked the Cervical group, saved the record (C2–C7 `not_visible`, 07:11) and pressed DONE, and the stage still drew C2–C7: `studies.json` (last written 07:04) still held them, so the uncheck's `/measure` round trip never landed (a failed or dropped request leaves the study as it was, with only a transient toast). A pure probe and a CDP reproduction on synthetic films commit correctly, so the trigger is environmental (a backend busy with a batch, a timed-out fetch, a superseded revision). Whatever the trigger, the record and the study then disagree for good: every later Edit shows the record's view, the stage the study's, and nothing re-commits because nothing changes. Rule (controller ruling, 2026-10-22): **the editor's view wins on entry and after a save** for levels it holds hidden or unplaced that the study still carries.
+
+**Files:**
+- Modify: `renderer/level-editor.js` (`enterLevelEditor` after the `setState({ editing: true, … })`; `saveLevelEdits` after the store write), `renderer/data/level-projection.js` (a pure helper)
+- Test: `test/level-projection.test.js`, `test/level-editor-wiring.test.js`
+
+**Interfaces:**
+- Produces: `staleStudyLevels(editor, study): string[]` (exported from `level-projection.js`, pure): the codes for which `projectsLevel(code, editor, study)` is true, the editor's entry is hidden or has no geometry, and `levelsFromGeometry(study?.geometry)[code]` is non-null; `[]` for no editor or no study geometry. `enterLevelEditor` calls `sync(editor)` when the list is non-empty (both the fresh and the stashed path), and `saveLevelEdits` does the same after a successful save, with the editor the record was built from.
+
+- [ ] **Step 1: Write the failing tests.** `test/level-projection.test.js`: `staleStudyLevels` lists C3 for an editor whose C3 is hidden while the study's geometry holds C3; lists nothing when the editor's C3 is visible and placed, when the study has no C3, for T1/T4 (never projected), and on a lumbar film for a hidden C3 (not projected there); a C7 with a placed centroid over a study C7 without one is NOT listed (the comparison is presence, not equality). `test/level-editor-wiring.test.js` (ids SP-9570…SP-9572, the file's harness; a full-spine model film built as the Task 7 tests build theirs, with `getPrediction` returning the model geometry so the film is not hand-placed): (a) a study whose geometry holds C3 and whose saved record (through `labelBridge`'s `loadLabelRecord`) marks C3 `not_visible` — `enterLevelEditor` commits exactly one projection without C3 and the study's geometry follows after `settle()`; (b) the same film with a record that agrees with the study — `enterLevelEditor` commits nothing; (c) a `/measure` stub that REJECTS the first call and echoes afterwards: unchecking C3 leaves the study with C3 (the failure path, a toast), then `saveLevelEdits` re-commits and the study loses C3.
+- [ ] **Step 2: Run** the two files → FAIL (no export; no commit on entry).
+- [ ] **Step 3: Implement** as in Interfaces; `sync` is already the one commit path (it refuses an unoriented cervical projection, R7, as before). A dated comment names this task and the owner's report.
+- [ ] **Step 4: Run** `node --test test/*.test.js` → all pass.
+- [ ] **Step 5: Smoke** — fold one check into section 22's continuation (Task 14, or here if Task 14 is done): inject a study whose geometry holds C3 while its label record marks C3 not visible (write the record file under `LABELS` before opening the film, name it on the study as `labelFile`), press Edit, `settled`, and check the study's `vertebrae` no longer holds C3. Run the dom suite with the bounded recipe.
+- [ ] **Step 6: Docs** — `docs/level-editor.md` "Unchecking a level": one sentence that entering edit mode and Save edits re-apply the record's hidden levels to the stored geometry when they disagree (a failed re-measure, a run that overtook the editor); HANDOFF §12b a line N12 (controller); the 1.4.0 release notes a bullet under Fixes.
+- [ ] **Step 7: Commit** `fix(editor): a level the record hides is projected out of the study on Edit and after Save edits`.
+
+### Task 17: The mask overlay outside edit mode paints only the levels the study still holds (the owner's 2026-10-22 report, second cause)
+
+**Why:** the CDP reproduction of the owner's report found that even when the uncheck commits (the study's `vertebrae` lose C2–C7), the stage outside edit mode still colours C2–C7: the backend's pixel mask is mapped to colours once per prediction (`loadStudyImages` → `buildLabelColorMap(labels)` → `buildOverlayPixels`) and drawn whenever overlays are on (`drawStaticLayer`), never filtered by the levels the geometry holds. To the annotator that is "still segmented". Rule (controller ruling, 2026-10-22): **outside edit mode the mask overlay paints a level's label only while `study.geometry.vertebrae` holds that level**; the stored image and the sidecar are untouched (RESET TO PREDICTION brings the colours back with the levels).
+
+**Files:**
+- Modify: `renderer/viewer/canvas.js` (`buildLabelColorMap(labels, levels?)`; a pure `overlayCanvasFor(images, levelCodes)` that rebuilds the overlay canvas from `images.mask` for a given set of level codes), `renderer/components/viewer.js` (the static-layer key gains the sorted list of level codes in `currentStudy().geometry.vertebrae`; when it changes, the overlay canvas is rebuilt through the new helper and cached on the images object by that key), `renderer/screens/analysis.js` only if `loadStudyImages`'s signature changes (prefer not to)
+- Test: `test/canvas.test.js`
+
+**Interfaces:**
+- Produces: `buildLabelColorMap(labels, levels = null)`: with `levels` (an array of codes) only those codes' label ids are coloured; `overlayCanvasFor(images, levels)`: a canvas with the overlay pixels for `levels` (null = every level, today's behaviour), built from `images.mask` (the ImageBitmap) through a scratch canvas as `loadStudyImages` does; the viewer calls it when the level set changes and keeps the result on `images.overlayCanvas` with `images.overlayLevels` (the key), so a pan or a window tick never rebuilds it.
+
+- [ ] **Step 1: Write the failing tests** in `test/canvas.test.js`: `buildLabelColorMap({ L1: 20, L2: 21, C7: 16 }, ['L1', 'C7'])` colours ids 20 and 16 only; with `levels` null every id; `buildOverlayPixels` over a 2×1 mask with ids 20 and 21 and a map holding 20 only leaves the second pixel transparent (alpha 0).
+- [ ] **Step 2: Run** → FAIL.
+- [ ] **Step 3: Implement**; in the viewer, the overlay the static layer draws is `overlayCanvasFor(currentImages, levelCodes)` where `levelCodes` is `Object.keys(study.geometry?.vertebrae ?? {})` sorted (null when the study has no geometry, so a film with no result keeps today's full overlay); rebuild only when the key differs from `currentImages.overlayLevels`.
+- [ ] **Step 4: Run** `node --test test/*.test.js` → all pass.
+- [ ] **Step 5: Smoke** — in section 22's continuation (or a short new check in the same run): on the segmented fixture SP-9300 outside edit mode, read the overlay canvas's alpha at a pixel inside L3's mask label after unchecking L3 in edit mode and pressing DONE (the dom fixture's mask is all-zero, so instead use the handles' `window.__lv` to call `overlayCanvasFor` through the page's own module on a synthetic 2×1 mask — or skip the smoke and rely on the unit test; say which in the report).
+- [ ] **Step 6: Docs** — `docs/level-editor.md` "Unchecking a level": the mask overlay outside edit mode no longer colours an unchecked level; HANDOFF §12b N13 (controller); the 1.4.0 release notes under Fixes.
+- [ ] **Step 7: Commit** `fix(viewer): the mask overlay colours only the levels the study still holds`.
