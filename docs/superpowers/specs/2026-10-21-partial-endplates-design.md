@@ -1,6 +1,6 @@
 # Placing only some of a level's points (partial endplates) — design
 
-**Status:** BUILT 2026-10-22 on claude/partial-endplates-ca5755 (plan Tasks 1–17; unit 1221/1221, smoke-levels dom 176/176,
+**Status:** BUILT 2026-10-22 on claude/partial-endplates-ca5755 (plan Tasks 1–17; unit 1224/1224, smoke-levels dom 182/182,
 pytest unit 651 passed 2 skipped), at the owner's gate, not pushed. The owner
 ruled N1–N4 on 2026-10-21, all the recommended column ("N1 N2 N3 N4 all recommended"). Branch `claude/partial-endplates-ca5755` (worktree `.claude/worktrees/studies-ui-updates-bb040d`),
 cut from `claude/segmentation-points-display-2df267` @ `7e85035` (1.3.1, at the owner's gate, unpushed). Released as
@@ -299,7 +299,8 @@ this addendum validates unchanged (a C7 without the `centroid` key is read as ce
 The canvas draws C7's centroid as a dot in C7's colour (C2's radius, `dot: true`) beside its lines or quadrilateral;
 outside edit mode the existing C7 cross already draws `c7_centroid` on a full-spine film. The plate of a C7 with only
 its centroid anchors on the centroid with the film's side, as T4's and a centroid-only C2's do. `trainingStatus`,
-`dependencyNote` and the panel's rows are unchanged (an optional part never makes the label incomplete).
+`dependencyNote` and the panel's rows are unchanged, except that C7's row offers Place… while its centroid is unplaced,
+a whole C7 included (Place… resumes at the centroid step) (an optional part never makes the label incomplete).
 
 Verification adds: unit tests for the five-step placement and its four-click finish, the centroid-alone finish, the
 parts and handles of C7, the projection's three `c7_centroid` cases, the record's `c7` entry both ways and the schema,
