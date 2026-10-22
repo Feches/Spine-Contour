@@ -40,7 +40,7 @@ disclosure button:
 | Group | Levels | Geometry |
 |---|---|---|
 | Cervical `C2–C7` | C2 | inferior endplate (IA, IP) and the body's centroid (D8); either may stand alone (2026-10-21, N1) |
-| | C3–C7 | four corners SA, SP, IA, IP, or one endplate alone (2026-10-21, N1) |
+| | C3–C7 | four corners SA, SP, IA, IP, or one endplate alone (2026-10-21, N1); C7 also takes an optional centroid (2026-10-22, N8) |
 | Thoracic `T1 · T4` | T1 | superior endplate (anterior, posterior) |
 | | T4 | centroid |
 | Lumbar `L1–L5` | L1–L5 | four corners, or one endplate alone (2026-10-21, N1) |
@@ -155,6 +155,14 @@ set still finishes by itself, as before. T1, S1, T4 and the femoral heads are un
 follows from the points it has: with C7's superior endplate alone, C2–C7 SVA and C6–C7 segmental lordosis read, and
 C2–C7 Cobb and C6–C7 disc angulation show `—`.
 
+**C7's centroid** (2026-10-22, N8–N9). C7 stays a body and carries an optional third part, its centroid, like C2's. The
+four corner clicks still finish C7 by themselves; the centroid is a fifth step, CENTROID (`Click the centroid of the C7
+body.`), placed during the placement by choosing its chip (the bar reads `PLACING C7 · n OF 5`) or later from the
+hollow CENTROID chip or the row's Place…. FINISH accepts a centroid alone, as it does for C2. A whole C7 without its
+centroid counts as partial, so its row offers Place…, which resumes at the centroid step. On a full-spine film the
+C7–S1 SVA (the plumb) reads from the placed centroid, else from the mean of C7's four corners, else shows `—`; the
+model's own C7 centroid is never read back as a placed point (N10).
+
 A click within one pixel of any other point of the placement is ignored (R26), so a double-click counts once and no
 corner can land on another (a zero-length endplate is a measurement error); a re-placed point may land beside its own
 old position. For a femoral head FIT stays disabled until the fit has a radius of at least 0.5 px (R22: a double-click
@@ -162,7 +170,8 @@ would otherwise give a zero radius, which the record cannot hold).
 
 | Kind | Clicks |
 |---|---|
-| C3–C7, L1–L5 | 4: superior-anterior, superior-posterior, inferior-anterior, inferior-posterior (SA → SP → IA → IP; the chips choose another order), or FINISH after one endplate |
+| C3–C6, L1–L5 | 4: superior-anterior, superior-posterior, inferior-anterior, inferior-posterior (SA → SP → IA → IP; the chips choose another order), or FINISH after one endplate |
+| C7 | the same 4, which finish it by themselves, and an optional fifth, the centroid (CENTROID chip, during the placement or later from the hollow chip or Place…) |
 | C2 | 3: inferior-anterior corner, inferior-posterior corner, then the centroid of the body (any order by the chips), or FINISH after the pair or the centroid |
 | T1, S1 | 2: the anterior then the posterior corner of the superior endplate (either first by the chips) |
 | T4 | 1: the centroid |
@@ -184,7 +193,7 @@ PREDICTION for the whole study. An Edited level can also be returned to the mode
 Selecting a row gives that level its handles on the stage (only the selected level has handles) and focuses its first
 handle; the help line says `L3 selected — drag a handle to adjust it, or pick a point and nudge it with the arrow
 keys.`. Since 2026-10-20 the edit bar also lists the selected level's points as chips, whether the model placed the
-level or a hand did: `SA SP IA IP` for a body (C2's `IA IP CENTROID`, an endplate's `ANT POST`, a centroid, a head's
+level or a hand did: `SA SP IA IP` for a body (C7's `SA SP IA IP CENTROID`, C2's `IA IP CENTROID`, an endplate's `ANT POST`, a centroid, a head's
 `P1`–`P4`, one per rim point), each dot in the handle's colour and filled, the focused handle on the accent ground.
 Clicking a chip **arms** that point (since 2026-10-21): the bar reads `PLACING L4 · SA`, the help line names the
 click (`Click the superior-anterior corner (SA). Escape keeps the point where it is.`), the chip's dot shows hollow,
@@ -210,7 +219,7 @@ the missing ones with a hollow dot; focus, Tab and the arrow keys reach the poin
 chip, or the row's **Place…**, resumes the placement for that endplate: the bar reads `PLACING C7 · 3 OF 4`, the placed
 points are filled in already, and the next clicks on the film complete the level. UNDO reaches only the new clicks;
 CANCEL or Escape leaves the level as it was. **Delete** or **Backspace** with a point of a body or C2 focused removes
-that point's endplate (C2's centroid, its centroid), committed through `/measure` like a drag. It is refused for the
+that point's endplate (C2's and C7's centroid, the centroid alone), committed through `/measure` like a drag. It is refused for the
 level's last part (CLEAR the level, or uncheck it) and for T1, S1, T4 and the heads, and does nothing while a level is
 being placed, while the W/L panel is open or while the study's run is in flight. The edit bar's help line box is narrow,
 so a long help line wraps inside its box instead of the bar taking a second row.
@@ -220,7 +229,7 @@ so a long help line wraps inside its box instead of the bar taking a second row.
 | Tab / Shift+Tab | the next / previous handle across every visible, placed level in panel order, selecting its level (inside the edit bar, the W/L panel and the levels panel Tab moves focus as usual) |
 | Arrow keys | nudge the focused handle 1 px; Shift: 10 px |
 | Escape | one thing at a time: closes the exit prompt (Keep editing), cancels a placement, closes the W/L panel, then leaves edit mode |
-| Delete, Backspace | removes the focused point's endplate on a body or C2 (its centroid on C2); nothing on the last part, on T1, S1, T4 or a head |
+| Delete, Backspace | removes the focused point's endplate on a body or C2 (its centroid on C2 and C7; `; Delete removes it` on the chip); nothing on the last part, on T1, S1, T4 or a head |
 
 Handles and placement clicks pause while the W/L panel is open. The left+right chord and the middle button pan in every
 mode; with the Pan toggle pressed, a primary drag pans even over a handle. The right button alone windows the film in
@@ -292,7 +301,10 @@ level carries `state` and `source`; a placed one carries its geometry (`corners`
 ip}` plus `centroid` for C2, `{sa, sp}` for T1 and S1, `centroid` for T4; a head's `center`, `radius` and `rim`). Since
 1.4.0 (2026-10-21, N4) the `corners` of a body and of C2 are nullable by endplate: `ia` and `ip` are null for a C7
 placed from its superior endplate, `sa` and `sp` null together for one placed from its inferior; C2's `corners` is
-null with a `centroid`, or the reverse; at least one part is present, and every key is written. The schema id is
+null with a `centroid`, or the reverse; at least one part is present, and every key is written. Since 2026-10-22
+(N11) C7's entry also carries `centroid` and `model_centroid` (each a point or null) and lists `centroid` in
+`edited_points`; the model's C7 never has a centroid, so a placed one reads Edited with `model_centroid` null. A C7
+record saved before that reads with the centroid null. The schema id is
 unchanged, amended 2026-10-21 as R39 amended it for `edits`: a record saved before 1.4.0 validates and reads
 unchanged, and a 1.3.x build reads a partial level as Not placed. An
 edited level also carries the model's original (`model_corners`, `model_centroid`, `model_circle`); a segmented body
@@ -334,7 +346,8 @@ keys, so a script can read `corners[name]` (or `centroid`, `center`, `radius`) d
 
 | Kind | Keys, in this order |
 |---|---|
-| C3–C7, L1–L5 | `sa`, `sp`, `ia`, `ip` (in `corners`) |
+| C3–C6, L1–L5 | `sa`, `sp`, `ia`, `ip` (in `corners`) |
+| C7 | `sa`, `sp`, `ia`, `ip` (in `corners`), `centroid` (2026-10-22, N11) |
 | C2 | `ia`, `ip` (in `corners`), `centroid` |
 | T1, S1 | `sa`, `sp` (in `corners`) |
 | T4 | `centroid` |
@@ -469,11 +482,15 @@ before its first commit, Hand-placed after, and Failed again once Discard takes 
 section 21 (the comment, Ctrl+Z on its first keystroke included) and (2026-10-21, 1.4.0) section 22 (a C2 placed from its
 centroid and FINISH, a C7 placed from SA and SP with FINISH disabled after one corner and enabled after two, the hollow
 chips, the record's null corners validating against the amended schema, Edit again, the resumed placement, Delete and
-its refusal);
+its refusal, and, for the C7 centroid (2026-10-22, N8), the hollow CENTROID chip and one click placing it with C7 still
+partial, Place… S1 turning the film full spine with `GLOBAL_SVA_PX` read from the placed centroid, Save edits writing
+`levels.C7.centroid` with `edited_points` listing it, and Edit again reading it back: section 22 holds 20 checks, 15 for
+the partial endplates and 5 for the centroid);
 the pure modules have unit tests (`test/levels`, `level-projection`, `level-handles`, `level-labels` for the plates,
 `window-level`, `label-record`, `contours`, and `interactions` for the double right-click; `canvas` draws the plates; 1.4.0 adds the partial-level groups in
 `levels`, `level-projection`, `persistence`, `level-handles`, `canvas`, `label-record` and the wiring, and
-`backend/tests/unit` the partial lumbar bodies),
+`backend/tests/unit` the partial lumbar bodies, and the C7 centroid adds tests to `levels`, `level-projection`,
+`persistence`, `level-handles`, `canvas`, `label-record` and the wiring),
 `test/level-editor-wiring.test.js` drives the wiring
 through the real store and measure queue (R20) and Mark reviewed's record (`writeReviewRecord`, D19), and
 `test/film-window.test.js` drives the view's window

@@ -51,7 +51,8 @@ Files in this package:
 | Group | Levels | Geometry stored | Placement |
 |---|---|---|---|
 | Cervical | C2 | Inferior endplate `ia`, `ip` plus a `centroid` (amended 2026-10-10, D8; schema `$defs/c2`); either part may stand alone (2026-10-21, N1) | 3 clicks: IA, IP, then the centroid; or FINISH after the pair or the centroid (2026-10-21, N1) |
-| Cervical | C3–C7 | 4 corners: `sa`, `sp`, `ia`, `ip`, or one endplate alone (N1) | 4 clicks in order SA → SP → IA → IP, or FINISH after one endplate (N2) |
+| Cervical | C3–C6 | 4 corners: `sa`, `sp`, `ia`, `ip`, or one endplate alone (N1) | 4 clicks in order SA → SP → IA → IP, or FINISH after one endplate (N2) |
+| Cervical | C7 | The four corners as above plus an optional `centroid` (2026-10-22, N8–N9; record `$defs/c7`, N11) | The same 4 clicks, which finish it by themselves, and an optional fifth, the centroid, from its chip or Place… |
 | Thoracic | T1 | Superior endplate: `sa` (anterior), `sp` (posterior) | 2 clicks: anterior, then posterior |
 | Thoracic | T4 | Centroid: one point | 1 click |
 | Lumbar | L1–L5 | 4 corners, or one endplate alone (N1) | 4 clicks, SA → SP → IA → IP, or FINISH after one endplate (N2) |
@@ -516,6 +517,10 @@ and the plan is `docs/superpowers/plans/2026-10-21-partial-endplates.md` (ten ta
 | N7 | **`edited_points` lists placed, moved or removed keys** (planner), never a key the model placed and the annotator left. |
 | (controller) | The endplate-line click hit-test outside edit mode applies only to a body with no quadrilateral. |
 | (controller) | A C2 placed from its centroid alone is left out of `vertebrae` in the projection; only `c2_centroid` is written. |
+| N8 | **C7 gains a third, optional part, its centroid, like C2's** (owner, 2026-10-22, from three options): a fifth chip, CENTROID, placed from the hollow chip, the row's Place… or its step during the placement; drawn as a dot, saved in the record, nudged, armed and removed like any other part; the corners' mean stands in when it is not placed and C7 is whole. Not a required centroid, not a centroid-only C7. |
+| N9 | **C7 stays a body** (planner): `CENTROID_BODIES = ['C7']` in `levels.js`; five steps, `pointKeys` `sa sp ia ip centroid`; four corners still finish it by itself, FINISH accepts a centroid alone, `PLACING C7 · n OF 5`. |
+| N10 | **The centroid lives in the level model and the record, never read back from `study.geometry`** (planner): the projection writes `c7_centroid` as the placed centroid, else the corners' mean when C7 is whole, else null, so the C7–S1 plumb reads even when C7 is partial; `openEditor` merges the saved record's centroid into the study's C7. |
+| N11 | **The record** (planner): `levels.C7` takes `$defs/c7` with `centroid`, `model_centroid` and `edited_points` including `centroid`; same schema id, a second dated line; every earlier record validates unchanged. |
 | N12 (controller) | **The editor's view wins on entry and after a save** (2026-10-22, the owner's report on SP-1300): a level the editor holds hidden or unplaced that the study's geometry still carries is projected out by one `sync` (`staleStudyLevels`), so a dropped or failed `/measure` cannot leave the record and the stage disagreeing for good. The re-measure clears the Reviewed mark like any other. |
 | N13 (controller) | **The mask overlay outside edit mode paints only the levels the study holds** (2026-10-22, round 2, Task 17, the owner's report): `drawStaticLayer` is handed an overlay rebuilt from the stored mask for the sorted level codes of `study.geometry.vertebrae` (`overlayCanvasFor`, cached by that key in the viewer; no geometry keeps the full overlay). The stored image and sidecar are untouched. |
 | (controller) | The edit bar's help line box was narrowed (160 px basis) for FINISH, so a long help line wraps inside its box in every edit-bar state. |

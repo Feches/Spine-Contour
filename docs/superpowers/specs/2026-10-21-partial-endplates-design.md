@@ -1,7 +1,7 @@
 # Placing only some of a level's points (partial endplates) — design
 
-**Status:** BUILT 2026-10-21 on claude/partial-endplates-ca5755 (plan plans/2026-10-21-partial-endplates.md, ten tasks;
-unit 1196/1196, smoke-levels dom 169/169, pytest unit 651 passed 2 skipped), at the owner's gate, not pushed. The owner
+**Status:** BUILT 2026-10-22 on claude/partial-endplates-ca5755 (plan Tasks 1–17; unit 1221/1221, smoke-levels dom 176/176,
+pytest unit 651 passed 2 skipped), at the owner's gate, not pushed. The owner
 ruled N1–N4 on 2026-10-21, all the recommended column ("N1 N2 N3 N4 all recommended"). Branch `claude/partial-endplates-ca5755` (worktree `.claude/worktrees/studies-ui-updates-bb040d`),
 cut from `claude/segmentation-points-display-2df267` @ `7e85035` (1.3.1, at the owner's gate, unpushed). Released as
 its own version after 1.3.1: **1.4.0**, since the label record's shape changes (as 1.1.0 and 1.2.0 did for the

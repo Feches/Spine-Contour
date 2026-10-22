@@ -434,12 +434,20 @@ built.
   backend-backed waits), never reproduced on demand, every fresh relaunch passing 169/169. It now bounds each call into
   the page at 90 s and carries a dom-phase watchdog (120 s without a page answer fails the run, cleans up and exits);
   run it as a bounded PowerShell job (`Start-Job` with `Wait-Job -Timeout 420`). The cause is not found.
+- **Lost commits in a long session** (2026-10-22). The owner's dev server, up since the previous day, saved two label
+  records whose edits never reached the study (no toast). A fresh launch over a copy of the same library commits every
+  edit, the backend answers and the pure path commits, so the trigger lives in the running session's state and is
+  unexplained. 1.4.0 heals the split on Edit and after Save edits (N12) and filters the overlay (N13).
+- **The exit prompt's Save edits can sit under the header** at a small window, so a click misses (seen in a CDP run at
+  1600×1100 with the clinical header).
+- **Save edits from the exit prompt did nothing on one synthetic Auto-region film with no model** (one run, not
+  investigated).
 
 ## 9. Placing only some of a level's points (2026-10-21, ~~deferred by the owner to its own session~~)
 
 Built 2026-10-21 on claude/partial-endplates-ca5755 (the owner's rulings N1–N4, all the recommended column; spec
 docs/superpowers/specs/2026-10-21-partial-endplates-design.md, plan plans/2026-10-21-partial-endplates.md), released as
-1.4.0. What follows is the record of the ask and of what was chosen.
+1.4.0. The placeable C7 centroid (N8–N11) shipped with it. What follows is the record of the ask and of what was chosen.
 
 The owner's ask: "if you can only see the superior endplate of C7 you can place C7 SA, SP but not IA and IP". A level
 today is all of its points or nothing, from the placement flow to the record. What each layer assumes:
