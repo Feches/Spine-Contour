@@ -43,7 +43,9 @@ def test_predict_endpoint_returns_images_geometry_and_measurements(monkeypatch):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["measurements"] == analysis["measurements"]
+    # /predict adds T1S and T4PA (None: no model places T1 or T4) to what the function returned.
+    assert body["measurements"] == {**analysis["measurements"], "T1S": None, "T4PA": None}
+    assert body["geometry"]["t1_superior"] is None and body["geometry"]["t4_centroid"] is None
     mask = np.asarray(Image.open(io.BytesIO(base64.b64decode(body["mask_png"]))))
     assert mask.shape == (24, 16)
     assert set(np.unique(mask)) == {0, int(VertebraLabel.L1)}
