@@ -5,6 +5,7 @@ export const CERVICAL_COLUMNS = [
   { key: 'C2C7_COBB', label: 'C2–C7 Cobb', unit: '°' },
   { key: 'C2C7_SVA_MM', label: 'C2–C7 SVA (mm)', unit: 'mm' },
   { key: 'C2C7_SVA_PX', label: 'C2–C7 SVA (px)', unit: 'px' },
+  { key: 'T1S', label: 'T1 slope', unit: '°' }, // (2026-10-22, spec P10)
 ];
 // The requested mode persists independently of the region resolved by prediction.
 export function requestedRegion(study) {
@@ -48,8 +49,13 @@ export function boundCalibration(geometry, value) {
 
 // Always use the current source-bound study scale. Geometry may retain an older scale
 // from inference, and an explicit calibration clear must not resurrect those millimetres.
+//
+// T1S (the T1 slope, 2026-10-22) is the exception: it is READ from the stored measurements, never recomputed. The
+// backend computes it on every /measure path and nothing in the renderer duplicates the formula.
 export function cervicalMeasurements(study) {
-  const empty = { region: 'cervical', C2C7_COBB: null, C2C7_SVA_PX: null, C2C7_SVA_MM: null };
+  const stored = study?.measurements?.T1S;
+  const empty = { region: 'cervical', C2C7_COBB: null, C2C7_SVA_PX: null, C2C7_SVA_MM: null,
+    T1S: typeof stored === 'number' && Number.isFinite(stored) ? stored : null };
   if (!['cervical', 'full_spine'].includes(studyRegion(study)) || !study?.geometry) return empty;
   const g = study.geometry;
   const calibration = boundCalibration(g, study.calibration);
@@ -81,6 +87,7 @@ export function cervicalRows(study, selectedLevel = null) {
   return [
     { key: 'C2C7_COBB', label: 'C2–C7 COBB', value: m.C2C7_COBB, unit: '°' },
     { key: 'C2C7_SVA', label: mm ? 'C2–C7 SVA' : 'C2–C7 SVA · UNCALIBRATED', value: mm ? m.C2C7_SVA_MM : m.C2C7_SVA_PX, unit: mm ? 'mm' : 'px' },
+    { key: 'T1S', label: 'T1 SLOPE', value: m.T1S, unit: '°' },
   ].map(row => ({ ...row, absent: row.value === null, highlight: row.key === selectedLevel }));
 }
 export function cervicalMeasureGeometry(geometry, calibration) {

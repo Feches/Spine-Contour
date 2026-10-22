@@ -281,6 +281,13 @@ export function constructionLabel(geometry, selectedLevel, measurements) {
     }
     return null;
   }
+  // (2026-10-22, spec P11) The T1 slope reads geometry.t1_superior only, so it labels on a cervical film, which has no
+  // S1: this branch sits ABOVE the S1 gate.
+  if (selectedLevel === 'T1S') {
+    const t1 = geometry.t1_superior;
+    if (!isPair(t1) || !Number.isFinite(measurements.T1S)) return null;
+    return { text: `T1 slope ${measurements.T1S.toFixed(1)}°`, ...beyondAnterior(t1[0], t1[1]) };
+  }
   const s1 = geometry.s1_superior;
   if (!s1) return null;
   const s1Mid = midpoint(s1[0], s1[1]);
@@ -301,6 +308,12 @@ export function constructionLabel(geometry, selectedLevel, measurements) {
   }
   if (selectedLevel === 'L1PA') {
     return measurements.L1PA == null ? null : { text: `L1PA ${measurements.L1PA.toFixed(1)}°`, anchor: midpoint(hip, geometry.l1_center), side: 1 };
+  }
+  // (2026-10-22, spec P11) T4 pelvic angle: the angle at the hip between the T4 centroid and the S1 midpoint.
+  if (selectedLevel === 'T4PA') {
+    const t4 = geometry.t4_centroid;
+    if (!isPoint(t4) || !isPoint(hip) || !Number.isFinite(measurements.T4PA)) return null;
+    return { text: `T4PA ${measurements.T4PA.toFixed(1)}°`, anchor: midpoint(hip, t4), side: 1 };
   }
   if (LEVELS.includes(selectedLevel)) {
     const body = geometry.vertebrae?.[selectedLevel];
@@ -363,6 +376,21 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
         const tick = Math.max(4, canvas.width / 150);
         for (const x of [foot[0], p[0]]) { ctx.beginPath(); ctx.moveTo(x, p[1] - tick); ctx.lineTo(x, p[1] + tick); ctx.stroke(); }
       }
+    } else if (selectedLevel === 'T1S') {
+      // (2026-10-22, spec P11) T1 slope: the T1 superior endplate against the HORIZONTAL, as SS is drawn. Reads
+      // t1_superior only (no S1 on a cervical film); the reference span is the S1-hip distance when both exist.
+      const t1 = geometry.t1_superior;
+      const t1Mid = midpoint(t1[0], t1[1]);
+      const s1 = geometry.s1_superior;
+      const hip = geometry.hip_midpoint;
+      const span = (isPair(s1) && isPoint(hip) ? Math.hypot(hip[0] - (s1[0][0] + s1[1][0]) / 2, hip[1] - (s1[0][1] + s1[1][1]) / 2) : 0)
+        || canvas.width / 6;
+      ctx.beginPath();
+      ctx.moveTo(...t1[0]);
+      ctx.lineTo(...t1[1]);
+      ctx.stroke();
+      const dir = t1[1][0] >= t1[0][0] ? -1 : 1;
+      strokeReference(ctx, t1Mid, [t1Mid[0] + dir * span, t1Mid[1]]);
     } else if (selectedLevel === 'S1') {
       const s1 = geometry.s1_superior;
       const s1Mid = midpoint(s1[0], s1[1]);
@@ -432,6 +460,18 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
       ctx.beginPath();
       ctx.moveTo(...hip);
       ctx.lineTo(...l1c);
+      ctx.moveTo(...hip);
+      ctx.lineTo(...s1Mid);
+      ctx.stroke();
+    } else if (selectedLevel === 'T4PA') {
+      // (2026-10-22, spec P11) T4 pelvic angle: two rays from the hip, to the T4 centroid and to the S1 midpoint,
+      // as L1PA is drawn, never the lordosis branch below.
+      const hip = geometry.hip_midpoint;
+      const t4 = geometry.t4_centroid;
+      const s1Mid = midpoint(geometry.s1_superior[0], geometry.s1_superior[1]);
+      ctx.beginPath();
+      ctx.moveTo(...hip);
+      ctx.lineTo(...t4);
       ctx.moveTo(...hip);
       ctx.lineTo(...s1Mid);
       ctx.stroke();
@@ -793,6 +833,19 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
     ctx.stroke();
     drawSelectedStageLabel(ctx, 'S1', geometry.s1_superior[0], selectedS1, canvas.width);
   }
+  // (2026-10-22, spec P11/P12) The T1 superior endplate as a line in T1's colour at the S1 line's width, on every region
+  // (a cervical film has no S1 line but has this one), labelled while the T1 slope is selected.
+  if (isPair(geometry.t1_superior)) {
+    const t1 = geometry.t1_superior;
+    const selectedT1 = selectedLevel === 'T1S';
+    ctx.strokeStyle = `rgb(${LEVEL_RGB.T1.join(',')})`;
+    ctx.lineWidth = selectedT1 ? lineWidth * 1.6 : lineWidth;
+    ctx.beginPath();
+    ctx.moveTo(...t1[0]);
+    ctx.lineTo(...t1[1]);
+    ctx.stroke();
+    drawSelectedStageLabel(ctx, 'T1', t1[0], selectedT1, canvas.width);
+  }
   // A centroid cross in the level's colour: C7's on a full-spine film (the C7–S1 plumb's origin, labelled while
   // GLOBAL_SVA is selected) and, since gate feedback G11 (2026-10-16, decision D24), C2's on a cervical or full-spine
   // film (the C2–C7 plumb's origin, labelled while C2C7_SVA is selected), so both ends of the cervical plumb read
@@ -809,6 +862,8 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
   };
   if (geometry.region === 'full_spine') drawCentroidCross(geometry.c7_centroid, 'C7', selectedLevel === 'GLOBAL_SVA');
   if (['cervical', 'full_spine'].includes(geometry.region)) drawCentroidCross(geometry.c2_centroid, 'C2', selectedLevel === 'C2C7_SVA');
+  // (2026-10-22, spec P11) T4's centroid cross, on every region, labelled while the T4 pelvic angle is selected.
+  drawCentroidCross(geometry.t4_centroid, 'T4', selectedLevel === 'T4PA');
 
   // Ruling R28, as in drawLevelEditor: past 1:1 the hip line, its dash and the markers keep their image-pixel size
   // and magnify with the film instead of shrinking under one image pixel; below 1:1 they hold their screen size.

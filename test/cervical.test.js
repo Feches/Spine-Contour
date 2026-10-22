@@ -195,3 +195,22 @@ test('regionLabel reads the four labels and Unknown for anything else', () => {
   assert.deepEqual(REGION_KEYS.map(regionLabel), ['Unknown', 'Lumbar', 'Cervical', 'Full spine']);
   assert.equal(regionLabel('bogus'), 'Unknown');
 });
+
+// (2026-10-22, T1 slope) T1S is read through from the stored measurements, never recomputed here.
+test('cervicalMeasurements reads T1S through; cervicalRows lists it third; absent is null', () => {
+  const s = study();
+  assert.equal(cervicalMeasurements(s).T1S, null, 'no stored T1S');
+  s.measurements = { ...s.measurements, T1S: 25 };
+  assert.equal(cervicalMeasurements(s).T1S, 25);
+  const rows = cervicalRows(s);
+  assert.deepEqual(rows.map(r => r.key), ['C2C7_COBB', 'C2C7_SVA', 'T1S']);
+  assert.equal(rows[2].label, 'T1 SLOPE'); assert.equal(rows[2].value, 25); assert.equal(rows[2].unit, '\u00b0');
+  assert.equal(rows[2].absent, false);
+  assert.equal(cervicalRows(s, 'T1S')[2].highlight, true);
+  assert.equal(cervicalRows(s, 'C2C7_COBB')[2].highlight, false);
+  s.measurements = { ...s.measurements, T1S: 'x' };
+  assert.equal(cervicalMeasurements(s).T1S, null, 'a non-finite value is absent');
+  assert.equal(cervicalRows(s)[2].absent, true);
+  assert.equal(cervicalMeasurements({ ...s, measurements: null }).T1S, null);
+  assert.equal(cervicalMeasurements({ ...s, geometry: null, measurements: { T1S: 5 } }).T1S, 5);
+});

@@ -13,9 +13,9 @@ const MEASUREMENTS = {
   LL: { 'L1-S1': 47.1, 'L2-S1': 40.0, 'L3-S1': 30.5, 'L4-S1': 18.2, 'L5-S1': 6.4 },
 };
 
-test('sagittalRows returns exactly six rows in the contracted order with verbatim labels', () => {
+test('sagittalRows returns exactly seven rows in the contracted order with verbatim labels', () => {
   const rows = sagittalRows(MEASUREMENTS, {});
-  assert.deepEqual(rows.map((r) => r.key), ['LL', 'PI', 'PT', 'SS', 'PILL', 'L1PA']);
+  assert.deepEqual(rows.map((r) => r.key), ['LL', 'PI', 'PT', 'SS', 'PILL', 'L1PA', 'T4PA']);
   assert.deepEqual(rows.map((r) => r.label), [
     'LUMBAR LORDOSIS · L1–S1',
     'PELVIC INCIDENCE',
@@ -23,6 +23,7 @@ test('sagittalRows returns exactly six rows in the contracted order with verbati
     'SACRAL SLOPE',
     'PI–LL MISMATCH',
     'L1 PELVIC ANGLE',
+    'T4 PELVIC ANGLE',
   ]);
   rows.forEach((r) => assert.equal(r.unit, '°'));
 });
@@ -36,12 +37,12 @@ test('sagittalRows computes values, including the derived PI-LL mismatch', () =>
   assert.equal(byKey.SS.value, 38.2);
   assert.ok(Math.abs(byKey.PILL.value - (52.7 - 47.1)) < 1e-9);
   assert.equal(byKey.L1PA.value, 21.3);
-  rows.forEach((r) => assert.equal(r.absent, false));
+  rows.filter((r) => r.key !== 'T4PA').forEach((r) => assert.equal(r.absent, false)); // MEASUREMENTS carries no T4PA
 });
 
 test('sagittalRows marks every row absent with null values when measurements is null', () => {
   const rows = sagittalRows(null, {});
-  assert.equal(rows.length, 6);
+  assert.equal(rows.length, 7);
   rows.forEach((r) => {
     assert.equal(r.absent, true);
     assert.equal(r.value, null);
@@ -116,7 +117,7 @@ test('lordosisRows returns L2-S1 through L5-S1 with values when present', () => 
   assert.deepEqual(rows.map((r) => r.key), ['L2-S1', 'L3-S1', 'L4-S1', 'L5-S1']);
   assert.equal(rows[0].value, 40.0);
   assert.equal(rows[0].label, 'LUMBAR LORDOSIS · L2–S1');
-  rows.forEach((r) => assert.equal(r.absent, false));
+  rows.filter((r) => r.key !== 'T4PA').forEach((r) => assert.equal(r.absent, false)); // MEASUREMENTS carries no T4PA
 });
 
 test('lordosisRows is absent when measurements is null', () => {
@@ -144,7 +145,7 @@ test('lordosisRows always returns highlight: false for every row', () => {
 // sagittal and lordosis alike -- unhighlighted.
 test('sagittalRows highlight: selecting L3 (a lordosis-only level) highlights nothing', () => {
   const rows = sagittalRows(MEASUREMENTS, { selectedLevel: 'L3' });
-  assert.equal(rows.length, 6);
+  assert.equal(rows.length, 7);
   rows.forEach((r) => assert.equal(r.highlight, false));
 });
 
@@ -216,4 +217,17 @@ test('lordosisRows marks a missing level absent and keeps present levels', () =>
   assert.equal(byKey['L2-S1'].value, null);
   assert.equal(byKey['L3-S1'].absent, false);
   assert.equal(byKey['L3-S1'].value, 40.0);
+});
+
+// (2026-10-22, T4 pelvic angle) The seventh row reads its stored value and selects only itself.
+test('sagittalRows T4PA row reads the stored value, is absent without it, and highlights only on T4PA', () => {
+  const row = (measurements, selectedLevel) => sagittalRows(measurements, { selectedLevel }).find((r) => r.key === 'T4PA');
+  assert.equal(row({ ...MEASUREMENTS, T4PA: 12.3 }, null).value, 12.3);
+  assert.equal(row({ ...MEASUREMENTS, T4PA: 12.3 }, null).absent, false);
+  assert.equal(row(MEASUREMENTS, null).value, null);
+  assert.equal(row(MEASUREMENTS, null).absent, true);
+  assert.equal(row({ ...MEASUREMENTS, T4PA: 12.3 }, 'T4PA').highlight, true);
+  for (const level of [null, 'S1', 'L1', 'L1PA', 'T1S']) assert.equal(row({ ...MEASUREMENTS, T4PA: 12.3 }, level).highlight, false, String(level));
+  const others = sagittalRows({ ...MEASUREMENTS, T4PA: 12.3 }, { selectedLevel: 'T4PA' }).filter((r) => r.key !== 'T4PA');
+  assert.ok(others.every((r) => !r.highlight), 'selecting T4PA highlights no other row');
 });

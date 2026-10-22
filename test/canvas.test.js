@@ -1035,3 +1035,67 @@ test('C7 with a centroid draws its dot beside its outline; without one, no dot',
   const alone = drawEditor(setLevelGeometry(emptyEditor(), 'C7', { superior: null, inferior: null, centroid: [45, 35] }));
   assert.equal(arcsOf(alone.calls).some(([x, y]) => x === 45 && y === 35), true, 'the dot alone');
 });
+
+// (2026-10-22, spec P10-P14) The T1 slope and T4 pelvic angle constructions and the stage's T1 line and T4 cross.
+test('constructionLabel T1S reads on a cervical geometry with no S1 (the gate sits below it)', () => {
+  const cervical = { region: 'cervical', anterior_side: 'left', t1_superior: [[10, 20], [30, 24]], vertebrae: {} };
+  const label = constructionLabel(cervical, 'T1S', { T1S: 21.04 });
+  assert.equal(label.text, 'T1 slope 21.0\u00b0');
+  assert.deepEqual(label.anchor, [10 + (10 - 30) * 0.15, 20 + (20 - 24) * 0.15]);
+  assert.equal(label.side, -1);
+  assert.equal(constructionLabel(cervical, 'T1S', {}), null, 'no T1S, no label');
+  assert.equal(constructionLabel(cervical, 'T1S', { T1S: null }), null);
+  assert.equal(constructionLabel({ ...cervical, t1_superior: null }, 'T1S', { T1S: 3 }), null, 'no T1 line, no label');
+});
+
+test('constructionLabel T4PA anchors at the hip-T4 midpoint and is null without a hip, a centroid or a value', () => {
+  const geometry = { ...fakeGeometry(), t4_centroid: [15, 50] };
+  assert.deepEqual(constructionLabel(geometry, 'T4PA', { T4PA: 7.25 }), { text: 'T4PA 7.3\u00b0', anchor: [15, 90], side: 1 });
+  assert.equal(constructionLabel({ ...geometry, hip_midpoint: null }, 'T4PA', { T4PA: 7 }), null);
+  assert.equal(constructionLabel({ ...geometry, t4_centroid: null }, 'T4PA', { T4PA: 7 }), null);
+  assert.equal(constructionLabel(geometry, 'T4PA', {}), null);
+});
+
+test('selecting T1S draws the T1 line and a dashed horizontal; selecting T4PA draws the hip-T4 and hip-S1 segments', () => {
+  const canvas = { width: 600, height: 600 };
+  const cervical = { region: 'cervical', anterior_side: 'left', t1_superior: [[10, 20], [30, 24]], vertebrae: {} };
+  const t1 = recordingContext();
+  drawDynamicLayer(t1.ctx, canvas, cervical, { selectedLevel: 'T1S', measurements: { T1S: 12 }, editing: false });
+  assert.ok(t1.calls.some(([n, a]) => n === 'moveTo' && a[0] === 10 && a[1] === 20));
+  assert.ok(t1.calls.some(([n, a]) => n === 'lineTo' && a[0] === 30 && a[1] === 24));
+  assert.ok(t1.calls.some(([n, a]) => n === 'setLineDash' && a[0].length === 2), 'the horizontal reference is dashed');
+  const t4 = recordingContext();
+  drawDynamicLayer(t4.ctx, canvas, { ...fakeGeometry(), t4_centroid: [15, 50] }, { selectedLevel: 'T4PA', measurements: { T4PA: 7 }, editing: false });
+  const moves = t4.calls.filter(([n]) => n === 'moveTo').map(([, a]) => a.join(','));
+  assert.ok(moves.filter((m) => m === '15,130').length >= 2, 'both segments start at the hip');
+  assert.ok(t4.calls.some(([n, a]) => n === 'lineTo' && a[0] === 15 && a[1] === 50), 'one runs to the T4 centroid');
+  const none = recordingContext();
+  assert.doesNotThrow(() => drawDynamicLayer(none.ctx, canvas, { ...fakeGeometry(), t4_centroid: null }, { selectedLevel: 'T4PA', measurements: { T4PA: 7 }, editing: false }));
+});
+
+test('outside edit mode the stage draws the T1 line in T1 orange and a T4 cross on every region, labelled when selected', () => {
+  const arm = Math.max(4, EDITOR_CANVAS.width / 150);
+  const has = (calls, name, [x, y]) => calls.some(([n, a]) => n === name && a[0] === x && a[1] === y);
+  const t1Style = `rgb(${LEVEL_RGB.T1.join(',')})`, t4Style = `rgb(${LEVEL_RGB.T4.join(',')})`;
+  const base = { t1_superior: [[10, 5], [40, 8]], t4_centroid: [25, 70] };
+  const regions = [{ ...fakeGeometry(), ...base }, { ...fakeGeometry(), ...base, region: 'full_spine' },
+    { region: 'cervical', anterior_side: 'left', vertebrae: {}, ...base }];
+  for (const geometry of regions) {
+    const rec = recordingContext();
+    drawDynamicLayer(rec.ctx, EDITOR_CANVAS, geometry, { selectedLevel: null, measurements: null, editing: false });
+    assert.ok(has(rec.calls, 'moveTo', [10, 5]) && has(rec.calls, 'lineTo', [40, 8]), `T1 line on ${geometry.region ?? 'lumbar'}`);
+    assert.ok(rec.painted.some(p => p.name === 'stroke' && p.strokeStyle === t1Style), 'in T1 orange');
+    assert.ok(has(rec.calls, 'moveTo', [25 - arm, 70]) && has(rec.calls, 'lineTo', [25 + arm, 70]), `T4 cross on ${geometry.region ?? 'lumbar'}`);
+    assert.ok(rec.painted.some(p => p.name === 'stroke' && p.strokeStyle === t4Style), 'in T4 colour');
+    assert.deepEqual(labelsOf(rec.calls), [], 'no label until selected');
+  }
+  const t1 = recordingContext();
+  drawDynamicLayer(t1.ctx, EDITOR_CANVAS, regions[0], { selectedLevel: 'T1S', measurements: { T1S: 5 }, editing: false });
+  assert.ok(labelsOf(t1.calls).includes('T1'));
+  const t4 = recordingContext();
+  drawDynamicLayer(t4.ctx, EDITOR_CANVAS, regions[0], { selectedLevel: 'T4PA', measurements: { T4PA: 5 }, editing: false });
+  assert.ok(labelsOf(t4.calls).includes('T4'));
+  const bare = recordingContext();
+  drawDynamicLayer(bare.ctx, EDITOR_CANVAS, { ...fakeGeometry(), t1_superior: null, t4_centroid: null }, { selectedLevel: null, measurements: null, editing: false });
+  assert.ok(!has(bare.calls, 'moveTo', [10, 5]), 'nothing drawn for absent fields');
+});

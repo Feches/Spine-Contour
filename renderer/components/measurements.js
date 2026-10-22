@@ -94,7 +94,7 @@ function discTable(study) {
 // clicking the sacrum's S1 row, or the sacrum on the image itself, highlights all
 // three as the overview), but a click on the PI/PT/SS row itself now selects its own
 // precise single-parameter construction.
-const ROW_LEVELS = { LL: 'L1', PI: 'PI', PT: 'PT', SS: 'SS', PILL: 'S1', L1PA: 'L1PA' };
+const ROW_LEVELS = { LL: 'L1', PI: 'PI', PT: 'PT', SS: 'SS', PILL: 'S1', L1PA: 'L1PA', T4PA: 'T4PA' };
 
 // Clicking the row that already owns the selection clears it. Without this a construction's
 // label plate has no way off the stage, and in edit mode it sits on the handles.
