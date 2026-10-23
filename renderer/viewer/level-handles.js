@@ -10,10 +10,27 @@
 // the geometry's own (read them, do not change them); `moveHandle` and `nudgeHandle` never mutate their
 // input and return a NEW geometry with new arrays along the changed path.
 
-import { LEVEL_CODES, MIN_RADIUS, kindOf, fitRim, synthesizeRim, placementSteps, fullName } from '../data/levels.js';
+import { LEVEL_CODES, MIN_RADIUS, kindOf, hasCentroid, fitRim, synthesizeRim, placementSteps, fullName } from '../data/levels.js';
 import { imageToClient } from './geometry.js';
 
 export const RIM_HANDLES = ['R0', 'R1', 'R2', 'R3'];
+
+// (2026-10-21, partial endplates, spec §4) Every handle of a kind in placement-step order, present or not: the chips of
+// a partial level list them all, the missing ones hollow. A head has no entry (its rim handles are RIM_HANDLES).
+// C7's list adds CENTROID fifth (`stepHandlesFor`).
+export const STEP_HANDLES = {
+  body: ['SA', 'SP', 'IA', 'IP'], c2: ['IA', 'IP', 'CENTROID'], endplate: ['SA', 'SP'], centroid: ['CENTROID'],
+};
+
+/**
+ * (2026-10-22, round 2, spec §12 N9) A level's handles in placement-step order: the kind's list (STEP_HANDLES), and a
+ * body that carries a centroid (C7) adds CENTROID. Null for a kind with no list (a head).
+ * @returns {string[]|null}
+ */
+export function stepHandlesFor(code) {
+  const names = STEP_HANDLES[kindOf(code)];
+  return names && hasCentroid(code) ? [...names, 'CENTROID'] : names ?? null;
+}
 
 /**
  * A handle's radius in CSS px at 1:1, from which it grows past 1:1 with the square root of the zoom (gate feedback G9,
@@ -65,7 +82,7 @@ function candidates(code, geometry) {
   const corner = name => ({ handle: name, point: geometry[SLOTS[name][0]]?.[SLOTS[name][1]], colorKey: name });
   const centroid = { handle: 'CENTROID', point: geometry.centroid, colorKey: 'level' };
   switch (kindOf(code)) {
-    case 'body': return ['SA', 'SP', 'IA', 'IP'].map(corner);
+    case 'body': return [...['SA', 'SP', 'IA', 'IP'].map(corner), ...(hasCentroid(code) ? [centroid] : [])];
     case 'c2': return [corner('IA'), corner('IP'), centroid];
     case 'endplate': return [corner('SA'), corner('SP')];
     case 'centroid': return [centroid];
@@ -93,14 +110,15 @@ export function handleAt(code, geometry, handle) {
 
 /**
  * (2026-10-20) The edit bar's chips for the selected placed level while no placement is in progress: one per
- * handle of that level in Tab order (`levelHandles`), labelled as the level's placement steps are (a body's SA SP
+ * placement step of the level's kind in Tab order (`STEP_HANDLES`; a missing point's chip is `placed: false`;
+ * 2026-10-22, the final review, M5), a head's one per rim point (`levelHandles`), labelled as the level's placement steps are (a body's SA SP
  * IA IP; C2's IA IP CENTROID; an endplate's ANT POST; CENTROID; a head's P1..P4, one per rim point), coloured as
  * the handle is (`colorKey`), the focused handle marked. The chips read the same whether the level was placed by
  * the model or by hand, which is the point: before, only a placement in progress showed its points in the bar.
  * Null while a placement is in progress (its own step chips show then), with nothing selected, or when the
  * selected level is hidden or unplaced. (2026-10-21) `aiming`: the focused chip is armed, so the next film click
  * places that point (levels.js aimHandle).
- * @returns {{code: string, chips: {handle: string, label: string, colorKey: string, focused: boolean, aiming: boolean}[]}|null}
+ * @returns {{code: string, chips: {handle: string, label: string, colorKey: string, focused: boolean, aiming: boolean, placed: boolean}[]}|null}
  */
 export function selectedLevelChips(editor) {
   if (!editor || editor.placing) return null;
@@ -108,10 +126,15 @@ export function selectedLevelChips(editor) {
   const entry = code ? editor.levels?.[code] : null;
   if (!entry?.visible || !entry.geometry) return null;
   const { steps } = placementSteps(code);
-  const chips = levelHandles(code, entry.geometry).map(({ handle, colorKey }, index) => {
-    const focused = editor.handle?.code === code && editor.handle.handle === handle;
-    return { handle, label: steps[index]?.label ?? handle, colorKey, focused, aiming: focused && Boolean(editor.aiming) };
-  });
+  const chip = (handle, colorKey, index, placed) => {
+    const focused = placed && editor.handle?.code === code && editor.handle.handle === handle;
+    return { handle, label: steps[index]?.label ?? handle, colorKey, focused, aiming: focused && Boolean(editor.aiming), placed };
+  };
+  // (2026-10-21, partial endplates, spec §4) One chip per step of the kind; a missing point's chip is `placed: false`.
+  const names = stepHandlesFor(code);
+  const chips = names
+    ? names.map((handle, index) => chip(handle, handle === 'CENTROID' ? 'level' : handle, index, handleAt(code, entry.geometry, handle) !== null))
+    : levelHandles(code, entry.geometry).map(({ handle, colorKey }, index) => chip(handle, colorKey, index, true));
   return chips.length > 0 ? { code, chips } : null;
 }
 
@@ -126,7 +149,14 @@ export function aimedStep(editor) {
   const { code, handle } = editor.handle;
   const entry = editor.levels?.[code];
   if (!entry?.visible || !entry.geometry) return null;
-  const index = levelHandles(code, entry.geometry).findIndex((entry) => entry.handle === handle);
+  // (2026-10-22, the final review, I1) A missing point is never named; the step's index comes from the kind's whole step
+  // list (STEP_HANDLES), since `levelHandles` lists existing points only and its index is shifted on a partial level.
+  // A head keeps the `levelHandles` index: its rim handles R0..R3 map to P1..P4 in order.
+  if (handleAt(code, entry.geometry, handle) === null) return null;
+  const names = stepHandlesFor(code);
+  const index = names
+    ? names.indexOf(handle)
+    : levelHandles(code, entry.geometry).findIndex((entry) => entry.handle === handle);
   if (index < 0) return null;
   const step = placementSteps(code).steps[index];
   const label = step?.label ?? handle;

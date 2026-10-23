@@ -2,7 +2,7 @@ import { segmentalColumns, segmentalEndplates } from '../data/segmental.js';
 import { CERVICAL_LEVELS } from '../data/cervical.js';
 import { LEVELS, FEMORAL_SIDES } from './geometry.js';
 import { applyWindow } from './window-level.js';
-import { LEVEL_CODES, kindOf, levelState, placementSteps, fitRim } from '../data/levels.js';
+import { LEVEL_CODES, kindOf, hasCentroid, levelState, placementSteps, fitRim } from '../data/levels.js';
 import { quadrilateral } from '../data/level-projection.js';
 import { levelHandles, handleRadiusImagePx, handleScale } from './level-handles.js';
 import { labelPlacement, plateOffset } from './level-labels.js';
@@ -33,11 +33,14 @@ export const BASE_OVERLAY_ALPHA = 116;
 
 // The levels the backend's mask paints. LEVEL_RGB also holds T1, T4 and S1 for the level editor's
 // outlines; the stored image has never coloured S1 and has no T1 or T4, and still does not.
-const MASK_LEVELS = ['C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'L1', 'L2', 'L3', 'L4', 'L5'];
+export const MASK_LEVELS = ['C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'L1', 'L2', 'L3', 'L4', 'L5'];
 
-export function buildLabelColorMap(labels) {
+// (2026-10-22, round 2, Task 17: the owner's report) `levels`, an array of codes, restricts the map to those levels
+// (the ones the study's geometry still holds); null colours every level, as before.
+export function buildLabelColorMap(labels, levels = null) {
   const map = {};
   for (const level of MASK_LEVELS) {
+    if (levels && !levels.includes(level)) continue;
     const id = labels?.[level];
     if (typeof id === 'number') map[id] = LEVEL_RGB[level];
   }
@@ -83,6 +86,22 @@ export async function loadStudyImages(predictResponse) {
   // `labels` ({ L1: 20, ... }) rides with `mask` so the label record can trace a level's outline from it later
   // (Task 12). The RGBA buffer read above is not kept: `mask` is the source and a film's buffer is 4 bytes a pixel.
   return { image, mask, overlayCanvas: scratch, width: image.width, height: image.height, labels: predictResponse.labels ?? null };
+}
+
+// The overlay canvas for a given set of level codes, rebuilt from the stored mask (null = every level). A new
+// canvas each call: the images object the screen caches is never changed in place.
+export function overlayCanvasFor(images, levels) {
+  if (!images?.mask) return images?.overlayCanvas ?? null;
+  const scratch = document.createElement('canvas');
+  scratch.width = images.width;
+  scratch.height = images.height;
+  const context = scratch.getContext('2d');
+  context.drawImage(images.mask, 0, 0);
+  const maskPixels = context.getImageData(0, 0, images.width, images.height).data;
+  const overlayPixels = buildOverlayPixels(maskPixels, null, buildLabelColorMap(images.labels, levels), BASE_OVERLAY_ALPHA);
+  context.clearRect(0, 0, images.width, images.height);
+  context.putImageData(new ImageData(overlayPixels, images.width, images.height), 0, 0);
+  return scratch;
 }
 
 // `image` is an ImageBitmap, except for a film shown from its decoded original (imagesFromRaw),
@@ -168,9 +187,10 @@ export function drawStaticLayer(ctx, canvas, images, opts) {
   } else {
     ctx.drawImage(images.image, 0, 0);
   }
-  if (opts.overlays && images.overlayCanvas && !opts.editing) {
+  const overlayCanvas = opts.overlayCanvas ?? images.overlayCanvas;
+  if (opts.overlays && overlayCanvas && !opts.editing) {
     ctx.globalAlpha = Math.max(0, Math.min(1, opts.overlayOpacity / 100));
-    ctx.drawImage(images.overlayCanvas, 0, 0);
+    ctx.drawImage(overlayCanvas, 0, 0);
     ctx.globalAlpha = 1;
   }
 }
@@ -261,6 +281,13 @@ export function constructionLabel(geometry, selectedLevel, measurements) {
     }
     return null;
   }
+  // (2026-10-22, spec P11) The T1 slope reads geometry.t1_superior only, so it labels on a cervical film, which has no
+  // S1: this branch sits ABOVE the S1 gate.
+  if (selectedLevel === 'T1S') {
+    const t1 = geometry.t1_superior;
+    if (!isPair(t1) || !Number.isFinite(measurements.T1S)) return null;
+    return { text: `T1 slope ${measurements.T1S.toFixed(1)}°`, ...beyondAnterior(t1[0], t1[1]) };
+  }
   const s1 = geometry.s1_superior;
   if (!s1) return null;
   const s1Mid = midpoint(s1[0], s1[1]);
@@ -282,11 +309,17 @@ export function constructionLabel(geometry, selectedLevel, measurements) {
   if (selectedLevel === 'L1PA') {
     return measurements.L1PA == null ? null : { text: `L1PA ${measurements.L1PA.toFixed(1)}°`, anchor: midpoint(hip, geometry.l1_center), side: 1 };
   }
+  // (2026-10-22, spec P11) T4 pelvic angle: the angle at the hip between the T4 centroid and the S1 midpoint.
+  if (selectedLevel === 'T4PA') {
+    const t4 = geometry.t4_centroid;
+    if (!isPoint(t4) || !isPoint(hip) || !Number.isFinite(measurements.T4PA)) return null;
+    return { text: `T4PA ${measurements.T4PA.toFixed(1)}°`, anchor: midpoint(hip, t4), side: 1 };
+  }
   if (LEVELS.includes(selectedLevel)) {
     const body = geometry.vertebrae?.[selectedLevel];
     const key = `${selectedLevel}-S1`;
     const value = measurements.LL?.[key];
-    if (!body || value == null) return null;
+    if (!body?.superior || value == null) return null; // (2026-10-22, the final review, M2) a body with no superior pair
     return { text: `LL ${key} ${value.toFixed(1)}°`, ...beyondAnterior(body.superior[0], body.superior[1]) };
   }
   return null;
@@ -343,6 +376,21 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
         const tick = Math.max(4, canvas.width / 150);
         for (const x of [foot[0], p[0]]) { ctx.beginPath(); ctx.moveTo(x, p[1] - tick); ctx.lineTo(x, p[1] + tick); ctx.stroke(); }
       }
+    } else if (selectedLevel === 'T1S') {
+      // (2026-10-22, spec P11) T1 slope: the T1 superior endplate against the HORIZONTAL, as SS is drawn. Reads
+      // t1_superior only (no S1 on a cervical film); the reference span is the S1-hip distance when both exist.
+      const t1 = geometry.t1_superior;
+      const t1Mid = midpoint(t1[0], t1[1]);
+      const s1 = geometry.s1_superior;
+      const hip = geometry.hip_midpoint;
+      const span = (isPair(s1) && isPoint(hip) ? Math.hypot(hip[0] - (s1[0][0] + s1[1][0]) / 2, hip[1] - (s1[0][1] + s1[1][1]) / 2) : 0)
+        || canvas.width / 6;
+      ctx.beginPath();
+      ctx.moveTo(...t1[0]);
+      ctx.lineTo(...t1[1]);
+      ctx.stroke();
+      const dir = t1[1][0] >= t1[0][0] ? -1 : 1;
+      strokeReference(ctx, t1Mid, [t1Mid[0] + dir * span, t1Mid[1]]);
     } else if (selectedLevel === 'S1') {
       const s1 = geometry.s1_superior;
       const s1Mid = midpoint(s1[0], s1[1]);
@@ -415,6 +463,18 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
       ctx.moveTo(...hip);
       ctx.lineTo(...s1Mid);
       ctx.stroke();
+    } else if (selectedLevel === 'T4PA') {
+      // (2026-10-22, spec P11) T4 pelvic angle: two rays from the hip, to the T4 centroid and to the S1 midpoint,
+      // as L1PA is drawn, never the lordosis branch below.
+      const hip = geometry.hip_midpoint;
+      const t4 = geometry.t4_centroid;
+      const s1Mid = midpoint(geometry.s1_superior[0], geometry.s1_superior[1]);
+      ctx.beginPath();
+      ctx.moveTo(...hip);
+      ctx.lineTo(...t4);
+      ctx.moveTo(...hip);
+      ctx.lineTo(...s1Mid);
+      ctx.stroke();
     } else if (LEVELS.includes(selectedLevel)) {
       // Explicit branch, not a catch-all `else`. The architecture contract's selectedLevel
       // section makes this a binding rule: anything switching on selectedLevel must handle
@@ -424,7 +484,7 @@ function drawSelectedMeasurement(ctx, canvas, geometry, selectedLevel, measureme
       // all handled above; this branch is reached only for an actual vertebral level.
       const body = geometry.vertebrae?.[selectedLevel];
       const s1 = geometry.s1_superior;
-      if (body) {
+      if (body?.superior) { // (2026-10-22, the final review, M2) no superior pair, no LL line
         ctx.beginPath();
         ctx.moveTo(...body.superior[0]);
         ctx.lineTo(...body.superior[1]);
@@ -497,12 +557,19 @@ export function colorFor(colorKey, code) {
 function shapeParts(code, geometry, pixelRatio) {
   if (!geometry) return [];
   switch (kindOf(code)) {
-    case 'body':
-      return isPair(geometry.superior) && isPair(geometry.inferior)
-        ? [{ line: quadrilateral(geometry), closed: true, area: true }] : [];
-    case 'c2':
-      return isPair(geometry.inferior) && isPoint(geometry.centroid)
-        ? [{ line: geometry.inferior }, { arc: geometry.centroid, radius: C2_CENTROID_RADIUS_PX * pixelRatio, area: true, dot: true }] : [];
+    case 'body': // (2026-10-21, partial endplates, spec §5) both pairs: the quadrilateral; one: that line alone
+      // (2026-10-22, round 2, spec §12 N9) C7's optional centroid is a dot beside the outline, or alone
+      return [
+        ...(isPair(geometry.superior) && isPair(geometry.inferior) ? [{ line: quadrilateral(geometry), closed: true, area: true }]
+          : isPair(geometry.superior) ? [{ line: geometry.superior }]
+            : isPair(geometry.inferior) ? [{ line: geometry.inferior }] : []),
+        ...(hasCentroid(code) && isPoint(geometry.centroid) ? [{ arc: geometry.centroid, radius: C2_CENTROID_RADIUS_PX * pixelRatio, area: true, dot: true }] : []),
+      ];
+    case 'c2': // (2026-10-21, partial endplates, spec §5) its line and/or its dot, whichever exists
+      return [
+        ...(isPair(geometry.inferior) ? [{ line: geometry.inferior }] : []),
+        ...(isPoint(geometry.centroid) ? [{ arc: geometry.centroid, radius: C2_CENTROID_RADIUS_PX * pixelRatio, area: true, dot: true }] : []),
+      ];
     case 'endplate':
       return isPair(geometry.superior) ? [{ line: geometry.superior }] : [];
     case 'centroid':
@@ -749,7 +816,7 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
       : LEVEL_RGB[level] ? `rgb(${LEVEL_RGB[level].join(',')})` : STAGE_LINE_COLOR;
     ctx.lineWidth = selected ? lineWidth * 1.6 : lineWidth;
     ctx.beginPath();
-    const outline = body.quadrilateral ?? body.inferior;
+    const outline = body.quadrilateral ?? body.inferior ?? body.superior; // (2026-10-21, partial endplates, spec §5)
     if (!outline) continue;
     outline.forEach((point, index) => (index ? ctx.lineTo(...point) : ctx.moveTo(...point)));
     if (body.quadrilateral) ctx.closePath();
@@ -765,6 +832,19 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
     ctx.lineTo(...geometry.s1_superior[1]);
     ctx.stroke();
     drawSelectedStageLabel(ctx, 'S1', geometry.s1_superior[0], selectedS1, canvas.width);
+  }
+  // (2026-10-22, spec P11/P12) The T1 superior endplate as a line in T1's colour at the S1 line's width, on every region
+  // (a cervical film has no S1 line but has this one), labelled while the T1 slope is selected.
+  if (isPair(geometry.t1_superior)) {
+    const t1 = geometry.t1_superior;
+    const selectedT1 = selectedLevel === 'T1S';
+    ctx.strokeStyle = `rgb(${LEVEL_RGB.T1.join(',')})`;
+    ctx.lineWidth = selectedT1 ? lineWidth * 1.6 : lineWidth;
+    ctx.beginPath();
+    ctx.moveTo(...t1[0]);
+    ctx.lineTo(...t1[1]);
+    ctx.stroke();
+    drawSelectedStageLabel(ctx, 'T1', t1[0], selectedT1, canvas.width);
   }
   // A centroid cross in the level's colour: C7's on a full-spine film (the C7–S1 plumb's origin, labelled while
   // GLOBAL_SVA is selected) and, since gate feedback G11 (2026-10-16, decision D24), C2's on a cervical or full-spine
@@ -782,6 +862,8 @@ export function drawDynamicLayer(ctx, canvas, geometry, opts) {
   };
   if (geometry.region === 'full_spine') drawCentroidCross(geometry.c7_centroid, 'C7', selectedLevel === 'GLOBAL_SVA');
   if (['cervical', 'full_spine'].includes(geometry.region)) drawCentroidCross(geometry.c2_centroid, 'C2', selectedLevel === 'C2C7_SVA');
+  // (2026-10-22, spec P11) T4's centroid cross, on every region, labelled while the T4 pelvic angle is selected.
+  drawCentroidCross(geometry.t4_centroid, 'T4', selectedLevel === 'T4PA');
 
   // Ruling R28, as in drawLevelEditor: past 1:1 the hip line, its dash and the markers keep their image-pixel size
   // and magnify with the film instead of shrinking under one image pixel; below 1:1 they hold their screen size.

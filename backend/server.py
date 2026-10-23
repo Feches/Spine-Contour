@@ -25,6 +25,7 @@ try:
     from .calibration import calibration_from_payload, learn_profile, validate_profile
     from .cervical_measurements import cervical_measurements_from_geometry
     from .global_sva_measurements import global_sva_measurements_from_geometry
+    from .thoracic_measurements import thoracic_measurements
     from .models import MODEL_CHOICES, VERTEBRA_LABELS, spinopelvic_prediction
     from .utils import (
         spinopelvic_measurements_from_geometry,
@@ -39,6 +40,7 @@ except ImportError:  # Support `uvicorn server:app` from backend/.
     from calibration import calibration_from_payload, learn_profile, validate_profile
     from cervical_measurements import cervical_measurements_from_geometry
     from global_sva_measurements import global_sva_measurements_from_geometry
+    from thoracic_measurements import thoracic_measurements
     from models import MODEL_CHOICES, VERTEBRA_LABELS, spinopelvic_prediction
     from utils import (
         spinopelvic_measurements_from_geometry,
@@ -402,8 +404,18 @@ def _analyze(payload, modality, body_part, view, laterality,
         analysis["geometry"]["region"] = body_part
         analysis["measurements"]["region"] = body_part
     runtime.report("complete", "Measurements ready")
+    # No prediction places T1 or T4; the keys are present, null, until a person places them.
+    analysis = _with_thoracic({}, analysis)
     return {**encoded, **analysis, "qc": qc, "labels": {} if landmark_only else VERTEBRA_LABELS,
             "calibration": image_calibration}
+
+
+def _with_thoracic(request: dict, result: dict) -> dict:
+    """Add T1S, T4PA and the two echoed points to a measured result, in place."""
+    thoracic = thoracic_measurements(request, result["geometry"])
+    result["measurements"].update(thoracic["measurements"])
+    result["geometry"].update(thoracic["geometry"])
+    return result
 
 
 @app.post("/measure", summary="Recalculate measurements from corrected landmarks")
@@ -412,22 +424,23 @@ async def measure(geometry: dict[str, object]) -> dict[str, object]:
 
     try:
         if geometry.get("region") == "cervical":
-            return await run_in_threadpool(cervical_measurements_from_geometry, geometry)
-        if geometry.get("region") == "full_spine":
-            return await run_in_threadpool(global_sva_measurements_from_geometry, geometry)
-        if geometry.get("region") not in (None, "lumbar"):
+            result = await run_in_threadpool(cervical_measurements_from_geometry, geometry)
+        elif geometry.get("region") == "full_spine":
+            result = await run_in_threadpool(global_sva_measurements_from_geometry, geometry)
+        elif geometry.get("region") not in (None, "lumbar"):
             raise ValueError("Unknown geometry region; available: lumbar, cervical, full_spine")
-        result = await run_in_threadpool(
-            spinopelvic_measurements_from_geometry,
-            geometry.get("vertebrae"),
-            geometry.get("s1_superior"),
-            geometry.get("femoral_circles"),
-            allow_empty=True,
-        )
-        if geometry.get("region") == "lumbar":
-            result["geometry"]["region"] = "lumbar"
-            result["measurements"]["region"] = "lumbar"
-        return result
+        else:
+            result = await run_in_threadpool(
+                spinopelvic_measurements_from_geometry,
+                geometry.get("vertebrae"),
+                geometry.get("s1_superior"),
+                geometry.get("femoral_circles"),
+                allow_empty=True,
+            )
+            if geometry.get("region") == "lumbar":
+                result["geometry"]["region"] = "lumbar"
+                result["measurements"]["region"] = "lumbar"
+        return _with_thoracic(geometry, result)
     except (AttributeError, TypeError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 

@@ -210,12 +210,83 @@ test('validate nulls both when measurements are malformed even though the geomet
   assert.equal(study.geometry, null);
 });
 
+// ---------- T1's endplate and T4's centroid (2026-10-22) ----------
+
+const wholeStudy = (id, geometry, measurements) => ({ version: STORE_VERSION, studies: [{ ...identity(id), measurements, geometry }] });
+const cervicalGeom = () => ({
+  region: 'cervical', anterior_side: 'left', c2_centroid: null, vertebrae: { C3: { superior: [[0, 0], [1, 1]], inferior: null, quadrilateral: null } },
+  s1_superior: null, femoral_circles: [], hip_midpoint: null, l1_center: null,
+});
+const cervicalMeas = () => ({ region: 'cervical', C2C7_COBB: null, C2C7_SVA_PX: null, C2C7_SVA_MM: null });
+
+test('validate keeps t1_superior, t4_centroid, T1S and T4PA on a lumbar study', () => {
+  const geometry = { ...fullGeometry(), t1_superior: [[1, 2], [3, 4]], t4_centroid: [5, 6] };
+  const measurements = { PI: 50, PT: 20, SS: 30, LL: { 'L1-S1': 40 }, T4PA: 12, T1S: 30 };
+  const [study] = validate(wholeStudy('SP-1000', geometry, measurements));
+  assert.deepEqual(study.geometry, geometry);
+  assert.deepEqual(study.measurements, measurements);
+});
+
+test('validate keeps the two fields and T1S on cervical and full-spine studies', () => {
+  const cervical = { ...cervicalGeom(), t1_superior: [[1, 2], [3, 4]], t4_centroid: [5, 6] };
+  const [c] = validate(wholeStudy('SP-1000', cervical, { ...cervicalMeas(), T1S: 20 }));
+  assert.deepEqual(c.geometry, cervical);
+  assert.equal(c.measurements.T1S, 20);
+  const full = { ...fullGeometry(), region: 'full_spine', anterior_side: 'left', t1_superior: [[1, 2], [3, 4]], t4_centroid: [5, 6] };
+  const [f] = validate(wholeStudy('SP-1001', full, { region: 'full_spine', GLOBAL_SVA_PX: null, GLOBAL_SVA_MM: null, T1S: 20, T4PA: 11 }));
+  assert.deepEqual(f.geometry, full);
+  assert.equal(f.measurements.T4PA, 11);
+});
+
+test('a study stored before the two keys loads unchanged on every region', () => {
+  const lumbar = fullGeometry();
+  const [l] = validate(wholeStudy('SP-1000', lumbar, { PI: 50, PT: 20, SS: 30, LL: { 'L1-S1': 40 } }));
+  assert.deepEqual(l.geometry, lumbar);
+  const [c] = validate(wholeStudy('SP-1001', cervicalGeom(), cervicalMeas()));
+  assert.deepEqual(c.geometry, cervicalGeom());
+});
+
+test('a malformed t4_centroid nulls the geometry and the measurements; a T4PA without its centroid is nulled', (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const bad = { ...fullGeometry(), t4_centroid: [1] };
+  const [a] = validate(wholeStudy('SP-1000', bad, { PI: 50, PT: 20, SS: 30, LL: { 'L1-S1': 40 } }));
+  assert.equal(a.geometry, null);
+  assert.equal(a.measurements, null);
+  const [b] = validate(wholeStudy('SP-1001', { ...fullGeometry(), t4_centroid: null }, { PI: 50, PT: 20, SS: 30, LL: { 'L1-S1': 40 }, T4PA: 12 }));
+  assert.equal(b.measurements, null, 'T4PA with no T4 centroid has no landmark');
+  const [c] = validate(wholeStudy('SP-1002', { ...fullGeometry(), t1_superior: null }, { PI: 50, PT: 20, SS: 30, LL: { 'L1-S1': 40 }, T1S: 12 }));
+  assert.equal(c.measurements, null, 'T1S with no T1 endplate has no landmark');
+  const [d] = validate(wholeStudy('SP-1003', fullGeometry(), { PI: 50, PT: 20, SS: 30, LL: { 'L1-S1': 40 }, T4PA: 'x' }));
+  assert.equal(d.measurements, null, 'a non-finite T4PA');
+});
+
+test('a lumbar geometry holding nothing but a T1 endplate validates', () => {
+  const geometry = {
+    vertebrae: {}, s1_superior: null, l1_center: null, hip_midpoint: null, femoral_circles: [],
+    t1_superior: [[1, 2], [3, 4]],
+  };
+  const [study] = validate(wholeStudy('SP-1000', geometry, { PI: null, PT: null, SS: null, LL: { 'L1-S1': null } }));
+  assert.deepEqual(study.geometry, geometry);
+});
+
 test('validate accepts measurements with L1PA and the extra lordosis levels absent', () => {
   const raw = { version: STORE_VERSION, studies: [{ ...identity('SP-1000'),
     measurements: { PI: 50, PT: 20, SS: 30, LL: { 'L1-S1': 45 } }, geometry: fullGeometry() }] };
   const [study] = validate(raw);
   assert.deepEqual(study.measurements, raw.studies[0].measurements);
   assert.deepEqual(study.geometry, raw.studies[0].geometry);
+});
+
+test('validate accepts a lumbar body with one endplate and ties LL to that body\'s superior endplate', (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const geometry = fullGeometry();
+  geometry.vertebrae.L1 = { superior: null, inferior: [[10, 20], [20, 20]], quadrilateral: null };
+  geometry.l1_center = null;
+  const ok = { version: STORE_VERSION, studies: [{ ...identity('SP-1000'), measurements: { PI: 50, PT: 20, SS: 30, LL: { 'L1-S1': null, 'L2-S1': 40 } }, geometry }] };
+  assert.notEqual(validate(ok)[0].geometry, null);
+  const claims = { version: STORE_VERSION, studies: [{ ...identity('SP-1001'), measurements: { PI: 50, PT: 20, SS: 30, LL: { 'L1-S1': 45 } }, geometry }] };
+  assert.equal(validate(claims)[0].measurements, null, 'an L1–S1 value with no L1 superior endplate has no landmark');
+  assert.equal(warn.mock.callCount(), 1);
 });
 
 test('validate rejects a femoral circle with a non-positive radius and a quadrilateral with three points', (t) => {

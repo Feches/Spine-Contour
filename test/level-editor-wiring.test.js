@@ -21,9 +21,10 @@ import {
   configureLevelEditor, enterLevelEditor, exitNow, startPlace, placePoint, toggleLevelVisible, selectPlacingStep,
   restorePlacing, fitPlacing, writeReviewRecord, saveLevelEdits, hasStashedEditor, forgetLevelEditor, commitHandleMove,
   revertPlacedLevel, setLevelComment, discardLevelEdits, resetLevelsToModel, clearPlacedLevel, toggleLevelGroup,
-  aimHandle, cancelAim, placeAimedPoint, setFocusedHandle,
+  aimHandle, cancelAim, placeAimedPoint, setFocusedHandle, cancelPlace, resumePlace, removeFocusedPart,
 } from '../renderer/level-editor.js';
-import { projectionIsEmpty } from '../renderer/data/level-projection.js';
+import { projectionIsEmpty, projectGeometry } from '../renderer/data/level-projection.js';
+import { openEditor, setLevelGeometry, toggleVisible } from '../renderer/data/levels.js';
 import { deriveStatus } from '../renderer/data/status.js';
 // (Gate feedback G3, 2026-10-11; plan D15) The window / level belongs to the view: renderer/film-window.js.
 import { configureFilmWindow, openWindowPanel, closeWindowPanel } from '../renderer/film-window.js';
@@ -1236,4 +1237,366 @@ test('RESET TO PREDICTION leaves the comment and savedComment alone (spec §3.3)
     assert.equal(unsavedCount(editor), 1, 'the levels are back on the model; the comment remains the one change');
     assert.equal(commits.length, 1, 'the reset commits nothing');
   });
+});
+
+// (2026-10-21, partial endplates, spec §4) FINISH, resume and Delete through the real store.
+test('FINISH after SA and SP commits a C7 with its superior endplate alone, as a cervical film with its side from that pair', async () => {
+  const commits = [];
+  wire(commits);
+  await withStore(failedAutoFilm('SP-9560'), async () => {
+    await enterLevelEditor('SP-9560');
+    startPlace('C7');
+    placePoint([100, 300], IMAGE);
+    placePoint([140, 302], IMAGE);
+    fitPlacing(IMAGE);
+    await settle();
+    assert.equal(commits.length, 1);
+    const { geometry } = commits[0];
+    assert.equal(geometry.region, 'cervical');
+    assert.equal(geometry.anterior_side, 'left');
+    assert.deepEqual(geometry.vertebrae.C7, { superior: [[100, 300], [140, 302]], inferior: null, quadrilateral: null });
+    assert.equal(getState().levelEditor.placing, null);
+    assert.equal(levelState(getState().levelEditor.levels.C7, null), 'manual');
+    assert.deepEqual(studyOf('SP-9560').geometry.vertebrae.C7.inferior, null, 'the study took it through the queue');
+  });
+});
+
+test('Place… on a partial level resumes it at its first missing step, and the completing clicks commit the whole body', async () => {
+  const commits = [];
+  wire(commits);
+  await withStore(failedAutoFilm('SP-9561'), async () => {
+    await enterLevelEditor('SP-9561');
+    startPlace('C7');
+    placePoint([100, 300], IMAGE);
+    placePoint([140, 302], IMAGE);
+    fitPlacing(IMAGE);
+    await settle();
+    startPlace('C7');
+    assert.deepEqual(getState().levelEditor.placing, { code: 'C7', points: [[100, 300], [140, 302], null, null, null], current: 2, history: [] }, 'Place… resumes at the first missing step');
+    cancelPlace();
+    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null, centroid: null }, 'CANCEL left the level as it was');
+    resumePlace('C7', 3);
+    assert.equal(getState().levelEditor.placing.current, 3, 'a hollow chip chooses its step');
+    placePoint([142, 332], IMAGE);
+    placePoint([102, 330], IMAGE);
+    await settle();
+    assert.equal(commits.length, 2);
+    assert.deepEqual(commits[1].geometry.vertebrae.C7.quadrilateral, [[100, 300], [140, 302], [142, 332], [102, 330]]);
+    assert.equal(getState().levelEditor.placing, null);
+  });
+});
+
+test('Delete with a point focused removes its endplate and commits; the last part, a placement and a head are refused and commit nothing', async () => {
+  const commits = [];
+  wire(commits);
+  await withStore(failedAutoFilm('SP-9562'), async () => {
+    await enterLevelEditor('SP-9562');
+    placeBody('C7', [100, 300]);
+    await settle();
+    assert.equal(commits.length, 1);
+    setFocusedHandle({ code: 'C7', handle: 'IP' });
+    removeFocusedPart();
+    await settle();
+    assert.equal(commits.length, 2);
+    assert.deepEqual(commits[1].geometry.vertebrae.C7, { superior: [[100, 300], [140, 302]], inferior: null, quadrilateral: null });
+    assert.deepEqual(getState().levelEditor.handle, { code: 'C7', handle: 'SA' });
+    removeFocusedPart();
+    await settle();
+    assert.equal(commits.length, 2, 'the last part stays');
+    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null, centroid: null });
+    startPlace('C7');
+    setFocusedHandle({ code: 'C7', handle: 'SA' });
+    removeFocusedPart();
+    assert.equal(commits.length, 2, 'not while placing');
+    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null, centroid: null });
+  });
+});
+
+test('a partial level saves a record with nullable corners that validates, and Edit again reads it back intact', async () => {
+  const commits = [];
+  wire(commits);
+  const bridge = labelBridge();
+  bridge.spineContour.loadLabelRecord = async (name) => bridge.saved.find((entry) => entry.name === name)?.record ?? null;
+  await withBridge(bridge, () => withStore(failedAutoFilm('SP-9563'), async () => {
+    await enterLevelEditor('SP-9563');
+    startPlace('C7');
+    placePoint([100, 300], IMAGE);
+    placePoint([140, 302], IMAGE);
+    fitPlacing(IMAGE);
+    await settle();
+    await saveLevelEdits();
+    assert.equal(bridge.saved.length, 1);
+    const { record } = bridge.saved[0];
+    assert.deepEqual(record.levels.C7.corners, { sa: [100, 300], sp: [140, 302], ia: null, ip: null });
+    assert.deepEqual(validateAgainst(SCHEMA, record).errors, []);
+    exitNow();
+    await enterLevelEditor('SP-9563');
+    assert.deepEqual(getState().levelEditor.levels.C7.geometry, { superior: [[100, 300], [140, 302]], inferior: null, centroid: null });
+    assert.equal(unsavedCount(getState().levelEditor), 0);
+  }));
+});
+
+// ---------- Task 16 (2026-10-22, round 2: the owner's report) ----------
+// The editor's view wins on entry and after a save: a level the record hides that the study still carries is
+// projected out by one commit.
+
+const FILM_FIELDS = { image_width: IMAGE.width, image_height: IMAGE.height, source_sha256: SHA, coordinate_space: 'original_image', anterior_side: 'left' };
+const fullBody = (x, y) => ({ superior: [[x, y], [x + 40, y + 2]], inferior: [[x + 2, y + 30], [x + 42, y + 32]] });
+
+// A model full-spine film (not hand-placed) holding C3, C4 and L3, and the editor it opens as, with `hide` unchecked.
+function modelFullSpine(id, patch = {}) {
+  const base = { ...newStudy({ id, fileName: `${id}_full_spine.png`, filePath: null }), geometry: { ...FILM_FIELDS, region: 'full_spine' } };
+  let editor = openEditor({ study: base, region: 'full_spine', modelGeometry: null, saved: null });
+  for (const [code, geometry] of [['C3', fullBody(100, 60)], ['C4', fullBody(100, 110)], ['L3', fullBody(100, 300)]]) {
+    editor = setLevelGeometry(editor, code, geometry);
+  }
+  const geometry = projectGeometry(editor, base);
+  const study = {
+    ...base, predictionId: `prediction-${id}`, measurements: {}, geometry, qc: { models: { vertebrae: 'hrnet' } },
+    labelFile: null, ...patch,
+  };
+  return { study, geometry, editor };
+}
+
+function recordHiding(study, editor, codes) {
+  let hidden = editor;
+  for (const code of codes) hidden = toggleVisible(hidden, code);
+  return toLabelRecord({
+    editor: hidden, study, image: { file: 'x', sha256: SHA, width: IMAGE.width, height: IMAGE.height },
+    model: { name: 'hrnet', version: null }, savedAt: '2026-10-22T07:11:00.000Z',
+  });
+}
+
+test('Task 16: Edit on a film whose record hides C3 while the study carries it commits one projection without C3', async () => {
+  const { study: base, geometry, editor } = modelFullSpine('SP-9570');
+  const study = { ...base, labelFile: 'full_9570.label.json' };
+  const record = recordHiding(study, editor, ['C3']);
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(geometry) });
+  const bridge = labelBridge();
+  bridge.spineContour.loadLabelRecord = async () => structuredClone(record);
+  await withBridge(bridge, () => withStore(study, async () => {
+    assert.ok(studyOf(study.id).geometry.vertebrae.C3, 'precondition: the study carries C3');
+    await enterLevelEditor(study.id);
+    await settle();
+    assert.equal(commits.length, 1);
+    assert.equal(commits[0].geometry.vertebrae.C3, undefined);
+    assert.ok(commits[0].geometry.vertebrae.C4, 'the rest stays');
+    const now = studyOf(study.id);
+    assert.equal(now.geometry.vertebrae.C3, undefined, 'the study follows');
+    assert.ok(now.geometry.vertebrae.C4);
+    assert.equal(unsavedCount(getState().levelEditor), 0, 'a level hidden in the record and the editor is no unsaved change');
+  }));
+});
+
+test('Task 16: Edit on a film whose record agrees with the study commits nothing', async () => {
+  const { study: base, geometry, editor } = modelFullSpine('SP-9571');
+  const study = { ...base, labelFile: 'full_9571.label.json' };
+  const record = recordHiding(study, editor, []);
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(geometry) });
+  const bridge = labelBridge();
+  bridge.spineContour.loadLabelRecord = async () => structuredClone(record);
+  await withBridge(bridge, () => withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    await settle();
+    assert.equal(commits.length, 0);
+  }));
+});
+
+test('Task 16: a failed uncheck leaves the study with C3, and Save edits re-commits it out', async () => {
+  const { study, geometry } = modelFullSpine('SP-9572', { reviewedAt: null });
+  const commits = [];
+  let calls = 0;
+  const measureWith = async (request) => {
+    calls += 1;
+    if (calls === 1) throw new Error('boom');
+    return { measurements: {}, geometry: structuredClone(request) };
+  };
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(geometry), measureWith, imageInfo: maskedImage });
+  await withBridge(labelBridge(), () => withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    assert.equal(commits.length, 0, 'nothing to heal on entry');
+    toggleLevelVisible('C3');
+    await settle();
+    assert.equal(commits.length, 1);
+    assert.ok(studyOf(study.id).geometry.vertebrae.C3, 'the failed /measure left the study as it was');
+    await saveLevelEdits();
+    await settle();
+    assert.equal(commits.length, 2, 'the save re-commits');
+    assert.equal(studyOf(study.id).geometry.vertebrae.C3, undefined);
+    assert.ok(studyOf(study.id).geometry.vertebrae.C4);
+  }));
+});
+
+// Task 16, fix round: the save heal needs an open editor and no run in flight; the stashed path heals on re-entry.
+test('Task 16: Save edits with the editor closed during the write commits nothing extra', async () => {
+  const { study, geometry } = modelFullSpine('SP-9573', { reviewedAt: null });
+  const commits = [];
+  let calls = 0;
+  const measureWith = async (request) => {
+    calls += 1;
+    if (calls === 1) throw new Error('boom');
+    return { measurements: {}, geometry: structuredClone(request) };
+  };
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(geometry), measureWith, imageInfo: maskedImage });
+  const bridge = labelBridge(() => exitNow());
+  await withBridge(bridge, () => withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    toggleLevelVisible('C3');
+    await settle();
+    assert.equal(commits.length, 1);
+    await saveLevelEdits();
+    await settle();
+    assert.equal(bridge.saved.length, 1, 'the record was written');
+    assert.equal(commits.length, 1, 'no heal without an open editor');
+  }));
+});
+
+test('Task 16: a stashed editor that disagrees with the study heals once on re-entry', async () => {
+  const { study, geometry } = modelFullSpine('SP-9574', { reviewedAt: null });
+  const commits = [];
+  let calls = 0;
+  const measureWith = async (request) => {
+    calls += 1;
+    if (calls === 1) throw new Error('boom');
+    return { measurements: {}, geometry: structuredClone(request) };
+  };
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(geometry), measureWith });
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    toggleLevelVisible('C3');
+    await settle();
+    assert.ok(studyOf(study.id).geometry.vertebrae.C3, 'precondition: the failed uncheck left C3');
+    setState({ openId: null, editing: false, levelEditor: null });
+    assert.equal(hasStashedEditor(study.id), true, 'precondition: stashed');
+    setState({ openId: study.id });
+    await enterLevelEditor(study.id);
+    await settle();
+    assert.equal(commits.length, 2, 'one heal commit');
+    assert.equal(studyOf(study.id).geometry.vertebrae.C3, undefined);
+  });
+});
+
+// (Fix wave 2, I1) One study circle the record calls Head 2: the heads agree by count, so entry heals nothing and the
+// Reviewed mark survives.
+test('Fix wave 2: Edit on a film holding one circle the record calls Head 2 commits nothing and keeps reviewedAt', async () => {
+  const id = 'SP-9575';
+  const base = { ...newStudy({ id, fileName: `${id}_full_spine.png`, filePath: null }), geometry: { ...FILM_FIELDS, region: 'full_spine' } };
+  let editor = openEditor({ study: base, region: 'full_spine', modelGeometry: null, saved: null });
+  for (const [code, geometry] of [['C3', fullBody(100, 60)], ['L3', fullBody(100, 300)], ['FH2', { center: [140, 400], radius: 20, rim: null }]]) {
+    editor = setLevelGeometry(editor, code, geometry);
+  }
+  const geometry = projectGeometry(editor, base);
+  assert.equal(geometry.femoral_circles.length, 1, 'precondition: one circle');
+  const study = {
+    ...base, predictionId: `prediction-${id}`, measurements: {}, geometry, qc: { models: { vertebrae: 'hrnet' } },
+    labelFile: 'full_9575.label.json', reviewedAt: '2026-10-22T06:00:00.000Z',
+  };
+  const record = recordHiding(study, editor, ['FH1']);
+  assert.equal(record.femoral_heads.find(h => h.id === 1).state, 'not_visible', 'precondition: the record hides Head 1');
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(geometry) });
+  const bridge = labelBridge();
+  bridge.spineContour.loadLabelRecord = async () => structuredClone(record);
+  await withBridge(bridge, () => withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    await settle();
+    assert.equal(commits.length, 0, 'no heal');
+    assert.equal(studyOf(study.id).reviewedAt, study.reviewedAt, 'the Reviewed mark survives');
+    assert.equal(unsavedCount(getState().levelEditor), 0);
+  }));
+});
+
+// (2026-10-22, T4 pelvic angle and T1 slope) T1 projects on every region: two clicks on a lumbar model film commit a
+// geometry that carries the pair (anterior then posterior) and no T4 centroid.
+test('placing T1 by two clicks on a lumbar model film commits t1_superior and a null t4_centroid', async () => {
+  const study = segmentedFilm('SP-9576', { reviewedAt: null });
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(study.geometry) });
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    await settle();
+    const before = commits.length;
+    startPlace('T1');
+    placePoint([100, 40], IMAGE);
+    placePoint([160, 44], IMAGE);
+    await settle();
+    assert.ok(commits.length > before, 'the T1 placement commits');
+    const { geometry } = commits.at(-1);
+    assert.deepEqual(geometry.t1_superior, [[100, 40], [160, 44]]);
+    assert.equal(geometry.t4_centroid, null);
+    assert.equal(geometry.region, 'lumbar');
+  });
+});
+
+// (Closing wave, F1) A hand-placed film holding only T4 is not "cleared": the point commits.
+test('placing T4 by one click on a hand-placed film commits t4_centroid and clears nothing (F1)', async () => {
+  const study = newStudy({ id: 'SP-9577', fileName: 'SP-9577_lumbar.png', filePath: null });
+  const commits = [];
+  const clears = [];
+  wire(commits, NO_FILM, { clears });
+  await withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    startPlace('T4');
+    placePoint([100, 40], IMAGE);
+    await settle();
+    assert.equal(clears.length, 0, 'not routed to clearResult');
+    assert.ok(commits.length >= 1);
+    assert.deepEqual(commits.at(-1).geometry.t4_centroid, [100, 40]);
+    assert.deepEqual(studyOf(study.id).geometry.t4_centroid, [100, 40]);
+  });
+});
+
+// (Closing wave, F3) A record that places T4 while the study lacks it heals on entry, and clears the Reviewed mark.
+test('Edit on a lumbar film whose record places T4 while the study lacks it commits t4_centroid once (F3)', async () => {
+  const base = segmentedFilm('SP-9578', { reviewedAt: MARKED_AT, labelFile: 'lumbar_9578.label.json' });
+  let editor = openEditor({ study: base, region: 'full_spine', modelGeometry: base.geometry, saved: null });
+  editor = setLevelGeometry(editor, 'T4', { centroid: [100, 40] });
+  const record = toLabelRecord({
+    editor, study: base, image: { file: 'x', sha256: SHA, width: IMAGE.width, height: IMAGE.height },
+    model: { name: 'unet', version: null }, savedAt: '2026-10-22T07:11:00.000Z',
+  });
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(base.geometry) });
+  const bridge = labelBridge();
+  bridge.spineContour.loadLabelRecord = async () => structuredClone(record);
+  await withBridge(bridge, () => withStore(base, async () => {
+    assert.equal(studyOf(base.id).geometry.t4_centroid, undefined, 'precondition');
+    await enterLevelEditor(base.id);
+    await settle();
+    assert.equal(commits.length, 1);
+    assert.deepEqual(commits[0].geometry.t4_centroid, [100, 40]);
+    assert.equal(studyOf(base.id).reviewedAt, null);
+  }));
+});
+
+// (Closing wave 2) A C7 the record holds as a centroid only is stored as a null-pair vertebrae.C7 plus c7_centroid:
+// presence is by what the study holds, so entry heals nothing and the Reviewed mark survives.
+test('Closing wave 2: Edit on a film whose C7 is a centroid only commits nothing and keeps reviewedAt', async () => {
+  const id = 'SP-9579';
+  const base = { ...newStudy({ id, fileName: `${id}_full_spine.png`, filePath: null }), geometry: { ...FILM_FIELDS, region: 'full_spine' } };
+  let editor = openEditor({ study: base, region: 'full_spine', modelGeometry: null, saved: null });
+  for (const [code, geometry] of [['C3', fullBody(100, 60)], ['C7', { superior: null, inferior: null, centroid: [120, 200] }], ['L3', fullBody(100, 300)]]) {
+    editor = setLevelGeometry(editor, code, geometry);
+  }
+  const geometry = projectGeometry(editor, base);
+  assert.deepEqual(geometry.vertebrae.C7, { superior: null, inferior: null, quadrilateral: null }, 'precondition: null pairs');
+  assert.deepEqual(geometry.c7_centroid, [120, 200], 'precondition: the centroid');
+  const study = {
+    ...base, predictionId: `prediction-${id}`, measurements: {}, geometry, qc: { models: { vertebrae: 'hrnet' } },
+    labelFile: 'full_9579.label.json', reviewedAt: '2026-10-22T06:00:00.000Z',
+  };
+  const record = recordHiding(study, editor, []);
+  const commits = [];
+  wire(commits, NO_FILM, { getPrediction: snapshotOf(geometry) });
+  const bridge = labelBridge();
+  bridge.spineContour.loadLabelRecord = async () => structuredClone(record);
+  await withBridge(bridge, () => withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    await settle();
+    assert.equal(getState().levelEditor.levels.C7.geometry.centroid != null, true, 'precondition: the editor holds C7');
+    assert.equal(commits.length, 0, 'no heal');
+    assert.equal(studyOf(study.id).reviewedAt, study.reviewedAt, 'the Reviewed mark survives');
+  }));
 });

@@ -17,6 +17,9 @@ const SAGITTAL_DEFS = [
   // labelled L1 PELVIC ANGLE draw the lordosis line and label it `LL L1-S1`. See the
   // architecture contract's selectedLevel section.
   { key: 'L1PA', label: 'L1 PELVIC ANGLE', levels: ['L1PA'] },
+  // (2026-10-22, spec P10) T4 pelvic angle, like L1PA, has a construction of its own (hip to the T4 centroid and
+  // to the S1 midpoint), so it selects itself and never a vertebral level.
+  { key: 'T4PA', label: 'T4 PELVIC ANGLE', levels: ['T4PA'] },
 ];
 
 // A row is absent when its value is missing or not a finite number. This is what lets a

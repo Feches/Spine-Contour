@@ -144,6 +144,23 @@ test('vertebraAt returns S1 near the S1 superior segment and null elsewhere', ()
   assert.equal(vertebraAt(geometry, [5000, 5000]), null);
 });
 
+test('vertebraAt hits a body with no quadrilateral within the radius of its one endplate', () => {
+  const geometry = { region: 'lumbar', vertebrae: { L2: { superior: [[0, 20], [40, 20]], inferior: null, quadrilateral: null } }, s1_superior: null };
+  assert.equal(vertebraAt(geometry, [20, 25]), 'L2');
+  assert.equal(vertebraAt(geometry, [20, 60]), null);
+});
+
+test('vertebraAt: a whole body is hit by its polygon alone; a bad endplate pair is skipped, never thrown on', () => {
+  const quad = [[0, 20], [40, 20], [40, 50], [0, 50]];
+  const whole = { region: 'lumbar', vertebrae: { L2: { superior: [[0, 20], [40, 20]], inferior: [[0, 50], [40, 50]], quadrilateral: quad } }, s1_superior: null };
+  assert.equal(vertebraAt(whole, [20, 15]), null, '5 px above the superior line, outside the polygon');
+  assert.equal(vertebraAt(whole, [20, 30]), 'L2');
+  const mixed = { region: 'lumbar', vertebrae: { L3: { superior: [[1, 2]], inferior: [[0, 50], [40, 50]], quadrilateral: null } }, s1_superior: null };
+  assert.equal(vertebraAt(mixed, [20, 55]), 'L3', 'the good inferior is used');
+  const bad = { region: 'lumbar', vertebrae: { L3: { superior: 'bad', inferior: null, quadrilateral: null } }, s1_superior: null };
+  assert.equal(vertebraAt(bad, [20, 55]), null);
+});
+
 test('arrowKeyDelta maps arrow keys to 1px deltas', () => {
   assert.deepEqual(arrowKeyDelta('ArrowUp', false), { dx: 0, dy: -1 });
   assert.deepEqual(arrowKeyDelta('ArrowDown', false), { dx: 0, dy: 1 });

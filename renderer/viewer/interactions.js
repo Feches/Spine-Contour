@@ -113,6 +113,9 @@ function pointInPolygon(point, polygon) {
   return inside;
 }
 
+const isPoint = (p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]);
+const isPair = (pair) => Array.isArray(pair) && pair.length === 2 && isPoint(pair[0]) && isPoint(pair[1]);
+
 function distanceToSegment(point, a, b) {
   const [px, py] = point; const [ax, ay] = a; const [bx, by] = b;
   const dx = bx - ax; const dy = by - ay;
@@ -127,7 +130,14 @@ export function vertebraAt(geometry, point, radius = 20) {
   if (geometry.region === 'cervical') return null; // alignment constructions are selected by measurement row
   for (const level of ['L1', 'L2', 'L3', 'L4', 'L5']) {
     const body = geometry.vertebrae?.[level];
-    if (body && pointInPolygon(point, body.quadrilateral)) return level;
+    if (!body) continue;
+    if (body.quadrilateral) {
+      if (pointInPolygon(point, body.quadrilateral)) return level;
+      continue; // a whole body is hit by its polygon alone
+    }
+    // (2026-10-21, partial endplates, spec §5) a body without a quadrilateral is hit near its one endplate line
+    const plate = [body.superior, body.inferior].find(isPair);
+    if (plate && distanceToSegment(point, plate[0], plate[1]) <= radius) return level;
   }
   if (!geometry.s1_superior) return null;
   const [sa, sp] = geometry.s1_superior;

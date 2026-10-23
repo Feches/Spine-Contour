@@ -8,8 +8,8 @@
 // Points are [x, y] in pixels of the stored image, origin top-left.
 //
 /** @typedef {[number, number]} Pt */
-/** @typedef {{superior: [Pt, Pt], inferior: [Pt, Pt]}} BodyGeometry   superior = [SA, SP], inferior = [IA, IP] */
-/** @typedef {{inferior: [Pt, Pt], centroid: Pt}} C2Geometry */
+/** @typedef {{superior: [Pt, Pt]|null, inferior: [Pt, Pt]|null}} BodyGeometry   superior = [SA, SP], inferior = [IA, IP]; (2026-10-21, partial endplates, spec §3) either may be null, never absent */
+/** @typedef {{inferior: [Pt, Pt]|null, centroid: Pt|null}} C2Geometry   (2026-10-21) either part may be null, never absent */
 /** @typedef {{superior: [Pt, Pt]}} EndplateGeometry   T1 and S1 */
 /** @typedef {{centroid: Pt}} CentroidGeometry   T4 */
 /** @typedef {{center: Pt, radius: number, rim: Pt[]|null}} CircleGeometry   rim: 2-4 points, null for unedited model output */
@@ -80,6 +80,78 @@ const KINDS = new Map(LEVEL_CODES.map(code => [code,
 export function kindOf(code) { return KINDS.get(code); }
 
 export function groupOf(code) { return GROUP_OF.get(code); }
+
+// (2026-10-21, partial endplates, spec §3) The parts of each kind and the placement steps that set them. A part is
+// whole or null: a body's superior pair and inferior pair, C2's inferior pair and centroid.
+const PART_STEPS = new Map([
+  ['body', [['superior', [0, 1]], ['inferior', [2, 3]]]],
+  ['c2', [['inferior', [0, 1]], ['centroid', [2]]]],
+  ['endplate', [['superior', [0, 1]]]],
+  ['centroid', [['centroid', [0]]]],
+  ['circle', []],
+]);
+// (2026-10-22, round 2, spec §12 N9) The bodies that carry an optional centroid part as a third part: C7 only. It stays
+// kind 'body'; the sites that enumerate a body's parts, steps, handles or keys consult the code.
+export const CENTROID_BODIES = ['C7'];
+
+/** (2026-10-22, round 2, N9) Whether a level carries an optional centroid part beside its endplates (C7). */
+export function hasCentroid(code) { return CENTROID_BODIES.includes(code); }
+
+// The part table of a level: its kind's, with the centroid appended for a centroid body.
+const partTable = code => {
+  const parts = PART_STEPS.get(kindOf(code));
+  return parts && hasCentroid(code) ? [...parts, ['centroid', [parts.reduce((n, [, steps]) => n + steps.length, 0)]]] : parts;
+};
+const HANDLE_PARTS = { SA: 'superior', SP: 'superior', IA: 'inferior', IP: 'inferior', CENTROID: 'centroid' };
+
+/**
+ * (2026-10-21, partial endplates, spec §3) The parts of a kind, in placement order, with the steps that place each.
+ * A fresh array each call.
+ * @returns {{key: string, steps: number[]}[]}
+ */
+export function partsOf(code) {
+  return (partTable(code) ?? []).map(([key, steps]) => ({ key, steps: [...steps] }));
+}
+
+/** (2026-10-21, spec §3) The part a handle belongs to, or null for a rim handle or a handle the kind lacks (C2 has no SA). */
+export function partOfHandle(code, handle) {
+  const key = HANDLE_PARTS[handle];
+  return key && partsOf(code).some(part => part.key === key) ? key : null;
+}
+
+/** (2026-10-21, spec §3) The keys of the parts a placed level lacks; [] for a whole level, a circle and null geometry. */
+export function missingParts(code, geometry) {
+  if (!geometry) return [];
+  return partsOf(code).filter(part => geometry[part.key] == null).map(part => part.key);
+}
+
+/** (2026-10-21, spec §3) Whether a placed level lacks a part. */
+export function isPartial(code, geometry) { return missingParts(code, geometry).length > 0; }
+
+/**
+ * (2026-10-22, the final review, M4) Whether Place... resumes a level rather than starting it afresh: a visible,
+ * placed, partial body or C2. The panel's Place... and the wiring's startPlace share it.
+ */
+export function canResume(code, entry) {
+  return Boolean(entry?.visible && entry.geometry) && ['body', 'c2'].includes(kindOf(code)) && isPartial(code, entry.geometry);
+}
+
+// The first handle of each part, by kind.
+const PART_HANDLE = new Map([['body', { superior: 'SA', inferior: 'IA', centroid: 'CENTROID' }], ['c2', { inferior: 'IA', centroid: 'CENTROID' }],
+  ['endplate', { superior: 'SA' }], ['centroid', { centroid: 'CENTROID' }]]);
+
+/**
+ * (2026-10-21, spec §3) The handle a selected level focuses: the first handle of its first part that exists (R0 for a
+ * head). Defined here, not read from viewer/level-handles.js, because that file imports this one; a test pins that
+ * the two agree.
+ * @returns {string|null}
+ */
+export function firstHandle(code, geometry) {
+  const kind = kindOf(code);
+  if (kind === 'circle') return 'R0';
+  const part = geometry ? partsOf(code).find(({ key }) => geometry[key] != null) : null;
+  return part ? PART_HANDLE.get(kind)[part.key] : null;
+}
 
 const ROW_NAMES = new Map([['T1', 'T1 endplate'], ['T4', 'T4 centroid'], ['FH1', 'Head 1'], ['FH2', 'Head 2']]);
 const FULL_NAMES = new Map([['T1', 'T1 superior endplate'], ['T4', 'T4 centroid'],
@@ -161,7 +233,10 @@ const POINTS = {
   circle: [['center', g => g.center], ['radius', g => g.radius]],
 };
 
-const pointsOf = code => POINTS[kindOf(code)] ?? [];
+const pointsOf = code => {
+  const points = POINTS[kindOf(code)] ?? [];
+  return hasCentroid(code) ? [...points, ['centroid', g => g.centroid]] : points;   // (2026-10-22, N9) C7's fifth key
+};
 
 /**
  * The label record's geometry keys for a level, in record order (D18): a body 'sa', 'sp', 'ia', 'ip'; C2 'ia', 'ip',
@@ -175,14 +250,15 @@ export function pointKeys(code) {
  * The points of `geometry` that differ from `modelGeometry`, as record keys in pointKeys order (D18): each point (a
  * head's radius, a number) is compared by the test levelState uses, within the same eps, so for the geometry the
  * editor holds `levelState(...) === 'edited'` exactly when this is not empty (R38). A head compares its centre, then
- * its radius, never its rim: a rim-only change lists nothing. No model geometry: every key (a manual level). No
+ * its radius, never its rim: a rim-only change lists nothing. No model geometry: every key the geometry holds (a manual level). No
  * geometry: nothing. Pure; a fresh array each call.
  * @returns {string[]}
  */
 export function changedPoints(code, geometry, modelGeometry) {
   if (geometry == null) return [];
   const points = pointsOf(code);
-  if (modelGeometry == null) return points.map(([key]) => key);
+  // (2026-10-21, partial endplates) a manual level lists the points it holds: a part that is null lists nothing.
+  if (modelGeometry == null) return points.filter(([, at]) => at(geometry) != null).map(([key]) => key);
   return points.filter(([, at]) => !near(at(geometry), at(modelGeometry), SAME_EPS)).map(([key]) => key);
 }
 
@@ -212,6 +288,8 @@ function stepsFor(code) {
       step('SP', 'Click the superior-posterior corner (SP).', 'SP'),
       step('IA', 'Click the inferior-anterior corner (IA).', 'IA'),
       step('IP', 'Click the inferior-posterior corner (IP).', 'IP'),
+      // (2026-10-22, round 2, N9) C7's optional fifth step.
+      ...(hasCentroid(code) ? [step('CENTROID', `Click the centroid of the ${code} body.`, 'level')] : []),
     ];
     case 'c2': return [
       step('IA', 'Click the inferior-anterior corner of C2 (IA).', 'IA'),
@@ -234,8 +312,9 @@ function stepsFor(code) {
 }
 
 /**
- * What a placement needs: `need` clicks finish it; `fitFrom` is the fewest clicks that may be finished
- * early (a femoral head fits from 2 rim points; every other kind only at `need`).
+ * What a placement needs: `need` clicks finish it; `fitFrom` is the fewest clicks a femoral head may be fitted from
+ * (2 rim points; every other kind carries `need`). A body or C2 may also finish early, with one whole part (2 clicks
+ * for a body, 1 for C2: canFinishPlacing), which `fitFrom` does not describe.
  * @returns {{need: number, fitFrom: number, steps: {label: string, help: string, colorKey: string}[]}}
  */
 export function placementSteps(code) {
@@ -303,15 +382,23 @@ export function synthesizeRim(circle) {
  * @returns {LevelGeometry|null}
  */
 export function geometryFromPoints(code, points, imageSize) {
-  const p = points.map(copyPoint);
-  switch (kindOf(code)) {
-    case 'body': return { superior: [p[0], p[1]], inferior: [p[2], p[3]] };
-    case 'c2': return { inferior: [p[0], p[1]], centroid: p[2] };
-    case 'endplate': return { superior: [p[0], p[1]] };
-    case 'centroid': return { centroid: p[0] };
-    case 'circle': return fitRim(p, imageSize ? Math.hypot(imageSize.width, imageSize.height) : Infinity);
-    default: return null;
+  const kind = kindOf(code);
+  if (kind === 'circle') {
+    return fitRim(points.filter(Boolean).map(copyPoint), imageSize ? Math.hypot(imageSize.width, imageSize.height) : Infinity);
   }
+  const parts = partTable(code);
+  if (!parts) return null;
+  // (2026-10-21, partial endplates, spec §3) `points` is the slot array with nulls. Per part: every slot set -> written,
+  // every slot empty -> null, else (half a part) no geometry. A body or C2 may hold one part; an endplate or a centroid
+  // has one part and needs it whole. The canonical shape carries every key of the kind, the missing ones null.
+  const geometry = {};
+  for (const [key, steps] of parts) {
+    const slots = steps.map(step => points[step] ?? null);
+    if (slots.every(slot => slot === null)) geometry[key] = null;
+    else if (slots.some(slot => slot === null)) return null;
+    else geometry[key] = steps.length === 1 ? copyPoint(slots[0]) : slots.map(copyPoint);
+  }
+  return Object.values(geometry).some(value => value !== null) ? geometry : null;
 }
 
 // ---------- reading the study geometry ----------
@@ -319,9 +406,25 @@ export function geometryFromPoints(code, points, imageSize) {
 const isPoint = p => Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]);
 const isPair = pair => Array.isArray(pair) && pair.length === 2 && isPoint(pair[0]) && isPoint(pair[1]);
 
-function bodyFrom(vertebra) {
-  return isPair(vertebra?.superior) && isPair(vertebra?.inferior)
-    ? { superior: copyPair(vertebra.superior), inferior: copyPair(vertebra.inferior) } : null;
+// (2026-10-21, partial endplates, spec §3) One stored part: a copy when it is well formed, null when absent, and
+// undefined (reject the level) when it is present but malformed, such as half a pair.
+const partFrom = (value, valid, copy) => (value == null ? null : valid(value) ? copy(value) : undefined);
+
+// A body or C2 keeps whichever of its parts are whole; with no part at all it is no geometry. The shape is canonical:
+// every key present, a missing part null.
+function partialFrom(parts) {
+  const values = Object.values(parts);
+  return values.some(value => value === undefined) || values.every(value => value === null) ? null : parts;
+}
+
+function bodyFrom(vertebra, withCentroid = false) {
+  return partialFrom({
+    superior: partFrom(vertebra?.superior, isPair, copyPair),
+    inferior: partFrom(vertebra?.inferior, isPair, copyPair),
+    // (2026-10-22, round 2, N10) A centroid body's canonical shape carries the key; the study's c7_centroid is never
+    // read back as the part (it is the projection's derived mean), so it is null here.
+    ...(withCentroid ? { centroid: null } : {}),
+  });
 }
 
 function circleFrom(circle) {
@@ -332,21 +435,25 @@ function circleFrom(circle) {
 function levelFromGeometry(code, geometry) {
   switch (code) {
     case 'C2': {
-      const inferior = geometry.vertebrae?.C2?.inferior;
-      const centroid = geometry.c2_centroid;
-      return isPair(inferior) && isPoint(centroid)
-        ? { inferior: copyPair(inferior), centroid: copyPoint(centroid) } : null;
+      return partialFrom({
+        inferior: partFrom(geometry.vertebrae?.C2?.inferior, isPair, copyPair),
+        centroid: partFrom(geometry.c2_centroid, isPoint, copyPoint),
+      });
     }
     case 'S1': return isPair(geometry.s1_superior) ? { superior: copyPair(geometry.s1_superior) } : null;
+    // (2026-10-22, T4 pelvic angle and T1 slope) T1 and T4 live in the study as their own fields, never as a vertebra.
+    case 'T1': return isPair(geometry.t1_superior) ? { superior: copyPair(geometry.t1_superior) } : null;
+    case 'T4': return isPoint(geometry.t4_centroid) ? { centroid: copyPoint(geometry.t4_centroid) } : null;
     case 'FH1': return circleFrom(geometry.femoral_circles?.[0]);
     case 'FH2': return circleFrom(geometry.femoral_circles?.[1]);
-    default: return kindOf(code) === 'body' ? bodyFrom(geometry.vertebrae?.[code]) : null;   // T1, T4: never in a study
+    default: return kindOf(code) === 'body' ? bodyFrom(geometry.vertebrae?.[code], hasCentroid(code)) : null;
   }
 }
 
 /**
  * The level model's view of a study's geometry: one entry per code, null where the geometry carries
- * nothing usable. T1 and T4 are always null (no study geometry holds them). A fresh object each call.
+ * nothing usable. T1 reads `t1_superior` and T4 `t4_centroid` (null when the study has none; a `vertebrae.T1` or
+ * `.T4` entry is never read). A fresh object each call.
  * @returns {Object<string, LevelGeometry|null>}
  */
 export function levelsFromGeometry(geometry) {
@@ -395,6 +502,20 @@ function assignHeads(fromStudy, saved) {
   return { ...fromStudy, ...slots };
 }
 
+// (2026-10-22, round 2, spec §12 N10) The study gives a centroid body its corners and never its centroid (a derived mean
+// is not a placed point), so the record's centroid is merged in when the study holds the body; a body the study lacks
+// comes whole from the record in openEditor, as before.
+function mergeCentroids(fromStudy, saved) {
+  const merged = { ...fromStudy };
+  for (const code of CENTROID_BODIES) {
+    const centroid = saved?.levels?.[code]?.geometry?.centroid;
+    if (merged[code] && Array.isArray(centroid) && centroid.length === 2 && centroid.every(Number.isFinite)) {
+      merged[code] = { ...merged[code], centroid: [...centroid] };
+    }
+  }
+  return merged;
+}
+
 /**
  * Start editing a study. `study` is read for `geometry`, `labelFile`, `labelComment`, the failure it carries
  * (`processingError`, `processingErrorAt`) and (optionally) `id`.
@@ -405,7 +526,7 @@ function assignHeads(fromStudy, saved) {
  * @returns {LevelEditor}
  */
 export function openEditor({ study, region, modelGeometry, saved }) {
-  const fromStudy = assignHeads(levelsFromGeometry(study?.geometry), saved);
+  const fromStudy = mergeCentroids(assignHeads(levelsFromGeometry(study?.geometry), saved), saved);
   const model = levelsFromGeometry(modelGeometry);
   const defaults = filmTypeDefaults(region);
   const levels = {};
@@ -491,13 +612,11 @@ export function groupCheckState(editor, groupKey) {
 
 // ---------- selecting and placing ----------
 
-const FIRST_HANDLE = new Map([['body', 'SA'], ['c2', 'IA'], ['endplate', 'SA'], ['centroid', 'CENTROID'], ['circle', 'R0']]);
-
 /** Select a row. Another level's placement is cancelled; a visible level with geometry focuses its first handle. */
 export function selectLevel(editor, code) {
   const placing = editor.placing && editor.placing.code !== code ? null : editor.placing;
   const entry = editor.levels[code];
-  const handle = !placing && entry?.visible && entry.geometry ? { code, handle: FIRST_HANDLE.get(kindOf(code)) } : null;
+  const handle = !placing && entry?.visible && entry.geometry ? { code, handle: firstHandle(code, entry.geometry) } : null;
   return { ...editor, selected: code, placing, handle, aiming: false };
 }
 
@@ -510,6 +629,8 @@ export function selectLevel(editor, code) {
 export function aimHandle(editor, code, handle) {
   const entry = editor.levels[code];
   if (editor.placing || !entry?.visible || !entry.geometry) return editor;
+  // (2026-10-21, partial endplates, spec §4) A point the level lacks (a null part, or a handle the kind has none of) is not armed.
+  if (kindOf(code) !== 'circle' && entry.geometry[partOfHandle(code, handle)] == null) return editor;
   if (editor.aiming && editor.handle?.code === code && editor.handle.handle === handle) return editor;
   return { ...editor, selected: code, handle: { code, handle }, aiming: true };
 }
@@ -525,6 +646,27 @@ export function startPlacing(editor, code) {
   return { ...editor, placing: { code, points: Array(need).fill(null), current: 0, history: [] }, selected: code, handle: null, aiming: false };
 }
 
+/**
+ * (2026-10-21, partial endplates, spec §3) Resume a visible, partially placed body or C2: a placement with its set
+ * slots pre-filled and nothing to undo. `step` names the empty slot that is current; any other value (a set slot, none)
+ * leaves the first empty one current. Refused (the editor unchanged) while a placement runs, for a hidden, unplaced,
+ * whole or other-kind level.
+ */
+export function resumePlacing(editor, code, step = null) {
+  const entry = editor.levels[code];
+  const kind = kindOf(code);
+  if (editor.placing || !entry?.visible || !entry.geometry || (kind !== 'body' && kind !== 'c2')) return editor;
+  if (!isPartial(code, entry.geometry)) return editor;
+  const points = Array(placementSteps(code).need).fill(null);
+  for (const { key, steps } of partsOf(code)) {
+    const value = entry.geometry[key];
+    if (value == null) continue;
+    steps.forEach((slot, index) => { points[slot] = copyPoint(steps.length === 1 ? value : value[index]); });
+  }
+  const current = Number.isInteger(step) && points[step] === null ? step : points.indexOf(null);
+  return { ...editor, placing: { code, points, current, history: [] }, selected: code, handle: null, aiming: false };
+}
+
 const clampPoint = (point, size) => (size
   ? [Math.max(0, Math.min(size.width - 1, point[0])), Math.max(0, Math.min(size.height - 1, point[1]))]
   : copyPoint(point));
@@ -533,8 +675,20 @@ const within1px = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1;
 
 const placedPoints = placing => placing.points.filter(Boolean);
 
-// The first empty slot after `from`, wrapping to the start; `from` itself when no slot is empty.
-function nextEmpty(points, from) {
+// For every kind but a centroid body: the first empty slot after `from`, wrapping to the start; `from` itself when no
+// slot is empty.
+// (2026-10-22, round 2, spec §12 N9) A centroid body's optional centroid slot (its last) is never current by default:
+// the next empty CORNER slot after `from` is (wrapping among the corners; a centroid click starts at the first corner),
+// and only with every corner set does an empty centroid slot become current. setPlacingStep(4) still chooses it.
+function nextEmpty(points, from, code) {
+  if (hasCentroid(code)) {
+    const corners = points.length - 1;
+    for (let step = 1; step <= corners; step += 1) {
+      const index = from >= corners ? step - 1 : (from + step) % corners;
+      if (points[index] === null) return index;
+    }
+    return points[corners] === null ? corners : from;
+  }
   for (let step = 1; step < points.length; step += 1) {
     const index = (from + step) % points.length;
     if (points[index] === null) return index;
@@ -562,8 +716,10 @@ export function addPoint(editor, point, imageSize) {
   if (placing.points.some((other, index) => index !== slot && other && within1px(clicked, other))) return editor;
   const points = placing.points.map((existing, index) => (index === slot ? clicked : existing));
   const history = [...placing.history.filter(index => index !== slot), slot];
-  const next = { ...editor, placing: { code: placing.code, points, current: nextEmpty(points, slot), history } };
-  return points.includes(null) ? next : finishPlacing(next, imageSize);
+  const next = { ...editor, placing: { code: placing.code, points, current: nextEmpty(points, slot, placing.code), history } };
+  // (2026-10-22, round 2, N9) A centroid body finishes by itself at its endplates: its centroid slot may stay empty.
+  const required = hasCentroid(placing.code) ? points.slice(0, points.length - 1) : points;
+  return required.includes(null) ? next : finishPlacing(next, imageSize);
 }
 
 /** UNDO: the most recently set point is cleared and its step becomes the current one; a no-op with nothing set. */
@@ -603,14 +759,14 @@ export function cancelPlacing(editor) {
 // apart, the closest addPoint keeps, give 0.5.
 export const MIN_RADIUS = 0.5;
 
-// The geometry the placement would finish with now, or null when it may not finish: too few points set, a body, C2,
-// endplate or centroid with any step still empty, or a femoral head whose fitted radius is under MIN_RADIUS (or not
+// The geometry the placement would finish with now, or null when it may not finish: too few points set, an endplate or
+// centroid with any step still empty, a body or C2 with no part whole or one half set, or a femoral head whose fitted radius is under MIN_RADIUS (or not
 // finite). A head fits its placed rim points in slot order; every other kind passes its points in step order.
 function finishedGeometry(placing, imageSize) {
-  const placed = placedPoints(placing);
-  if (placed.length < placementSteps(placing.code).fitFrom) return null;
-  if (kindOf(placing.code) !== 'circle' && placed.length < placing.points.length) return null;
-  const geometry = geometryFromPoints(placing.code, placed, imageSize);
+  if (kindOf(placing.code) === 'circle' && placedPoints(placing).length < placementSteps(placing.code).fitFrom) return null;
+  // (2026-10-21, partial endplates, spec §3) A body or C2 may finish once a part is whole and none is half set; the
+  // other kinds only at every slot. geometryFromPoints returns null exactly when the placement may not finish.
+  const geometry = geometryFromPoints(placing.code, placing.points, imageSize);
   if (!geometry) return null;
   if (kindOf(placing.code) === 'circle' && !(Number.isFinite(geometry.radius) && geometry.radius >= MIN_RADIUS)) return null;
   return geometry;
@@ -618,14 +774,14 @@ function finishedGeometry(placing, imageSize) {
 
 /**
  * Whether the placement in progress may finish now: FIT's enabled state. False when nothing is being placed,
- * below `fitFrom` placed points, and for a femoral head whose fit would have a radius under 0.5 px (R22).
+ * below the minimum (a head's `fitFrom`; a body or C2 with no whole part), and for a femoral head whose fit would have a radius under 0.5 px (R22).
  */
 export function canFinishPlacing(editor, imageSize) {
   return Boolean(editor?.placing && finishedGeometry(editor.placing, imageSize));
 }
 
 /**
- * Finish the placement now (FIT for a femoral head from 2 points; any other kind only at `need`). A no-op
+ * Finish the placement now (FIT for a femoral head from 2 points; a body or C2 with one whole part; any other kind only at `need`). A no-op
  * whenever canFinishPlacing is false.
  */
 export function finishPlacing(editor, imageSize) {
@@ -637,6 +793,26 @@ export function finishPlacing(editor, imageSize) {
     ...setEntry(editor, placing.code, { visible: true, source: 'annotator', geometry }),
     placing: null,
     selected: placing.code,
+  };
+}
+
+/**
+ * (2026-10-21, partial endplates, spec §3) Null the part of a placed body or C2 that the focused handle belongs to.
+ * Refused (the editor unchanged) for a hidden or unplaced level, while it is being placed, for a handle with no part,
+ * a part already null, or the last part standing. The focus moves to the first handle that remains.
+ */
+export function removePart(editor, code, handle) {
+  const entry = editor.levels[code];
+  if (!entry?.visible || !entry.geometry || editor.placing?.code === code) return editor;
+  const key = partOfHandle(code, handle);
+  if (!key || entry.geometry[key] == null) return editor;
+  const keys = partsOf(code).map(part => part.key);
+  if (!keys.some(other => other !== key && entry.geometry[other] != null)) return editor;
+  const geometry = Object.fromEntries(keys.map(other => [other, other === key ? null : copyGeometry(entry.geometry[other] ?? null)]));
+  return {
+    ...setEntry(editor, code, { geometry, source: 'annotator' }),
+    handle: { code, handle: firstHandle(code, geometry) },
+    aiming: false,
   };
 }
 
@@ -657,9 +833,10 @@ const copyGeometry = value => (Array.isArray(value) ? value.map(copyGeometry)
  * REVERT (annotation editor round 2, spec §5.1): a no-op unless `levelState(entry, editor.model[code]) === 'edited'`
  * and no placement is running for `code`. Otherwise the entry's `geometry` becomes a copy of `editor.model[code]`
  * (point arrays copied; a femoral head takes the model circle's `center` and `radius` with `rim: null`) and its
- * `source` becomes `model` (E7). `visible`, the selection and the focused handle stay (the handle names a point that
- * still exists); nothing else on the editor changes. The level then reads Segmented, by the same sameGeometry test
- * that made it Edited. A no-op returns the editor itself.
+ * `source` becomes `model` (E7). `visible` and the selection stay; the focused handle stays when the model's geometry
+ * has that point, and otherwise (the focus was on a point the annotator added to a partial model level) moves to the
+ * level's first handle with `aiming` false (2026-10-22, the final review, M1); nothing else on the editor changes.
+ * The level then reads Segmented, by the same sameGeometry test that made it Edited. A no-op returns the editor itself.
  */
 export function revertLevel(editor, code) {
   const entry = editor.levels[code];
@@ -668,7 +845,12 @@ export function revertLevel(editor, code) {
   const geometry = kindOf(code) === 'circle'
     ? { center: copyPoint(model.center), radius: model.radius, rim: null }
     : copyGeometry(model);
-  return setEntry(editor, code, { geometry, source: 'model' });
+  const next = setEntry(editor, code, { geometry, source: 'model' });
+  // (2026-10-22, the final review, M1) A focus on a point the model's geometry lacks moves to the level's first handle.
+  const part = editor.handle?.code === code ? partOfHandle(code, editor.handle.handle) : null;
+  return part && geometry[part] == null
+    ? { ...next, handle: { code, handle: firstHandle(code, geometry) }, aiming: false }
+    : next;
 }
 
 export function setLevelGeometry(editor, code, geometry) {
@@ -695,7 +877,8 @@ export function unsavedCount(editor) {
   const levels = LEVEL_CODES.filter(code => {
     const entry = editor.levels[code];
     const base = editor.baseline?.[code];
-    return entry.visible !== base?.visible || !sameGeometry(entry.geometry, base?.geometry);
+    // (Fix wave 2, I2) The geometry of a level hidden in both is never saved (the record writes not_visible with none).
+    return entry.visible !== base?.visible || (entry.visible && !sameGeometry(entry.geometry, base?.geometry));
   }).length;
   return levels + (commentChanged(editor) ? 1 : 0);
 }
@@ -825,10 +1008,12 @@ export const MEASUREMENT_INPUTS = [
   input('SS', 'SS', LUMBAR_REGIONS, ['S1']),
   input('PILL', `PI${EN_DASH}LL`, LUMBAR_REGIONS, ['L1', 'S1', 'FH1', 'FH2']),
   input('L1PA', 'L1PA', LUMBAR_REGIONS, ['L1', 'S1', 'FH1', 'FH2']),
+  input('T4PA', 'T4PA', LUMBAR_REGIONS, ['T4', 'S1', 'FH1', 'FH2']),
   ...SEGMENTAL_PAIRS.cervical.map(pairInput(CERVICAL_REGIONS)),
   ...SEGMENTAL_PAIRS.lumbar.map(pairInput(LUMBAR_REGIONS)),
   input('C2C7_COBB', `C2${EN_DASH}C7 Cobb`, CERVICAL_REGIONS, ['C2', 'C7']),
   input('C2C7_SVA', `C2${EN_DASH}C7 SVA`, CERVICAL_REGIONS, ['C2', 'C7']),
+  input('T1S', 'T1 slope', CERVICAL_REGIONS, ['T1']),
   input('GLOBAL_SVA', `C7${EN_DASH}S1 SVA`, ['full_spine'], ['C7', 'S1']),
 ];
 

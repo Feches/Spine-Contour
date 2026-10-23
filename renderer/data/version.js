@@ -1,2 +1,2 @@
 // Shared by the welcome screen and sidebar; checked against the installer manifest.
-export const VERSION_LABEL = 'v1.3.1';
+export const VERSION_LABEL = 'v1.4.0';

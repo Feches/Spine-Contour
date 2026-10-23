@@ -31,7 +31,7 @@ function study(overrides) {
 // ---------------------------------------------------------------------------
 
 test('measurementColumns includes core and segmental angles, with optional lordosis levels', () => {
-  assert.deepEqual(CORE_COLUMNS.map((c) => c.key), ['PI', 'PT', 'SS', 'LL', 'PILL', 'L1PA']);
+  assert.deepEqual(CORE_COLUMNS.map((c) => c.key), ['PI', 'PT', 'SS', 'LL', 'PILL', 'L1PA', 'T4PA']);
   assert.deepEqual(LEVEL_COLUMNS.map((c) => c.key), ['L2-S1', 'L3-S1', 'L4-S1', 'L5-S1']);
   assert.deepEqual(measurementColumns(false), [...CORE_COLUMNS, ...segmentalColumns('lumbar')]);
   assert.deepEqual(measurementColumns(true), [...CORE_COLUMNS, ...LEVEL_COLUMNS, ...segmentalColumns('lumbar')]);
@@ -596,4 +596,20 @@ test('matchesLocation is the workspace and folder halves of filterParameters, an
   for (const filters of [{ workspace: ROOT }, { workspace: ROOT, folder: 'post-op' }, { folder: 'pre-op' }, { workspace: HAND_ADDED }]) {
     assert.deepEqual(keep(filters), filterParameters(rows, { ...open, ...filters }).map((row) => row.id), JSON.stringify(filters));
   }
+});
+
+// (2026-10-22, T4 pelvic angle and T1 slope) The two new grid columns.
+test('T4PA is a core column and T1S a cervical column; parameterValues fills each by region', () => {
+  const lumbar = parameterValues(study({ measurements: { ...measurements(52.7, 14.6, 38.2, 47.1), T4PA: 9 } }));
+  assert.equal(lumbar.T4PA, 9);
+  assert.equal(lumbar.T1S, undefined);
+  const cervical = parameterValues(study({
+    region: 'cervical',
+    geometry: { region: 'cervical', vertebrae: {}, c2_centroid: null },
+    measurements: { T1S: 20 },
+  }));
+  assert.equal(cervical.T1S, 20);
+  assert.equal(cervical.T4PA, null);
+  assert.ok(measurementColumns(false, true).some((c) => c.key === 'T1S' && c.unit === '\u00b0'));
+  assert.ok(!measurementColumns(false, false).some((c) => c.key === 'T1S'));
 });

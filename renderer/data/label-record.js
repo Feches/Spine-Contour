@@ -8,7 +8,7 @@
 //
 // Points are [x, y] in pixels of the stored image, origin top-left.
 
-import { LEVEL_CODES, kindOf, levelState, trainingStatus, changedPoints } from './levels.js';
+import { LEVEL_CODES, kindOf, hasCentroid, levelState, trainingStatus, changedPoints } from './levels.js';
 import { projectionRegion } from './level-projection.js';
 import { fileStem, safeStem } from './labels.js';
 import { VERSION_LABEL } from './version.js';
@@ -52,8 +52,14 @@ const isPoint = p => Array.isArray(p) && p.length === 2 && Number.isFinite(p[0])
 // ---------- editor -> record ----------
 
 // The editor's geometry as the record's `corners`, per kind.
-const bodyCorners = g => ({ sa: copyPoint(g.superior[0]), sp: copyPoint(g.superior[1]), ia: copyPoint(g.inferior[0]), ip: copyPoint(g.inferior[1]) });
-const c2Corners = g => ({ ia: copyPoint(g.inferior[0]), ip: copyPoint(g.inferior[1]) });
+// (2026-10-21, partial endplates, spec §8, N4) A body may hold one endplate and C2 its centroid alone, so a corner
+// the geometry does not hold is written null, by pair.
+const pointOrNull = p => (isPoint(p) ? copyPoint(p) : null);
+const bodyCorners = g => ({
+  sa: pointOrNull(g.superior?.[0]), sp: pointOrNull(g.superior?.[1]),
+  ia: pointOrNull(g.inferior?.[0]), ip: pointOrNull(g.inferior?.[1]),
+});
+const c2Corners = g => ({ ia: pointOrNull(g.inferior?.[0]), ip: pointOrNull(g.inferior?.[1]) });
 const endplateCorners = g => ({ sa: copyPoint(g.superior[0]), sp: copyPoint(g.superior[1]) });
 
 // The record's `contour` is a polygon of at least three points, or null.
@@ -77,14 +83,16 @@ function levelRecord(code, entry, model, contours) {
   switch (kindOf(code)) {
     case 'body':
       // The contour is the model's mask outline, so it is written only while the level still is the model's (R10).
+      // (2026-10-22, round 2, spec §12 N11) C7 alone also writes its optional centroid and the model's (null today).
       return {
         ...head, corners: bodyCorners(g), model_corners: edited ? bodyCorners(model) : null,
+        ...(hasCentroid(code) ? { centroid: pointOrNull(g.centroid), model_centroid: edited ? pointOrNull(model.centroid) : null } : {}),
         contour: state === 'segmented' ? contourOf(contours?.[code]) : null,
       };
     case 'c2':
       return {
-        ...head, corners: c2Corners(g), centroid: copyPoint(g.centroid),
-        model_corners: edited ? c2Corners(model) : null, model_centroid: edited ? copyPoint(model.centroid) : null,
+        ...head, corners: c2Corners(g), centroid: pointOrNull(g.centroid),
+        model_corners: edited ? c2Corners(model) : null, model_centroid: edited ? pointOrNull(model.centroid) : null,
       };
     case 'endplate':
       return { ...head, corners: endplateCorners(g), model_corners: edited ? endplateCorners(model) : null };
@@ -183,16 +191,32 @@ export function toLabelRecord({ editor, study, image, model, appVersion: version
 
 const pointPair = (a, b) => (isPoint(a) && isPoint(b) ? [copyPoint(a), copyPoint(b)] : null);
 
+// (2026-10-21, partial endplates, spec §8, N4) A pair read from two corner keys: null when both are absent (a
+// missing endplate), BAD when only one is a point or either is malformed (a half pair: the whole entry is unusable).
+const BAD = Symbol('bad');
+const pairOrNull = (a, b) => (a == null && b == null ? null : (pointPair(a, b) ?? BAD));
+
 function geometryOf(code, raw) {
   switch (kindOf(code)) {
     case 'body': {
-      const superior = pointPair(raw.corners?.sa, raw.corners?.sp);
-      const inferior = pointPair(raw.corners?.ia, raw.corners?.ip);
-      return superior && inferior ? { superior, inferior } : null;
+      const superior = pairOrNull(raw.corners?.sa, raw.corners?.sp);
+      const inferior = pairOrNull(raw.corners?.ia, raw.corners?.ip);
+      // (2026-10-22, round 2, spec §12 N9/N11) C7's centroid part: a point, null when absent (an older record has no key),
+      // BAD when malformed. The canonical shape carries the key for a centroid body only, so a reopened record compares
+      // the same as the study's C7 (sameGeometry tells a missing key from a null).
+      if (hasCentroid(code)) {
+        const centroid = isPoint(raw.centroid) ? copyPoint(raw.centroid) : (raw.centroid == null ? null : BAD);
+        if (superior === BAD || inferior === BAD || centroid === BAD || (!superior && !inferior && !centroid)) return null;
+        return { superior, inferior, centroid };
+      }
+      if (superior === BAD || inferior === BAD || (!superior && !inferior)) return null;
+      return { superior, inferior };
     }
     case 'c2': {
-      const inferior = pointPair(raw.corners?.ia, raw.corners?.ip);
-      return inferior && isPoint(raw.centroid) ? { inferior, centroid: copyPoint(raw.centroid) } : null;
+      const inferior = pairOrNull(raw.corners?.ia, raw.corners?.ip);
+      const centroid = isPoint(raw.centroid) ? copyPoint(raw.centroid) : (raw.centroid == null ? null : BAD);
+      if (inferior === BAD || centroid === BAD || (!inferior && !centroid)) return null;
+      return { inferior, centroid };
     }
     case 'endplate': {
       const superior = pointPair(raw.corners?.sa, raw.corners?.sp);

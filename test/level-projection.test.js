@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   projectionRegion, anteriorSideFrom, quadrilateral, projectGeometry, regionFollowsLevels, projectsLevel,
-  projectionIsEmpty,
+  projectionIsEmpty, staleStudyLevels,
 } from '../renderer/data/level-projection.js';
 import {
   levelsFromGeometry, openEditor, setLevelGeometry, toggleVisible,
@@ -148,11 +148,12 @@ test('levelsFromGeometry reads bodies, S1 and C2, and leaves T1, T4 and absent l
   assert.equal(levels.T4, null);
 });
 
-test('levelsFromGeometry needs both of C2\'s parts, a body\'s two pairs, and a null geometry gives all null', () => {
+test('levelsFromGeometry reads one part of C2 or of a body, and a null geometry gives all null', () => {
   const noCentroid = { region: 'cervical', vertebrae: { C2: { superior: null, inferior: [[40, 20], [50, 20]], quadrilateral: null } } };
-  assert.equal(levelsFromGeometry(noCentroid).C2, null);
-  const halfBody = { region: 'lumbar', vertebrae: { L1: { superior: [[1, 1], [2, 2]], inferior: null } } };
-  assert.equal(levelsFromGeometry(halfBody).L1, null);
+  assert.deepEqual(levelsFromGeometry(noCentroid).C2, { inferior: [[40, 20], [50, 20]], centroid: null });
+  const oneEndplate = { region: 'lumbar', vertebrae: { L1: { superior: [[1, 1], [2, 2]], inferior: null } } };
+  assert.deepEqual(levelsFromGeometry(oneEndplate).L1, { superior: [[1, 1], [2, 2]], inferior: null });
+  assert.equal(levelsFromGeometry({ region: 'lumbar', vertebrae: { L1: { superior: [[1, 1]], inferior: null } } }).L1, null, 'half a pair is not a geometry');
   const none = levelsFromGeometry(null);
   assert.equal(Object.keys(none).length, 16);
   assert.ok(Object.values(none).every(value => value === null));
@@ -216,12 +217,12 @@ test('regionFollowsLevels: an Auto editor, an Auto film placed by hand, or an Au
   assert.equal(regionFollowsLevels(lumbarEditor, { ...HAND_PLACED_AUTO, region: 'full_spine' }), false);
 });
 
-test('projectsLevel: T1 and T4 never; every other code while the region follows the levels; else the region\'s own (R20)', () => {
+test('projectsLevel: T1 and T4 always; every other code while the region follows the levels; else the region\'s own (R20)', () => {
   const editor = editorWith({});
   const fixed = region => ({ region, geometry: { region }, qc: { models: {} } });
   for (const study of [HAND_PLACED_AUTO, fixed('lumbar'), fixed('cervical'), fixed('full_spine')]) {
-    assert.equal(projectsLevel('T1', editor, study), false);
-    assert.equal(projectsLevel('T4', editor, study), false);
+    assert.equal(projectsLevel('T1', editor, study), true);
+    assert.equal(projectsLevel('T4', editor, study), true);
   }
   for (const code of ['C2', 'C3', 'C7', 'L1', 'L3', 'S1', 'FH1', 'FH2']) {
     assert.equal(projectsLevel(code, editor, HAND_PLACED_AUTO), true, `${code} on a hand-placed Auto film`);
@@ -643,4 +644,204 @@ test('projecting changes neither the editor nor the study, and shares no points 
   assert.deepEqual(editor.levels.C2.geometry, CERVICAL_PLACEMENTS.C2);
   assert.deepEqual(editor.levels.FH1.geometry, LUMBAR_PLACEMENTS.FH1);
   assert.deepEqual(editor.levels.S1.geometry, LUMBAR_PLACEMENTS.S1);
+});
+
+test('quadrilateral is null for a body with one endplate', () => {
+  assert.equal(quadrilateral({ superior: [[1, 1], [2, 1]], inferior: null }), null);
+  assert.equal(quadrilateral({ superior: null, inferior: [[1, 2], [2, 2]] }), null);
+});
+
+test('a cervical projection writes a partial C7 with its pair, the other null and no quadrilateral, and no C7 centroid', (t) => {
+  const editor = editorWith({ C7: { superior: [[10, 110], [20, 111]], inferior: null } }, { region: 'cervical' });
+  const g = projectGeometry(editor, { region: 'cervical', geometry: { anterior_side: 'left', ...IMAGE_FIELDS } });
+  assert.deepEqual(g.vertebrae.C7, { superior: [[10, 110], [20, 111]], inferior: null, quadrilateral: null });
+  assert.equal(g.c7_centroid, undefined, 'a cervical projection has no c7_centroid key');
+  const { study, warned } = reload(t, g, EMPTY_MEASUREMENTS.cervical);
+  assert.notEqual(study.geometry, null, 'the store validator accepts it');
+  assert.equal(warned, 0);
+});
+
+test('a full-spine projection leaves c7_centroid null for a partial C7 and l1_center null for a partial L1, and the validator accepts both', (t) => {
+  const editor = editorWith({
+    C7: { superior: [[10, 110], [20, 111]], inferior: null },
+    L1: { superior: null, inferior: [[10, 140], [20, 141]] },
+    S1: { superior: [[10, 200], [20, 200]] },
+  });
+  const g = projectGeometry(editor, { region: 'full_spine', geometry: { anterior_side: 'left', ...IMAGE_FIELDS } });
+  assert.equal(g.c7_centroid, null);
+  assert.equal(g.l1_center, null);
+  assert.deepEqual(g.vertebrae.L1, { superior: null, inferior: [[10, 140], [20, 141]], quadrilateral: null });
+  assert.notEqual(reload(t, g, EMPTY_MEASUREMENTS.full_spine).study.geometry, null);
+});
+
+test('C2 with its centroid alone writes c2_centroid and no C2 vertebra; with its pair alone the vertebra and a null centroid', () => {
+  const centroidOnly = projectGeometry(editorWith({ C2: { inferior: null, centroid: [45, 12] }, C7: CERVICAL_PLACEMENTS.C7 }, { region: 'cervical' }), { region: 'cervical', geometry: { anterior_side: 'left' } });
+  assert.deepEqual(centroidOnly.c2_centroid, [45, 12]);
+  assert.equal('C2' in centroidOnly.vertebrae, false);
+  const pairOnly = projectGeometry(editorWith({ C2: { inferior: [[40, 20], [50, 22]], centroid: null } }, { region: 'cervical' }), { region: 'cervical', geometry: { anterior_side: 'left' } });
+  assert.equal(pairOnly.c2_centroid, null);
+  assert.deepEqual(pairOnly.vertebrae.C2, { superior: null, inferior: [[40, 20], [50, 22]], quadrilateral: null });
+  assert.deepEqual(levelsFromGeometry(centroidOnly).C2, { inferior: null, centroid: [45, 12] }, 'and it reads back');
+  assert.deepEqual(levelsFromGeometry(pairOnly).C2, { inferior: [[40, 20], [50, 22]], centroid: null });
+});
+
+test('anteriorSideFrom reads a body\'s superior pair, else its inferior pair, and skips C2 without its pair', () => {
+  assert.equal(anteriorSideFrom(editorWith({ C7: { superior: null, inferior: [[10, 120], [20, 122]] } }), null), 'left');
+  assert.equal(anteriorSideFrom(editorWith({ C7: { superior: null, inferior: [[20, 120], [10, 122]] } }), null), 'right');
+  assert.equal(anteriorSideFrom(editorWith({ C2: { inferior: null, centroid: [45, 12] } }), null), null);
+  assert.equal(anteriorSideFrom(editorWith({ C2: { inferior: null, centroid: [45, 12] }, C3: { superior: [[10, 30], [20, 31]], inferior: null } }), null), 'left');
+});
+
+test('a lumbar projection writes a partial body with no quadrilateral and the validator accepts it; a half pair, no pair and a stray quadrilateral are rejected', (t) => {
+  const editor = editorWith({ L1: { superior: [[10, 10], [20, 11]], inferior: null }, L2: bodyAt(10, 30), S1: { superior: [[10, 200], [20, 200]] } }, { region: 'lumbar' });
+  const g = projectGeometry(editor, { geometry: IMAGE_FIELDS });
+  assert.deepEqual(g.vertebrae.L1, { superior: [[10, 10], [20, 11]], inferior: null, quadrilateral: null });
+  assert.equal(g.l1_center, null);
+  const kept = (geometry) => reload(t, geometry, EMPTY_MEASUREMENTS.lumbar).study.geometry;
+  assert.notEqual(kept(g), null);
+  assert.equal(kept({ ...g, vertebrae: { ...g.vertebrae, L1: { superior: [[10, 10]], inferior: null, quadrilateral: null } } }), null, 'half a pair is rejected');
+  assert.equal(kept({ ...g, vertebrae: { ...g.vertebrae, L1: { superior: null, inferior: null, quadrilateral: null } } }), null, 'no pair is rejected');
+  assert.equal(kept({ ...g, vertebrae: { ...g.vertebrae, L1: { ...g.vertebrae.L1, quadrilateral: [[0, 0], [1, 0], [1, 1], [0, 1]] } } }), null, 'a quadrilateral with a pair missing is rejected');
+  assert.equal(kept({ ...g, l1_center: [15, 10] }), null, 'l1_center with a partial L1 is rejected');
+});
+
+test('c7_centroid is the placed centroid, else the quadrilateral\'s mean, else null', () => {
+  const whole = { superior: [[10, 110], [20, 111]], inferior: [[11, 120], [21, 122]], centroid: null };
+  const film = { geometry: { anterior_side: 'left', ...IMAGE_FIELDS }, region: 'full_spine' };
+  assert.deepEqual(projectGeometry(editorWith({ C7: whole }), film).c7_centroid, [15.5, 115.75]);
+  assert.deepEqual(projectGeometry(editorWith({ C7: { ...whole, centroid: [16, 116] } }), film).c7_centroid, [16, 116]);
+  assert.deepEqual(projectGeometry(editorWith({ C7: { superior: whole.superior, inferior: null, centroid: [16, 116] } }), film).c7_centroid, [16, 116], 'a partial C7 with its centroid still gives the plumb its point');
+  assert.equal(projectGeometry(editorWith({ C7: { superior: whole.superior, inferior: null, centroid: null } }), film).c7_centroid, null);
+  assert.equal('c7_centroid' in projectGeometry(editorWith({ C7: whole }, { region: 'cervical' }), { ...film, region: 'cervical' }), false, 'the cervical projection keeps omitting the key');
+});
+
+// (2026-10-22, round 2, Task 16: the owner's report) The levels the editor holds hidden or unplaced that the study
+// still carries are the ones a re-commit must drop.
+test('staleStudyLevels lists a hidden level the study still carries, by presence and only where it is projected', () => {
+  const film = { geometry: { anterior_side: 'left', ...IMAGE_FIELDS }, region: 'full_spine' };
+  const placements = { C3: bodyAt(10, 30), C4: bodyAt(10, 50), L3: bodyAt(10, 70) };
+  const studyOf = (editor) => ({ ...film, geometry: projectGeometry(editor, film) });
+  const model = editorWith(placements);
+  const study = studyOf(model);
+  assert.deepEqual(staleStudyLevels(model, study), [], 'visible and placed: nothing');
+  const hidden = editorWith(placements, { hide: ['C3'] });
+  assert.deepEqual(staleStudyLevels(hidden, study), ['C3']);
+  assert.deepEqual(staleStudyLevels(hidden, studyOf(hidden)), [], 'the study without C3: nothing');
+  assert.deepEqual(staleStudyLevels(null, study), []);
+  assert.deepEqual(staleStudyLevels(hidden, { ...study, geometry: null }), []);
+  const unplaced = editorWith({ C4: bodyAt(10, 50), L3: bodyAt(10, 70) });
+  assert.deepEqual(staleStudyLevels(unplaced, study), ['C3'], 'a level with no geometry counts as unplaced');
+  const lumbar = { geometry: { ...fakeGeometry(), ...IMAGE_FIELDS }, region: 'lumbar' };
+  const lumbarEditor = editorWith({ L1: bodyAt(10, 10) }, { region: 'lumbar' });
+  const withC3 = { ...lumbar, geometry: { ...lumbar.geometry, vertebrae: { ...lumbar.geometry.vertebrae, C3: studyBody(10, 130) } } };
+  const stale = staleStudyLevels(lumbarEditor, withC3);
+  assert.equal(stale.includes('C3'), false, 'C3 is not projected on a lumbar film');
+  assert.equal(stale.includes('L2'), true, 'a lumbar level the editor does not place is');
+});
+
+test('staleStudyLevels lists T4 and T1 when the study holds them and the editor hides them; a study without them lists neither', () => {
+  const film = { geometry: { anterior_side: 'left', ...IMAGE_FIELDS }, region: 'full_spine' };
+  const placements = { C7: bodyAt(10, 110), L3: bodyAt(10, 70), T1: { superior: [[1, 2], [3, 4]] }, T4: { centroid: [5, 6] } };
+  const study = { ...film, geometry: projectGeometry(editorWith(placements), film) };
+  assert.deepEqual(staleStudyLevels(editorWith(placements), study), []);
+  assert.deepEqual(staleStudyLevels(editorWith(placements, { hide: ['T4'] }), study), ['T4']);
+  assert.deepEqual(staleStudyLevels(editorWith(placements, { hide: ['T1', 'T4'] }), study), ['T1', 'T4']);
+  const bare = { ...film, geometry: projectGeometry(editorWith({ C7: bodyAt(10, 110), L3: bodyAt(10, 70) }), film) };
+  assert.deepEqual(staleStudyLevels(editorWith({ C7: bodyAt(10, 110), L3: bodyAt(10, 70) }), bare), []);
+});
+
+test('projectGeometry writes t1_superior and t4_centroid on every region from the placed, visible levels, else null', () => {
+  const t = { T1: { superior: [[1, 2], [3, 4]] }, T4: { centroid: [5, 6] } };
+  const studies = {
+    lumbar: { region: 'lumbar', geometry: { ...IMAGE_FIELDS, t1_superior: [[9, 9], [9, 9]], t4_centroid: [9, 9] } },
+    cervical: { region: 'cervical', geometry: { anterior_side: 'left', ...IMAGE_FIELDS } },
+    full_spine: { region: 'full_spine', geometry: { anterior_side: 'left', ...IMAGE_FIELDS } },
+  };
+  const placements = { lumbar: LUMBAR_PLACEMENTS, cervical: CERVICAL_PLACEMENTS, full_spine: { ...CERVICAL_PLACEMENTS, ...LUMBAR_PLACEMENTS } };
+  for (const [region, study] of Object.entries(studies)) {
+    const opts = { region };
+    // (a lumbar film starts with T1 and T4 hidden, a cervical one with T4 hidden: the annotator shows what they place)
+    const shown = () => ['T1', 'T4'].reduce((e, code) => (e.levels[code].visible ? e : toggleVisible(e, code)),
+      editorWith({ ...placements[region], ...t }, opts));
+    const g = projectGeometry(shown(), study);
+    assert.equal(g.region, region);
+    assert.deepEqual(g.t1_superior, [[1, 2], [3, 4]], region);
+    assert.deepEqual(g.t4_centroid, [5, 6], region);
+    const hidden = projectGeometry(toggleVisible(toggleVisible(shown(), 'T1'), 'T4'), study);
+    assert.equal(hidden.t1_superior, null, `${region} hidden`);
+    assert.equal(hidden.t4_centroid, null, `${region} hidden`);
+    const bare = projectGeometry(editorWith(placements[region], opts), study);
+    assert.equal(bare.t1_superior, null, `${region}: a stale base value is dropped`);
+    assert.equal(bare.t4_centroid, null, `${region}: a stale base value is dropped`);
+  }
+});
+
+test('projectionIsEmpty is false when only a T1 endplate or a T4 centroid is held', () => {
+  const empty = { vertebrae: {}, s1_superior: null, femoral_circles: [] };
+  assert.equal(projectionIsEmpty(empty), true);
+  assert.equal(projectionIsEmpty({ ...empty, t1_superior: [[1, 2], [3, 4]] }), false);
+  assert.equal(projectionIsEmpty({ ...empty, t4_centroid: [5, 6] }), false);
+});
+
+test('staleStudyLevels: a C7 centroid over a study C7 without one is not stale, and T1 and T4 are not when absent from both', () => {
+  const film = { geometry: { anterior_side: 'left', ...IMAGE_FIELDS }, region: 'full_spine' };
+  const c7 = bodyAt(10, 110);
+  const study = { ...film, geometry: projectGeometry(editorWith({ C7: c7, L3: bodyAt(10, 70) }), film) };
+  const withCentroid = editorWith({ C7: { ...c7, centroid: [16, 116] }, L3: bodyAt(10, 70) });
+  assert.deepEqual(staleStudyLevels(withCentroid, study), []);
+  assert.deepEqual(staleStudyLevels(editorWith({ C7: c7, L3: bodyAt(10, 70) }, { hide: ['T1', 'T4'] }), study), []);
+});
+
+// (Fix wave 2, I1) The heads compare as a count: the study's circles are read by slot, the editor's matched by value.
+test('staleStudyLevels compares the two heads by count, never by code', () => {
+  const headFilm = (circles) => ({ region: 'full_spine', geometry: { anterior_side: 'left', ...IMAGE_FIELDS, vertebrae: {}, femoral_circles: circles } });
+  const head = (x) => ({ center: [x, 280], radius: 5, rim: null });
+  const oneCircle = headFilm([[10, 280, 5]]);
+  const twoCircles = headFilm([[10, 280, 5], [20, 280, 5]]);
+  const onlyHead2 = editorWith({ FH2: head(10) }, { hide: ['FH1'] });
+  assert.deepEqual(staleStudyLevels(onlyHead2, oneCircle), [], 'one circle the editor calls FH2 is not stale');
+  assert.equal(staleStudyLevels(editorWith({ FH1: head(10) }, { hide: ['FH2'] }), twoCircles).length, 1, 'two circles, one head placed');
+  assert.equal(staleStudyLevels(editorWith({}, { hide: ['FH1', 'FH2'] }), oneCircle).length, 1, 'one circle, no head visible');
+  assert.deepEqual(staleStudyLevels(editorWith({ FH1: head(10), FH2: head(20) }), twoCircles), [], 'both placed');
+});
+
+// (Closing wave, F1) A lumbar projection holding only T1 and/or T4 is not empty: the point must reach the study.
+test('a lumbar film holding only T4 is not cleared; with nothing placed it is (F1)', () => {
+  const film = { region: 'lumbar', geometry: { ...IMAGE_FIELDS } };
+  const only = editorWith({ T4: { centroid: [5, 6] } }, { region: 'full_spine' });
+  const geometry = projectGeometry(only, film);
+  assert.equal('manually_cleared' in geometry, false);
+  assert.deepEqual(geometry.t4_centroid, [5, 6]);
+  assert.equal(projectionIsEmpty(geometry), false);
+  const none = projectGeometry(editorWith({}, { region: 'full_spine' }), film);
+  assert.equal(none.manually_cleared, true);
+  assert.equal(projectionIsEmpty(none), true);
+});
+
+// (Closing wave, F3) The heal runs in both directions: a level the editor shows that the study lacks is listed.
+test('staleStudyLevels lists a placed visible level the study lacks, and the heads by count either way (F3)', () => {
+  const film = { geometry: { anterior_side: 'left', ...IMAGE_FIELDS }, region: 'full_spine' };
+  const bare = { ...film, geometry: projectGeometry(editorWith({ C7: bodyAt(10, 110), L3: bodyAt(10, 70) }), film) };
+  assert.deepEqual(staleStudyLevels(editorWith({ C7: bodyAt(10, 110), L3: bodyAt(10, 70), T4: { centroid: [5, 6] } }), bare), ['T4']);
+  assert.deepEqual(staleStudyLevels(editorWith({ C7: bodyAt(10, 110), L3: bodyAt(10, 70), L1: bodyAt(10, 20) }), bare), ['L1']);
+  const head = (x) => ({ center: [x, 280], radius: 5, rim: null });
+  const headFilm = (circles) => ({ region: 'full_spine', geometry: { anterior_side: 'left', ...IMAGE_FIELDS, vertebrae: {}, femoral_circles: circles } });
+  assert.equal(staleStudyLevels(editorWith({ FH1: head(10), FH2: head(20) }), headFilm([[10, 280, 5]])).length, 1, 'two heads, one circle');
+  assert.deepEqual(staleStudyLevels(editorWith({ FH1: head(10) }, { hide: ['FH2'] }), headFilm([[10, 280, 5]])), [], 'equal');
+});
+
+// (Closing wave 2) Presence is judged by what the study HOLDS, by key, in both directions: a centroid-only C7 is
+// written as a null-pair vertebrae.C7 plus c7_centroid, which the level model cannot read back as a level.
+test('staleStudyLevels judges presence by key: a centroid-only C7 or C2 is held, a whole C7 absent is stale', () => {
+  const film = { geometry: { anterior_side: 'left', ...IMAGE_FIELDS }, region: 'full_spine' };
+  const nullPairs = { superior: null, inferior: null, quadrilateral: null };
+  const c7Only = { superior: null, inferior: null, centroid: [16, 116] };
+  const l3 = bodyAt(10, 70);
+  const withC7 = { ...film, geometry: { ...film.geometry, vertebrae: { C7: nullPairs, L3: projectGeometry(editorWith({ L3: l3 }), film).vertebrae.L3 }, c7_centroid: [16, 116] } };
+  assert.deepEqual(staleStudyLevels(editorWith({ C7: c7Only, L3: l3 }), withC7), [], 'centroid-only C7 over a null-pair entry');
+  const c2Study = { ...film, geometry: { ...film.geometry, vertebrae: { L3: withC7.geometry.vertebrae.L3 }, c2_centroid: [20, 30] } };
+  assert.deepEqual(staleStudyLevels(editorWith({ C2: { inferior: null, centroid: [20, 30] }, L3: l3 }), c2Study), [], 'centroid-only C2 over c2_centroid');
+  const bare = { ...film, geometry: { ...film.geometry, vertebrae: { L3: withC7.geometry.vertebrae.L3 } } };
+  assert.deepEqual(staleStudyLevels(editorWith({ C7: bodyAt(10, 110), L3: l3 }), bare), ['C7'], 'a whole C7 the study lacks');
+  assert.deepEqual(staleStudyLevels(editorWith({ C7: c7Only, L3: l3 }, { hide: ['C7'] }), withC7), ['C7'], 'hidden C7 over a null-pair entry');
 });

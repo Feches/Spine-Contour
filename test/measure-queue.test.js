@@ -287,3 +287,17 @@ test('the flag is per study: committing on another study flushes A and clears on
   assert.equal(h.study('B').processingErrorAt, FAILED_AT);
 });
 
+test('the lumbar /measure request carries a placed T1 endplate and T4 centroid, and null for each when absent (2026-10-22)', async () => {
+  const h = harness();
+  h.queue.commitGeometry('A', { ...geometryWith(1), region: 'lumbar', t1_superior: [[1, 2], [3, 4]], t4_centroid: [5, 6] });
+  await tick(30);
+  assert.deepEqual(h.calls[0].request.t1_superior, [[1, 2], [3, 4]]);
+  assert.deepEqual(h.calls[0].request.t4_centroid, [5, 6]);
+  h.calls[0].resolve({ measurements: {}, geometry: geometryWith(1) });
+  await tick(0);
+  h.queue.commitGeometry('A', { ...geometryWith(2), region: 'lumbar' });
+  await tick(30);
+  assert.equal(h.calls[1].request.t1_superior, null);
+  assert.equal(h.calls[1].request.t4_centroid, null);
+});
+

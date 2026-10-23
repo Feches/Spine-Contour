@@ -94,7 +94,7 @@ function discTable(study) {
 // clicking the sacrum's S1 row, or the sacrum on the image itself, highlights all
 // three as the overview), but a click on the PI/PT/SS row itself now selects its own
 // precise single-parameter construction.
-const ROW_LEVELS = { LL: 'L1', PI: 'PI', PT: 'PT', SS: 'SS', PILL: 'S1', L1PA: 'L1PA' };
+const ROW_LEVELS = { LL: 'L1', PI: 'PI', PT: 'PT', SS: 'SS', PILL: 'S1', L1PA: 'L1PA', T4PA: 'T4PA' };
 
 // Clicking the row that already owns the selection clears it. Without this a construction's
 // label plate has no way off the stage, and in edit mode it sits on the handles.
@@ -225,11 +225,11 @@ export function mountMeasurements(container) {
       const cervicalSection = section('02 — CERVICAL ALIGNMENT',
         el('div', { class: 'meas-rows' }, ...cervicalRows(pending ? { region: 'full_spine' } : study, state.selectedLevel)
           .map(row => rowButton(row, () => toggleLevel(row.key)))),
-        el('div', { class: 'meas-note' }, 'Only measurements with visible, usable landmarks are shown. Review C2/C7 endplates and the C2 centroid.'));
+        el('div', { class: 'meas-note' }, 'Only measurements with visible, usable landmarks are shown. Review C2/C7 endplates and the C2 centroid; the T1 slope also needs the T1 superior endplate.'));
       root.append(section1, cervicalSection, lumbarSection, segmentalSection, section2, calibrationSection);
     } else if (cervical) {
       section1.append(el('div', { class: 'meas-note' },
-        'Cobb: unsigned acute angle between the C2 and C7 inferior endplates. SVA: C2 body centroid to the C7 posterosuperior corner, parallel to the image horizontal; positive anterior. Verify the editable endplates and centroid.'));
+        'Cobb: unsigned acute angle between the C2 and C7 inferior endplates. SVA: C2 body centroid to the C7 posterosuperior corner, parallel to the image horizontal; positive anterior. T1 slope: the angle of the T1 superior endplate to the image horizontal. Verify the editable endplates and centroid.'));
       root.append(section1, segmentalSection, calibrationSection);
     } else root.append(section1, segmentalSection, section2, section3, calibrationSection);
 

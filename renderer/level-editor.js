@@ -27,9 +27,10 @@ import {
   LEVEL_CODES, openEditor, toggleVisible, toggleGroup, toggleOpen, selectLevel, startPlacing, addPoint, undoPoint,
   setPlacingStep, cancelPlacing, finishPlacing, clearLevel, revertLevel, setLevelGeometry, unsavedCount, canSave,
   markSaved, revertToBaseline, sameGeometry, setComment, aimHandle as armHandle, cancelAim as disarmHandle,
+  resumePlacing, removePart, canResume,
 } from './data/levels.js';
 import { moveHandle } from './viewer/level-handles.js';
-import { projectGeometry, projectsLevel, regionFollowsLevels, projectionIsEmpty } from './data/level-projection.js';
+import { projectGeometry, projectsLevel, regionFollowsLevels, projectionIsEmpty, staleStudyLevels } from './data/level-projection.js';
 import { toLabelRecord, recordLevels, recordComment, normalizeComment, labelFileName, appVersion } from './data/label-record.js';
 import { levelContours } from './data/contours.js';
 import { studyRegion, validAnteriorSide } from './data/cervical.js';
@@ -114,7 +115,7 @@ function windowPanelOpen(editor) {
 const placedGeometry = (entry) => (entry?.visible && entry.geometry ? entry.geometry : null);
 
 // Whether the step changed a level this study's projection reads (data/level-projection.js projectsLevel: T1 and T4
-// never; a lumbar film L1-L5, S1 and the heads; a cervical one C2-C7; a full-spine film, and an Auto film whose
+// always; a lumbar film L1-L5, S1 and the heads; a cervical one C2-C7; a full-spine film, and an Auto film whose
 // region follows its placed levels (R20), every other code).
 function projectedChange(before, after, study) {
   if (!study || before.levels === after.levels) return false;
@@ -152,6 +153,13 @@ function sync(editor) {
   // landed commit clears the failure the film carried. A model result's commit passes false, so a failed re-run over
   // old numbers still reads Failed; any other commit passes nothing.
   deps.commitGeometry(editor.studyId, geometry, { clearFailure: isHandPlaced(study) });
+}
+
+// (2026-10-22, round 2, Task 16: the owner's report) Commits the editor's projection once when the study still carries
+// a level the editor holds hidden or unplaced; never with no editor, and never while the study's own run is in flight.
+function healStudy(editor, study) {
+  if (!editor || !study || getState().running === study.id) return;
+  if (staleStudyLevels(editor, study).length) sync(editor);
 }
 
 // A focused handle on a level that is hidden, unplaced or being placed is dropped here, in one place, whatever
@@ -243,6 +251,9 @@ export async function enterLevelEditor(studyId) {
   }
   // Entering edit mode drops the pan toggle (a primary drag would pan, and no handle press would ever land).
   setState({ editing: true, panMode: false, selection: null, levelEditor: editor });
+  // (2026-10-22, round 2, Task 16: the owner's report) A level the editor holds hidden that the study still carries
+  // (a re-measure that failed or was overtaken) is projected out now: the editor's view wins.
+  healStudy(editor, studyOf(getState(), studyId));
   showFilm(studyId);
 }
 
@@ -430,6 +441,8 @@ export async function saveLevelEdits() {
       ...(open ? { levelEditor: { ...open, baseline: saved.baseline, record: saved.record, savedComment: saved.savedComment } } : {}),
     }));
     stash.delete(studyId);
+    // (2026-10-22, round 2, Task 16: the owner's report) The same heal after a save.
+    if (open) healStudy(open, studyOf(getState(), studyId));
     showToast(savedText(n));
     if (open?.exitPrompt) exitNow(open.exitPrompt.then);
   } catch (error) {
@@ -561,7 +574,32 @@ export function selectLevelRow(code) {
 }
 
 export function startPlace(code) {
-  update((editor) => (editor.levels[code] ? startPlacing(editor, code) : editor), { edit: true });
+  update((editor) => {
+    const entry = editor.levels[code];
+    if (!entry) return editor;
+    // (2026-10-21, partial endplates, spec §4) Place... on a partial body or C2 resumes it at its first missing step.
+    return canResume(code, entry) // (2026-10-22, the final review, M4) the panel's Place... shares it
+      ? resumePlacing(editor, code)
+      : startPlacing(editor, code);
+  }, { edit: true });
+}
+
+/**
+ * (2026-10-21, partial endplates, spec §4) A hollow chip of a partial level, clicked: the placement resumes at that
+ * step (or at the first missing one with no step). Nothing is committed until the placement finishes.
+ */
+export function resumePlace(code, step = null) {
+  update((editor) => resumePlacing(editor, code, step), { edit: true });
+}
+
+/**
+ * (2026-10-21, partial endplates, spec §4) Delete with a point focused: that endplate (or C2's pair or centroid) is removed
+ * from the level, the focus moves to a remaining point, and a projected level commits through sync. The last part, a
+ * placement in flight, a one-part kind and a femoral head are refused by the level model (2026-10-22, the final
+ * review, M5: a head's rim is never removed).
+ */
+export function removeFocusedPart() {
+  update((editor) => (editor.handle ? removePart(editor, editor.handle.code, editor.handle.handle) : editor), { edit: true });
 }
 
 export function clearPlacedLevel(code) {
@@ -614,7 +652,8 @@ export function cancelPlace() {
   update((editor) => cancelPlacing(editor));
 }
 
-/** FIT: finish a femoral head from 2 or 3 rim points. */
+/** FIT: finish a femoral head from 2 or 3 rim points; FINISH: end a body's or C2's placement with what is placed
+ * (2026-10-22, the final review, M5). */
 export function fitPlacing(imageSize) {
   update((editor) => (windowPanelOpen(editor) ? editor : finishPlacing(editor, imageSize)), { edit: true });
 }

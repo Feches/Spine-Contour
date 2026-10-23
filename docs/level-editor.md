@@ -39,11 +39,11 @@ disclosure button:
 
 | Group | Levels | Geometry |
 |---|---|---|
-| Cervical `C2–C7` | C2 | inferior endplate (IA, IP) and the body's centroid (D8) |
-| | C3–C7 | four corners SA, SP, IA, IP |
-| Thoracic `T1 · T4` | T1 | superior endplate (anterior, posterior) |
-| | T4 | centroid |
-| Lumbar `L1–L5` | L1–L5 | four corners |
+| Cervical `C2–C7` | C2 | inferior endplate (IA, IP) and the body's centroid (D8); either may stand alone (2026-10-21, N1) |
+| | C3–C7 | four corners SA, SP, IA, IP, or one endplate alone (2026-10-21, N1); C7 also takes an optional centroid (2026-10-22, N8) |
+| Thoracic `T1 · T4` | T1 | superior endplate (anterior, posterior); feeds the T1 slope (2026-10-22) |
+| | T4 | centroid; feeds the T4 pelvic angle (2026-10-22) |
+| Lumbar `L1–L5` | L1–L5 | four corners, or one endplate alone (2026-10-21, N1) |
 | Sacral `S1 ENDPLATE` | S1 | superior endplate |
 | Femoral heads `2–4 RIM POINTS` | Head 1, Head 2 | centre and radius fitted from 2–4 rim points |
 
@@ -115,9 +115,49 @@ Hand-placed. No run is needed.
 
 Unchecking keeps the level's geometry in memory for the session, so checking it again restores it; the saved record
 omits the geometry of a level that is not visible. Under an unchecked row a note names the measurements it leaves as a
-dash, for that film type: unchecking S1 on a lumbar film says `LL, PI, PT, SS, PI–LL, L1PA and L5–S1 will show —`. The
-note never shows a value. Unchecking the level being placed cancels the placement. T1 and T4 feed no measurement today,
-so they have no note (D12).
+dash, for that film type: unchecking S1 on a lumbar film says `LL, PI, PT, SS, PI–LL, L1PA, T4PA and L5–S1 will show —`.
+The note never shows a value. Unchecking the level being placed cancels the placement. Since 2026-10-22 T1 and T4 feed
+measurements, so they have notes: unchecking T1 on a cervical or full-spine film says `T1 slope will show —`, and
+unchecking T4 on a lumbar or full-spine film says `T4PA will show —` (D12, which said T1 and T4 feed nothing, is
+superseded). On a film outside a measurement's family (T1 on a lumbar film, T4 on a cervical one) the point is kept and
+drawn but the note stays silent.
+
+Entering edit mode and Save edits re-apply the levels the editor holds hidden or unplaced to the stored geometry when
+the two disagree (a re-measure that failed, or a run that overtook the editor), so the stage and the record never keep
+different views. The rule runs in both directions, presence only: a level the record holds placed and visible that
+the study lacks (a T1 or T4 placed before 1.4.0, or a hand-placed level whose commit was lost) lands on the first Edit,
+and the heads are compared by count. Like any other re-measure it clears the film's Reviewed mark: the mark stands
+only over numbers the record agrees with.
+
+Outside edit mode the mask overlay colours a level only while the study's geometry holds it, so an unchecked level's
+pixels are no longer painted; checking it again or RESET TO PREDICTION brings the colour back (the stored image is
+untouched).
+
+### T1 slope and T4 pelvic angle
+
+(2026-10-22, 1.4.0.) The owner asked for the T4 centroid to be kept when it is added, and chose the T1 slope with it ("I
+want T1 slope otherwise no point in annotating T1"). A T1 superior endplate and a T4 centroid placed by hand now reach
+the study on every film (`geometry.t1_superior`, a pair, anterior then posterior; `geometry.t4_centroid`, a point; each
+null when the level is hidden or unplaced), so they survive leaving edit mode and reopening the film, and two measurements
+read from them. Both come from the backend's `/measure`; the renderer displays the stored value and computes nothing.
+
+- **T4 pelvic angle (`T4PA`)** is L1PA's construction with the T4 centroid: the angle at the hip axis (the mean of the two
+  femoral circle centres) between the line to the T4 centroid and the line to the S1 superior endplate midpoint, unsigned,
+  0 to 180 degrees. It belongs to the lumbar family (a lumbar or full-spine film). It needs the T4 centroid, both femoral
+  heads and S1.
+- **T1 slope (`T1S`)** is the acute angle between the T1 superior endplate line and the image horizontal, unsigned, 0 to 90
+  degrees (SS's rule on the T1 pair; the horizontal is the acquisition image's, not rotated to the anatomy). It belongs
+  to the cervical family (a cervical or full-spine film). It needs the T1 endplate with two distinct points.
+
+A measurement whose input is missing, or whose film is outside its family, reads a dash in the panel and the grid and
+an empty cell in the CSV, never a number. The Measurements panel gains **T4 PELVIC ANGLE** after L1 PELVIC ANGLE and
+**T1 SLOPE** after C2–C7 SVA; clicking a row selects its construction (`selectedLevel` `'T4PA'` or `'T1S'`): T4PA draws
+the two segments from the hip axis to the T4 centroid and to the S1 midpoint, T1S draws the T1 line with a dashed
+horizontal through its midpoint. Outside edit mode the stage draws the T1 endplate as a line in T1's colour and the T4
+centroid as a cross in T4's, on every region. The Parameters grid has a **T4PA** column and a **T1 slope** column, and
+both CSV exports carry `T4PA` and `T1 slope (deg)`. No model places T1 or T4, so a prediction never produces either
+value. A point hidden and then saved is not kept: the record holds the level not visible, so checking it after a reopen
+shows it unplaced and Place… puts it back (within one edit session the point is kept while hidden).
 
 ## Placing a level
 
@@ -135,6 +175,25 @@ current one, and a placed point chosen again shows both. A femoral head's chips 
 clicked: its rim points are unordered. Once the level is placed, and whenever a placed level is selected, the same
 row lists that level's points with every dot filled (since 2026-10-20; see Handles and the keyboard).
 
+**Placing only some of a level's points** (2026-10-21, N1–N2). A vertebral body may be finished with one endplate (SA
+and SP, or IA and IP) and C2 with its inferior pair or its centroid alone, when the rest is not on the film: the
+shoulders hide C7's inferior endplate, a lumbar film is cut off above L1. Once such a part is whole, the edit bar's
+**FINISH**, which sits right after FIT and shows only while a body or C2 is being placed, is enabled
+(`Finish with the points placed; the rest are not on this film`). Pressing it stores the part placed and records the
+rest as not on this film; the row reads Manual (Edited, if the model had placed the level), and Place… is still
+offered. A level with one corner of a pair set cannot finish: place the other corner, or UNDO. A level with every point
+set still finishes by itself, as before. T1, S1, T4 and the femoral heads are unchanged. What a partial level measures
+follows from the points it has: with C7's superior endplate alone, C2–C7 SVA and C6–C7 segmental lordosis read, and
+C2–C7 Cobb and C6–C7 disc angulation show `—`.
+
+**C7's centroid** (2026-10-22, N8–N9). C7 stays a body and carries an optional third part, its centroid, like C2's. The
+four corner clicks still finish C7 by themselves; the centroid is a fifth step, CENTROID (`Click the centroid of the C7
+body.`), placed during the placement by choosing its chip (the bar reads `PLACING C7 · n OF 5`) or later from the
+hollow CENTROID chip or the row's Place…. FINISH accepts a centroid alone, as it does for C2. A whole C7 without its
+centroid counts as partial, so its row offers Place…, which resumes at the centroid step. On a full-spine film the
+C7–S1 SVA (the plumb) reads from the placed centroid, else from the mean of C7's four corners, else shows `—`; the
+model's own C7 centroid is never read back as a placed point (N10).
+
 A click within one pixel of any other point of the placement is ignored (R26), so a double-click counts once and no
 corner can land on another (a zero-length endplate is a measurement error); a re-placed point may land beside its own
 old position. For a femoral head FIT stays disabled until the fit has a radius of at least 0.5 px (R22: a double-click
@@ -142,8 +201,9 @@ would otherwise give a zero radius, which the record cannot hold).
 
 | Kind | Clicks |
 |---|---|
-| C3–C7, L1–L5 | 4: superior-anterior, superior-posterior, inferior-anterior, inferior-posterior (SA → SP → IA → IP; the chips choose another order) |
-| C2 | 3: inferior-anterior corner, inferior-posterior corner, then the centroid of the body (any order by the chips) |
+| C3–C6, L1–L5 | 4: superior-anterior, superior-posterior, inferior-anterior, inferior-posterior (SA → SP → IA → IP; the chips choose another order), or FINISH after one endplate |
+| C7 | the same 4, which finish it by themselves, and an optional fifth, the centroid (CENTROID chip, during the placement or later from the hollow chip or Place…) |
+| C2 | 3: inferior-anterior corner, inferior-posterior corner, then the centroid of the body (any order by the chips), or FINISH after the pair or the centroid |
 | T1, S1 | 2: the anterior then the posterior corner of the superior endplate (either first by the chips) |
 | T4 | 1: the centroid |
 | Femoral head | 2–4 rim points: two are read as the ends of a diameter, three or four are fitted; **FIT** finishes from 2, the fourth click finishes by itself (`PLACING FEMORAL HEAD 1 · 2 OF 4 RIM POINTS`); the chips are progress only |
@@ -164,8 +224,9 @@ PREDICTION for the whole study. An Edited level can also be returned to the mode
 Selecting a row gives that level its handles on the stage (only the selected level has handles) and focuses its first
 handle; the help line says `L3 selected — drag a handle to adjust it, or pick a point and nudge it with the arrow
 keys.`. Since 2026-10-20 the edit bar also lists the selected level's points as chips, whether the model placed the
-level or a hand did: `SA SP IA IP` for a body (C2's `IA IP CENTROID`, an endplate's `ANT POST`, a centroid, a head's
-`P1`–`P4`, one per rim point), each dot in the handle's colour and filled, the focused handle on the accent ground.
+level or a hand did: `SA SP IA IP` for a body (C7's `SA SP IA IP CENTROID`, C2's `IA IP CENTROID`, an endplate's
+`ANT POST`, a centroid, a head's `P1`–`P4`, one per rim point), each dot in the handle's colour and filled, the focused
+handle on the accent ground.
 Clicking a chip **arms** that point (since 2026-10-21): the bar reads `PLACING L4 · SA`, the help line names the
 click (`Click the superior-anterior corner (SA). Escape keeps the point where it is.`), the chip's dot shows hollow,
 and the next click on the film places the point there, clamped to the image and committed through `/measure` like a
@@ -185,12 +246,22 @@ a drag or nudge that would leave the head under 0.5 px is refused and the handle
 Every drag release and nudge is committed through the measure queue, so the measurements and `studies.json` follow at
 once (D2).
 
+**A partial level** (2026-10-21, N2). The chips of a body or C2 placed with only some of its points list every point,
+the missing ones with a hollow dot; focus, Tab and the arrow keys reach the points that exist only. Clicking a hollow
+chip, or the row's **Place…**, resumes the placement for that endplate: the bar reads `PLACING C7 · 3 OF 4`, the placed
+points are filled in already, and the next clicks on the film complete the level. UNDO reaches only the new clicks;
+CANCEL or Escape leaves the level as it was. **Delete** or **Backspace** with a point of a body or C2 focused removes
+that point's endplate (C2's and C7's centroid, the centroid alone), committed through `/measure` like a drag. It is
+refused for the level's last part (CLEAR the level, or uncheck it) and for T1, S1, T4 and the heads, and does nothing
+while a level is being placed, while the W/L panel is open or while the study's run is in flight. The edit bar's help
+line box is narrow, so a long help line wraps inside its box instead of the bar taking a second row.
+
 | Key | In edit mode |
 |---|---|
 | Tab / Shift+Tab | the next / previous handle across every visible, placed level in panel order, selecting its level (inside the edit bar, the W/L panel and the levels panel Tab moves focus as usual) |
 | Arrow keys | nudge the focused handle 1 px; Shift: 10 px |
 | Escape | one thing at a time: closes the exit prompt (Keep editing), cancels a placement, closes the W/L panel, then leaves edit mode |
-| Delete, Backspace | nothing (the level editor has no delete; uncheck or CLEAR instead) |
+| Delete, Backspace | removes the focused point's endplate on a body or C2 (its centroid on C2 and C7); nothing on the last part, on T1, S1, T4 or a head |
 
 Handles and placement clicks pause while the W/L panel is open. The left+right chord and the middle button pan in every
 mode; with the Pan toggle pressed, a primary drag pans even over a handle. The right button alone windows the film in
@@ -259,7 +330,15 @@ beside it). In short: `study` (the stem, never the SP id), `image` (`file`, `sha
 `width_px`, `height_px`), `film` (`region`, `view`), `model` (`name`, and `version`: the graph's ONNX hash from the
 run's `qc.model_versions`), `app_version`, `saved_at`, `complete`, `levels` keyed by code, and `femoral_heads[]`. Every
 level carries `state` and `source`; a placed one carries its geometry (`corners` `{sa, sp, ia, ip}` for a body, `{ia,
-ip}` plus `centroid` for C2, `{sa, sp}` for T1 and S1, `centroid` for T4; a head's `center`, `radius` and `rim`). An
+ip}` plus `centroid` for C2, `{sa, sp}` for T1 and S1, `centroid` for T4; a head's `center`, `radius` and `rim`). Since
+1.4.0 (2026-10-21, N4) the `corners` of a body and of C2 are nullable by endplate: `ia` and `ip` are null for a C7
+placed from its superior endplate, `sa` and `sp` null together for one placed from its inferior; C2's `corners` is
+null with a `centroid`, or the reverse; at least one part is present, and every key is written. Since 2026-10-22
+(N11) C7's entry also carries `centroid` and `model_centroid` (each a point or null) and lists `centroid` in
+`edited_points`; the model's C7 never has a centroid, so a placed one reads Edited with `model_centroid` null. A C7
+record saved before that reads with the centroid null. The schema id is
+unchanged, amended 2026-10-21 as R39 amended it for `edits`: a record saved before 1.4.0 validates and reads
+unchanged, and a 1.3.x build reads a partial level as Not placed. An
 edited level also carries the model's original (`model_corners`, `model_centroid`, `model_circle`); a segmented body
 level carries the model's mask outline as `contour` (a polygon of at least three points, R10), null for edited and
 manual levels and for films with no mask. Coordinates are pixels of the stored image, origin top-left. Window / level
@@ -299,7 +378,8 @@ keys, so a script can read `corners[name]` (or `centroid`, `center`, `radius`) d
 
 | Kind | Keys, in this order |
 |---|---|
-| C3–C7, L1–L5 | `sa`, `sp`, `ia`, `ip` (in `corners`) |
+| C3–C6, L1–L5 | `sa`, `sp`, `ia`, `ip` (in `corners`) |
+| C7 | `sa`, `sp`, `ia`, `ip` (in `corners`), `centroid` (2026-10-22, N11) |
 | C2 | `ia`, `ip` (in `corners`), `centroid` |
 | T1, S1 | `sa`, `sp` (in `corners`) |
 | T4 | `centroid` |
@@ -307,7 +387,8 @@ keys, so a script can read `corners[name]` (or `centroid`, `center`, `radius`) d
 
 A `segmented` entry lists nothing; an `edited` one lists the keys whose value differs from the model's original, by the
 same test that decides the state (a difference over 10⁻⁶ px), so an entry is `edited` exactly when its list is not
-empty (R38); a `manual` one lists every key of its kind; `not_placed` and `not_visible` list nothing (a hidden level's
+empty (R38); a `manual` one lists every key it holds a point for (two for a partial body), and an `edited` one
+includes the keys of an endplate removed or added (2026-10-21, N7); `not_placed` and `not_visible` list nothing (a hidden level's
 geometry is not in the record). A femoral head's rim is how its circle was fitted, not a point of it: moving a rim
 point that leaves the centre and radius where they were lists nothing, and the head stays segmented. The record also
 carries `edits`, after `complete`: how many of the sixteen entries (fourteen levels and two heads together) are in
@@ -323,8 +404,10 @@ from disk). The field is optional in the schema, the way `edits` is (R39), under
 saved before it validates and reads as no comment; the app writes it on every save. The study keeps a display copy,
 `labelComment` (optional-null, no `STORE_VERSION` bump), set in the same save as `labelFile`, so the Analysis panel
 and the Find search read it without opening the file; a re-run, a Region change and Unmark reviewed leave it, since
-the record stays, and a delete removes both. Opening the editor takes the comment from the record, else from
-`labelComment`. Mark reviewed's zero-change record carries the study's current comment, usually none.
+the record stays, and a delete removes both. A re-run keeps the record, so Edit merges the record's C7 centroid onto
+the new model's C7 corners; the point is in image coordinates and stays valid, and nothing commits until an edit.
+Opening the editor takes the comment from the record, else from `labelComment`. Mark reviewed's zero-change record
+carries the study's current comment, usually none.
 
 **The record travels in bundles** (annotation bundles, 2026-10-15, B1–B9). **Export all** on the Find tab copies each
 film's record, its `comment` with it, into that film's folder in the bundle, beside the film and its model result;
@@ -391,6 +474,9 @@ level can be placed by hand. This is the case the feature exists for. Once a lev
 measurements but no prediction id and no `qc.models`: the app treats it as hand-placed (`isHandPlaced`, R16) and shows
 it from its original outside edit mode too, never FILM UNAVAILABLE. Its record names model `none`.
 
+The model's own partial output (a body with one endplate, which the cervical segmentation can return) reads Segmented
+since 2026-10-21 and draws as its line; before, it read Not placed and drew nothing.
+
 On an Auto film with no model run the region follows the levels placed on it, read again at every change (R20): C
 levels alone make it cervical, L1–L5, S1 or a femoral head alone lumbar, both full spine, nothing lumbar. Placing L3
 and then C3 on a failed Auto full-spine film therefore measures it as a full spine, and the record's `film.region`
@@ -427,9 +513,23 @@ mode and (section 17) outside it, with the right-button drag and the double righ
 and (section 18) the record Mark reviewed writes for a film with none, and (section 19) where the level plates sit,
 their drag, the double-click and their reset, and (2026-10-15, round 2) section 12's failed film, which now reads Failed
 before its first commit, Hand-placed after, and Failed again once Discard takes the level off, section 20 (REVERT) and
-section 21 (the comment, Ctrl+Z on its first keystroke included);
+section 21 (the comment, Ctrl+Z on its first keystroke included) and (2026-10-21, 1.4.0) section 22 (a C2 placed from its
+centroid and FINISH, a C7 placed from SA and SP with FINISH disabled after one corner and enabled after two, the hollow
+chips, the record's null corners validating against the amended schema, Edit again, the resumed placement, Delete and
+its refusal, and, for the C7 centroid (2026-10-22, N8), the hollow CENTROID chip and one click placing it with C7 still
+partial, Place… S1 turning the film full spine with `GLOBAL_SVA_PX` read from the placed centroid, Save edits writing
+`levels.C7.centroid` with `edited_points` listing it, and Edit again reading it back: section 22 holds 20 checks, 15 for
+the partial endplates and 5 for the centroid) and (2026-10-22) section 24 (both heads, T1 and T4 placed by hand on the
+full-spine film; the study gaining `t1_superior` and `t4_centroid` and finite `T1S` and `T4PA`; T1S equal to 11.31
+degrees for the placed line; the panel's T1 SLOPE and T4 PELVIC ANGLE rows reading a number outside edit mode; unchecking
+T4 naming `T4PA` in a note, taking the field and the value off the study and the row to a dash; checking it again
+returning them; DONE and a reopen keeping both fields; 12 checks), with the T1 toggle check in section 11 now reading
+`t1_superior` null on the study after the commit;
 the pure modules have unit tests (`test/levels`, `level-projection`, `level-handles`, `level-labels` for the plates,
-`window-level`, `label-record`, `contours`, and `interactions` for the double right-click; `canvas` draws the plates),
+`window-level`, `label-record`, `contours`, and `interactions` for the double right-click; `canvas` draws the plates; 1.4.0 adds the partial-level groups in
+`levels`, `level-projection`, `persistence`, `level-handles`, `canvas`, `label-record` and the wiring, and
+`backend/tests/unit` the partial lumbar bodies, and the C7 centroid adds tests to `levels`, `level-projection`,
+`persistence`, `level-handles`, `canvas`, `label-record` and the wiring),
 `test/level-editor-wiring.test.js` drives the wiring
 through the real store and measure queue (R20) and Mark reviewed's record (`writeReviewRecord`, D19), and
 `test/film-window.test.js` drives the view's window

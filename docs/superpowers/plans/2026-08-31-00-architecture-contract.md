@@ -1487,7 +1487,9 @@ deviation from the plan, which had neither (R23). IPC
 null when unknown), which the label record writes as `model.version`.
 
 **Geometry.** T1, T4, per-level visibility, `source` and femoral rim points never enter `study.geometry`: they live in
-the level model and the label record only. The levels a film's region measures are projected into `study.geometry`
+the level model and the label record only. (2026-10-22: T1's superior endplate and T4's centroid DO enter it now, as
+`t1_superior` and `t4_centroid`; see the 2026-10-22 amendment at the end of this file. Visibility, `source` and the rim
+points still do not.) The levels a film's region measures are projected into `study.geometry`
 through the existing measure queue (`projectGeometry` → `commitGeometry` → `/measure`), so measurements, the em-dash
 rule and `studies.json` work as before (D2: drags keep auto-committing; Save edits writes only the record). C2 in the
 level model is an inferior endplate plus a centroid (D8), projected as `vertebrae.C2.inferior` and `c2_centroid`.
@@ -1973,3 +1975,42 @@ the import's toast (S31) or the export's (S37).
 **Label record and store.** Unchanged: the record keeps its schema id and the study gains no field. An import is the
 second of the two paths the editor round's amendment allows to write `labelComment` (Save edits is the first); it sets
 it, and `labelFile`, on the studies it adds or updates.
+
+## 2026-10-22 amendment: T4 pelvic angle and T1 slope
+
+Spec `docs/superpowers/specs/2026-10-22-t4pa-t1-slope-design.md` (O1–O3 the owner's, P1–P16 the planner's); plan
+`plans/2026-10-22-t4pa-t1-slope.md`.
+
+**Measurements.** The measurements shape gains two keys on every region, present with `null` on every `/measure` and
+every `/predict` response (no model places T1 or T4, so a prediction carries both null): `T4PA` (`number|null`, degrees,
+unsigned 0–180: L1PA's construction with the T4 centroid in place of the L1 centre, that is the angle at the hip axis,
+the mean of the two femoral circle centres, between the line to the T4 centroid and the line to the S1 superior endplate
+midpoint, null unless the centroid, both circles and the S1 pair are present and both vectors have length) and `T1S`
+(`number|null`, degrees, unsigned acute 0–90: SS's rule on the T1 superior endplate pair against the image horizontal,
+null unless the pair is two distinct finite points). `T4PA` belongs to the lumbar family (lumbar and full-spine films),
+`T1S` to the cervical family (cervical and full-spine films); a film outside a measurement's family shows a dash for it.
+Absent, null and non-finite are the em dash, never `0`. `backend/thoracic_measurements.py` computes both and the
+`/measure` handler applies it after the region dispatch on all three paths.
+
+**Geometry.** The geometry gains two optional fields on every region: `t1_superior` (`[[x,y],[x,y]]|null`, anterior then
+posterior) and `t4_centroid` (`[x,y]|null`). The renderer's projection writes them whenever the level is visible and
+placed, else null; the level model reads them back (`levelsFromGeometry`), so an editor opened on the study shows them;
+every `/measure` path echoes them (the lumbar path, which rebuilds its geometry, now keeps them); the backend never
+bounds either point by the image (they are clamped clicks, and a fitted femoral centre may lie outside the film, see
+below). The persistence validator accepts each absent, null or well formed; A finite `T1S` needs a well-formed `t1_superior`, and a finite `T4PA` the centroid, the hip midpoint and the S1 pair
+(`measurementsHaveLandmarks`). `STORE_VERSION` stays 1 and the label record
+schema is unchanged (the record keeps T1 and T4 for provenance only). A 1.3.x build ignores the two fields.
+
+**`selectedLevel`.** The domain gains `'T4PA'` and `'T1S'`, each a construction of its own and never a vertebral level.
+`'T4PA'` draws L1PA's two segments from the hip axis to the T4 centroid and to the S1 midpoint and, depending on S1, sits
+with the other S1-dependent branches after the canvas's `if (!s1) return null` gate; `'T1S'` draws the T1 line with a
+dashed horizontal through its midpoint and needs no S1, so its branch sits above that gate. Every switch on
+`selectedLevel` handles both values explicitly.
+
+**The partial-endplates and C7-centroid work (release 1.4.0).** The 2026-10-21 and 2026-10-22 work that lets a level be
+placed in part (one endplate of a body, C2's centroid alone) and gives C7 an optional centroid is specified in
+`docs/superpowers/specs/2026-10-21-partial-endplates-design.md` and `docs/design/level-editor/HANDOFF.md` §12b (N1–N13,
+N14 for this amendment); the 2026-10-22 femoral-centre rule (a fitted circle centre may lie outside the film, on the
+full-spine path as on the lumbar one) is recorded in `docs/releases/1.4.0.md`.
+
+No IPC or CSP change, no runtime dependency, no new renderer module file.

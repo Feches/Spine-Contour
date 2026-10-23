@@ -6,7 +6,7 @@ import { getState, setState } from '../store.js';
 import { measure } from '../api.js';
 import { showToast } from './toast.js';
 import {
-  createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel, colorFor,
+  createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel, colorFor, overlayCanvasFor, MASK_LEVELS,
 } from '../viewer/canvas.js';
 import { clientToImage } from '../viewer/geometry.js';
 import {
@@ -23,7 +23,7 @@ import { plateAnteriorSide, plateAt, plateOffset, movePlate, resetPlate } from '
 import { dragWindow, windowText } from '../viewer/window-level.js';
 import {
   enterLevelEditor, requestExit, keepEditing, placePoint, undoPlacedPoint, restorePlacing, selectPlacingStep, cancelPlace,
-  aimHandle, cancelAim, placeAimedPoint,
+  aimHandle, cancelAim, placeAimedPoint, resumePlace, removeFocusedPart,
   fitPlacing, setFocusedHandle, selectLevelRow, commitHandleMove, resetLevelsToModel,
 } from '../level-editor.js';
 // (2026-10-11, gate feedback G3 and G4; plan D15-D17) The window / level belongs to the view, in every mode.
@@ -306,13 +306,21 @@ export function mountViewer(container) {
     rerunButton);
 
   // The edit bar (handoff §3): the label, the help line, then -- while placing, and not while the window
-  // / level panel is open -- the step chips, FIT (femoral heads), UNDO and CANCEL; then RESET TO PREDICTION
+  // / level panel is open -- the step chips, FIT (femoral heads), FINISH (a body or C2 with a whole part; 2026-10-22,
+  // the final review, M5), UNDO and CANCEL; then RESET TO PREDICTION
   // (D14) and DONE, always. (2026-10-20) With no placement in progress the same chip row lists the selected
   // placed level's points instead (selectedLevelChips), so a level the model found reads like one placed by hand.
   const editLabel = el('div', { class: 'viewer-editbar-label' }, EDIT_LABEL);
   const editHelp = el('div', { class: 'viewer-edit-help' });
   const steps = el('div', { class: 'viewer-steps is-hidden' });
   const fitButton = textButton('FIT', () => fitPlacing(imageSize()), { 'aria-label': 'Fit the circle to the rim points', class: 'viewer-tool viewer-tool-text is-active is-hidden' });
+  // (2026-10-21, partial endplates, spec §4) FINISH: a body or C2 placement ends with the points placed (a whole
+  // endplate, or C2's one part); the rest are not on this film. Shown only while a body or C2 is being placed.
+  const finishButton = textButton('FINISH', () => fitPlacing(imageSize()), {
+    'aria-label': 'Finish with the points placed; the rest are not on this film',
+    title: 'Finish with the points placed; the rest are not on this film',
+    class: 'viewer-tool viewer-tool-text is-active is-hidden',
+  });
   const undoButton = textButton('UNDO', () => undoPlacedPoint(), { class: 'viewer-tool viewer-tool-text is-hidden' });
   const placeCancelButton = textButton('CANCEL', () => cancelPlace(), { class: 'viewer-tool viewer-tool-text is-hidden' });
   const placeDivider = el('div', { class: 'viewer-divider is-hidden' });
@@ -323,6 +331,7 @@ export function mountViewer(container) {
     editHelp,
     steps,
     fitButton,
+    finishButton,
     undoButton,
     placeCancelButton,
     placeDivider,
@@ -372,6 +381,9 @@ export function mountViewer(container) {
   container.append(stage);
 
   let currentImages = null;
+  // (2026-10-22, round 2, Task 17: the owner's report) The overlay filtered to the levels the study holds, cached by
+  // that level set beside currentImages; the cached images object is never changed.
+  let levelOverlay = { levelsKey: null, canvas: null };
   let lastStatic = null;
   let lastDynamic = null;
   let lastSteps = null;
@@ -1077,14 +1089,35 @@ export function mountViewer(container) {
   // aimHandle / placeAimedPoint), the armed chip's dot hollow until then, as a placement's current empty step is;
   // the chip clicked again, Escape, Tab or a handle press disarms, and the focus stays so the arrow keys nudge it.
   // Disabled while this study's run is in flight, like the placement's chips. `aria-current` marks the focused one.
+  // (2026-10-21, partial endplates, spec §4) A missing point of a partial body or C2 reads as a hollow chip: clicked, the
+  // placement resumes with that step current (resumePlace). A placed chip of a whole body or C2 says Delete removes its part.
   function buildHandleChips({ code, chips }, busy) {
-    return chips.map(({ handle, label, colorKey, focused, aiming }) => {
+    const kind = kindOf(code);
+    const partKind = kind === 'body' || kind === 'c2';
+    return chips.map(({ handle, label, colorKey, focused, aiming, placed }, index) => {
       const dot = el('span', { class: 'viewer-step-dot' });
       dot.style.setProperty('--step-color', colorFor(colorKey, code));
+      if (placed === false) {
+        return el('button', {
+          type: 'button',
+          class: 'viewer-step is-missing',
+          title: `Place ${label}: click here, then on the film`,
+          disabled: busy,
+          onClick: () => resumePlace(code, index),
+        }, dot, label);
+      }
+      // (2026-10-22, the final review, M3) Only a whole level offers Delete: on a partial one it would remove the last
+      // part, which the level model refuses.
+      // (2026-10-22, round 2) C7 and C2 carry an optional centroid, so a whole level can have a hollow CENTROID chip:
+      // count parts (a placed pair, or the centroid) instead of chips; Delete needs a second part to leave behind.
+      const on = (h) => chips.some((c) => c.handle === h && c.placed);
+      const parts = (on('SA') && on('SP') ? 1 : 0) + (on('IA') && on('IP') ? 1 : 0) + (on('CENTROID') ? 1 : 0);
+      const removable = partKind && parts >= 2;
+      const removes = !removable ? '' : handle === 'CENTROID' ? '; Delete removes it' : '; Delete removes its endplate';
       return el('button', {
         type: 'button',
         class: `viewer-step is-done${focused ? ' is-current' : ''}${aiming ? ' is-aiming' : ''}`,
-        title: aiming ? `Click the film to place ${label}; click again to keep it where it is` : `Place ${label}: click here, then on the film`,
+        title: aiming ? `Click the film to place ${label}; click again to keep it where it is` : `Place ${label}: click here, then on the film${removes}`,
         'aria-current': focused ? 'true' : undefined,
         'aria-pressed': String(aiming),
         disabled: busy,
@@ -1129,6 +1162,10 @@ export function mountViewer(container) {
     fitButton.classList.toggle('is-hidden', !circle);
     // (R22) FIT follows finishPlacing's own rule: enough rim points, and a fit with a radius of at least 0.5 px.
     fitButton.disabled = busy || !circle || !canFinishPlacing(editor, imageSize());
+    // (2026-10-21, partial endplates, spec §4) FINISH: a body or C2 placement with a whole part and no half part.
+    const partialKind = showPlacement && ['body', 'c2'].includes(kindOf(placing.code));
+    finishButton.classList.toggle('is-hidden', !partialKind);
+    finishButton.disabled = busy || !partialKind || !canFinishPlacing(editor, imageSize());
     undoButton.classList.toggle('is-hidden', !showPlacement);
     // (G2) UNDO clears the most recently set point, so it is live while any point is set.
     undoButton.disabled = busy || !placing || placing.history.length === 0;
@@ -1339,8 +1376,9 @@ export function mountViewer(container) {
       else requestExit();
       return;
     }
-    // Handles are disabled while placing or while the window / level panel is open (handoff §6).
-    if (!editor || editor.placing || windowOpen) return;
+    // Handles are disabled while placing or while the window / level panel is open (handoff §6). (2026-10-22, the
+    // final review, I3) And while the exit prompt shows: nothing on the stage changes under it (Tab, Delete, arrows).
+    if (!editor || editor.placing || windowOpen || editor.exitPrompt) return;
     if (event.key === 'Tab') {
       // Inside the edit bar, the window / level panel and the levels panel, Tab stays ordinary focus
       // movement so their controls remain keyboard-operable once focus is there (BD-11 d).
@@ -1352,8 +1390,19 @@ export function mountViewer(container) {
       setFocusedHandle(next);
       return;
     }
+    // (2026-10-21, partial endplates, spec §4) Delete and Backspace remove the focused point's part (its endplate, or
+    // C2's centroid), committed like a drag; the level model refuses the last part and a one-part kind.
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      // (2026-10-22, the final review, I2) A focused slider (the overlay opacity keeps focus after a drag) is not the
+      // stage: TEXT_ENTRY lets a range input through, so the Delete branch guards it as the arrow branch does.
+      if (target && target.matches('input[type="range"]')) return;
+      if (!editor.handle || !currentImages) return;
+      event.preventDefault();
+      removeFocusedPart();
+      return;
+    }
     // Arrows nudge the focused handle by 1 px (Shift: 10), clamped to the film. A focused slider keeps
-    // its own arrows. Delete and Backspace do nothing in the level editor.
+    // its own arrows.
     const delta = arrowKeyDelta(event.key, event.shiftKey);
     if (!delta || !editor.handle || !currentImages) return;
     if (target && target.matches('input[type="range"]')) return;
@@ -1427,6 +1476,7 @@ export function mountViewer(container) {
   function setImages(images) {
     if (images === currentImages) return;
     currentImages = images;
+    levelOverlay = { levelsKey: null, canvas: null };
     if (images) {
       // A film in hand ends whatever the sidecar read was reporting. The contract's sidecar
       // section says a re-run recreates a missing film; without this the FILM UNAVAILABLE card
@@ -1496,13 +1546,27 @@ export function mountViewer(container) {
     // D1/D11), in every mode since gate feedback G3 (D15): outside edit mode the mask overlay is drawn over it as
     // over the stored image; while editing the overlay stays off, the editor draws the levels.
     const wl = windowFor(state, study);
-    const staticKey = [state.overlays, state.overlayOpacity, currentImages, state.editing, wl?.width, wl?.level, wl?.status];
+    // (2026-10-22, round 2, Task 17: the owner's report) Outside edit mode a level's label is painted only while the
+    // study's geometry holds that level; no geometry keeps the full overlay.
+    const levelsKey = study.geometry?.vertebrae ? Object.keys(study.geometry.vertebrae).sort().join(',') : null;
+    const staticKey = [state.overlays, state.overlayOpacity, currentImages, state.editing, wl?.width, wl?.level, wl?.status, levelsKey];
     if (!sameKey(staticKey, lastStatic)) {
       lastStatic = staticKey;
+      let filtered = null;
+      // A study holding every level the mask labels draws the stored overlay: no duplicate canvas, no second getImageData.
+      const held = levelsKey ? levelsKey.split(',') : [];
+      const coversAll = Object.keys(currentImages?.labels ?? {}).every((code) => !MASK_LEVELS.includes(code) || held.includes(code));
+      if (levelsKey !== null && state.overlays && !state.editing && currentImages?.mask && !coversAll) {
+        if (levelOverlay.levelsKey !== levelsKey || !levelOverlay.canvas) {
+          levelOverlay = { levelsKey, canvas: overlayCanvasFor(currentImages, held) };
+        }
+        filtered = levelOverlay.canvas;
+      }
       drawStaticLayer(staticCtx, staticCanvas, currentImages, {
         overlays: state.overlays,
         overlayOpacity: state.overlayOpacity,
         editing: state.editing,
+        overlayCanvas: filtered,
         window: wl?.status === 'ready' ? { width: wl.width, level: wl.level } : null,
       });
     }

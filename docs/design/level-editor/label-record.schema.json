@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "spinecontour.segmentation-label/1",
   "title": "SpineContour segmentation label record",
-  "description": "One file per film, written on Save edits. Coordinates are image pixels of the stored image, origin top-left. C2 is an inferior endplate plus a centroid (owner decision 2026-10-10). Every level and femoral head lists edited_points, the record carries an edits summary (D18, 2026-10-11) and an optional comment (annotation editor round 2, 2026-10-15); all three are optional here, so a record saved before them still validates (R39), and the app always writes them.",
+  "description": "One file per film, written on Save edits. Coordinates are image pixels of the stored image, origin top-left. C2 is an inferior endplate plus a centroid (owner decision 2026-10-10). Every level and femoral head lists edited_points, the record carries an edits summary (D18, 2026-10-11) and an optional comment (annotation editor round 2, 2026-10-15); all three are optional here, so a record saved before them still validates (R39), and the app always writes them. Amended 2026-10-21 (partial endplates, decision N4): a body's corners and a C2's corners and centroid are nullable by endplate — sa and sp together, ia and ip together, at least one part present — and a manual entry lists the keys it holds a point for; the id is unchanged, so every earlier record still validates. Amended 2026-10-22 (the C7 centroid, decision N11): C7 may carry a centroid and a model_centroid, each a point or null, listed in its edited_points as \"centroid\"; a placed C7 holds a pair or its centroid.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "study", "image", "film", "model", "app_version", "saved_at", "complete", "levels", "femoral_heads"],
@@ -63,7 +63,7 @@
         "C4": { "$ref": "#/$defs/vertebra" },
         "C5": { "$ref": "#/$defs/vertebra" },
         "C6": { "$ref": "#/$defs/vertebra" },
-        "C7": { "$ref": "#/$defs/vertebra" },
+        "C7": { "$ref": "#/$defs/c7" },
         "T1": { "$ref": "#/$defs/endplate" },
         "T4": { "$ref": "#/$defs/centroid" },
         "L1": { "$ref": "#/$defs/vertebra" },
@@ -114,6 +114,10 @@
       "description": "D18: 'ia' and 'ip' name corners, 'centroid' the centroid; in that order.",
       "type": "array", "uniqueItems": true, "items": { "enum": ["ia", "ip", "centroid"] }
     },
+    "editedPointsC7": {
+      "description": "D18, amended 2026-10-22 (decision N11): 'sa', 'sp', 'ia', 'ip' name corners, 'centroid' the centroid; in that order.",
+      "type": "array", "uniqueItems": true, "items": { "enum": ["sa", "sp", "ia", "ip", "centroid"] }
+    },
     "editedPointsEndplate": {
       "description": "D18: the keys of corners, in the order sa, sp.",
       "type": "array", "uniqueItems": true, "items": { "enum": ["sa", "sp"] }
@@ -127,7 +131,7 @@
       "type": "array", "uniqueItems": true, "items": { "enum": ["center", "radius"] }
     },
     "editedPointsRule": {
-      "description": "R38: edited_points lists something exactly when the state is edited; segmented, not_placed and not_visible list nothing; manual lists every key (each kind's own rule). Applies only when edited_points is present (R39).",
+      "description": "R38: edited_points lists something exactly when the state is edited; segmented, not_placed and not_visible list nothing; manual lists the keys it holds (each kind's own rule; 2026-10-21). Applies only when edited_points is present (R39).",
       "allOf": [
         {
           "if": { "properties": { "state": { "enum": ["segmented", "not_placed", "not_visible"] } }, "required": ["state"] },
@@ -139,16 +143,42 @@
         }
       ]
     },
+    "nullablePoint": {
+      "description": "A point, or null where the annotator placed none (partial endplates, 2026-10-21).",
+      "oneOf": [{ "$ref": "#/$defs/point" }, { "type": "null" }]
+    },
     "corners4": {
+      "description": "Body corners, nullable by endplate: sa and sp are both points or both null, ia and ip likewise, and at least one pair is present.",
       "type": "object",
       "additionalProperties": false,
       "required": ["sa", "sp", "ia", "ip"],
       "properties": {
-        "sa": { "$ref": "#/$defs/point" },
-        "sp": { "$ref": "#/$defs/point" },
-        "ia": { "$ref": "#/$defs/point" },
-        "ip": { "$ref": "#/$defs/point" }
-      }
+        "sa": { "$ref": "#/$defs/nullablePoint" },
+        "sp": { "$ref": "#/$defs/nullablePoint" },
+        "ia": { "$ref": "#/$defs/nullablePoint" },
+        "ip": { "$ref": "#/$defs/nullablePoint" }
+      },
+      "allOf": [
+        { "if": { "properties": { "sa": { "type": "null" } } }, "then": { "properties": { "sp": { "type": "null" } } }, "else": { "properties": { "sp": { "$ref": "#/$defs/point" } } } },
+        { "if": { "properties": { "ia": { "type": "null" } } }, "then": { "properties": { "ip": { "type": "null" } } }, "else": { "properties": { "ip": { "$ref": "#/$defs/point" } } } },
+        { "anyOf": [{ "properties": { "sa": { "$ref": "#/$defs/point" } } }, { "properties": { "ia": { "$ref": "#/$defs/point" } } }] }
+      ]
+    },
+    "c7corners": {
+      "description": "C7's corners, nullable by endplate like corners4, but without its own at-least-one-pair rule: C7's centroid may stand alone (decision N11), so the entry holds that rule.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sa", "sp", "ia", "ip"],
+      "properties": {
+        "sa": { "$ref": "#/$defs/nullablePoint" },
+        "sp": { "$ref": "#/$defs/nullablePoint" },
+        "ia": { "$ref": "#/$defs/nullablePoint" },
+        "ip": { "$ref": "#/$defs/nullablePoint" }
+      },
+      "allOf": [
+        { "if": { "properties": { "sa": { "type": "null" } } }, "then": { "properties": { "sp": { "type": "null" } } }, "else": { "properties": { "sp": { "$ref": "#/$defs/point" } } } },
+        { "if": { "properties": { "ia": { "type": "null" } } }, "then": { "properties": { "ip": { "type": "null" } } }, "else": { "properties": { "ip": { "$ref": "#/$defs/point" } } } }
+      ]
     },
     "corners2": {
       "type": "object",
@@ -164,9 +194,12 @@
       "additionalProperties": false,
       "required": ["ia", "ip"],
       "properties": {
-        "ia": { "$ref": "#/$defs/point", "description": "Anterior corner of the inferior endplate." },
-        "ip": { "$ref": "#/$defs/point", "description": "Posterior corner of the inferior endplate." }
-      }
+        "ia": { "$ref": "#/$defs/nullablePoint", "description": "Anterior corner of the inferior endplate." },
+        "ip": { "$ref": "#/$defs/nullablePoint", "description": "Posterior corner of the inferior endplate." }
+      },
+      "allOf": [
+        { "if": { "properties": { "ia": { "type": "null" } } }, "then": { "properties": { "ip": { "type": "null" } } }, "else": { "properties": { "ip": { "$ref": "#/$defs/point" } } } }
+      ]
     },
     "contour": {
       "oneOf": [
@@ -175,7 +208,7 @@
       ]
     },
     "vertebra": {
-      "description": "C3–C7 and L1–L5: four body corners.",
+      "description": "C3–C7 and L1–L5: four body corners; either endplate may be null (2026-10-21).",
       "type": "object",
       "additionalProperties": false,
       "required": ["state", "source"],
@@ -196,12 +229,53 @@
         { "$ref": "#/$defs/editedPointsRule" },
         {
           "if": { "properties": { "state": { "const": "manual" } }, "required": ["state"] },
-          "then": { "properties": { "edited_points": { "minItems": 4 } } }
+          "then": { "properties": { "edited_points": { "minItems": 1 } } }
+        }
+      ]
+    },
+    "c7": {
+      "description": "C7: four body corners (either endplate may be null) plus an optional centroid, a point or null (2026-10-22, decision N11). A placed C7 holds a pair or its centroid. The centroid keys are optional so a record saved before this amendment validates; the app always writes them.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "source"],
+      "properties": {
+        "state": { "$ref": "#/$defs/state" },
+        "source": { "$ref": "#/$defs/source" },
+        "edited_points": { "$ref": "#/$defs/editedPointsC7" },
+        "corners": { "$ref": "#/$defs/c7corners" },
+        "centroid": { "$ref": "#/$defs/nullablePoint" },
+        "model_corners": { "oneOf": [{ "$ref": "#/$defs/c7corners" }, { "type": "null" }] },
+        "model_centroid": { "$ref": "#/$defs/nullablePoint" },
+        "contour": { "$ref": "#/$defs/contour" }
+      },
+      "allOf": [
+        { "$ref": "#/$defs/geometryRule" },
+        {
+          "if": { "properties": { "state": { "enum": ["segmented", "edited", "manual"] } }, "required": ["state"] },
+          "then": {
+            "anyOf": [
+              { "properties": { "corners": { "properties": { "sa": { "$ref": "#/$defs/point" } } } } },
+              { "properties": { "corners": { "properties": { "ia": { "$ref": "#/$defs/point" } } } } },
+              { "required": ["centroid"], "properties": { "centroid": { "$ref": "#/$defs/point" } } }
+            ]
+          },
+          "else": {
+            "not": { "anyOf": [{ "required": ["centroid"] }, { "required": ["model_centroid"] }] }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "const": "edited" } }, "required": ["state"] },
+          "then": { "properties": { "model_corners": { "$ref": "#/$defs/c7corners" } } }
+        },
+        { "$ref": "#/$defs/editedPointsRule" },
+        {
+          "if": { "properties": { "state": { "const": "manual" } }, "required": ["state"] },
+          "then": { "properties": { "edited_points": { "minItems": 1 } } }
         }
       ]
     },
     "c2": {
-      "description": "C2: the inferior endplate (IA, IP) plus a centroid. Owner decision 2026-10-10. No contour.",
+      "description": "C2: the inferior endplate (IA, IP) plus a centroid; either part may be null (2026-10-21). Owner decision 2026-10-10. No contour.",
       "type": "object",
       "additionalProperties": false,
       "required": ["state", "source"],
@@ -210,14 +284,20 @@
         "source": { "$ref": "#/$defs/source" },
         "edited_points": { "$ref": "#/$defs/editedPointsC2" },
         "corners": { "$ref": "#/$defs/c2corners" },
-        "centroid": { "$ref": "#/$defs/point" },
+        "centroid": { "$ref": "#/$defs/nullablePoint" },
         "model_corners": { "oneOf": [{ "$ref": "#/$defs/c2corners" }, { "type": "null" }] },
-        "model_centroid": { "oneOf": [{ "$ref": "#/$defs/point" }, { "type": "null" }] }
+        "model_centroid": { "$ref": "#/$defs/nullablePoint" }
       },
       "allOf": [
         {
           "if": { "properties": { "state": { "enum": ["segmented", "edited", "manual"] } }, "required": ["state"] },
-          "then": { "required": ["corners", "centroid", "model_corners", "model_centroid"] },
+          "then": {
+            "required": ["corners", "centroid", "model_corners", "model_centroid"],
+            "anyOf": [
+              { "properties": { "centroid": { "$ref": "#/$defs/point" } } },
+              { "properties": { "corners": { "properties": { "ia": { "$ref": "#/$defs/point" } } } } }
+            ]
+          },
           "else": {
             "not": {
               "anyOf": [{ "required": ["corners"] }, { "required": ["centroid"] }, { "required": ["model_corners"] }, { "required": ["model_centroid"] }]
@@ -226,12 +306,12 @@
         },
         {
           "if": { "properties": { "state": { "const": "edited" } }, "required": ["state"] },
-          "then": { "properties": { "model_corners": { "$ref": "#/$defs/c2corners" }, "model_centroid": { "$ref": "#/$defs/point" } } }
+          "then": { "properties": { "model_corners": { "$ref": "#/$defs/c2corners" }, "model_centroid": { "$ref": "#/$defs/nullablePoint" } } }
         },
         { "$ref": "#/$defs/editedPointsRule" },
         {
           "if": { "properties": { "state": { "const": "manual" } }, "required": ["state"] },
-          "then": { "properties": { "edited_points": { "minItems": 3 } } }
+          "then": { "properties": { "edited_points": { "minItems": 1 } } }
         }
       ]
     },

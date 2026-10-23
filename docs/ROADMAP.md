@@ -429,9 +429,31 @@ built.
   guard drift (Task 7).
 - **Smoke coverage.** `smoke-cervical.mjs` and `smoke-segmental.mjs` need a lateral cervical film this workstation does
   not have, and both screenshot the real film they run on, against the rule that no screenshot of a real film is taken;
-  their screenshots should go before they run again.
+  their screenshots should go before they run again. The levels dom suite (`smoke-levels`) hung intermittently on the
+  development laptop (2026-10-21: twice in five runs, once after section 18 and once after section 16, both around
+  backend-backed waits), never reproduced on demand, every fresh relaunch passing 169/169. It now bounds each call into
+  the page at 90 s and carries a dom-phase watchdog (120 s without a page answer fails the run, cleans up and exits);
+  run it as a bounded PowerShell job (`Start-Job` with `Wait-Job -Timeout 420`). The cause is not found.
+- **Lost commits in a long session** (2026-10-22). The owner's dev server, up since the previous day, saved two label
+  records whose edits never reached the study (no toast noticed). For the second film the cause was found at the gate:
+  a femoral head placed by hand at the film's bottom edge fits to a centre 6 px below the film, which the full-spine
+  measure path refused, so every later commit of that film failed (fixed in 1.4.0). For the first film, with no
+  hand-placed heads, a fresh launch over a copy of the same library commits every edit, the backend answers and the
+  pure path commits, so the trigger lives in the running session's state and is unexplained. 1.4.0 heals the split on
+  Edit and after Save edits (N12) and filters the overlay (N13).
+- **The exit prompt's Save edits can sit under the header** at a small window, so a click misses (seen in a CDP run at
+  1600×1100 with the clinical header).
+- **Save edits from the exit prompt did nothing on one synthetic Auto-region film with no model** (one run, not
+  investigated).
+- **The cervical and full-spine `_points` validators raise on two identical endplate points.** A degenerate S1 or
+  vertebral pair fails the whole `/measure` rather than nulling that one measurement, unlike the T1 slope since 1.4.0.
+  A follow-up for the backend.
 
-## 9. Placing only some of a level's points (2026-10-21, deferred by the owner to its own session)
+## 9. Placing only some of a level's points (2026-10-21, ~~deferred by the owner to its own session~~)
+
+Built 2026-10-21 on claude/partial-endplates-ca5755 (the owner's rulings N1–N4, all the recommended column; spec
+docs/superpowers/specs/2026-10-21-partial-endplates-design.md, plan plans/2026-10-21-partial-endplates.md), released as
+1.4.0. The placeable C7 centroid (N8–N11) shipped with it. What follows is the record of the ask and of what was chosen.
 
 The owner's ask: "if you can only see the superior endplate of C7 you can place C7 SA, SP but not IA and IP". A level
 today is all of its points or nothing, from the placement flow to the record. What each layer assumes:

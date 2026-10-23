@@ -2,11 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   RIM_HANDLES, levelHandles, handleAt, moveHandle, nudgeHandle, hitTestLevelHandles, handleOrder, nextLevelHandle,
-  HANDLE_RADIUS_CSS_PX, HANDLE_RADIUS_FLOOR_CSS_PX, handleRadiusImagePx, handleScale, selectedLevelChips, aimedStep,
+  HANDLE_RADIUS_CSS_PX, HANDLE_RADIUS_FLOOR_CSS_PX, handleRadiusImagePx, handleScale, selectedLevelChips, aimedStep, STEP_HANDLES, stepHandlesFor,
 } from '../renderer/viewer/level-handles.js';
 import {
   LEVEL_CODES, openEditor, selectLevel, startPlacing, cancelPlacing, toggleVisible, toggleGroup,
-  synthesizeRim, fitRim, aimHandle, cancelAim,
+  synthesizeRim, fitRim, aimHandle, cancelAim, firstHandle, setLevelGeometry,
 } from '../renderer/data/levels.js';
 
 // ---------- fixtures (inline: the shapes the level model stores) ----------
@@ -563,4 +563,68 @@ test('no chips while placing, with nothing selected, or for a hidden or unplaced
   assert.equal(selectedLevelChips(startPlacing(selectLevel(editor, 'FH1'), 'FH1')), null);
   assert.equal(selectedLevelChips(selectLevel(editor, 'L3')), null);
   assert.equal(selectedLevelChips(toggleVisible(selectLevel(editor, 'L4'), 'L4')), null);
+});
+
+test('a partial body has the handles of its one endplate only, in Tab order, and Tab never reaches a missing point', () => {
+  const partial = { superior: null, inferior: [[30, 30], [60, 30]] };
+  assert.deepEqual(levelHandles('L3', partial).map((h) => h.handle), ['IA', 'IP']);
+  assert.equal(handleAt('L3', partial, 'SA'), null);
+  assert.equal(moveHandle('L3', partial, 'SA', [1, 1]), partial, 'a missing handle cannot be moved');
+  const editor = setLevelGeometry(lumbarEditor(), 'L3', partial);
+  assert.deepEqual(handleOrder(editor).filter((h) => h.code === 'L3').map((h) => h.handle), ['IA', 'IP']);
+  assert.deepEqual(levelHandles('C2', { inferior: null, centroid: [45, 12] }).map((h) => h.handle), ['CENTROID']);
+});
+
+test('selectedLevelChips lists every step of a partial level, the missing points hollow (placed false) and never focused or armed', () => {
+  const editor = selectLevel(setLevelGeometry(lumbarEditor(), 'L3', { superior: [[30, 20], [60, 20]], inferior: null }), 'L3');
+  const { chips } = selectedLevelChips(editor);
+  assert.deepEqual(chips.map((c) => [c.handle, c.label, c.placed, c.focused]), [['SA', 'SA', true, true], ['SP', 'SP', true, false], ['IA', 'IA', false, false], ['IP', 'IP', false, false]]);
+  assert.deepEqual(chips.map((c) => c.colorKey), ['SA', 'SP', 'IA', 'IP']);
+  const armed = aimHandle(editor, 'L3', 'IA');
+  assert.equal(armed, editor, 'a missing point cannot be armed');
+  assert.equal(aimedStep({ ...editor, aiming: true, handle: { code: 'L3', handle: 'IA' } }), null);
+  const c2Editor = selectLevel(setLevelGeometry(everyKindEditor(), 'C2', { inferior: null, centroid: [45, 12] }), 'C2');
+  assert.deepEqual(selectedLevelChips(c2Editor).chips.map((c) => [c.label, c.placed, c.focused]), [['IA', false, false], ['IP', false, false], ['CENTROID', true, true]]);
+});
+
+// (2026-10-22, the final review, I1) The armed step on a partial level is named from the kind's whole step list, not
+// from the index among the points the level holds.
+test('aimedStep names the armed point of a partial level, not the step at its index among the existing points', () => {
+  const inferiorOnly = selectLevel(setLevelGeometry(lumbarEditor(), 'L4', { superior: null, inferior: [[30, 60], [60, 60]] }), 'L4');
+  const { label, help, title } = aimedStep(aimHandle(inferiorOnly, 'L4', 'IA'));
+  assert.deepEqual({ label, help, title }, { label: 'IA', help: 'Click the inferior-anterior corner (IA).', title: 'PLACING L4 · IA' });
+  const centroidOnly = selectLevel(setLevelGeometry(everyKindEditor(), 'C2', { inferior: null, centroid: [45, 12] }), 'C2');
+  const c2Step = aimedStep(aimHandle(centroidOnly, 'C2', 'CENTROID'));
+  assert.equal(c2Step.label, 'CENTROID');
+  assert.equal(c2Step.title, 'PLACING C2 · CENTROID');
+  assert.equal(aimedStep(aimHandle(everyKindEditor(), 'FH1', 'R2')).label, 'P3', 'a head still maps R2 to P3');
+});
+
+test('a whole level\'s chips all read placed, and a head\'s chips are unchanged', () => {
+  assert.deepEqual(selectedLevelChips(selectLevel(lumbarEditor(), 'L4')).chips.map((c) => c.placed), [true, true, true, true]);
+  assert.deepEqual(selectedLevelChips(selectLevel(lumbarEditor(), 'FH1')).chips.map((c) => [c.label, c.placed]), [['P1', true], ['P2', true], ['P3', true], ['P4', true]]);
+});
+
+test('STEP_HANDLES names each kind\'s handles in step order, and firstHandle agrees with levelHandles for every part', () => {
+  assert.deepEqual(STEP_HANDLES, { body: ['SA', 'SP', 'IA', 'IP'], c2: ['IA', 'IP', 'CENTROID'], endplate: ['SA', 'SP'], centroid: ['CENTROID'] });
+  const cases = [
+    ['L3', { superior: [[1, 1], [2, 1]], inferior: null }], ['L3', { superior: null, inferior: [[1, 2], [2, 2]] }], ['L3', body(1, 1)],
+    ['C2', { inferior: null, centroid: [1, 1] }], ['C2', { inferior: [[1, 2], [2, 2]], centroid: null }], ['C2', c2],
+    ['S1', endplate], ['T4', centroid], ['FH1', circle],
+  ];
+  for (const [code, geometry] of cases) assert.equal(firstHandle(code, geometry), levelHandles(code, geometry)[0].handle, code);
+});
+
+test('C7 lists a CENTROID handle and chip when it has one; the chip is hollow otherwise; aimedStep names it', () => {
+  const whole = { superior: [[30, 20], [60, 20]], inferior: [[30, 50], [60, 50]], centroid: null };
+  assert.deepEqual(stepHandlesFor('C7'), ['SA', 'SP', 'IA', 'IP', 'CENTROID']);
+  assert.deepEqual(stepHandlesFor('C6'), ['SA', 'SP', 'IA', 'IP']);
+  assert.deepEqual(levelHandles('C7', whole).map((h) => h.handle), ['SA', 'SP', 'IA', 'IP']);
+  const withCentroid = { ...whole, centroid: [45, 35] };
+  assert.deepEqual(levelHandles('C7', withCentroid).map((h) => [h.handle, h.colorKey]).at(-1), ['CENTROID', 'level']);
+  const editor = selectLevel(setLevelGeometry(everyKindEditor(), 'C7', whole), 'C7');
+  assert.deepEqual(selectedLevelChips(editor).chips.map((c) => [c.label, c.placed]), [['SA', true], ['SP', true], ['IA', true], ['IP', true], ['CENTROID', false]]);
+  const armed = aimHandle(setLevelGeometry(editor, 'C7', withCentroid), 'C7', 'CENTROID');
+  assert.deepEqual(aimedStep(armed), { code: 'C7', handle: 'CENTROID', label: 'CENTROID', help: 'Click the centroid of the C7 body.', title: 'PLACING C7 · CENTROID' });
+  assert.deepEqual(handleOrder(setLevelGeometry(everyKindEditor(), 'C7', { superior: null, inferior: null, centroid: [45, 35] })).filter((h) => h.code === 'C7'), [{ code: 'C7', handle: 'CENTROID' }]);
 });

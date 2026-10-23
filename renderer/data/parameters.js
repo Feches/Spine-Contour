@@ -50,6 +50,7 @@ export const CORE_COLUMNS = Object.freeze([
   { key: 'LL', label: 'LL L1\u2013S1' },
   { key: 'PILL', label: 'PI\u2013LL' },
   { key: 'L1PA', label: 'L1PA' },
+  { key: 'T4PA', label: 'T4PA' },
 ]);
 
 export const LEVEL_COLUMNS = Object.freeze([

@@ -13,7 +13,7 @@
  * is view state, like zoom and pan: FRESH_VIEW resets it when another film opens, entering and leaving edit mode keep
  * it, and it is never persisted and never in the label record.
  */
-import { kindOf } from '../data/levels.js';
+import { kindOf, hasCentroid } from '../data/levels.js';
 import { validAnteriorSide } from '../data/cervical.js';
 import { anteriorSideFrom } from '../data/level-projection.js';
 
@@ -39,8 +39,10 @@ function sideOf(difference, anteriorSide) {
 function hasPlateGeometry(code, geometry) {
   if (!geometry) return false;
   switch (kindOf(code)) {
-    case 'body': return isPair(geometry.superior) && isPair(geometry.inferior);
-    case 'c2': return isPair(geometry.inferior) && isPoint(geometry.centroid);
+    // (2026-10-21, partial endplates, spec §5) a body needs one pair; C2 its pair or its centroid
+    // (2026-10-22, round 2, spec §12 N9) C7 also has a plate with only its centroid
+    case 'body': return isPair(geometry.superior) || isPair(geometry.inferior) || (hasCentroid(code) && isPoint(geometry.centroid));
+    case 'c2': return isPair(geometry.inferior) || isPoint(geometry.centroid);
     case 'endplate': return isPair(geometry.superior);
     case 'centroid': return isPoint(geometry.centroid);
     default: return false;
@@ -49,14 +51,18 @@ function hasPlateGeometry(code, geometry) {
 
 /**
  * A plate's anchor, as before G7: a body's posterior-edge midpoint (SP and IP), C2's IP, an endplate's SP, T4's
- * centroid; null for a femoral head (no plate) or a geometry that is not what its kind says. A fresh point.
+ * centroid; (2026-10-22, the final review, M5) a one-endplate body anchors on that endplate's posterior corner (SP or
+ * IP), and C2 without its pair on its centroid; null for a femoral head (no plate) or a geometry that is not what its kind says. A fresh point.
  * @returns {[number, number]|null}
  */
 export function labelAnchor(code, geometry) {
   if (!hasPlateGeometry(code, geometry)) return null;
   switch (kindOf(code)) {
-    case 'body': return midpoint(geometry.superior[1], geometry.inferior[1]);
-    case 'c2': return copy(geometry.inferior[1]);
+    case 'body':
+      if (isPair(geometry.superior) && isPair(geometry.inferior)) return midpoint(geometry.superior[1], geometry.inferior[1]);
+      if (!isPair(geometry.superior) && !isPair(geometry.inferior)) return copy(geometry.centroid);
+      return copy((isPair(geometry.superior) ? geometry.superior : geometry.inferior)[1]);
+    case 'c2': return isPair(geometry.inferior) ? copy(geometry.inferior[1]) : copy(geometry.centroid);
     case 'endplate': return copy(geometry.superior[1]);
     default: return copy(geometry.centroid);
   }
@@ -79,11 +85,19 @@ export function labelPlacement(code, geometry, anteriorSide) {
   if (!anchor) return null;
   switch (kindOf(code)) {
     case 'body': {
+      if (!isPair(geometry.superior) && !isPair(geometry.inferior)) return { anchor, side: filmSide(anteriorSide) };
+      if (!(isPair(geometry.superior) && isPair(geometry.inferior))) {
+        const pair = isPair(geometry.superior) ? geometry.superior : geometry.inferior;
+        return { anchor, side: sideOf(pair[1][0] - pair[0][0], anteriorSide) };
+      }
       const corners = [...geometry.superior, ...geometry.inferior];
       const meanX = corners.reduce((sum, point) => sum + point[0], 0) / corners.length;
       return { anchor, side: sideOf(anchor[0] - meanX, anteriorSide) };
     }
-    case 'c2': return { anchor, side: sideOf(geometry.inferior[1][0] - geometry.centroid[0], anteriorSide) };
+    case 'c2':
+      if (!isPair(geometry.inferior)) return { anchor, side: filmSide(anteriorSide) };
+      if (!isPoint(geometry.centroid)) return { anchor, side: sideOf(geometry.inferior[1][0] - geometry.inferior[0][0], anteriorSide) };
+      return { anchor, side: sideOf(geometry.inferior[1][0] - geometry.centroid[0], anteriorSide) };
     case 'endplate': return { anchor, side: sideOf(geometry.superior[1][0] - geometry.superior[0][0], anteriorSide) };
     default: return { anchor, side: filmSide(anteriorSide) };
   }

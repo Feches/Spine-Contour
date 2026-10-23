@@ -332,13 +332,27 @@ def spinopelvic_measurements_from_geometry(
     for level, body in vertebrae.items():
         if not isinstance(body, dict):
             raise ValueError(f"{level} geometry must be an object")
-        for name, shape in (("superior", (2, 2)), ("inferior", (2, 2)), ("quadrilateral", (4, 2))):
-            points = np.asarray(body.get(name), dtype=np.float64)
-            if points.shape != shape or not np.isfinite(points).all():
+        # A body may hold one endplate: a pair is None or a distinct finite (2, 2), and the
+        # quadrilateral exists exactly when both pairs do.
+        present = {name: body.get(name) is not None for name in ("superior", "inferior")}
+        if not any(present.values()):
+            raise ValueError(f"{level} needs its superior or inferior endplate")
+        for name in ("superior", "inferior"):
+            if not present[name]:
+                continue
+            points = np.asarray(body[name], dtype=np.float64)
+            if points.shape != (2, 2) or not np.isfinite(points).all():
                 raise ValueError(f"{level} {name} must contain finite image points")
-            if name != "quadrilateral" and np.linalg.norm(points[1] - points[0]) <= 0:
+            if np.linalg.norm(points[1] - points[0]) <= 0:
                 raise ValueError(f"{level} {name} endpoints must be distinct")
-        endplates[level] = np.asarray(body["superior"], dtype=np.float64)
+        if all(present.values()):
+            quadrilateral = np.asarray(body.get("quadrilateral"), dtype=np.float64)
+            if quadrilateral.shape != (4, 2) or not np.isfinite(quadrilateral).all():
+                raise ValueError(f"{level} quadrilateral must contain finite image points")
+        elif body.get("quadrilateral") is not None:
+            raise ValueError(f"{level} quadrilateral needs both endplates")
+        if present["superior"]:
+            endplates[level] = np.asarray(body["superior"], dtype=np.float64)
     empty = not vertebrae and s1 is None and not len(circles)
     if empty and not allow_empty:
         raise ValueError("No usable lumbar, S1 or femoral landmarks were detected")
@@ -346,8 +360,9 @@ def spinopelvic_measurements_from_geometry(
     s1_midpoint = s1.mean(axis=0) if s1 is not None else None
     l1_center_array = None
     if "L1" in vertebrae and l1_center is None:
-        polygon = np.asarray(vertebrae["L1"].get("quadrilateral"), dtype=np.float64)
-        l1_center_array = polygon.mean(axis=0)
+        if vertebrae["L1"].get("quadrilateral") is not None:
+            polygon = np.asarray(vertebrae["L1"]["quadrilateral"], dtype=np.float64)
+            l1_center_array = polygon.mean(axis=0)
     elif "L1" in vertebrae:
         l1_center_array = np.asarray(l1_center, dtype=np.float64)
         if l1_center_array.shape != (2,) or not np.isfinite(l1_center_array).all():
