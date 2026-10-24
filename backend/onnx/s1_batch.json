@@ -1,0 +1,36 @@
+{
+  "kind": "s1_batch",
+  "batch": 4,
+  "precision": "float32",
+  "opset": 17,
+  "size": 768,
+  "checkpoint_epoch": 1,
+  "decoder": "local_softmax",
+  "checks": [
+    {
+      "input": "radiograph",
+      "max_output_errors": [
+        8.791685104370117e-07,
+        6.103515625e-05
+      ]
+    },
+    {
+      "input": "mirrored_radiograph",
+      "max_output_errors": [
+        1.7881393432617188e-06,
+        3.0517578125e-05
+      ]
+    },
+    {
+      "input": "empty_input_contract_check",
+      "max_output_errors": [
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "s1_top_detection_only": true,
+  "checkpoint_sha256": "2d54fe9f26f2d9bd1f1968b5bfa43c1b6fce5d87aaff8ed495ec5312c7cfc685",
+  "parity_image_sha256": "f307829f795fdedc5a82f425913348db8846c9916c34679fbd330565a2946ff3",
+  "onnx_sha256": "a02888dea4d87953b96defeed5bfeb3b06ceab4d1608c18406cb32118cbf3a6e"
+}

@@ -9,7 +9,6 @@ from backend.models import (
     _label_lumbar_components,
     resolve_models,
 )
-from backend.models import vertebral_body_segmentation
 from backend.models.models import MODEL_IMAGE_SIZE, _letterbox, _restore_points
 
 
@@ -37,16 +36,6 @@ def test_binary_lumbar_components_are_labeled_superior_to_inferior():
     assert labeled[0, 0] == 0
 
 
-def test_segmentation_rejects_an_unavailable_model_before_loading_weights():
-    with pytest.raises(ValueError, match="only available combination"):
-        vertebral_body_segmentation(
-            np.zeros((32, 32), dtype=np.uint8),
-            modality="mri",
-            body_part="lumbar",
-            view="lateral",
-        )
-
-
 def test_authoritative_letterbox_preserves_aspect_ratio_and_point_coordinates():
     image = np.zeros((2200, 1600), dtype=np.uint8)
     letterboxed, transform = _letterbox(image)
@@ -67,7 +56,7 @@ def test_model_choice_fills_defaults_and_names_every_structure():
 
 
 def test_model_choice_rejects_what_is_not_offered():
-    with pytest.raises(ValueError, match="available: unet, hrnet"):
+    with pytest.raises(ValueError, match="available: hrnet"):
         resolve_models({"vertebrae": "resnet"})
     with pytest.raises(ValueError, match="Unknown model slot"):
         resolve_models({"disc": "unet"})

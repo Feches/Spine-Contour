@@ -72,6 +72,9 @@ def test_onnx_detection_adapter_handles_empty_nonfinite_and_valid_outputs():
 def test_apple_failure_falls_back_once_and_records_actual_cpu_provider(monkeypatch, tmp_path, failure):
     calls = []
     class Session:
+        def get_inputs(self):
+            from types import SimpleNamespace
+            return [SimpleNamespace(name='image', shape=[1, 3, 768, 768])]
         def __init__(self, *args, providers, **kwargs):
             self.providers = [p[0] if isinstance(p, tuple) else p for p in providers]
             calls.append(self.providers)

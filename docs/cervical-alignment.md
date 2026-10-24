@@ -41,8 +41,8 @@ accepting the measurements. The cervical pipeline returns no segmentation masks.
 
 The anatomical HRNet-W32 model predicts 23 channels: C2 centroid and inferior
 anterior/posterior corners, followed by superior and inferior anterior/posterior
-corners for C3–C7. Training uses 4,963 CSXA images and 204 QOD images, with the
-same 20 QOD validation patients evaluated in both original and mirrored views.
+corners for C3–C7. Training uses 4,963 CSXA images and 204 clinical cohort images, with the
+same 20 clinical cohort validation patients evaluated in both original and mirrored views.
 These are 20 independent validation patients, not 40. CSXA training-image
 execution rates do not establish held-out generalization.
 
