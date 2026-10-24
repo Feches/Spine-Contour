@@ -85,6 +85,6 @@ def cervical_prediction(pixel_array, anterior_side=None, model=MODEL_NAME):
             'landmarks':contract,'models':{'vertebrae':MODEL_NAME,'cervical':MODEL_NAME},
             'framing':{'window':[0,0,image.shape[1],image.shape[0]],'detector':None,'reference_landmarks_used':False,'fallback_whole_film':False},
             'warnings':contract['review_reasons'],
-            'provenance':{'dataset':'CSXA + QOD','anterior_side_source':'user' if anterior_side in ('left','right') else 'anatomical_landmarks',
+            'provenance':{'dataset':'CSXA + clinical cohort','anterior_side_source':'user' if anterior_side in ('left','right') else 'anatomical_landmarks',
                           'landmark_coordinates':'source_image_pixels','segmentation_available':False,
                           'landmark_peak_scores':dict(zip(KEYPOINT_NAMES,map(float,confidence)))}}

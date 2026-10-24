@@ -1,0 +1,442 @@
+{
+  "date": "2026-10-23",
+  "initialization": "existing trained checkpoints",
+  "zip_policy": "all usable annotated ZIP images used for training",
+  "cervical_prior_exposure": {
+    "csxa": {
+      "evaluated": 469,
+      "previously_in_initial_checkpoint_training": 469
+    },
+    "clinical": {
+      "evaluated": 19,
+      "previously_in_initial_checkpoint_training": 18
+    }
+  },
+  "cervical": {
+    "training_counts": {
+      "original_CSXA": 3986,
+      "original_clinical": 163,
+      "annotated_full_spine": 36,
+      "annotated_cervical": 39,
+      "accepted_PMC": 157,
+      "accepted_clinical": 125
+    },
+    "selected_epoch": 16,
+    "checkpoint_sha256": "f2bb9e48edf2bd27b5a9727af382d5446e5ab5c5eb2a81f97ddce72878537053",
+    "validation_before": {
+      "original_clinical/full": {
+        "images": 20,
+        "groups": 20,
+        "views": 40,
+        "landmark_mae_px": 9.920815694332124,
+        "nme_percent_cervical_span": 1.44913043230772,
+        "pck_5pct_cervical_span": 0.975,
+        "cobb_absolute_error_deg": 4.60127963358604,
+        "c2_slope_error_deg": 2.426094107004214,
+        "c7_slope_error_deg": 4.1716551509106266,
+        "endplate_slope_error_deg": 3.2988746289574196
+      }
+    },
+    "validation_after": {
+      "original_clinical/full": {
+        "images": 20,
+        "groups": 20,
+        "views": 40,
+        "landmark_mae_px": 9.844828963279724,
+        "nme_percent_cervical_span": 1.437359592318535,
+        "pck_5pct_cervical_span": 0.9706521739130434,
+        "cobb_absolute_error_deg": 4.902430172292684,
+        "c2_slope_error_deg": 2.4043831195130028,
+        "c7_slope_error_deg": 4.1603306149278225,
+        "endplate_slope_error_deg": 3.2823568672204124
+      }
+    },
+    "retention_and_training_metrics": {
+      "original": {
+        "test_csxa/full": {
+          "images": 469,
+          "groups": 465,
+          "views": 938,
+          "landmark_mae_px": 1.8009820511264185,
+          "nme_percent_cervical_span": 0.4888129026018163,
+          "pck_5pct_cervical_span": 0.9999064983637214,
+          "cobb_absolute_error_deg": 2.307913615547362,
+          "c2_slope_error_deg": 1.4827097389859014,
+          "c7_slope_error_deg": 1.7658202335738014,
+          "endplate_slope_error_deg": 1.6242649862798513
+        },
+        "test_clinical/full": {
+          "images": 19,
+          "groups": 18,
+          "views": 38,
+          "landmark_mae_px": 8.021678487459818,
+          "nme_percent_cervical_span": 1.0453524010048971,
+          "pck_5pct_cervical_span": 0.9939613526570048,
+          "cobb_absolute_error_deg": 4.4450390738311665,
+          "c2_slope_error_deg": 2.479554821008549,
+          "c7_slope_error_deg": 3.5522452886845914,
+          "endplate_slope_error_deg": 3.01590005484657
+        }
+      },
+      "original_annotated_training": {
+        "annotated_full_spine/full": {
+          "images": 36,
+          "groups": 28,
+          "views": 72,
+          "landmark_mae_px": 336.83573765414104,
+          "nme_percent_cervical_span": 270.1718280116717,
+          "pck_5pct_cervical_span": 0.02251552795031056,
+          "cobb_absolute_error_deg": 43.55441171068848,
+          "c2_slope_error_deg": 39.745691699543734,
+          "c7_slope_error_deg": 37.59940771410957,
+          "endplate_slope_error_deg": 41.12890094749148
+        },
+        "annotated_full_spine/crop": {
+          "images": 36,
+          "groups": 28,
+          "views": 72,
+          "landmark_mae_px": 26.984823551206365,
+          "nme_percent_cervical_span": 36.19373407480972,
+          "pck_5pct_cervical_span": 0.7947988348657542,
+          "cobb_absolute_error_deg": 8.483698579064471,
+          "c2_slope_error_deg": 7.227608797566593,
+          "c7_slope_error_deg": 7.003784379591305,
+          "endplate_slope_error_deg": 8.306816193124972
+        },
+        "annotated_cervical/full": {
+          "images": 39,
+          "groups": 21,
+          "views": 78,
+          "landmark_mae_px": 12.864090046509594,
+          "nme_percent_cervical_span": 5.41145838011487,
+          "pck_5pct_cervical_span": 0.787484335839599,
+          "cobb_absolute_error_deg": 7.131747575471737,
+          "c2_slope_error_deg": 6.852188828918861,
+          "c7_slope_error_deg": 3.8285509210566357,
+          "endplate_slope_error_deg": 5.823693480280265
+        }
+      },
+      "selected": {
+        "test_csxa/full": {
+          "images": 469,
+          "groups": 465,
+          "views": 938,
+          "landmark_mae_px": 1.8919436184308862,
+          "nme_percent_cervical_span": 0.5135238965352377,
+          "pck_5pct_cervical_span": 0.9999064983637214,
+          "cobb_absolute_error_deg": 2.3942831715272552,
+          "c2_slope_error_deg": 1.5096338188160072,
+          "c7_slope_error_deg": 1.8368618036917903,
+          "endplate_slope_error_deg": 1.6732478112538989
+        },
+        "test_csxa/crop": {
+          "images": 469,
+          "groups": 465,
+          "views": 938,
+          "landmark_mae_px": 1.8919436184308862,
+          "nme_percent_cervical_span": 0.5135238965352377,
+          "pck_5pct_cervical_span": 0.9999064983637214,
+          "cobb_absolute_error_deg": 2.3942831715272552,
+          "c2_slope_error_deg": 1.5096338188160072,
+          "c7_slope_error_deg": 1.8368618036917903,
+          "endplate_slope_error_deg": 1.6732478112538989
+        },
+        "test_clinical/full": {
+          "images": 19,
+          "groups": 18,
+          "views": 38,
+          "landmark_mae_px": 8.516264504856533,
+          "nme_percent_cervical_span": 1.1075292544232473,
+          "pck_5pct_cervical_span": 0.9927536231884058,
+          "cobb_absolute_error_deg": 3.607953956746886,
+          "c2_slope_error_deg": 2.5779019178880622,
+          "c7_slope_error_deg": 2.803963364793324,
+          "endplate_slope_error_deg": 2.6909326413406927
+        },
+        "test_clinical/crop": {
+          "images": 19,
+          "groups": 18,
+          "views": 38,
+          "landmark_mae_px": 8.516264504856533,
+          "nme_percent_cervical_span": 1.1075292544232473,
+          "pck_5pct_cervical_span": 0.9927536231884058,
+          "cobb_absolute_error_deg": 3.607953956746886,
+          "c2_slope_error_deg": 2.5779019178880622,
+          "c7_slope_error_deg": 2.803963364793324,
+          "endplate_slope_error_deg": 2.6909326413406927
+        }
+      },
+      "selected_annotated_training": {
+        "annotated_full_spine/full": {
+          "images": 36,
+          "groups": 28,
+          "views": 72,
+          "landmark_mae_px": 11.18267364374229,
+          "nme_percent_cervical_span": 9.563528062332242,
+          "pck_5pct_cervical_span": 0.26347252870626525,
+          "cobb_absolute_error_deg": 11.634994287518666,
+          "c2_slope_error_deg": 14.091547383217318,
+          "c7_slope_error_deg": 5.608984788309359,
+          "endplate_slope_error_deg": 13.268422741588195
+        },
+        "annotated_full_spine/crop": {
+          "images": 36,
+          "groups": 28,
+          "views": 72,
+          "landmark_mae_px": 2.6413549125371945,
+          "nme_percent_cervical_span": 2.3988093231760317,
+          "pck_5pct_cervical_span": 0.9084589856009294,
+          "cobb_absolute_error_deg": 2.1308793460716884,
+          "c2_slope_error_deg": 3.4613112902685086,
+          "c7_slope_error_deg": 1.6149826646561813,
+          "endplate_slope_error_deg": 3.3633375959769753
+        },
+        "annotated_cervical/full": {
+          "images": 39,
+          "groups": 21,
+          "views": 78,
+          "landmark_mae_px": 2.8938277049534986,
+          "nme_percent_cervical_span": 1.2701193620355762,
+          "pck_5pct_cervical_span": 0.9741906282917437,
+          "cobb_absolute_error_deg": 1.6155878242405244,
+          "c2_slope_error_deg": 1.7828374443905879,
+          "c7_slope_error_deg": 1.4023716858881585,
+          "endplate_slope_error_deg": 1.6226266435285785
+        },
+        "annotated_cervical/crop": {
+          "images": 39,
+          "groups": 21,
+          "views": 78,
+          "landmark_mae_px": 2.8938277049534986,
+          "nme_percent_cervical_span": 1.2701193620355762,
+          "pck_5pct_cervical_span": 0.9741906282917437,
+          "cobb_absolute_error_deg": 1.6155878242405244,
+          "c2_slope_error_deg": 1.7828374443905879,
+          "c7_slope_error_deg": 1.4023716858881585,
+          "endplate_slope_error_deg": 1.6226266435285785
+        }
+      }
+    },
+    "annotation_fit_unmirrored_image_average": {
+      "before_annotation_focus": {
+        "annotated_cervical": {
+          "nme_percent_cervical_span": 2.681715178948182,
+          "landmark_mae_px": 5.796219501739893,
+          "cobb_absolute_error_deg": 3.435065665045306,
+          "endplate_slope_error_deg": 3.813453962783578
+        },
+        "annotated_full_spine": {
+          "nme_percent_cervical_span": 19.450768753886223,
+          "landmark_mae_px": 15.524730984535482,
+          "cobb_absolute_error_deg": 5.728704398334161,
+          "endplate_slope_error_deg": 5.345244188718644
+        }
+      },
+      "selected": {
+        "annotated_cervical": {
+          "nme_percent_cervical_span": 1.1260701708304577,
+          "landmark_mae_px": 2.5959131625982432,
+          "cobb_absolute_error_deg": 1.4260547611965984,
+          "endplate_slope_error_deg": 1.7320572684778732
+        },
+        "annotated_full_spine": {
+          "nme_percent_cervical_span": 3.364111602306366,
+          "landmark_mae_px": 3.122535527580314,
+          "cobb_absolute_error_deg": 1.7678357650543561,
+          "endplate_slope_error_deg": 3.6512038549714796
+        }
+      }
+    },
+    "selection": "Anatomical epoch-87 initialization; broad fine-tuning selects epoch9 using original validation, then 16-epoch annotation-focused phase selected by equal-domain point/slope/Cobb training-fit ratios under an original-validation 15% guard. Two learning rates evaluated; 3e-5 selected. No independent generalization claim."
+  },
+  "lumbar": {
+    "selected_epoch": 1,
+    "checkpoint_sha256": "f7fd4259db9756b6e8c7d8cea03a47d7e764b1427a7b670e5083fe84601a4947",
+    "decoder": "local_softmax",
+    "test_before": {
+      "original/full": {
+        "n": 541,
+        "point": 1.111698710819269,
+        "slope": 1.7349803413669314,
+        "angle": 3.3767682567321438,
+        "misses": 0
+      }
+    },
+    "test_after": {
+      "original/full": {
+        "n": 541,
+        "point": 1.1162068393776905,
+        "slope": 1.739577368234831,
+        "angle": 3.508015637917792,
+        "misses": 0
+      }
+    }
+  },
+  "s1": {
+    "selected_epoch": 1,
+    "checkpoint_sha256": "2d54fe9f26f2d9bd1f1968b5bfa43c1b6fce5d87aaff8ed495ec5312c7cfc685",
+    "decoder": "local_softmax",
+    "test_before": {
+      "original/full": {
+        "n": 541,
+        "point": 7.4530910004529405,
+        "slope": 2.4155336616219962,
+        "angle": 2.4155336616219962,
+        "misses": 0
+      }
+    },
+    "test_after": {
+      "original/full": {
+        "n": 541,
+        "point": 7.751330291828254,
+        "slope": 2.3049680671057287,
+        "angle": 2.3049680671057287,
+        "misses": 0
+      }
+    }
+  },
+  "region_detector": {
+    "training_images": 611,
+    "epochs": 8,
+    "default_route": "search; model-based region option retained"
+  },
+  "model_files": {
+    "cervical_anatomical_hrnet": {
+      "checkpoint_sha256": "f2bb9e48edf2bd27b5a9727af382d5446e5ab5c5eb2a81f97ddce72878537053",
+      "onnx_sha256": "393f8c53d8d4a925bb27963612346143519210c157fb3bca0d08c2d66d0c2ca7",
+      "checkpoint_epoch": 16,
+      "decoder": "external"
+    },
+    "cervical_slope_hrnet": {
+      "checkpoint_sha256": "f2bb9e48edf2bd27b5a9727af382d5446e5ab5c5eb2a81f97ddce72878537053",
+      "onnx_sha256": "393f8c53d8d4a925bb27963612346143519210c157fb3bca0d08c2d66d0c2ca7",
+      "checkpoint_epoch": 16,
+      "decoder": "external"
+    },
+    "lumbar_heatmaps": {
+      "checkpoint_sha256": "f7fd4259db9756b6e8c7d8cea03a47d7e764b1427a7b670e5083fe84601a4947",
+      "onnx_sha256": "2d321cdfda19ef818de97bcae9c1952d0f014aa3b8ef6204cff9b79af8959c6f",
+      "checkpoint_epoch": 1,
+      "decoder": "external"
+    },
+    "hrnet": {
+      "checkpoint_sha256": "f7fd4259db9756b6e8c7d8cea03a47d7e764b1427a7b670e5083fe84601a4947",
+      "onnx_sha256": "03e6a44d39835c14333deacf8f844ef85ecdfab6d65b72b5451f9aed14545366",
+      "checkpoint_epoch": 1,
+      "decoder": "legacy-coordinate-graph"
+    },
+    "s1": {
+      "checkpoint_sha256": "2d54fe9f26f2d9bd1f1968b5bfa43c1b6fce5d87aaff8ed495ec5312c7cfc685",
+      "onnx_sha256": "f0baaa226badd9a670b8b3a318667b69b248326fcaf231301ea6e6515cfba906",
+      "checkpoint_epoch": 1,
+      "decoder": "local_softmax"
+    },
+    "s1_batch": {
+      "checkpoint_sha256": "2d54fe9f26f2d9bd1f1968b5bfa43c1b6fce5d87aaff8ed495ec5312c7cfc685",
+      "onnx_sha256": "a02888dea4d87953b96defeed5bfeb3b06ceab4d1608c18406cb32118cbf3a6e",
+      "checkpoint_epoch": 1,
+      "decoder": "local_softmax"
+    },
+    "crop_detector": {
+      "checkpoint_sha256": "216e510f1b2b986ffe2d702823592043fd672b1c484b60e822297867a956bed6",
+      "onnx_sha256": "f25e6ecc06f7252b305f5cdbf087d03a14e61155cfb06a4dbdcbc717aca27639"
+    }
+  },
+  "pipeline_validation": {
+    "images": 99,
+    "errors": 0,
+    "interpretation": "Changes from reference AI values, not errors against human annotations",
+    "measurements": {
+      "C2-C7 Cobb": {
+        "paired": 87,
+        "mean_absolute_change": 2.8140348205069228,
+        "maximum_absolute_change": 18.694530776709602,
+        "newly_available": [],
+        "newly_unavailable": [
+          "000131",
+          "000156"
+        ],
+        "both_unavailable": 10
+      },
+      "C2-C7 SVA": {
+        "paired": 82,
+        "mean_absolute_change": 0.5276405796166317,
+        "maximum_absolute_change": 4.763745113655363,
+        "newly_available": [],
+        "newly_unavailable": [
+          "000178"
+        ],
+        "both_unavailable": 16
+      },
+      "Global SVA": {
+        "paired": 85,
+        "mean_absolute_change": 0.8283515899789103,
+        "maximum_absolute_change": 13.189056879944303,
+        "newly_available": [
+          "000065",
+          "000159"
+        ],
+        "newly_unavailable": [
+          "000019",
+          "000128"
+        ],
+        "both_unavailable": 10
+      },
+      "L1-S1 Lordosis": {
+        "paired": 94,
+        "mean_absolute_change": 0.9593439112928132,
+        "maximum_absolute_change": 21.340318672547873,
+        "newly_available": [
+          "000122"
+        ],
+        "newly_unavailable": [
+          "000019"
+        ],
+        "both_unavailable": 3
+      },
+      "Sacral Slope": {
+        "paired": 94,
+        "mean_absolute_change": 0.5026107669089693,
+        "maximum_absolute_change": 6.574971766696905,
+        "newly_available": [
+          "000122"
+        ],
+        "newly_unavailable": [
+          "000019"
+        ],
+        "both_unavailable": 3
+      },
+      "Pelvic Incidence": {
+        "paired": 88,
+        "mean_absolute_change": 0.6369007847925461,
+        "maximum_absolute_change": 7.029770863571912,
+        "newly_available": [
+          "000122"
+        ],
+        "newly_unavailable": [
+          "000019"
+        ],
+        "both_unavailable": 9
+      },
+      "Pelvic Tilt": {
+        "paired": 90,
+        "mean_absolute_change": 0.44116716898259084,
+        "maximum_absolute_change": 14.81653673980616,
+        "newly_available": [
+          "000065"
+        ],
+        "newly_unavailable": [
+          "000019",
+          "000053",
+          "000207"
+        ],
+        "both_unavailable": 5
+      }
+    },
+    "prior_development_use": true,
+    "timing_seconds": [
+      334.8432221869007,
+      331.40972181316465
+    ]
+  }
+}

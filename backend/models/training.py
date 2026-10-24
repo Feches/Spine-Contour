@@ -5,12 +5,12 @@ import torch.nn as nn
 from torchvision.models.detection import keypointrcnn_resnet50_fpn
 from torchvision.models.detection.keypoint_rcnn import KeypointRCNNPredictor
 from .hrnet import build_hrnet_model, decode_heatmaps
-from .models import (MODEL_IMAGE_SIZE, VERTEBRA_WEIGHTS_PATH, FEMORAL_WEIGHTS_PATH,
+from .models import (MODEL_IMAGE_SIZE, FEMORAL_WEIGHTS_PATH,
                      S1_WEIGHTS_PATH, HRNET_WEIGHTS_PATH)
 
 
 def build_unet(checkpoint: dict[str, object], classes: int) -> nn.Module:
-    """Build the exact ResNet-34 U-Net used for both segmentation checkpoints."""
+    """Build the exact ResNet-34 U-Net used for femoral segmentation."""
 
     return smp.Unet(
         encoder_name=str(checkpoint.get("encoder", "resnet34")),
@@ -39,9 +39,7 @@ def build_s1_model(size: int = MODEL_IMAGE_SIZE) -> nn.Module:
 
 
 def load_checkpoint(kind: str, device: str) -> nn.Module:
-    if kind == "vertebra":
-        path, classes = VERTEBRA_WEIGHTS_PATH, 6
-    elif kind == "femoral":
+    if kind == "femoral":
         path, classes = FEMORAL_WEIGHTS_PATH, 1
     elif kind == "s1":
         path, classes = S1_WEIGHTS_PATH, None
@@ -55,12 +53,19 @@ def load_checkpoint(kind: str, device: str) -> nn.Module:
     if kind == "hrnet":
         model = build_hrnet_model(checkpoint)
         model.heatmap_stride = int(checkpoint["stride"])
+        model.checkpoint_epoch = checkpoint.get("epoch")
+        model.export_decoder = "legacy-coordinate-graph"
         return model.to(torch.device(device)).eval()
+    if kind == "s1":
+        from .s1_export_decoder import configure_s1_decoder
+        configure_s1_decoder(checkpoint.get("finetune_config", {}).get("decoder", "legacy_subpixel"))
     model = (
         build_s1_model(int(checkpoint.get("size", MODEL_IMAGE_SIZE)))
         if kind == "s1"
         else build_unet(checkpoint, int(classes))
     )
     model.load_state_dict(checkpoint["model"], strict=True)
+    model.checkpoint_epoch = checkpoint.get("epoch")
+    model.export_decoder = checkpoint.get("finetune_config", {}).get("decoder", "legacy_subpixel") if kind == "s1" else None
     return model.to(torch.device(device)).eval()
 
