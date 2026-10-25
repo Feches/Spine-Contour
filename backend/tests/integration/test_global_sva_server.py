@@ -1,3 +1,4 @@
+from backend import fixed_pipeline
 """Full-spine API checks using generated pixels and mocked inference only."""
 
 import base64
@@ -43,7 +44,7 @@ def stub_prediction(monkeypatch, observed, landmarks=None):
         pytest.fail("Regional inference must not be dispatched for full_spine")
     monkeypatch.setattr(server, "full_spine_prediction", predict)
     monkeypatch.setattr(server, "cervical_prediction", unexpected)
-    monkeypatch.setattr(server, "spinopelvic_prediction", unexpected)
+    monkeypatch.setattr(fixed_pipeline, "predict", unexpected)
 
 
 def result_from(response, route):
@@ -194,5 +195,5 @@ def test_measure_global_sva_edits_anchors_and_respects_current_scale_clear():
 def test_model_choices_expose_full_spine_without_changing_regional_models():
     client = TestClient(server.app)
     assert client.get("/models?body_part=full_spine").json() == {"vertebrae": ["dual_hrnet"], "femoral": [], "s1": []}
-    assert client.get("/models?body_part=cervical").json() == {"vertebrae": ["cervical_anatomical_hrnet"], "femoral": [], "s1": []}
-    assert client.get("/models").json() == {"vertebrae": ["unet", "hrnet"], "femoral": ["unet"], "s1": ["keypointrcnn"]}
+    assert client.get("/models?body_part=cervical").json() == {"vertebrae": ["cervical_slope_hrnet"], "femoral": [], "s1": []}
+    assert client.get("/models").json() == {"vertebrae": ["hrnet"], "femoral": ["unet"], "s1": ["keypointrcnn"]}

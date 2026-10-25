@@ -243,6 +243,9 @@ def test_gpu_sessions_use_directml_on_the_resolved_adapter_without_memory_patter
     monkeypatch.delenv('SPINE_CONTOUR_ORT_CPU_ONLY', raising=False)
     created, events = [], []
     class Session:
+        def get_inputs(self):
+            from types import SimpleNamespace
+            return [SimpleNamespace(name='image', shape=[1, 3, 768, 768])]
         def __init__(self, path, sess_options, providers, enable_fallback=1):
             assert enable_fallback == 0
             created.append((providers, sess_options.enable_mem_pattern, sess_options.intra_op_num_threads))
@@ -295,6 +298,9 @@ class FailingGpu:
             raise ort.capi.onnxruntime_pybind11_state.RuntimeException('D3D12 device could not be created')
         failure = self.failure
         class Session:
+            def get_inputs(self):
+                from types import SimpleNamespace
+                return [SimpleNamespace(name='image', shape=[1, 3, 768, 768])]
             def get_providers(self): return names
             def run(self, *args):
                 if failure == 'run' and len(names) > 1:
@@ -408,9 +414,10 @@ def test_cancelled_gpu_attempt_never_restarts_on_cpu(monkeypatch, devices):
     assert calls == ['gpu:10de:2520']
 
 
-@pytest.mark.skipif(sys.platform != 'win32', reason='Requires the real DirectML runtime')
+@pytest.mark.skipif(sys.platform != 'win32' or processors.DIRECTML not in models.ort.get_available_providers(),
+                   reason='Requires the real DirectML runtime')
 def test_real_directml_invalid_adapter_aborts_without_fallback():
-    path = models.ONNX_DIRECTORY / 'vertebra.onnx'
+    path = models.ONNX_DIRECTORY / 'hrnet.onnx'
     assert path.is_file(), 'Export models before Windows runtime tests'
     with pytest.raises(runtime.GpuFailure):
         model = models.InferenceModel(path, (1, True, 2147483647),

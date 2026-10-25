@@ -4,10 +4,11 @@ import pytest
 import torch
 
 from backend.models import models
+from backend.model_export_checks import check_landmark_coordinates
 from backend.models.training import load_checkpoint, decode_heatmaps
 
 
-@pytest.mark.parametrize('kind', ['s1', 'vertebra', 'femoral', 'hrnet'])
+@pytest.mark.parametrize('kind', ['s1', 'femoral', 'hrnet'])
 def test_converted_models_match_checkpoints_on_empty_and_varied_inputs(kind):
     torch.set_num_threads(2)
     reference = load_checkpoint(kind, 'cpu')
@@ -30,7 +31,12 @@ def test_converted_models_match_checkpoints_on_empty_and_varied_inputs(kind):
                 expected = [output.numpy()]
         actual = session.run(None, {'image': value})
         for before, after in zip(expected, actual):
-            np.testing.assert_allclose(after, before, rtol=2e-3, atol=2e-3)
+            if kind == 'hrnet':
+                heat = models._load_model('lumbar_heatmaps', (2, True, None)).run(None, {'image': value})[0]
+                np.testing.assert_allclose(heat, output.numpy(), rtol=.002, atol=.002)
+                check_landmark_coordinates(after, before, output.numpy(), empty_input=not image.any())
+            else:
+                np.testing.assert_allclose(after, before, rtol=2e-3, atol=2e-3)
         if kind in ('vertebra', 'femoral'):
             before = expected[0].argmax(1) if kind == 'vertebra' else expected[0] >= 0
             after = actual[0].argmax(1) if kind == 'vertebra' else actual[0] >= 0

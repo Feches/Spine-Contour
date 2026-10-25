@@ -1,10 +1,22 @@
 {
   "kind": "cervical_anatomical_hrnet",
+  "checkpoint_epoch": 16,
   "precision": "float32",
-  "model": "cervical_anatomical_hrnet",
-  "onnx_sha256": "54ea239b9744320c7d6e8957343b2c3d17cd48f3045932cd359ffc6a127c3e78",
-  "checkpoint_sha256": "13475106d2f38d009ed0d96877ca94b22e4e39ad955d3576ffc6e0d09f724ed0",
-  "checkpoint_epoch": 87,
+  "checkpoint_sha256": "f2bb9e48edf2bd27b5a9727af382d5446e5ab5c5eb2a81f97ddce72878537053",
+  "onnx_sha256": "393f8c53d8d4a925bb27963612346143519210c157fb3bca0d08c2d66d0c2ca7",
+  "dynamic_batch": true,
+  "checks": [
+    {
+      "batch": 1,
+      "max_output_error": 6.556510925292969e-07
+    },
+    {
+      "batch": 2,
+      "max_output_error": 6.556510925292969e-07
+    }
+  ],
+  "decoder": "external",
+  "parity_image_sha256": "caa6650db1f21b029601e7bfa106b12ab141eaf0664e819387058ca0ef055164",
   "keypoints": [
     "C2_centroid",
     "C2_inferior_anterior",
@@ -44,32 +56,5 @@
   ],
   "preprocessing": "grayscale uint8; OpenCV aspect-preserving letterbox; ImageNet normalization",
   "coordinate_transform": "heatmap * 4, subtract padding, divide scale",
-  "training_dataset": "CSXA4963 + QOD204; QOD20 validation",
-  "orientation_semantics": "anatomical channel identity, preserved under mirroring",
-  "checks": [
-    {
-      "image": "/3.6T/mjayasur/cervical_keypoint/datasets-PNG/0001035.png",
-      "mirrored": false,
-      "max_absolute_heatmap_error": 4.76837158203125e-07,
-      "decoded_points_equal": true
-    },
-    {
-      "image": "/3.6T/mjayasur/cervical_keypoint/datasets-PNG/0001035.png",
-      "mirrored": true,
-      "max_absolute_heatmap_error": 3.5762786865234375e-07,
-      "decoded_points_equal": true
-    },
-    {
-      "image": "/3.6T/mjayasur/cervical_keypoint/datasets-PNG/0049040.png",
-      "mirrored": false,
-      "max_absolute_heatmap_error": 4.76837158203125e-07,
-      "decoded_points_equal": true
-    },
-    {
-      "image": "/3.6T/mjayasur/cervical_keypoint/datasets-PNG/0049040.png",
-      "mirrored": true,
-      "max_absolute_heatmap_error": 3.5762786865234375e-07,
-      "decoded_points_equal": true
-    }
-  ]
+  "orientation_semantics": "anatomical channel identity, preserved under mirroring"
 }
