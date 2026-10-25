@@ -1,7 +1,19 @@
 # Spine Contour
 
-**2026-10-25 release 1.5.0 (PR #72, fine-tuned models and the fixed measurement pipeline; release PR open, not
-merged):** branch `ccr-88de433a-g0oqe2` off `main` @ `62f88cc` (v1.4.0), with PR #72's single commit `50927e0` (from
+**2026-10-25 release 1.5.1 (PR #74, GPU processing back to the 1.4.0 runtime; release PR open, not merged):** branch
+`ccr-88de433a-g0oqe2` restarted from `main` @ `9e6241e` (v1.5.0), with PR #74's single commit `d98bee1` (from
+`mjayasur/Spine-Contour-region-research` `codex/restore-single-crop-gpu-runtime`) merged in unchanged by a merge
+commit, then `e768b49` (a test fix) and the 1.5.1 release commit. PR #74 removes 1.5.0's CUDA runtime, adaptive crop
+batches, OOM retries and the `s1_batch` graph, runs every model call one crop at a time (`fixed_pipeline.py`
+`crop_predictions`), puts `_load_model`'s cache back to four models, and migrates a saved `cuda:GPU-…` processor to
+`cpu` in `backend-client.cjs` `normalizePerformance`; the fine-tuned weights, decoders and routes are unchanged. Its
+Windows check failed on `test_real_directml_invalid_adapter_aborts_without_fallback`, which the rollback had pointed
+at `vertebra.onnx` (removed in 1.5.0); `e768b49` restores main's `hrnet.onnx` version. Unit 1253/1253 on the merged
+tree. The reported GPU failure was not reproduced on Windows GPU hardware here. Merging the release PR to `main` with a
+merge commit publishes v1.5.1 and marks PR #74 merged.
+
+**2026-10-25 release 1.5.0 (PR #72, fine-tuned models and the fixed measurement pipeline; RELEASED as v1.5.0: PR #73,
+merge `9e6241e`):** branch `ccr-88de433a-g0oqe2` off `main` @ `62f88cc` (v1.4.0), with PR #72's single commit `50927e0` (from
 `mjayasur/Spine-Contour-region-research` `codex/fixed-seven-measurement-pipeline`) merged in unchanged by a merge
 commit, then the 1.5.0 release commit (`package.json`, `version.js`, CHANGELOG, `docs/releases/1.5.0.md`, the README
 link). PR #72 changed no version file, so its merge alone would have published nothing (v1.4.0's tag is `62f88cc`).
