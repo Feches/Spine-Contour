@@ -243,9 +243,6 @@ def test_gpu_sessions_use_directml_on_the_resolved_adapter_without_memory_patter
     monkeypatch.delenv('SPINE_CONTOUR_ORT_CPU_ONLY', raising=False)
     created, events = [], []
     class Session:
-        def get_inputs(self):
-            from types import SimpleNamespace
-            return [SimpleNamespace(name='image', shape=[1, 3, 768, 768])]
         def __init__(self, path, sess_options, providers, enable_fallback=1):
             assert enable_fallback == 0
             created.append((providers, sess_options.enable_mem_pattern, sess_options.intra_op_num_threads))
@@ -298,9 +295,6 @@ class FailingGpu:
             raise ort.capi.onnxruntime_pybind11_state.RuntimeException('D3D12 device could not be created')
         failure = self.failure
         class Session:
-            def get_inputs(self):
-                from types import SimpleNamespace
-                return [SimpleNamespace(name='image', shape=[1, 3, 768, 768])]
             def get_providers(self): return names
             def run(self, *args):
                 if failure == 'run' and len(names) > 1:

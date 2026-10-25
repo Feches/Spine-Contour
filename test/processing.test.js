@@ -247,3 +247,15 @@ test('view selection defaults to landmark search and persists the optional class
     assert.equal(validPerformance({ ...DEFAULT_PERFORMANCE, viewSelection }), false);
   }
 });
+
+test('retired preview processor settings migrate to CPU without losing other preferences', () => {
+  const saved = { ...DEFAULT_PERFORMANCE, mode: 'low-memory', cpuThreads: 1, processor: 'cuda:GPU-ab12-cd34' };
+  const migrated = normalizePerformance(saved);
+  assert.equal(migrated.processor, 'cpu');
+  assert.equal(migrated.mode, 'low-memory');
+  assert.equal(migrated.cpuThreads, 1);
+  assert.equal(validPerformance(migrated), true);
+  assert.equal(validPerformance(saved), false);
+  assert.deepEqual(normalizeProcessors({ processors: [{ id: saved.processor, kind: 'gpu', name: 'Retired preview' }] }),
+    [{ id: 'cpu', kind: 'cpu', name: 'CPU' }]);
+});

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.5.1
+
+- **GPU processing returns to the 1.4.0 runtime (PR #74).** After reports of processing failures with 1.5.0's GPU
+  additions, the CUDA runtime, its device list, the adaptive crop batches, the out-of-memory retries and the four-image
+  S1 graph are removed. Every model call runs one crop at a time, with cancellation checked between calls, and the
+  model session cache holds four models again. DirectML on Windows keeps its parity check and its CPU fallback.
+- **The fine-tuned models, the subpixel decoders and the measurement routes from 1.5.0 are unchanged.** A film run on
+  1.5.1 gives the same result as on 1.5.0 for the same localization.
+- A processor saved as `cuda:GPU-…` by the 1.5.0 NVIDIA preview is read as CPU, keeping the other processing
+  settings. `qc.processing.batches` is no longer recorded.
+- The Windows preview workflow builds the DirectML installer only; the NVIDIA ZIP and its pull-request trigger are
+  gone.
+
+[Release notes](docs/releases/1.5.1.md)
+
 ## 1.5.0
 
 - **Fine-tuned spine models (PR #72).** The cervical and lumbar landmark models, the S1 detector and the optional region
