@@ -15,8 +15,8 @@ def main():
  torch.set_num_threads(2)
  saved=torch.load(a.checkpoint,map_location='cpu',weights_only=False)
  assert tuple(saved['keypoints'])==KEYPOINT_NAMES
- cfg=saved['config'];assert (cfg['input_width'],cfg['input_height'],cfg['heatmap_stride'])==(384,512,4)
- model=HRNetKeypointModel(cfg['model_name'],23,False);model.load_state_dict(saved['model']);model.eval()
+ cfg=saved['config'];assert (cfg.get('input_width',384),cfg.get('input_height',512),cfg.get('heatmap_stride',4))==(384,512,4)
+ model=HRNetKeypointModel(cfg.get('model_name','hrnet_w32.ms_in1k'),23,False);model.load_state_dict(saved['model']);model.eval()
  a.destination.mkdir(exist_ok=True,parents=True);out=a.destination/'cervical_anatomical_hrnet.onnx'
  example=landmark_input(np.asarray(Image.open(a.image[0]).convert('L')))[0]
  with torch.inference_mode():torch.onnx.export(model,torch.from_numpy(example),str(out),opset_version=17,input_names=['image'],output_names=['heatmaps'],dynamo=False)
@@ -30,7 +30,7 @@ def main():
    actual=session.run(None,{'image':x})[0]
    np.testing.assert_allclose(actual,expected,rtol=.002,atol=.002)
    e,_=decode_heatmaps(expected);g,_=decode_heatmaps(actual);np.testing.assert_array_equal(e,g)
-   checks.append({'image':str(path),'mirrored':flip,'max_absolute_heatmap_error':float(np.abs(actual-expected).max()),'decoded_points_equal':True})
- metadata={'kind':'cervical_anatomical_hrnet','precision':'float32','model':'cervical_anatomical_hrnet','onnx_sha256':digest(out),'checkpoint_sha256':digest(a.checkpoint),'checkpoint_epoch':saved['epoch'],'keypoints':KEYPOINT_NAMES,'input_shape':[1,3,512,384],'output_shape':[1,23,128,96],'preprocessing':'grayscale uint8; OpenCV aspect-preserving letterbox; ImageNet normalization','coordinate_transform':'heatmap * 4, subtract padding, divide scale','training_dataset':'CSXA4963 + 204 clinical images; 20 clinical validation patients','orientation_semantics':'anatomical channel identity, preserved under mirroring','checks':checks}
+   checks.append({'image_sha256':digest(path),'mirrored':flip,'max_absolute_heatmap_error':float(np.abs(actual-expected).max()),'decoded_points_equal':True})
+ metadata={'kind':'cervical_anatomical_hrnet','precision':'float32','model':'cervical_anatomical_hrnet','onnx_sha256':digest(out),'checkpoint_sha256':digest(a.checkpoint),'checkpoint_epoch':saved['epoch'],'keypoints':KEYPOINT_NAMES,'input_shape':[1,3,512,384],'output_shape':[1,23,128,96],'preprocessing':'grayscale uint8; OpenCV aspect-preserving letterbox; ImageNet normalization','coordinate_transform':'heatmap * 4, subtract padding, divide scale','orientation_semantics':'anatomical channel identity, preserved under mirroring','checks':checks}
  out.with_suffix('.json').write_text(json.dumps(metadata,indent=2));print(json.dumps(metadata,indent=2))
 if __name__=='__main__':main()

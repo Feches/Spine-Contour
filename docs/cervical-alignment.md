@@ -41,16 +41,9 @@ accepting the measurements. The cervical pipeline returns no segmentation masks.
 
 The anatomical HRNet-W32 model predicts 23 channels: C2 centroid and inferior
 anterior/posterior corners, followed by superior and inferior anterior/posterior
-corners for C3–C7. Training uses 4,963 CSXA images and 204 clinical cohort images, with the
-same 20 clinical cohort validation patients evaluated in both original and mirrored views.
-These are 20 independent validation patients, not 40. CSXA training-image
-execution rates do not establish held-out generalization.
-
-The image and landmarks undergo joint horizontal flips, rotation, scaling,
-translation and smooth horizontal bending. Intensity augmentation includes
-uneven exposure, contrast, blur, noise, small occlusions and JPEG compression.
-The bend is a geometric augmentation, not a biomechanical simulation of lordosis.
-Ordering penalties follow target anatomical vectors rather than image-left/right.
+corners for C3–C7. The bundled fine-tuned checkpoint is epoch 16, identified by
+its SHA-256 in the ONNX sidecar. Checkpoint selection and export parity do not
+establish held-out anatomical accuracy.
 
 Input is an aspect-preserving grayscale letterbox of 384×512 pixels, with
 ImageNet normalization. The 96×128 heatmap argmax coordinates are multiplied by
@@ -74,8 +67,10 @@ Export the anatomical cervical model with real-image parity checks:
 python tools/export_cervical_anatomical_onnx.py --checkpoint /path/to/best.pt --image /path/to/cervical.png
 ```
 
-The legacy cervical exporter remains available for the full-spine crop-search
-pipeline. Generated ONNX files and sidecars are stored under `backend/onnx/`.
+Standalone cervical inference and full-spine cervical crops use the same
+anatomical checkpoint. Full-spine crops retain the standing-film search and
+consensus checks; reflections preserve anterior/posterior channel identities.
+The legacy exporter remains available for older model assets. Generated ONNX files and sidecars are stored under `backend/onnx/`.
 The desktop runtime remains ONNX-only; PyTorch and timm are build dependencies.
 Coordinate-contract regression tests and real-image inference checks are distinct
 from anatomical accuracy evaluation.

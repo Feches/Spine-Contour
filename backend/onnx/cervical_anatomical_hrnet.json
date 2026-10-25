@@ -1,22 +1,10 @@
 {
   "kind": "cervical_anatomical_hrnet",
-  "checkpoint_epoch": 16,
   "precision": "float32",
+  "model": "cervical_anatomical_hrnet",
+  "onnx_sha256": "3d74f1a527df3034ecb9c0eba6e8323b69fbd86842ea3bafb76fe728c92a9e5d",
   "checkpoint_sha256": "f2bb9e48edf2bd27b5a9727af382d5446e5ab5c5eb2a81f97ddce72878537053",
-  "onnx_sha256": "393f8c53d8d4a925bb27963612346143519210c157fb3bca0d08c2d66d0c2ca7",
-  "dynamic_batch": true,
-  "checks": [
-    {
-      "batch": 1,
-      "max_output_error": 6.556510925292969e-07
-    },
-    {
-      "batch": 2,
-      "max_output_error": 6.556510925292969e-07
-    }
-  ],
-  "decoder": "external",
-  "parity_image_sha256": "caa6650db1f21b029601e7bfa106b12ab141eaf0664e819387058ca0ef055164",
+  "checkpoint_epoch": 16,
   "keypoints": [
     "C2_centroid",
     "C2_inferior_anterior",
@@ -56,5 +44,19 @@
   ],
   "preprocessing": "grayscale uint8; OpenCV aspect-preserving letterbox; ImageNet normalization",
   "coordinate_transform": "heatmap * 4, subtract padding, divide scale",
-  "orientation_semantics": "anatomical channel identity, preserved under mirroring"
+  "orientation_semantics": "anatomical channel identity, preserved under mirroring",
+  "checks": [
+    {
+      "image_sha256": "eeedeea97c159f1d7db566889207790311337d3fa1d34b7e74a295dcd05e9e69",
+      "mirrored": false,
+      "max_absolute_heatmap_error": 9.5367431640625e-07,
+      "decoded_points_equal": true
+    },
+    {
+      "image_sha256": "eeedeea97c159f1d7db566889207790311337d3fa1d34b7e74a295dcd05e9e69",
+      "mirrored": true,
+      "max_absolute_heatmap_error": 1.8477439880371094e-06,
+      "decoded_points_equal": true
+    }
+  ]
 }

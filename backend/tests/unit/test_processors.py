@@ -408,10 +408,9 @@ def test_cancelled_gpu_attempt_never_restarts_on_cpu(monkeypatch, devices):
     assert calls == ['gpu:10de:2520']
 
 
-@pytest.mark.skipif(sys.platform != 'win32' or processors.DIRECTML not in models.ort.get_available_providers(),
-                   reason='Requires the real DirectML runtime')
+@pytest.mark.skipif(sys.platform != 'win32', reason='Requires the real DirectML runtime')
 def test_real_directml_invalid_adapter_aborts_without_fallback():
-    path = models.ONNX_DIRECTORY / 'hrnet.onnx'
+    path = models.ONNX_DIRECTORY / 'vertebra.onnx'
     assert path.is_file(), 'Export models before Windows runtime tests'
     with pytest.raises(runtime.GpuFailure):
         model = models.InferenceModel(path, (1, True, 2147483647),

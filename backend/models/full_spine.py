@@ -8,7 +8,6 @@ proof of vertebral identity. Every result requires anatomical review.
 from __future__ import annotations
 
 import numpy as np
-from PIL import Image
 
 from . import cervical, models
 try:
@@ -114,6 +113,27 @@ def unique_cervical_crops(proposals):
     return list(chosen.values())
 
 
+def _anatomical_crop_points(session, crop):
+    """Use the standalone cervical graph and return crop-pixel anatomical slots."""
+    from . import cervical_anatomical as anatomy
+    image = crop if crop.dtype == np.uint8 else models._robust_rescale(crop)
+    tensor, transform = anatomy.landmark_input(image)
+    heat = session.run(None, {"image": tensor})[0]
+    points, _ = anatomy.decode_heatmaps(heat)
+    # The standing-film contract puts the C2 centroid after its inferior pair.
+    return transform.restore(points)[[1, 2, 0] + list(range(3, 23))]
+
+
+def _cervical_body_scale(points):
+    """Validate either facing direction without exchanging anatomical channels."""
+    bodies = np.asarray(points).reshape(-1, 4, 2)
+    anterior_delta = np.median(bodies[:, [0, 2], 0] - bodies[:, [1, 3], 0])
+    canonical = np.asarray(points).copy()
+    if anterior_delta > 0:
+        canonical[:, 0] *= -1
+    return _body_chain(canonical)
+
+
 def _model_cervical_candidates(raw, found):
     """Evaluate bounded detector-guided crops with the cervical landmark model."""
     height, width = raw.shape
@@ -137,17 +157,14 @@ def _model_cervical_candidates(raw, found):
             runtime.report("landmarks", "Checking model-selected cervical crops", index, len(windows))
             left, top, right, bottom = window
             crop = raw[top:bottom, left:right]
-            crop = crop if crop.dtype == np.uint8 else models._robust_rescale(crop)
-            resized = np.asarray(Image.fromarray(crop).resize((384, 384), Image.Resampling.BILINEAR))
-            heat = session.run(None, {"image": cervical._rgb_tensor(resized)})[0]
             try:
-                points = cervical.decode_heatmaps(heat) * ((right-left)/96, (bottom-top)/96) + (left, top)
+                points = _anatomical_crop_points(session, crop) + (left, top)
             except ValueError:
                 invalid += 1
                 continue
             if not _inside(points, window):
                 continue
-            body_scale = _body_chain(points[3:])
+            body_scale = _cervical_body_scale(points[3:])
             if body_scale is None or points[2, 1] >= points[3:7, 1].mean():
                 continue
             body = points[19:23]
@@ -155,7 +172,7 @@ def _model_cervical_candidates(raw, found):
             candidates.append({"anchor": body.mean(0), "scale": c7_scale,
                                "points": points, "window": window, "score": 1.})
     if windows:
-        models._infer("cervical_hrnet", predict, "Locating C7 with HRNET")
+        models._infer("cervical_anatomical_hrnet", predict, "Locating C7 with anatomical HRNET")
     return candidates, {"windows": len(windows), "hrnet_crops": len(windows),
                         "invalid_outputs": invalid,
                         "model_proposals": [list(box) for box in boxes]}
@@ -195,16 +212,15 @@ def _cervical_candidates(raw, _found=None, *, force_search=False):
             nonlocal invalid_outputs
             for index, proposal in enumerate(selected):
                 runtime.report("landmarks", "Comparing cervical HRNET crops", index, len(selected))
-                heat = session.run(None, {"image": proposal["tensor"]})[0]
+                left, top, right, bottom = proposal["source_crop"]
                 try:
-                    decoded = cervical.decode_heatmaps(heat)
+                    points = _anatomical_crop_points(session, raw[top:bottom, left:right]) + (left, top)
                 except ValueError:
                     invalid_outputs += 1
                     continue
-                points = proposal["transform"].restore(decoded) + proposal["origin"]
                 if not _inside(points, proposal["window"]):
                     continue
-                scale = _body_chain(points[3:])
+                scale = _cervical_body_scale(points[3:])
                 if scale is None or points[2, 1] >= points[3:7, 1].mean():
                     continue
                 body = points[19:23]
@@ -212,7 +228,7 @@ def _cervical_candidates(raw, _found=None, *, force_search=False):
                 candidates.append({"anchor": body.mean(0), "scale": c7_scale,
                                    "points": points, "window": proposal["source_crop"],
                                    "score": proposal["score"]})
-        models._infer("cervical_hrnet", predict, "Locating C7 with HRNET")
+        models._infer("cervical_anatomical_hrnet", predict, "Locating C7 with anatomical HRNET")
     return candidates, {"windows": len(windows), "detections": len(proposals),
                         "hrnet_crops": len(selected), "invalid_outputs": invalid_outputs}
 
@@ -229,15 +245,13 @@ def lumbar_windows(window, shape):
                    for dx, dy, scale in variants})
 
 
-def _lumbar_candidates(raw, _found=None, *, force_search=False, located=Ellipsis):
+def _lumbar_candidates(raw, _found=None, *, force_search=False):
     # Existing image-only sliding detector establishes a lumbosacral crop.
     learned_boxes = []
     if runtime.options().crop_method == "model" and not force_search:
         learned_boxes = learned_region.boxes(
             learned_region.proposals(raw) if _found is None else _found, "lumbar", raw.shape, limit=3)
-    if located is not Ellipsis:
-        pass
-    elif learned_boxes:
+    if learned_boxes:
         located = {"window": learned_boxes[0], "source": "crop_detector"}
     elif runtime.options().crop_method == "model" and not force_search:
         located = None
@@ -351,19 +365,17 @@ def search_orientation(raw, anterior_side):
 
 
 def _mirror_cervical_candidate(candidate, width):
-    """Reflect image-sided cervical points while preserving their index labels."""
-    order = [1, 0, 2] + [index for start in range(3, 23, 4)
-                         for index in (start+1, start, start+3, start+2)]
+    """Reflect coordinates without exchanging anterior/posterior identities."""
     left, top, right, bottom = candidate["window"]
     return {**candidate, "anchor": _source_points(candidate["anchor"], width, True),
-            "points": _source_points(candidate["points"], width, True)[order],
+            "points": _source_points(candidate["points"], width, True),
             "window": (width-right, top, width-left, bottom)}
 
 
 def reconcile_cervical_searches(raw, searches, *, _allow_model_fallback=True):
     """Share one cervical identity across mirror hypotheses in source space.
 
-    Image-sided cervical landmarks cannot vote on anterior direction. A local
+    Anatomical endpoint identities are preserved across reflections. A local
     detector may mistake thoracic bodies for the neck in just one mirror view;
     require the complete chosen chain to agree in both views as well as across
     distinct source crops. Explicit side overrides retain this anatomy check.
@@ -463,9 +475,9 @@ def select_orientation(searches):
 
     Crop agreement is a repeatability gate, not calibrated probability. A
     higher detector score or more overlapping crops alone cannot resolve two
-    hypotheses with matching anatomical endpoint identities. Cervical labels
-    are image-sided; only the anatomical S1 detector order provides evidence
-    for anterior direction, corroborated by the lumbar HRNET chain.
+    hypotheses with matching anatomical endpoint identities. The primary vote
+    uses anatomical S1 order corroborated by the lumbar chain; unresolved cases
+    retain the separate anatomical cervical orientation check.
     """
     hypotheses = {}
     for side, evidence in searches.items():
@@ -720,7 +732,7 @@ def full_spine_prediction(pixel_array, anterior_side=None, model=MODEL_NAME, *, 
     return {"image": raw.copy() if raw.dtype == np.uint8 else models._robust_rescale(raw),
             "mask": np.zeros(raw.shape, np.uint8), "femoral_mask": femoral_mask,
             "landmarks": geometry,
-            "models": {"vertebrae": MODEL_NAME, "cervical": "cervical_hrnet", "lumbar": "hrnet",
+            "models": {"vertebrae": MODEL_NAME, "cervical": "cervical_anatomical_hrnet", "lumbar": "hrnet",
                        **({"orientation": orientation["model"]} if orientation.get("model") else {}),
                        "detector": "crop_detector+s1" if runtime.options().crop_method == "model"
                                    else "cervical_detr+s1", "femoral": "unet"},
