@@ -32,7 +32,7 @@ the film on the CPU and says so. See [GPU processing](docs/gpu-processing.md).
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.4.0 release notes](docs/releases/1.4.0.md) and
+[changelog](CHANGELOG.md), [v1.5.0 release notes](docs/releases/1.5.0.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
@@ -52,12 +52,11 @@ segmentation, including when the reference was saved before loading the workspac
 
 ## Slower computers
 
-**Settings → Processing → Toolbar removal** can remove detected bottom PACS
-toolbars from screenshots before segmentation. It uses fast image checks, works
-with Crop localizer On or Off, and applies to the next single-image or batch run.
-It defaults to Off. Uncertain images and native high-bit-depth/DICOM images are
-kept unchanged. The source file and original-image calibration are preserved.
-See [toolbar removal](docs/toolbar-removal.md) for supported strips and validation.
+**Settings → Processing → Toolbar removal** is still saved, and each result records
+it as requested, but since 1.5.0 the measurement pipeline does not apply it: every
+film is segmented as uploaded, toolbar included. From 1.0.4 to 1.4.0 it removed
+detected bottom PACS toolbars from screenshots before segmentation; see
+[toolbar removal](docs/toolbar-removal.md).
 
 Open **Settings → Processing → Low memory**. This processes one search region at a
 time, keeps only the current model loaded, and allows longer calibration OCR waits.
@@ -173,36 +172,27 @@ workspace and folder each film came from.
 
 ## Models
 
-Three structures are read from a lateral film — the L1–L5 vertebral bodies, the S1
-endplate, and the femoral heads — and **Settings** in the sidebar shows which model reads
-each. The femoral heads and the S1 endplate each have one. The vertebral bodies have two,
-and the choice applies to the next run:
-
-- **U-Net** segments each body and reads its corners off the mask.
-- **HRNet** regresses each corner directly. It can place a corner where a mask
-  has no pixels. Because it predicts every level even on a cropped film, a U-Net
-  mask now checks which levels have body evidence before their HRNet corners are
-  retained. Invalid or off-film quadrilaterals are omitted.
+Since 1.5.0, lumbar, cervical and full-spine films go through one fixed measurement
+pipeline (see [fixed measurement pipeline](docs/fixed-pipeline.md)), and **Settings** in
+the sidebar shows each structure's model as fixed: HRNet landmark models read the
+vertebral bodies (a lumbar one for L1–L5, a cervical one for C2–C7), Keypoint R-CNN the
+S1 endplate and a U-Net the femoral heads. The landmark models, the S1 detector and the
+optional region detector are fine-tuned on annotated films; see
+[annotated-data fine-tuning](docs/annotated-finetuning.md). The lumbar U-Net
+segmentation model is removed; a result it produced before 1.5.0 is still labelled U-Net.
 
 Each study's Analysis header names the model that produced the numbers on screen, and the
-saved result records it, so a library measured with both can still be told apart.
+saved result records it, so a library measured with several can still be told apart.
 
-All four trained models run locally through **ONNX Runtime**, using the original
-float32 weights and 768 × 768 model frame. No retraining or quantization is applied.
+The trained models run locally through **ONNX Runtime** with float32 graph tensors. No
+quantization is applied.
 
-**Settings → Processing → Crop localizer** is On by default. It is needed for
-**full-spine images** to locate and frame the lumbar region. For **lumbar-only images**
-already framed around the anatomy, turn it Off to skip the repeated crop search and
-process the supplied image once. S1, vertebrae and femoral heads are still detected;
-the switch does not disable any final measurement model. Off keeps the visible image extent, with quick cleanup of broad empty screenshot
-borders. It does not search for or reframe the lumbar anatomy.
-The choice is saved and applies to the next individual run or batch. Changing this
-setting changes the model input and may change detected anatomy; review the result.
-The runtime, localizer setting and selected frame are recorded with each result.
-**Crop method** uses **Crop search**. The trained automatic crop method is disabled,
-including for saved preferences and older clients that request it. Crop search
-locates cervical and lumbar regions on full-spine films; for lumbar requests it
-applies when Crop localizer is On. Existing landmark checks remain in place.
+**Settings → Processing → Crop localizer** is still saved, and each result records it as
+requested, but since 1.5.0 the pipeline always runs the crop search on lumbar and
+full-spine films: Off no longer skips it. **Crop method** uses **Crop search**. The
+trained automatic crop method is disabled, including for saved preferences and older
+clients that request it. Crop search locates the lumbar region on lumbar and full-spine
+films and the cervical region on full-spine films. Existing landmark checks remain in place.
 
 See [inference implementation and validation](docs/onnx-inference.md).
 
