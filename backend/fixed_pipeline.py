@@ -48,6 +48,17 @@ def cervical_geometry(raw, window, side, kind, decoder):
     return geometry
 
 
+def crop_predictions(kind, inputs, message):
+    """Keep each model call at one crop and allow cancellation between calls."""
+    def predict(session):
+        outputs = []
+        for item in inputs:
+            runtime.checkpoint()
+            outputs.append(session.run(None, {'image': item[None]})[0])
+        return np.concatenate(outputs)
+    return models._infer(kind, predict, message)
+
+
 def lumbar_geometries(raw, located, side, stages=None):
     """Share subpixel heatmaps; retain the coordinate-graph decoder for global SVA."""
     stages = stages or production_stages()
@@ -61,12 +72,11 @@ def lumbar_geometries(raw, located, side, stages=None):
     prepared = [framing.prepare_crop(canonical, window) for window in both]
     detections = stages.sacrum_detector([canvas for canvas, _ in prepared])
     inputs = np.concatenate([models._segmentation_input(canvas) for canvas, _ in prepared])
-    heat = models._infer(stages.lumbar_graph, lambda session: session.run(None, {'image': inputs})[0],
+    heat = crop_predictions(stages.lumbar_graph, inputs,
                          'Predicting lumbar crop candidates')
     # Global SVA retains its coordinate-graph decoder and candidate policy.
     # Model hashes and training epochs are recorded in the ONNX sidecars.
-    original = models._infer(stages.global_lumbar_graph,
-        lambda session: np.concatenate([session.run(None, {'image': item[None]})[0] for item in inputs]),
+    original = crop_predictions(stages.global_lumbar_graph, inputs,
         'Predicting original global-SVA landmarks')
     decoded = {'original': original, 'subpixel': stages.lumbar_decoder(heat)}
     results, femoral_cache = {}, {}
