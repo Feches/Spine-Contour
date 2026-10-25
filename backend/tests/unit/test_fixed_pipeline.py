@@ -69,3 +69,34 @@ def test_saved_route_sources_survive_measurement_roundtrip():
     result = measure(g)
     assert result['geometry']['measurement_sources'] == g['measurement_sources']
     assert measure(result['geometry'])['measurements'] == result['measurements']
+
+
+def test_crop_predictions_preserve_order_without_multi_image_calls(monkeypatch):
+    from backend.fixed_pipeline import crop_predictions
+    from backend.models import models
+    class SingleImageGraph:
+        def run(self, names, feeds):
+            assert feeds['image'].shape[0] == 1
+            return [feeds['image'] * 2]
+    monkeypatch.setattr(models, '_infer', lambda kind, operation, message: operation(SingleImageGraph()))
+    inputs = np.arange(12, dtype=np.float32).reshape(3, 1, 2, 2)
+    np.testing.assert_array_equal(crop_predictions('lumbar_heatmaps', inputs, None), inputs * 2)
+
+
+def test_crop_predictions_cancel_before_the_next_model_call(monkeypatch):
+    import threading
+    from backend import runtime
+    from backend.fixed_pipeline import crop_predictions
+    from backend.models import models
+    stop = threading.Event()
+    calls = []
+    class SingleImageGraph:
+        def run(self, names, feeds):
+            calls.append(feeds['image'])
+            stop.set()
+            return [feeds['image']]
+    monkeypatch.setattr(models, '_infer', lambda kind, operation, message: operation(SingleImageGraph()))
+    with runtime.session(cancelled=stop):
+        with pytest.raises(runtime.Cancelled):
+            crop_predictions('lumbar_heatmaps', np.ones((3, 1, 2, 2), np.float32), None)
+    assert len(calls) == 1

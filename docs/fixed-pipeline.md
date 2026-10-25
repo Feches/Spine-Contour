@@ -33,32 +33,18 @@ The viewer and measurement service select the same source. Human changes to
 shared S1/hip/C7 anchors supersede the affected automatic source; reset restores
 the complete original geometry. Source-image scale is supplied independently.
 
-## NVIDIA application runtime
+## Application runtime
 
-Install `backend/requirements-cuda.txt` in a separate environment, instead of
-`backend/requirements.txt`. This is an application runtime, not a benchmark-only
-adapter. The app's processor menu discovers NVIDIA devices by UUID and passes
-the selected device to the same inference code used by the validation runner.
-The ordinary DirectML and macOS CPU runtimes remain supported.
+The desktop uses the CPU or the existing Windows DirectML processor selection.
+S1 detection and HRNet crop candidates run one image per inference call. The
+session cache is bounded to four models, and low-memory mode releases models
+between stages. GPU qualification and whole-film CPU fallback retain the
+pre-existing DirectML behavior.
 
-The Windows preview workflow accepts `accelerator=cuda` and bundles the NVIDIA
-runtime and its libraries into the desktop installer. CUDA builds are review
-artifacts and cannot replace the ordinary preview release. GPU execution still
-requires an NVIDIA driver on the destination machine.
-
-CUDA sessions budget 92% of currently free device memory. Dynamic HRNet batches
-start with all available crop candidates, halve after allocation failure, and
-retry the same rows in order. A one-row failure releases inactive model sessions and retries the stage on
-GPU once. Persistent failure reaches the request boundary and retries the
-whole film on CPU. Other GPU
-execution errors also reach that boundary. Cancellation is checked between
-batches. Batch sizes and OOM retries are recorded in `qc.processing.batches`.
-
-An optional four-image S1 graph accelerates detector calls; if it cannot fit,
-the same checkpoint runs one crop at a time on GPU. The graph is exported with
-`tools/export_s1_batch.py`. Neither batching nor recovery changes image size,
-crop policy, checkpoints, or decoders. NVIDIA TF32 convolution behavior matches
-the reference CUDA evaluation; exported graph tensors are float32.
+The Windows preview uses the same DirectML runtime and installer format as
+before the model update. The separate CUDA preview, adaptive crop batches,
+four-image S1 graph and GPU allocation retries are removed. Fine-tuned weights,
+landmark decoders and measurement routes are unchanged.
 
 ## Reproduction
 

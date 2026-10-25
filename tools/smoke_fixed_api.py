@@ -14,9 +14,11 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--manifest', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
-    p.add_argument('--gpu', type=int, default=0)
+    p.add_argument('--processor', default='cpu', help='CPU or an ID returned by the application processor list')
     a = p.parse_args()
-    device = next(x for x in processors.available() if x.provider == processors.CUDA and x.adapter == a.gpu)
+    device = next((x for x in processors.available() if x.id == a.processor), None)
+    if device is None:
+        p.error('Requested processor is not available')
     a.output.mkdir(parents=True, exist_ok=True)
     client = TestClient(app)
     for row in json.loads(a.manifest.read_text()):

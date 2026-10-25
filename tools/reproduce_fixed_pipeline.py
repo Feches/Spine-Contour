@@ -25,7 +25,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--manifest', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
-    p.add_argument('--gpu', type=int, default=0)
+    p.add_argument('--processor', default='cpu', help='CPU or an ID returned by the application processor list')
     p.add_argument('--shard', type=int, default=0)
     p.add_argument('--shards', type=int, default=1)
     p.add_argument('--fresh', action='store_true')
@@ -33,7 +33,9 @@ def main():
     a = p.parse_args()
     if a.shards < 1 or not 0 <= a.shard < a.shards or (a.limit is not None and a.limit < 1):
         p.error('Require positive shard count/limit and 0 <= shard < shards')
-    processor = next(x for x in processors.available() if x.provider == processors.CUDA and x.adapter == a.gpu)
+    processor = next((x for x in processors.available() if x.id == a.processor), None)
+    if processor is None:
+        p.error('Requested processor is not available')
     rows = json.loads(a.manifest.read_text())[a.shard::a.shards][:a.limit]
     a.output.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
@@ -53,7 +55,7 @@ def main():
                 geometry['pixel_spacing'] = [row['mm_per_pixel']]*2
                 analysis = measure(geometry)
                 record.update(analysis, framing=prediction['framing'], provenance=prediction['provenance'],
-                              providers=runtime.providers(), batches=runtime.batches(), source_sha256=digest,
+                              providers=runtime.providers(), source_sha256=digest,
                               model_versions=model_versions(prediction['models']),
                               runtime_version=ort.__version__, processor=runtime.processor_record())
         except Exception as error:

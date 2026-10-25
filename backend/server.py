@@ -205,7 +205,7 @@ def run_prediction(request, reporter=None, cancelled=None):
             release_models()
         try:
             try:
-                if runtime.processor().kind == "gpu" and runtime.processor().provider == processors.DIRECTML:
+                if runtime.processor().kind == "gpu":
                     try:
                         from .gpu_parity import ensure_verified
                     except ImportError:  # uvicorn server:app from backend/
@@ -360,7 +360,6 @@ def _analyze(payload, modality, body_part, view, laterality,
                          "cpu_threads": runtime.options().inference_threads,
                          "runtime": "onnxruntime", "runtime_version": ort.__version__,
                          "providers": runtime.providers(),
-                         "batches": runtime.batches(),
                          "processor": runtime.processor_record(),
                          "crop_localizer": not is_cervical,
                          "crop_method": "not_applicable" if is_cervical else runtime.options().crop_method,
