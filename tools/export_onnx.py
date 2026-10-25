@@ -72,11 +72,19 @@ def export(kind, destination):
         expected = expected if isinstance(expected, tuple) else (expected,)
         actual = session.run(None, {'image': tensor.numpy()})
         for left, right in zip(expected, actual):
-            np.testing.assert_allclose(left.numpy(), right, rtol=2e-3, atol=2e-3)
-    checkpoint = {'s1': models.S1_WEIGHTS_PATH, 'vertebra': models.VERTEBRA_WEIGHTS_PATH,
+            if kind == 'hrnet':
+                from backend.model_export_checks import check_landmark_coordinates
+                with torch.inference_mode():
+                    heat = model(tensor).numpy()
+                check_landmark_coordinates(right, left.numpy(), heat, empty_input=not bool(tensor.any()))
+            else:
+                np.testing.assert_allclose(left.numpy(), right, rtol=2e-3, atol=2e-3)
+    checkpoint = {'s1': models.S1_WEIGHTS_PATH,
                   'femoral': models.FEMORAL_WEIGHTS_PATH, 'hrnet': models.HRNET_WEIGHTS_PATH}[kind]
     metadata = {'kind': kind, 'opset': 17, 'size': size, 'precision': 'float32',
                 's1_top_detection_only': kind == 's1',
+                'checkpoint_epoch': getattr(model, 'checkpoint_epoch', None),
+                'decoder': getattr(model, 'export_decoder', None),
                 'checkpoint_sha256': hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
                 'onnx_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
                 'torch': torch.__version__, 'onnx': onnx.__version__, 'onnxruntime': ort.__version__}
@@ -92,13 +100,16 @@ def export(kind, destination):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--kind', choices=['vertebra', 'femoral', 's1', 'hrnet', 'cervical_anatomical_hrnet'])
+    parser.add_argument('--kind', choices=['femoral', 's1', 'hrnet', 'cervical_anatomical_hrnet'])
     parser.add_argument('--output', type=Path, default=ROOT / 'backend' / 'onnx')
     parser.add_argument('--cervical-checkpoint', type=Path,
                         help='Anatomical cervical training checkpoint for a complete export')
     parser.add_argument('--cervical-image', type=Path, action='append',
                         help='Real cervical radiograph for export parity; repeatable')
     args = parser.parse_args()
+    # Do not carry retired graphs into a bundle rebuilt in an existing checkout.
+    for suffix in (".onnx", ".json"):
+        (args.output / ("vertebra" + suffix)).unlink(missing_ok=True)
     if args.kind in (None, 'cervical_anatomical_hrnet'):
         if args.cervical_checkpoint or args.cervical_image:
             if not args.cervical_checkpoint or not args.cervical_image:
@@ -128,7 +139,7 @@ if __name__ == '__main__':
     else:
         # Bound conversion memory; each model is exported in a fresh process.
         import subprocess
-        for kind in ('s1', 'vertebra', 'femoral', 'hrnet'):
+        for kind in ('s1', 'femoral', 'hrnet'):
             subprocess.run([sys.executable, __file__, '--kind', kind, '--output', str(args.output)], check=True)
         subprocess.run([sys.executable, str(ROOT / 'tools' / 'export_cervical_onnx.py'),
                         '--output', str(args.output)], check=True)

@@ -6,21 +6,7 @@ from backend.models import (
     FEMORAL_WEIGHTS_PATH,
     HRNET_WEIGHTS_PATH,
     S1_WEIGHTS_PATH,
-    VERTEBRA_WEIGHTS_PATH,
 )
-
-
-def test_authoritative_vertebra_checkpoint_loads_and_runs():
-    checkpoint = torch.load(VERTEBRA_WEIGHTS_PATH, map_location="cpu", weights_only=True)
-    model = build_unet(checkpoint, 6)
-    model.load_state_dict(checkpoint["model"], strict=True)
-    model.eval()
-
-    with torch.inference_mode():
-        output = model(torch.zeros((1, 1, 64, 64), dtype=torch.float32))
-    assert output.shape == (1, 6, 64, 64)
-    assert checkpoint["epoch"] == 53
-    assert checkpoint["val_dice"] == pytest.approx(0.9353553)
 
 
 def test_authoritative_femoral_checkpoint_loads_and_runs():
@@ -43,8 +29,9 @@ def test_authoritative_s1_checkpoint_loads_with_two_keypoints():
 
     assert model.roi_heads.keypoint_predictor.kps_score_lowres.out_channels == 2
     assert checkpoint["size"] == 768
-    assert checkpoint["epoch"] == 27
-    assert checkpoint["metrics"]["mean_px"] == pytest.approx(4.2064867)
+    assert checkpoint["epoch"] == 1
+    assert checkpoint["finetune_config"]["decoder"] == "local_softmax"
+    assert checkpoint["validation"]["original/full"]["misses"] == 0
 
 
 def test_hrnet_landmark_checkpoint_loads_and_emits_twenty_two_heatmaps():
@@ -56,5 +43,6 @@ def test_hrnet_landmark_checkpoint_loads_and_emits_twenty_two_heatmaps():
     assert output.shape == (1, 22, 16, 16)
     assert checkpoint["backbone"] == "hrnet_w32"
     assert checkpoint["stride"] == 4
-    assert checkpoint["epoch"] == 45
-    assert checkpoint["val_px"] == pytest.approx(3.5842824)
+    assert checkpoint["epoch"] == 1
+    assert checkpoint["finetune_config"]["decoder"] == "local_softmax"
+    assert checkpoint["validation"]["original/full"]["misses"] == 0

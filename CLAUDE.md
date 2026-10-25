@@ -1,5 +1,17 @@
 # Spine Contour
 
+**2026-10-25 release 1.5.0 (PR #72, fine-tuned models and the fixed measurement pipeline; release PR open, not
+merged):** branch `ccr-88de433a-g0oqe2` off `main` @ `62f88cc` (v1.4.0), with PR #72's single commit `50927e0` (from
+`mjayasur/Spine-Contour-region-research` `codex/fixed-seven-measurement-pipeline`) merged in unchanged by a merge
+commit, then the 1.5.0 release commit (`package.json`, `version.js`, CHANGELOG, `docs/releases/1.5.0.md`, the README
+link). PR #72 changed no version file, so its merge alone would have published nothing (v1.4.0's tag is `62f88cc`).
+The release commit also corrects README's Models, Crop localizer and Toolbar removal text, which PR #72 left
+describing the removed U-Net choice and two settings the fixed pipeline no longer applies (`backend/server.py` records
+them only as `requested_*`; the Settings switches are still shown, a known limitation in the release note). Unit
+1252/1252 on the merged tree; backend pytest, the smoke suites and a packaged build were not run in this session (PR
+#72's own Windows, macOS and NVIDIA preview checks passed). Merging the release PR to `main` with a merge commit
+publishes v1.5.0 and marks PR #72 merged.
+
 **2026-10-20 release 1.3.1 (the selected level's points in the edit bar; BUILT, at the owner's gate, not pushed):**
 branch `claude/segmentation-points-display-2df267` (worktree `.claude/worktrees/design-system-extraction-eaac17`,
 moved off upstream `92c8e87` onto `fork/main` @ `eac0eb9`, v1.3.0, with `checkout -B`). The owner's ask: in edit mode

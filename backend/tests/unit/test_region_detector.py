@@ -1,4 +1,6 @@
 """Numeric contract checks, not claims about clinical detection performance."""
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -104,3 +106,9 @@ def test_output_shape_is_metadata_driven_and_input_validated():
         decode(np.zeros((2, 1, 6)), rows, transform)
     with pytest.raises(ValueError):
         prepare(np.zeros((640, 640), np.float32), rows)
+
+
+def test_shipped_detector_metadata_matches_runtime_contract():
+    path = Path(__file__).resolve().parents[2] / "onnx" / "crop_detector.json"
+    contract = DetectorContract.from_json(path)
+    assert contract.classes == ("cervical", "lumbar")

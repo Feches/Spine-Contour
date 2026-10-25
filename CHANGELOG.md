@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.5.0
+
+- **Fine-tuned spine models (PR #72).** The cervical and lumbar landmark models, the S1 detector and the optional region
+  detector are fine-tuned from their earlier weights on annotated cervical, lumbar and full-spine films, with the
+  original training data mixed in. Results are mixed: fit to the annotated cervical and full-spine films improves
+  markedly (training data, not a held-out test), the S1 slope error on the held-out 541-image lumbar test split falls
+  (2.42° → 2.30°) and the lumbar lordosis error on it rises (3.38° → 3.51°). A film segmented before 1.5.0 keeps its
+  result until it is run again; a new run may give different numbers.
+- **One measurement pipeline for every region.** Lumbar, cervical and full-spine films go through the same fixed
+  pipeline, with subpixel landmark decoding. The vertebral bodies are read by HRNet only: the lumbar U-Net segmentation
+  model is removed, with its Settings choice, and a lumbar result carries no segmentation mask. Pelvic tilt and global
+  SVA keep their own anchors (`geometry.measurement_sources`); a manual correction to those anchors takes precedence
+  over them.
+- **NVIDIA GPU processing (preview).** An NVIDIA (CUDA) runtime lists each NVIDIA GPU in **Settings → Processing →
+  Processor**, batches crops on the GPU and recovers from running out of GPU memory. It ships only in a Windows preview
+  ZIP that the preview workflow builds as an artifact and never publishes, and it has not yet been tested on NVIDIA
+  hardware as a packaged app; the Windows installer keeps DirectML and the macOS build the CPU.
+- **Crop localizer Off and Toolbar removal no longer change processing.** Both settings are still saved and recorded
+  with each result as requested, but the pipeline always runs the crop search and segments the film as uploaded.
+- Windows builds retry a failed OCR runtime download, and every model file is now stored in Git LFS.
+
+[Release notes](docs/releases/1.5.0.md)
+
 ## 1.4.0
 
 - **Place only some of a level's points.** A vertebral body can be finished with one endplate (SA and SP, or IA and

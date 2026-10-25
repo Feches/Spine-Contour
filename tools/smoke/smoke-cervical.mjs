@@ -47,7 +47,7 @@ try {
   check('actual model and source frame are recorded', await cdp.evaluate(`import('./renderer/store.js').then(m=>{
     const s=m.getState().studies[0];window.cervicalOriginal=structuredClone(s);
     return s.geometry.region==='cervical'&&s.qc.models.vertebrae==='cervical_anatomical_hrnet'
-      &&s.qc.provenance.dataset==='CSXA + QOD'&&s.geometry.anterior_side==='${expectedSide}'&&s.geometry.c2_centroid
+      &&s.qc.provenance.dataset==='CSXA + clinical cohort'&&s.geometry.anterior_side==='${expectedSide}'&&s.geometry.c2_centroid
       &&Object.keys(s.geometry.vertebrae).length===6&&s.geometry.s1_superior===null;
   })`));
   await cdp.evaluate("document.querySelector('[data-row-key=\"C2C7_COBB\"]').click()");
