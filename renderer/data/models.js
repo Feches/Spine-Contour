@@ -22,6 +22,8 @@ export function isVertebraModel(id) {
 // The display label for a model id, or null when it is not one this build offers.
 export function modelLabel(structure, id) {
   if (structure === 'vertebrae' && ['cervical_hrnet', 'cervical_anatomical_hrnet', 'dual_hrnet'].includes(id)) return 'HRNET';
+  // Stored provenance of 1.5.0 and 1.5.1 results (the fixed seven-measurement pipeline); no run produces these now.
+  if (structure === 'vertebrae' && ['seven-measurements-20261023', 'cervical_slope_hrnet'].includes(id)) return 'HRNET';
   const options = BY_STRUCTURE[structure];
   if (!options) return null;
   const found = options.find((model) => model.id === id);

@@ -1,3 +1,4 @@
+import { measurementGeometry } from './measurement-sources.js';
 import { boundCalibration, studyRegion, validAnteriorSide } from './cervical.js';
 
 export const GLOBAL_SVA_COLUMNS = [
@@ -10,7 +11,7 @@ export const GLOBAL_SVA_COLUMNS = [
 export function globalSvaMeasurements(study) {
   const values = { region: 'full_spine', GLOBAL_SVA_PX: null, GLOBAL_SVA_MM: null };
   if (studyRegion(study) !== 'full_spine' || !study?.geometry) return values;
-  const g = study.geometry;
+  const g = measurementGeometry(study.geometry, 'global_sva');
   const point = p => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)
     && p[0] >= 0 && p[1] >= 0 && (!g.image_width || p[0] < g.image_width)
     && (!g.image_height || p[1] < g.image_height);
@@ -36,6 +37,9 @@ export function globalSvaRows(study, selectedLevel = null) {
 
 export function globalSvaMeasureGeometry(geometry, calibration) {
   const scale = boundCalibration(geometry, calibration)?.spacing;
-  return { ...geometry, pixel_spacing: scale ? [scale.row_mm, scale.column_mm] : null,
+  // A 1.5.x result's per-measurement anchors (measurement-sources.js) are not read by this backend, which measures
+  // from the shared points; dropping them here keeps the re-measured numbers and the viewer on the same points.
+  const { measurement_sources, source_geometry, ...shared } = geometry;
+  return { ...shared, pixel_spacing: scale ? [scale.row_mm, scale.column_mm] : null,
     spacing_source: scale?.source ?? null };
 }
