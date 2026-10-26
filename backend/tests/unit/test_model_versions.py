@@ -11,15 +11,15 @@ def write(directory, kind, digest):
 
 def test_each_structure_reports_its_graphs_hash_and_a_missing_file_is_none(monkeypatch, tmp_path):
     monkeypatch.setattr(models, "ONNX_DIRECTORY", tmp_path)
-    write(tmp_path, "hrnet", "ab")
-    assert models.model_versions({"vertebrae": "hrnet", "s1": "keypointrcnn"}) == {"vertebrae": "ab", "s1": None}
+    write(tmp_path, "vertebra", "ab")
+    assert models.model_versions({"vertebrae": "unet", "s1": "keypointrcnn"}) == {"vertebrae": "ab", "s1": None}
 
 
-def test_vertebrae_and_femoral_heads_use_separate_graphs(monkeypatch, tmp_path):
+def test_the_unet_is_a_different_graph_for_vertebrae_and_femoral_heads(monkeypatch, tmp_path):
     monkeypatch.setattr(models, "ONNX_DIRECTORY", tmp_path)
-    for kind, digest in (("hrnet", "v1"), ("femoral", "f1"), ("s1", "s1h")):
+    for kind, digest in (("vertebra", "v1"), ("femoral", "f1"), ("s1", "s1h")):
         write(tmp_path, kind, digest)
-    assert models.model_versions({"vertebrae": "hrnet", "femoral": "unet", "s1": "keypointrcnn"}) == {
+    assert models.model_versions({"vertebrae": "unet", "femoral": "unet", "s1": "keypointrcnn"}) == {
         "vertebrae": "v1", "femoral": "f1", "s1": "s1h"}
 
 
@@ -33,7 +33,7 @@ def test_every_landmark_graph_maps_to_its_own_metadata(monkeypatch, tmp_path):
 
 def test_the_dual_hrnet_joins_its_two_graphs(monkeypatch, tmp_path):
     monkeypatch.setattr(models, "ONNX_DIRECTORY", tmp_path)
-    write(tmp_path, "cervical_hrnet", "c")
+    write(tmp_path, "cervical_anatomical_hrnet", "c")
     write(tmp_path, "hrnet", "h")
     assert models.model_versions({"vertebrae": "dual_hrnet"}) == {"vertebrae": "c+h"}
 
@@ -58,7 +58,7 @@ def test_a_prediction_response_carries_model_versions_in_qc(monkeypatch, tmp_pat
     from backend.tests.integration.test_global_sva_server import calibration, stub_prediction, upload
 
     monkeypatch.setattr(models, "ONNX_DIRECTORY", tmp_path)
-    write(tmp_path, "cervical_hrnet", "c")
+    write(tmp_path, "cervical_anatomical_hrnet", "c")
     write(tmp_path, "hrnet", "h")
     payload = upload()
     stub_prediction(monkeypatch, [])

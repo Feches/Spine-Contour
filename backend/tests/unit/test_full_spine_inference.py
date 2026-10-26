@@ -278,12 +278,12 @@ def neck_searches(left, right):
             'right': {**orientation_evidence('right', []), 'neck_candidates': right}}
 
 
-def test_mirroring_cervical_points_preserves_image_sided_labels_and_is_involutive():
+def test_mirroring_cervical_points_preserves_anatomical_labels_and_is_involutive():
     neck, _ = synthetic_regions()
     source = neck[1]
     mirrored = full._mirror_cervical_candidate(source, 500)
-    assert mirrored['points'][:3].tolist() == [[389, 70], [409, 70], [399, 60]]
-    assert mirrored['points'][3:7].tolist() == [[389, 101], [409, 100], [389, 115], [409, 114]]
+    assert mirrored['points'][:3].tolist() == [[409, 70], [389, 70], [399, 60]]
+    assert mirrored['points'][3:7].tolist() == [[409, 100], [389, 101], [409, 114], [389, 115]]
     restored = full._mirror_cervical_candidate(mirrored, 500)
     np.testing.assert_array_equal(restored['points'], source['points'])
     np.testing.assert_array_equal(restored['anchor'], source['anchor'])
@@ -444,3 +444,14 @@ def test_context_retry_requires_two_agreeing_valid_windows(monkeypatch, context_
     assert calls == [[100, 100, 200, 200], [90, 90, 210, 210], [80, 80, 220, 220]]
     assert neck['window'] == [100, 100, 200, 200]
     assert qc.get('context_retry', False) is (expected is not None)
+
+
+def test_cervical_body_validation_accepts_both_directions_without_fixing_crossed_labels():
+    points = body_chain()
+    expected = full._cervical_body_scale(points)
+    assert expected is not None
+    mirrored = full._source_points(points, 500, True)
+    assert full._cervical_body_scale(mirrored) == pytest.approx(expected)
+    crossed = points.copy()
+    crossed[[0, 1]] = crossed[[1, 0]]
+    assert full._cervical_body_scale(crossed) is None

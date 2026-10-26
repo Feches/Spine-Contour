@@ -1,6 +1,25 @@
 # Spine Contour
 
-**2026-10-25 release 1.5.1 (PR #74, GPU processing back to the 1.4.0 runtime; release PR open, not merged):** branch
+**2026-10-26 release 1.6.0 (PR #77, the 1.4.0 pipeline with fine-tuned models; release PR open, not merged):** branch
+`ccr-88de433a-g0oqe2` restarted from `main` @ `4836e70` (v1.5.1), with PR #77's two commits (`0e9d9c5`, `129dc01`, from
+`mjayasur/Spine-Contour-region-research` `codex/pre-finetune-pipeline-new-models`) merged in unchanged by a merge
+commit, then `ae9642f` (1.5.x results) and the 1.6.0 release commit. PR #77 restores most files to their `62f88cc`
+(v1.4.0) contents: the regional pipeline, crop search, the U-Net vertebral model (HRNet now the default), Crop
+localizer and Toolbar removal; it keeps 1.5.0's fine-tuned S1 detector and epoch-16 anatomical cervical HRNet
+(re-exported with its original decoder, and now also the full-spine neck model, `full_spine._anatomical_crop_points`),
+puts the region detector and view classifier back to 1.4.0's plain-git graphs, and `129dc01` swaps
+`backend/weights/hrnet_landmarks.pt` for a third lumbar checkpoint (`2cc7f79…`) with no training notes. Its wholesale
+restore also removed this file's 1.5.x paragraphs (restored here), the README's 1.5.x text, the fine-tuning docs
+(still at the `v1.5.0` tag) and the OCR-install retry. `ae9642f` makes 1.5.x results read as measured: `modelLabel`
+and `landmarkReviewReasons` know `seven-measurements-20261023` and `cervical_slope_hrnet` again (without it a 1.5.x
+cervical film read "S1 detection needs review"), `renderer/data/measurement-sources.js` and its canvas and Global SVA
+uses are back, and `globalSvaMeasureGeometry` drops `measurement_sources` / `source_geometry` so a re-measured
+full-spine film is drawn and measured from the shared points the restored backend reads. Unit 1258/1258. Not run here:
+backend pytest (PR #77's Windows and macOS checks ran it), the smoke suites, the Windows GPU check PR #77's author asked
+for. Merging the release PR to `main` with a merge commit publishes v1.6.0 and marks PR #77 merged.
+
+**2026-10-25 release 1.5.1 (PR #74, GPU processing back to the 1.4.0 runtime; RELEASED as v1.5.1: PR #76, merge
+`4836e70`):** branch
 `ccr-88de433a-g0oqe2` restarted from `main` @ `9e6241e` (v1.5.0), with PR #74's single commit `d98bee1` (from
 `mjayasur/Spine-Contour-region-research` `codex/restore-single-crop-gpu-runtime`) merged in unchanged by a merge
 commit, then `e768b49` (a test fix) and the 1.5.1 release commit. PR #74 removes 1.5.0's CUDA runtime, adaptive crop
