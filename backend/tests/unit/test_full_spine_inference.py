@@ -27,11 +27,21 @@ def test_overlapping_upper_windows_are_bounded_and_unique():
     assert len({d-b for a, b, c, d in windows}) == 3
 
 
-def test_lumbar_translation_and_scale_windows_preserve_bounds():
+def test_lumbar_search_extends_every_candidate_upward_before_consensus():
     windows = full.lumbar_windows((20, 700, 420, 1300), (1400, 500))
-    assert len(windows) == 7
-    assert all(0 <= a < c <= 500 and 0 <= b < d <= 1400 for a, b, c, d in windows)
-    assert (20, 700, 420, 1300) in windows
+    assert set(windows) == {
+        (20, 610, 420, 1300), (0, 610, 396, 1300), (44, 610, 444, 1300),
+        (20, 574, 420, 1264), (20, 646, 420, 1336),
+        (40, 649, 400, 1270), (0, 571, 440, 1330),
+    }
+    assert (20, 700, 420, 1300) not in windows
+
+
+def test_lumbar_upward_extension_clips_at_image_top_without_moving_bottom():
+    windows = full.lumbar_windows((20, 10, 420, 610), (1000, 500))
+    assert (20, 0, 420, 610) in windows
+    assert windows == sorted(set(windows))
+    assert all(0 <= l < r <= 500 and 0 <= t < b <= 1000 for l, t, r, b in windows)
 
 
 def test_consensus_selects_actual_medoid_not_high_scoring_outlier():
