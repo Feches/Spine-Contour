@@ -1,5 +1,48 @@
 # Spine Contour
 
+**2026-10-26 release 1.6.0 (PR #77, the 1.4.0 pipeline with fine-tuned models; release PR open, not merged):** branch
+`ccr-88de433a-g0oqe2` restarted from `main` @ `4836e70` (v1.5.1), with PR #77's two commits (`0e9d9c5`, `129dc01`, from
+`mjayasur/Spine-Contour-region-research` `codex/pre-finetune-pipeline-new-models`) merged in unchanged by a merge
+commit, then `ae9642f` (1.5.x results) and the 1.6.0 release commit. PR #77 restores most files to their `62f88cc`
+(v1.4.0) contents: the regional pipeline, crop search, the U-Net vertebral model (HRNet now the default), Crop
+localizer and Toolbar removal; it keeps 1.5.0's fine-tuned S1 detector and epoch-16 anatomical cervical HRNet
+(re-exported with its original decoder, and now also the full-spine neck model, `full_spine._anatomical_crop_points`),
+puts the region detector and view classifier back to 1.4.0's plain-git graphs, and `129dc01` swaps
+`backend/weights/hrnet_landmarks.pt` for a third lumbar checkpoint (`2cc7f79…`) with no training notes. Its wholesale
+restore also removed this file's 1.5.x paragraphs (restored here), the README's 1.5.x text, the fine-tuning docs
+(still at the `v1.5.0` tag) and the OCR-install retry. `ae9642f` makes 1.5.x results read as measured: `modelLabel`
+and `landmarkReviewReasons` know `seven-measurements-20261023` and `cervical_slope_hrnet` again (without it a 1.5.x
+cervical film read "S1 detection needs review"), `renderer/data/measurement-sources.js` and its canvas and Global SVA
+uses are back, and `globalSvaMeasureGeometry` drops `measurement_sources` / `source_geometry` so a re-measured
+full-spine film is drawn and measured from the shared points the restored backend reads. Unit 1258/1258. Not run here:
+backend pytest (PR #77's Windows and macOS checks ran it), the smoke suites, the Windows GPU check PR #77's author asked
+for. Merging the release PR to `main` with a merge commit publishes v1.6.0 and marks PR #77 merged.
+
+**2026-10-25 release 1.5.1 (PR #74, GPU processing back to the 1.4.0 runtime; RELEASED as v1.5.1: PR #76, merge
+`4836e70`):** branch
+`ccr-88de433a-g0oqe2` restarted from `main` @ `9e6241e` (v1.5.0), with PR #74's single commit `d98bee1` (from
+`mjayasur/Spine-Contour-region-research` `codex/restore-single-crop-gpu-runtime`) merged in unchanged by a merge
+commit, then `e768b49` (a test fix) and the 1.5.1 release commit. PR #74 removes 1.5.0's CUDA runtime, adaptive crop
+batches, OOM retries and the `s1_batch` graph, runs every model call one crop at a time (`fixed_pipeline.py`
+`crop_predictions`), puts `_load_model`'s cache back to four models, and migrates a saved `cuda:GPU-…` processor to
+`cpu` in `backend-client.cjs` `normalizePerformance`; the fine-tuned weights, decoders and routes are unchanged. Its
+Windows check failed on `test_real_directml_invalid_adapter_aborts_without_fallback`, which the rollback had pointed
+at `vertebra.onnx` (removed in 1.5.0); `e768b49` restores main's `hrnet.onnx` version. Unit 1253/1253 on the merged
+tree. The reported GPU failure was not reproduced on Windows GPU hardware here. Merging the release PR to `main` with a
+merge commit publishes v1.5.1 and marks PR #74 merged.
+
+**2026-10-25 release 1.5.0 (PR #72, fine-tuned models and the fixed measurement pipeline; RELEASED as v1.5.0: PR #73,
+merge `9e6241e`):** branch `ccr-88de433a-g0oqe2` off `main` @ `62f88cc` (v1.4.0), with PR #72's single commit `50927e0` (from
+`mjayasur/Spine-Contour-region-research` `codex/fixed-seven-measurement-pipeline`) merged in unchanged by a merge
+commit, then the 1.5.0 release commit (`package.json`, `version.js`, CHANGELOG, `docs/releases/1.5.0.md`, the README
+link). PR #72 changed no version file, so its merge alone would have published nothing (v1.4.0's tag is `62f88cc`).
+The release commit also corrects README's Models, Crop localizer and Toolbar removal text, which PR #72 left
+describing the removed U-Net choice and two settings the fixed pipeline no longer applies (`backend/server.py` records
+them only as `requested_*`; the Settings switches are still shown, a known limitation in the release note). Unit
+1252/1252 on the merged tree; backend pytest, the smoke suites and a packaged build were not run in this session (PR
+#72's own Windows, macOS and NVIDIA preview checks passed). Merging the release PR to `main` with a merge commit
+publishes v1.5.0 and marks PR #72 merged.
+
 **2026-10-20 release 1.3.1 (the selected level's points in the edit bar; BUILT, at the owner's gate, not pushed):**
 branch `claude/segmentation-points-display-2df267` (worktree `.claude/worktrees/design-system-extraction-eaac17`,
 moved off upstream `92c8e87` onto `fork/main` @ `eac0eb9`, v1.3.0, with `checkout -B`). The owner's ask: in edit mode

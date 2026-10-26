@@ -32,7 +32,7 @@ the film on the CPU and says so. See [GPU processing](docs/gpu-processing.md).
 Download the Windows x64 installer or macOS Apple Silicon disk image from the
 [latest numbered release](https://github.com/Feches/Spine-Contour/releases/latest).
 Each release includes both installers and `SHA256SUMS`. See the
-[changelog](CHANGELOG.md), [v1.4.0 release notes](docs/releases/1.4.0.md) and
+[changelog](CHANGELOG.md), [v1.6.0 release notes](docs/releases/1.6.0.md) and
 [complete incoming commit history](docs/releases/1.0.0-commits.md).
 
 Open **Studies** and choose a radiograph, or import a folder through **Workspace**.
@@ -187,8 +187,11 @@ and the choice applies to the next run:
 Each study's Analysis header names the model that produced the numbers on screen, and the
 saved result records it, so a library measured with both can still be told apart.
 
-All four trained models run locally through **ONNX Runtime**, using the original
-float32 weights and 768 × 768 model frame. No retraining or quantization is applied.
+The trained models run locally through **ONNX Runtime** with float32 weights; no
+quantization is applied. The HRNet landmark model, the S1 detector and the anatomical
+cervical HRNet carry fine-tuned weights (since 1.5.0; 1.6.0 updates the HRNet checkpoint),
+and the anatomical cervical HRNet also locates the neck on full-spine films. The U-Net
+vertebral model and the femoral U-Net keep their original weights.
 
 **Settings → Processing → Crop localizer** is On by default. It is needed for
 **full-spine images** to locate and frame the lumbar region. For **lumbar-only images**

@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.6.0
+
+- **The measurement pipeline returns to 1.4.0's (PR #77).** Lumbar, cervical and full-spine films are read by the
+  regional paths and crop search 1.4.0 had; 1.5.0's fixed seven-measurement pipeline, its subpixel decoders and its
+  per-measurement routes are removed. The CPU/DirectML runtime of 1.5.1 and its processor migration stay.
+- **Models.** The S1 detector keeps 1.5.0's fine-tuned weights. The anatomical cervical HRNet carries the fine-tuned
+  epoch-16 weights and now also locates the neck on full-spine films, in place of the image-sided cervical HRNet. The
+  lumbar HRNet has an updated checkpoint, different from both 1.4.0's and 1.5.x's. The U-Net vertebral model returns,
+  with its choice in **Settings**; HRNet is the default. The region detector and the view classifier are 1.4.0's
+  again.
+- **Settings → Processing → Crop localizer** Off and **Toolbar removal** apply again on lumbar films, and a lumbar
+  result carries the U-Net body mask again.
+- Results segmented by 1.5.0 or 1.5.1 read as they were measured: their model label, their review reasons, and PT and
+  Global SVA from the anchors their values came from. Edit one and it is measured again from the shared points.
+- The fine-tuning documentation and the fixed-pipeline tools are removed from the tree; they stay at the `v1.5.0`
+  tag.
+
+[Release notes](docs/releases/1.6.0.md)
+
 ## 1.5.1
 
 - **GPU processing returns to the 1.4.0 runtime (PR #74).** After reports of processing failures with 1.5.0's GPU
