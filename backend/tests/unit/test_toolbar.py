@@ -4,6 +4,7 @@ import pytest
 
 from backend import framing, runtime, toolbar
 from backend.models import models
+from backend.tests.unit.test_partial_prediction import frame
 
 
 def screenshot(width=951, height=801, thickness=22, invert=False):
@@ -65,6 +66,42 @@ def test_native_precision_images_are_not_normalized_or_cropped(dtype):
 def test_tiny_images_do_not_fail(shape):
     image = np.zeros(shape, np.uint8)
     assert toolbar.remove_bottom_toolbar(image)[0] is image
+
+
+@pytest.mark.parametrize('localizer', [True, False])
+@pytest.mark.parametrize('model', ['unet', 'hrnet'])
+def test_cleanup_precedes_search_and_preserves_source_coordinates_and_partial_results(monkeypatch, localizer, model):
+    image = screenshot()
+    searched = []
+    monkeypatch.setattr(framing, 'locate', lambda pixels, *_: searched.append(pixels.copy()))
+    monkeypatch.setattr(models, '_read_frame', lambda *_: frame(['L1']))
+    with runtime.session(runtime.parse_options(crop_localizer=localizer)):
+        reference = models.spinopelvic_prediction(image[:-22], models={'vertebrae': model})
+    events = []
+    with runtime.session(runtime.parse_options(crop_localizer=localizer, toolbar_removal=True), events.append):
+        result = models.spinopelvic_prediction(image, models={'vertebrae': model})
+    for key in ('image', 'mask', 'femoral_mask'):
+        np.testing.assert_array_equal(result[key], reference[key])
+    assert result['landmarks'] == reference['landmarks']
+    assert list(result['landmarks']['vertebrae']) == ['L1']
+    assert result['landmarks']['S1']['superior'] is None
+    assert result['framing']['window'] == reference['framing']['window']
+    assert result['framing']['toolbar_removal']['removed_bottom_px'] == 22
+    assert events[1]['stage'] == 'toolbar'
+    if localizer:
+        np.testing.assert_array_equal(searched[-1], image[:-22])
+    else:
+        assert not searched
+
+
+def test_disabled_cleanup_bypasses_detector_and_retains_original_extent(monkeypatch):
+    image = screenshot()
+    monkeypatch.setattr(toolbar, 'remove_bottom_toolbar', lambda *_: pytest.fail('Disabled must not scan'))
+    monkeypatch.setattr(models, '_read_frame', lambda *_: frame(['L1']))
+    with runtime.session(runtime.parse_options(crop_localizer=False)):
+        result = models.spinopelvic_prediction(image)
+    assert result['image'].shape == image.shape
+    assert result['framing']['toolbar_removal']['status'] == 'disabled'
 
 
 def test_toolbar_option_defaults_off_and_rejects_non_booleans():

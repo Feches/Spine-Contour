@@ -55,7 +55,11 @@ jobs:
 
       - name: Install OCR runtime
         shell: pwsh
-        run: ./tools/packaging/install_windows_ocr.ps1
+        run: |
+          choco install tesseract --yes --no-progress
+          $ocr = "C:/Program Files/Tesseract-OCR"
+          if (-not (Test-Path "$ocr/tesseract.exe")) { throw "Tesseract runtime not found." }
+          $ocr | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Export and validate ONNX models
         run: python tools/export_onnx.py

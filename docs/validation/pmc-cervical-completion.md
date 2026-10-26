@@ -40,7 +40,7 @@ An output meeting the completeness rule can still be anatomically wrong. The
 for measurement. The model does not yet reliably reject unrelated images or
 withhold every invisible anatomical landmark.
 
-The anatomical model uses the epoch-87 checkpoint fine-tuned on CSXA4963 + 204 clinical images,
+The anatomical model uses the epoch-87 checkpoint fine-tuned on CSXA4963 + clinical cohort204,
 with 20 clinical cohort validation patients used for checkpoint selection. Its ONNX SHA-256 is
 `54ea239b9744320c7d6e8957343b2c3d17cd48f3045932cd359ffc6a127c3e78`.
 The previous baseline is the automatic-orientation implementation in the

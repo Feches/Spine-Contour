@@ -73,15 +73,19 @@ FEMORAL_IMAGE_SIZE = 640
 FEMORAL_THRESHOLD = 0.35
 FEMORAL_MODEL_REVISION = "20260923-conservative-clahe-flip"
 WEIGHTS_DIRECTORY = Path(__file__).resolve().parent.parent / "weights"
+VERTEBRA_WEIGHTS_PATH = WEIGHTS_DIRECTORY / "vertebra_unet.pt"
 FEMORAL_WEIGHTS_PATH = WEIGHTS_DIRECTORY / "femoral_unet.pt"
 S1_WEIGHTS_PATH = WEIGHTS_DIRECTORY / "s1_keypointrcnn.pt"
 HRNET_WEIGHTS_PATH = WEIGHTS_DIRECTORY / "hrnet_landmarks.pt"
 SUPPORTED_INPUT = ("xray", "lumbar", "lateral")
 LUMBAR_LEVELS = ("L1", "L2", "L3", "L4", "L5")
 
-# Fixed production model choices.
+# Which model reads which structure. The vertebral corners have two sources --
+# the U-Net's masks, or HRNet's regressed landmarks -- and the caller picks; the
+# femoral heads and the S1 endplate each have one. Every response records the
+# choice under `qc.models`, so a stored measurement says what produced it.
 MODEL_CHOICES = {
-    "vertebrae": ("hrnet",),
+    "vertebrae": ("unet", "hrnet"),
     "femoral": ("unet",),
     "s1": ("keypointrcnn",),
 }
@@ -139,21 +143,9 @@ def _robust_rescale(pixel_array: np.ndarray) -> np.ndarray:
     if not finite.any():
         return np.zeros(image.shape, dtype=np.uint8)
     image[~finite] = float(np.median(image[finite]))
-    if array.dtype == np.uint8:
-        # Exact order statistics from a 256-bin histogram avoid partitioning
-        # every large source crop. Keep NumPy's linear percentile convention.
-        counts = np.bincount(array.reshape(-1), minlength=256)
-        if counts[1:].sum() >= 100:
-            counts[0] = 0
-        cumulative = counts.cumsum()
-        positions = (cumulative[-1]-1)*np.array([.005, .995])
-        lower = np.searchsorted(cumulative, np.floor(positions)+1)
-        upper = np.searchsorted(cumulative, np.ceil(positions)+1)
-        low, high = lower+(upper-lower)*(positions-np.floor(positions))
-    else:
-        foreground = image[image > 0]
-        values = foreground if foreground.size >= 100 else image.reshape(-1)
-        low, high = np.percentile(values, (0.5, 99.5))
+    foreground = image[image > 0]
+    values = foreground if foreground.size >= 100 else image.reshape(-1)
+    low, high = np.percentile(values, (0.5, 99.5))
     if high <= low + 1:
         return np.clip(image, 0, 255).astype(np.uint8)
     return np.clip((image - low) * (255.0 / (high - low)), 0, 255).astype(np.uint8)
@@ -175,7 +167,7 @@ def _letterbox(image: np.ndarray) -> tuple[np.ndarray, LetterboxTransform]:
 
 
 ONNX_DIRECTORY = Path(__file__).resolve().parent.parent / "onnx"
-MODEL_NAMES = {"lumbar_heatmaps": "Lumbar HRNet heatmaps", "cervical_slope_hrnet": "Cervical slope HRNet", "s1": "S1 detector",
+MODEL_NAMES = {"s1": "S1 detector", "vertebra": "vertebra model",
                "femoral": "femoral-head model", "hrnet": "HRNet landmark model",
                "cervical_detr": "cervical detector",
                "cervical_anatomical_hrnet": "anatomical cervical landmarks",
@@ -300,17 +292,14 @@ def release_models():
 # The ONNX graph(s) behind each model id, for `qc.model_versions`. A key is the id alone or (structure, id): the
 # U-Net reads vertebrae and femoral heads with two different graphs, so its slot decides.
 _GRAPHS_BY_MODEL = {
+    ("vertebrae", "unet"): ("vertebra",),
     ("femoral", "unet"): ("femoral",),
     "keypointrcnn": ("s1",),
     "hrnet": ("hrnet",),
-    "lumbar_heatmaps": ("lumbar_heatmaps",),
-    "cervical_slope_hrnet": ("cervical_slope_hrnet",),
     "cervical_hrnet": ("cervical_hrnet",),
     "cervical_anatomical_hrnet": ("cervical_anatomical_hrnet",),
     "cervical_detr": ("cervical_detr",),
-    "dual_hrnet": ("cervical_hrnet", "hrnet"),
-    "seven-measurements-20261023": ("cervical_slope_hrnet", "cervical_anatomical_hrnet",
-                                   "lumbar_heatmaps", "s1", "femoral", "cervical_detr", "cervical_hrnet", "hrnet"),
+    "dual_hrnet": ("cervical_anatomical_hrnet", "hrnet"),
 }
 
 
@@ -493,3 +482,278 @@ def _restore_femoral_mask(probability, transform, shape):
     mask = np.zeros(shape, dtype=np.uint8)
     mask[top:bottom, left:right] = restored > FEMORAL_THRESHOLD
     return mask
+
+
+def _read_frame(letterboxed, choice, femoral_image):
+    value = _segmentation_input(letterboxed)
+    s1_confidence, s1_points = _infer("s1", lambda session: _detect(session, letterboxed),
+                                    "Detecting the S1 endplate")
+    femoral = _femoral_probabilities(femoral_image)
+    # Retain U-Net presence evidence even when HRNet supplies the corners.
+    vertebra_labels = _infer("vertebra",
+        lambda session: session.run(None, {"image": value})[0][0].argmax(0).astype(np.uint8),
+        "Segmenting visible vertebrae")
+    hrnet_points = None
+    if choice["vertebrae"] == "hrnet":
+        hrnet_points = _infer("hrnet",
+            lambda session: session.run(None, {"image": value})[0][0].astype(np.float64),
+            "Locating vertebral corners with HRNet")
+    return {"vertebra_labels": vertebra_labels, "hrnet_points": hrnet_points,
+            "femoral": femoral, "s1": s1_points, "s1_confidence": s1_confidence}
+
+
+def _clip_to_film(points: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    clipped = np.asarray(points, dtype=np.float64).copy()
+    clipped[:, 0] = np.clip(clipped[:, 0], 0, shape[1] - 1)
+    clipped[:, 1] = np.clip(clipped[:, 1], 0, shape[0] - 1)
+    return clipped
+
+
+def spinopelvic_prediction(
+    pixel_array: np.ndarray,
+    modality: str = "xray",
+    body_part: str = "lumbar",
+    view: str | None = "lateral",
+    laterality: str | None = None,
+    models: dict[str, str] | None = None,
+) -> dict[str, object]:
+    """Locate the lumbosacral region, frame it, and run the chosen models.
+
+    The film is searched for the lumbar spine first and the models run on a
+    crop framed the way their training data was, so a full-spine radiograph
+    measures like a lumbar one. See `framing.py` for the search and why it is
+    needed. Returns the film, the label maps, every landmark in full-film
+    pixels, and a record of the crop and the models that produced them.
+    """
+
+    try:
+        from .. import framing, landmarks, toolbar
+    except ImportError:  # Support running modules directly from backend/.
+        import framing, landmarks, toolbar
+
+    _validate_supported_input(modality, body_part, view, laterality)
+    choice = resolve_models(models)
+    raw = np.asarray(pixel_array)
+    if raw.ndim != 2 or not np.issubdtype(raw.dtype, np.number) or raw.size == 0:
+        raise ValueError("pixel_array must be a non-empty two-dimensional numeric grayscale array")
+    toolbar_info = {"enabled": False, "status": "disabled", "removed_bottom_px": 0,
+                    "source_size": [int(raw.shape[1]), int(raw.shape[0])],
+                    "window": [0, 0, int(raw.shape[1]), int(raw.shape[0])]}
+    if runtime.options().toolbar_removal:
+        runtime.report("toolbar", "Checking for a bottom PACS toolbar")
+        raw, toolbar_info = toolbar.remove_bottom_toolbar(raw)
+        runtime.report("toolbar", f"Removed a {toolbar_info['removed_bottom_px']}-pixel bottom toolbar"
+                       if toolbar_info['status'] == 'removed' else "No supported bottom toolbar detected; keeping the image")
+    if raw.dtype != np.uint8:
+        raw = raw.astype(np.float32)
+    runtime.report("preparing", "Preparing the radiograph for inference")
+    image = _robust_rescale(raw)
+
+    localizer = runtime.options().crop_localizer
+    learned_box = None
+    model_status = None
+    method_used = "supplied_image"
+    if localizer:
+        if runtime.options().crop_method == "model":
+            learned_box = learned_region.top_box(learned_region.proposals(raw), "lumbar", raw.shape)
+            if learned_box is None:
+                model_status = "no_proposal"
+        if learned_box is not None:
+            method_used = "model"
+            located = {"window": learned_box, "searched": True, "whole_film_won": False,
+                       "whole_film_cost": None, "confidence": None, "cost": None,
+                       "candidates": 1, "source": "crop_detector"}
+        elif runtime.options().crop_method == "model":
+            runtime.report("framing", "Model found no lumbar crop; trying crop search")
+            located = framing.locate(raw, _score_s1)
+            method_used = "search_fallback"
+        else:
+            located = framing.locate(raw, _score_s1)
+            method_used = "search"
+    else:
+        runtime.report("framing", "Crop localizer off; processing the supplied lumbar image")
+        located = {"window": framing.fallback_window(raw), "searched": False,
+                   "whole_film_won": True, "whole_film_cost": None,
+                   "confidence": None, "cost": None, "candidates": 0}
+    fallback = located is None
+    if fallback:
+        runtime.report("framing", "S1 not found in the search; checking the visible film")
+        # Upper-lumbar and cropped films need not contain a sacrum at all.
+        located = {"window": framing.fallback_window(raw), "searched": True,
+                   "whole_film_won": True, "whole_film_cost": None,
+                   "confidence": None, "cost": None, "candidates": 0}
+    window = located["window"]
+    canvas, transform = framing.prepare_crop(raw, window)
+    frame = _read_frame(canvas, choice, raw[window[1]:window[3], window[0]:window[2]])
+    if located.get("source") == "crop_detector":
+        # A box is only a proposal. On full films it may span nearly the whole
+        # image, yielding an S1 point but losing every lumbar level. Require
+        # strong S1 and at least one U-Net-confirmed level before accepting it.
+        s1 = _source_s1(frame, transform)
+        visible = {}
+        if s1 is not None and frame["s1_confidence"] >= .5:
+            inner = transform.inner
+            visible_labels = np.zeros_like(frame["vertebra_labels"])
+            region = np.s_[inner.top:inner.top + inner.resized_height,
+                           inner.left:inner.left + inner.resized_width]
+            visible_labels[region] = frame["vertebra_labels"][region]
+            model_values = {level: index for index, level in enumerate(LUMBAR_LEVELS, start=1)}
+            visible = landmarks.corners_from_label_map(visible_labels, model_values,
+                                                       frame["s1"][0]-frame["s1"][1])
+        if s1 is None or frame["s1_confidence"] < .5 or not visible:
+            model_status = ("s1_missing" if s1 is None else
+                            "s1_low_confidence" if frame["s1_confidence"] < .5 else
+                            "no_lumbar_levels")
+            runtime.report("framing", "Model crop was incomplete; trying crop search")
+            located = framing.locate(raw, _score_s1)
+            method_used = "search_fallback"
+            fallback = located is None
+            if fallback:
+                located = {"window": framing.fallback_window(raw), "searched": True,
+                           "whole_film_won": True, "whole_film_cost": None,
+                           "confidence": None, "cost": None, "candidates": 0}
+            window = located["window"]
+            canvas, transform = framing.prepare_crop(raw, window)
+            frame = _read_frame(canvas, choice, raw[window[1]:window[3], window[0]:window[2]])
+    if _source_s1(frame, transform) is None and not located.get("whole_film_won"):
+        runtime.report("framing", "Checking the visible film after an incomplete crop")
+        # A search crop without its anchor must not hide other visible levels.
+        window = framing.fallback_window(raw)
+        canvas, transform = framing.prepare_crop(raw, window)
+        frame = _read_frame(canvas, choice, raw[window[1]:window[3], window[0]:window[2]])
+        fallback = True
+
+    # After a search, one reframe from the full-resolution detection, accepted
+    # only if it agrees with the search; an unanchored re-detection is how a
+    # crop drifts. A film taken whole is left whole: it is already the frame the
+    # models expect, and re-cropping it would only change their input.
+    reframed = False
+    s1_source = _source_s1(frame, transform)
+    proposed = (framing.reframe(s1_source, raw.shape)
+                if s1_source is not None and not fallback and not located.get("whole_film_won") else None)
+    if proposed is not None and proposed != window and framing.accept_reframe(window, proposed):
+        runtime.report("framing", "Refining the selected spine region")
+        canvas, transform = framing.prepare_crop(raw, proposed)
+        candidate = _read_frame(canvas, choice, raw[proposed[1]:proposed[3], proposed[0]:proposed[2]])
+        if _source_s1(candidate, transform) is not None:
+            window, frame, reframed = proposed, candidate, True
+        else:
+            canvas, transform = framing.prepare_crop(raw, window)
+
+    runtime.report("landmarks", "Extracting available vertebral endplates")
+    model_values = {level: index for index, level in enumerate(LUMBAR_LEVELS, start=1)}
+    def visible_levels(candidate, candidate_transform):
+        anchor = _source_s1(candidate, candidate_transform)
+        # Without S1 retain image-coordinate ordering, explicitly unconfirmed.
+        anterior = candidate["s1"][0]-candidate["s1"][1] if anchor is not None else np.array([-1., 0.])
+        inner = candidate_transform.inner
+        labels = np.zeros_like(candidate["vertebra_labels"])
+        region = np.s_[inner.top:inner.top + inner.resized_height,
+                       inner.left:inner.left + inner.resized_width]
+        labels[region] = candidate["vertebra_labels"][region]
+        return labels, landmarks.corners_from_label_map(labels, model_values, anterior), anchor
+
+    labels, present, s1_source = visible_levels(frame, transform)
+    empty_crop_fallback = False
+    whole_window = framing.fallback_window(raw)
+    if not present and tuple(window) != tuple(whole_window):
+        runtime.report("framing", "No lumbar bodies in the selected crop; checking the visible film")
+        whole_canvas, whole_transform = framing.prepare_crop(raw, whole_window)
+        whole_frame = _read_frame(whole_canvas, choice,
+                                 raw[whole_window[1]:whole_window[3], whole_window[0]:whole_window[2]])
+        whole_labels, whole_present, whole_s1 = visible_levels(whole_frame, whole_transform)
+        if whole_present:
+            canvas, transform, frame = whole_canvas, whole_transform, whole_frame
+            window, labels, present, s1_source = whole_window, whole_labels, whole_present, whole_s1
+            fallback, reframed, empty_crop_fallback = True, False, True
+    if choice["vertebrae"] == "unet":
+        corners = present
+        label_map = labels
+    else:
+        corners = {}
+        for slot, (level, corner) in enumerate(HRNET_LANDMARKS):
+            if level in present:
+                corners.setdefault(level, {})[corner] = frame["hrnet_points"][slot]
+        # Invalid/off-film regressions cannot become border-clipped fake bodies.
+        corners = {level: quad for level, quad in corners.items()
+                   if _usable_quad(quad, transform, raw.shape)}
+        label_map = landmarks.label_map_from_corners(corners, model_values, canvas.shape)
+    common_labels = np.where(label_map > 0, label_map + int(VertebraLabel.L1) - 1, 0).astype(np.uint8)
+
+    corners_source = {
+        level: {name: _clip_to_film(transform.restore_points(point), raw.shape)[0]
+                for name, point in quad.items()}
+        for level, quad in corners.items()
+    }
+    contract = landmarks.to_contract(corners_source)
+    if choice["vertebrae"] == "unet" and s1_source is None:
+        for body in contract.values():
+            body["anterior_confirmed"] = False
+    return {
+        "image": image,
+        "mask": transform.restore_mask(common_labels, raw.shape),
+        "femoral_mask": _restore_femoral_mask(frame["femoral"], transform, raw.shape),
+        "landmarks": {
+            "S1": {"superior": None if s1_source is None else s1_source.tolist()},
+            "vertebrae": contract,
+        },
+        "models": choice,
+        "framing": {
+            "crop_localizer": localizer,
+            "method_used": method_used,
+            "toolbar_removal": toolbar_info,
+            "window": [int(v) for v in window],
+            "reframed": reframed,
+            "fallback_whole_film": fallback,
+            "empty_crop_recovered": empty_crop_fallback,
+            "trimmed_black_margins": (fallback or not localizer) and window != (0, 0, raw.shape[1], raw.shape[0]),
+            "searched": located["searched"],
+            "whole_film_won": bool(located.get("whole_film_won")),
+            "whole_film_agrees": bool(located.get("whole_film_agrees")),
+            "whole_film_cost": located["whole_film_cost"],
+            "search_confidence": located["confidence"],
+            "search_cost": located["cost"],
+            "candidates": located["candidates"],
+            "s1_confidence": round(float(frame["s1_confidence"]), 4),
+            **({"model_proposal": None if learned_box is None else list(learned_box),
+                "model_status": model_status}
+               if runtime.options().crop_method == "model" and localizer else {}),
+        },
+    }
+
+
+def _source_s1(frame: dict, transform) -> np.ndarray | None:
+    if frame["s1"] is None:
+        return None
+    points = np.asarray(frame["s1"], dtype=np.float64)
+    if points.shape != (2, 2) or not np.isfinite(points).all():
+        return None
+    points = transform.restore_points(points)
+    left, top, right, bottom = transform.window
+    if (np.linalg.norm(points[1] - points[0]) <= 0 or (points[:, 0] < left).any()
+            or (points[:, 0] >= right).any() or (points[:, 1] < top).any()
+            or (points[:, 1] >= bottom).any()):
+        return None
+    return points
+
+
+def _usable_quad(quad: dict, transform, shape: tuple[int, int]) -> bool:
+    if set(quad) != {"SA", "SP", "IA", "IP"}:
+        return False
+    points = transform.restore_points(np.stack([quad[k] for k in ("SA", "SP", "IP", "IA")]))
+    return bool(np.isfinite(points).all() and (points >= 0).all()
+                and (points[:, 0] < shape[1]).all() and (points[:, 1] < shape[0]).all()
+                and cv2.isContourConvex(points.astype(np.float32))
+                and cv2.contourArea(points.astype(np.float32)) * transform.scale ** 2 >= 200)
+
+
+def vertebral_body_segmentation(
+    pixel_array: np.ndarray,
+    modality: str = "xray",
+    body_part: str = "lumbar",
+    view: str | None = "lateral",
+    laterality: str | None = None,
+) -> np.ndarray:
+    """Return the common-label L1-L5 mask from the authoritative U-Net."""
+
+    return spinopelvic_prediction(pixel_array, modality, body_part, view, laterality)["mask"]

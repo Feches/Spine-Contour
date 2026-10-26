@@ -11,9 +11,12 @@ from .models import (
     S1_WEIGHTS_PATH,
     SUPPORTED_INPUT,
     VERTEBRA_LABELS,
+    VERTEBRA_WEIGHTS_PATH,
     VertebraLabel,
     _label_lumbar_components,
     resolve_models,
+    spinopelvic_prediction,
+    vertebral_body_segmentation,
 )
 
 __all__ = [
@@ -27,6 +30,9 @@ __all__ = [
     "S1_WEIGHTS_PATH",
     "SUPPORTED_INPUT",
     "VERTEBRA_LABELS",
+    "VERTEBRA_WEIGHTS_PATH",
     "VertebraLabel",
     "resolve_models",
+    "spinopelvic_prediction",
+    "vertebral_body_segmentation",
 ]
