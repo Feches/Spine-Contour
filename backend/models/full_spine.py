@@ -234,15 +234,18 @@ def _cervical_candidates(raw, _found=None, *, force_search=False):
 
 
 def lumbar_windows(window, shape):
-    """Small translations and scale changes around the detector-selected crop."""
+    """Search regional crops with 15% extra superior context for L1."""
     left, top, right, bottom = window
     height, width = shape
     w, h = right-left, bottom-top
     cx, cy = (left+right)/2, (top+bottom)/2
     variants = [(0, 0, 1), (-.06, 0, 1), (.06, 0, 1), (0, -.06, 1),
                 (0, .06, 1), (0, 0, .9), (0, 0, 1.1)]
-    return sorted({framing.clip_window(cx+dx*w, cy+dy*h, w*scale, h*scale, height, width)
-                   for dx, dy, scale in variants})
+    windows = {framing.clip_window(cx+dx*w, cy+dy*h, w*scale, h*scale, height, width)
+               for dx, dy, scale in variants}
+    # Extend every candidate before inference and consensus. Keep the sides and
+    # inferior boundary fixed; unextended crops can truncate the L1 endplate.
+    return sorted({(l, max(0, round(t-.15*(b-t))), r, b) for l, t, r, b in windows})
 
 
 def _lumbar_candidates(raw, _found=None, *, force_search=False):
