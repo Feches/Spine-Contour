@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.1
+
+- **Lumbar crops on full-spine films keep L1 in view again (PR #79).** 1.5.0 extended every lumbar crop upward by
+  15% of its height before the models read it; 1.6.0's restored pipeline searched the crops without that margin, and
+  some cut off L1's superior endplate, giving large lordosis errors. Every lumbar crop in the full-spine search is
+  extended again (sides and bottom fixed, clipped at the top of the film), and the unextended crops are no longer
+  searched. The same search gives Auto detect its orientation evidence. Lumbar-only films are read as in 1.6.0, and
+  the models and decoders are unchanged.
+- PR #79's comparison with four readers on 99 full-spine films: L1–S1 lordosis disagreement falls from 6.29° to
+  4.49° on the same 93 films and lordosis reads on 97 films instead of 93; all seven measurements read on 87 instead of
+  83; Global SVA disagreement rises from 3.15 to 3.30 mm on 76 films.
+
+[Release notes](docs/releases/1.6.1.md)
+
 ## 1.6.0
 
 - **The measurement pipeline returns to 1.4.0's (PR #77).** Lumbar, cervical and full-spine films are read by the

@@ -1,6 +1,18 @@
 # Spine Contour
 
-**2026-10-26 release 1.6.0 (PR #77, the 1.4.0 pipeline with fine-tuned models; release PR open, not merged):** branch
+**2026-10-29 release 1.6.1 (PR #79, the +15% upward lumbar crop on full-spine films; release PR open, not merged):**
+branch `ccr-88de433a-g0oqe2` restarted from `main` @ `5f3dfcd` (v1.6.0), with PR #79's single commit `69e06ae` (from
+`mjayasur/Spine-Contour-region-research` `codex/restore-upward-lumbar-crop`) merged in unchanged by a merge commit,
+then the 1.6.1 release commit. `full_spine.lumbar_windows` now extends each of its seven shifted and scaled crops upward
+by 15% of its height (`max(0, round(t - .15*(b - t)))`, sides and bottom fixed) and returns only the extended ones,
+1.5.0's `fixed_pipeline.crop_windows` `all_up15` rule; 1.4.0 never had it. It feeds `_lumbar_candidates`, which
+`search_orientation` runs for full-spine films and for Auto detect's `film_detection`; lumbar-only films use
+`framing.locate` and are unchanged. The merged tree equals PR #79's head (its Windows and macOS checks passed). Unit
+1258/1258 (no desktop change). Merging the release PR to `main` with a merge commit publishes v1.6.1 and marks PR #79
+merged.
+
+**2026-10-26 release 1.6.0 (PR #77, the 1.4.0 pipeline with fine-tuned models; RELEASED as v1.6.0: PR #78, merge
+`5f3dfcd`):** branch
 `ccr-88de433a-g0oqe2` restarted from `main` @ `4836e70` (v1.5.1), with PR #77's two commits (`0e9d9c5`, `129dc01`, from
 `mjayasur/Spine-Contour-region-research` `codex/pre-finetune-pipeline-new-models`) merged in unchanged by a merge
 commit, then `ae9642f` (1.5.x results) and the 1.6.0 release commit. PR #77 restores most files to their `62f88cc`
