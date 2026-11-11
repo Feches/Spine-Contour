@@ -23,43 +23,61 @@ measured as that region's, and Save edits makes the film Hand-placed. Entering e
 keeps the run's region: the model's wrong levels are there to uncheck, and cervical levels placed on a film the run
 called lumbar are saved in the label record but measure nothing, since a lumbar film measures L1–S1 and the heads.
 
-Standing films also default to automatic anterior-side detection. Both horizontal
-orientations are checked for consistent lumbar landmark chains and anatomical S1
-endpoint order. A uniquely supported orientation is accepted; tied or absent evidence asks
-for anterior left/right. A selected side bypasses this comparison. The image and
-all results remain in original-image coordinates. This detects horizontal
-anterior orientation, not image rotation, AP/lateral projection or patient posture.
-The input must still be an upright lateral radiograph.
+## How Auto routes a film (detector, then models)
 
-Cervical-only landmark labels do not establish anatomical anterior direction.
-When Auto identifies a cervical film without a selected side, the app asks for
-anterior left/right and a rerun. This preserves the sign of cervical SVA. A person
-can also override an inconclusive region without changing the source file.
+Auto runs the bundled region detector once on the original film
+(`backend/onnx/crop_detector.onnx`, a two-class YOLO26-s, 1024 px letterboxed
+input; `backend/learned_region.py`). A box at or above score 0.25
+(`learned_region.PRESENT_SCORE`) counts as that region being on the film:
 
-The classifier reuses the existing cervical detector/HRNET and S1/lumbar HRNET
-crop searches. Cervical candidates from both image directions are compared in the
-source frame, including agreement across the regional endplates. Cervical labels
-do not vote on anterior direction. Compatible neck and lumbosacral chains establish a full-spine film;
-a single regional chain must occupy sufficient image height before it can be
-treated as a regional film. Conflicting or insufficient evidence leaves the choice
-to the user. Filenames and image aspect ratio do not determine the region. These
-agreement thresholds are conservative software gates, not calibrated confidence
-or evidence of clinical accuracy. Review detected anatomy and orientation before
-accepting measurements.
+| Boxes found | Route |
+|---|---|
+| cervical and lumbar | standing / full spine |
+| cervical only | cervical |
+| lumbar only | lumbar |
+| neither | the app asks for a region; nothing is saved |
 
-Auto processing performs additional crop searches and may take longer than an
-explicit region/side. Full-spine prediction reuses the detection searches instead
-of repeating them. Existing progress, cancellation and low-memory policies apply.
-Results retain `qc.film_detection` and `qc.framing.orientation` provenance.
+The detector score is a routing gate, not calibrated confidence. There is no
+separate view classifier and no landmark-based region search.
+
+**Full spine** (`backend/models/full_spine.py`) reuses the same boxes. The
+anatomical cervical HRNET reads four square crops around the cervical box (1.3×
+its longer side, small shifts), and the lumbar HRNET reads the seven shifted and
+scaled crops around the lumbar box framed with the BUU-LSPINE margins (0.45 box
+heights each side, 0.256 above, 0.498 below; each crop then extended 15% upward).
+Crop agreement (`select_consensus`) gates each region as before, and the S1
+detector must corroborate the lumbar HRNET's S1.
+
+**Cervical** and **lumbar** films use their existing regional pipelines unchanged:
+the anatomical cervical HRNET on the whole film, and the lumbar framing search
+(when Crop localizer is On).
+
+## Anterior side comes from the landmark models
+
+The film is never mirrored and no orientation is searched or voted on. Every
+landmark model (anatomical cervical HRNET, lumbar HRNET, S1 detector) was trained
+with horizontal flips that keep anatomical point identities, so it labels the
+anterior and posterior corners itself in either facing direction. The anterior
+image side is the side the models put the anterior corners on (the median
+anterior-minus-posterior x). On a full-spine film the lumbar chain and S1 decide
+the side; if the cervical chain faces the other way the result asks for review.
+A selected anterior side only relabels the result for signed measurements, with
+a review warning when it disagrees with the landmarks. This reads horizontal
+facing, not image rotation, AP/lateral projection or patient posture; the input
+must still be an upright lateral radiograph.
+
+Results retain `qc.film_detection` (route, boxes and scores) and
+`qc.framing.orientation` (`source: landmarks`, the side each region implies, and
+whether they agree).
 
 API callers send `body_part=auto`, `modality=xray`, `view=lateral` and no model
-overrides. `/models?body_part=auto` returns empty model choices until a region is
-selected. `anterior_side=left|right` is an optional override. Uncertain detection
-returns a selection message through the normal error channel; no fabricated
-measurement or successful result is saved.
+overrides. `anterior_side=left|right` is an optional override. A film with no
+detected region returns a selection message through the normal error channel;
+no fabricated measurement or successful result is saved.
 
-Development checks cover mirrored coordinates, ambiguous/absent evidence,
-regional routing, explicit overrides, synchronous/streaming API behavior,
-low-memory dispatch, combined measurements, editing, persistence and CSV export.
-`node tools/smoke/smoke-global-sva.mjs` exercises the combined desktop workflow
-against the real measurement endpoint with clearly marked synthetic geometry.
+Before this change (through 1.6.1) Auto ran mirrored crop searches in both
+horizontal orientations and accepted a side only when exactly one orientation had
+a lumbar chain. Because the models label anatomy the same way in either
+orientation, both usually passed or both failed, and those films stopped with
+"Automatic standing-film orientation is uncertain". The experimental whole-film
+view classifier (Settings → Automatic view selection) is removed with it.

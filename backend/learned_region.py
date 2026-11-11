@@ -1,4 +1,9 @@
-"""Bundled ONNX crop proposals in original radiograph coordinates."""
+"""The bundled region detector: cervical and lumbar boxes in original film coordinates.
+
+Its boxes route a film (cervical, lumbar or full spine) and frame the regional
+landmark crops. They are proposals; the landmark models and crop agreement
+decide what anatomy is accepted.
+"""
 from __future__ import annotations
 
 from functools import lru_cache
@@ -34,10 +39,12 @@ def _load(threads: int):
     return session, contract
 
 
+# A region counts as present on the film at or above this detector score.
+PRESENT_SCORE = .25
+
+
 def proposals(raw: np.ndarray) -> list[dict]:
-    """Run the selected model once. Boxes are proposals, not accepted anatomy."""
-    if runtime.options().crop_method != "model":
-        return []
+    """Run the detector once. Boxes are proposals, not accepted anatomy."""
     runtime.checkpoint()
     try:
         from .models import models
@@ -54,6 +61,18 @@ def proposals(raw: np.ndarray) -> list[dict]:
             _load.cache_clear()
     runtime.checkpoint()
     return found
+
+
+def regions(raw: np.ndarray) -> dict:
+    """The highest-scoring present box per region, or None, and every proposal."""
+    found = proposals(raw)
+    result = {"proposals": found}
+    for name in region_detector.CLASSES:
+        present = sorted((p for p in found if p["class"] == name and p["score"] >= PRESENT_SCORE),
+                         key=lambda p: -p["score"])
+        result[name] = next(iter(boxes(present, name, raw.shape, limit=1)), None)
+        result[f"{name}_score"] = max((p["score"] for p in present), default=None)
+    return result
 
 
 def top_box(found: list[dict], name: str, shape: tuple[int, int]):
