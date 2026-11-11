@@ -27,7 +27,7 @@ called lumbar are saved in the label record but measure nothing, since a lumbar 
 
 Auto runs the bundled region detector once on the original film
 (`backend/onnx/crop_detector.onnx`, a two-class YOLO26-s, 1024 px letterboxed
-input; `backend/learned_region.py`). A box at or above score 0.25
+input; `backend/learned_region.py`). A box at or above score 0.15
 (`learned_region.PRESENT_SCORE`) counts as that region being on the film:
 
 | Boxes found | Route |
@@ -54,21 +54,32 @@ the anatomical cervical HRNET on the whole film, and the lumbar framing search
 
 ## Anterior side comes from the landmark models
 
-The film is never mirrored and no orientation is searched or voted on. Every
-landmark model (anatomical cervical HRNET, lumbar HRNET, S1 detector) was trained
-with horizontal flips that keep anatomical point identities, so it labels the
-anterior and posterior corners itself in either facing direction. The anterior
-image side is the side the models put the anterior corners on (the median
-anterior-minus-posterior x). On a full-spine film the lumbar chain and S1 decide
-the side; if the cervical chain faces the other way the result asks for review.
-A selected anterior side only relabels the result for signed measurements, with
-a review warning when it disagrees with the landmarks. This reads horizontal
+No orientation is searched or voted on. Every landmark model (anatomical
+cervical HRNET, lumbar HRNET, S1 detector) was trained with horizontal flips that
+keep anatomical point identities, so it labels the anterior and posterior corners
+itself in either facing direction. The first read, on the film as given, decides
+the anterior image side: the side the models put the anterior corners on (the
+median anterior-minus-posterior x). On a full-spine film the lumbar chain and S1
+decide; if the cervical chain faces the other way the result asks for review.
+
+The models are nonetheless more accurate on left-facing films, the orientation
+most of their training films had. A film read as right-facing is therefore
+mirrored once, read again with the mirrored boxes, and its landmarks mirrored
+back to source coordinates; if neither region agrees in the mirrored read the
+first read is kept. A selected anterior side chooses the frame directly, with a
+review warning when it disagrees with the landmarks. This reads horizontal
 facing, not image rotation, AP/lateral projection or patient posture; the input
 must still be an upright lateral radiograph.
 
+The femoral U-Net starts from a crop framed on the accepted S1 endplate (10.7
+endplate lengths tall and 6.2 wide, S1 about two-thirds down, the size 1.6.1's
+crops had), not from the detector-framed lumbar window, which is larger and
+shrinks the heads. As before it grows toward any side the mask reaches, at most
+twice.
+
 Results retain `qc.film_detection` (route, boxes and scores) and
-`qc.framing.orientation` (`source: landmarks`, the side each region implies, and
-whether they agree).
+`framing.orientation` (`source: landmarks`, the side each region implies, whether
+they agree, and the first read's side).
 
 API callers send `body_part=auto`, `modality=xray`, `view=lateral` and no model
 overrides. `anterior_side=left|right` is an optional override. A film with no

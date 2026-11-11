@@ -5,11 +5,12 @@ The anatomical cervical HRNET and the lumbar HRNET run on a few crops framed
 around each box, and crop agreement gates the landmarks. Agreement is a
 repeatability check, not calibrated confidence or proof of vertebral identity.
 
-The film is never mirrored. Every landmark model was trained with horizontal
-flips that keep anatomical identities, so it labels the anterior and posterior
-corners itself in either facing direction. The anterior image side is read from
-those labels; nothing votes between mirrored hypotheses. Every result requires
-anatomical review.
+Every landmark model was trained with horizontal flips that keep anatomical
+identities, so it labels the anterior and posterior corners itself in either
+facing direction, and the anterior image side is read from those labels; nothing
+votes between mirrored hypotheses. The models are nonetheless most accurate with
+anterior on the left, so a film whose landmarks face right is mirrored once and
+read again in that frame. Every result requires anatomical review.
 """
 from __future__ import annotations
 
@@ -293,6 +294,33 @@ def _femoral_region(raw, pelvis):
 
 
 
+# The femoral U-Net's starting crop in S1 endplate lengths, measured on the
+# 1.6.1 windows of 94 unclipped reader films (median height 10.7, width 6.2,
+# S1 midpoint 67.5% down and, facing left, 61% across). _femoral_region grows
+# it toward any side the mask reaches.
+FEMORAL_FRAME = {"height": 10.7, "width": 6.2, "x": .61, "y": .675}
+
+
+def _femoral_frame(pelvis, shape):
+    """Frame the femoral crop from S1, not from the detector-framed lumbar window.
+
+    Starting crops larger than the ones 1.6.1 used shrink the heads and move
+    their fitted centres, which shows up in PT and PI. ``pelvis`` is canonical
+    (anterior to the left).
+    """
+    if pelvis is None:
+        return None
+    endplate = np.asarray(pelvis["endplate"], np.float64)
+    length = float(np.linalg.norm(endplate[1]-endplate[0]))
+    if not np.isfinite(length) or length < framing.MIN_ENDPLATE_PX:
+        return pelvis
+    mx, my = endplate.mean(0)
+    w, h = FEMORAL_FRAME["width"]*length, FEMORAL_FRAME["height"]*length
+    window = framing.clip_window(mx+(.5-FEMORAL_FRAME["x"])*w, my+(.5-FEMORAL_FRAME["y"])*h,
+                                 w, h, *shape)
+    return {**pelvis, "window": window}
+
+
 def landmark_side(neck, pelvis):
     """The anterior image side the landmark models labelled, and whether they agree."""
     sides = {}
@@ -308,12 +336,47 @@ def landmark_side(neck, pelvis):
     return side, {"source": "landmarks", "regions": named, "agree": len(set(named.values())) == 1}
 
 
+def _read_regions(image, regions):
+    """Run both regional models once around the detector's boxes."""
+    neck_candidates, neck_search = _cervical_candidates(image, regions.get("cervical"))
+    neck, neck_qc = select_consensus(neck_candidates)
+    pelvis_candidates, pelvis_search = _lumbar_candidates(image, regions.get("lumbar"))
+    pelvis, pelvis_qc = select_consensus(pelvis_candidates)
+    if neck is not None and pelvis is not None:
+        if pelvis["anchor"][1]-neck["anchor"][1] <= 2*max(neck["scale"], pelvis["scale"]):
+            neck, neck_qc = None, {**neck_qc, "status": "incompatible_region_order"}
+    return neck, neck_qc, neck_search, pelvis, pelvis_qc, pelvis_search
+
+
+def _mirror_box(box, width):
+    return None if box is None else (width-box[2], box[1], width-box[0], box[3])
+
+
+def _mirror_points(points, width):
+    p = np.asarray(points, np.float64).copy()
+    p[..., 0] = width-1-p[..., 0]
+    return p
+
+
+def _mirror_candidate(candidate, width):
+    """Reflect a candidate's coordinates; anatomical identities never change."""
+    if candidate is None:
+        return None
+    return {**candidate, **{key: _mirror_points(candidate[key], width)
+                            for key in ("anchor", "points", "endplate") if key in candidate},
+            "window": _mirror_box(candidate["window"], width)}
+
+
 def full_spine_prediction(pixel_array, anterior_side=None, model=MODEL_NAME, *, regions=None):
     """Source-coordinate standing-film anatomy from one detector pass.
 
     ``regions`` is this film's detector output, already computed while routing
-    it; it is never user-supplied anatomy. ``anterior_side`` only overrides the
-    label for signed measurements; the models still run on the original film.
+    it; it is never user-supplied anatomy. The landmark models label the
+    anterior side themselves. They are most accurate with anterior on the left,
+    the orientation the training films were mostly read in, so a film whose
+    landmarks face right is mirrored once and read again, and every point is
+    returned in the original film's coordinates. A selected ``anterior_side``
+    chooses that frame directly.
     """
     if anterior_side in ("", "auto"):
         anterior_side = None
@@ -329,14 +392,28 @@ def full_spine_prediction(pixel_array, anterior_side=None, model=MODEL_NAME, *, 
     height, width = raw.shape
     if regions is None:
         regions = learned_region.regions(raw)
-    neck_candidates, neck_search = _cervical_candidates(raw, regions.get("cervical"))
-    neck, neck_qc = select_consensus(neck_candidates)
-    pelvis_candidates, pelvis_search = _lumbar_candidates(raw, regions.get("lumbar"))
-    pelvis, pelvis_qc = select_consensus(pelvis_candidates)
-    if neck is not None and pelvis is not None:
-        if pelvis["anchor"][1]-neck["anchor"][1] <= 2*max(neck["scale"], pelvis["scale"]):
-            neck, neck_qc = None, {**neck_qc, "status": "incompatible_region_order"}
+    first = None
+    if anterior_side is None:
+        first = _read_regions(raw, regions)
+        inferred, first_orientation = landmark_side(first[0], first[3])
+    frame_side = anterior_side or inferred
+    mirrored = frame_side == "right"
+    if mirrored:
+        runtime.report("orientation", "Reading the regions with anterior on the left")
+        canonical = np.ascontiguousarray(raw[:, ::-1])
+        flipped = {name: _mirror_box(regions.get(name), width) for name in ("cervical", "lumbar")}
+        neck, neck_qc, neck_search, pelvis, pelvis_qc, pelvis_search = _read_regions(canonical, flipped)
+        neck, pelvis = _mirror_candidate(neck, width), _mirror_candidate(pelvis, width)
+        if neck is None and pelvis is None and first is not None:
+            # Nothing agreed in the left-facing frame; keep the original read.
+            mirrored, canonical = False, raw
+            neck, neck_qc, neck_search, pelvis, pelvis_qc, pelvis_search = first
+    else:
+        canonical = raw
+        neck, neck_qc, neck_search, pelvis, pelvis_qc, pelvis_search = first or _read_regions(raw, regions)
     inferred, orientation = landmark_side(neck, pelvis)
+    if first is not None:
+        orientation["first_read"] = first_orientation["regions"]
     warnings = ["Review C7 identity, the S1 posterior corner, image orientation and calibration before accepting global SVA."]
     if anterior_side is None:
         anterior_side = inferred
@@ -370,7 +447,14 @@ def full_spine_prediction(pixel_array, anterior_side=None, model=MODEL_NAME, *, 
             geometry["vertebrae"][f"L{level}"] = {
                 "superior": body[:2].tolist(), "inferior": body[2:].tolist(),
                 "quadrilateral": body[[0, 1, 3, 2]].tolist()}
-    femoral_mask, circles, femoral_qc = _femoral_region(raw, pelvis)
+    femoral_mask, circles, femoral_qc = _femoral_region(
+        canonical, _femoral_frame(_mirror_candidate(pelvis, width) if mirrored else pelvis, raw.shape))
+    if mirrored:
+        femoral_mask = np.ascontiguousarray(femoral_mask[:, ::-1])
+        circles = [[width-1-circle[0], *circle[1:]] for circle in circles]
+        for key in ("initial_crop_window", "crop_window"):
+            if key in femoral_qc:
+                femoral_qc[key] = list(_mirror_box(femoral_qc[key], width))
     if any(len(circle) != 3 or not np.isfinite(circle).all()
            or not (0 <= circle[0] < width and 0 <= circle[1] < height)
            or circle[2] <= 0 for circle in circles):
@@ -391,7 +475,7 @@ def full_spine_prediction(pixel_array, anterior_side=None, model=MODEL_NAME, *, 
             "landmarks": geometry,
             "models": {"vertebrae": MODEL_NAME, "cervical": "cervical_anatomical_hrnet", "lumbar": "hrnet",
                        "detector": "region_detector+s1", "femoral": "unet"},
-            "framing": {"coordinate_space": "original_image", "canonical_mirror": False,
+            "framing": {"coordinate_space": "original_image", "canonical_mirror": mirrored,
                         "cervical_window": window(neck), "lumbar_window": window(pelvis),
                         "cervical": {**neck_search, **neck_qc}, "lumbar": {**pelvis_search, **pelvis_qc},
                         "orientation": orientation, "femoral": femoral_qc},

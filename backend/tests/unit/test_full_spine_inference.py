@@ -127,34 +127,44 @@ REGIONS = {'cervical': (40, 40, 260, 430), 'lumbar': (60, 520, 380, 900)}
 
 
 def patch_regions(monkeypatch, neck, pelvis, seen=None):
-    def cervical(image, box):
+    """Fake region models that see real anatomy: a mirrored film gets mirrored points."""
+    def answer(name, values, image, box):
         if seen is not None:
-            seen.append(('cervical', image, box))
-        return neck, {'windows': 3, 'detector_box': list(box) if box else None}
-    def lumbar(image, box):
-        if seen is not None:
-            seen.append(('lumbar', image, box))
-        return pelvis, {'windows': 7, 'detector_box': list(box) if box else None}
-    monkeypatch.setattr(full, '_cervical_candidates', cervical)
-    monkeypatch.setattr(full, '_lumbar_candidates', lumbar)
+            seen.append((name, image, box))
+        flipped = image[0, 0] > image[0, -1]
+        width = image.shape[1]
+        return ([full._mirror_candidate(value, width) for value in values] if flipped else values,
+                {'windows': 3, 'detector_box': list(box) if box else None})
+    monkeypatch.setattr(full, '_cervical_candidates', lambda image, box: answer('cervical', neck, image, box))
+    monkeypatch.setattr(full, '_lumbar_candidates', lambda image, box: answer('lumbar', pelvis, image, box))
+
+
+FILM = np.tile(np.arange(500, dtype=np.uint16), (1000, 1))
 
 
 @pytest.mark.parametrize('flip, side', [(False, 'left'), (True, 'right')])
-def test_models_run_once_on_the_unmirrored_film_and_label_the_side(monkeypatch, flip, side):
+def test_side_comes_from_the_landmarks_and_right_facing_films_are_read_left_facing(monkeypatch, flip, side):
     neck, pelvis = synthetic_regions(flip)
     seen = []
     patch_regions(monkeypatch, neck, pelvis, seen)
-    image = np.tile(np.arange(500, dtype=np.uint16), (1000, 1))
-    result = full.full_spine_prediction(image, regions=REGIONS)
-    # Each region model sees the original film, once, with the detector's box.
-    assert [(name, box) for name, _, box in seen] == [('cervical', REGIONS['cervical']), ('lumbar', REGIONS['lumbar'])]
-    for _, film, _ in seen:
-        np.testing.assert_array_equal(film, image)
+    result = full.full_spine_prediction(FILM, regions=REGIONS)
+    # First read: the original film, once per region, with the detector's boxes.
+    assert [(name, box) for name, _, box in seen[:2]] == [('cervical', REGIONS['cervical']), ('lumbar', REGIONS['lumbar'])]
+    for _, film, _ in seen[:2]:
+        np.testing.assert_array_equal(film, FILM)
+    if flip:
+        # A right-facing film is read once more, mirrored, with mirrored boxes.
+        assert [(name, box) for name, _, box in seen[2:]] == [
+            ('cervical', full._mirror_box(REGIONS['cervical'], 500)), ('lumbar', full._mirror_box(REGIONS['lumbar'], 500))]
+        for _, film, _ in seen[2:]:
+            np.testing.assert_array_equal(film, FILM[:, ::-1])
+    else:
+        assert len(seen) == 2
     g = result['landmarks']
     assert g['anterior_side'] == side and result['framing']['orientation']['status'] == 'landmarks'
-    assert result['framing']['canonical_mirror'] is False
+    assert result['framing']['canonical_mirror'] is flip
     assert set(g['vertebrae']) == {*(f'C{i}' for i in range(2, 8)), *(f'L{i}' for i in range(1, 6))}
-    # Points are returned exactly as the models labelled them, anterior first.
+    # Returned in original film pixels, anterior first, whichever frame was read.
     np.testing.assert_allclose(g['vertebrae']['L1']['superior'], pelvis[1]['points'][:2])
     np.testing.assert_allclose(g['s1_superior'], pelvis[1]['endplate'])
     np.testing.assert_allclose(g['c7_centroid'], neck[1]['anchor'])
@@ -162,6 +172,30 @@ def test_models_run_once_on_the_unmirrored_film_and_label_the_side(monkeypatch, 
     assert result['framing']['cervical_window'] == list(neck[1]['window'])
     assert result['models']['lumbar'] == 'hrnet' and result['provenance']['s1_source'] == 'lumbar_hrnet'
     assert not result['mask'].any() and not result['femoral_mask'].any()
+
+
+def test_mirror_helpers_are_involutive_and_keep_labels():
+    neck, _ = synthetic_regions()
+    back = full._mirror_candidate(full._mirror_candidate(neck[0], 500), 500)
+    np.testing.assert_allclose(back['points'], neck[0]['points'])
+    assert tuple(back['window']) == tuple(neck[0]['window'])
+    assert full.anterior_delta(full._mirror_candidate(neck[0], 500)['points'][3:]) > 0
+
+
+def test_nothing_agreeing_in_the_mirrored_frame_keeps_the_original_read(monkeypatch):
+    neck, pelvis = synthetic_regions(flip=True)
+    calls = []
+    def cervical(image, box):
+        calls.append(image[0, 0] > image[0, -1])
+        return ([] if calls[-1] else neck), {}
+    def lumbar(image, box):
+        return ([] if image[0, 0] > image[0, -1] else pelvis), {}
+    monkeypatch.setattr(full, '_cervical_candidates', cervical)
+    monkeypatch.setattr(full, '_lumbar_candidates', lumbar)
+    result = full.full_spine_prediction(FILM, regions=REGIONS)
+    assert calls == [False, True]
+    assert result['framing']['canonical_mirror'] is False and result['landmarks']['anterior_side'] == 'right'
+    np.testing.assert_allclose(result['landmarks']['s1_superior'], pelvis[1]['endplate'])
 
 
 def test_detector_runs_when_regions_are_not_supplied(monkeypatch):
@@ -208,17 +242,16 @@ def test_regions_facing_opposite_ways_use_lumbar_side_and_ask_for_review(monkeyp
     assert any('opposite directions' in warning for warning in result['warnings'])
 
 
-def test_selected_side_only_relabels_and_flags_disagreement(monkeypatch):
+def test_selected_side_chooses_the_frame_without_a_first_read(monkeypatch):
     neck, pelvis = synthetic_regions()
     seen = []
     patch_regions(monkeypatch, neck, pelvis, seen)
-    image = np.ones((1000, 500), np.uint8)
-    result = full.full_spine_prediction(image, 'right', regions=REGIONS)
+    result = full.full_spine_prediction(FILM, 'right', regions=REGIONS)
+    assert len(seen) == 2 and all(film[0, 0] > film[0, -1] for _, film, _ in seen)
     assert result['landmarks']['anterior_side'] == 'right'
     assert result['framing']['orientation']['status'] == 'user_selected'
     assert any('disagrees with the anatomical landmarks' in warning for warning in result['warnings'])
     np.testing.assert_allclose(result['landmarks']['s1_superior'], pelvis[1]['endplate'])
-    assert all(film is image for _, film, _ in seen)
 
 
 @pytest.mark.parametrize('side', ['up', 'anterior', 0])
@@ -232,7 +265,7 @@ def test_invalid_anterior_rejected_before_models_run(monkeypatch, side):
 def test_blank_anterior_is_automatic(monkeypatch, side):
     neck, pelvis = synthetic_regions(flip=True)
     patch_regions(monkeypatch, neck, pelvis)
-    result = full.full_spine_prediction(np.ones((1000, 500), np.uint8), side, regions=REGIONS)
+    result = full.full_spine_prediction(FILM, side, regions=REGIONS)
     assert result['landmarks']['anterior_side'] == 'right'
 
 
@@ -257,11 +290,28 @@ def test_invalid_optional_femoral_fit_preserves_spine_landmarks(monkeypatch, cir
     assert result['landmarks']['s1_superior'] is not None
 
 
-def test_femoral_circles_stay_in_source_coordinates(monkeypatch):
+def test_femoral_heads_from_the_mirrored_frame_return_to_source_coordinates(monkeypatch):
     neck, pelvis = synthetic_regions(flip=True)
     patch_regions(monkeypatch, neck, pelvis)
-    monkeypatch.setattr(full, '_femoral_region', lambda raw, pelvis:
-                        (np.ones(raw.shape, np.uint8), [[120., 950., 30.]], {'qc_pass': True}))
-    result = full.full_spine_prediction(np.ones((1000, 500), np.uint8), regions=REGIONS)
-    assert result['landmarks']['femoral_circles'] == [[120., 950., 30.]]
-    assert result['femoral_mask'].all()
+    def femoral(image, pelvis):
+        assert image[0, 0] > image[0, -1]
+        mask = np.zeros(image.shape, np.uint8); mask[:, :10] = 1
+        return mask, [[120., 950., 30.]], {'qc_pass': True, 'crop_window': [100, 800, 200, 990]}
+    monkeypatch.setattr(full, '_femoral_region', femoral)
+    result = full.full_spine_prediction(FILM, regions=REGIONS)
+    assert result['landmarks']['femoral_circles'] == [[379., 950., 30.]]
+    assert result['femoral_mask'][:, -10:].all() and not result['femoral_mask'][:, :-10].any()
+    assert result['framing']['femoral']['crop_window'] == [300, 800, 400, 990]
+
+
+def test_femoral_crop_is_framed_from_s1_not_the_detector_window():
+    pelvis = {'endplate': np.array([[200., 600.], [240., 590.]]), 'window': (0, 0, 500, 1000)}
+    framed = full._femoral_frame(pelvis, (2000, 1000))
+    left, top, right, bottom = framed['window']
+    length = np.hypot(40, 10)
+    assert bottom - top == pytest.approx(full.FEMORAL_FRAME['height'] * length, abs=2)
+    assert right - left == pytest.approx(full.FEMORAL_FRAME['width'] * length, abs=2)
+    # S1 sits in the upper two-thirds, leaving room below for the heads.
+    assert (595 - top) / (bottom - top) == pytest.approx(full.FEMORAL_FRAME['y'], abs=.01)
+    assert left < 220 < right
+    assert full._femoral_frame(None, (2000, 1000)) is None

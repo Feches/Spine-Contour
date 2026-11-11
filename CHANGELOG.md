@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Auto detect is the region detector, then the models.** A YOLO26-s region detector replaces the crop detector; its
+  cervical and lumbar boxes (score at least 0.15) route the film (both: full spine; one: that region; neither: the app
+  asks) and frame the full-spine crops. The mirrored two-orientation crop search, the "Automatic standing-film
+  orientation is uncertain" stop, the whole-film view classifier (Settings → Automatic view selection, `/classify-view`)
+  and Settings → Crop method are removed. The anterior side is read from the landmark models' anterior and posterior
+  labels; a right-facing film is mirrored once and read again, since the models are more accurate facing left. The
+  femoral crop is framed from S1 at 1.6.1's proportions.
+- Against four readers on 99 full-spine films (paired with 1.6.1, mean absolute difference to the reader mean): C2–C7
+  Cobb 5.23 → 4.87°, C2–C7 SVA 1.47 → 1.35 cm, L1–S1 lordosis 3.63 → 3.23°, sacral slope 2.61 → 2.53°, PT 1.24 → 1.19°;
+  PI 2.82 → 3.08° and Global SVA 2.97 → 3.03 cm are worse. 70 of the 194 PMC full-spine films 1.6.1 stopped on now read.
+
 ## 1.6.1
 
 - **Lumbar crops on full-spine films keep L1 in view again (PR #79).** 1.5.0 extended every lumbar crop upward by

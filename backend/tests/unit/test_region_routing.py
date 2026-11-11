@@ -43,3 +43,12 @@ def test_full_spine_reuses_the_routing_boxes(monkeypatch):
     monkeypatch.setattr(learned_region, "proposals", lambda raw: [NECK, LUMBAR])
     routed = server.route_film(np.zeros((1000, 400), np.uint8))
     assert list(routed["_regions"]["cervical"]) == routed["qc"]["boxes"]["cervical"] == [40, 30, 200, 260]
+
+
+def test_a_narrow_neck_on_a_small_film_is_still_a_region(monkeypatch):
+    narrow = proposal("cervical", .9, (200, 40, 220, 120))
+    monkeypatch.setattr(learned_region, "proposals", lambda raw: [narrow, LUMBAR])
+    assert server.route_film(np.zeros((1000, 400), np.uint8))["body_part"] == "full_spine"
+    sliver = proposal("cervical", .9, (200, 40, 205, 120))
+    monkeypatch.setattr(learned_region, "proposals", lambda raw: [sliver, LUMBAR])
+    assert server.route_film(np.zeros((1000, 400), np.uint8))["body_part"] == "lumbar"

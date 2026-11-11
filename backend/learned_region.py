@@ -40,7 +40,9 @@ def _load(threads: int):
 
 
 # A region counts as present on the film at or above this detector score.
-PRESENT_SCORE = .25
+PRESENT_SCORE = .15
+# A present box narrower than this (in film pixels) is still not a region.
+MIN_SIDE = 8
 
 
 def proposals(raw: np.ndarray) -> list[dict]:
@@ -70,16 +72,13 @@ def regions(raw: np.ndarray) -> dict:
     for name in region_detector.CLASSES:
         present = sorted((p for p in found if p["class"] == name and p["score"] >= PRESENT_SCORE),
                          key=lambda p: -p["score"])
-        result[name] = next(iter(boxes(present, name, raw.shape, limit=1)), None)
+        # Small films have narrow necks; the landmark crops add their own context.
+        result[name] = next(iter(boxes(present, name, raw.shape, limit=1, min_side=MIN_SIDE)), None)
         result[f"{name}_score"] = max((p["score"] for p in present), default=None)
     return result
 
 
-def top_box(found: list[dict], name: str, shape: tuple[int, int]):
-    return next(iter(boxes(found, name, shape, limit=1)), None)
-
-
-def boxes(found: list[dict], name: str, shape: tuple[int, int], limit=3):
+def boxes(found: list[dict], name: str, shape: tuple[int, int], limit=3, min_side=32):
     height, width = shape
     selected = []
     for proposal in found:
@@ -88,7 +87,7 @@ def boxes(found: list[dict], name: str, shape: tuple[int, int], limit=3):
         left, top, right, bottom = proposal["bbox"]
         box = (max(0, int(np.floor(left))), max(0, int(np.floor(top))),
                min(width, int(np.ceil(right))), min(height, int(np.ceil(bottom))))
-        if box[2]-box[0] >= 32 and box[3]-box[1] >= 32:
+        if box[2]-box[0] >= min_side and box[3]-box[1] >= min_side:
             selected.append(box)
             if len(selected) >= limit:
                 break
