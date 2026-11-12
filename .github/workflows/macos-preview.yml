@@ -107,8 +107,16 @@ jobs:
           --exclude-module safetensors
           --collect-all uvicorn
           --add-data "backend/onnx:backend/onnx"
-          --add-data "build/ocr:ocr"
           backend/standalone.py
+
+      - name: Add the OCR runtime outside PyInstaller's analysis
+        # PyInstaller rewrites collected Mach-O files to load through @rpath, and the bundle's rpath reaches
+        # OpenCV's own older libtesseract in cv2/.dylibs first, so the bundled tesseract aborts (dyld: Symbol not
+        # found: tesseract::SIMDDetect::GetDetector). Copy the relocatable build from bundle_ocr_macos.py unchanged.
+        run: |
+          rm -rf backend-dist/spine-contour-backend/_internal/ocr
+          cp -R build/ocr backend-dist/spine-contour-backend/_internal/ocr
+          backend-dist/spine-contour-backend/_internal/ocr/tesseract --version | head -1
 
       - name: Verify bundled backend
         shell: bash
