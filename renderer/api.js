@@ -53,10 +53,9 @@ export async function predict(request) {
   return invoke('predict', { performance: getState().performance, ...request });
 }
 
-export async function classifyView(request) { return invoke('classifyView', request); }
 // (2026-10-10, level editor) The original film, decoded for the display-only window / level:
 // {width, height, bitsStored, valueMin, valueMax, window, scaled, pixels: Uint8Array of LE uint16}.
-// A read like classifyView, so it is not gated on persistence.
+// A read, so it is not gated on persistence.
 export async function decodeFilm({ name, data }) { return invoke('decodeFilm', { name, data }); }
 export async function loadPerformance() { return invoke('loadPerformance'); }
 export async function savePerformance(settings) { return invoke('savePerformance', settings); }

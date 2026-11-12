@@ -49,4 +49,14 @@ data = output/'tessdata'
 data.mkdir(exist_ok=True)
 for name in ['eng.traineddata', 'osd.traineddata']:
     shutil.copy2(prefix/'share/tessdata'/name, data/name)
+# Run the bundled binary now, so a library the loader cannot find fails here with dyld's own message rather than as a
+# bare SIGABRT in the bundled-backend check much later.
+check = subprocess.run([str(output/'tesseract'), '--version'], capture_output=True, text=True,
+                       env={'PATH': '/usr/bin:/bin', 'DYLD_PRINT_SEARCHING': '0'})
+if check.returncode:
+    for path in sorted(output.iterdir()):
+        if path.is_file():
+            print(subprocess.run(['otool', '-L', str(path)], capture_output=True, text=True).stdout)
+    raise RuntimeError(f'The bundled tesseract does not start (exit {check.returncode}):\n{check.stdout}\n{check.stderr}')
+print(check.stdout.splitlines()[0] if check.stdout else check.stderr.splitlines()[0])
 print(f'Bundled {len(visited)} binaries in {output}')
