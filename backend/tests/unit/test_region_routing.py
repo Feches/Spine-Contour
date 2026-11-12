@@ -52,3 +52,11 @@ def test_a_narrow_neck_on_a_small_film_is_still_a_region(monkeypatch):
     sliver = proposal("cervical", .9, (200, 40, 205, 120))
     monkeypatch.setattr(learned_region, "proposals", lambda raw: [sliver, LUMBAR])
     assert server.route_film(np.zeros((1000, 400), np.uint8))["body_part"] == "lumbar"
+
+
+def test_a_chosen_full_spine_takes_boxes_below_the_routing_gate(monkeypatch):
+    faint = {**NECK, "score": learned_region.PRESENT_SCORE - .05}
+    monkeypatch.setattr(learned_region, "proposals", lambda raw: [faint, LUMBAR])
+    film = np.zeros((1000, 400), np.uint8)
+    assert learned_region.regions(film)["cervical"] is None
+    assert learned_region.regions(film, present_score=0)["cervical"] == (40, 30, 200, 260)

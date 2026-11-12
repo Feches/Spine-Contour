@@ -65,12 +65,17 @@ def proposals(raw: np.ndarray) -> list[dict]:
     return found
 
 
-def regions(raw: np.ndarray) -> dict:
-    """The highest-scoring present box per region, or None, and every proposal."""
+def regions(raw: np.ndarray, present_score: float = PRESENT_SCORE) -> dict:
+    """The highest-scoring present box per region, or None, and every proposal.
+
+    ``present_score`` is the routing gate. When the person has already said
+    which regions are on the film, pass 0 to take each class's best proposal
+    (the detector contract still drops anything under its score_threshold).
+    """
     found = proposals(raw)
     result = {"proposals": found}
     for name in region_detector.CLASSES:
-        present = sorted((p for p in found if p["class"] == name and p["score"] >= PRESENT_SCORE),
+        present = sorted((p for p in found if p["class"] == name and p["score"] >= present_score),
                          key=lambda p: -p["score"])
         # Small films have narrow necks; the landmark crops add their own context.
         result[name] = next(iter(boxes(present, name, raw.shape, limit=1, min_side=MIN_SIDE)), None)

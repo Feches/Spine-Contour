@@ -202,9 +202,11 @@ def test_detector_runs_when_regions_are_not_supplied(monkeypatch):
     neck, pelvis = synthetic_regions()
     patch_regions(monkeypatch, neck, pelvis)
     calls = []
-    monkeypatch.setattr(full.learned_region, 'regions', lambda raw: calls.append(raw.shape) or REGIONS)
+    monkeypatch.setattr(full.learned_region, 'regions',
+                        lambda raw, **kw: calls.append((raw.shape, kw)) or REGIONS)
     full.full_spine_prediction(np.ones((1000, 500), np.uint8))
-    assert calls == [(1000, 500)]
+    # A chosen full-spine film skips Auto's presence gate: both regions are asserted.
+    assert calls == [((1000, 500), {'present_score': 0})]
 
 
 def test_missing_region_withholds_only_its_anchor(monkeypatch):

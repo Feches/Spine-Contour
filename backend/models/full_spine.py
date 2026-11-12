@@ -391,7 +391,9 @@ def full_spine_prediction(pixel_array, anterior_side=None, model=MODEL_NAME, *, 
     runtime.report("preparing", "Preparing the full-spine radiograph")
     height, width = raw.shape
     if regions is None:
-        regions = learned_region.regions(raw)
+        # Full spine was chosen, not detected: both regions are on the film, so
+        # take each class's best box instead of applying Auto's presence gate.
+        regions = learned_region.regions(raw, present_score=0)
     first = None
     if anterior_side is None:
         first = _read_regions(raw, regions)

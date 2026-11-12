@@ -121,11 +121,6 @@ ipcMain.handle('select-file', async () => {
   };
 });
 
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.detail || 'Could not identify the film.');
-  return body;
-});
-
 // (2026-10-10, level editor) The original film's own pixels for the stage's display-only window /
 // level (backend/decode.py). The base64 becomes bytes here, so the renderer receives a Uint8Array of
 // little-endian uint16 (structured-clonable) instead of a string a third larger.
