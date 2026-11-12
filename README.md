@@ -193,8 +193,8 @@ cervical HRNet carry fine-tuned weights (since 1.5.0; 1.6.0 updates the HRNet ch
 and the anatomical cervical HRNet also locates the neck on full-spine films. The U-Net
 vertebral model and the femoral U-Net keep their original weights.
 
-**Settings → Processing → Crop localizer** is On by default and applies to lumbar
-requests. For **lumbar-only images**
+**Settings → Processing → Crop localizer** is On by default. It is needed for
+**full-spine images** to locate and frame the lumbar region. For **lumbar-only images**
 already framed around the anatomy, turn it Off to skip the repeated crop search and
 process the supplied image once. S1, vertebrae and femoral heads are still detected;
 the switch does not disable any final measurement model. Off keeps the visible image extent, with quick cleanup of broad empty screenshot
@@ -202,10 +202,10 @@ borders. It does not search for or reframe the lumbar anatomy.
 The choice is saved and applies to the next individual run or batch. Changing this
 setting changes the model input and may change detected anatomy; review the result.
 The runtime, localizer setting and selected frame are recorded with each result.
-**Full-spine and Auto films** use the bundled region detector (YOLO26-s, cervical and
-lumbar boxes) instead of a crop search; see [automatic film detection](docs/automatic-film-detection.md).
-Crop localizer applies to lumbar requests only. The retired Crop method and Automatic
-view selection settings are ignored if an older client or saved preference sends them.
+**Crop method** uses **Crop search**. The trained automatic crop method is disabled,
+including for saved preferences and older clients that request it. Crop search
+locates cervical and lumbar regions on full-spine films; for lumbar requests it
+applies when Crop localizer is On. Existing landmark checks remain in place.
 
 See [inference implementation and validation](docs/onnx-inference.md).
 
