@@ -49,6 +49,7 @@ import { setFilePayload, releaseStudy } from './analysis.js';
 import { forgetPrediction } from '../components/viewer.js';
 import { hasStashedEditor, forgetLevelEditor } from '../level-editor.js';
 import { mountParameters } from './parameters.js';
+import { REGION_CHOICES, planRegionChange, applyRegionChange, regionChangePrompt, regionChangeToast } from '../data/region-change.js';
 
 const DASH = '\u2014';
 
@@ -529,6 +530,9 @@ let confirmingId = null;
 // Captured at the click; update() withdraws it the moment the ticked visible set no longer
 // matches them, so the prompt can never delete a set the user cannot see.
 let confirmingSelected = null;
+// The bar's pending Set region change ({ plan, region }) while its prompt is up, or null. Only a change that would
+// clear saved results asks first.
+let confirmingRegion = null;
 // The SUBJECT cell being edited in place (spec 7.2): { id, draft }, or null. `draft` is the text typed
 // so far, kept current by the input's own handler, so a rebuild mid-word re-creates the editor
 // with it. Replaced, never mutated: it is compared by reference in update()'s key. Named
@@ -560,7 +564,7 @@ subscribe((state) => {
   // closes the menu, spec 3.2). The import prompt goes too: a plan left pending while a study is opened in edit mode
   // would update it on return (its `editing` set is the click's).
   if (state.screen !== 'studies') {
-    mounted = null; confirmingId = null; confirmingSelected = null; editingSubject = null; pendingImport = null;
+    mounted = null; confirmingId = null; confirmingSelected = null; confirmingRegion = null; editingSubject = null; pendingImport = null;
     openMenu = null; menuShows = null; listenOutside(false);
     return;
   }
@@ -713,7 +717,7 @@ function refreshTable(focusSelector) {
 // S25): its placement may be writing this study's sidecar and record.
 function askToDelete(id) {
   if (getState().deletingStudies || importing) return;
-  confirmingSelected = null;
+  confirmingSelected = null; confirmingRegion = null;
   confirmingId = id;
   refreshTable('.studies-delete-cancel');
 }
@@ -798,8 +802,30 @@ function askToDeleteSelected(ids) {
   refreshTable('[data-find-key="delete-cancel"]');
 }
 
+// The bar's Set region (the bulk form of the Analysis screen's Region select). `targets` are the ticked visible real
+// studies. A change that clears saved results waits for the prompt; one that clears nothing applies at once.
+function askToSetRegion(targets, region) {
+  const plan = planRegionChange(targets, region);
+  if (plan.ids.length === 0) { showToast(regionChangeToast(plan, region)); return; }
+  if (plan.cleared === 0) { applyRegion(plan, region); return; }
+  confirmingId = null; confirmingSelected = null;
+  confirmingRegion = { plan, region };
+  refreshTable('[data-find-key="region-cancel"]');
+}
+
+function applyRegion(plan, region) {
+  confirmingRegion = null;
+  const live = getState();
+  // The prompt captured its ids; a run or batch that started since must not have its film's record changed under it.
+  if (barBlocked(live)) { refreshTable(); showToast(waitTitle(live) || 'Wait for the current work to finish.'); return; }
+  for (const id of plan.ids) { forgetPrediction(id); forgetLevelEditor(id); }
+  setState((s) => ({ studies: applyRegionChange(s.studies, plan.ids, region) }));
+  refreshTable();
+  showToast(regionChangeToast(plan, region));
+}
+
 function cancelDeleteSelected() {
-  confirmingSelected = null;
+  confirmingSelected = null; confirmingRegion = null;
   refreshTable('[data-find-key="delete"]');
 }
 
@@ -817,12 +843,12 @@ async function deleteSelectedStudies(ids) {
   // between that click and this call, so the confirm handler can arrive holding null and
   // `new Set(null)` would throw. Withdraw the prompt and hand focus back to Delete, exactly as an
   // empty target set below does.
-  if (!Array.isArray(ids) || ids.length === 0) { confirmingSelected = null; refreshTable('[data-find-key="delete"]'); return; }
+  if (!Array.isArray(ids) || ids.length === 0) { confirmingSelected = null; confirmingRegion = null; refreshTable('[data-find-key="delete"]'); return; }
   const live = getState();
   if (barBlocked(live)) return;
   const wanted = new Set(ids);
   const targets = live.studies.filter((study) => study.source === 'real' && wanted.has(study.id));
-  confirmingSelected = null;
+  confirmingSelected = null; confirmingRegion = null;
   confirmingId = null;
   if (targets.length === 0) { refreshTable('[data-find-key="delete"]'); return; }
   setState({ deletingStudies: true });
@@ -954,7 +980,7 @@ export async function importBundleFrom(dir) {
   const state = getState();
   if (exporting || pendingImport || barBlocked(state)) return; // barBlocked holds `importing` (S25)
   importing = true;
-  confirmingSelected = null;
+  confirmingSelected = null; confirmingRegion = null;
   confirmingId = null;
   refreshTable();
   try {
@@ -976,7 +1002,7 @@ export async function importBundleFrom(dir) {
       showToast(nothingToImportMessage(plan));
     } else {
       pendingImport = { dir, plan, studies: state.studies };
-      confirmingSelected = null;
+      confirmingSelected = null; confirmingRegion = null;
       confirmingId = null;
       refreshTable('[data-find-key="import-cancel"]');
     }
@@ -1126,7 +1152,7 @@ function commitSubject(id, mode, focusKey = null) {
 
 export function render(state) {
   confirmingId = null;
-  confirmingSelected = null;
+  confirmingSelected = null; confirmingRegion = null;
   editingSubject = null;
   pendingImport = null;
   openMenu = null;
@@ -1220,6 +1246,25 @@ export function render(state) {
           }, 'Cancel')));
     }
 
+    if (confirmingRegion) {
+      const { plan, region } = confirmingRegion;
+      return el('div', { class: 'studies-filters' },
+        el('div', {
+          class: 'studies-bulk-prompt', role: 'group', 'aria-label': 'Confirm setting the region of the selected studies',
+          'data-find-key': 'region-prompt',
+          onKeydown: (event) => { if (event.key === 'Escape') { event.preventDefault(); confirmingRegion = null; refreshTable('[data-find-key="region"]'); } },
+        },
+          el('span', {}, regionChangePrompt(plan, region)),
+          el('button', {
+            type: 'button', class: 'btn btn-small', 'data-find-key': 'region-confirm', disabled: blocked,
+            onClick: () => applyRegion(plan, region),
+          }, 'Set region'),
+          el('button', {
+            type: 'button', class: 'btn btn-small studies-bulk-cancel', 'data-find-key': 'region-cancel',
+            onClick: () => { confirmingRegion = null; refreshTable('[data-find-key="region"]'); },
+          }, 'Cancel')));
+    }
+
     // Delete and Export share the first three reasons (waitTitle); each then names its own empty case.
     const wait = waitTitle(live);
     const deleteTitle = wait || (targets.length === 0 ? 'Tick studies to delete' : '');
@@ -1240,6 +1285,14 @@ export function render(state) {
       onClick: () => chooseFolder().then((dir) => dir && exportBundleTo(dir))
         .catch((error) => showToast(error?.message || 'The export failed.')),
     }, exporting ? 'Exporting\u2026' : (targets.length > 0 ? `Export ${exportRows.length} selected` : 'Export all'));
+
+    const regionSelect = el('select', {
+      class: 'workspace-folder-select', 'data-find-key': 'region', 'aria-label': 'Set the region of the selected studies',
+      disabled: blocked || targets.length === 0,
+      title: wait || (targets.length === 0 ? 'Tick studies to set their region' : ''),
+      onChange: (event) => { const region = event.target.value; event.target.value = ''; if (region) askToSetRegion(targets, region); },
+    }, el('option', { value: '' }, targets.length > 0 ? `Set region of ${targets.length}\u2026` : 'Set region\u2026'),
+    ...REGION_CHOICES.map(([value, label]) => el('option', { value }, label)));
 
     let action;
     if (live.batch) {
@@ -1268,7 +1321,7 @@ export function render(state) {
         plan.note ? el('span', { class: 'param-export-note', 'data-find-key': 'segment-note' }, plan.note) : null);
     }
     return el('div', { class: 'studies-filters' },
-      deleteButton, exportButton, el('div', { class: 'studies-header-spacer' }), action);
+      deleteButton, exportButton, regionSelect, el('div', { class: 'studies-header-spacer' }), action);
   }
 
   let lastKey = null;
@@ -1306,6 +1359,9 @@ export function render(state) {
     // prompt armed behind it (spec 5.3); an editor on a study deleted meanwhile closes. Plain
     // assignments, not setState: this runs inside a store notification.
     if (confirmingSelected && (live.studiesTab === 'parameters' || confirmingSelected.join(' ') !== targets.join(' '))) confirmingSelected = null;
+    // So does a pending Set region whose studies are no longer all ticked and visible.
+    if (confirmingRegion && (live.studiesTab === 'parameters'
+        || !confirmingRegion.plan.ids.every((id) => targets.includes(id)))) confirmingRegion = null;
     if (editingSubject && !studies.some((study) => study.id === editingSubject.id)) editingSubject = null;
     // The import prompt likewise (ruling S26): withdrawn silently when the library is no longer the list its plan was
     // made against (a run ending, a subject typed, a film added: its new ids and matches may be wrong now) or the user
@@ -1353,7 +1409,7 @@ export function render(state) {
     // stops repainting for it. openMenu is the LAST entry on purpose (2026-10-19, final review; R16):
     // menuClosedInPlace() below rewrites that one slot when an outside press closes the menu without a
     // rebuild.
-    const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, editingSubject, exporting,
+    const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, confirmingRegion, editingSubject, exporting,
       importing, pendingImport, live.deletingStudies, live.paramSelected, live.batch, live.findSort,
       live.findFilters, openMenu];
     if (sameKey(key, lastKey)) return;
