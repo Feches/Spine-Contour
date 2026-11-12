@@ -227,7 +227,7 @@ operations; a model call or OCR pass already executing must finish first.
 
 See [processing modes and validation](docs/low-memory-processing.md).
 
-**GPU processing.** **Settings → Processing → Processor** runs the models on a GPU instead of the CPU.
+**GPU processing:** Settings → Processing → Processor runs the models on a GPU instead of the CPU.
 On Windows it lists each DirectX 12 graphics card — NVIDIA, AMD or Intel — by name;
 nothing else needs installing. A GPU chosen for the app in Windows graphics settings
 or the NVIDIA app does not affect processing; only this setting does. The CPU stays
