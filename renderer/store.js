@@ -57,6 +57,8 @@ let state = {
   // (2026-10-10, level editor) The edit-mode level editor's state, or null outside edit mode; see the LevelEditor
   // typedef in renderer/data/levels.js. Written only by renderer/level-editor.js; session-only, never persisted.
   levelEditor: null,
+  // (2026-11-12) The Mark crops mode on the stage: { studyId, target: 's1'|'neck'|null, marks } or null. Session only.
+  cropMarks: null,
   // (2026-10-11, gate feedback G3; plan D15) The open film's window / level, or null: display only, part of the view
   // like zoom and pan. FRESH_VIEW resets it; entering and leaving edit mode keep it. See the FilmWindow typedef in
   // renderer/film-window.js, its only writer. Session-only, never persisted, never in the label record.

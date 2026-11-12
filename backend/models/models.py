@@ -515,8 +515,12 @@ def spinopelvic_prediction(
     view: str | None = "lateral",
     laterality: str | None = None,
     models: dict[str, str] | None = None,
+    s1_mark=None,
 ) -> dict[str, object]:
     """Locate the lumbosacral region, frame it, and run the chosen models.
+
+    ``s1_mark`` is an S1 superior endplate a person marked on the film; when given, the crop is
+    framed from it the way the training films were instead of searched for.
 
     The film is searched for the lumbar spine first and the models run on a
     crop framed the way their training data was, so a full-spine radiograph
@@ -550,7 +554,13 @@ def spinopelvic_prediction(
 
     localizer = runtime.options().crop_localizer
     method_used = "supplied_image"
-    if localizer:
+    marked = framing.reframe(np.asarray(s1_mark, np.float64), raw.shape) if s1_mark is not None else None
+    if marked is not None:
+        runtime.report("framing", "Framing the lumbar crop from the marked S1 endplate")
+        located = {"window": marked, "searched": False, "whole_film_won": False, "whole_film_cost": None,
+                   "confidence": None, "cost": None, "candidates": 1}
+        method_used = "s1_mark"
+    elif localizer:
         located = framing.locate(raw, _score_s1)
         method_used = "search"
     else:

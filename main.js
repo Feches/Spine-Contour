@@ -190,6 +190,8 @@ ipcMain.handle('predict', async (event, request) => {
   form.append('modality', request.modality);
   form.append('body_part', request.bodyPart);
   if (typeof request.anteriorSide === 'string') form.append('anterior_side', request.anteriorSide);
+  // (2026-11-12) Crop marks the person placed; the backend validates them against the decoded film.
+  if (request.regionHints && typeof request.regionHints === 'object') form.append('region_hints', JSON.stringify(request.regionHints));
   form.append('view', request.view);
   const calibration = await calibrationStore.forImage(bytes) ?? request.calibration;
   if (calibration) form.append('calibration', JSON.stringify(calibration));

@@ -137,6 +137,9 @@ def patch_regions(monkeypatch, neck, pelvis, seen=None):
                 {'windows': 3, 'detector_box': list(box) if box else None})
     monkeypatch.setattr(full, '_cervical_candidates', lambda image, box: answer('cervical', neck, image, box))
     monkeypatch.setattr(full, '_lumbar_candidates', lambda image, box: answer('lumbar', pelvis, image, box))
+    # The fallback searches find nothing unless a test says otherwise.
+    monkeypatch.setattr(full, '_searched_cervical_candidates', lambda image: ([], {'windows': 0}))
+    monkeypatch.setattr(full.framing, 'locate', lambda image, score: None)
 
 
 FILM = np.tile(np.arange(500, dtype=np.uint16), (1000, 1))
@@ -192,6 +195,8 @@ def test_nothing_agreeing_in_the_mirrored_frame_keeps_the_original_read(monkeypa
         return ([] if image[0, 0] > image[0, -1] else pelvis), {}
     monkeypatch.setattr(full, '_cervical_candidates', cervical)
     monkeypatch.setattr(full, '_lumbar_candidates', lumbar)
+    monkeypatch.setattr(full, '_searched_cervical_candidates', lambda image: ([], {}))
+    monkeypatch.setattr(full.framing, 'locate', lambda image, score: None)
     result = full.full_spine_prediction(FILM, regions=REGIONS)
     assert calls == [False, True]
     assert result['framing']['canonical_mirror'] is False and result['landmarks']['anterior_side'] == 'right'
@@ -317,3 +322,36 @@ def test_femoral_crop_is_framed_from_s1_not_the_detector_window():
     assert (595 - top) / (bottom - top) == pytest.approx(full.FEMORAL_FRAME['y'], abs=.01)
     assert left < 220 < right
     assert full._femoral_frame(None, (2000, 1000)) is None
+
+
+def test_a_neck_the_detector_misses_is_found_by_the_upper_film_search(monkeypatch):
+    neck, pelvis = synthetic_regions()
+    patch_regions(monkeypatch, [], pelvis)
+    searched = []
+    monkeypatch.setattr(full, '_searched_cervical_candidates', lambda image: searched.append(image.shape) or (neck, {'windows': 9}))
+    result = full.full_spine_prediction(FILM, regions={**REGIONS, 'cervical': None})
+    assert searched == [FILM.shape]
+    np.testing.assert_allclose(result['landmarks']['c7_centroid'], neck[1]['anchor'])
+    assert result['framing']['cervical']['source'] == 'upper_film_search'
+    assert result['framing']['cervical']['fallback_search'] == {'windows': 9}
+
+
+def test_the_upper_film_search_runs_only_when_the_detector_neck_fails(monkeypatch):
+    neck, pelvis = synthetic_regions()
+    patch_regions(monkeypatch, neck, pelvis)
+    monkeypatch.setattr(full, '_searched_cervical_candidates', lambda image: pytest.fail('searched a read neck'))
+    monkeypatch.setattr(full.framing, 'locate', lambda image, score: pytest.fail('searched a read pelvis'))
+    full.full_spine_prediction(FILM, regions=REGIONS)
+
+
+def test_a_lumbar_region_the_detector_misses_is_framed_by_the_s1_localizer(monkeypatch):
+    neck, pelvis = synthetic_regions()
+    patch_regions(monkeypatch, neck, [])
+    framed = []
+    monkeypatch.setattr(full.framing, 'locate', lambda image, score: {'window': [20, 600, 400, 990]})
+    monkeypatch.setattr(full, '_framed_lumbar_candidates',
+                        lambda image, window, record: framed.append((window, record)) or (pelvis, {'windows': 7, **record}))
+    result = full.full_spine_prediction(FILM, regions={**REGIONS, 'lumbar': None})
+    assert framed == [((20, 600, 400, 990), {'detector_box': None, 'source': 's1_localizer'})]
+    np.testing.assert_allclose(result['landmarks']['s1_superior'], pelvis[1]['endplate'])
+    assert result['framing']['lumbar']['source'] == 's1_localizer_search'

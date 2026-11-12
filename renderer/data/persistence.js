@@ -15,6 +15,7 @@ import { CERVICAL_LEVELS, validAnteriorSide } from './cervical.js';
 import { DEMO_STUDIES } from './demo-studies.js';
 import { FILM_DATE } from './timepoints.js';
 import { normalizeCalibration } from './calibration.js';
+import { normalizeMarks } from './crop-marks.js';
 
 export const STORE_VERSION = 1;
 
@@ -249,6 +250,8 @@ function validateStudy(entry, index) {
       : ['cervical', 'full_spine'].includes(geometry?.region) ? geometry.region : 'lumbar',
     anteriorSide: validAnteriorSide(entry.anteriorSide) ? entry.anteriorSide
       : entry.anteriorSide === null ? null : geometry?.anterior_side ?? null,
+    // (2026-11-12) the crop marks the film is run with (renderer/data/crop-marks.js); optional-null, no STORE_VERSION bump
+    regionHints: normalizeMarks(entry.regionHints),
     predictionId: optionalText(entry.predictionId),
     processingError,
     processingErrorAt,
