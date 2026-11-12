@@ -1,9 +1,7 @@
 <p align="center">
   <a href="https://spine-contour.com/">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/branding/spinecontour-header-dark.svg">
-      <img src="assets/branding/spinecontour-header-light.svg" alt="spinecontour" width="420">
-    </picture>
+    <img src="assets/branding/spinecontour-header-light.svg#gh-light-mode-only" alt="spinecontour" width="420">
+    <img src="assets/branding/spinecontour-header-dark.svg#gh-dark-mode-only" alt="spinecontour" width="420">
   </a>
 </p>
 
@@ -84,14 +82,10 @@ To carry films and their annotations to another computer, **Export all** (or **E
 writes a bundle folder and **Import bundle…** reads one; see [annotation bundles](docs/bundles.md).
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://spine-contour.com/assets/img/studies-dark.png">
-    <img src="https://spine-contour.com/assets/img/studies-light.png" alt="Studies screen: searchable table of studies with view, status and lordosis columns" width="49%">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://spine-contour.com/assets/img/workspace-dark.png">
-    <img src="https://spine-contour.com/assets/img/workspace-light.png" alt="Workspace screen: image folder and clinical data CSV import steps" width="49%">
-  </picture>
+  <img src="https://spine-contour.com/assets/img/studies-light.png#gh-light-mode-only" alt="Studies screen: searchable table of studies with view, status and lordosis columns" width="49%">
+  <img src="https://spine-contour.com/assets/img/studies-dark.png#gh-dark-mode-only" alt="Studies screen: searchable table of studies with view, status and lordosis columns" width="49%">
+  <img src="https://spine-contour.com/assets/img/workspace-light.png#gh-light-mode-only" alt="Workspace screen: image folder and clinical data CSV import steps" width="49%">
+  <img src="https://spine-contour.com/assets/img/workspace-dark.png#gh-dark-mode-only" alt="Workspace screen: image folder and clinical data CSV import steps" width="49%">
 </p>
 
 ## Using the app
