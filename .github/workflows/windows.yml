@@ -205,7 +205,7 @@ jobs:
           compression-level: 0
 
   macos:
-    runs-on: macos-14
+    runs-on: macos-15
     if: github.repository == 'Feches/Spine-Contour' || github.repository == 'mjayasur/Spine-Contour'
     steps:
       - uses: actions/checkout@v7
