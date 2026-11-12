@@ -9,6 +9,10 @@
   and Settings → Crop method are removed. The anterior side is read from the landmark models' anterior and posterior
   labels; a right-facing film is mirrored once and read again, since the models are more accurate facing left. The
   femoral crop is framed from S1 at 1.6.1's proportions.
+- **When the detector misses a region** the neck or lumbar spine is searched for as 1.6.1 did, so a film set to Full
+  spine by hand reads what 1.6.1 read.
+- **Mark crops** on the Analysis toolbar: click S1's superior corners and/or the top of C2 and the bottom of C7, and
+  the film is segmented again with crops framed from those marks. The marks are saved with the study.
 - Against four readers on 99 full-spine films (paired with 1.6.1, mean absolute difference to the reader mean): C2–C7
   Cobb 5.23 → 4.87°, C2–C7 SVA 1.47 → 1.35 cm, L1–S1 lordosis 3.63 → 3.23°, sacral slope 2.61 → 2.53°, PT 1.24 → 1.19°;
   PI 2.82 → 3.08° and Global SVA 2.97 → 3.03 cm are worse. 70 of the 194 PMC full-spine films 1.6.1 stopped on now read.

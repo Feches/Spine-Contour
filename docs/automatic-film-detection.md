@@ -52,6 +52,27 @@ detector must corroborate the lumbar HRNET's S1.
 the anatomical cervical HRNET on the whole film, and the lumbar framing search
 (when Crop localizer is On).
 
+## When the detector misses a region
+
+If the detector gives no box for a region, or the crops around its box do not agree, that region is searched for as
+1.6.1 did: the upper film with the cervical DETR and anatomical HRNET for the neck, the S1 localizer for the lumbar
+spine. Films whose regions read from the detector's boxes never run these searches.
+
+## Marking the crops yourself
+
+**Mark crops** on the Analysis toolbar lets a person frame the crops when the detector's are wrong or missing:
+
+- **S1 ENDPLATE**: click the two superior corners of S1. The lumbar crop is framed from them the way the training
+  films were cut around S1 (`framing.reframe`), on lumbar and full-spine films.
+- **C2–C7**: click the top of C2, then the bottom of C7. The neck crop is the square on that span. A neck mark runs the
+  film as full spine.
+
+The stage shows the crops the last run read (dashed) and the crop each mark will give. **RUN WITH MARKS** saves the
+marks with the study and segments it again; changing the Region clears them. Marks only frame crops: the landmark
+models, crop agreement and the S1 detector still decide the anatomy. The API takes them as `region_hints`
+(`{"s1": [[x, y], [x, y]] | null, "neck": [[x, y], [x, y]] | null}` in original-film pixels, `backend/region_hints.py`);
+results record them in `qc.region_marks` and `framing.region_sources`.
+
 ## Anterior side comes from the landmark models
 
 No orientation is searched or voted on. Every landmark model (anatomical
