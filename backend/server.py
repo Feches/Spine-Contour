@@ -18,7 +18,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 
 try:
-    from . import processors, runtime
+    from . import learned_region, processors, runtime
+    from . import region_hints as crop_marks
     from .progress import stream_job
     from .models.models import model_versions, release_models
     from .decode import decode_film
@@ -32,7 +33,9 @@ try:
         spinopelvic_measurements_from_landmarks,
     )
 except ImportError:  # Support `uvicorn server:app` from backend/.
+    import learned_region
     import processors
+    import region_hints as crop_marks
     import runtime
     from progress import stream_job
     from models.models import model_versions, release_models
@@ -107,18 +110,50 @@ def full_spine_prediction(pixel_array, anterior_side, model=FULL_SPINE_MODEL, **
     return predict_full_spine(pixel_array, anterior_side, model=model, **options)
 
 
-def detect_film(pixel_array, anterior_side=None):
-    if runtime.options().view_selection == "classifier":
-        if __package__:
-            from .view_classifier import detect_film as fast_detect
-        else:
-            from view_classifier import detect_film as fast_detect
-        return fast_detect(pixel_array, anterior_side)
-    if __package__:
-        from .film_detection import detect_film as detect
-    else:
-        from film_detection import detect_film as detect
-    return detect(pixel_array, anterior_side=anterior_side)
+# Which crop mark stands for which detector region.
+MARK_FOR = {"cervical": "neck", "lumbar": "s1"}
+
+
+def route_film(pixel_array, marks=None):
+    """Choose the region pipeline from the detector's boxes, once per film.
+
+    Both boxes: full spine. Only a cervical box: cervical. Only a lumbar box:
+    lumbar. Neither: the person chooses. A region the person marked counts as
+    found. The boxes are reused to frame the full-spine crops, so the detector
+    runs once.
+    """
+    regions = learned_region.regions(np.asarray(pixel_array))
+    marked = [name for name in ("cervical", "lumbar") if marks and marks.get(MARK_FOR[name]) is not None]
+    found = tuple(name for name in ("cervical", "lumbar") if regions[name] is not None or name in marked)
+    body_part = {("cervical", "lumbar"): "full_spine", ("cervical",): "cervical",
+                 ("lumbar",): "lumbar"}.get(found)
+    warnings = (["Review the automatically detected film region and orientation before accepting measurements."]
+                if body_part else
+                ["No cervical or lumbar spine region was detected. Choose cervical, lumbar or full spine, then segment again."])
+    return {"body_part": body_part, "status": "detected" if body_part else "needs_selection",
+            "warnings": warnings,
+            "qc": {"method": "region_detector", "requires_review": True,
+                   "scores_are_calibrated_confidence": False,
+                   "present_score": learned_region.PRESENT_SCORE,
+                   "boxes": {name: None if regions[name] is None else list(regions[name])
+                             for name in ("cervical", "lumbar")},
+                   "scores": {name: regions[f"{name}_score"] for name in ("cervical", "lumbar")},
+                   "marked": marked},
+            "_regions": regions}
+
+
+def with_marks(regions, marks, shape):
+    """The detector's regions with the person's marks in their place, and where each came from."""
+    regions = dict(regions)
+    sources = {name: "detector" if regions.get(name) is not None else None for name in ("cervical", "lumbar")}
+    if marks and marks.get("neck") is not None:
+        regions["cervical"], sources["cervical"] = crop_marks.neck_box(marks["neck"], shape), "mark"
+    if marks and marks.get("s1") is not None:
+        frame = crop_marks.s1_frame(marks["s1"], shape)
+        if frame is not None:
+            regions["lumbar_frame"], sources["lumbar"] = frame, "mark"
+    regions["_sources"] = sources
+    return regions
 
 
 def _validate_auto_request(modality, view, laterality, vertebra_model,
@@ -174,11 +209,13 @@ async def prediction_request(
     s1_model: str | None = Form(None), calibration: str | None = Form(None),
     processing_mode: str = Form("standard"), cpu_threads: int = Form(2),
     crop_localizer: bool = Form(True),
-    crop_method: str = Form("search"),
-    view_selection: str = Form("landmarks"),
+    # Retired settings older desktop builds still send; accepted and ignored.
+    crop_method: str | None = Form(None),
+    view_selection: str | None = Form(None),
     toolbar_removal: bool = Form(False),
     processor: str = Form("cpu"),
     anterior_side: str | None = Form(None),
+    region_hints_json: str | None = Form(None, alias="region_hints"),
 ):
     payload = await file.read(MAX_UPLOAD_BYTES + 1)
     if not payload:
@@ -187,7 +224,7 @@ async def prediction_request(
         raise HTTPException(status_code=413, detail="The uploaded file exceeds 50 MB")
     try:
         settings = runtime.parse_options(processing_mode, cpu_threads, crop_localizer,
-                                         toolbar_removal, processor, crop_method, view_selection)
+                                         toolbar_removal, processor)
         if body_part.strip().lower() == "cervical":
             _validate_cervical_request(modality, view, laterality, vertebra_model,
                                       femoral_model, s1_model, anterior_side)
@@ -197,12 +234,15 @@ async def prediction_request(
         elif body_part.strip().lower() == "auto":
             _validate_auto_request(modality, view, laterality, vertebra_model,
                                    femoral_model, s1_model, anterior_side)
+        marks = crop_marks.parse(region_hints_json)
+        if marks and body_part.strip().lower() == "cervical":
+            raise ValueError("Crop marks apply to lumbar, full-spine and Auto films; a cervical film is read whole.")
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return {"settings": settings, "payload": payload, "modality": modality, "body_part": body_part,
             "view": view, "laterality": laterality, "vertebra_model": vertebra_model,
             "femoral_model": femoral_model, "s1_model": s1_model, "calibration": calibration,
-            "anterior_side": anterior_side}
+            "anterior_side": anterior_side, "region_hints": marks}
 
 
 def run_prediction(request, reporter=None, cancelled=None):
@@ -227,20 +267,6 @@ def run_prediction(request, reporter=None, cancelled=None):
         finally:
             if settings.low_memory:
                 release_models()
-
-
-@app.post("/classify-view", summary="Preview the experimental whole-film view classifier")
-async def classify_view(file: UploadFile = File(...)):
-    payload = await file.read(MAX_UPLOAD_BYTES + 1)
-    if not payload or len(payload) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=422, detail="Select an image smaller than 50 MB.")
-    def classify():
-        try:
-            with runtime.session(runtime.parse_options(view_selection="classifier")):
-                return detect_film(_decode_grayscale(payload))
-        except (ValueError, OSError) as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
-    return await run_in_threadpool(classify)
 
 
 @app.post("/decode", summary="Decode the original film for display windowing")
@@ -269,37 +295,39 @@ async def predict_stream(request=Depends(prediction_request)):
 
 
 def _analyze(payload, modality, body_part, view, laterality,
-             vertebra_model, femoral_model, s1_model, calibration, anterior_side=None):
+             vertebra_model, femoral_model, s1_model, calibration, anterior_side=None, region_hints=None):
     body_part = body_part.strip().lower()
+    marks = region_hints
     detection = None
-    requested_anterior_side = anterior_side
     try:
         runtime.report("decoding", "Reading the original image")
         pixel_array = _decode_grayscale(payload)
+        crop_marks.check(marks, pixel_array.shape)
         if body_part == "auto":
             _validate_auto_request(modality, view, laterality, vertebra_model,
                                    femoral_model, s1_model, anterior_side)
-            runtime.report("detecting", "Identifying the spine region")
-            detection = detect_film(pixel_array, anterior_side=anterior_side)
-            body_part = detection.get("body_part")
-            if body_part not in ("cervical", "lumbar", "full_spine"):
-                reasons = " ".join(detection.get("warnings", []))
-                raise ValueError(reasons or "Could not confidently identify the spine region. Choose cervical, lumbar or full spine, then segment again.")
-            if anterior_side not in ("left", "right"):
-                anterior_side = detection.get("anterior_side")
+            runtime.report("detecting", "Locating the cervical and lumbar regions")
+            detection = route_film(pixel_array, marks)
+            body_part = detection["body_part"]
+            if body_part is None:
+                raise ValueError(" ".join(detection["warnings"]))
         is_cervical = body_part == "cervical"
         is_full_spine = body_part == "full_spine"
         landmark_only = is_cervical or is_full_spine
         if is_cervical:
             _validate_cervical_request(modality, view, laterality, vertebra_model,
                                       femoral_model, s1_model, anterior_side)
-            prediction = cervical_prediction(pixel_array, requested_anterior_side, model=vertebra_model or CERVICAL_MODEL)
+            prediction = cervical_prediction(pixel_array, anterior_side, model=vertebra_model or CERVICAL_MODEL)
         elif is_full_spine:
             _validate_full_spine_request(modality, view, laterality, vertebra_model,
                                         femoral_model, s1_model, anterior_side)
-            options = ({"detection_evidence": detection["_orientation_evidence"]}
-                       if detection and "_orientation_evidence" in detection else {})
-            prediction = full_spine_prediction(pixel_array, requested_anterior_side,
+            regions = detection["_regions"] if detection else None
+            if marks:
+                # Marked crops replace the detector's; a chosen full-spine film keeps every detector box.
+                regions = with_marks(regions or learned_region.regions(pixel_array, present_score=0),
+                                     marks, pixel_array.shape)
+            options = {"regions": regions} if regions is not None else {}
+            prediction = full_spine_prediction(pixel_array, anterior_side,
                                                model=vertebra_model or FULL_SPINE_MODEL, **options)
         else:
             prediction = spinopelvic_prediction(
@@ -309,6 +337,7 @@ def _analyze(payload, modality, body_part, view, laterality,
                 view,
                 laterality,
                 {"vertebrae": vertebra_model, "femoral": femoral_model, "s1": s1_model},
+                **({"s1_mark": marks["s1"]} if marks and marks.get("s1") is not None else {}),
             )
         if runtime.options().low_memory:
             release_models()
@@ -374,14 +403,16 @@ def _analyze(payload, modality, body_part, view, laterality,
     qc = {**prediction.get("qc", {}), **analysis.get("qc", {}),
           "models": prediction["models"], "model_versions": model_versions(prediction["models"]),
           "framing": prediction["framing"],
-          "processing": {"view_selection": runtime.options().view_selection,
+          "processing": {"region_routing": "region_detector" if detection is not None else "user",
                          "mode": runtime.options().mode,
                          "cpu_threads": runtime.options().inference_threads,
                          "runtime": "onnxruntime", "runtime_version": ort.__version__,
                          "providers": runtime.providers(),
                          "processor": runtime.processor_record(),
                          "crop_localizer": False if is_cervical else True if is_full_spine else runtime.options().crop_localizer,
-                         "crop_method": "not_applicable" if is_cervical else runtime.options().crop_method,
+                         "crop_method": ("not_applicable" if is_cervical else "region_detector" if is_full_spine
+                                         else prediction["framing"].get("method_used")
+                                         or ("search" if runtime.options().crop_localizer else "supplied_image")),
                          "toolbar_removal": False if landmark_only else runtime.options().toolbar_removal,
                          "search_batch": runtime.options().search_batch}}
     if landmark_only:
@@ -389,14 +420,14 @@ def _analyze(payload, modality, body_part, view, laterality,
         # image. Retain user preferences separately from
         # the processing actually applied by this model.
         qc["processing"]["requested_crop_localizer"] = runtime.options().crop_localizer
-        if is_cervical:
-            qc["processing"]["requested_crop_method"] = runtime.options().crop_method
         qc["processing"]["requested_toolbar_removal"] = runtime.options().toolbar_removal
     for field in ("provenance", "warnings"):
         if field in prediction:
             qc[field] = prediction[field]
     if is_full_spine and prediction["framing"].get("femoral") is not None:
         qc["femoral"] = prediction["framing"]["femoral"]
+    if marks:
+        qc["region_marks"] = crop_marks.public(marks)
     if detection is not None:
         qc["film_detection"] = {key: value for key, value in detection.items() if not key.startswith("_")}
         # Existing lumbar measurements omit their region; Auto results must carry

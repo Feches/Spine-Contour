@@ -15,10 +15,10 @@ test('the two FRESH_VIEW copies are identical', () => {
 
 // (Gate feedback G3, 2026-10-11; plan D15) The window / level belongs to the view, like zoom and pan.
 // (Gate feedback G7, 2026-10-13; plan D20, ruling R44) So do the level plates' drag offsets.
-test('FRESH_VIEW resets the view: zoom, pan, selection, edit mode, the level editor, the window and the plates', () => {
+test('FRESH_VIEW resets the view: zoom, pan, selection, edit mode, the level editor, the window, the plates and crop marking', () => {
   assert.deepEqual(FRESH_VIEW, {
     selectedLevel: null, zoom: 1, panX: 0, panY: 0, panMode: false, editing: false, selection: null, levelEditor: null,
-    filmWindow: null, platePositions: {},
+    filmWindow: null, platePositions: {}, cropMarks: null,
   });
 });
 

@@ -32,8 +32,6 @@ class Options:
     crop_localizer: bool = True
     toolbar_removal: bool = False
     processor: str = "cpu"
-    crop_method: str = "search"
-    view_selection: str = "landmarks"
 
     @property
     def low_memory(self):
@@ -54,7 +52,7 @@ class Options:
 
 
 def parse_options(mode="standard", cpu_threads=2, crop_localizer=True, toolbar_removal=False,
-                  processor="cpu", crop_method="search", view_selection="landmarks"):
+                  processor="cpu"):
     if mode not in ("standard", "low-memory"):
         raise ValueError("Processing mode must be standard or low-memory")
     if isinstance(cpu_threads, bool) or not isinstance(cpu_threads, int) or not 1 <= cpu_threads <= 4:
@@ -65,13 +63,8 @@ def parse_options(mode="standard", cpu_threads=2, crop_localizer=True, toolbar_r
         raise ValueError("Toolbar removal must be on or off")
     if not processors.valid(processor):
         raise ValueError("Processor must be cpu or a GPU id")
-    if crop_method not in ("search", "model"):
-        raise ValueError("Crop method must be search or model")
-    if view_selection not in ("landmarks", "classifier"):
-        raise ValueError("View selection must be landmarks or classifier")
-    # Accept older clients, but route the retired trained-crop method through search.
     return Options(mode, min(cpu_threads, os.cpu_count() or 1), crop_localizer, toolbar_removal,
-                   processor, "search", view_selection)
+                   processor)
 
 
 _options = ContextVar("processing_options", default=Options())

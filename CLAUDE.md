@@ -1,6 +1,21 @@
 # Spine Contour
 
-**2026-10-29 release 1.6.1 (PR #79, the +15% upward lumbar crop on full-spine films; release PR open, not merged):**
+**2026-11-12 release 1.7.0 (PR #84, the YOLO region detector and Mark crops; release PR open, not merged):** branch
+`claude/release-1.7.0` from `main` @ `a889b07` (v1.6.1), with PR #84's eleven commits (head `0da455e`, from
+`mjayasur/Spine-Contour` `claude/yolo-crop-pipeline`) merged in unchanged by a merge commit, then the 1.7.0 release
+commit. Auto detect routes and frames films from the two-class YOLO26-s `crop_detector.onnx` boxes
+(`server.route_film`, score >= 0.15), falls back to 1.6.1's region searches when a box is missing or its crops disagree
+(`models/full_spine.py`), and reads the anterior side from the landmark models (a right-facing film is mirrored and read
+again). `film_detection.py`, `view_classifier.py`, `/classify-view`, Settings → Automatic view selection and Crop method
+are removed. Mark crops (`renderer/data/crop-marks.js`) stores optional `regionHints` on the study (no STORE_VERSION
+bump) and sends them as the `region_hints` form field (validated in `backend/region_hints.py`). The merged tree equals PR #84's head (Windows and macOS checks
+passed). On the owner's Windows workstation: unit 1265/1265, backend 734 passed / 3 skipped, `verify_onnx` verified all
+eight graphs (its GPU parity exit 3 is the known Intel UHD 770 `cervical_hrnet` case, a graph this release leaves
+unchanged); the owner tried the build by hand on a scratch profile. Merging the release PR to `main` with a merge commit
+publishes v1.7.0 and marks PR #84 merged.
+
+**2026-10-29 release 1.6.1 (PR #79, the +15% upward lumbar crop on full-spine films; RELEASED as v1.6.1: PR #80, merge
+`a889b07`):**
 branch `ccr-88de433a-g0oqe2` restarted from `main` @ `5f3dfcd` (v1.6.0), with PR #79's single commit `69e06ae` (from
 `mjayasur/Spine-Contour-region-research` `codex/restore-upward-lumbar-crop`) merged in unchanged by a merge commit,
 then the 1.6.1 release commit. `full_spine.lumbar_windows` now extends each of its seven shifted and scaled crops upward

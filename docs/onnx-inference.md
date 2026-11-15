@@ -2,20 +2,19 @@
 
 ## Choosing the image extent
 
-**Crop localizer On** is the default, including for old saved preferences. Full-spine
-images need localization to find the lumbar region at the expected model scale.
-Every candidate region and existing crop acceptance safeguard is retained.
+**Crop localizer On** is the default, including for old saved preferences. It applies
+to lumbar requests; full-spine films are always framed by the region detector.
 
-**Crop method** uses **Crop search**. The trained automatic crop method is disabled,
-including for saved preferences and older clients that request it. Crop search
-locates cervical and lumbar regions on full-spine films; for lumbar requests it
-applies when Crop localizer is On. Existing landmark checks remain in place.
+**Full-spine and Auto films** use the bundled region detector (YOLO26-s, cervical and
+lumbar boxes) instead of a crop search; see [automatic film detection](automatic-film-detection.md).
+Crop localizer applies to lumbar requests only. The retired Crop method and Automatic
+view selection settings are ignored if an older client or saved preference sends them.
 
 **Crop localizer Off** skips model-based search and S1-based reframing.
 It removes broad near-black screenshot borders with the existing fast pixel-based
 cleanup, then runs the selected models once on the visible image extent. Use it for lumbar-only
 images already framed around the anatomy. This saves the repeated detector calls;
-it does not turn off S1 measurements or femoral detection. Full-spine images can make the lumbar anatomy too small with this setting Off.
+it does not turn off S1 measurements or femoral detection.
 
 The setting applies to the next single run or batch, persists across restarts and
 cannot change during processing. Calibration always uses the original image.

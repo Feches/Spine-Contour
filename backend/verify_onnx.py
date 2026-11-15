@@ -45,10 +45,10 @@ def verify(gpu=None, parity_films=None):
             results[kind] = [list(value.shape) for value in output]
         models.release_models()
         session, contract = learned_region._load(1)
-        assert session.get_inputs()[0].shape == [1, 3, 960, 960]
+        assert session.get_inputs()[0].shape == [1, 3, 1024, 1024]
         output = session.run([contract.output_name], {
-            contract.input_name: np.zeros((1, 3, 960, 960), np.float32)})[0]
-        assert output.shape[0:2] == (1, 6) and np.isfinite(output).all()
+            contract.input_name: np.zeros((1, 3, 1024, 1024), np.float32)})[0]
+        assert output.shape == (1, 300, 6) and np.isfinite(output).all()
         results['crop_detector'] = [list(output.shape)]
         learned_region._load.cache_clear()
     # Exercise the production Apple provider configuration as well as CPU-only

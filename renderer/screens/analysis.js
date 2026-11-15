@@ -10,6 +10,7 @@ import { showToast } from '../components/toast.js';
 import { toCsv } from '../data/csv.js';
 import { loadStudyImages, disposeStudyImages, thumbnailDataUri, bitmapFromBase64, imagesFromRaw } from '../viewer/canvas.js';
 import { cropRaw, defaultWindow, rawFromDecoded } from '../viewer/window-level.js';
+import { normalizeMarks, regionForMarks } from '../data/crop-marks.js';
 import { mountViewer, recordPrediction, forgetPrediction, getPrediction, commitGeometry, replaceMeasured } from '../components/viewer.js';
 import { configureLevelEditor, forgetLevelEditor, requestExit, writeReviewRecord } from '../level-editor.js';
 import { configureFilmWindow, forgetFilmWindow, windowNeedsDecode, redecodeKeptWindow } from '../film-window.js';
@@ -399,6 +400,8 @@ export async function segmentStudy(studyId, { batch = false } = {}) {
         ? { vertebrae: 'cervical_anatomical_hrnet' } : requestedRegion(current) === 'full_spine'
         ? { vertebrae: 'dual_hrnet' } : getState().models }),
       calibration: calibrationForStudy(current),
+      // (2026-11-12) Crop marks frame the run's crops in place of the region detector's; a cervical film is read whole.
+      ...(current.regionHints && requestedRegion(current) !== 'cervical' ? { regionHints: current.regionHints } : {}),
     });
     if (revision !== runRevision) return { ok: false, reason: 'superseded' };
 
@@ -1068,7 +1071,8 @@ export function render(state) {
     setState({ editing: false, selection: null, selectedLevel: null, levelEditor: null,
       studies: live.studies.map(s => s.id === open.id ? { ...s, ...patch,
         geometry: null, measurements: null, qc: null, reviewedAt: null, predictionId: null,
-        processingError: null, processingErrorAt: null } : s) });
+        processingError: null, processingErrorAt: null, regionHints: 'regionHints' in patch ? patch.regionHints : 'region' in patch ? null : s.regionHints ?? null } : s),
+      cropMarks: null });
     // (2026-10-10) The film type the levels were opened for is gone; a stashed editor goes too.
     forgetLevelEditor(open.id);
     // (2026-10-11, gate feedback G3) So does the film on the stage, and its window with it.
@@ -1102,6 +1106,17 @@ export function render(state) {
   const levelPanel = mountLevelEditor(levelHost);
   const clinical = mountClinicalData(clinicalHost);
 
+  // (2026-11-12) Mark crops' RUN WITH MARKS: the study takes the marks (and full spine for a neck mark), its result is
+  // cleared as a region change clears it, and the film is segmented again with them.
+  viewer.setMarksHandler((marks) => {
+    const live = getState();
+    const open = currentStudy(live);
+    if (!open || live.running || live.batch || locating || live.editing || regionLock(open, live).locked) return;
+    const region = regionForMarks(requestedRegion(open), marks);
+    changeRegion({ region, anteriorSide: region === requestedRegion(open) ? open.anteriorSide ?? null : null,
+      regionHints: normalizeMarks(marks) });
+    segmentStudy(open.id);
+  });
   viewer.setRunHandler(() => {
     const live = getState();
     // `locating` too: a relocate picker is already open for a run that has not started, and a

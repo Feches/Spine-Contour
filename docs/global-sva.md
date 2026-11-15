@@ -2,10 +2,10 @@
 
 Use **Auto detect** or select **Full spine · HRNET** for a study; workspace folders
 offer the same choices. Use a lateral radiograph showing both C7 and S1. The
-original-image preview is available before processing. Orientation defaults to
-automatic comparison of anterior-left and anterior-right hypotheses. If the
-evidence cannot distinguish them, select a side manually and retry. An explicit
-left/right choice always overrides detection; no rotation is applied.
+original-image preview is available before processing. The region detector frames
+the cervical and lumbar crops, and the landmark models read the anterior side
+(see [automatic film detection](automatic-film-detection.md)). An explicit
+left/right choice always overrides it; no rotation is applied.
 
 Standing-film results include the available C2–C7 Cobb and SVA, lumbar lordosis,
 sacral slope, pelvic incidence, pelvic tilt, L1 pelvic angle and derived disc
@@ -52,9 +52,11 @@ available `femoral_circles`, `hip_midpoint` and `l1_center`. Measurements includ
 `GLOBAL_SVA_PX`/`GLOBAL_SVA_MM`, `C2C7_*`, `LL`, `SS`, `PI`, `PT` and `L1PA`.
 The same combined contract is used by `/measure`, persistence and export.
 
-The upper-image search runs cervical DETR and HRNET over overlapping crops. The
-lower-image search uses the sliding S1 localizer and lumbar HRNET over translated
-and scaled crops. Repeated source crops are deduplicated, and agreement selects
+The anatomical cervical HRNET reads four square crops around the region detector's
+cervical box (1.3× its longer side, small shifts). The lumbar HRNET reads seven
+translated and scaled crops around the detector's lumbar box (BUU-LSPINE margins,
+each extended 15% upward), and the femoral U-Net starts from a crop framed on the
+accepted S1 endplate. Repeated source crops are deduplicated, and agreement selects
 an observed medoid candidate rather than averaging landmark positions. Missing
 anchors or competing candidate clusters are withheld for review. C7's centroid
 is calculated as the mean of its four predicted body corners; it is not a direct

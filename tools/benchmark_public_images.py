@@ -8,7 +8,7 @@ def main():
  from PIL import Image,ImageDraw,ImageOps
  from fastapi.testclient import TestClient
  from backend import server
- p=argparse.ArgumentParser();p.add_argument('--inventory',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--source',action='append');p.add_argument('--limit',type=int,default=0);p.add_argument('--routing',choices=['known','auto','classifier'],default='known');p.add_argument('--shard',type=int,default=0);p.add_argument('--shards',type=int,default=1);a=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--inventory',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--source',action='append');p.add_argument('--limit',type=int,default=0);p.add_argument('--routing',choices=['known','auto'],default='known');p.add_argument('--shard',type=int,default=0);p.add_argument('--shards',type=int,default=1);a=p.parse_args()
  rows=[r for r in json.loads(a.inventory.read_text()) if r['source']!='Tower-reviewed-cervical' and (not a.source or r['source'] in a.source)]
  random.Random(20261015).shuffle(rows)
  if a.limit:
@@ -42,7 +42,7 @@ def main():
   started=time.monotonic();record={'id':r['id'],'source':r['source'],'path':r['path'],'source_group':r.get('group'),'routing':a.routing,'landmark_training_exposure':'training' if r['source']=='CSXA' else 'not_established','view_classifier_split':r.get('existing_view_split'),'expected_region':r['region'].removesuffix('_lateral')}
   try:
    path=Path(r['path']);payload=path.read_bytes()
-   settings={'modality':'xray','body_part':record['expected_region'] if a.routing=='known' else 'auto','view':'lateral','view_selection':'classifier' if a.routing=='classifier' else 'landmarks'}
+   settings={'modality':'xray','body_part':record['expected_region'] if a.routing=='known' else 'auto','view':'lateral'}
    response=client.post('/predict',data=settings,files={'file':(path.name,payload,'application/octet-stream')});record['http_status']=response.status_code
    try:result=response.json()
    except ValueError:result={'error':response.text[:2000]}

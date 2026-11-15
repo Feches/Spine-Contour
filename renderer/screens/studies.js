@@ -117,7 +117,7 @@ export function studyFromFile({ id, fileName, filePath }) {
 // writes into it (components/viewer.js replaces it wholesale).
 export const FRESH_VIEW = {
   selectedLevel: null, zoom: 1, panX: 0, panY: 0, panMode: false, editing: false, selection: null, levelEditor: null, filmWindow: null,
-  platePositions: {},
+  platePositions: {}, cropMarks: null,
 };
 
 function openStudy(study) {

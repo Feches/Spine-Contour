@@ -9,6 +9,7 @@ import {
   createLayeredCanvases, sizeCanvases, drawStaticLayer, drawDynamicLayer, constructionLabel, colorFor, overlayCanvasFor, MASK_LEVELS,
 } from '../viewer/canvas.js';
 import { clientToImage } from '../viewer/geometry.js';
+import { MARKS, EMPTY_MARKS, normalizeMarks, neckBox, s1Frame, addMarkPoint, marksSummary } from '../data/crop-marks.js';
 import {
   zoomIn, zoomOut, zoomAbout, isChordHeld, isDoubleClick, exceedsSlop, vertebraAt, arrowKeyDelta,
 } from '../viewer/interactions.js';
@@ -42,6 +43,8 @@ const ICONS = {
   // (2026-10-10, level editor) The level-editor prototype's window / level glyph (docs/design/level-editor/
   // prototype/Main.dc.html): a circle with a vertical bar and three ticks.
   windowLevel: `${SVG_OPEN}<circle cx="12" cy="12" r="9"></circle><path d="M12 3 V21"></path><path d="M12 8 H17"></path><path d="M12 12 H18.5"></path><path d="M12 16 H17"></path></svg>`,
+  // (2026-11-12) Mark crops: two crop corners.
+  crop: `${SVG_OPEN}<path d="M6 2 V18 H22"></path><path d="M2 6 H18 V22"></path></svg>`,
   overlays: `${SVG_OPEN}<path d="M12 3 L21 8 L12 13 L3 8 Z"></path><path d="M3 14 L12 19 L21 14"></path></svg>`,
   edit: `${SVG_OPEN}<path d="M12 20 H21"></path><path d="M16.5 3.5 a2.1 2.1 0 0 1 3 3 L7 19 L3 20 L4 16 Z"></path></svg>`,
   rerun: `${SVG_OPEN}<path d="M21 4 V10 H15"></path><path d="M3 20 V14 H9"></path><path d="M20.5 9.5 A8 8 0 0 0 5.6 6.6 L3 9"></path><path d="M3.5 14.5 A8 8 0 0 0 18.4 17.4 L21 15"></path></svg>`,
@@ -274,9 +277,14 @@ export function mountViewer(container) {
     // comment on handlePointerDown. Leaving edit mode does not restore the toggle.
     const state = getState();
     if (state.editing) requestExit();
-    else if (state.openId) enterLevelEditor(state.openId);
+    else if (state.openId) { if (state.cropMarks) setState({ cropMarks: null }); enterLevelEditor(state.openId); }
   }, { 'aria-pressed': 'false', disabled: true });
   let runHandler = null;
+  // (2026-11-12) Mark crops: click S1's superior corners and/or C2's top and C7's bottom, and the film is segmented
+  // again with crops framed from those marks instead of the region detector's boxes (renderer/data/crop-marks.js).
+  let marksHandler = null;
+  const markButton = toolButton('Mark crops', ICONS.crop, () => toggleMarks(), { 'aria-pressed': 'false', disabled: true,
+    title: 'Mark crops \u2014 place S1 or C2\u2013C7 so the models read the crop you mean' });
   const rerunButton = toolButton('Re-run segmentation', ICONS.rerun, () => { if (runHandler) runHandler(); }, { disabled: true });
   const fillSlider = el('input', {
     type: 'range',
@@ -302,6 +310,7 @@ export function mountViewer(container) {
       el('div', { class: 'viewer-fill-label' }, 'FILL'),
       fillSlider),
     el('div', { class: 'viewer-divider' }),
+    markButton,
     editButton,
     rerunButton);
 
@@ -365,6 +374,18 @@ export function mountViewer(container) {
     el('p', { class: 'viewer-wl-copy' }, "Display only. Measurements and the label record don't change."),
     wlNote);
 
+  const markHelp = el('div', { class: 'viewer-edit-help' });
+  const markChips = el('div', { class: 'viewer-steps' });
+  const markRun = textButton('RUN WITH MARKS', () => runMarks(), { class: 'viewer-tool viewer-tool-text is-active' });
+  const markBar = el('div', { class: 'viewer-editbar viewer-markbar is-hidden', role: 'group', 'aria-label': 'Mark crops' },
+    el('div', { class: 'viewer-editbar-label' }, 'MARK CROPS'),
+    markHelp,
+    markChips,
+    textButton('CLEAR', () => updateMarks((m) => ({ ...m, marks: { ...EMPTY_MARKS }, target: 's1' }))),
+    el('div', { class: 'viewer-divider' }),
+    textButton('CANCEL', () => setState({ cropMarks: null })),
+    markRun);
+
   const footer = el('div', { class: 'viewer-footer' });
 
   // Stages and counts come from the backend; elapsed time is not a percentage.
@@ -377,7 +398,7 @@ export function mountViewer(container) {
   const runCard = el('div', { class: 'run-card is-hidden' },
     el('div', { class: 'run-card-inner' }, runEyebrow, runTitle, runBody, runSpinner, runButton, cancelButton));
 
-  stage.append(host, chip, toolbar, editBar, wlPanel, footer, runCard);
+  stage.append(host, chip, toolbar, editBar, markBar, wlPanel, footer, runCard);
   container.append(stage);
 
   let currentImages = null;
@@ -402,6 +423,86 @@ export function mountViewer(container) {
   }
 
   // The stored image's size, which every placement click and handle point is clamped to.
+  // The Mark crops state for the study on the stage, or null.
+  function marksFor(state, study) {
+    return state.cropMarks && study && state.cropMarks.studyId === study.id ? state.cropMarks : null;
+  }
+  function updateMarks(change) {
+    const live = getState();
+    const marking = marksFor(live, currentStudy());
+    if (marking) setState({ cropMarks: change(marking) });
+  }
+  function toggleMarks() {
+    const live = getState();
+    const study = currentStudy();
+    if (!study) return;
+    if (marksFor(live, study)) { setState({ cropMarks: null }); return; }
+    const saved = normalizeMarks(study.regionHints);
+    // Start on S1 unless the film is already marked there; a cervical film starts on the neck.
+    const target = studyRegion(study) === 'cervical' || saved?.s1 ? 'neck' : 's1';
+    setState({ cropMarks: { studyId: study.id, target, marks: { s1: saved?.s1 ?? null, neck: saved?.neck ?? null } },
+      selectedLevel: null });
+  }
+  function runMarks() {
+    const marking = marksFor(getState(), currentStudy());
+    const marks = marking && normalizeMarks(marking.marks);
+    if (!marks || !marksHandler) return;
+    setState({ cropMarks: null });
+    marksHandler(marks);
+  }
+  // The crops the last run read (dashed), each mark's points and the crop it will give (solid).
+  function drawMarks(marking, study) {
+    const pr = pixelRatio();
+    const { width, height } = imageSize();
+    const ctx = dynamicCtx;
+    ctx.save();
+    const framing = study?.qc?.framing ?? {};
+    ctx.setLineDash([8 * pr, 6 * pr]);
+    ctx.lineWidth = 1.5 * pr;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    for (const box of [framing.cervical_window, framing.lumbar_window, framing.window]) {
+      if (Array.isArray(box) && box.length === 4) ctx.strokeRect(box[0], box[1], box[2] - box[0], box[3] - box[1]);
+    }
+    ctx.setLineDash([]);
+    const accent = '#E0703F';
+    for (const [name, points] of Object.entries(marking.marks)) {
+      if (!points?.length) continue;
+      ctx.strokeStyle = accent;
+      ctx.fillStyle = accent;
+      ctx.lineWidth = 2 * pr;
+      if (points.length === 2) {
+        ctx.beginPath(); ctx.moveTo(...points[0]); ctx.lineTo(...points[1]); ctx.stroke();
+        const box = name === 's1' ? s1Frame(points, width, height) : neckBox(points, width, height);
+        if (box) ctx.strokeRect(box[0], box[1], box[2] - box[0], box[3] - box[1]);
+      }
+      for (const point of points) { ctx.beginPath(); ctx.arc(point[0], point[1], 5 * pr, 0, Math.PI * 2); ctx.fill(); }
+    }
+    ctx.restore();
+  }
+  function updateMarkBar(state, study, busy) {
+    const marking = marksFor(state, study);
+    markBar.classList.toggle('is-hidden', !marking);
+    stage.classList.toggle('is-marking', Boolean(marking));
+    markButton.setAttribute('aria-pressed', String(Boolean(marking)));
+    markButton.classList.toggle('is-active', Boolean(marking));
+    markButton.disabled = busy || state.editing || Boolean(state.batch) || study.source !== 'real' || filmStatus !== null
+      || !currentImages;
+    if (!marking) return;
+    const summary = marksSummary(marking.marks);
+    setText(markHelp, marking.target ? MARKS[marking.target].help
+      : summary ? `Run to segment again with the ${summary}.` : 'Choose S1 or C2\u2013C7, then click on the film.');
+    markChips.replaceChildren(...Object.entries(MARKS).map(([name, { label }]) => {
+      const count = marking.marks[name]?.length ?? 0;
+      return el('button', {
+        type: 'button', class: `viewer-step${count === 2 ? ' is-done' : ''}${marking.target === name ? ' is-current' : ''}`,
+        'aria-pressed': String(marking.target === name), 'data-mark': name, disabled: busy,
+        title: count === 2 ? `Place ${label} again` : `Place ${label}`,
+        onClick: () => updateMarks((m) => ({ ...m, target: name, marks: { ...m.marks, [name]: m.marks[name]?.length === 2 ? null : m.marks[name] } })),
+      }, `${label} ${count}/2`);
+    }));
+    markRun.disabled = busy || Boolean(state.running) || Boolean(state.batch) || !normalizeMarks(marking.marks);
+  }
+
   function imageSize() {
     return { width: dynamicCanvas.width, height: dynamicCanvas.height };
   }
@@ -464,6 +565,8 @@ export function mountViewer(container) {
         platePositions: state.platePositions,
       } : {}),
     }) ?? [];
+    const marking = marksFor(state, study);
+    if (marking) drawMarks(marking, study);
     placeLabel(geometry);
   }
 
@@ -1028,6 +1131,16 @@ export function mountViewer(container) {
       if (live.running !== editor.studyId && currentImages) placeAimedPoint(clampToImage(clientToImage(event, dynamicCanvas)));
       return;
     }
+    // (2026-11-12) Mark crops: a click places the current mark's next point, clamped to the film.
+    const marking = marksFor(live, currentStudy());
+    if (marking) {
+      if (marking.target && currentImages && live.running !== marking.studyId) {
+        const point = clampToImage(clientToImage(event, dynamicCanvas)).map((v) => Math.round(v * 10) / 10);
+        const marks = addMarkPoint(marking.marks, marking.target, point);
+        setState({ cropMarks: { ...marking, marks, target: marks[marking.target].length === 2 ? null : marking.target } });
+      }
+      return;
+    }
     if (live.editing) return;
     const study = currentStudy();
     if (!study || !study.geometry) return;
@@ -1540,6 +1653,7 @@ export function mountViewer(container) {
     stage.classList.toggle('is-editing', state.editing);
     if (!editor) stage.classList.remove('is-over-handle', 'is-over-plate');
     updateEditBar(state, study);
+    updateMarkBar(state, study, busy);
     updateWindow(state, study);
 
     // (2026-10-10) The film layer shows the decoded original at the view's window once it is ready (display only,
@@ -1578,7 +1692,7 @@ export function mountViewer(container) {
     // and the fill while editing: the editor's level fills follow both. So are the plates' drag offsets
     // (gate feedback G7, R44): a plate drag writes a new map on every move, and this is what repaints it.
     const dynamicKey = [study.calibration, study.geometry, state.measurementDrafts?.[study.id], state.selectedLevel, study.measurements, state.editing, state.selection, state.zoom,
-      state.levelEditor, editor ? state.overlays : null, editor ? state.overlayOpacity : null, state.platePositions];
+      state.levelEditor, editor ? state.overlays : null, editor ? state.overlayOpacity : null, state.platePositions, state.cropMarks, study.qc];
     if (!sameKey(dynamicKey, lastDynamic)) {
       lastDynamic = dynamicKey;
       redrawDynamic(liveGeometry());
@@ -1590,5 +1704,9 @@ export function mountViewer(container) {
     runButton.onclick = handler;
   }
 
-  return { updateViewer, setImages, setFilmStatus, setRunHandler, detach };
+  function setMarksHandler(handler) {
+    marksHandler = handler;
+  }
+
+  return { updateViewer, setImages, setFilmStatus, setRunHandler, setMarksHandler, detach };
 }

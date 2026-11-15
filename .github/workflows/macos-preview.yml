@@ -25,7 +25,7 @@ jobs:
   build:
     # Apple Silicon runner: the backend bundle is built for the arch it runs
     # on, and that is the arch the disk image is for.
-    runs-on: macos-14
+    runs-on: macos-15
     # Same guard as the Windows preview: workflow_dispatch has no branch or
     # repository restriction of its own. Runs on the fork or the parent
     # repository, and publishes only to that repository's preview prerelease.
@@ -107,8 +107,16 @@ jobs:
           --exclude-module safetensors
           --collect-all uvicorn
           --add-data "backend/onnx:backend/onnx"
-          --add-data "build/ocr:ocr"
           backend/standalone.py
+
+      - name: Add the OCR runtime outside PyInstaller's analysis
+        # PyInstaller rewrites collected Mach-O files to load through @rpath, and the bundle's rpath reaches
+        # OpenCV's own older libtesseract in cv2/.dylibs first, so the bundled tesseract aborts (dyld: Symbol not
+        # found: tesseract::SIMDDetect::GetDetector). Copy the relocatable build from bundle_ocr_macos.py unchanged.
+        run: |
+          rm -rf backend-dist/spine-contour-backend/_internal/ocr
+          cp -R build/ocr backend-dist/spine-contour-backend/_internal/ocr
+          backend-dist/spine-contour-backend/_internal/ocr/tesseract --version | head -1
 
       - name: Verify bundled backend
         shell: bash

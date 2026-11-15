@@ -14,6 +14,21 @@ stream = io.BytesIO(); Image.fromarray(image).save(stream, format='PNG')
 response = httpx.post('http://127.0.0.1:8765/calibrate', files={'file': ('test.png', stream.getvalue(), 'image/png')}, timeout=90)
 response.raise_for_status()
 body = response.json()
-assert body['status'] == 'detected', body['message']
+if body['status'] != 'detected':
+    # Say why: run the bundled binary directly and compare the bundle's copy with the standalone OCR build.
+    import filecmp, subprocess, sys
+    from pathlib import Path
+    ocr = Path('backend-dist/spine-contour-backend/_internal/ocr')
+    exe = ocr / ('tesseract.exe' if sys.platform == 'win32' else 'tesseract')
+    run = subprocess.run([str(exe), '--version'], capture_output=True, text=True)
+    print(f'bundled {exe}: exit {run.returncode}\n{run.stdout}\n{run.stderr}')
+    source = Path('build/ocr')
+    if source.is_dir():
+        same = filecmp.dircmp(source, ocr)
+        print('differs from build/ocr:', same.diff_files, 'only in build/ocr:', same.left_only, 'only in bundle:', same.right_only)
+    if sys.platform == 'darwin':
+        print(subprocess.run(['otool', '-L', str(exe)], capture_output=True, text=True).stdout)
+        print(subprocess.run(['codesign', '-dv', str(exe)], capture_output=True, text=True).stderr)
+    raise AssertionError(body['message'])
 assert body['candidates'][body['selected_index']]['value_mm'] == 25.4
 print('Bundled OCR extracted 25.4 mm successfully.')
