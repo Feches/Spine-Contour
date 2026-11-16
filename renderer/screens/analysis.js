@@ -29,6 +29,12 @@ import { calibrationForStudy } from '../calibration.js';
 import { preferReviewedCalibration } from '../data/calibration.js';
 import { findNeighbour, findPosition } from '../data/find.js';
 import { FRESH_VIEW } from '../data/demo-visibility.js';
+import {
+  cleanFlags, flagsInUse, flagChoices, FLAGS_MAX, startFlagEdit, flagEditText, flagEditAdd, flagEditRemove,
+  flagEditActive, flagEditResult,
+} from '../data/flags.js';
+import { setStudyFlags, flagsRefusal } from '../study-flags.js';
+import { flagChips, flagEditor } from '../components/flag-editor.js';
 
 const BACK_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12 H5"></path><path d="M11 6 L5 12 L11 18"></path></svg>';
 // (2026-10-19, reviewer navigation) Previous and next, the same 24-unit stroke convention as BACK_SVG.
@@ -1038,9 +1044,19 @@ export function render(state) {
   const commentBlock = el('div', { class: 'analysis-comment is-hidden' },
     el('span', { class: 'analysis-comment-label' }, 'COMMENT'),
     commentText);
+  // (2026-11-16, study flags spec 4.4; FL4, FL19) The film's flags, between the actions row and the comment: the FLAGS
+  // label, the chips and a dashed `+ Add flag`, or the same editor the Find list's row uses. `flagsEdit` is the editor
+  // in progress, { studyId, draft, text, active } (data/flags.js startFlagEdit's shape plus the film's id), or null.
+  // It lives in this mount's closure, so a new openId (every opener remounts this host) or leaving the screen discards
+  // it. paintFlags rebuilds ONLY this block, and only when what it shows changed (update() gates it): a rebuild of the
+  // whole panel on a pointer press would replace the control under the pointer before mouseup and swallow its click.
+  let flagsEdit = null;
+  let lastFlagsKey = null;
+  const flagsBlock = el('div', { class: 'analysis-flags is-hidden' });
   const panel = el('aside', { class: 'analysis-panel' },
     tabsRow,
     actionsRow,
+    flagsBlock,
     commentBlock,
     measurementsHost,
     similarHost,
@@ -1182,6 +1198,99 @@ export function render(state) {
     }
   }
 
+  // (2026-11-16, study flags spec 4.4; FL14) The flags block's callbacks. Each editor change is one of data/flags.js's
+  // pure transitions, as on the Find list (screens/studies.js changeFlagsEdit), and repaints this block alone.
+  function beginFlagsEdit() {
+    const live = getState();
+    const open = currentStudy(live);
+    if (!open || open.source !== 'real' || live.editing || flagsEdit) return;
+    const refusal = flagsRefusal(live);
+    if (refusal) { showToast(refusal); return; }
+    flagsEdit = { studyId: open.id, ...startFlagEdit(open.flags) };
+    paintFlags('analysis-flags-input');
+  }
+  function changeFlagsEdit(change) {
+    if (!flagsEdit) return;
+    const { studyId, ...edit } = flagsEdit;
+    flagsEdit = { studyId, ...change(edit) };
+    paintFlags();
+  }
+  // Closes the editor and writes the draft plus any text still in the box. Idempotent: a blur after an Enter finds it
+  // closed. setStudyFlags writes nothing when nothing changed and toasts its own refusal or failure; not awaited.
+  // `focusKey` is where focus goes, or null when it already went somewhere that survives the repaint.
+  function commitFlagsEdit(focusKey) {
+    if (!flagsEdit) return;
+    const { studyId, ...edit } = flagsEdit;
+    flagsEdit = null;
+    setStudyFlags([{ id: studyId, flags: flagEditResult(edit, flagsInUse(getState().studies)) }]);
+    paintFlags(focusKey);
+  }
+  function cancelFlagsEdit() {
+    if (!flagsEdit) return;
+    flagsEdit = null;
+    paintFlags('analysis-flags-add');
+  }
+
+  // What the block shows: the open film, its saved flags, the editor in progress and the refusal sentence.
+  function flagsKeyOf(live, open) {
+    return [open.id, open.flags, flagsEdit, flagsRefusal(live)];
+  }
+
+  // Rebuilds the block from `flagsEdit` and the open study's saved flags. Focus and the caret go back to the control
+  // that had them (same data-flags-key), unless `focusKey` names where focus should land.
+  function paintFlags(focusKey) {
+    const live = getState();
+    const open = currentStudy(live);
+    if (!open || open.source !== 'real') return;
+    const held = document.activeElement;
+    const kept = held instanceof HTMLElement && flagsBlock.contains(held) ? {
+      key: held.getAttribute('data-flags-key'),
+      start: held instanceof HTMLInputElement ? held.selectionStart : null,
+      end: held instanceof HTMLInputElement ? held.selectionEnd : null,
+    } : null;
+    lastFlagsKey = flagsKeyOf(live, open);
+    const name = studyName(open);
+    const refusal = flagsRefusal(live);
+    const label = el('span', { class: 'analysis-comment-label' }, 'FLAGS');
+    if (flagsEdit && flagsEdit.studyId === open.id) {
+      const { draft, text, active } = flagsEdit;
+      const choices = flagChoices({ inUse: flagsInUse(live.studies), draft, text });
+      const { field, popup } = flagEditor({
+        keyAttr: 'data-flags-key', keyPrefix: 'analysis-flags', ariaLabel: `Flags for ${name}`,
+        draft, text, choices, active, full: draft.length >= FLAGS_MAX,
+        onText: (value) => changeFlagsEdit((edit) => flagEditText(edit, value)),
+        onAdd: (flags) => changeFlagsEdit((edit) => flagEditAdd(edit, flags, flagsInUse(getState().studies))),
+        onRemove: (index) => changeFlagsEdit((edit) => flagEditRemove(edit, index)),
+        onActive: (index) => changeFlagsEdit((edit) => flagEditActive(edit, index, choices.length)),
+        onDone: () => commitFlagsEdit('analysis-flags-add'),
+        onCancel: () => cancelFlagsEdit(),
+        onLeave: (key) => commitFlagsEdit(key),
+      });
+      mount(flagsBlock, el('div', null, label, field));
+      flagsBlock.append(popup);
+    } else {
+      const flags = cleanFlags(open.flags);
+      const row = el('div', { class: 'analysis-flags-row' });
+      if (flags.length > 0) {
+        const chips = flagChips(flags);
+        chips.addEventListener('click', beginFlagsEdit);
+        chips.classList.add('analysis-flags-chips');
+        row.append(chips);
+      }
+      row.append(el('button', {
+        type: 'button', class: 'flag-chip flag-chip-add', 'data-flags-key': 'analysis-flags-add',
+        disabled: refusal !== '' || undefined, title: refusal || undefined, onClick: beginFlagsEdit,
+      }, '+ Add flag'));
+      mount(flagsBlock, el('div', null, label, row));
+    }
+    const wanted = focusKey ?? kept?.key ?? null;
+    const target = wanted ? flagsBlock.querySelector(`[data-flags-key="${CSS.escape(wanted)}"]`) : null;
+    if (target) {
+      target.focus();
+      if (!focusKey && kept && kept.start !== null && target instanceof HTMLInputElement) target.setSelectionRange(kept.start, kept.end);
+    }
+  }
+
   function update() {
     const live = getState();
     const open = currentStudy(live);
@@ -1293,6 +1402,15 @@ export function render(state) {
     const comment = typeof open.labelComment === 'string' && open.labelComment.trim() !== '' ? open.labelComment : null;
     commentText.textContent = comment ?? '';
     commentBlock.classList.toggle('is-hidden', editing || comment === null);
+
+    // (2026-11-16, study flags spec 4.4; FL19) The flags block: shown for a real study while edit mode is off, with or
+    // without flags; hidden for a demo study and in edit mode, where an editor left open is discarded. Repainted only
+    // when the film, its flags reference, the editor or the refusal changed, so a pan frame or a toast leaves it alone.
+    if (editing) flagsEdit = null;
+    const flagsShown = open.source === 'real' && !editing;
+    flagsBlock.classList.toggle('is-hidden', !flagsShown);
+    if (!flagsShown) lastFlagsKey = null;
+    else if (!sameConfidenceKey(flagsKeyOf(live, open), lastFlagsKey)) paintFlags();
 
     // (2026-10-19) Previous / next and the position, from the Find list's order under its filters (data/find.js): every
     // store key that order reads is in the gate, and edit mode disables both buttons (openNeighbour refuses it too).
