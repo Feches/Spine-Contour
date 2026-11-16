@@ -5,6 +5,7 @@ import fs from 'node:fs';
 
 const KEYS = {
   Tab: { code: 'Tab', vk: 9 },
+  Backspace: { code: 'Backspace', vk: 8 },
   Escape: { code: 'Escape', vk: 27 },
   Enter: { code: 'Enter', vk: 13 },
   ArrowUp: { code: 'ArrowUp', vk: 38 },

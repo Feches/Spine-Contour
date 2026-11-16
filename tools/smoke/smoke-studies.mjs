@@ -127,8 +127,9 @@ try {
   })()`);
   check('the LORDOSIS column is gone from the list', cellDetail.lordosisGone === 0, cellDetail.lordosisGone);
   // (2026-10-19, header filters) REGION sits between SUBJECT and VIEW.
-  check('the header row reads STUDY, SUBJECT, REGION, VIEW, WORKSPACE, FOLDER, DATE, STATUS',
-    JSON.stringify(cellDetail.headers) === JSON.stringify(['STUDY', 'SUBJECT', 'REGION', 'VIEW', 'WORKSPACE', 'FOLDER', 'DATE', 'STATUS', '']),
+  // (2026-11-16, study flags) FLAGS is the ninth header, after STATUS and before the trash cell's.
+  check('the header row reads STUDY, SUBJECT, REGION, VIEW, WORKSPACE, FOLDER, DATE, STATUS, FLAGS',
+    JSON.stringify(cellDetail.headers) === JSON.stringify(['STUDY', 'SUBJECT', 'REGION', 'VIEW', 'WORKSPACE', 'FOLDER', 'DATE', 'STATUS', 'FLAGS', '']),
     cellDetail.headers);
   check('SP-0042 date cell reads Aug 21, 2026', cellDetail.sp0042Date === 'Aug 21, 2026', cellDetail.sp0042Date);
   check('a demo study has an em dash for both workspace and folder',
@@ -576,7 +577,7 @@ try {
   await openFilterMenu('folder');
   await clickAt('[data-find-key="filter-folder-all"]');
   await cdp.settle(150);
-  check('All on FOLDER restores every row', (await rowCount(cdp)) === countBefore10 + 1 && JSON.stringify((await cdp.state()).findFilters) === JSON.stringify({ subject: '', region: [], view: [], workspace: [], folder: [], status: [] }), await rowCount(cdp));
+  check('All on FOLDER restores every row', (await rowCount(cdp)) === countBefore10 + 1 && JSON.stringify((await cdp.state()).findFilters) === JSON.stringify({ subject: '', region: [], view: [], workspace: [], folder: [], status: [], flags: [], flagsMatch: 'any' }), await rowCount(cdp));
   await cdp.key('Escape');
   await cdp.settle(100);
   check('Escape closes the open menu', (await cdp.evaluate(`document.querySelectorAll('.studies-filter-menu').length`)) === 0);
@@ -1042,6 +1043,354 @@ try {
   const row18 = await statusPill(cdp, '.studies-row[data-study-id="SP-9001"] .badge');
   check('back on the list SP-9001 reads Unsegmented with no title', Boolean(row18) && row18.cls === 'badge badge-unseg' && row18.text === 'Unsegmented' && row18.title === null, row18);
   check('no console errors or exceptions during section 18', cdp.errors.length === errorsBefore18, cdp.errors.slice(errorsBefore18));
+
+  // ---------------------------------------------------------------------------------------------
+  // 19 (2026-11-16, study flags, Task 7; spec 3 and 4.3). The FLAGS column, its in-row editor and its header menu. Three
+  // throwaway films, no bytes (the same injectFilm as sections 10-13), searched out of the list by the name they share
+  // and sorted to the end of it by STUDY, so the last row of the list is a row this section may edit. Flags are set on
+  // them through the store where a check needs a starting library; every edit being tested is driven with trusted
+  // keys and clicks. The editor's draft lives in screens/studies.js, so each check reads the page and the store, not the
+  // module. The window is resized (check 10) with the DevTools device-metrics override and put back in a finally.
+  // ---------------------------------------------------------------------------------------------
+  const errorsBefore19 = cdp.errors.length;
+  const FLAG_RESET = '{ subject: "", region: [], view: [], workspace: [], folder: [], status: [], flags: [], flagsMatch: "any" }';
+  const [FA, FB, FC] = ['SP-9101', 'SP-9102', 'SP-9103'];
+  for (const [id, fileName] of [[FA, 'zzflag-a.png'], [FB, 'zzflag-b.png'], [FC, 'zzflag-c.png']]) {
+    await injectFilm({ id, fileName, filePath: null, workspaceFolder: null, base64: null });
+  }
+  const resetFlagsView = (extra = '') => cdp.setState(`{ screen: "studies", openId: null, query: "zzflag", paramFilters: ${FILTERS_RESET}, findFilters: ${FLAG_RESET}, paramSelected: [], findSort: { key: "study", dir: "asc" }, navCollapsed: false${extra} }`);
+  // Sets the flags of the named films straight in the store (the starting library for a check), one repaint.
+  const putFlags = (map) => cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (Object.prototype.hasOwnProperty.call(${JSON.stringify(map)}, x.id) ? { ...x, flags: ${JSON.stringify(map)}[x.id] } : x)) })))`);
+  const flagsOf = (id) => cdp.evaluate(`import('./renderer/store.js').then((m) => m.getState().studies.find((x) => x.id === ${JSON.stringify(id)})?.flags ?? null)`);
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const rowIds = () => cdp.evaluate(`[...document.querySelectorAll('.studies-row')].map((r) => r.dataset.studyId)`);
+  // The open editor as the page shows it. `active` lists every highlighted option's index (none when nothing is).
+  const editorNow = (id) => cdp.evaluate(`(() => {
+    const input = document.querySelector('[data-find-key="flags-${id}-input"]');
+    const editors = document.querySelectorAll('.flag-editor').length;
+    if (!input) return { open: false, editors, active: document.activeElement?.getAttribute('data-find-key') ?? null };
+    const popup = document.querySelector('.flag-popup');
+    const options = popup ? [...popup.querySelectorAll('.flag-option')] : [];
+    return {
+      open: true, editors, value: input.value, focused: document.activeElement === input, start: input.selectionStart, end: input.selectionEnd,
+      chips: [...document.querySelectorAll('.flag-editor .flag-chip-text')].map((c) => c.textContent),
+      options: options.map((o) => o.textContent), highlighted: options.map((o, i) => (o.classList.contains('is-active') ? i : -1)).filter((i) => i >= 0),
+    };
+  })()`);
+  const openFlags = async (id) => { await clickAt(`[data-find-key="flags-${id}"]`); await cdp.settle(200); };
+  const rectOf = (selector) => cdp.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return null; const r = e.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; })()`);
+  const sorted = (list) => [...list].sort();
+
+  // 19.1 The column: last header with a funnel, a muted dash, ten tracks, a plain demo cell.
+  await resetFlagsView(', query: ""');
+  await putFlags({ [FA]: ['OLIF outcomes', 'hardware'], [FB]: [], [FC]: ['cement'] });
+  await cdp.settle(250);
+  const col1 = await cdp.evaluate(`(() => {
+    const heads = [...document.querySelectorAll('.studies-table-head > div')];
+    const labelOf = (d) => { const b = d.querySelector('.param-sort'); return (b ? b.textContent.replace(/[\\u25B4\\u25BE]/g, '') : d.textContent).trim(); };
+    const dash = document.querySelector('.studies-row[data-study-id="${FB}"] .studies-cell-flags .flag-none');
+    const name = document.querySelector('.studies-row[data-study-id="${FB}"] .studies-cell-id');
+    const demo = document.querySelector('.studies-row[data-study-id="SP-0042"] .studies-cell-flags');
+    return {
+      labels: heads.map(labelOf),
+      funnelIn: heads.findIndex((d) => d.querySelector('[data-find-key="filter-flags"]')),
+      tracks: getComputedStyle(document.querySelector('.studies-table-head')).gridTemplateColumns.trim().split(/\\s+/).length,
+      dash: dash ? dash.textContent : null, dashColour: dash ? getComputedStyle(dash).color : null, nameColour: name ? getComputedStyle(name).color : null,
+      demoDash: demo ? demo.textContent.trim() : null, demoEditable: Boolean(document.querySelector('[data-find-key="flags-SP-0042"]')),
+      chipsA: [...document.querySelectorAll('.studies-row[data-study-id="${FA}"] .studies-cell-flags .flag-chip-text')].map((c) => c.textContent),
+    };
+  })()`);
+  check('FLAGS is the last labelled header, after STATUS, and carries a funnel',
+    col1.labels.length === 10 && col1.labels[8] === 'FLAGS' && col1.labels[7] === 'STATUS' && col1.funnelIn === 8, col1);
+  check('the list grid has ten tracks', col1.tracks === 10, col1.tracks);
+  check('a film with no flags shows a muted dash, and a film with flags shows its chips', col1.dash === '—' && col1.dashColour !== col1.nameColour && same(col1.chipsA, ['OLIF outcomes', 'hardware']), col1);
+  check('a demo row shows the dash and has no editable cell', col1.demoDash === '—' && col1.demoEditable === false, col1);
+
+  await cdp.setState('{ query: "zzflag" }');
+  await cdp.settle(200);
+
+  // 19.2 A click opens the editor, not the study; the box has focus; the list offers the flags in use, none highlighted.
+  await openFlags(FB);
+  const open2 = await editorNow(FB);
+  s = await cdp.state();
+  check('clicking a FLAGS cell opens its editor with focus in the box and does not open the study',
+    s.screen === 'studies' && s.openId === null && open2.open === true && open2.focused === true && open2.editors === 1, { screen: s.screen, openId: s.openId, open2 });
+  check('the list under the empty box offers the flags in use, with nothing highlighted',
+    same(sorted(open2.options || []), sorted(['OLIF outcomes', 'hardware', 'cement'])) && same(open2.highlighted, []), open2);
+
+  // 19.3 Typing: a pasted list becomes chips, the box empties, `ce` offers Create and not cement, the first suggestion
+  // is highlighted once there is text, Enter adds it; the x and Backspace remove.
+  await cdp.typeText('#hardware, cement');
+  await cdp.settle(200);
+  const typed3 = await editorNow(FB);
+  check('typing "#hardware, cement" makes two chips in the library\'s spelling and empties the box',
+    typed3.open && same(typed3.chips, ['hardware', 'cement']) && typed3.value === '' && typed3.focused === true, typed3);
+  check('with the box empty after an add nothing is highlighted', same(typed3.highlighted, []), typed3);
+  await cdp.typeText('ce');
+  await cdp.settle(200);
+  const ce3 = await editorNow(FB);
+  check('typing "ce" offers Create "ce" and does not offer cement, which is in the draft, with the first suggestion highlighted',
+    same(ce3.options, ['Create "ce"']) && same(ce3.highlighted, [0]) && ce3.value === 'ce' && ce3.focused === true, ce3);
+  await cdp.key('Enter');
+  await cdp.settle(200);
+  const added3 = await editorNow(FB);
+  check('Enter with text typed adds the highlighted suggestion and empties the box, the editor still open',
+    added3.open && same(added3.chips, ['hardware', 'cement', 'ce']) && added3.value === '' && same(added3.highlighted, []) && added3.focused === true, added3);
+  check('the draft is not written until the editor closes', same(await flagsOf(FB), []), await flagsOf(FB));
+  await clickAt(`[data-find-key="flags-${FB}-remove-2"]`);
+  await cdp.settle(200);
+  const removed3 = await editorNow(FB);
+  check('the x on a chip removes it and the box keeps focus', removed3.open && same(removed3.chips, ['hardware', 'cement']) && removed3.focused === true, removed3);
+  await cdp.key('Backspace');
+  await cdp.settle(200);
+  const back3 = await editorNow(FB);
+  check('Backspace in the empty box removes the last chip', back3.open && same(back3.chips, ['hardware']) && back3.focused === true, back3);
+
+  // 19.4 A click on another row's cell saves this row's draft and opens that row's editor. FA is above FB, so FB's own
+  // list (which sits under its row) does not cover it.
+  await openFlags(FA);
+  const after4 = await editorNow(FA);
+  check('clicking another row\'s FLAGS cell saves the first row\'s draft and opens the second row\'s editor, one editor only',
+    same(await flagsOf(FB), ['hardware']) && after4.open && after4.focused === true && after4.editors === 1 && !(await editorNow(FB)).open, { b: await flagsOf(FB), after4 });
+
+  // (A click that does not open the second editor leaves the first closed and focus on the cell; open it with a second
+  // click so the checks below still run on the film they name.)
+  if (!(await editorNow(FA)).open) await openFlags(FA);
+
+  // 19.5 Esc, Enter in an empty box, Tab.
+  await cdp.typeText('dropme,');
+  await cdp.settle(200);
+  check('a chip added in the open editor is only in the draft', same((await editorNow(FA)).chips, ['OLIF outcomes', 'hardware', 'dropme']) && same(await flagsOf(FA), ['OLIF outcomes', 'hardware']), await editorNow(FA));
+  await cdp.key('Escape');
+  await cdp.settle(200);
+  const esc5 = await editorNow(FA);
+  check('Escape throws the draft away: the stored flags are unchanged, the editor is gone and focus is on the cell',
+    same(await flagsOf(FA), ['OLIF outcomes', 'hardware']) && esc5.open === false && esc5.active === `flags-${FA}`, { flags: await flagsOf(FA), esc5 });
+  await openFlags(FA);
+  await cdp.typeText('enterflag,');
+  await cdp.settle(200);
+  const hl5 = await editorNow(FA);
+  await cdp.key('Enter');
+  await cdp.settle(250);
+  const enter5 = await editorNow(FA);
+  check('Enter in an empty box (nothing highlighted) saves and closes, with focus on the cell',
+    same(hl5.highlighted, []) && hl5.value === '' && same(await flagsOf(FA), ['OLIF outcomes', 'hardware', 'enterflag']) && enter5.open === false && enter5.active === `flags-${FA}`, { hl5, flags: await flagsOf(FA), enter5 });
+  await openFlags(FB);
+  await cdp.typeText('tabflag,');
+  await cdp.settle(200);
+  await cdp.key('Tab');
+  await cdp.settle(250);
+  const tab5 = await editorNow(FB);
+  check('Tab saves the draft and closes the editor', same(await flagsOf(FB), ['hardware', 'tabflag']) && tab5.open === false && tab5.editors === 0, { flags: await flagsOf(FB), tab5 });
+  // The padding of the field is not "elsewhere": a press on it keeps the editor open (the implementer's mousedown guard).
+  await openFlags(FB);
+  const fieldRect = await rectOf('.flag-editor');
+  await cdp.click(fieldRect.left + 2, fieldRect.top + fieldRect.height / 2);
+  await cdp.settle(200);
+  const pad5 = await editorNow(FB);
+  check('a click on the field\'s own padding keeps the editor open and the box focused', pad5.open === true && pad5.focused === true && pad5.editors === 1, pad5);
+  await cdp.key('Escape');
+  await cdp.settle(200);
+
+  // 19.6 A repaint the editor did not cause. One repaint per keystroke; the draft, focus and caret survive; nothing is
+  // written; the last row's list is inside the host and not clipped.
+  await openFlags(FB);
+  await cdp.typeText('draftchip,');
+  await cdp.settle(200);
+  await cdp.evaluate(`(() => { window.__flagRepaints = 0; window.__flagObserver?.disconnect(); window.__flagObserver = new MutationObserver(() => { window.__flagRepaints += 1; }); window.__flagObserver.observe(document.querySelector('.studies-table-host'), { childList: true, subtree: true }); })()`);
+  await cdp.typeText('h');
+  await cdp.settle(250);
+  const oneKey = await cdp.evaluate(`window.__flagRepaints`);
+  check('one typed character repaints the list once', oneKey === 1, oneKey);
+  await cdp.typeText('alf');
+  await cdp.settle(200);
+  await cdp.evaluate(`(() => { const i = document.querySelector('[data-find-key="flags-${FB}-input"]'); i.setSelectionRange(2, 2); })()`);
+  await cdp.setState('{ paramSelected: ["SP-9001"] }');
+  await cdp.settle(200);
+  await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (x.id === '${FC}' ? { ...x, subjectId: 'RP-1' } : x)) })))`);
+  await cdp.settle(250);
+  const rep6 = await editorNow(FB);
+  check('after a repaint the editor did not cause (a tick, then another film changing) the draft chips, the typed text, focus and caret survive',
+    rep6.open && same(rep6.chips, ['hardware', 'tabflag', 'draftchip']) && rep6.value === 'half' && rep6.focused === true && rep6.start === 2 && rep6.end === 2 && rep6.editors === 1, rep6);
+  check('the repaint wrote nothing: the stored flags are still the saved ones', same(await flagsOf(FB), ['hardware', 'tabflag']), await flagsOf(FB));
+  await cdp.key('Escape');
+  await cdp.settle(200);
+  check('Escape after the repaints still discards the draft', same(await flagsOf(FB), ['hardware', 'tabflag']) && !(await editorNow(FB)).open, await flagsOf(FB));
+  await cdp.setState('{ paramSelected: [] }');
+  const ids6 = await rowIds();
+  check('the last row of the list is the last throwaway film', ids6[ids6.length - 1] === FC, ids6);
+  await openFlags(FC);
+  const pop6 = await cdp.evaluate(`(() => {
+    const host = document.querySelector('.studies-table-host').getBoundingClientRect();
+    const popup = document.querySelector('.flag-popup');
+    const cell = document.querySelector('.studies-flags-editing');
+    if (!popup || !cell) return null;
+    const p = popup.getBoundingClientRect(); const c = cell.getBoundingClientRect();
+    const hit = document.elementFromPoint(p.left + p.width / 2, p.top + p.height / 2);
+    const lastOption = [...popup.querySelectorAll('.flag-option')].pop();
+    const o = lastOption ? lastOption.getBoundingClientRect() : null;
+    const hitLast = o ? document.elementFromPoint(o.left + o.width / 2, o.top + o.height / 2) : null;
+    return {
+      inside: p.left >= host.left - 0.5 && p.right <= host.right + 0.5 && p.top >= host.top - 0.5 && p.bottom <= host.bottom + 0.5,
+      popup: [p.left, p.top, p.right, p.bottom], host: [host.left, host.top, host.right, host.bottom],
+      outsideTable: !popup.closest('.studies-table'), underCell: Math.abs(p.top - (c.bottom + 4)) <= 2,
+      hitsPopup: Boolean(hit && popup.contains(hit)), lastOptionVisible: Boolean(hitLast && popup.contains(hitLast)),
+    };
+  })()`);
+  check('the last row\'s suggestion list is mounted outside the table and a click at its centre and at its last option reaches it (not clipped)',
+    Boolean(pop6) && pop6.outsideTable === true && pop6.hitsPopup === true && pop6.lastOptionVisible === true, pop6);
+  check('the last row\'s suggestion list lies fully inside the table host\'s bounding box',
+    Boolean(pop6) && pop6.inside === true, pop6);
+  check('the list opens 4px under its cell', Boolean(pop6) && pop6.underCell === true, pop6);
+  await cdp.key('Escape');
+  await cdp.settle(200);
+
+  // 19.6b Typing in the search box while the editor is open: the box blurs, so the draft is SAVED, not held.
+  await openFlags(FB);
+  await cdp.typeText('srchflag,');
+  await cdp.settle(200);
+  await clickAt('.studies-search');
+  await cdp.settle(250);
+  check('clicking the search box with a draft open saves the draft and closes the editor',
+    same(await flagsOf(FB), ['hardware', 'tabflag', 'srchflag']) && !(await editorNow(FB)).open, { flags: await flagsOf(FB), editor: await editorNow(FB) });
+  check('the search box holds the focus and the query is unchanged after the commit', (await cdp.evaluate(`document.activeElement === document.querySelector('.studies-search')`)) === true && (await cdp.state()).query === 'zzflag', (await cdp.state()).query);
+
+  // 19.7 The FLAGS menu: two ticks, any / every, and No flags with a row that stays while its cell is open.
+  await resetFlagsView();
+  await putFlags({ [FA]: ['hardware', 'cement'], [FB]: ['hardware'], [FC]: [] });
+  await cdp.settle(250);
+  await tickValue('flags', 'hardware');
+  await tickValue('flags', 'cement');
+  const menu7 = await menuLabels();
+  const any7 = await rowIds();
+  const fun7 = await cdp.evaluate(`(() => { const f = document.querySelector('[data-find-key="filter-flags"]'); return { active: f.classList.contains('is-active'), count: f.querySelector('.studies-filter-count')?.textContent ?? null }; })()`);
+  check('the FLAGS menu offers the flags in use A to Z, then No flags', same(menu7, ['cement', 'hardware', 'No flags']), menu7);
+  check('with hardware and cement ticked (any) the films holding either stay, and the funnel reads active with count 2', same(any7, [FA, FB]) && fun7.active === true && fun7.count === '2', { any7, fun7 });
+  await clickAt('[data-find-key="filter-flags-match-every"]');
+  await cdp.settle(200);
+  const every7 = await rowIds();
+  const pressed7 = await cdp.evaluate(`({ any: document.querySelector('[data-find-key="filter-flags-match-any"]')?.getAttribute('aria-pressed'), every: document.querySelector('[data-find-key="filter-flags-match-every"]')?.getAttribute('aria-pressed'), mode: null })`);
+  check('Every ticked flag narrows the rows to the film holding both, and is the pressed one', same(every7, [FA]) && pressed7.every === 'true' && pressed7.any !== 'true' && (await cdp.state()).findFilters.flagsMatch === 'every', { every7, pressed7 });
+  await openFilterMenu('flags');
+  await clickAt('[data-find-key="filter-flags-match-any"]');
+  await cdp.settle(200);
+  check('Any ticked flag brings the other film back', same(await rowIds(), [FA, FB]) && (await cdp.state()).findFilters.flagsMatch === 'any', await rowIds());
+  await openFilterMenu('flags');
+  await clickAt('[data-find-key="filter-flags-all"]');
+  await cdp.settle(150);
+  await tickValue('flags', '__no_flags__');
+  await cdp.key('Escape');
+  await cdp.settle(150);
+  check('ticking No flags leaves the film with none', same(await rowIds(), [FC]) && same((await cdp.state()).findFilters.flags, ['__no_flags__']), { rows: await rowIds(), flags: (await cdp.state()).findFilters.flags });
+  await openFlags(FC);
+  await cdp.typeText('x1,x2,');
+  await cdp.settle(250);
+  const stay7 = { rows: await rowIds(), editor: await editorNow(FC), stored: await flagsOf(FC) };
+  check('under No flags the row stays while its cell is open and holds a draft of two flags', same(stay7.rows, [FC]) && stay7.editor.open === true && same(stay7.editor.chips, ['x1', 'x2']) && same(stay7.stored, []), stay7);
+  await cdp.key('Enter');
+  await cdp.settle(300);
+  const gone7 = { rows: await rowIds(), stored: await flagsOf(FC), empty: ((await text(cdp, '.studies-empty')) || '').trim() };
+  check('closing the editor saves the two flags and the row leaves the No flags list', same(gone7.stored, ['x1', 'x2']) && same(gone7.rows, []) && gone7.empty === 'No studies match these filters.', gone7);
+
+  // 19.8 Removing a ticked flag from its last film: the empty list, the funnel and the menu keep the tick.
+  await resetFlagsView();
+  await cdp.settle(200);
+  await tickValue('flags', 'x1');
+  await cdp.key('Escape');
+  await cdp.settle(150);
+  check('ticking x1 leaves the one film holding it', same(await rowIds(), [FC]), await rowIds());
+  await openFlags(FC);
+  await clickAt(`[data-find-key="flags-${FC}-remove-0"]`);
+  await cdp.settle(200);
+  await cdp.key('Enter');
+  await cdp.settle(300);
+  const empty8 = await cdp.evaluate(`(() => {
+    const f = document.querySelector('[data-find-key="filter-flags"]');
+    return { rows: document.querySelectorAll('.studies-row').length, empty: (document.querySelector('.studies-empty')?.textContent ?? '').trim(),
+      active: f ? f.classList.contains('is-active') : null, count: f?.querySelector('.studies-filter-count')?.textContent ?? null };
+  })()`);
+  check('removing x1 from its last film leaves an empty list reading "No studies match these filters." and the film itself is saved without it',
+    same(await flagsOf(FC), ['x2']) && empty8.rows === 0 && empty8.empty === 'No studies match these filters.', { empty8, flags: await flagsOf(FC) });
+  check('the funnel still shows its count of 1', empty8.active === true && empty8.count === '1', empty8);
+  await openFilterMenu('flags');
+  const menu8 = await menuLabels();
+  const tick8 = await cdp.evaluate(`document.querySelector('[data-find-key="filter-flags-x1"]')?.checked ?? null`);
+  check('the menu still lists x1, ticked, beside the flags in use', menu8.includes('x1') && menu8.includes('x2') && tick8 === true, { menu8, tick8 });
+  await clickAt('[data-find-key="filter-flags-all"]');
+  await cdp.settle(150);
+  await cdp.key('Escape');
+  await cdp.settle(150);
+  check('All on FLAGS clears the tick and the list returns', same(await rowIds(), [FA, FB, FC]) && (await cdp.state()).findFilters.flags.length === 0, await rowIds());
+
+  // 19.9 The delete prompt covers WORKSPACE to the trash cell on one line, and FLAGS is not rendered under it.
+  await clickAt(`[data-find-key="row-delete-${FA}"]`);
+  await cdp.settle(200);
+  const prompt9 = await cdp.evaluate(`(() => {
+    const row = document.querySelector('.studies-row[data-study-id="${FA}"]');
+    const cell = row.querySelector('.studies-cell-actions-confirming');
+    if (!cell) return null;
+    const heads = [...document.querySelectorAll('.studies-table-head > div')].map((d) => d.getBoundingClientRect());
+    const c = cell.getBoundingClientRect(); const idCell = row.querySelector('.studies-cell-id').getBoundingClientRect();
+    const span = cell.querySelector('.studies-delete-prompt');
+    return {
+      left: c.left, workspaceLeft: heads[4].left, right: c.right, trashRight: heads[9].right, top: c.top, idTop: idCell.top, idBottom: idCell.bottom,
+      lines: span ? span.getClientRects().length : null, flagsCell: Boolean(row.querySelector('.studies-cell-flags')),
+      siblings: [...row.children].filter((x) => !x.classList.contains('studies-cell-actions-confirming')).length,
+    };
+  })()`);
+  check('the delete prompt starts under WORKSPACE and runs to the end of the row, on the first grid line',
+    Boolean(prompt9) && Math.abs(prompt9.left - prompt9.workspaceLeft) <= 1.5 && Math.abs(prompt9.right - prompt9.trashRight) <= 1.5 && prompt9.top < prompt9.idBottom, prompt9);
+  check('the prompt\'s own text sits on one line and no FLAGS cell is rendered under it', Boolean(prompt9) && prompt9.lines === 1 && prompt9.flagsCell === false && prompt9.siblings === 4, prompt9);
+  await cdp.evaluate(`[...document.querySelectorAll('.studies-row[data-study-id="${FA}"] .studies-cell-actions-confirming button')].find((b) => /cancel/i.test(b.textContent))?.click()`);
+  await cdp.settle(200);
+  check('cancelling the prompt restores the FLAGS cell', (await cdp.evaluate(`Boolean(document.querySelector('[data-find-key="flags-${FA}"]'))`)) === true);
+
+  // 19.10 A 1180px window with the sidebar collapsed (main.js opens the window at 1180). The window cannot be resized
+  // over CDP from here, so the viewport is: Emulation.setDeviceMetricsOverride lays the page out at 1180 wide, which is
+  // what the floors are measured against. Put back in the finally.
+  try {
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1180, height: 860, deviceScaleFactor: 1, mobile: false });
+    await cdp.setState('{ navCollapsed: true }');
+    await cdp.settle(400);
+    const narrow = await cdp.evaluate(`(() => {
+      const t = document.querySelector('.studies-table');
+      const trashHead = () => [...document.querySelectorAll('.studies-table-head > div')].pop().getBoundingClientRect();
+      const trashCell = () => document.querySelector('.studies-row[data-study-id="${FA}"] .studies-cell-actions').getBoundingClientRect();
+      const flagsHead = () => document.querySelectorAll('.studies-table-head > div')[8].getBoundingClientRect();
+      const before = { scrollLeft: t.scrollLeft, head: trashHead().right, cell: trashCell().right, table: t.getBoundingClientRect().right };
+      t.scrollLeft = t.scrollWidth;
+      const after = { scrollLeft: t.scrollLeft, head: trashHead().right, cell: trashCell().right, table: t.getBoundingClientRect().right, flagsRight: flagsHead().right, flagsHeadLeft: flagsHead().left };
+      return { innerWidth: window.innerWidth, scrollWidth: t.scrollWidth, clientWidth: t.clientWidth, before, after };
+    })()`);
+    check('at 1180px with the sidebar collapsed the table scrolls sideways (scroll width exceeds its client width)', narrow.innerWidth === 1180 && narrow.scrollWidth > narrow.clientWidth, narrow);
+    check('the row\'s trash cell stays at the table\'s right edge both at rest and scrolled to the end, and FLAGS is reachable',
+      Math.abs(narrow.before.cell - narrow.before.table) <= 1.5
+      && narrow.after.scrollLeft > 0 && Math.abs(narrow.after.cell - narrow.after.table) <= 1.5
+      && narrow.after.flagsRight <= narrow.after.table + 1.5, narrow);
+    // The list is placed against the host: with the table scrolled, a cell's list still lands under the cell, inside the host.
+    await openFlags(FC);
+    const popN = await cdp.evaluate(`(() => {
+      const host = document.querySelector('.studies-table-host').getBoundingClientRect();
+      const popup = document.querySelector('.flag-popup'); const cell = document.querySelector('.studies-flags-editing');
+      if (!popup || !cell) return null;
+      const p = popup.getBoundingClientRect(); const c = cell.getBoundingClientRect();
+      const wanted = Math.max(host.left, Math.min(c.left, host.right - p.width));
+      return { inside: p.left >= host.left - 0.5 && p.right <= host.right + 0.5, leftOff: Math.abs(p.left - wanted), topOff: Math.abs(p.top - (c.bottom + 4)), cellLeft: c.left, popup: [p.left, p.top, p.right, p.bottom], host: [host.left, host.top, host.right, host.bottom] };
+    })()`);
+    check('with the table scrolled sideways the open cell\'s list sits under the cell, between the host\'s left and right edges',
+      Boolean(popN) && popN.inside === true && popN.leftOff <= 2 && popN.topOff <= 2, popN);
+    await cdp.key('Escape');
+    await cdp.settle(200);
+  } finally {
+    await cdp.send('Emulation.clearDeviceMetricsOverride');
+    await cdp.setState('{ navCollapsed: false }');
+    await cdp.settle(300);
+  }
+
+  // Tidy: the throwaway films go, so a later suite on this profile does not meet them.
+  await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ query: '', studies: s.studies.filter((x) => !['${FA}', '${FB}', '${FC}'].includes(x.id)) })))`);
+  await cdp.settle(200);
+  check('no console errors or exceptions during section 19', cdp.errors.length === errorsBefore19, cdp.errors.slice(errorsBefore19));
 } finally {
   cdp.close();
 }
