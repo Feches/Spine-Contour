@@ -606,8 +606,12 @@ let flagsPopup = null;
 // editor on a later keyboard move. (2026-11-16, Task 7 review) Only a primary-button press is noted (a right-click fires
 // pointerdown too but never a click), and beginSubjectEdit clears the note as beginFlagsEdit does: a press dragged off
 // the cell before release fires no click either, and its note would otherwise open a flags editor when Tab later left a
-// SUBJECT editor for that cell.
+// SUBJECT editor for that cell. (Ruling 12) The note names either target: a row id (a resting FLAGS cell) or BULK_BUTTON
+// (the bar's Flag button, noted on its own primary-button pointerdown). The blur that makes an open editor commit
+// repaints before mouseup and swallows that press's click, so commitFlags and commitSubject open what was pressed;
+// Tab onto the button notes nothing and opens nothing. toggleBulkFlags clears it with the ordinary click.
 let flagsPressed = null;
+const BULK_BUTTON = 'flag-selected';
 // (2026-11-16, study flags spec 4.3; FL18) The bar's flag list for the ticked films: { ids: string[], text: string,
 // active: number }, or null when closed. `ids` is captured when the list opens and acts for as long as it stays open --
 // under a filter by the flag being removed the rows leave the list as they lose it, and the open list must go on acting
@@ -1234,6 +1238,7 @@ function commitSubject(id, mode, focusKey = null) {
   const pressed = flagsPressed;
   flagsPressed = null;
   if (flagsTarget !== null && pressed === flagsTarget) beginFlagsEdit(flagsTarget);
+  else if (mode === 'blur' && focusKey === BULK_BUTTON && pressed === BULK_BUTTON) openBulkFromPress();
 }
 
 // ---- FLAGS in place (study flags spec 2026-11-16, section 4.3; FL14) ---------------------------------------------------
@@ -1294,6 +1299,7 @@ function commitFlags(id, focusKey = null) {
   const pressed = flagsPressed;
   flagsPressed = null;
   if (target !== null && target !== id && pressed === target) beginFlagsEdit(target);
+  else if (focusKey === BULK_BUTTON && pressed === BULK_BUTTON) openBulkFromPress();
 }
 
 // The id of the real study whose resting FLAGS cell carries `key` (`flags-<id>`), or null. An id holds a hyphen
@@ -1308,15 +1314,31 @@ function flagsCellOwner(key) {
 
 // The button's click: closes the open list, or opens one over `ids`, the ticked visible real films at this moment. An
 // open row editor commits first and an open header menu closes, as opening one row's editor commits another's.
+// `offered` (2026-11-16, ruling 11) is every flag in use at this moment; the list keeps offering them after the last
+// holder loses one, so a flag cleared from every film can be ticked back (buildBulkFlags unions it with the flags in
+// use now).
 function toggleBulkFlags(ids) {
+  flagsPressed = null;
   if (bulkFlags) { closeBulkFlags(); return; }
   if (editingSubject) commitSubject(editingSubject.id, 'blur');
   if (editingFlags) commitFlags(editingFlags.id);
   confirmingId = null;
   openMenu = null;
   menuShows = null;
-  bulkFlags = { ids, text: '', active: -1 };
+  bulkFlags = { ids, offered: flagsInUse(getState().studies), text: '', active: -1 };
   refreshTable('[data-find-key="bulk-flag-input"]');
+}
+
+// (2026-11-16, ruling 12) A press on the Flag button that made an open editor blur and commit: the commit's repaint
+// replaced the button before mouseup, so its click never came; open the list here with the ticked visible real films,
+// as the click would have.
+function openBulkFromPress() {
+  if (bulkFlags || !mounted) return;
+  const live = getState();
+  if (flagsRefusal(live)) return;
+  const ids = selectedVisible(findRows(live).visible.filter((study) => study.source === 'real'), live.paramSelected ?? [])
+    .map((study) => study.id);
+  if (ids.length > 0) toggleBulkFlags(ids);
 }
 
 // Escape and the second click of the button: the list goes and focus returns to the button.
@@ -1336,6 +1358,12 @@ function applyBulkFlag(flag, on) {
   if (full > 0) {
     showToast(`${full} ${full === 1 ? 'film already has' : 'films already have'} 20 flags and ${full === 1 ? 'was' : 'were'} left out.`);
   }
+  // (2026-11-16, ruling 12 fix) A change that wrote nothing -- every film full, or a refusal that began after the list
+  // opened -- leaves the store as it was, so update()'s gate draws nothing and the pressed box would keep the tick the
+  // click gave it. Repaint so the list shows what the films hold; focus stays on the pressed box. A replaced
+  // bulkFlags is what gets past the gate (it is in the key).
+  if (bulkFlags && getState().studies === live.studies) bulkFlags = { ...bulkFlags };
+  refreshTable(`[data-find-key="${CSS.escape(`bulk-flag-${flagKey(flag)}`)}"]`);
 }
 
 // Enter in the box and a click on Create: the typed flag goes onto every film and the box clears. The text is cleared
@@ -1392,7 +1420,13 @@ function buildBulkFlags(live) {
   const { ids, text } = bulkFlags;
   const films = live.studies.filter((study) => ids.includes(study.id));
   const n = films.length;
-  const choices = flagChoices({ inUse: flagsInUse(live.studies), draft: [], text });
+  // (2026-11-16, ruling 11) The flags in use now plus every flag that was in use when the list opened, one spelling per
+  // key (the current one wins), A to Z: a flag emptied from every film stays here, unticked, to be ticked back.
+  const current = flagsInUse(live.studies);
+  const offered = new Map();
+  for (const flag of [...current, ...(bulkFlags.offered ?? [])]) if (!offered.has(flagKey(flag))) offered.set(flagKey(flag), flag);
+  const inUse = [...offered.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, flag]) => flag);
+  const choices = flagChoices({ inUse, draft: [], text });
   const created = choices.find((choice) => choice.kind === 'create');
   const rows = choices.filter((choice) => choice.kind === 'use').map(({ flag }) => {
     const state = bulkState(live.studies, ids, flag);
@@ -1552,6 +1586,8 @@ export function render(state) {
       type: 'button', class: 'btn btn-small studies-flag-selected', 'data-find-key': 'flag-selected',
       disabled: flagWait !== '' || targets.length === 0, title: flagWait || (targets.length === 0 ? 'Tick studies to flag' : ''),
       'aria-haspopup': 'dialog', 'aria-expanded': String(bulkFlags !== null),
+      // Noted for the commit an open editor's blur makes (ruling 12); see flagsPressed.
+      onPointerdown: (event) => { if (event.button === 0) flagsPressed = BULK_BUTTON; },
       onClick: () => toggleBulkFlags(targets.map((study) => study.id)),
     }, targets.length > 0 ? `Flag ${targets.length} selected` : 'Flag');
 
