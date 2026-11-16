@@ -1209,6 +1209,10 @@ function commitSubject(id, mode, focusKey = null) {
     : mode === 'next' ? `[data-find-key="subject-${id}"]`
       : focusKey ? `[data-find-key="${CSS.escape(focusKey)}"]`
         : null);
+  // (2026-11-16, study flags; ruling 9) A press on a FLAGS cell while this editor was open: the blur's commit repainted
+  // before mouseup, so the cell's own click never arrives (see commitFlags); open its editor here instead.
+  const flagsTarget = mode === 'blur' ? flagsCellOwner(focusKey) : null;
+  if (flagsTarget !== null) beginFlagsEdit(flagsTarget);
 }
 
 // ---- FLAGS in place (study flags spec 2026-11-16, section 4.3; FL14) ---------------------------------------------------
@@ -1259,6 +1263,19 @@ function commitFlags(id, focusKey = null) {
   editingFlags = null;
   setStudyFlags([{ id, flags }]);
   refreshTable(focusKey ? `[data-find-key="${CSS.escape(focusKey)}"]` : null);
+  // (2026-11-16, study flags; ruling 9) A press on another row's resting FLAGS cell opens that cell's editor. The press's
+  // mousedown blurs this box, and the commit above repaints BEFORE mouseup, so the cell the person pressed is replaced
+  // and Chromium never sends it a click: without this the first row would save and no editor would open.
+  const target = flagsCellOwner(focusKey);
+  if (target !== null && target !== id) beginFlagsEdit(target);
+}
+
+// The id of the real study whose resting FLAGS cell carries `key` (`flags-<id>`), or null. An id holds a hyphen
+// (SP-0001) and the editor's own keys (`-input`, `-remove-<i>`, `-option-<i>`) extend the cell's, so the key is compared
+// with the real studies' ids rather than parsed.
+function flagsCellOwner(key) {
+  if (typeof key !== 'string') return null;
+  return getState().studies.find((study) => study.source === 'real' && key === `flags-${study.id}`)?.id ?? null;
 }
 
 export function render(state) {
