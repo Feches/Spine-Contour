@@ -45,7 +45,7 @@ import {
 import { progressTitle, progressDetail } from '../data/processing.js';
 import {
   cleanFlags, flagsInUse, flagChoices, FLAGS_MAX, startFlagEdit, flagEditText, flagEditAdd, flagEditRemove,
-  flagEditActive, flagEditResult,
+  flagEditActive, flagEditResult, bulkState, bulkChange, librarySpelling, flagKey,
 } from '../data/flags.js';
 import { setStudyFlags, flagsRefusal } from '../study-flags.js';
 import { flagChips, flagEditor } from '../components/flag-editor.js';
@@ -357,7 +357,7 @@ function flagsCell(study) {
   return el('div', {
     class: 'studies-cell-flags studies-flags-editable',
     role: 'button', tabindex: '0', title: flagsRefusal() || 'Click to edit flags', 'data-find-key': `flags-${id}`,
-    onPointerdown: () => { flagsPressed = id; },
+    onPointerdown: (event) => { if (event.button === 0) flagsPressed = id; },
     'aria-label': `Flags for ${name}: ${flags.join(', ') || 'none'}. Press Enter to edit`,
     onClick: (event) => { event.stopPropagation(); beginFlagsEdit(id); },
     onKeydown: (event) => {
@@ -603,8 +603,18 @@ let flagsPopup = null;
 // cell's pointerdown, which fires before an open editor's blur, so the commit that blur triggers can tell a press on the
 // cell (open its editor) from Tab landing on it (leave it at rest). Replaced, never mutated, transient, and NOT in
 // update()'s key. Cleared by whoever reads it, by beginFlagsEdit and on navigation, so a stale note never opens an
-// editor on a later keyboard move.
+// editor on a later keyboard move. (2026-11-16, Task 7 review) Only a primary-button press is noted (a right-click fires
+// pointerdown too but never a click), and beginSubjectEdit clears the note as beginFlagsEdit does: a press dragged off
+// the cell before release fires no click either, and its note would otherwise open a flags editor when Tab later left a
+// SUBJECT editor for that cell.
 let flagsPressed = null;
+// (2026-11-16, study flags spec 4.3; FL18) The bar's flag list for the ticked films: { ids: string[], text: string,
+// active: number }, or null when closed. `ids` is captured when the list opens and acts for as long as it stays open --
+// under a filter by the flag being removed the rows leave the list as they lose it, and the open list must go on acting
+// on the films it started with (update() only drops an id whose film left the library). `text` is the box, `active` the
+// highlighted choice (-1 for none). Replaced, never mutated, listed in update()'s key before openMenu, cleared on
+// navigation, and closed by Escape, a second click of the button or a press outside it (closeBulkOnOutsidePress).
+let bulkFlags = null;
 // True while an export writes its bundle (bundle spec 4.1): the button reads Exporting… and refuses a second one.
 // Listed in update()'s key like the three above, but navigation does NOT clear it: the export carries on without
 // the screen, and only its own `finally` may end it.
@@ -630,8 +640,8 @@ subscribe((state) => {
   // closes the menu, spec 3.2). The import prompt goes too: a plan left pending while a study is opened in edit mode
   // would update it on return (its `editing` set is the click's).
   if (state.screen !== 'studies') {
-    mounted = null; confirmingId = null; confirmingSelected = null; editingSubject = null; editingFlags = null; flagsPopup = null; flagsPressed = null;
-    pendingImport = null; openMenu = null; menuShows = null; listenOutside(false);
+    mounted = null; confirmingId = null; confirmingSelected = null; editingSubject = null; editingFlags = null; flagsPopup = null; flagsPressed = null; bulkFlags = null;
+    pendingImport = null; openMenu = null; menuShows = null; listenOutside(false); listenBulk(false);
     return;
   }
   if (mounted) mounted.update(state);
@@ -1154,6 +1164,7 @@ function subjectDraft(study) {
 }
 
 function beginSubjectEdit(id) {
+  flagsPressed = null;
   const live = getState();
   const study = live.studies.find((s) => s.id === id);
   if (!study || study.source !== 'real' || live.deletingStudies) return;
@@ -1293,6 +1304,124 @@ function flagsCellOwner(key) {
   return getState().studies.find((study) => study.source === 'real' && key === `flags-${study.id}`)?.id ?? null;
 }
 
+// ---- The bar's flag list (study flags spec 2026-11-16, section 4.3; FL18) ---------------------------------------------
+
+// The button's click: closes the open list, or opens one over `ids`, the ticked visible real films at this moment. An
+// open row editor commits first and an open header menu closes, as opening one row's editor commits another's.
+function toggleBulkFlags(ids) {
+  if (bulkFlags) { closeBulkFlags(); return; }
+  if (editingSubject) commitSubject(editingSubject.id, 'blur');
+  if (editingFlags) commitFlags(editingFlags.id);
+  confirmingId = null;
+  openMenu = null;
+  menuShows = null;
+  bulkFlags = { ids, text: '', active: -1 };
+  refreshTable('[data-find-key="bulk-flag-input"]');
+}
+
+// Escape and the second click of the button: the list goes and focus returns to the button.
+function closeBulkFlags() {
+  bulkFlags = null;
+  refreshTable('[data-find-key="flag-selected"]');
+}
+
+// Puts `flag` on (or takes it off) every film the open list acts on, at once; the list stays open. The spelling is the
+// one the library already uses. Films already at the limit are left out of an add and counted in one toast.
+// setStudyFlags toasts its own refusal or failure and is not awaited.
+function applyBulkFlag(flag, on) {
+  if (!bulkFlags) return;
+  const live = getState();
+  const { changes, full } = bulkChange(live.studies, bulkFlags.ids, librarySpelling(flag, flagsInUse(live.studies)), on);
+  setStudyFlags(changes);
+  if (full > 0) {
+    showToast(`${full} ${full === 1 ? 'film already has' : 'films already have'} 20 flags and ${full === 1 ? 'was' : 'were'} left out.`);
+  }
+}
+
+// Enter in the box and a click on Create: the typed flag goes onto every film and the box clears. The text is cleared
+// before the write so the write's own repaint already draws the empty box.
+function createBulkFlag(flag) {
+  if (!bulkFlags) return;
+  bulkFlags = { ...bulkFlags, text: '', active: -1 };
+  applyBulkFlag(flag, true);
+  refreshTable('[data-find-key="bulk-flag-input"]');
+}
+
+// A press outside the list closes it; a press inside it or on its button is not outside (the button's click toggles).
+// Captured, as the header menus' is. A press on the table's rows rebuilds the table, so the row's own click finds
+// nothing to open; any other press closes the list in place without a rebuild, so its click still reaches its control.
+function closeBulkOnOutsidePress(event) {
+  if (bulkFlags === null) { listenBulk(false); return; }
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest('.studies-bulk-flags, .studies-flag-selected')) return;
+  bulkFlags = null;
+  const onRows = Boolean(target && mounted?.host.contains(target) && !target.closest('.studies-table-head'));
+  if (onRows) { refreshTable(); return; }
+  listenBulk(false);
+  if (!mounted) return;
+  mounted.bar.querySelectorAll('.studies-bulk-flags').forEach((list) => list.remove());
+  mounted.bar.querySelector('.studies-flag-selected')?.setAttribute('aria-expanded', 'false');
+}
+
+function closeBulkOnEscape(event) {
+  if (bulkFlags === null) { listenBulk(false); return; }
+  if (event.key !== 'Escape') return;
+  event.preventDefault();
+  closeBulkFlags();
+}
+
+// Registered only while the list is open, kept in step by update(); navigation removes them.
+let listeningBulk = false;
+function listenBulk(on) {
+  if (on === listeningBulk) return;
+  listeningBulk = on;
+  if (on) {
+    document.addEventListener('pointerdown', closeBulkOnOutsidePress, true);
+    document.addEventListener('keydown', closeBulkOnEscape);
+  } else {
+    document.removeEventListener('pointerdown', closeBulkOnOutsidePress, true);
+    document.removeEventListener('keydown', closeBulkOnEscape);
+  }
+}
+
+// The open list for `bulkFlags.ids`: the box, one tick row per flag in use that contains the typed text (a tick when
+// every film has it, a dash when some do, its count muted at the right), a Create item when the text is a new flag, and
+// the caption naming how many films it changes. flagChoices is given an empty draft: the list offers every flag in use,
+// held or not.
+function buildBulkFlags(live) {
+  const { ids, text } = bulkFlags;
+  const films = live.studies.filter((study) => ids.includes(study.id));
+  const n = films.length;
+  const choices = flagChoices({ inUse: flagsInUse(live.studies), draft: [], text });
+  const created = choices.find((choice) => choice.kind === 'create');
+  const rows = choices.filter((choice) => choice.kind === 'use').map(({ flag }) => {
+    const state = bulkState(live.studies, ids, flag);
+    const held = films.filter((study) => cleanFlags(study.flags).some((f) => flagKey(f) === flagKey(flag))).length;
+    const row = checkbox({
+      key: `bulk-flag-${flagKey(flag)}`, keyAttr: 'data-find-key', label: flag, ariaLabel: `${flag}: ${state === 'all' ? `all ${n}` : state === 'some' ? `${held} of ${n}` : 'none'}`,
+      checked: state === 'all', indeterminate: state === 'some', variant: 'menu',
+      onChange: () => applyBulkFlag(flag, state !== 'all'),
+    });
+    if (state !== 'none') row.append(el('span', { class: 'studies-bulk-count' }, state === 'all' ? `all ${n}` : `${held} of ${n}`));
+    return row;
+  });
+  return el('div', { class: 'studies-bulk-flags', role: 'dialog', 'aria-label': 'Flag the selected studies' },
+    el('input', {
+      type: 'text', class: 'studies-filter-text', 'data-find-key': 'bulk-flag-input', value: text,
+      placeholder: 'Find or create a flag…', 'aria-label': 'Find or create a flag',
+      onInput: (event) => { bulkFlags = { ...bulkFlags, text: event.target.value }; refreshTable(); },
+      onKeydown: (event) => {
+        if (event.key === 'Enter' && created) { event.preventDefault(); createBulkFlag(created.flag); }
+      },
+    }),
+    el('div', { class: 'studies-filter-options' }, ...rows),
+    created ? el('button', {
+      type: 'button', class: 'studies-filter-item', 'data-find-key': 'bulk-flag-create',
+      onClick: () => createBulkFlag(created.flag),
+    }, `Create "${created.flag}"`) : null,
+    el('div', { class: 'studies-filter-caption' }, `CHANGES THE ${n} TICKED ${n === 1 ? 'FILM' : 'FILMS'}`));
+}
+
 export function render(state) {
   confirmingId = null;
   confirmingSelected = null;
@@ -1300,10 +1429,12 @@ export function render(state) {
   editingFlags = null;
   flagsPopup = null;
   flagsPressed = null;
+  bulkFlags = null;
   pendingImport = null;
   openMenu = null;
   menuShows = null;
   listenOutside(false);
+  listenBulk(false);
   const summary = el('div', { class: 'studies-summary' });
   const search = el('input', {
     type: 'search', class: 'studies-search', value: state.query || '',
@@ -1413,6 +1544,17 @@ export function render(state) {
         .catch((error) => showToast(error?.message || 'The export failed.')),
     }, exporting ? 'Exporting\u2026' : (targets.length > 0 ? `Export ${exportRows.length} selected` : 'Export all'));
 
+    // Flag (2026-11-16, study flags spec 4.3; FL18): the ticked visible real rows, like Delete. It does NOT read
+    // barBlocked: a segmentation run or batch does not block flags, so only flagsRefusal (a bulk delete, a bundle
+    // import or export, studies not being saved) or an empty tick disables it. Its title says which.
+    const flagWait = flagsRefusal(live);
+    const flagButton = el('button', {
+      type: 'button', class: 'btn btn-small studies-flag-selected', 'data-find-key': 'flag-selected',
+      disabled: flagWait !== '' || targets.length === 0, title: flagWait || (targets.length === 0 ? 'Tick studies to flag' : ''),
+      'aria-haspopup': 'dialog', 'aria-expanded': String(bulkFlags !== null),
+      onClick: () => toggleBulkFlags(targets.map((study) => study.id)),
+    }, targets.length > 0 ? `Flag ${targets.length} selected` : 'Flag');
+
     let action;
     if (live.batch) {
       // Batch count plus live backend stages. Stop finishes the film in flight;
@@ -1440,7 +1582,21 @@ export function render(state) {
         plan.note ? el('span', { class: 'param-export-note', 'data-find-key': 'segment-note' }, plan.note) : null);
     }
     return el('div', { class: 'studies-filters' },
-      deleteButton, exportButton, el('div', { class: 'studies-header-spacer' }), action);
+      deleteButton, exportButton, flagButton, bulkFlags ? buildBulkFlags(live) : null,
+      el('div', { class: 'studies-header-spacer' }), action);
+  }
+
+  // (2026-11-16, study flags) Under the Flag button, kept inside the bar's width: inside the bar, which is positioned,
+  // so it scrolls with the page. Called after every repaint, as placeFlagsPopup is.
+  function placeBulkFlags() {
+    const list = barHost.querySelector('.studies-bulk-flags');
+    const button = barHost.querySelector('.studies-flag-selected');
+    const bar = list?.parentElement;
+    if (!list || !button || !bar) return;
+    const barRect = bar.getBoundingClientRect();
+    const buttonRect = button.getBoundingClientRect();
+    list.style.left = `${Math.round(Math.max(0, Math.min(buttonRect.left - barRect.left, barRect.width - list.offsetWidth)))}px`;
+    list.style.top = `${Math.round(buttonRect.bottom - barRect.top + 4)}px`;
   }
 
   let lastKey = null;
@@ -1480,6 +1636,14 @@ export function render(state) {
     if (confirmingSelected && (live.studiesTab === 'parameters' || confirmingSelected.join(' ') !== targets.join(' '))) confirmingSelected = null;
     if (editingSubject && !studies.some((study) => study.id === editingSubject.id)) editingSubject = null;
     if (editingFlags && !studies.some((study) => study.id === editingFlags.id)) editingFlags = null;
+    // (2026-11-16, study flags; FL18) The flag list keeps the films it opened on: an id leaves only when its film leaves
+    // the library (NOT when a filter hides its row), and the list closes when none is left, when the user leaves for
+    // the Parameters tab, or when the import or Delete prompt takes the bar's place.
+    if (bulkFlags) {
+      const kept = bulkFlags.ids.filter((id) => live.studies.some((study) => study.id === id && study.source === 'real'));
+      if (kept.length === 0 || live.studiesTab === 'parameters' || pendingImport || confirmingSelected) bulkFlags = null;
+      else if (kept.length !== bulkFlags.ids.length) bulkFlags = { ...bulkFlags, ids: kept };
+    }
     // The import prompt likewise (ruling S26): withdrawn silently when the library is no longer the list its plan was
     // made against (a run ending, a subject typed, a film added: its new ids and matches may be wrong now) or the user
     // leaves for the Parameters tab.
@@ -1516,7 +1680,7 @@ export function render(state) {
     }
 
     // live.running is in the key so the table repaints when a run starts or ends: the row badge is
-    // derived from it. confirmingId, confirmingSelected, editingSubject, editingFlags, exporting, importing,
+    // derived from it. confirmingId, confirmingSelected, editingSubject, editingFlags, bulkFlags, exporting, importing,
     // pendingImport and openMenu are module scope, not store state; listing them here is what lets a
     // refreshTable() after a change to them get past the gate, while a notification that changed
     // nothing the table shows (a pan frame, a toast) still returns early. paramSelected, batch,
@@ -1528,7 +1692,7 @@ export function render(state) {
     // rebuild.
     const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, editingSubject, editingFlags, exporting,
       importing, pendingImport, live.deletingStudies, live.paramSelected, live.batch, live.findSort,
-      live.findFilters, openMenu];
+      live.findFilters, bulkFlags, openMenu];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
     // The summary always describes the whole library, not the filtered view, and counts with
@@ -1554,7 +1718,7 @@ export function render(state) {
     const focusKey = (barHost.contains(active) || tableHost.contains(active)) ? active.getAttribute('data-find-key') : null;
     // (2026-11-16, study flags) The flags editor's box keeps its caret the same way.
     const caret = focusKey !== null && (focusKey.startsWith('subject-input-') || focusKey === 'filter-subject-text'
-      || /^flags-.+-input$/.test(focusKey))
+      || /^flags-.+-input$/.test(focusKey) || focusKey === 'bulk-flag-input')
       && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
     // The header menu the focus was in, if any: when this rebuild closed it, focus goes back to its funnel (spec 3.2).
     const menuColumn = focusKey !== null ? active.closest('.studies-filter-menu')?.getAttribute('data-filter-menu') ?? null : null;
@@ -1563,11 +1727,14 @@ export function render(state) {
     mount(tableHost, buildTable(visible, live.running, emptyKind, selected, live.findSort, live.batch, filters, shown));
     if (openMenu !== null) placeMenu(tableHost, buildMenu(openMenu, live, filters, shown), openMenu);
     listenOutside(openMenu !== null);
+    listenBulk(bulkFlags !== null);
     if (focusKey !== null) {
       // The control that was focused may be gone: clicking Segment replaces the button with the
       // progress group, and the batch's end replaces the group with the button. Land on the other.
       // The key is escaped: a header menu's keys carry stored values (a workspace path, a view typed by hand).
-      const fallback = { segment: 'stop', stop: 'segment' }[focusKey] ?? null;
+      // (2026-11-16, study flags) A flag's row leaves the list when its last holder loses it: focus goes to the box.
+      const fallback = { segment: 'stop', stop: 'segment' }[focusKey]
+        ?? (focusKey.startsWith('bulk-flag-') ? 'bulk-flag-input' : null);
       const byKey = (host, k) => host.querySelector(`[data-find-key="${CSS.escape(k)}"]`);
       const target = byKey(barHost, focusKey) ?? byKey(tableHost, focusKey)
         ?? (fallback ? byKey(barHost, fallback) : null)
@@ -1578,6 +1745,7 @@ export function render(state) {
       }
     }
     placeFlagsPopup();
+    placeBulkFlags();
   }
 
   // (2026-10-19, final review; R16) An outside press that closes the menu without a rebuild (closeMenuOnOutsidePress)

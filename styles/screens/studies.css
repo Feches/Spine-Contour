@@ -892,6 +892,7 @@
    .param-bar. (2026-10-19, header filters) Its Workspace, Folder and Status selects went: the list
    filters from its header menus. */
 .studies-filters {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -903,6 +904,39 @@
   align-items: center;
   gap: 12px;
   flex: none;
+}
+
+/* The bar's flag list (2026-11-16, study flags spec 4.3): the header menus' card, 286px wide, placed by
+   placeBulkFlags under the Flag button inside the bar. Its box has no close button beside it, so it takes the full
+   width. The count after a flag is muted and pushed right. */
+.studies-bulk-flags {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 286px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 8px 24px var(--shadow);
+  font: 400 13.5px 'Source Sans 3', sans-serif;
+  color: var(--body);
+  cursor: default;
+}
+
+.studies-bulk-flags .studies-filter-text {
+  margin-right: 0;
+}
+
+.studies-bulk-count {
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 /* Counts and stage labels come from the backend; this spinner estimates no duration. The viewer's
