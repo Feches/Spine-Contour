@@ -676,6 +676,275 @@ try {
   await cdp.setState('{ wsFolder: null, wsFiles: [], wsFolderRows: [], wsCsv: null, wsCsvHeaders: [], wsCsvRows: [], wsMapping: [], screen: "studies" }');
   await cdp.settle(150);
   check('6. no page errors', cdp.errors.length === 0, cdp.errors);
+
+  // 7. (2026-11-16, study flags, Task 9; spec 3 and 4.4) The FLAGS block on the Analysis screen: `div.analysis-flags` between
+  // the actions row and the comment block, its editor on `data-flags-key`, and what it does to the rest of the screen.
+  // Films: three of the injected records (SP-9510 and SP-9511 for the editor, SP-9512 as the neighbour the filter and the
+  // arrows move to) and SP-9000, segmented by section 5, for the checks that need a measurement row, the Similar tab and
+  // edit mode. Flags go into the store where a check needs a starting library; everything under test is driven with
+  // trusted clicks and keys.
+  {
+    const errorsBefore7 = cdp.errors.length;
+    const [FA, FB, FC] = [injectedId(10), injectedId(11), injectedId(12)];
+    const SEG = 'SP-9000';
+    const NO_FILTERS = '{ subject: "", region: [], view: [], workspace: [], folder: [], status: [], flags: [], flagsMatch: "any" }';
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const putFlags = (map) => cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (Object.prototype.hasOwnProperty.call(${JSON.stringify(map)}, x.id) ? { ...x, flags: ${JSON.stringify(map)}[x.id] } : x)) })))`);
+    const flagsOf = (id) => cdp.evaluate(`import('./renderer/store.js').then((m) => m.getState().studies.find((x) => x.id === ${JSON.stringify(id)})?.flags ?? null)`);
+    const resetList = () => cdp.setState(`{ screen: "studies", openId: null, query: "", editing: false, tab: "meas", selectedLevel: null, deletingStudies: false, findSort: { key: "date", dir: "desc" }, findFilters: ${NO_FILTERS}, paramSelected: [] }`);
+    const openFilm = async (id) => {
+      await resetList();
+      await cdp.settle(150);
+      await cdp.evaluate(`document.querySelector('.studies-row[data-study-id="${id}"]')?.scrollIntoView({ block: 'center' })`);
+      await cdp.settle(100);
+      const ok = await clickRow(id);
+      await cdp.settle(250);
+      return ok && (await openId()) === id;
+    };
+    const clickSel = async (selector) => {
+      await cdp.evaluate(`document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({ block: 'nearest' })`);
+      await cdp.settle(60);
+      const r = await cdp.rect(selector);
+      if (r) await cdp.click(r.cx, r.cy);
+      await cdp.settle(250);
+      return Boolean(r);
+    };
+    // The block as the page shows it.
+    const blockNow = () => cdp.evaluate(`(() => {
+      const b = document.querySelector('.analysis-flags');
+      if (!b) return null;
+      const input = b.querySelector('[data-flags-key="analysis-flags-input"]');
+      const add = b.querySelector('[data-flags-key="analysis-flags-add"]');
+      const options = [...b.querySelectorAll('.flag-option')];
+      const comment = document.querySelector('.analysis-comment');
+      return {
+        hidden: b.classList.contains('is-hidden') || getComputedStyle(b).display === 'none', label: b.querySelector('.analysis-comment-label')?.textContent ?? null,
+        chips: [...b.querySelectorAll('.flag-chip-text')].map((c) => c.textContent),
+        add: add ? { text: add.textContent, disabled: add.disabled, title: add.title } : null,
+        editors: b.querySelectorAll('.flag-editor').length, input: input ? { value: input.value, focused: document.activeElement === input, start: input.selectionStart, end: input.selectionEnd } : null,
+        options: options.map((o) => o.textContent), highlighted: options.map((o, i) => (o.classList.contains('is-active') ? i : -1)).filter((i) => i >= 0),
+        active: document.activeElement?.getAttribute('data-flags-key') ?? null,
+        beforeComment: Boolean(comment) && Boolean(b.compareDocumentPosition(comment) & Node.DOCUMENT_POSITION_FOLLOWING),
+      };
+    })()`);
+    const openEditor = async () => { await clickSel('[data-flags-key="analysis-flags-add"]'); };
+    const screenNow = async () => { const s = await cdp.state(); return { screen: s.screen, openId: s.openId }; };
+
+    // 7.1 A real film with no flags shows the block on both tabs; the comment block below it is untouched.
+    await putFlags({ [FA]: [], [FB]: ['bflag'], [FC]: [] });
+    await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (x.id === ${JSON.stringify(FB)} ? { ...x, labelComment: 'Cage at L4-5, screws L4-S1.' } : x)) })))`);
+    check('7.1 the film opens', await openFilm(FA), await screenNow());
+    let blk = await blockNow();
+    check('7.1 a real film with no flags shows FLAGS and a lone "+ Add flag" button on the Measurements tab',
+      Boolean(blk) && blk.hidden === false && blk.label === 'FLAGS' && same(blk.chips, []) && blk.add?.text === '+ Add flag' && blk.add.disabled === false && blk.editors === 0, blk);
+    await cdp.setState('{ tab: "sim" }');
+    await cdp.settle(200);
+    blk = await blockNow();
+    check('7.1 and on the Find similar tab', Boolean(blk) && blk.hidden === false && blk.add?.text === '+ Add flag', blk);
+    await cdp.setState('{ tab: "meas" }');
+    check('7.1 the block sits above the comment block', blk?.beforeComment === true, blk);
+    check('7.1 the film opens with a comment', await openFilm(FB), await screenNow());
+    const comment1 = await cdp.evaluate(`(() => { const c = document.querySelector('.analysis-comment'); return c ? { hidden: c.classList.contains('is-hidden') || getComputedStyle(c).display === 'none', text: c.textContent } : null; })()`);
+    blk = await blockNow();
+    check('7.1 a film with a comment shows both: its flags and, unchanged, its comment',
+      Boolean(comment1) && comment1.hidden === false && comment1.text.includes('Cage at L4-5, screws L4-S1.') && Boolean(blk) && same(blk.chips, ['bflag']) && blk.beforeComment === true, { comment1, blk });
+
+    // 7.2 Two flags added, a click on the panel saves them, and the Find row shows them.
+    await openFilm(FA);
+    await openEditor();
+    blk = await blockNow();
+    check('7.2 + Add flag opens the editor with focus in the box', Boolean(blk) && blk.editors === 1 && blk.input?.focused === true, blk);
+    await cdp.typeText('f-one, f-two');
+    await cdp.settle(250);
+    blk = await blockNow();
+    check('7.2 typing "f-one, f-two" makes two chips and empties the box', same(blk.chips, ['f-one', 'f-two']) && blk.input?.value === '' && same(await flagsOf(FA), []), blk);
+    await clickSel('.analysis-flags .analysis-comment-label');
+    blk = await blockNow();
+    check('7.2 a click elsewhere on the panel saves both and closes the editor',
+      same(await flagsOf(FA), ['f-one', 'f-two']) && blk.editors === 0 && same(blk.chips, ['f-one', 'f-two']), { stored: await flagsOf(FA), blk });
+    await clickBack();
+    const cell2 = await cdp.evaluate(`[...document.querySelectorAll('.studies-row[data-study-id="${FA}"] .studies-cell-flags .flag-chip-text')].map((c) => c.textContent)`);
+    check('7.2 back on the Find list the film\'s FLAGS cell shows both', same(cell2, ['f-one', 'f-two']), cell2);
+
+    // 7.3 Enter and the highlight; Escape.
+    await openFilm(FA);
+    await openEditor();
+    await cdp.typeText('e-one,');
+    await cdp.settle(200);
+    blk = await blockNow();
+    check('7.3 with the box empty nothing is highlighted', same(blk.highlighted, []) && blk.input?.value === '', blk);
+    await cdp.key('Enter');
+    await cdp.settle(250);
+    blk = await blockNow();
+    check('7.3 Enter in the empty box saves the draft and closes the editor, focus on + Add flag',
+      same(await flagsOf(FA), ['f-one', 'f-two', 'e-one']) && blk.editors === 0 && blk.active === 'analysis-flags-add', { stored: await flagsOf(FA), blk });
+    await openEditor();
+    await cdp.typeText('bfl');
+    await cdp.settle(250);
+    blk = await blockNow();
+    check('7.3 typing highlights the first suggestion (bflag, in use on another film) before Create',
+      same(blk.options, ['bflag', 'Create "bfl"']) && same(blk.highlighted, [0]), blk);
+    await cdp.key('Enter');
+    await cdp.settle(250);
+    blk = await blockNow();
+    check('7.3 Enter with text typed adds the highlighted suggestion, the editor still open and nothing written yet',
+      blk.editors === 1 && blk.chips.includes('bflag') && blk.input?.value === '' && !(await flagsOf(FA)).includes('bflag'), { blk, stored: await flagsOf(FA) });
+    await cdp.key('Escape');
+    await cdp.settle(250);
+    blk = await blockNow();
+    const where3 = await screenNow();
+    check('7.3 Escape closes the box without saving, and the screen is still Analysis on the same film',
+      blk.editors === 0 && !(await flagsOf(FA)).includes('bflag') && where3.screen === 'analysis' && where3.openId === FA && blk.active === 'analysis-flags-add', { blk, where3, stored: await flagsOf(FA) });
+
+    // 7.4 The arrow keys: in the box they move the caret; after it closes, Right steps on as before.
+    await openEditor();
+    await cdp.typeText('abc');
+    await cdp.settle(200);
+    const hBefore = await header();
+    await cdp.key('ArrowLeft'); await cdp.key('ArrowLeft'); await cdp.settle(150);
+    blk = await blockNow();
+    const mid4 = { start: blk.input?.start, end: blk.input?.end, open: await openId(), h: await header() };
+    check('7.4 Left twice in the box moves the caret to 1 and does not change the open film or the position readout',
+      mid4.start === 1 && mid4.end === 1 && mid4.open === FA && mid4.h.position === hBefore.position, { mid4, hBefore: hBefore.position });
+    await cdp.key('ArrowRight'); await cdp.settle(150);
+    blk = await blockNow();
+    check('7.4 Right moves the caret on to 2 and the film stays', blk.input?.start === 2 && (await openId()) === FA && (await header()).position === hBefore.position, { start: blk.input?.start, open: await openId() });
+    await cdp.key('Escape');
+    await cdp.settle(200);
+    const place4 = await cdp.evaluate(`import('./renderer/data/find.js').then(async (f) => { const s = (await import('./renderer/store.js')).getState(); return f.findNeighbour(s, ${JSON.stringify(FA)}, 1)?.id ?? null; })`);
+    await cdp.key('ArrowRight'); await cdp.settle(250);
+    check('7.4 with the box closed Right steps to the next film as before', place4 !== null && (await openId()) === place4, { expected: place4, now: await openId() });
+
+    // 7.5 One click on a control the block's repaint could move or replace: it must save the draft AND receive its click.
+    check('7.5 the segmented film opens on Measurements', await openFilm(SEG), await screenNow());
+    await cdp.setState('{ tab: "meas", selectedLevel: null }');
+    await putFlags({ [SEG]: [] });
+    await cdp.settle(200);
+    const rowKey = 'PI';
+    await openEditor();
+    await cdp.typeText('sw1, sw2');
+    await cdp.settle(250);
+    // The suggestion list hangs over the left of the rows under the block (it is placed in the block), so the row is pressed at
+    // its right end, where nothing covers it.
+    await cdp.evaluate(`document.querySelector('.meas-row[data-row-key="${rowKey}"]')?.scrollIntoView({ block: 'nearest' })`);
+    const rowRect = await cdp.rect(`.meas-row[data-row-key="${rowKey}"]`);
+    if (rowRect) await cdp.click(rowRect.left + rowRect.width - 14, rowRect.cy);
+    await cdp.settle(250);
+    const sel5 = (await cdp.state()).selectedLevel;
+    blk = await blockNow();
+    check('7.5 with two flags in the draft, ONE click on a measurement row BELOW the block saves both AND selects the row',
+      same(await flagsOf(SEG), ['sw1', 'sw2']) && blk.editors === 0 && sel5 === 'PI', { stored: await flagsOf(SEG), editors: blk.editors, selectedLevel: sel5 });
+    await cdp.setState('{ selectedLevel: null }');
+    await openEditor();
+    await cdp.typeText('sw3, sw4');
+    await cdp.settle(250);
+    await clickSel('.analysis-tab:last-child');
+    check('7.5 with two more flags in the draft, ONE click on the Find similar tab ABOVE the block saves both AND switches the tab',
+      same(await flagsOf(SEG), ['sw1', 'sw2', 'sw3', 'sw4']) && (await cdp.state()).tab === 'sim', { stored: await flagsOf(SEG), tab: (await cdp.state()).tab });
+    await cdp.setState('{ tab: "meas" }');
+    await cdp.settle(200);
+    await openEditor();
+    await cdp.typeText('sw5, sw6');
+    await cdp.settle(250);
+    const nextTarget = await cdp.evaluate(`import('./renderer/data/find.js').then(async (f) => { const s = (await import('./renderer/store.js')).getState(); return f.findNeighbour(s, ${JSON.stringify(SEG)}, 1)?.id ?? null; })`);
+    await clickSel('.analysis-nav-next');
+    check('7.5 with two more flags in the draft, ONE click on the header\'s Next button ABOVE the block saves both AND opens the next film',
+      same(await flagsOf(SEG), ['sw1', 'sw2', 'sw3', 'sw4', 'sw5', 'sw6']) && nextTarget !== null && (await openId()) === nextTarget, { stored: await flagsOf(SEG), nextTarget, now: await openId() });
+
+    // 7.6 Wrong-film safety: a draft on one film never lands on the film opened next without a mouse blur.
+    await openFilm(FA);
+    const storedA6 = await flagsOf(FA);
+    const storedB6 = await flagsOf(FB);
+    await openEditor();
+    await cdp.typeText('draftA,');
+    await cdp.settle(200);
+    check('7.6 the draft is in the open editor', same((await blockNow()).chips, [...storedA6, 'draftA']), await blockNow());
+    await cdp.setState(`{ openId: ${JSON.stringify(FB)} }`);
+    await cdp.settle(300);
+    blk = await blockNow();
+    check('7.6 the other film shows its own flags at rest, no editor and none of the first film\'s draft',
+      (await openId()) === FB && blk.editors === 0 && same(blk.chips, [...storedB6]) && !blk.chips.includes('draftA'), blk);
+    check('7.6 neither film\'s flags changed in the store', same(await flagsOf(FA), storedA6) && same(await flagsOf(FB), storedB6), { a: await flagsOf(FA), b: await flagsOf(FB) });
+    await cdp.setState(`{ openId: ${JSON.stringify(FA)} }`);
+    await cdp.settle(300);
+    blk = await blockNow();
+    check('7.6 back on the first film the draft is gone: at rest, its saved flags only', blk.editors === 0 && same(blk.chips, [...storedA6]) && same(await flagsOf(FA), storedA6), blk);
+
+    // 7.7 Edit mode. Through the store (no mouse blur), the draft is discarded and nothing is written; through the real
+    // Edit button the press blurs the box first, which saves the draft as any click elsewhere does. DONE brings it back.
+    check('7.7 the segmented film opens', await openFilm(SEG), await screenNow());
+    const storedSeg7 = await flagsOf(SEG);
+    await openEditor();
+    await cdp.typeText('estore,');
+    await cdp.settle(200);
+    await cdp.setState('{ editing: true }');
+    await cdp.settle(300);
+    blk = await blockNow();
+    check('7.7 edit mode started with a draft open (through the store): the block is hidden and no flag was written',
+      blk.hidden === true && same(await flagsOf(SEG), storedSeg7), { hidden: blk.hidden, stored: await flagsOf(SEG) });
+    await cdp.setState('{ editing: false }');
+    await cdp.settle(300);
+    blk = await blockNow();
+    check('7.7 leaving edit mode brings the block back at rest, the discarded draft not resurrected', blk.hidden === false && blk.editors === 0 && !blk.chips.includes('estore'), blk);
+    await openEditor();
+    await cdp.typeText('eclick,');
+    await cdp.settle(200);
+    await clickSel('.viewer-tool[aria-label="Edit segmentation"]');
+    await cdp.settle(300);
+    blk = await blockNow();
+    const editing7 = (await cdp.state()).editing;
+    check('7.7 starting level editing with the real button while a draft is open hides the block', editing7 === true && blk.hidden === true, { editing7, hidden: blk.hidden });
+    check('7.7 and that press saved the draft, as any click elsewhere does (nothing is lost)', (await flagsOf(SEG)).includes('eclick'), await flagsOf(SEG));
+    const doneRect = await cdp.evaluate(`(() => { const b = [...document.querySelectorAll('.viewer-editbar button')].find((x) => x.textContent.trim() === 'DONE'); if (!b) return null; const r = b.getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 }; })()`);
+    if (doneRect) await cdp.click(doneRect.cx, doneRect.cy);
+    await cdp.settle(500);
+    blk = await blockNow();
+    check('7.7 after DONE the block is back at rest', (await cdp.state()).editing === false && blk.hidden === false && blk.editors === 0 && blk.add?.text === '+ Add flag', { editing: (await cdp.state()).editing, blk });
+    await putFlags({ [SEG]: [] });
+
+    // 7.8 The refusal.
+    await openFilm(FA);
+    await cdp.setState('{ deletingStudies: true }');
+    await cdp.settle(300);
+    blk = await blockNow();
+    await clickSel('[data-flags-key="analysis-flags-add"]');
+    const refused8 = await blockNow();
+    await cdp.setState('{ deletingStudies: false }');
+    await cdp.settle(300);
+    check('7.8 during a bulk delete + Add flag is disabled with the refusal sentence as its title, and pressing it opens nothing',
+      blk.add?.disabled === true && blk.add.title.includes('Wait for the delete to finish.') && refused8.editors === 0, { add: blk.add, editors: refused8.editors });
+    blk = await blockNow();
+    check('7.8 and when the delete ends the button is enabled again', blk.add?.disabled === false, blk.add);
+
+    // 7.9 A flag filter on the list that the open film stops matching: the position readout follows, as it does after Mark
+    // reviewed under a STATUS filter, and Next still steps on.
+    await putFlags({ [FA]: ['f-one'], [FB]: [], [FC]: ['f-one'] });
+    await cdp.setState('{ screen: "studies", openId: null, query: "", findSort: { key: "date", dir: "asc" } }');
+    await cdp.setState(`{ findFilters: { subject: "", region: [], view: [], workspace: [], folder: [], status: [], flags: ["f-one"], flagsMatch: "any" } }`);
+    await cdp.settle(250);
+    const listIds9 = await cdp.evaluate("[...document.querySelectorAll('.studies-row')].map((r) => r.dataset.studyId)");
+    check('7.9 under the f-one filter the list holds exactly the two films that hold it', same([...listIds9].sort(), [FA, FC].sort()), listIds9);
+    await cdp.evaluate(`document.querySelector('.studies-row[data-study-id="${FA}"]')?.scrollIntoView({ block: 'center' })`);
+    await cdp.settle(100);
+    check('7.9 the film opens from the filtered list', (await clickRow(FA)) && (await openId()) === FA, await openId());
+    const posBefore = (await header()).position;
+    check('7.9 its position reads its place among the two', /^[12] \/ 2$/.test(posBefore), posBefore);
+    await openEditor();
+    await clickSel(`[data-flags-key="analysis-flags-remove-0"]`);
+    await cdp.key('Enter');
+    await cdp.settle(300);
+    h = await header();
+    check('7.9 removing f-one here leaves the film: the position reads an en dash over the one film left, and Next is enabled',
+      same(await flagsOf(FA), []) && h.position === '– / 1' && h.nextDisabled === false, { stored: await flagsOf(FA), h });
+    await cdp.key('ArrowRight'); await cdp.settle(250);
+    check('7.9 Right from the film that left steps to the film the filter still shows', (await openId()) === FC, await openId());
+    h = await header();
+    check('7.9 whose position reads 1 / 1', h.position === '1 / 1', h);
+    check('7.9 no page errors in section 7', cdp.errors.length === errorsBefore7, cdp.errors.slice(errorsBefore7));
+    await cdp.setState(`{ screen: "studies", openId: null, findFilters: ${NO_FILTERS}, findSort: { key: "date", dir: "desc" } }`);
+    await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (x.flags?.length || x.labelComment ? { ...x, flags: [], labelComment: x.id === ${JSON.stringify(FB)} ? null : x.labelComment } : x)) })))`);
+    await cdp.settle(200);
+  }
 } finally {
   // The injected records go, and a demo study section 2 left Needs review gets its own qc back; SP-9000 stays, as every
   // suite leaves it.
