@@ -32,7 +32,7 @@ let state = {
   // previous/next, never by SCREEN_KEYS. It replaced the list's share of paramFilters (workspace, folder) and the
   // reviewer navigation round's single status filter, whose job the STATUS menu took over. The grid keeps paramFilters
   // and its own segmentedOnly.
-  findFilters: { subject: '', region: [], view: [], workspace: [], folder: [], status: [] },
+  findFilters: { subject: '', region: [], view: [], workspace: [], folder: [], status: [], flags: [], flagsMatch: 'any' },
   openId: null,
   compareId: null,
 

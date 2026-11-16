@@ -4,8 +4,9 @@ import {
   DEFAULT_FIND_SORT, FIND_SORT_KEYS, statusRank, toggleFindSort, sortFindRows, summaryCounts,
   STATUS_FILTERS, matchesStatus, normaliseStatusFilter,
   findOrder, findVisible, findNeighbour, findPosition,
-  DEFAULT_FIND_FILTERS, FILTER_COLUMNS, findFilterOptions, normaliseFindFilters, patchFindFilters, matchesFindFilters, activeColumns,
+  DEFAULT_FIND_FILTERS, FILTER_COLUMNS, findFilterOptions, normaliseFindFilters, patchFindFilters, matchesFindFilters, activeColumns, matchesQuery,
 } from '../renderer/data/find.js';
+import { NO_FLAGS } from '../renderer/data/flags.js';
 import { newBatch, withStopping } from '../renderer/data/batch.js';
 import { NO_VIEW, HAND_ADDED, workspaceOptions, toggleId } from '../renderer/data/parameters.js';
 
@@ -28,7 +29,7 @@ const ids = (rows) => rows.map((s) => s.id);
 test('the default sort is newest first and the keys are the eight columns', () => {
   assert.deepEqual(DEFAULT_FIND_SORT, { key: 'date', dir: 'desc' });
   assert.ok(Object.isFrozen(DEFAULT_FIND_SORT));
-  assert.deepEqual([...FIND_SORT_KEYS], ['study', 'subject', 'region', 'view', 'workspace', 'folder', 'date', 'status']);
+  assert.deepEqual([...FIND_SORT_KEYS], ['study', 'subject', 'region', 'view', 'workspace', 'folder', 'date', 'status', 'flags']);
 });
 
 test('toggleFindSort flips the active key and starts another key ascending', () => {
@@ -340,13 +341,13 @@ test('findFilterOptions: region in workflow order, view with Unknown first, fold
   // never offered it): a Processing tick matches the running and queued films, by the pill each row shows.
   assert.deepEqual(options.status, ALL_STATUSES);
   // VIEW, WORKSPACE and FOLDER keep the "present" rule: an empty library offers none of them.
-  const empty = { region: ALL_REGIONS, view: [], workspace: [], folder: [], status: ALL_STATUSES };
+  const empty = { region: ALL_REGIONS, view: [], workspace: [], folder: [], status: ALL_STATUSES, flags: [option(NO_FLAGS, 'No flags')] };
   assert.deepEqual(findFilterOptions([]), empty);
   assert.deepEqual(findFilterOptions(null, null), empty);
 });
 
 test('normaliseFindFilters drops a value no longer offered and a folder outside the ticked workspaces', () => {
-  assert.deepEqual(DEFAULT_FIND_FILTERS, { subject: '', region: [], view: [], workspace: [], folder: [], status: [] });
+  assert.deepEqual(DEFAULT_FIND_FILTERS, { subject: '', region: [], view: [], workspace: [], folder: [], status: [], flags: [], flagsMatch: 'any' });
   assert.ok(Object.isFrozen(DEFAULT_FIND_FILTERS));
   // Defaults fill a missing, null or partial value.
   assert.deepEqual(normaliseFindFilters(null, MIXED), DEFAULT_FIND_FILTERS);
@@ -519,7 +520,7 @@ test('the last Needs review film marked reviewed under the Needs review tick: an
 });
 
 test('activeColumns names the ticked columns in column order', () => {
-  assert.deepEqual([...FILTER_COLUMNS], ['subject', 'region', 'view', 'workspace', 'folder', 'status']);
+  assert.deepEqual([...FILTER_COLUMNS], ['subject', 'region', 'view', 'workspace', 'folder', 'status', 'flags']);
   assert.ok(Object.isFrozen(FILTER_COLUMNS));
   assert.deepEqual(activeColumns(DEFAULT_FIND_FILTERS), []);
   assert.deepEqual(activeColumns(null), []);
@@ -528,5 +529,58 @@ test('activeColumns names the ticked columns in column order', () => {
   assert.deepEqual(activeColumns({ status: ['rev'], folder: ['Cohort'], region: [NO_VIEW], subject: 's0' }), ['subject', 'region', 'folder', 'status']);
   // Subject text of spaces filters nothing (the contains rule trims it), so its column is not active.
   assert.deepEqual(activeColumns({ ...DEFAULT_FIND_FILTERS, subject: '   ', view: [NO_VIEW] }), ['view']);
-  assert.deepEqual(activeColumns({ subject: 'x', region: ['lumbar'], view: [NO_VIEW], workspace: [HAND_ADDED], folder: ['loose'], status: ['ok'] }), [...FILTER_COLUMNS]);
+  assert.deepEqual(activeColumns({ subject: 'x', region: ['lumbar'], view: [NO_VIEW], workspace: [HAND_ADDED], folder: ['loose'], status: ['ok'], flags: ['hardware'] }), [...FILTER_COLUMNS]);
+});
+
+// ---- Flags (2026-11-16, study flags; spec section 4.3, FL25) ----------------------------------------------------
+const FLAGGED = [
+  study('SP-2000', { flags: ['OLIF outcomes', 'hardware'] }),
+  study('SP-2001', { flags: ['OLIF outcomes'] }),
+  study('SP-2002', { flags: ['Hardware', 'cement'] }),
+  study('SP-2003', { flags: [] }),
+  study('SP-2004'),
+];
+const flagPass = (flags, flagsMatch = 'any') => ids(FLAGGED.filter((s) => matchesFindFilters(s, { ...DEFAULT_FIND_FILTERS, flags, flagsMatch })));
+
+test('findFilterOptions: FLAGS offers the flags in use and every ticked key, A to Z, then No flags (FL25)', () => {
+  const labels = (filters) => findFilterOptions(FLAGGED, filters).flags.map((o) => o.label);
+  assert.deepEqual(labels(DEFAULT_FIND_FILTERS), ['cement', 'hardware', 'OLIF outcomes', 'No flags']);
+  assert.deepEqual(findFilterOptions(FLAGGED, DEFAULT_FIND_FILTERS).flags.map((o) => o.value), ['cement', 'hardware', 'olif outcomes', NO_FLAGS]);
+  const ticked = findFilterOptions(FLAGGED, { ...DEFAULT_FIND_FILTERS, flags: ['gone flag'] }).flags;
+  assert.deepEqual(ticked.map((o) => o.label), ['cement', 'gone flag', 'hardware', 'OLIF outcomes', 'No flags']);
+  assert.deepEqual(findFilterOptions(FLAGGED, { ...DEFAULT_FIND_FILTERS, flags: ['hardware', NO_FLAGS, 7] }).flags.length, 4, 'a tick in use, NO_FLAGS or junk adds no row');
+  assert.deepEqual(findFilterOptions([], null).flags, [option(NO_FLAGS, 'No flags')]);
+});
+
+test('normaliseFindFilters: FLAGS keeps ticked keys (deduplicated, strings) and the any/every choice', () => {
+  const n = normaliseFindFilters({ flags: ['hardware', 'hardware', 'gone flag', 7], flagsMatch: 'x' }, FLAGGED);
+  assert.deepEqual(n.flags, ['hardware', 'gone flag']);
+  assert.equal(n.flagsMatch, 'any');
+  assert.equal(normaliseFindFilters({ flagsMatch: 'every' }, FLAGGED).flagsMatch, 'every');
+});
+
+test('matchesFindFilters: flags, any and every, with No flags always an or', () => {
+  assert.deepEqual(flagPass(['hardware']), ['SP-2000', 'SP-2002']);
+  assert.deepEqual(flagPass(['hardware', 'olif outcomes']), ['SP-2000', 'SP-2001', 'SP-2002']);
+  assert.deepEqual(flagPass(['hardware', 'olif outcomes'], 'every'), ['SP-2000']);
+  assert.deepEqual(flagPass([NO_FLAGS]), ['SP-2003', 'SP-2004']);
+  assert.deepEqual(flagPass([NO_FLAGS], 'every'), ['SP-2003', 'SP-2004'], 'only No flags ticked: a flagged film never passes');
+  assert.deepEqual(flagPass(['hardware', NO_FLAGS], 'every'), ['SP-2000', 'SP-2002', 'SP-2003', 'SP-2004']);
+  assert.deepEqual(flagPass(['gone flag']), [], 'the tick that stays: an empty list, not the library');
+  assert.deepEqual(flagPass([]), ids(FLAGGED));
+});
+
+test('activeColumns lists flags when a flag is ticked', () => {
+  assert.deepEqual(activeColumns({ ...DEFAULT_FIND_FILTERS, flags: ['hardware'] }), ['flags']);
+});
+
+test('matchesQuery searches flags', () => {
+  assert.equal(matchesQuery(FLAGGED[0], 'hardw'), true);
+  assert.equal(matchesQuery(FLAGGED[2], 'CEMENT'), true);
+  assert.equal(matchesQuery(FLAGGED[4], 'hardware'), false);
+});
+
+test('sortFindRows by flags: joined in order, ignoring case; films with none last in both directions', () => {
+  assert.deepEqual(ids(sortFindRows(FLAGGED, { key: 'flags', dir: 'asc' })), ['SP-2002', 'SP-2001', 'SP-2000', 'SP-2003', 'SP-2004']);
+  assert.deepEqual(ids(sortFindRows(FLAGGED, { key: 'flags', dir: 'desc' })), ['SP-2000', 'SP-2001', 'SP-2002', 'SP-2003', 'SP-2004']);
 });
