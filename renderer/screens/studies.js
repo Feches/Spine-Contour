@@ -47,7 +47,7 @@ import {
   cleanFlags, flagsInUse, flagChoices, FLAGS_MAX, startFlagEdit, flagEditText, flagEditAdd, flagEditRemove,
   flagEditActive, flagEditResult, bulkState, bulkChange, librarySpelling, flagKey,
 } from '../data/flags.js';
-import { setStudyFlags, flagsRefusal } from '../study-flags.js';
+import { setStudyFlags, flagsRefusal, setFlagsBusy, syncFlagsAndReport } from '../study-flags.js';
 import { flagChips, flagEditor } from '../components/flag-editor.js';
 import { checkbox } from '../components/checkbox.js';
 import { filterMenu } from '../components/filter-menu.js';
@@ -973,6 +973,7 @@ export async function exportBundleTo(parentDir) {
   const rows = rowsToExport(findRows(live).visible.filter((study) => study.source === 'real'), live.paramSelected);
   if (rows.length === 0) return;
   exporting = true;
+  setFlagsBusy('export'); // flag edits are refused while the export runs; the same finally releases it
   refreshTable('[data-find-key="export-bundle"]');
   try {
     const { name, entries } = planExport(rows, new Date());
@@ -982,6 +983,7 @@ export async function exportBundleTo(parentDir) {
     showToast(error?.message || 'The export failed.');
   } finally {
     exporting = false;
+    setFlagsBusy(null);
     refreshTable(ifFocusDropped('[data-find-key="export-bundle"]'));
   }
 }
@@ -1060,6 +1062,7 @@ export async function importBundleFrom(dir) {
   const state = getState();
   if (exporting || pendingImport || barBlocked(state)) return; // barBlocked holds `importing` (S25)
   importing = true;
+  setFlagsBusy('import');
   confirmingSelected = null;
   confirmingId = null;
   refreshTable();
@@ -1078,7 +1081,7 @@ export async function importBundleFrom(dir) {
     // typed in place) is not offered, and the person is told why nothing appeared.
     if (getState().studies !== state.studies) {
       showToast('The library changed while the bundle was being read. Import it again.');
-    } else if (plan.add.length + plan.update.length === 0) {
+    } else if (plan.add.length + plan.update.length + plan.flag.length === 0) {
       showToast(nothingToImportMessage(plan));
     } else {
       pendingImport = { dir, plan, studies: state.studies };
@@ -1090,6 +1093,7 @@ export async function importBundleFrom(dir) {
     showToast(error?.message || 'The import failed.');
   } finally {
     importing = false;
+    setFlagsBusy(null);
     refreshTable(pendingImport ? '[data-find-key="import-cancel"]' : ifFocusDropped('[data-find-key="import-bundle"]'));
   }
 }
@@ -1119,9 +1123,11 @@ export async function confirmImport() {
   const { dir, plan } = pendingImport;
   pendingImport = null;
   importing = true;
+  setFlagsBusy('import');
   refreshTable();
   try {
-    const result = await importBundle({ dir, actions: plan.actions });
+    // (2026-11-16, study flags) A plan of flags alone has no files to place: nothing is sent, nothing is placed.
+    const result = plan.actions.length === 0 ? { placed: [] } : await importBundle({ dir, actions: plan.actions });
     const reported = Array.isArray(result?.placed) ? result.placed : [];
     const taken = new Set(getState().studies.map((study) => study.id));
     const lost = plan.add.filter((item) => reported.includes(item.id) && taken.has(item.id));
@@ -1132,6 +1138,14 @@ export async function confirmImport() {
     }
     setState({ studies: applyImport(getState().studies, plan, placedIds) });
     const added = plan.add.filter((item) => placed.has(item.id));
+    // Every film the import touched has its label record's flags brought in line with its study: an update has just
+    // replaced the record with the sender's. This is syncFlagsAndReport, not setStudyFlags, which refuses while the
+    // import lock is held.
+    await syncFlagsAndReport([
+      ...plan.update.filter((item) => placed.has(item.id)).map((item) => item.id),
+      ...added.map((item) => item.id),
+      ...plan.flag.map((item) => item.id),
+    ]);
     const failed = result?.failed ?? null;
     // Never the SP-nnnn id: the record id is shown nowhere a person looks (user rule 2026-09-12; ruling S31).
     const filmName = (item) => item?.entry.study.fileName ?? 'a study';
@@ -1144,6 +1158,7 @@ export async function confirmImport() {
     const message = importMessage({
       added: added.length,
       updated: plan.update.filter((item) => placed.has(item.id)).length,
+      flagged: plan.flag.length,
       skipped: [...plan.skip, ...skippedAtPlacement],
       withoutFilm: added.filter((item) => item.entry.filmPath == null).map((item) => item.entry.study.fileName),
       stoppedAt: failed ? { fileName: filmName(stoppedOn), message: failed.message } : null,
@@ -1155,6 +1170,7 @@ export async function confirmImport() {
     showToast(error?.message || 'The import failed.');
   } finally {
     importing = false;
+    setFlagsBusy(null);
     refreshTable(ifFocusDropped('[data-find-key="import-bundle"]'));
   }
 }

@@ -9,7 +9,8 @@
 // a clash is settled the way Windows and macOS file names are compared: ignoring case.
 
 import { STORE_VERSION, nextId, validate } from './persistence.js';
-import { labelFileName, normalizeComment } from './label-record.js';
+import { labelFileName, normalizeComment, recordFlags } from './label-record.js';
+import { cleanFlags, mergeFlags } from './flags.js';
 import { fileStem, lastSegment, safeStem } from './labels.js';
 
 export const BUNDLE_SCHEMA = 'spinecontour.bundle/1';
@@ -197,8 +198,15 @@ function bringsNewerRecord(entry, localRecord) {
   return incoming !== null && existing !== null && incoming > existing;
 }
 
+// (2026-11-16, study flags FL22) The flags an entry carries: its study's, else its label record's, the way `commentOf`
+// falls back to the record. Cleaned by the flag rules; an entry with none gives [].
+const flagsOf = (study, record) => {
+  const own = cleanFlags(study?.flags);
+  return own.length > 0 ? own : recordFlags(record);
+};
+
 // What each entry is, before ids and names are given out: skipped (malformed, being edited, or already in the library)
-// or an add, or an update of one local study.
+// or an add, or an update of one local study, or a flag (a matched film whose annotation stays but which gains flags).
 function decide(entries, locals, { localHashes, localRecords, editing }) {
   const found = entries.map(entry => {
     const study = trustedStudy(entry);
@@ -222,8 +230,12 @@ function decide(entries, locals, { localHashes, localRecords, editing }) {
     // says so, rather than naming all but one as already in the library.
     if (editing?.has(item.local.id)) return { skip: BEING_EDITED };
     if (winners.get(item.local.id) !== index) return { skip: ALREADY_IN_LIBRARY };
-    return bringsNewerRecord(entries[index], localRecords?.[item.local.id])
-      ? { update: item.local, study: item.study }
+    if (bringsNewerRecord(entries[index], localRecords?.[item.local.id])) return { update: item.local, study: item.study };
+    // (FL22) The annotation is not replaced, but the winning entry's flags still reach the film when it has one the
+    // local list lacks. Being edited, malformed and losing duplicates returned above and bring none.
+    const local = cleanFlags(item.local.flags);
+    return mergeFlags(local, flagsOf(item.study, entries[index].record)).length > local.length
+      ? { flag: item.local, study: item.study }
       : { skip: ALREADY_IN_LIBRARY };
   });
 }
@@ -262,14 +274,17 @@ function placement(kind, id, entry, labelFile, deleteLocalPrediction) {
  *   localRecords `{ [id]: { saved_at, image_sha256 }|null }` the label records of the local studies the rule needs
  *   editing      a Set of local ids open in edit mode or with a stashed editor
  *   now          reserved
- * Returns `{ add, update, skip, actions }`:
+ * Returns `{ add, update, flag, skip, actions }`:
  *   add     `{ id, labelFile, entry }` per study to add: its new id (nextId over the library and the ids given so far),
  *           the label name its record is written under (null when it has no record) and the entry, whose `study` is the
  *           normalized record (S7)
  *   update  `{ id, labelFile, entry }` per local study to update: its id, the label name the record is written under
  *           (the study's own, else a fresh one, PB9) and the entry
+ *   flag    `{ id, entry }` per local film the bundle matches whose annotation is not replaced (its record is not
+ *           newer) but which gains at least one flag from the entry (FL22). Such an entry is not in `skip` and has no
+ *           action: flags need no files placed. An entry being edited, malformed or a losing duplicate is never here
  *   skip    `{ fileName, reason }` per entry left out; reason is `already in the library`, `being edited` or `malformed`
- *   actions the placement list for bundle-io.js placeImport: an action per add and update, in manifest order
+ *   actions the placement list for bundle-io.js placeImport: an action per add and update (none per flag), in manifest order
  * Matching is by film hash and never by file name alone. Nothing in the arguments is changed.
  */
 export function planImport({ bundle, studies, localHashes, localRecords, editing } = {}) {
@@ -280,12 +295,14 @@ export function planImport({ bundle, studies, localHashes, localRecords, editing
 
   const given = [...library]; // for nextId: the library, then a stub per id given out
   const taken = new Set(library.map(study => study?.labelFile).filter(name => typeof name === 'string' && name !== ''));
-  const plan = { add: [], update: [], skip: [], actions: [] };
+  const plan = { add: [], update: [], flag: [], skip: [], actions: [] };
 
   decisions.forEach((decision, index) => {
     const entry = entries[index];
     if (decision.skip) {
       plan.skip.push({ fileName: skipName(entry, index), reason: decision.skip });
+    } else if (decision.flag) {
+      plan.flag.push({ id: decision.flag.id, entry: { ...entry, study: decision.study } });
     } else if (decision.add) {
       const id = nextId(given);
       given.push({ id, source: 'real' });
@@ -318,6 +335,8 @@ const commentOf = (study, record) => study.labelComment ?? normalizeComment(reco
 
 // The fields an update takes from the bundle's study (spec §5.7), besides the label file the plan names. The local
 // study keeps its id, filePath, addedAt, name, workspaceFolder, subjectId, timepoint, filmDate, note and clinical.
+// Its flags are kept too, and the bundle's new ones follow them (study flags spec 4.7): `flags` is not in this list
+// because it is merged, never replaced.
 const UPDATED_FIELDS = [
   'view', 'region', 'anteriorSide', 'predictionId', 'processingError', 'processingErrorAt', 'measurements', 'geometry',
   'qc', 'calibration', 'thumbnail', 'reviewedAt',
@@ -331,31 +350,42 @@ const namesView = view => typeof view === 'string' && view.trim() !== '';
 function updatedStudy(local, { labelFile, entry }) {
   const patch = Object.fromEntries(UPDATED_FIELDS.map(field => [field, entry.study[field]]));
   if (!namesView(patch.view)) patch.view = local.view;
-  return { ...local, ...patch, labelComment: commentOf(entry.study, entry.record), labelFile };
+  const flags = mergeFlags(local.flags, flagsOf(entry.study, entry.record));
+  return { ...local, ...patch, labelComment: commentOf(entry.study, entry.record), labelFile, flags };
 }
 
 function addedStudy({ id, labelFile, entry }) {
   // The bundle's record with the new id, the film in the bundle (none when it was not exported) and the label name its
   // record was written under; addedAt and everything else is the bundle's.
-  return { ...entry.study, id, filePath: entry.filmPath ?? null, labelFile, labelComment: commentOf(entry.study, entry.record) };
+  return { ...entry.study, id, filePath: entry.filmPath ?? null, labelFile, labelComment: commentOf(entry.study, entry.record),
+    flags: flagsOf(entry.study, entry.record) };
 }
 
 /**
  * The library after an import: each update patched into its local study (spec §5.7) and each add appended at the end
  * (§5.6), as new objects; a study the plan does not touch keeps its reference. `placedIds` are the ids placeImport
- * reported placed (PB5); an action that was not placed is not applied. Every add and update by default.
+ * reported placed (PB5); an action that was not placed is not applied. Every add and update by default. A `flag` item
+ * (FL22) patches only the film's `flags`, the local list then the bundle's new ones, and needs no placement. No local
+ * flag is removed by an update or a flag item.
  */
 export function applyImport(studies, plan, placedIds) {
   const placed = placedIds == null ? null : new Set(placedIds);
   const wanted = item => placed === null || placed.has(item.id);
   const updates = new Map((plan?.update ?? []).filter(wanted).map(item => [item.id, item]));
-  const patched = (studies ?? []).map(study => (updates.has(study?.id) ? updatedStudy(study, updates.get(study.id)) : study));
+  const flagItems = new Map((plan?.flag ?? []).map(item => [item.id, item]));
+  const patched = (studies ?? []).map(study => {
+    if (updates.has(study?.id)) return updatedStudy(study, updates.get(study.id));
+    const item = flagItems.get(study?.id);
+    return item === undefined ? study
+      : { ...study, flags: mergeFlags(study.flags, flagsOf(item.entry.study, item.entry.record)) };
+  });
   return [...patched, ...(plan?.add ?? []).filter(wanted).map(addedStudy)];
 }
 
 /** The line the import prompt shows (spec §5.5, ruling S16): what the plan does, and that the films stay in the folder. */
 export function importPromptText(plan, dir) {
-  return `Import from ${lastSegment(dir)}: ${plan.add.length} to add, ${plan.update.length} to update, ${plan.skip.length} to skip. `
+  const flagging = plan.flag?.length > 0 ? `${plan.flag.length} to flag, ` : '';
+  return `Import from ${lastSegment(dir)}: ${plan.add.length} to add, ${plan.update.length} to update, ${flagging}${plan.skip.length} to skip. `
     + 'The films stay in this folder, so keep it where it is.';
 }
 
@@ -375,10 +405,10 @@ function skipSummary(skipped) {
  * The toast an import ends with (spec §5.8): `Imported 10 studies, updated 2, skipped 3 (already in the library: a, b;
  * being edited: c)`, then, only when present, the studies that came without a film and where an import stopped (ruling
  * S19). `result` is `{ added, updated, skipped: [{ fileName, reason }], withoutFilm: string[], stoppedAt: { fileName,
- * message }|null }`.
+ * message }|null }`. `flagged` (default 0) is the films that only gained flags; it is named only when above 0.
  */
-export function importMessage({ added, updated, skipped = [], withoutFilm = [], stoppedAt = null }) {
-  let text = `Imported ${added} ${plural(added, 'study', 'studies')}, updated ${updated}, skipped ${skipped.length}`;
+export function importMessage({ added, updated, flagged = 0, skipped = [], withoutFilm = [], stoppedAt = null }) {
+  let text = `Imported ${added} ${plural(added, 'study', 'studies')}, updated ${updated}${flagged > 0 ? `, flagged ${flagged}` : ''}, skipped ${skipped.length}`;
   if (skipped.length > 0) text += ` (${skipSummary(skipped)})`;
   if (withoutFilm.length > 0) text += ` · ${withoutFilm.length} without film (${withoutFilm.join(', ')})`;
   if (stoppedAt) text += ` · stopped at ${stoppedAt.fileName}: ${stoppedAt.message} Import the bundle again to continue.`;

@@ -275,7 +275,7 @@ const local = (id, over = {}) => ({
   region: 'lumbar', anteriorSide: null, predictionId: null, processingError: null, processingErrorAt: null,
   name: null, workspaceFolder: null, subjectId: null, timepoint: null, filmDate: null, note: null, labelComment: null,
   labelFile: null, reviewedAt: null, thumbnail: null, measurements: null, geometry: null, qc: null, calibration: null,
-  clinical: {}, ...over,
+  clinical: {}, flags: [], ...over,
 });
 
 function planOf(entries, over = {}) {
@@ -307,7 +307,7 @@ test('planImport: an entry whose film matches no local study is added with the n
   const entry = entryFor('a', { hash: HASH_A, record: labelRecord(day(10)) });
   const plan = planOf([entry], { studies: [local('SP-1004')] });
 
-  assert.deepEqual(Object.keys(plan).sort(), ['actions', 'add', 'skip', 'update']);
+  assert.deepEqual(Object.keys(plan).sort(), ['actions', 'add', 'flag', 'skip', 'update']);
   assert.equal(plan.add.length, 1);
   assert.deepEqual(plan.update, []);
   assert.deepEqual(plan.skip, []);
@@ -755,8 +755,8 @@ test('planImport does not mutate what it is given and ignores now', () => {
 
 test('planImport reads an absent bundle, library or hash map as empty', () => {
   assert.deepEqual(planImport({ bundle: { manifest: {}, entries: [] }, studies: [], localHashes: {}, localRecords: {}, editing: new Set(), now: NOW }),
-    { add: [], update: [], skip: [], actions: [] });
-  assert.deepEqual(planImport({ bundle: undefined }), { add: [], update: [], skip: [], actions: [] });
+    { add: [], update: [], flag: [], skip: [], actions: [] });
+  assert.deepEqual(planImport({ bundle: undefined }), { add: [], update: [], flag: [], skip: [], actions: [] });
   const plan = planImport({ bundle: bundleOf(entryFor('a', { hash: HASH_A })) });
   assert.deepEqual(plan.add.map(item => item.id), ['SP-1000']);
 });
@@ -1052,4 +1052,101 @@ test('nothingToImportMessage names the skip reasons without parentheses', () => 
     'Nothing to import: already in the library: a.png, b.png; being edited: c.png; malformed: m.png',
   );
   assert.equal(nothingToImportMessage({ add: [], update: [], skip: [], actions: [] }), 'Nothing to import', 'an empty bundle has no reasons to give');
+});
+
+// ---------- flags (study-flags spec 4.7, FL8, FL22) ----------
+
+const flagged = (flags, over = {}) => withLocal('SP-1000', HASH_A, localRecord(day(5)), { flags, ...over });
+
+test('planImport: a matched film whose record is not newer but which gains a flag is flagged, not skipped', () => {
+  const run = (entry, facts = flagged(['Hardware'])) => planOf([entry], facts);
+  const older = labelRecord(day(3));
+
+  const gains = run(entryFor('film', { hash: HASH_A, record: older, study: { flags: ['hardware', 'cement'] } }));
+  assert.deepEqual(gains.flag.map(item => item.id), ['SP-1000']);
+  assert.equal(gains.flag[0].entry.study.fileName, 'film.png');
+  assert.deepEqual([gains.skip, gains.update, gains.actions, gains.add], [[], [], [], []]);
+
+  const nothing = run(entryFor('film', { hash: HASH_A, record: older, study: { flags: ['hardware'] } }));
+  assert.deepEqual(nothing.flag, []);
+  assert.deepEqual(nothing.skip, [{ fileName: 'film.png', reason: ALREADY }]);
+
+  const fromRecord = run(entryFor('film', { hash: HASH_A, record: { ...older, flags: ['cement'] } }));
+  assert.deepEqual(fromRecord.flag.map(item => item.id), ['SP-1000'], 'the record is the fallback');
+  assert.deepEqual(fromRecord.skip, []);
+
+  const older_bundle = run(entryFor('film', { hash: HASH_A, record: older }));
+  assert.deepEqual(older_bundle.flag, []);
+  assert.deepEqual(older_bundle.skip.map(item => item.reason), [ALREADY], 'an older bundle has no flags');
+});
+
+test('planImport: a film being edited, a malformed entry and a losing duplicate bring no flags', () => {
+  const facts = flagged(['Hardware']);
+  const older = labelRecord(day(3));
+  const gains = (dir, opts = {}) => entryFor(dir, { hash: HASH_A, record: older, study: { flags: ['cement'] }, ...opts });
+
+  const inEdit = planOf([gains('film')], { ...facts, editing: new Set(['SP-1000']) });
+  assert.deepEqual(inEdit.flag, []);
+  assert.deepEqual(inEdit.skip.map(item => item.reason), ['being edited']);
+
+  const bad = planOf([gains('film', { problems: ['study.json is damaged'] })], facts);
+  assert.deepEqual(bad.flag, []);
+  assert.deepEqual(bad.skip.map(item => item.reason), ['malformed']);
+
+  const winner = gains('first', { record: labelRecord(day(4)), study: { flags: ['one'] } });
+  const loser = gains('second', { study: { flags: ['two'] } });
+  const duplicates = planOf([loser, winner], facts);
+  assert.deepEqual(duplicates.flag.map(item => item.entry.dir), ['first'], 'only the winning entry brings flags');
+  assert.deepEqual(duplicates.skip, [{ fileName: 'second.png', reason: ALREADY }]);
+});
+
+test('applyImport merges flags and never removes one', () => {
+  const mine = local('SP-1000', { flags: ['Hardware', 'OLIF outcomes'], labelFile: 'mine.label.json' });
+  const studies = [mine];
+
+  const update = planOf(
+    [entryFor('film', { hash: HASH_A, record: labelRecord(day(12)), study: { flags: ['cement', 'hardware'] } })],
+    { studies, localHashes: { 'SP-1000': HASH_A }, localRecords: { 'SP-1000': localRecord(day(10)) } },
+  );
+  assert.equal(update.update.length, 1);
+  assert.deepEqual(applyImport(studies, update)[0].flags, ['Hardware', 'OLIF outcomes', 'cement']);
+
+  const add = planOf([entryFor('fresh', { hash: HASH_B, study: { flags: ['cement', 'Hardware'] } })], { studies });
+  assert.deepEqual(applyImport(studies, add)[1].flags, ['cement', 'Hardware'], 'an add takes the entry\'s flags');
+
+  const flagOnly = planOf(
+    [entryFor('film', { hash: HASH_A, record: labelRecord(day(3)), study: { flags: ['cement'], name: 'Theirs' } })],
+    { studies, localHashes: { 'SP-1000': HASH_A }, localRecords: { 'SP-1000': localRecord(day(10)) } },
+  );
+  assert.equal(flagOnly.flag.length, 1);
+  deepFreeze(studies);
+  const patched = applyImport(studies, flagOnly)[0];
+  assert.notEqual(patched, mine, 'a new object');
+  assert.deepEqual(patched.flags, ['Hardware', 'OLIF outcomes', 'cement']);
+  assert.deepEqual({ ...patched, flags: null }, { ...mine, flags: null }, 'only flags changed');
+
+  const bare = { ...local('SP-1000') };
+  delete bare.flags;
+  const bareFacts = { studies: [bare], localHashes: { 'SP-1000': HASH_A }, localRecords: { 'SP-1000': localRecord(day(10)) } };
+  const bareUpdate = planOf([entryFor('film', { hash: HASH_A, record: labelRecord(day(3)), study: { flags: ['cement'] } })], bareFacts);
+  assert.deepEqual(applyImport(bareFacts.studies, bareUpdate)[0].flags, ['cement'], 'a study with no flags key takes the entry\'s');
+
+  const unplaced = applyImport(studies, { ...update, add: [], flag: flagOnly.flag }, []);
+  assert.deepEqual(unplaced[0].flags, ['Hardware', 'OLIF outcomes', 'cement'], 'a flag item needs no placement');
+  const updateUnplaced = applyImport(studies, update, []);
+  assert.equal(updateUnplaced[0], mine, 'an update that was not placed is not applied');
+});
+
+test('importPromptText and importMessage name the flagged films only when there are some', () => {
+  const tail = 'The films stay in this folder, so keep it where it is.';
+  assert.equal(
+    importPromptText({ add: [1], update: [], flag: [1, 2], skip: [1, 2, 3] }, 'b'),
+    `Import from b: 1 to add, 0 to update, 2 to flag, 3 to skip. ${tail}`,
+  );
+  assert.equal(
+    importPromptText({ add: [1], update: [], flag: [], skip: [1, 2, 3] }, 'b'),
+    `Import from b: 1 to add, 0 to update, 3 to skip. ${tail}`,
+  );
+  assert.equal(importMessage({ added: 1, updated: 0, flagged: 2, skipped: [] }), 'Imported 1 study, updated 0, flagged 2, skipped 0');
+  assert.equal(importMessage({ added: 1, updated: 0, skipped: [] }), 'Imported 1 study, updated 0, skipped 0');
 });
