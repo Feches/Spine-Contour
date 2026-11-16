@@ -20,6 +20,7 @@ import { setState } from '../store.js';
 import { saveCsv } from '../api.js';
 import { showToast } from '../components/toast.js';
 import { checkbox } from '../components/checkbox.js';
+import { flagsText } from '../data/flags.js';
 import { toCsv, toPairedCsv } from '../data/csv.js';
 import { isConsistent } from '../data/measurements.js';
 import { studyName, workspaceLabel, folderLabel, pathTitle } from '../data/labels.js';
@@ -28,7 +29,7 @@ import {
   workspaceOptions, folderOptions, normaliseFilters, patchFilters, filterParameters,
   hiddenUnsegmented, sortParameters, emptyReason, exportFileName,
   toggleId, withIds, selectedVisible, rowsToExport,
-  timepointOptions, viewOptions, pairedWithOptions, hiddenUnpaired, subjectBreaks,
+  timepointOptions, viewOptions, flagFilterOptions, pairedWithOptions, hiddenUnpaired, subjectBreaks,
 } from '../data/parameters.js';
 import { pairStudies, postFromFilters, pairedExportMessage } from '../data/pairing.js';
 
@@ -146,6 +147,16 @@ export function mountParameters(host, { onOpen }) {
     for (const option of viewOptions(live.studies)) viewSelect.append(el('option', { value: option.value }, option.label));
     viewSelect.value = filters.view ?? '';
 
+    // (2026-11-16, study flags; spec 4.5) One flag at a time. The options come from the whole library, plus a chosen flag
+    // no film holds any more, so the choice stays on screen and the grid empties instead of widening (FL25).
+    const flagSelect = el('select', {
+      class: 'param-select param-select-flag', 'aria-label': 'Filter by flag', 'data-param-key': 'flag',
+      onChange: (event) => setFilters({ flag: event.target.value === '' ? null : event.target.value }),
+    });
+    flagSelect.append(el('option', { value: '' }, 'All flags'));
+    for (const option of flagFilterOptions(live.studies, filters.flag)) flagSelect.append(el('option', { value: option.value }, option.label));
+    flagSelect.value = filters.flag ?? '';
+
     // Substring on the subject, committed on every keystroke like the Studies search box. The
     // rebuild replaces this input; update() hands focus and the caret back by data-param-key.
     const subjectInput = el('input', {
@@ -228,7 +239,7 @@ export function mountParameters(host, { onOpen }) {
         : null);
 
     return el('div', { class: 'param-bar' },
-      workspaceSelect, folderSelect, timepointSelect, viewSelect, subjectInput, pairedGroup, segmented, levels,
+      workspaceSelect, folderSelect, timepointSelect, viewSelect, flagSelect, subjectInput, pairedGroup, segmented, levels,
       el('div', { class: 'param-count', 'data-param-key': 'count' },
         `${visible.length} OF ${live.studies.length} STUDIES SHOWN${chosen.length > 0 ? ` \u00B7 ${chosen.length} SELECTED` : ''}`),
       // Buttons and note in one group: the bar wraps, and on their own they land on separate lines
@@ -309,7 +320,10 @@ export function mountParameters(host, { onOpen }) {
       ...fields.map((field) => el('td', { class: 'param-cell-text' },
         study.clinical && study.clinical[field] != null && study.clinical[field] !== '' ? String(study.clinical[field]) : '')),
       el('td', { class: 'param-cell-text' }, workspaceLabel(study)),
-      el('td', { class: 'param-cell-text', ...(pathTitle(study) ? { title: pathTitle(study) } : {}) }, folderLabel(study)));
+      el('td', { class: 'param-cell-text', ...(pathTitle(study) ? { title: pathTitle(study) } : {}) }, folderLabel(study)),
+      // (2026-11-16, study flags) Read-only here: flags are edited on the Find list and the Analysis screen.
+      el('td', { class: 'param-cell-text', ...(flagsText(study.flags, ', ') ? { title: flagsText(study.flags, ', ') } : {}) },
+        flagsText(study.flags, ', ') || DASH));
   }
 
   function buildGrid(live, visible) {
@@ -342,7 +356,8 @@ export function mountParameters(host, { onOpen }) {
       ...columns.map((column) => sortableHeader(column.key, column.label.toUpperCase(), sort, 'param-col-num')),
       ...fields.map((field) => plainHeader(field.toUpperCase())),
       sortableHeader('workspace', 'WORKSPACE', sort),
-      plainHeader('FOLDER')));
+      plainHeader('FOLDER'),
+      plainHeader('FLAGS')));
     const breaks = subjectBreaks(visible, sort);
     const body = el('tbody', {}, ...visible.map((study, i) => buildRow(study, columns, fields, selected, breaks[i])));
     return el('div', { class: 'param-table-wrap card', 'data-param-key': 'grid' },

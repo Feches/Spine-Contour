@@ -16,6 +16,7 @@ import { GLOBAL_SVA_COLUMNS, globalSvaMeasurements } from './global-sva.js';
 import { sagittalRows, lordosisRows } from './measurements.js';
 import { studyName, workspaceLabel, folderLabel, lastSegment } from './labels.js';
 import { compareTimepoints, PRE_OP, POST_OP } from './timepoints.js';
+import { cleanFlags, flagKey, flagsInUse, NO_FLAGS } from './flags.js';
 
 const DASH = '\u2014';
 
@@ -39,6 +40,8 @@ export const ANY_POST = '__any__';
 export const DEFAULT_FILTERS = Object.freeze({
   workspace: null, folder: null, segmentedOnly: true,
   timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: ANY_POST,
+  // (2026-11-16, study flags) One flag's key, NO_FLAGS, or null for no flag filter.
+  flag: null,
 });
 export const DEFAULT_SORT = Object.freeze({ key: 'study', dir: 'asc' });
 
@@ -236,6 +239,27 @@ function matchesView(study, view) {
   return view === NO_VIEW ? viewOf(study) === null : study.view === view;
 }
 
+// (2026-11-16, study flags; spec 4.5) The Parameters bar's one-flag filter. The value is a flag's key (lower-cased), so
+// "Hardware" and "hardware" are one choice; NO_FLAGS keeps films with none.
+function matchesFlag(study, flag) {
+  if (!flag) return true;
+  const held = cleanFlags(study?.flags);
+  return flag === NO_FLAGS ? held.length === 0 : held.some((f) => flagKey(f) === flag);
+}
+
+// The dropdown's choices: every flag in use (value the key, label the spelling), plus the chosen key when no film holds
+// it any more (FL25: the choice stays visible and the grid empty rather than silently widening), sorted by key, then
+// `No flags`.
+export function flagFilterOptions(studies, chosen) {
+  const options = flagsInUse(studies).map((flag) => ({ value: flagKey(flag), label: flag }));
+  if (typeof chosen === 'string' && chosen !== '' && chosen !== NO_FLAGS && !options.some((o) => o.value === chosen)) {
+    options.push({ value: chosen, label: chosen });
+  }
+  options.sort((a, b) => (a.value < b.value ? -1 : a.value > b.value ? 1 : 0));
+  options.push({ value: NO_FLAGS, label: 'No flags' });
+  return options;
+}
+
 // (2026-10-19) Exported for the Find list's SUBJECT menu (data/find.js), so the list and the grid share one contains
 // rule rather than two copies of it.
 export function matchesSubject(study, needle) {
@@ -255,6 +279,10 @@ export function normaliseFilters(filters, studies) {
   if (f.folder && !folderOptions(studies, f.workspace).some((o) => o.value === f.folder)) f = { ...f, folder: null };
   if (f.timepoint && !timepointOptions(studies).some((o) => o.value === f.timepoint)) f = { ...f, timepoint: null };
   if (f.view && !viewOptions(studies).some((o) => o.value === f.view)) f = { ...f, view: null };
+  // (2026-11-16, study flags; FL25) The flag choice is the one filter that is NOT cleared when no film holds it any more:
+  // clearing it would widen the grid to the whole library, and an Export CSV pressed next would write every film. The
+  // dropdown keeps showing the choice and the grid is empty. Anything that is not a string is junk and becomes null.
+  f = { ...f, flag: typeof f.flag === 'string' && f.flag !== '' ? f.flag : null };
   return f;
 }
 
@@ -308,7 +336,8 @@ export function filterParameters(studies, filters) {
   const kept = studies.filter((study) => matchesLocation(study, f)
     && (!f.segmentedOnly || isSegmented(study))
     && matchesView(study, f.view)
-    && matchesSubject(study, f.subject));
+    && matchesSubject(study, f.subject)
+    && matchesFlag(study, f.flag));
   const paired = f.pairedOnly ? pairedSubjects(kept, f.pairedWith || ANY_POST) : null;
   return kept.filter((study) => (paired === null || paired.has(subjectKey(study)))
     && matchesTimepoint(study, f.timepoint));
@@ -401,13 +430,13 @@ export function sortParameters(studies, sort) {
 // Why the grid is empty, so the screen never blames a filter the user did not set:
 //   null           something is visible
 //   'none'         the library is empty
-//   'filtered'     a workspace, folder, timepoint, view, subject or paired-only filter, or the search box, removed everything
+//   'filtered'     a workspace, folder, timepoint, view, flag, subject or paired-only filter, or the search box, removed everything
 //   'unsegmented'  studies exist, but none has measurements and segmented-only is on
 export function emptyReason({ total, visible, filters, query }) {
   if (visible > 0) return null;
   if (total === 0) return 'none';
   const f = { ...DEFAULT_FILTERS, ...(filters ?? {}) };
-  if (f.workspace || f.folder || f.timepoint || f.view || String(f.subject ?? '').trim() !== '' || f.pairedOnly === true
+  if (f.workspace || f.folder || f.timepoint || f.view || f.flag || String(f.subject ?? '').trim() !== '' || f.pairedOnly === true
     || String(query ?? '').trim() !== '') return 'filtered';
   return 'unsegmented';
 }
