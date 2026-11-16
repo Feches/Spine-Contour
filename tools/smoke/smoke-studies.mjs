@@ -23,6 +23,7 @@
 //     suite documented as "assumes a segmented study open on Analysis" needs its own
 //     inject-study.js + run-and-wait.js pair after this one, not before it.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { connect } from './cdp-lib.mjs';
@@ -1460,6 +1461,280 @@ try {
   await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ query: '', studies: s.studies.filter((x) => !['${FA}', '${FB}', '${FC}'].includes(x.id)) })))`);
   await cdp.settle(200);
   check('no console errors or exceptions during section 19', cdp.errors.length === errorsBefore19, cdp.errors.slice(errorsBefore19));
+
+  // ---------------------------------------------------------------------------------------------
+  // 20 (2026-11-16, study flags, Task 8; spec 3 and 4.3 "Flagging the ticked films"). The bar's Flag button and its list.
+  // Throwaway films again (SP-9111..9114 searched out by `zzbulk`, SP-9115 held back by its name so it keeps `hardware`
+  // in use while the others lose it, SP-9116 the one that runs). Starting flags go straight into the store; every click,
+  // press and key being tested is trusted input. The label-record check seeds a record file the way the app would hold
+  // one (any JSON object is a record to main.js) and reads it back from the scratch profile on disk.
+  // ---------------------------------------------------------------------------------------------
+  {
+  const errorsBefore20 = cdp.errors.length;
+  const [BA, BB, BC, BD, BE, BF] = ['SP-9111', 'SP-9112', 'SP-9113', 'SP-9114', 'SP-9115', 'SP-9116'];
+  for (const [id, fileName] of [[BA, 'zzbulk-a.png'], [BB, 'zzbulk-b.png'], [BC, 'zzbulk-c.png'], [BD, 'zzbulk-d.png'], [BE, 'qqother.png']]) {
+    await injectFilm({ id, fileName, filePath: null, workspaceFolder: null, base64: null });
+  }
+  const LABEL_DIR = path.join(os.tmpdir(), 'spine-contour-smoke', 'labels');
+  const REC_NAME = 'zzbulk-a.label.json';
+  const bulkView = (extra = '') => cdp.setState(`{ screen: "studies", openId: null, query: "zzbulk", paramFilters: ${FILTERS_RESET}, findFilters: ${FLAG_RESET}, paramSelected: [], findSort: { key: "study", dir: "asc" }, navCollapsed: false${extra} }`);
+  const tick = (ids) => cdp.setState(`{ paramSelected: ${JSON.stringify(ids)} }`);
+  const flagBtn = () => cdp.evaluate(`(() => { const b = document.querySelector('[data-find-key="flag-selected"]'); return b ? { label: b.textContent, disabled: b.disabled, title: b.title, expanded: b.getAttribute('aria-expanded'), popup: b.getAttribute('aria-haspopup') } : null; })()`);
+  const listOpen = () => cdp.evaluate(`Boolean(document.querySelector('.studies-bulk-flags'))`);
+  // The open list as the page shows it: every box by key with its state and its muted count (null when none is shown).
+  const listNow = () => cdp.evaluate(`(() => {
+    const list = document.querySelector('.studies-bulk-flags');
+    if (!list) return null;
+    const boxes = {};
+    for (const input of list.querySelectorAll('input[type="checkbox"]')) {
+      const key = input.getAttribute('data-find-key').replace(/^bulk-flag-/, '');
+      boxes[key] = { checked: input.checked, indeterminate: input.indeterminate, count: input.closest('label')?.querySelector('.studies-bulk-count')?.textContent ?? null };
+    }
+    return {
+      boxes, input: list.querySelector('[data-find-key="bulk-flag-input"]')?.value ?? null,
+      focused: document.activeElement?.getAttribute('data-find-key') ?? null, role: list.getAttribute('role'),
+      create: list.querySelector('[data-find-key="bulk-flag-create"]')?.textContent ?? null, caption: list.querySelector('.studies-filter-caption')?.textContent ?? null,
+    };
+  })()`);
+  const clickBox = async (key) => { await clickAt(`label:has(> [data-find-key="bulk-flag-${key}"])`); await cdp.settle(250); };
+  const toastNow = async () => (await cdp.state()).toast;
+  const closeList = async () => { if (await listOpen()) { await cdp.key('Escape'); await cdp.settle(150); } };
+
+  // 20.1 Nothing ticked.
+  await bulkView();
+  await putFlags({ [BA]: ['hardware', 'cement'], [BB]: ['cement'], [BC]: ['cement'], [BD]: ['hardware'], [BE]: ['hardware'] });
+  await cdp.settle(250);
+  const none1 = await flagBtn();
+  check('with nothing ticked the bar reads Flag, disabled, titled "Tick studies to flag"',
+    Boolean(none1) && none1.label === 'Flag' && none1.disabled === true && none1.title === 'Tick studies to flag', none1);
+
+  // 20.2 Three ticked: the button, the list's counts and its two states.
+  for (const id of [BA, BB, BC]) await clickAt(`input[data-find-key="row-${id}"]`);
+  await cdp.settle(200);
+  const three2 = await flagBtn();
+  check('three ticked films: the button reads "Flag 3 selected", enabled, and announces a dialog',
+    three2.label === 'Flag 3 selected' && three2.disabled === false && three2.popup === 'dialog' && three2.expanded === 'false', three2);
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  const open2 = await listNow();
+  check('one click opens the list: a dialog, the box focused, the caption naming three films',
+    Boolean(open2) && open2.role === 'dialog' && open2.focused === 'bulk-flag-input' && open2.caption === 'CHANGES THE 3 TICKED FILMS' && (await flagBtn()).expanded === 'true', open2);
+  check('a flag all three hold reads "all 3" with its box checked',
+    Boolean(open2) && open2.boxes.cement && open2.boxes.cement.checked === true && open2.boxes.cement.indeterminate === false && open2.boxes.cement.count === 'all 3', open2 && open2.boxes);
+  check('a flag one of the three holds reads "1 of 3" with its box indeterminate (a dash)',
+    Boolean(open2) && open2.boxes.hardware && open2.boxes.hardware.checked === false && open2.boxes.hardware.indeterminate === true && open2.boxes.hardware.count === '1 of 3', open2 && open2.boxes);
+  await clickBox('hardware');
+  const all2 = await listNow();
+  const stored2 = [await flagsOf(BA), await flagsOf(BB), await flagsOf(BC), await flagsOf(BD)];
+  check('clicking the dash puts the flag on all three (and not on the unticked film), the box reads "all 3" checked, the list stays open',
+    all2 !== null && stored2.slice(0, 3).every((f) => f.some((x) => x.toLowerCase() === 'hardware')) && same(stored2[3], ['hardware'])
+    && all2.boxes.hardware.checked === true && all2.boxes.hardware.indeterminate === false && all2.boxes.hardware.count === 'all 3', { all2: all2 && all2.boxes, stored2 });
+  await clickBox('hardware');
+  const gone2 = await listNow();
+  const stored2b = [await flagsOf(BA), await flagsOf(BB), await flagsOf(BC)];
+  check('clicking it again takes it off all three: the box is clear with no count (the unticked film keeps it in use)',
+    gone2 !== null && stored2b.every((f) => !f.some((x) => x.toLowerCase() === 'hardware')) && gone2.boxes.hardware
+    && gone2.boxes.hardware.checked === false && gone2.boxes.hardware.indeterminate === false && gone2.boxes.hardware.count === null, { gone2: gone2 && gone2.boxes, stored2b });
+  check('every box state matches its films: cement stays "all 3" through the edits', Boolean(gone2) && gone2.boxes.cement.count === 'all 3' && gone2.boxes.cement.checked === true, gone2 && gone2.boxes);
+
+  // 20.3 A new flag: typed, Enter, every ticked film takes it, the box clears, the list stays.
+  await clickAt('[data-find-key="bulk-flag-input"]');
+  await cdp.typeText('fresh');
+  await cdp.settle(200);
+  const typed3 = await listNow();
+  check('typing a new flag offers Create "fresh"', Boolean(typed3) && typed3.create === 'Create "fresh"' && typed3.focused === 'bulk-flag-input', typed3);
+  await cdp.key('Enter');
+  await cdp.settle(300);
+  const enter3 = await listNow();
+  const stored3 = [await flagsOf(BA), await flagsOf(BB), await flagsOf(BC), await flagsOf(BD)];
+  check('Enter adds it to all three ticked films, not the fourth; the box clears, keeps focus and the list is still open',
+    stored3.slice(0, 3).every((f) => f.includes('fresh')) && !stored3[3].includes('fresh') && Boolean(enter3) && enter3.input === '' && enter3.focused === 'bulk-flag-input'
+    && enter3.boxes.fresh && enter3.boxes.fresh.count === 'all 3', { stored3, enter3 });
+  await clickAt('[data-find-key="bulk-flag-input"]');
+  await cdp.typeText('viaclick');
+  await cdp.settle(200);
+  await clickAt('[data-find-key="bulk-flag-create"]');
+  await cdp.settle(300);
+  check('a click on Create adds the flag to every ticked film too', [await flagsOf(BA), await flagsOf(BB), await flagsOf(BC)].every((f) => f.includes('viaclick')) && (await listOpen()), await flagsOf(BA));
+  await closeList();
+
+  // 20.4 The films are fixed when the list opens: filter by a flag, tick every row, clear that flag in the list.
+  await bulkView();
+  await putFlags({ [BA]: ['hardware', 'cement'], [BB]: ['hardware'], [BC]: ['hardware'], [BD]: [], [BE]: ['hardware'] });
+  await cdp.settle(250);
+  await tickValue('flags', 'hardware');
+  await cdp.key('Escape');
+  await cdp.settle(150);
+  check('filtered by hardware and searched, the list shows the three films that hold it', same(await rowIds(), [BA, BB, BC]), await rowIds());
+  await clickAt('input[data-find-key="select-all"]');
+  await cdp.settle(200);
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  const open4 = await listNow();
+  check('with every row ticked the list opens over three films, hardware reading "all 3"', Boolean(open4) && open4.caption === 'CHANGES THE 3 TICKED FILMS' && open4.boxes.hardware.count === 'all 3', open4);
+  await clickBox('hardware');
+  const left4 = { rows: await rowIds(), list: await listNow(), stored: [await flagsOf(BA), await flagsOf(BB), await flagsOf(BC), await flagsOf(BE)] };
+  check('clearing the filtered flag takes it off the three films: their rows leave the table and the list is still open, still over those three films',
+    same(left4.rows, []) && left4.list !== null && left4.list.caption === 'CHANGES THE 3 TICKED FILMS'
+    && left4.stored.slice(0, 3).every((f) => !f.includes('hardware')) && same(left4.stored[3], ['hardware']), left4);
+  check('hardware now reads clear in the open list (another film keeps it in use)', left4.list !== null && left4.list.boxes.hardware && left4.list.boxes.hardware.checked === false && left4.list.boxes.hardware.count === null, left4.list && left4.list.boxes);
+  await clickBox('hardware');
+  const back4 = { rows: await rowIds(), stored: [await flagsOf(BA), await flagsOf(BB), await flagsOf(BC), await flagsOf(BD), await flagsOf(BE)] };
+  check('ticking it again in the list puts it back on exactly those three films and the rows return',
+    back4.stored.slice(0, 3).every((f) => f.includes('hardware')) && same(back4.stored[3], []) && same(back4.stored[4], ['hardware']) && same(back4.rows, [BA, BB, BC]), back4);
+  await closeList();
+
+  // 20.5 Escape returns focus to the button; a press on a row closes the list without opening the study.
+  await bulkView();
+  await tick([BA, BB]);
+  await cdp.settle(200);
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  await cdp.key('Escape');
+  await cdp.settle(250);
+  check('Escape closes the list and focus is on the Flag button', (await listOpen()) === false && (await activeKey()) === 'flag-selected' && (await flagBtn()).expanded === 'false', { open: await listOpen(), active: await activeKey() });
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  check('a second click on the button closes the list', (await listOpen()) === false, await listOpen());
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  await clickAt(`.studies-row[data-study-id="${BC}"] .studies-cell-date`);
+  await cdp.settle(300);
+  s = await cdp.state();
+  check('a press on a table row closes the list and does not open the study (still the Studies screen, nothing open)',
+    (await listOpen()) === false && s.screen === 'studies' && (s.openId ?? null) === null, { open: await listOpen(), screen: s.screen, openId: s.openId });
+  if (s.screen !== 'studies') await cdp.setState('{ screen: "studies", openId: null }');
+  await cdp.settle(200);
+
+  // 20.6 A run or batch does not block the Flag button; Delete and Export are disabled. A real one-film batch.
+  await injectFilm({ id: BF, fileName: 'zzbulk-z.png', filePath: null, workspaceFolder: null, base64: SAMPLE_BASE64 });
+  await bulkView();
+  await tick([BF]);
+  await cdp.settle(250);
+  await clickAt('[data-find-key="segment"]');
+  const started20 = await waitForState('s.batch !== null && s.running !== null', 8000);
+  const busy = await cdp.evaluate(`(() => {
+    const q = (k) => { const b = document.querySelector('[data-find-key="' + k + '"]'); return b ? { disabled: b.disabled, title: b.title } : null; };
+    return { delete: q('delete'), export: q('export-bundle'), flag: q('flag-selected') };
+  })()`);
+  check('with a batch in flight Delete and Export are disabled and the Flag button is enabled',
+    started20 === true && busy.delete?.disabled === true && busy.export?.disabled === true && busy.flag?.disabled === false && busy.flag.title === '', { started20, busy });
+  if (started20) {
+    await clickAt('[data-find-key="flag-selected"]');
+    await cdp.settle(250);
+    check('and the list opens during the batch', (await listOpen()) === true, await listOpen());
+    await closeList();
+  }
+  const done20 = await waitForState('s.batch === null && s.running === null', 400000);
+  check('the batch finishes', done20 === true, done20);
+
+  // 20.7 The implementer's two doubts.
+  // (a) One click on the Flag button while a row editor holds a draft saves the draft and opens the list.
+  await bulkView();
+  await putFlags({ [BA]: ['cement'], [BB]: ['cement'], [BC]: ['cement'] });
+  await tick([BA, BB, BC]);
+  await cdp.settle(250);
+  await openFlags(BB);
+  await cdp.typeText('draftx,');
+  await cdp.settle(200);
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(300);
+  const after7a = { stored: await flagsOf(BB), open: await listOpen(), editors: (await editorsAll()).editors, list: await listNow() };
+  check('with a row editor open and a draft in it, ONE click on the Flag button saves the draft and opens the list',
+    same(after7a.stored, ['cement', 'draftx']) && after7a.open === true && after7a.editors === 0 && after7a.list !== null && after7a.list.focused === 'bulk-flag-input', after7a);
+  await closeList();
+  // (b) Every ticked film already holds 20 flags: an add changes no film, a toast says so, the box is not left checked.
+  const fill = (prefix) => Array.from({ length: 20 }, (_, i) => `${prefix}${String(i + 1).padStart(2, '0')}`);
+  await bulkView();
+  await putFlags({ [BA]: fill('aa'), [BB]: fill('bb'), [BC]: [], [BD]: [], [BE]: [] });
+  await tick([BA, BB]);
+  await cdp.settle(250);
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  const before7b = await listNow();
+  check('two films holding twenty flags each: the list shows aa01 as "1 of 2", indeterminate',
+    Boolean(before7b) && before7b.boxes.aa01 && before7b.boxes.aa01.indeterminate === true && before7b.boxes.aa01.count === '1 of 2', before7b && before7b.boxes.aa01);
+  await cdp.setState('{ toast: null }');
+  await clickBox('aa01');
+  const after7b = { a: await flagsOf(BA), b: await flagsOf(BB), toast: await toastNow(), list: await listNow() };
+  check('ticking it changes no film: both keep exactly their twenty flags',
+    same(after7b.a, fill('aa')) && same(after7b.b, fill('bb')), { a: after7b.a.length, b: after7b.b.length, bHasAa01: after7b.b.includes('aa01') });
+  check('a toast says one film already has 20 flags and was left out', after7b.toast === '1 film already has 20 flags and was left out.', after7b.toast);
+  check('the box does not stay shown as checked: it still reads the films\' state (some, indeterminate, "1 of 2")',
+    after7b.list !== null && after7b.list.boxes.aa01.checked === false && after7b.list.boxes.aa01.indeterminate === true && after7b.list.boxes.aa01.count === '1 of 2', after7b.list && after7b.list.boxes.aa01);
+  await closeList();
+
+  // 20.8 Task 7's leftover press note: a right press, and a primary press dragged off, then Tab out of a SUBJECT editor.
+  await bulkView();
+  await putFlags({ [BA]: [], [BB]: [], [BC]: [] });
+  await cdp.settle(250);
+  const cellAt = async (id) => { await cdp.evaluate(`document.querySelector('[data-find-key="flags-${id}"]').scrollIntoView({ block: 'nearest' })`); await cdp.settle(80); return cdp.rect(`[data-find-key="flags-${id}"]`); };
+  const rightCell = await cellAt(BA);
+  await cdp.click(rightCell.cx, rightCell.cy, 'right');
+  await cdp.settle(250);
+  await cdp.evaluate(`document.activeElement?.blur?.()`);
+  await clickAt(`[data-find-key="subject-${BA}"]`);
+  await cdp.settle(200);
+  await cdp.key('Tab');
+  await cdp.settle(250);
+  const afterRight = await editorsAll();
+  check('a right-button press on a resting FLAGS cell, then a SUBJECT editor on that row and Tab, opens no flags editor',
+    afterRight.editors === 0 && afterRight.popups === 0 && afterRight.active === `flags-${BA}`, afterRight);
+  const dragCell = await cellAt(BB);
+  const header = await cdp.rect('[data-find-key="sort-study"]');
+  await cdp.drag(dragCell.cx, dragCell.cy, header.cx, header.cy);
+  await cdp.settle(250);
+  s = await cdp.state();
+  await cdp.setState(`{ query: "zzbulk", findSort: { key: "study", dir: "asc" } }`);
+  await cdp.settle(200);
+  await clickAt(`[data-find-key="subject-${BB}"]`);
+  await cdp.settle(200);
+  await cdp.key('Tab');
+  await cdp.settle(250);
+  const afterDrag = await editorsAll();
+  check('a primary press on a resting FLAGS cell dragged off before release, then a SUBJECT editor on that row and Tab, opens no flags editor',
+    afterDrag.editors === 0 && afterDrag.popups === 0 && afterDrag.active === `flags-${BB}`, afterDrag);
+
+  // 20.9 The label record: a bulk add rewrites `flags` in the file and leaves `saved_at` byte-identical. The film is given
+  // a record the way a saved edit leaves one (a JSON object under labels/, named by the study's labelFile).
+  const SAVED_AT = '2026-01-02T03:04:05.678Z';
+  await cdp.evaluate(`(async () => {
+    await window.spineContour.saveLabelRecord(${JSON.stringify(REC_NAME)}, { version: 1, saved_at: ${JSON.stringify(SAVED_AT)}, app_version: '0.0.0-smoke', comment: 'smoke', flags: [], levels: {} });
+    const store = await import('./renderer/store.js');
+    store.setState((s) => ({ studies: s.studies.map((x) => (x.id === ${JSON.stringify(BA)} ? { ...x, labelFile: ${JSON.stringify(REC_NAME)} } : x)) }));
+  })()`);
+  const recPath = path.join(LABEL_DIR, REC_NAME);
+  const rawBefore = fs.existsSync(recPath) ? fs.readFileSync(recPath, 'utf8') : null;
+  check('the seeded label record is on disk in the scratch profile', rawBefore !== null && JSON.parse(rawBefore).saved_at === SAVED_AT, { recPath, exists: rawBefore !== null });
+  await bulkView();
+  await tick([BA, BB]);
+  await cdp.settle(250);
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  await cdp.typeText('onrecord');
+  await cdp.key('Enter');
+  await cdp.settle(300);
+  let rawAfter = null;
+  for (let i = 0; i < 30; i += 1) {
+    rawAfter = fs.readFileSync(recPath, 'utf8');
+    if (rawAfter.includes('onrecord')) break;
+    await cdp.settle(150);
+  }
+  const stamp = (raw) => (raw && /"saved_at"\s*:\s*"[^"]*"/.exec(raw)?.[0]) ?? null;
+  let parsedAfter = null;
+  try { parsedAfter = JSON.parse(rawAfter); } catch { parsedAfter = null; }
+  check('a bulk add rewrites the record\'s flags on disk (and the film without a record gets none)', Boolean(parsedAfter) && same(parsedAfter.flags, ['onrecord']) && parsedAfter.comment === 'smoke', { flags: parsedAfter?.flags, comment: parsedAfter?.comment });
+  check('and leaves saved_at byte-identical', stamp(rawBefore) !== null && stamp(rawBefore) === stamp(rawAfter) && parsedAfter?.saved_at === SAVED_AT, { before: stamp(rawBefore), after: stamp(rawAfter) });
+  await closeList();
+
+  // Tidy: the throwaway films and the record go.
+  await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ query: '', paramSelected: [], studies: s.studies.filter((x) => !${JSON.stringify([BA, BB, BC, BD, BE, BF])}.includes(x.id)) })))`);
+  try { fs.rmSync(recPath, { force: true }); } catch { /* the profile is scratch */ }
+  await cdp.settle(200);
+  check('no console errors or exceptions during section 20', cdp.errors.length === errorsBefore20, cdp.errors.slice(errorsBefore20));
+  }
 } finally {
   cdp.close();
 }
