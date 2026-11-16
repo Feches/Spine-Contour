@@ -4,6 +4,7 @@ import { globalSvaMeasurements } from './global-sva.js';
 import { normaliseTimepoint, normaliseView, parseFilmDate, PRE_OP } from './timepoints.js';
 import { normalizeCalibration } from './calibration.js';
 import { fileStem, studyName } from './labels.js';
+import { flagsText, mergeFlags } from './flags.js';
 
 // fileStem moved to data/labels.js on 2026-09-12 (labels.js must not import this module, which now
 // imports studyName from it); re-exported so its importers and the contract's module list hold.
@@ -136,7 +137,9 @@ export function toCsv(studies) {
   // Subject, Timepoint, Film date and Note sit after View (pre-op/post-op spec §11.1, note added
   // 2026-09-11): the identity a paired analysis groups on, the acquisition date, then what tells
   // two same-day films of one subject apart. Absent values are empty, never 0 or —.
-  const header = ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date', 'Note', ...(withRegions ? ['Spine region', 'Anterior image side'] : []), ...columns, ...fields,
+  // (2026-11-16) Flags follows Note, always written, empty for a film with none (study-flags spec FL21,
+  // 4.6); the cell joins the film's cleaned flags with '; '.
+  const header = ['Study ID', 'View', 'Subject', 'Timepoint', 'Film date', 'Note', 'Flags', ...(withRegions ? ['Spine region', 'Anterior image side'] : []), ...columns, ...fields,
     ...(withCalibration ? CALIBRATION_COLUMNS : [])];
 
   const lines = [...citation, header.map(escapeField).join(',')];
@@ -148,6 +151,7 @@ export function toCsv(studies) {
       study.timepoint ?? '',
       study.filmDate ?? '',
       study.note ?? '',
+      flagsText(study.flags, '; '),
       // (2026-10-19) The label the Find list's REGION column shows, not the stored key: a film with no run is Unknown, not 'auto'.
       ...(withRegions ? [regionLabel(regionKey(study)), studyRegion(study) !== 'lumbar' ? study.geometry?.anterior_side ?? study.anteriorSide ?? '' : ''] : []),
       ...measurementValues(study, columns),
@@ -171,8 +175,9 @@ function clinicalOf(visit, field) {
 
 // The paired (wide) file (pre-op/post-op spec §11.2, amended 2026-09-11) from what
 // data/pairing.js's pairStudies returns; this function only writes text. Layout B,
-// measurement-major: Subject; `<visit> study`, `<visit> view`, `<visit> film date` per visit
-// (Pre-op first), then -- only when some visit merged films -- `<visit> disagreements` and
+// measurement-major: Subject; `<visit> study`, `<visit> view`, `<visit> film date`, then (2026-11-16,
+// FL21, always written) `<visit> flags` per visit (Pre-op first; a merged visit lists its films' flags
+// in visit order, the primary's first, without repeats), then -- only when some visit merged films -- `<visit> disagreements` and
 // `<visit> derived across films` (the column and the film behind each of its inputs); then per
 // measurement column `<M> Pre-op` followed by `<M> <visit>`, `Delta <M> <visit>` per later visit;
 // then `<F> <visit>` per clinical key present on the written films. A visit's header is its label,
@@ -201,6 +206,7 @@ export function toPairedCsv(pairing) {
     ...headers.map((name) => `${name} study`),
     ...headers.map((name) => `${name} view`),
     ...headers.map((name) => `${name} film date`),
+    ...headers.map((name) => `${name} flags`),
     ...(withRegions ? headers.map(name => `${name} regions and orientation`) : []),
     ...(flagMerges ? headers.map((name) => `${name} disagreements`) : []),
     ...(flagMerges ? headers.map((name) => `${name} derived across films`) : []),
@@ -221,6 +227,7 @@ export function toPairedCsv(pairing) {
       ...headers.map((name) => (visit(name) ? visit(name).films.map((study) => studyName(study)).join(' + ') : '')),
       ...headers.map((name) => visit(name)?.films[0]?.view ?? ''),
       ...headers.map((name) => visit(name)?.filmDate ?? ''),
+      ...headers.map((name) => flagsText((visit(name)?.films ?? []).reduce((all, study) => mergeFlags(all, study.flags), []), '; ')),
       ...(withRegions ? headers.map(name => (visit(name)?.films ?? []).map(study =>
         `${studyName(study)}: ${regionLabel(regionKey(study))}${studyRegion(study) !== 'lumbar' ? `, anterior image ${study.geometry?.anterior_side ?? study.anteriorSide ?? 'unconfirmed'}` : ''}`).join('; ')) : []),
       ...(flagMerges ? headers.map((name) => (visit(name)?.disagreements ?? []).join('; ')) : []),

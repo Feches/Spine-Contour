@@ -81,9 +81,9 @@ test('toCsv writes every clinical field present on the exported studies, KNOWN_F
   ]);
   const lines = csv.split('\r\n');
   const header = lines[2].split(',');
-  // Study ID, View, Subject, Timepoint, Film date, Note, 36 measurement columns, then the union:
+  // Study ID, View, Subject, Timepoint, Film date, Note, Flags, 36 measurement columns, then the union:
   // known fields in KNOWN_FIELDS order, then custom names in first-seen order.
-  assert.deepEqual(header.slice(42), ['Age', 'Diagnosis', 'Zeta']); // 6 identity + 36 measurement
+  assert.deepEqual(header.slice(43), ['Age', 'Diagnosis', 'Zeta']); // 7 identity + 36 measurement
   const row1000 = lines[3];
   const row1001 = lines[4];
   assert.ok(row1000.startsWith('SP-1000'));
@@ -95,8 +95,8 @@ test('toCsv writes every clinical field present on the exported studies, KNOWN_F
 test('toCsv writes no clinical columns when no exported study carries a value', () => {
   const csv = toCsv([study({ clinical: {} }), study({ id: 'SP-1001' })]);
   const header = csv.split('\r\n')[2].split(',');
-  assert.equal(header.length, 42); // 6 identity + 36 measurement
-  assert.equal(header[31], 'Disc height L5-S1 posterior (mm)'); // 6 identity + 10 angular + 15 disc heights, 0-based
+  assert.equal(header.length, 43); // 7 identity + 36 measurement
+  assert.equal(header[32], 'Disc height L5-S1 posterior (mm)'); // 7 identity + 10 angular + 15 disc heights, 0-based
 });
 
 // The screens name a study by its film's stem (data/labels.js studyName) and the workspace CSV
@@ -125,7 +125,7 @@ test("toCsv ignores an excluded demo study's clinical keys when choosing the col
     study({ id: 'SP-0042', source: 'demo', clinical: { Notes: 'demo only' } }),
   ]);
   const header = csv.split('\r\n')[2].split(',');
-  assert.deepEqual(header.slice(42), ['Age']); // 6 identity + 36 measurement
+  assert.deepEqual(header.slice(43), ['Age']); // 7 identity + 36 measurement
   assert.ok(!csv.includes('demo only'));
 });
 
@@ -666,20 +666,20 @@ test('toPairedCsv leads with the comment block and writes the layout-B header ov
   assert.doesNotMatch(lines.join('\n'), /Woodhouse|Jayasuriya|Created by|methods paper/i);
   assert.match(lines[1], /NOT FOR CLINICAL USE/);
   const header = lines[2].split(',');
-  assert.deepEqual(header.slice(0, 10), [
+  assert.deepEqual(header.slice(0, 13), [
     'Subject', 'Pre-op study', 'Post-op study', '1 yr study', 'Pre-op view', 'Post-op view', '1 yr view',
-    'Pre-op film date', 'Post-op film date', '1 yr film date',
+    'Pre-op film date', 'Post-op film date', '1 yr film date', 'Pre-op flags', 'Post-op flags', '1 yr flags',
   ]);
   // Each measurement's trajectory is contiguous: Pre-op, then value and Delta per later visit.
-  assert.deepEqual(header.slice(10, 20), [
+  assert.deepEqual(header.slice(13, 23), [
     'LL L1-S1 Pre-op', 'LL L1-S1 Post-op', 'Delta LL L1-S1 Post-op', 'LL L1-S1 1 yr', 'Delta LL L1-S1 1 yr',
     'PI Pre-op', 'PI Post-op', 'Delta PI Post-op', 'PI 1 yr', 'Delta PI 1 yr',
   ]);
-  assert.deepEqual(header.slice(10), [
+  assert.deepEqual(header.slice(13), [
     ...MEASURES.flatMap((m) => [`${m} Pre-op`, `${m} Post-op`, `Delta ${m} Post-op`, `${m} 1 yr`, `Delta ${m} 1 yr`]),
     'Age Pre-op', 'Age Post-op', 'Age 1 yr', 'Sex Pre-op', 'Sex Post-op', 'Sex 1 yr', 'ODI Pre-op', 'ODI Post-op', 'ODI 1 yr',
   ]);
-  assert.equal(header.length, 199); // 10 leading + 36 measures x 5 + 9 clinical (Age, Sex, ODI x 3 visits)
+  assert.equal(header.length, 202); // 13 leading (10 + three flags) + 36 measures x 5 + 9 clinical (Age, Sex, ODI x 3 visits)
   assert.ok(!lines[2].includes('Notes'), 'an unpaired subject\'s clinical key adds no column');
   // Two subjects written, then the trailing CRLF.
   assert.equal(lines.length, 6);
@@ -699,7 +699,7 @@ test('the paired regions and orientation cell reads the region label, Unknown fo
 test('toPairedCsv writes one row per subject with the deltas over the written one-decimal values and empty cells for a missing visit', () => {
   const lines = toPairedCsv(pairStudies(pairedRows())).split('\r\n');
   assert.equal(lines[3], [
-    'S001', 'SP-1000', 'SP-1001', 'SP-1002', 'Standing lateral', 'Standing lateral', 'Prone lateral', '2025-03-02', '2025-09-14', '2026-03-20',
+    'S001', 'SP-1000', 'SP-1001', 'SP-1002', 'Standing lateral', 'Standing lateral', 'Prone lateral', '2025-03-02', '2025-09-14', '2026-03-20', '', '', '',
     '38.2', '49.1', '10.9', '47.5', '9.3',       // LL L1-S1
     '52.1', '52.3', '0.2', '52', '-0.1',         // PI
     '21.4', '14', '-7.4', '15.1', '-6.3',        // PT
@@ -715,7 +715,7 @@ test('toPairedCsv writes one row per subject with the deltas over the written on
     '61', '61', '', 'F', '', '', '', '18', '',   // Age, Sex, ODI per visit
   ].join(','));
   assert.equal(lines[4], [
-    'S002', 'SP-1003', '', 'SP-1004', 'Standing lateral', '', 'Standing lateral', '2025-04-11', '', '2026-04-02',
+    'S002', 'SP-1003', '', 'SP-1004', 'Standing lateral', '', 'Standing lateral', '2025-04-11', '', '2026-04-02', '', '', '',
     '49', '', '', '50.2', '1.2',
     '48.6', '', '', '48.9', '0.3',
     '12.1', '', '', '9.8', '-2.3',
@@ -730,20 +730,20 @@ test('toPairedCsv writes one row per subject with the deltas over the written on
     ...Array(125).fill(''),
     '58', '', '', '', '', '', '', '', '',
   ].join(','));
-  assert.equal(lines[4].split(',').length, 199);
+  assert.equal(lines[4].split(',').length, 202);
   assert.ok(!lines.join('\n').includes('NaN'));
 });
 
 test('toPairedCsv under a single label writes the two-visit file with that label only', () => {
   const lines = toPairedCsv(pairStudies(pairedRows(), { post: 'Post-op' })).split('\r\n');
   const header = lines[2].split(',');
-  assert.deepEqual(header.slice(0, 10), [
+  assert.deepEqual(header.slice(0, 12), [
     'Subject', 'Pre-op study', 'Post-op study', 'Pre-op view', 'Post-op view', 'Pre-op film date', 'Post-op film date',
-    'LL L1-S1 Pre-op', 'LL L1-S1 Post-op', 'Delta LL L1-S1 Post-op',
+    'Pre-op flags', 'Post-op flags', 'LL L1-S1 Pre-op', 'LL L1-S1 Post-op', 'Delta LL L1-S1 Post-op',
   ]);
-  assert.equal(header.length, 121); // 7 leading + 36 measures x 3 + 6 clinical (Age, Sex, ODI x 2 visits)
+  assert.equal(header.length, 123); // 9 leading (7 + two flags) + 36 measures x 3 + 6 clinical (Age, Sex, ODI x 2 visits)
   assert.equal(lines.length, 5, 'S001 only: S002 has no Post-op film and S003 no Pre-op film');
-  assert.ok(lines[3].startsWith('S001,SP-1000,SP-1001,Standing lateral,Standing lateral,2025-03-02,2025-09-14,38.2,49.1,10.9,52.1,52.3,0.2,'));
+  assert.ok(lines[3].startsWith('S001,SP-1000,SP-1001,Standing lateral,Standing lateral,2025-03-02,2025-09-14,,,38.2,49.1,10.9,52.1,52.3,0.2,'));
   assert.ok(!lines[2].includes('1 yr'));
 });
 
@@ -755,8 +755,8 @@ test('toPairedCsv writes empty measurement and delta cells for an unsegmented fi
   const lines = toPairedCsv(pairStudies(rows)).split('\r\n');
   const cells = lines[3].split(',');
   assert.deepEqual(cells.slice(0, 7), ['S001', 'SP-1000', 'SP-1001', 'Standing lateral', 'Standing lateral', '', '']);
-  assert.deepEqual(cells.slice(7, 13), ['', '49.1', '', '', '52.3', '']);
-  assert.equal(cells.length, 115); // 7 leading + 36 measures x 3
+  assert.deepEqual(cells.slice(9, 15), ['', '49.1', '', '', '52.3', '']); // after the two empty flags cells
+  assert.equal(cells.length, 117); // 9 leading (7 + two flags) + 36 measures x 3
 });
 
 test('toPairedCsv never writes a demo row and quotes a label or value that needs it', () => {
@@ -783,21 +783,21 @@ test('toPairedCsv writes a merged visit\'s films joined with +, and a disagreeme
   ];
   const lines = toPairedCsv(pairStudies(rows)).split('\r\n');
   const header = lines[2].split(',');
-  assert.deepEqual(header.slice(0, 14), [
+  assert.deepEqual(header.slice(0, 16), [
     'Subject', 'Pre-op study', 'Post-op study', 'Pre-op view', 'Post-op view', 'Pre-op film date', 'Post-op film date',
-    'Pre-op disagreements', 'Post-op disagreements', 'Pre-op derived across films', 'Post-op derived across films',
+    'Pre-op flags', 'Post-op flags', 'Pre-op disagreements', 'Post-op disagreements', 'Pre-op derived across films', 'Post-op derived across films',
     'LL L1-S1 Pre-op', 'LL L1-S1 Post-op', 'Delta LL L1-S1 Post-op',
   ]);
   const cells = lines[3].split(',');
-  assert.deepEqual(cells.slice(0, 9), ['sub225', 'SP-1000 + SP-1001', 'SP-1002', 'Standing lateral', 'Standing lateral', '2023-10-23', '2024-03-22', 'SS', '']);
+  assert.deepEqual(cells.slice(0, 11), ['sub225', 'SP-1000 + SP-1001', 'SP-1002', 'Standing lateral', 'Standing lateral', '2023-10-23', '2024-03-22', '', '', 'SS', '']);
   // The derived-across-films cell names the column and the film each input came from; it holds
   // a comma, so the writer quotes it.
-  assert.equal(cells[9], '"PI-LL Mismatch: PI from SP-1001');
-  assert.equal(cells[10], ' LL L1-S1 from SP-1000"');
-  assert.equal(cells[11], '');
+  assert.equal(cells[11], '"PI-LL Mismatch: PI from SP-1001');
+  assert.equal(cells[12], ' LL L1-S1 from SP-1000"');
+  assert.equal(cells[13], '');
   // LL from the unnoted film, PI and PT from the noted one, SS from the unnoted one; the mismatch
   // is derived from the merged PI and LL (62.3 - 56) and its delta from the written cells.
-  assert.deepEqual(cells.slice(12, 27), ['56', '49.1', '-6.9', '62.3', '52.3', '-10', '18.1', '14', '-4.1', '43.7', '38.3', '-5.4', '6.3', '3.2', '-3.1']);
+  assert.deepEqual(cells.slice(14, 29), ['56', '49.1', '-6.9', '62.3', '52.3', '-10', '18.1', '14', '-4.1', '43.7', '38.3', '-5.4', '6.3', '3.2', '-3.1']);
   // Clinical values merge the same way: Age from the unnoted film, Sex from the noted one.
   assert.ok(lines[3].endsWith(',70,,M,'), lines[3]);
   assert.equal(lines.length, 5);
@@ -813,13 +813,13 @@ test('toPairedCsv numbers a label\'s column groups when a subject has several vi
   ];
   const lines = toPairedCsv(pairStudies(rows)).split('\r\n');
   const header = lines[2].split(',');
-  assert.deepEqual(header.slice(0, 15), [
+  assert.deepEqual(header.slice(0, 18), [
     'Subject', 'Pre-op study', 'Post-op 1 study', 'Post-op 2 study', 'Pre-op view', 'Post-op 1 view', 'Post-op 2 view',
-    'Pre-op film date', 'Post-op 1 film date', 'Post-op 2 film date',
+    'Pre-op film date', 'Post-op 1 film date', 'Post-op 2 film date', 'Pre-op flags', 'Post-op 1 flags', 'Post-op 2 flags',
     'LL L1-S1 Pre-op', 'LL L1-S1 Post-op 1', 'Delta LL L1-S1 Post-op 1', 'LL L1-S1 Post-op 2', 'Delta LL L1-S1 Post-op 2',
   ]);
-  assert.ok(lines[3].startsWith('S001,SP-1000,SP-1002,SP-1001,Standing lateral,Standing lateral,Standing lateral,2024-01-02,2024-04-30,2024-05-31,38.2,49.1,10.9,47.5,9.3,'), lines[3]);
-  assert.ok(lines[4].startsWith('S002,SP-1003,SP-1004,,Standing lateral,Standing lateral,,2024-02-01,2024-06-01,,38.2,49.1,10.9,,,'), lines[4]);
+  assert.ok(lines[3].startsWith('S001,SP-1000,SP-1002,SP-1001,Standing lateral,Standing lateral,Standing lateral,2024-01-02,2024-04-30,2024-05-31,,,,38.2,49.1,10.9,47.5,9.3,'), lines[3]);
+  assert.ok(lines[4].startsWith('S002,SP-1003,SP-1004,,Standing lateral,Standing lateral,,2024-02-01,2024-06-01,,,,,38.2,49.1,10.9,,,'), lines[4]);
   // No visit merged films, so neither the disagreements nor the derived-across-films columns.
   assert.ok(!lines[2].includes('disagreements'));
   assert.ok(!lines[2].includes('derived across films'));
@@ -834,18 +834,50 @@ test('toPairedCsv names each visit\'s films by their study names, not their reco
   const csv = toPairedCsv(pairStudies(rows));
   const cells = csv.split('\r\n')[3].split(',');
   assert.deepEqual(cells.slice(0, 3), ['sub225', 'sub225_pre-op_10-23-2023 + sub225_pre-op_10-23-2023_femoral heads', 'sub225_post-op_3-22-2024']);
-  // Study, view, film date and disagreements columns for two visits come first; the derived cell
+  // Study, view, film date, flags and disagreements columns for two visits come first; the derived cell
   // holds a comma, so it is quoted and the naive split leaves it in two pieces.
-  assert.equal(cells[9], '"PI-LL Mismatch: PI from sub225_pre-op_10-23-2023_femoral heads');
-  assert.equal(cells[10], ' LL L1-S1 from sub225_pre-op_10-23-2023"');
+  assert.equal(cells[11], '"PI-LL Mismatch: PI from sub225_pre-op_10-23-2023_femoral heads');
+  assert.equal(cells[12], ' LL L1-S1 from sub225_pre-op_10-23-2023"');
   assert.ok(!csv.includes('SP-100'), 'no record id anywhere in the paired file');
 });
 
 test('toPairedCsv over a pairing with nothing written is the comment block and a Pre-op-only header', () => {
   const lines = toPairedCsv(pairStudies([study({ id: 'SP-1000', subjectId: 'S001', timepoint: 'Pre-op' })])).split('\r\n');
   assert.equal(lines.length, 4);
-  assert.ok(lines[2].startsWith('Subject,Pre-op study,Pre-op view,Pre-op film date,LL L1-S1 Pre-op,PI Pre-op,'));
-  assert.equal(lines[2].split(',').length, 40); // Subject, study, view, film date + 36 Pre-op measures
+  assert.ok(lines[2].startsWith('Subject,Pre-op study,Pre-op view,Pre-op film date,Pre-op flags,LL L1-S1 Pre-op,PI Pre-op,'));
+  assert.equal(lines[2].split(',').length, 41); // Subject, study, view, film date, flags + 36 Pre-op measures
+});
+
+// (2026-11-16) Study flags: FL21 writes both columns always, empty when a film has none.
+test('toCsv writes Flags after Note', () => {
+  const lines = toCsv([
+    study({ id: 'SP-1000', flags: ['OLIF outcomes', 'hardware'] }),
+    study({ id: 'SP-1001', flags: [] }),
+    study({ id: 'SP-1002' }),
+  ]).split('\r\n');
+  const header = lines[2].split(',');
+  const at = header.indexOf('Note') + 1;
+  assert.equal(header[at], 'Flags');
+  assert.equal(lines[3].split(',')[at], 'OLIF outcomes; hardware');
+  assert.equal(lines[4].split(',')[at], '');
+  assert.equal(lines[5].split(',')[at], '');
+});
+
+test('toPairedCsv writes each visit\'s flags after the film dates', () => {
+  const rows = [
+    study({ id: 'SP-1000', subjectId: 'S001', timepoint: 'Pre-op', filmDate: '2025-03-02', measurements: PAIR_PRE }),
+    study({ id: 'SP-1001', subjectId: 'S001', timepoint: 'Post-op', filmDate: '2025-09-14', measurements: PAIR_POST, flags: ['hardware'] }),
+    study({ id: 'SP-1002', subjectId: 'S001', timepoint: 'Post-op', filmDate: '2025-09-14', note: 'femoral heads', measurements: { PI: 52.3 }, flags: ['Hardware', 'cement'] }),
+    study({ id: 'SP-1003', subjectId: 'S002', timepoint: 'Pre-op', filmDate: '2025-04-11', measurements: PAIR_PRE }),
+    study({ id: 'SP-1004', subjectId: 'S002', timepoint: '1 yr', filmDate: '2026-04-02', measurements: PAIR_YEAR }),
+  ];
+  const lines = toPairedCsv(pairStudies(rows)).split('\r\n');
+  const header = lines[2].split(',');
+  const at =header.indexOf('1 yr film date') + 1;
+  assert.deepEqual(header.slice(at, at + 3), ['Pre-op flags', 'Post-op flags', '1 yr flags']);
+  const first = lines[3].split(',');
+  assert.equal(first[0], 'S001');
+  assert.deepEqual(first.slice(at, at + 3), ['', 'hardware; cement', '']);
 });
 
 // Keep column name (similar-cases spec, 2026-09-12, section 9.5).
