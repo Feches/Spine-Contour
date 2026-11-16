@@ -6,6 +6,7 @@ import fs from 'node:fs';
 const KEYS = {
   Tab: { code: 'Tab', vk: 9 },
   Backspace: { code: 'Backspace', vk: 8 },
+  ' ': { code: 'Space', vk: 32 },
   Escape: { code: 'Escape', vk: 27 },
   Enter: { code: 'Enter', vk: 13 },
   ArrowUp: { code: 'ArrowUp', vk: 38 },
@@ -106,11 +107,14 @@ export async function connect(port = process.env.CDP_PORT || '9222') {
   const move = (x, y) => mouse('mouseMoved', x, y);
   const wheel = (x, y, deltaY) => mouse('mouseWheel', x, y, { deltaX: 0, deltaY });
 
-  async function key(name, { shift = false, ctrl = false } = {}) {
+  // `typed: true` also sends the key's character (Enter CR, Space ' '), which is what activates a focused button: a bare
+  // keyDown reaches the page's key handlers but does not click a <button>.
+  async function key(name, { shift = false, ctrl = false, typed = false } = {}) {
     const spec = KEYS[name];
     if (!spec) throw new Error(`unknown key ${name}`);
     const modifiers = (shift ? MODIFIER_SHIFT : 0) | (ctrl ? MODIFIER_CTRL : 0);
-    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: name, code: spec.code, windowsVirtualKeyCode: spec.vk, modifiers });
+    const text = typed ? (name === 'Enter' ? String.fromCharCode(13) : name === ' ' ? ' ' : undefined) : undefined;
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: name, code: spec.code, windowsVirtualKeyCode: spec.vk, modifiers, ...(text ? { text } : {}) });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code: spec.code, windowsVirtualKeyCode: spec.vk, modifiers });
   }
 

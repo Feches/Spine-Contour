@@ -1729,6 +1729,127 @@ try {
   check('and leaves saved_at byte-identical', stamp(rawBefore) !== null && stamp(rawBefore) === stamp(rawAfter) && parsedAfter?.saved_at === SAVED_AT, { before: stamp(rawBefore), after: stamp(rawAfter) });
   await closeList();
 
+
+  // 20.10 (ruling 12) The Flag button from an open SUBJECT editor, and the keyboard side. The bar comes BEFORE the table in
+  // the page, so Tab from an editor moves on into the table and never reaches the button, and Shift+Tab would cross every
+  // earlier cell; a keyboard arrival is therefore made by focusing the button while the editor holds a draft, which blurs
+  // the editor with the button as its relatedTarget exactly as a Tab onto it would.
+  await bulkView();
+  await putFlags({ [BA]: ['cement'], [BB]: ['cement'], [BC]: ['cement'], [BD]: [], [BE]: ['hardware'] });
+  await tick([BA, BB, BC]);
+  await cdp.settle(250);
+  await subjectOpen(BB);
+  await cdp.typeText('SJbulk');
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(300);
+  const subj10 = { subject: await subjectOf(BB), open: await listOpen(), list: await listNow() };
+  check('with a SUBJECT editor open and text in it, ONE click on the Flag button commits the subject and opens the list',
+    subj10.subject === 'SJbulk' && subj10.open === true && subj10.list !== null && subj10.list.focused === 'bulk-flag-input', subj10);
+  await closeList();
+  // From a flags editor, then from a SUBJECT editor: focus arrives on the button without a press.
+  await openFlags(BB);
+  await cdp.typeText('kbdflag,');
+  await cdp.settle(200);
+  await cdp.evaluate(`document.querySelector('[data-find-key="flag-selected"]').focus()`);
+  await cdp.settle(300);
+  const kbdF = { open: await listOpen(), input: await cdp.evaluate(`Boolean(document.querySelector('[data-find-key="bulk-flag-input"]'))`), active: await activeKey(), stored: await flagsOf(BB), editors: (await editorsAll()).editors };
+  check('moving focus onto the Flag button from an open flags editor saves the draft, leaves focus on the button and does not open the list',
+    kbdF.open === false && kbdF.input === false && kbdF.active === 'flag-selected' && kbdF.stored.includes('kbdflag') && kbdF.editors === 0, kbdF);
+  await cdp.key('Enter', { typed: true });
+  await cdp.settle(300);
+  const kbdEnter = await listOpen();
+  check('Enter on the focused Flag button opens the list', kbdEnter === true, { kbdEnter });
+  await closeList();
+  // Space does the same from the button's own focus (a focused, untouched button).
+  await cdp.evaluate(`document.querySelector('[data-find-key="flag-selected"]').focus()`);
+  await cdp.key(' ', { typed: true });
+  await cdp.settle(300);
+  check('Space on the focused Flag button opens the list', (await listOpen()) === true, await listOpen());
+  await closeList();
+  await subjectOpen(BC);
+  await cdp.typeText('SJkbd');
+  await cdp.evaluate(`document.querySelector('[data-find-key="flag-selected"]').focus()`);
+  await cdp.settle(300);
+  const kbdS = { open: await listOpen(), subject: await subjectOf(BC), active: await activeKey(), editing: await cdp.evaluate(`Boolean(document.querySelector('[data-find-key="subject-input-${BC}"]'))`) };
+  check('moving focus onto the Flag button from an open SUBJECT editor saves the subject, leaves focus on the button and does not open the list',
+    kbdS.open === false && kbdS.subject === 'SJkbd' && kbdS.active === 'flag-selected' && kbdS.editing === false, kbdS);
+  // Tab from each editor does not reach the bar: after the commit no list exists.
+  await openFlags(BA);
+  await cdp.typeText('tabn,');
+  await cdp.key('Tab');
+  await cdp.settle(250);
+  const tabNoList = await cdp.evaluate(`Boolean(document.querySelector('[data-find-key="bulk-flag-input"]'))`);
+  await subjectOpen(BA);
+  await cdp.key('Tab');
+  await cdp.settle(250);
+  check('Tab out of a flags editor and out of a SUBJECT editor leaves no list behind (the button is not in Tab reach from a row)', tabNoList === false && (await listOpen()) === false, { tabNoList });
+  await closeList();
+
+  // 20.11 A stale press note on the button: a primary press dragged off before release, and a press while it is disabled.
+  await bulkView();
+  await tick([BA, BB, BC]);
+  await cdp.settle(250);
+  const btnRect = await cdp.rect('[data-find-key="flag-selected"]');
+  const sortRect = await cdp.rect('[data-find-key="sort-study"]');
+  await cdp.drag(btnRect.cx, btnRect.cy, sortRect.cx, sortRect.cy);
+  await cdp.settle(250);
+  await subjectOpen(BA);
+  await cdp.key('Tab');
+  await cdp.settle(250);
+  check('a press on the Flag button dragged off before release, then a SUBJECT editor and Tab, opens no list', (await listOpen()) === false, await flagBtn());
+  await cdp.setState('{ paramSelected: [] }');
+  await cdp.settle(200);
+  const disBtn = await cdp.rect('[data-find-key="flag-selected"]');
+  await cdp.click(disBtn.cx, disBtn.cy);
+  await cdp.settle(200);
+  await subjectOpen(BB);
+  await cdp.key('Tab');
+  await cdp.settle(250);
+  check('a press on the disabled Flag button (nothing ticked), then a SUBJECT editor and Tab, opens no list', (await flagBtn()).disabled === true && (await listOpen()) === false, await flagBtn());
+
+  // 20.12 (ruling 11) A flag the list empties stays offered until the list closes. The ticked films are the only holders.
+  await bulkView();
+  await putFlags({ [BA]: ['zzf'], [BB]: ['zzf'], [BC]: ['zzf'], [BD]: [], [BE]: ['hardware'] });
+  await tick([BA, BB, BC]);
+  await cdp.settle(250);
+  const holders = () => cdp.evaluate(`import('./renderer/store.js').then((m) => m.getState().studies.filter((x) => (x.flags || []).includes('zzf')).map((x) => x.id).sort())`);
+  check('setup: the three ticked films are the only films in the library holding zzf', same(await holders(), [BA, BB, BC]), await holders());
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  await clickBox('zzf');
+  const emptied = await listNow();
+  check('clearing zzf from the last films that hold it leaves its row in the list, unchecked, with no count text',
+    same(await holders(), []) && emptied !== null && Boolean(emptied.boxes.zzf) && emptied.boxes.zzf.checked === false && emptied.boxes.zzf.indeterminate === false && emptied.boxes.zzf.count === null, { holders: await holders(), zzf: emptied && emptied.boxes.zzf });
+  await clickBox('zzf');
+  check('ticking it again gives zzf to exactly those three films', same(await holders(), [BA, BB, BC]), await holders());
+  await clickBox('zzf');
+  await closeList();
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  const reopened = await listNow();
+  check('closing the list and reopening it while no film holds zzf no longer offers it', same(await holders(), []) && reopened !== null && reopened.boxes.zzf === undefined, { holders: await holders(), boxes: reopened && Object.keys(reopened.boxes) });
+  await closeList();
+
+  // 20.13 A refused write: the list open, a bulk delete in flight (flagsRefusal reads state.deletingStudies), a box ticked.
+  await bulkView();
+  await putFlags({ [BA]: ['cement'], [BB]: [], [BC]: [], [BD]: [], [BE]: [] });
+  await tick([BA, BB, BC]);
+  await cdp.settle(250);
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  await cdp.setState('{ toast: null }');
+  await cdp.setState('{ deletingStudies: true }');
+  await cdp.settle(250);
+  const stillOpen13 = await listOpen();
+  await clickBox('cement');
+  const refused13 = { stored: [await flagsOf(BA), await flagsOf(BB), await flagsOf(BC)], toast: await toastNow(), list: await listNow() };
+  await cdp.setState('{ deletingStudies: false }');
+  await cdp.settle(250);
+  check('with the list open during a bulk delete, ticking a box says to wait, changes no film and shows the films\' real state (cement 1 of 3, indeterminate)',
+    stillOpen13 === true && same(refused13.stored, [['cement'], [], []]) && refused13.toast === 'Wait for the delete to finish.'
+    && refused13.list !== null && refused13.list.boxes.cement.checked === false && refused13.list.boxes.cement.indeterminate === true && refused13.list.boxes.cement.count === '1 of 3', { stillOpen13, refused13 });
+  await closeList();
+
   // Tidy: the throwaway films and the record go.
   await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ query: '', paramSelected: [], studies: s.studies.filter((x) => !${JSON.stringify([BA, BB, BC, BD, BE, BF])}.includes(x.id)) })))`);
   try { fs.rmSync(recPath, { force: true }); } catch { /* the profile is scratch */ }
