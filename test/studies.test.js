@@ -98,6 +98,7 @@ test('newStudy carries the three study fields as null', () => {
   // (annotation round 2, spec §3.3) the display copy of the label record's comment; null until a save writes one.
   assert.equal(study.labelComment, null);
   assert.ok('labelComment' in study);
+  assert.deepEqual(study.flags, []);
 });
 
 // The picker and a drop go through this, so a film named to the §8.1 convention reads its fields

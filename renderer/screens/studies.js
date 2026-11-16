@@ -90,6 +90,8 @@ export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
     note: null,
     // (annotation round 2, spec §3.3) the display copy of the label record's comment; null until a save writes one.
     labelComment: null,
+    // (2026-11-16, study-flags spec) the film's free-text flags; always a list, empty until a person adds one.
+    flags: [],
     // (2026-09-10, studies-table spec 8.1) the review mark; set on the Analysis screen, cleared by every write that changes the numbers.
     reviewedAt: null,
     // (2026-10-19) the view is Unknown (null) until the film's name, a workspace load or the drawer says otherwise.

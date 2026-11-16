@@ -14,6 +14,7 @@ import { CERVICAL_LEVELS, validAnteriorSide } from './cervical.js';
 
 import { DEMO_STUDIES } from './demo-studies.js';
 import { FILM_DATE } from './timepoints.js';
+import { cleanFlags } from './flags.js';
 import { normalizeCalibration } from './calibration.js';
 import { normalizeMarks } from './crop-marks.js';
 
@@ -269,6 +270,8 @@ function validateStudy(entry, index) {
     note: optionalText(entry.note),
     // (2026-10-15, annotation round 2, spec §3.3) the display copy of the label record's comment; optional-null, no STORE_VERSION bump
     labelComment: optionalText(entry.labelComment),
+    // (2026-11-16, study-flags spec) the film's flags, cleaned on every load; optional, no STORE_VERSION bump
+    flags: cleanFlags(entry.flags),
     // (2026-10-10, level editor) the film's label record file name under userData/labels/; optional-null, no STORE_VERSION bump
     labelFile: optionalText(entry.labelFile),
     reviewedAt,
