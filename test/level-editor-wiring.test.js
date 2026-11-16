@@ -21,7 +21,7 @@ import {
   configureLevelEditor, enterLevelEditor, exitNow, startPlace, placePoint, toggleLevelVisible, selectPlacingStep,
   restorePlacing, fitPlacing, writeReviewRecord, saveLevelEdits, hasStashedEditor, forgetLevelEditor, commitHandleMove,
   revertPlacedLevel, setLevelComment, discardLevelEdits, resetLevelsToModel, clearPlacedLevel, toggleLevelGroup,
-  aimHandle, cancelAim, placeAimedPoint, setFocusedHandle, cancelPlace, resumePlace, removeFocusedPart,
+  aimHandle, cancelAim, placeAimedPoint, setFocusedHandle, cancelPlace, resumePlace, removeFocusedPart, syncRecordFlags,
 } from '../renderer/level-editor.js';
 import { projectionIsEmpty, projectGeometry } from '../renderer/data/level-projection.js';
 import { openEditor, setLevelGeometry, toggleVisible } from '../renderer/data/levels.js';
@@ -1598,5 +1598,172 @@ test('Closing wave 2: Edit on a film whose C7 is a centroid only commits nothing
     assert.equal(getState().levelEditor.levels.C7.geometry.centroid != null, true, 'precondition: the editor holds C7');
     assert.equal(commits.length, 0, 'no heal');
     assert.equal(studyOf(study.id).reviewedAt, study.reviewedAt, 'the Reviewed mark survives');
+  }));
+});
+
+// ---------------------------------------------------------------------------
+// Study flags (spec §4.8, 2026-11-16): syncRecordFlags puts a study's flags into its label record, read then written,
+// and takes its turn on the same latch as Save edits and Mark reviewed, so once no write is in flight every record's
+// `flags` equal its study's. The bridge below is a label folder: a load reads the last record saved under that name,
+// else the seeded one.
+
+const STORED_AT = '2026-10-01T00:00:00.000Z';
+
+function folderBridge(seed = {}, onSave = null) {
+  const bridge = labelBridge(onSave);
+  bridge.loads = [];
+  bridge.spineContour.loadLabelRecord = async (name) => {
+    bridge.loads.push(name);
+    const last = bridge.saved.filter((entry) => entry.name === name).at(-1);
+    if (last) return structuredClone(last.record);
+    return Object.hasOwn(seed, name) ? structuredClone(seed[name]) : null;
+  };
+  return bridge;
+}
+
+const setFlags = (id, flags) => setState((s) => ({ studies: s.studies.map((x) => (x.id === id ? { ...x, flags } : x)) }));
+
+// A save that waits on the test: once armed, `reached` settles when that save is writing and `release()` lets it end.
+function heldSave() {
+  const hold = { armed: false };
+  hold.reached = new Promise((resolve) => { hold.reach = resolve; });
+  hold.gate = new Promise((resolve) => { hold.release = resolve; });
+  hold.onSave = () => {
+    if (!hold.armed) return null;
+    hold.armed = false;
+    hold.reach();
+    return hold.gate;
+  };
+  return hold;
+}
+
+test('syncRecordFlags rewrites flags and nothing else', async () => {
+  const file = 'lumbar_9580.label.json';
+  const stored = { study: 'lumbar_9580', saved_at: STORED_AT, app_version: '1.7.0', comment: 'kept', flags: [], levels: { L1: { state: 'segmented' } } };
+  const study = segmentedFilm('SP-9580', { labelFile: file, flags: ['cement'] });
+  wire([], NO_FILM);
+  const bridge = folderBridge({ [file]: stored });
+  await withBridge(bridge, () => withStore(study, async () => {
+    assert.deepEqual(await syncRecordFlags([study.id]), { written: [study.id], failed: [] });
+    assert.equal(bridge.saved.length, 1, 'one save');
+    assert.equal(bridge.saved[0].name, file, 'to the study\'s own record');
+    assert.deepEqual(bridge.saved[0].record, { ...stored, flags: ['cement'] }, 'only flags changed; saved_at stands');
+    assert.equal(studyOf(study.id), study, 'the study is untouched');
+  }));
+});
+
+test('syncRecordFlags writes nothing when the record already matches, has no file, or cannot be read', async () => {
+  const file = 'lumbar_9581.label.json';
+  const none = { written: [], failed: [] };
+  wire([], NO_FILM);
+
+  let bridge = folderBridge({ [file]: { saved_at: STORED_AT, flags: ['Cement'] } });
+  await withBridge(bridge, () => withStore(segmentedFilm('SP-9581', { labelFile: file, flags: ['Cement'] }), async () => {
+    assert.deepEqual(await syncRecordFlags(['SP-9581']), none, 'matching flags');
+    assert.equal(bridge.saved.length, 0);
+  }));
+
+  bridge = folderBridge({ [file]: { saved_at: STORED_AT, flags: [] } });
+  await withBridge(bridge, () => withStore(segmentedFilm('SP-9581', { labelFile: null, flags: ['cement'] }), async () => {
+    assert.deepEqual(await syncRecordFlags(['SP-9581']), none, 'no label file');
+    assert.equal(bridge.saved.length, 0);
+    assert.deepEqual(bridge.loads, [], 'nothing read: a film with no record gets none created');
+  }));
+
+  bridge = folderBridge();
+  await withBridge(bridge, () => withStore(segmentedFilm('SP-9581', { labelFile: file, flags: ['cement'] }), async () => {
+    assert.deepEqual(await syncRecordFlags(['SP-9581']), none, 'the record is not there');
+    assert.deepEqual(bridge.loads, [file]);
+    assert.equal(bridge.saved.length, 0);
+  }));
+
+  bridge = folderBridge();
+  bridge.spineContour.loadLabelRecord = async () => { throw new Error('unreadable'); };
+  await withBridge(bridge, () => withStore(segmentedFilm('SP-9581', { labelFile: file, flags: ['cement'] }), async () => {
+    assert.deepEqual(await syncRecordFlags(['SP-9581']), { written: [], failed: ['SP-9581'] }, 'a read that fails');
+    assert.equal(bridge.saved.length, 0);
+  }));
+
+  bridge = folderBridge({ [file]: { saved_at: STORED_AT, flags: [] } }, async () => { throw new Error('refused'); });
+  await withBridge(bridge, () => withStore(segmentedFilm('SP-9581', { labelFile: file, flags: ['cement'] }), async () => {
+    assert.deepEqual(await syncRecordFlags(['SP-9581']), { written: [], failed: ['SP-9581'] }, 'a write that fails');
+    assert.equal(bridge.saved.length, 1, 'one attempt');
+  }));
+});
+
+test('a flag changed while Save edits is writing still reaches the file', async () => {
+  const study = segmentedFilm('SP-9582', { reviewedAt: null });
+  wire([], NO_FILM, { getPrediction: snapshotOf(lumbarGeometry()) });
+  const hold = heldSave();
+  const bridge = folderBridge({}, hold.onSave);
+  await withBridge(bridge, () => withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    toggleLevelVisible('T1');
+    hold.armed = true;
+    const save = saveLevelEdits();
+    await hold.reached;
+    assert.deepEqual(bridge.saved[0].record.flags, [], 'precondition: the save\'s record was built before the change');
+    setFlags(study.id, ['cement']);
+    const sync = syncRecordFlags([study.id]);
+    hold.release();
+    await save;
+    assert.deepEqual(await sync, { written: [study.id], failed: [] });
+    assert.equal(bridge.saved.length, 2, 'the save, then the flag update');
+    const [first, last] = bridge.saved;
+    assert.equal(last.name, first.name);
+    assert.deepEqual(last.record.flags, ['cement'], 'the file holds the new flags');
+    assert.deepEqual(last.record.levels, first.record.levels, 'and the levels the save wrote');
+    assert.equal(last.record.saved_at, first.record.saved_at, 'saved_at is the save\'s');
+  }));
+});
+
+test('Save edits clicked while a flag update is writing waits for it', async () => {
+  const file = 'lumbar_9583.label.json';
+  const study = segmentedFilm('SP-9583', { reviewedAt: null, labelFile: file, flags: ['cement'] });
+  wire([], NO_FILM, { getPrediction: snapshotOf(lumbarGeometry()) });
+  const hold = heldSave();
+  const bridge = folderBridge({ [file]: { saved_at: STORED_AT, comment: null, flags: [] } }, hold.onSave);
+  await withBridge(bridge, () => withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    toggleLevelVisible('T1');
+    hold.armed = true;
+    const sync = syncRecordFlags([study.id]);
+    await hold.reached;
+    const save = saveLevelEdits();
+    await settle();
+    assert.equal(bridge.saved.length, 1, 'the save waits for the flag update');
+    hold.release();
+    assert.deepEqual(await sync, { written: [study.id], failed: [] });
+    await save;
+    assert.equal(bridge.saved.length, 2, 'the flag update, then the save');
+    const [update, saved] = bridge.saved;
+    assert.deepEqual(update.record, { saved_at: STORED_AT, comment: null, flags: ['cement'] }, 'the flag update first');
+    assert.equal(saved.name, file);
+    assert.notEqual(saved.record.levels.T1.state, 'not_visible', 'the save carries the editor\'s levels');
+    assert.deepEqual(saved.record.flags, ['cement'], 'and the study\'s flags');
+    assert.equal(getState().toast, 'Saved 1 edit to the label record.');
+  }));
+});
+
+test('a film\'s first record takes a flag changed during its write', async () => {
+  const study = segmentedFilm('SP-9584');
+  wire([], NO_FILM, { getPrediction: snapshotOf(study.geometry), imageInfo: maskedImage });
+  const hold = heldSave();
+  hold.armed = true;
+  const bridge = folderBridge({}, hold.onSave);
+  await withBridge(bridge, () => withStore(study, async () => {
+    const review = writeReviewRecord(study.id);
+    await hold.reached;
+    assert.equal(studyOf(study.id).labelFile, null, 'precondition: the study names no record yet');
+    setFlags(study.id, ['revision']);
+    const sync = syncRecordFlags([study.id]);
+    hold.release();
+    assert.equal(await review, 'written');
+    assert.deepEqual(await sync, { written: [study.id], failed: [] });
+    assert.equal(bridge.saved.length, 2);
+    const last = bridge.saved.at(-1);
+    assert.equal(last.name, 'lumbar_9584.label.json');
+    assert.deepEqual(last.record.flags, ['revision'], 'the file\'s last save has the new flags');
+    assert.deepEqual(last.record.levels, bridge.saved[0].record.levels);
   }));
 });

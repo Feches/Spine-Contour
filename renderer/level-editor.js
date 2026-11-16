@@ -31,7 +31,10 @@ import {
 } from './data/levels.js';
 import { moveHandle } from './viewer/level-handles.js';
 import { projectGeometry, projectsLevel, regionFollowsLevels, projectionIsEmpty, staleStudyLevels } from './data/level-projection.js';
-import { toLabelRecord, recordLevels, recordComment, normalizeComment, labelFileName, appVersion } from './data/label-record.js';
+import {
+  toLabelRecord, recordLevels, recordComment, normalizeComment, labelFileName, appVersion, recordFlags, withRecordFlags,
+} from './data/label-record.js';
+import { cleanFlags, sameFlagList } from './data/flags.js';
 import { levelContours } from './data/contours.js';
 import { studyRegion, validAnteriorSide } from './data/cervical.js';
 import { isHandPlaced } from './data/predictions.js';
@@ -320,6 +323,10 @@ export function forgetLevelEditor(studyId) {
 // that settles when it ends. One at a time, so a review write and a save never interleave: a second Save edits while
 // one is writing is dropped (the re-entrancy latch), a Save edits waits for a review write to end, and a review write
 // for either.
+// (Study flags, spec §4.8, 2026-11-16) A third kind, 'flags' (syncRecordFlags), takes the same turn: a flag update is a
+// read followed by a write of the same file, so it waits out any write, and a Save edits waits out a flag update as it
+// does a review write. Every waiter loops on `saving`: the first to resume after a release takes the latch at once, and
+// the others find it held again and wait on.
 let saving = null;
 let writeEnded = Promise.resolve();
 
@@ -400,7 +407,7 @@ function withLabelFile(studies, studyId, addedAt, file, labelComment) {
  * review write in flight ends first, so a save clicked meanwhile is not lost.
  */
 export async function saveLevelEdits() {
-  while (saving === 'review') await writeEnded;
+  while (saving === 'review' || saving === 'flags') await writeEnded;
   const state = getState();
   const editor = currentEditor(state);
   if (!editor || saving) return;
@@ -512,6 +519,40 @@ export async function writeReviewRecord(studyId) {
   } finally {
     release();
   }
+}
+
+/**
+ * (Study flags, spec §4.8, 2026-11-16) Puts each study's flags into its label record: the record is read, `flags`
+ * replaced and the record written back, nothing else in it changed (`saved_at` least of all: an import takes the record
+ * with the later `saved_at` as the newer annotation). One film per turn on the write latch, so a flag update never
+ * interleaves with Save edits or Mark reviewed on the same file, and a bulk change never holds the latch across films.
+ * The study is read once the turn is taken, so a flag changed while a save was writing, or a first record whose
+ * `labelFile` reached the study as that save ended, is still caught. A study gone, a demo, one with no record (none is
+ * created), a record that is not there or already holds the study's flags: skipped. Never rejects.
+ * @param {string[]} studyIds
+ * @returns {Promise<{written: string[], failed: string[]}>} both lists hold study ids
+ */
+export async function syncRecordFlags(studyIds) {
+  const written = [];
+  const failed = [];
+  for (const id of studyIds) {
+    while (saving) await writeEnded;
+    const release = holdWrite('flags');
+    try {
+      const study = studyOf(getState(), id);
+      const file = study?.labelFile;
+      if (!study || study.source === 'demo' || typeof file !== 'string' || !file) continue;
+      const record = await loadLabelRecord(file);
+      if (!record || sameFlagList(recordFlags(record), cleanFlags(study.flags))) continue;
+      await saveLabelRecord(file, withRecordFlags(record, study.flags));
+      written.push(id);
+    } catch {
+      failed.push(id);
+    } finally {
+      release();
+    }
+  }
+  return { written, failed };
 }
 
 /**
