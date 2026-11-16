@@ -1767,3 +1767,29 @@ test('a film\'s first record takes a flag changed during its write', async () =>
     assert.deepEqual(last.record.levels, bridge.saved[0].record.levels);
   }));
 });
+
+test('a bulk flag update yields the latch between films: a Save edits clicked meanwhile writes after the first film', async () => {
+  const fileA = 'lumbar_9585.label.json';
+  const fileB = 'lumbar_9586.label.json';
+  const a = segmentedFilm('SP-9585', { reviewedAt: null, labelFile: fileA, flags: ['cement'] });
+  const b = segmentedFilm('SP-9586', { reviewedAt: null, labelFile: fileB, flags: ['cement'] });
+  wire([], NO_FILM, { getPrediction: snapshotOf(lumbarGeometry()) });
+  const hold = heldSave();
+  const seed = { [fileA]: { saved_at: STORED_AT, comment: null, flags: [] }, [fileB]: { saved_at: STORED_AT, comment: null, flags: [] } };
+  const bridge = folderBridge(seed, hold.onSave);
+  await withBridge(bridge, () => withStore(a, async () => {
+    setState((s) => ({ studies: [...s.studies, b] }));
+    await enterLevelEditor(a.id);
+    toggleLevelVisible('T1');
+    hold.armed = true;
+    const sync = syncRecordFlags([a.id, b.id]);
+    await hold.reached;
+    const save = saveLevelEdits();
+    hold.release();
+    assert.deepEqual(await sync, { written: [a.id, b.id], failed: [] });
+    await save;
+    assert.equal(bridge.saved.length, 3);
+    const order = bridge.saved.map(({ name, record }) => `${name === fileA ? 'a' : 'b'}:${record.levels ? 'edits' : 'flags'}`);
+    assert.deepEqual(order, ['a:flags', 'a:edits', 'b:flags'], 'flags for a, the edits save, then flags for b');
+  }));
+});

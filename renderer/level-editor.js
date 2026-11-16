@@ -326,7 +326,8 @@ export function forgetLevelEditor(studyId) {
 // (Study flags, spec §4.8, 2026-11-16) A third kind, 'flags' (syncRecordFlags), takes the same turn: a flag update is a
 // read followed by a write of the same file, so it waits out any write, and a Save edits waits out a flag update as it
 // does a review write. Every waiter loops on `saving`: the first to resume after a release takes the latch at once, and
-// the others find it held again and wait on.
+// the others find it held again and wait on. A bulk flag update takes one turn per film and yields before each, so a
+// Save edits or Mark reviewed waiting when one film's turn ends goes before the next film, not after the whole batch.
 let saving = null;
 let writeEnded = Promise.resolve();
 
@@ -536,6 +537,9 @@ export async function syncRecordFlags(studyIds) {
   const written = [];
   const failed = [];
   for (const id of studyIds) {
+    // (Task 4 review, 2026-11-16) Yield once before testing the latch: the release that ended the last film's turn ran
+    // in this same run, so without this the next film would take the latch before a waiter queued on that release could.
+    await null;
     while (saving) await writeEnded;
     const release = holdWrite('flags');
     try {
