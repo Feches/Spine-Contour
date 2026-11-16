@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   LABEL_SCHEMA, viewSlug, appVersion, labelFileName, toLabelRecord, recordLevels, recordComment, normalizeComment,
+  recordFlags, withRecordFlags,
 } from '../renderer/data/label-record.js';
 import {
   LEVEL_CODES, kindOf, levelState, trainingStatus, openEditor, setLevelGeometry, toggleVisible,
@@ -369,7 +370,7 @@ test('toLabelRecord writes the envelope: image, film, model, versions, time, com
   assert.equal(rec.app_version, '1.0.17');
   assert.equal(rec.saved_at, SAVED_AT);
   assert.deepEqual(Object.keys(rec),
-    ['schema', 'study', 'image', 'film', 'model', 'app_version', 'saved_at', 'complete', 'edits', 'comment', 'levels', 'femoral_heads']);
+    ['schema', 'study', 'image', 'film', 'model', 'app_version', 'saved_at', 'complete', 'edits', 'comment', 'flags', 'levels', 'femoral_heads']);
   assert.equal(rec.complete, false, 'L3 is visible and not placed');
   assert.equal(rec.complete, trainingStatus(e).complete);
   const done = setLevelGeometry(e, 'L3', { superior: [[10, 50], [20, 50]], inferior: [[10, 60], [20, 60]] });
@@ -389,7 +390,7 @@ test('toLabelRecord writes comment trimmed, null when blank, after edits and bef
   assert.equal(typed.comment, 'L5 is sacralised.');
   assertValid(typed);
   assert.deepEqual(Object.keys(typed),
-    ['schema', 'study', 'image', 'film', 'model', 'app_version', 'saved_at', 'complete', 'edits', 'comment', 'levels', 'femoral_heads']);
+    ['schema', 'study', 'image', 'film', 'model', 'app_version', 'saved_at', 'complete', 'edits', 'comment', 'flags', 'levels', 'femoral_heads']);
   assert.equal(record(setComment(e, '   \n')).comment, null, 'whitespace alone is no comment');
   assert.equal(record(setComment(e, 'x'.repeat(3000))).comment.length, 3000, 'nothing here truncates; the text box caps it');
   assert.equal(typeof EXAMPLE.comment, 'string', 'the shipped example carries one');
@@ -406,6 +407,42 @@ test('the schema takes a comment that is a string or null, optional, and nothing
   failsAt({ ...rec, comment: {} }, '/comment');
   failsAt({ ...rec, comment: ['a'] }, '/comment');
   assert.match(SCHEMA.properties.comment.description, /spec/i, 'the description names the spec');
+});
+
+test('toLabelRecord writes the study\'s flags, cleaned, and an empty list when it has none', () => {
+  const e = lumbarEditor();
+  const rec = record(e, { study: { ...STUDY, flags: [' hardware ', 'Hardware'] } });
+  assert.deepEqual(rec.flags, ['hardware']);
+  assertValid(rec);
+  assert.deepEqual(record(e).flags, []);
+});
+
+test('recordFlags reads any record', () => {
+  assert.deepEqual(recordFlags({ flags: ['a', 'A', 7] }), ['a']);
+  assert.deepEqual(recordFlags({}), []);
+  assert.deepEqual(recordFlags(null), []);
+  assert.deepEqual(recordFlags({ flags: 'a' }), []);
+});
+
+test('withRecordFlags changes flags and nothing else', () => {
+  const rec = record(lumbarEditor());
+  const before = structuredClone(rec);
+  const next = withRecordFlags(rec, ['cement']);
+  assert.deepEqual(next, { ...rec, flags: ['cement'] });
+  assert.deepEqual(Object.keys(next), Object.keys(rec));
+  assert.deepEqual(rec, before, 'the input record is unchanged');
+  assert.equal(next.saved_at, rec.saved_at);
+  const old = withRecordFlags({ schema: 's', saved_at: 't', levels: {}, femoral_heads: [] }, ['a']);
+  assert.deepEqual(Object.keys(old), ['schema', 'saved_at', 'flags', 'levels', 'femoral_heads']);
+});
+
+test('the schema takes an optional flags list and nothing looser', () => {
+  assertValid(EXAMPLE);
+  const { flags: _flags, ...without } = EXAMPLE;
+  assertValid(without);
+  for (const bad of [['a', 'a'], [''], ['x'.repeat(41)], ['a,b'], 'a', Array.from({ length: 21 }, (_, i) => `f${i}`)]) {
+    failsAt({ ...EXAMPLE, flags: bad }, '/flags');
+  }
 });
 
 test('film.region is the editor region, or the projection\'s reading of the placed levels for Auto', () => {
@@ -756,7 +793,7 @@ test('the shipped example lists its edited points and its edits block agrees wit
   for (const entry of entriesOf(EXAMPLE)) assert.ok(Array.isArray(entry.edited_points), JSON.stringify(entry));
   assert.deepEqual(EXAMPLE.edits, summaryOf(EXAMPLE));
   assert.deepEqual(EXAMPLE.edits, { segmented: 5, edited: 2, manual: 1, not_placed: 0, not_visible: 8, points_moved: 4, points_placed: 4 });
-  assert.deepEqual(Object.keys(EXAMPLE).slice(7, 11), ['complete', 'edits', 'comment', 'levels']);
+  assert.deepEqual(Object.keys(EXAMPLE).slice(7, 12), ['complete', 'edits', 'comment', 'flags', 'levels']);
   // The example's edited lists name the keys whose value differs from the model's.
   const l2 = EXAMPLE.levels.L2;
   assert.deepEqual(Object.keys(l2.corners).filter(key => l2.corners[key].some((v, i) => v !== l2.model_corners[key][i])), l2.edited_points);
