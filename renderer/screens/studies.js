@@ -357,6 +357,7 @@ function flagsCell(study) {
   return el('div', {
     class: 'studies-cell-flags studies-flags-editable',
     role: 'button', tabindex: '0', title: flagsRefusal() || 'Click to edit flags', 'data-find-key': `flags-${id}`,
+    onPointerdown: () => { flagsPressed = id; },
     'aria-label': `Flags for ${name}: ${flags.join(', ') || 'none'}. Press Enter to edit`,
     onClick: (event) => { event.stopPropagation(); beginFlagsEdit(id); },
     onKeydown: (event) => {
@@ -598,6 +599,12 @@ let editingSubject = null;
 // editor's suggestion list, built with its cell and mounted by update() on the table's host (placeFlagsPopup).
 let editingFlags = null;
 let flagsPopup = null;
+// (2026-11-16, study flags; ruling 9) The id whose resting FLAGS cell the pointer last pressed, or null: noted on the
+// cell's pointerdown, which fires before an open editor's blur, so the commit that blur triggers can tell a press on the
+// cell (open its editor) from Tab landing on it (leave it at rest). Replaced, never mutated, transient, and NOT in
+// update()'s key. Cleared by whoever reads it, by beginFlagsEdit and on navigation, so a stale note never opens an
+// editor on a later keyboard move.
+let flagsPressed = null;
 // True while an export writes its bundle (bundle spec 4.1): the button reads Exporting… and refuses a second one.
 // Listed in update()'s key like the three above, but navigation does NOT clear it: the export carries on without
 // the screen, and only its own `finally` may end it.
@@ -623,7 +630,7 @@ subscribe((state) => {
   // closes the menu, spec 3.2). The import prompt goes too: a plan left pending while a study is opened in edit mode
   // would update it on return (its `editing` set is the click's).
   if (state.screen !== 'studies') {
-    mounted = null; confirmingId = null; confirmingSelected = null; editingSubject = null; editingFlags = null; flagsPopup = null;
+    mounted = null; confirmingId = null; confirmingSelected = null; editingSubject = null; editingFlags = null; flagsPopup = null; flagsPressed = null;
     pendingImport = null; openMenu = null; menuShows = null; listenOutside(false);
     return;
   }
@@ -1209,10 +1216,13 @@ function commitSubject(id, mode, focusKey = null) {
     : mode === 'next' ? `[data-find-key="subject-${id}"]`
       : focusKey ? `[data-find-key="${CSS.escape(focusKey)}"]`
         : null);
-  // (2026-11-16, study flags; ruling 9) A press on a FLAGS cell while this editor was open: the blur's commit repainted
-  // before mouseup, so the cell's own click never arrives (see commitFlags); open its editor here instead.
+  // (2026-11-16, study flags; ruling 9) A pointer press on a FLAGS cell while this editor was open: the blur's commit
+  // repainted before mouseup, so the cell's own click never arrives (see commitFlags); open its editor here instead.
+  // Only a noted press does: Tab from this box lands on the row's FLAGS cell and leaves it at rest.
   const flagsTarget = mode === 'blur' ? flagsCellOwner(focusKey) : null;
-  if (flagsTarget !== null) beginFlagsEdit(flagsTarget);
+  const pressed = flagsPressed;
+  flagsPressed = null;
+  if (flagsTarget !== null && pressed === flagsTarget) beginFlagsEdit(flagsTarget);
 }
 
 // ---- FLAGS in place (study flags spec 2026-11-16, section 4.3; FL14) ---------------------------------------------------
@@ -1222,6 +1232,7 @@ function commitSubject(id, mode, focusKey = null) {
 // SUBJECT editor, or a flags editor on another row, is committed first: Chromium fires its blur before the click that
 // lands here, so this is belt and braces, but an editor a rebuild destroyed while focused got no blur.
 function beginFlagsEdit(id) {
+  flagsPressed = null;
   const live = getState();
   const study = live.studies.find((s) => s.id === id);
   if (!study || study.source !== 'real') return;
@@ -1263,11 +1274,15 @@ function commitFlags(id, focusKey = null) {
   editingFlags = null;
   setStudyFlags([{ id, flags }]);
   refreshTable(focusKey ? `[data-find-key="${CSS.escape(focusKey)}"]` : null);
-  // (2026-11-16, study flags; ruling 9) A press on another row's resting FLAGS cell opens that cell's editor. The press's
-  // mousedown blurs this box, and the commit above repaints BEFORE mouseup, so the cell the person pressed is replaced
-  // and Chromium never sends it a click: without this the first row would save and no editor would open.
+  // (2026-11-16, study flags; ruling 9) A POINTER press on another row's resting FLAGS cell opens that cell's editor. The
+  // press's mousedown blurs this box, and the commit above repaints BEFORE mouseup, so the cell the person pressed is
+  // replaced and Chromium never sends it a click: without this the first row would save and no editor would open. The
+  // press is noted on the cell's pointerdown (flagsPressed); Tab also lands focus on a cell but is no press, so it
+  // leaves the cell at rest and Enter or Space opens it, as the cell's own keydown does.
   const target = flagsCellOwner(focusKey);
-  if (target !== null && target !== id) beginFlagsEdit(target);
+  const pressed = flagsPressed;
+  flagsPressed = null;
+  if (target !== null && target !== id && pressed === target) beginFlagsEdit(target);
 }
 
 // The id of the real study whose resting FLAGS cell carries `key` (`flags-<id>`), or null. An id holds a hyphen
@@ -1284,6 +1299,7 @@ export function render(state) {
   editingSubject = null;
   editingFlags = null;
   flagsPopup = null;
+  flagsPressed = null;
   pendingImport = null;
   openMenu = null;
   menuShows = null;
