@@ -567,3 +567,108 @@
 }
 
 /* Long method names remain readable in the narrow Settings sidebar. */
+
+/* Study flags (2026-11-16; components/flag-editor.js): the resting chips, the editor's field and its suggestion popup. */
+.flag-chips,
+.flag-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 5px;
+  min-width: 0;
+}
+
+.flag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 1px 8px 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--well);
+  font: 500 12.5px/1.45 'Source Sans 3', sans-serif;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flag-none {
+  color: var(--muted);
+}
+
+.flag-chip-remove {
+  all: unset;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.flag-chip-remove:hover {
+  color: var(--ink);
+}
+
+.flag-chip-remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.flag-editor {
+  padding: 4px 7px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.flag-editor-input {
+  all: unset;
+  flex: 1;
+  min-width: 60px;
+  font: 400 13.5px 'Source Sans 3', sans-serif;
+  color: var(--ink);
+}
+
+.flag-popup {
+  position: absolute;
+  z-index: 20;
+  min-width: 200px;
+  max-width: 280px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 8px 24px var(--shadow);
+}
+
+.flag-popup-options {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.flag-option {
+  all: unset;
+  padding: 5px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  font: 400 13px 'Source Sans 3', sans-serif;
+  color: var(--body);
+}
+
+.flag-option:hover,
+.flag-option.is-active {
+  background: var(--well);
+  color: var(--ink);
+}
+
+.flag-popup-hint {
+  padding: 6px 8px 0;
+  font-family: 'Chivo Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
