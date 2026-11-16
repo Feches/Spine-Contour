@@ -57,8 +57,9 @@ The owner's (FL1–FL8), then the designer's (FL9–FL24), each with its reason,
   edit in progress; once saved there is no undo. The list for many films (FL18) applies each click at once. A flag
   change never changes a film's status, its review mark, or the label record's saved time.
 - **FL15 FLAGS is the last column, after STATUS**, and the page grows from 1160 to 1280 wide to make room (§4.3). The
-  list is already full: its eight columns leave about 90 pixels spare. **Open with the owner (2026-11-16):** on a
-  narrow window the last column is the one scrolled off-screen; §4.3 has the numbers.
+  list is already full: its eight columns leave about 90 pixels spare. **Confirmed by the owner on 2026-11-16**,
+  knowing that on a narrow window the last column is the one scrolled off-screen (§4.3 has the numbers). Putting
+  FLAGS beside SUBJECT, so that DATE and STATUS scroll instead, was offered and turned down.
 - **FL16 Flags all look alike**: one neutral chip, no per-flag colour, so they do not compete with the status colours.
 - **FL17 The FLAGS menu offers "any" or "every".** With two flags ticked the owner can ask for films with either or
   films with both. The other menus have no such choice because a film has one region, one view, one status.
