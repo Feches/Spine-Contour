@@ -8,6 +8,12 @@
  * `flagEditor(...)` returns two nodes, because the popup is placed by the screen (it must escape the cell's overflow):
  * `field` is the chips with a x each, then the text box; `popup` is the suggestion list and its hint line.
  *
+ * Keys (all stop here): Enter adds the highlighted choice (`active` >= 0); with nothing highlighted it closes
+ * (`onDone`) when the box is empty and does nothing when it holds text. `active` is -1 when nothing is highlighted
+ * (the screen passes -1 while the box is empty, 0 once the person types); ArrowUp and ArrowDown move it within
+ * -1 ... choices.length - 1. Escape cancels; Backspace in an empty box removes the last flag. At the flag limit
+ * (`full`) the box is readOnly, not disabled, so it still takes focus and these keys and `onLeave` still fire.
+ *
  * Every control carries `keyAttr` (the screen's hook name, data-find-key on the Find list), so the screen's focus
  * snapshot can hand focus back to the same control after the table rebuilds, and `onLeave` can name where focus went.
  */
@@ -19,7 +25,7 @@ const DASH = '—';
 export function flagChips(flags) {
   if (!flags || flags.length === 0) return el('span', { class: 'flag-none' }, DASH);
   return el('div', { class: 'flag-chips' },
-    flags.map((flag) => el('span', { class: 'flag-chip', title: flag }, flag)));
+    flags.map((flag) => el('span', { class: 'flag-chip', title: flag }, el('span', { class: 'flag-chip-text' }, flag))));
 }
 
 // `draft` is the flags as edited so far, `text` the box's text, `choices` the popup's { flag, create? }[] and `active`
@@ -38,7 +44,7 @@ export function flagEditor({
   const input = el('input', {
     type: 'text', class: 'flag-editor-input', spellcheck: false, value: text,
     [keyAttr]: `${keyPrefix}-input`, 'aria-label': ariaLabel,
-    disabled: full || undefined, placeholder: full ? '20 flags' : undefined,
+    readOnly: full || undefined, placeholder: full ? '20 flags' : undefined,
     onInput: (event) => {
       const value = event.target.value;
       if (/[,;\r\n]/.test(value)) onAdd(splitTyped(value));
@@ -47,8 +53,8 @@ export function flagEditor({
     onKeydown: (event) => {
       if (event.key === 'Enter') {
         swallow(event);
-        if (choices.length > 0) onAdd([choices[active].flag]);
-        else onDone();
+        if (active >= 0 && choices[active]) onAdd([choices[active].flag]);
+        else if (input.value === '') onDone();
       } else if (event.key === 'Escape') {
         swallow(event);
         onCancel();
@@ -59,7 +65,7 @@ export function flagEditor({
         swallow(event);
         if (choices.length === 0) return;
         const next = event.key === 'ArrowDown' ? active + 1 : active - 1;
-        onActive(Math.max(0, Math.min(choices.length - 1, next)));
+        onActive(Math.max(-1, Math.min(choices.length - 1, next)));
       }
     },
     // The SUBJECT editor's rule (screens/studies.js subjectCell onBlur): relatedTarget is read HERE, mid-transition,
@@ -76,7 +82,7 @@ export function flagEditor({
 
   const field = el('div', { class: 'flag-editor', onClick: stop },
     draft.map((flag, index) => el('span', { class: 'flag-chip', title: flag },
-      flag,
+      el('span', { class: 'flag-chip-text' }, flag),
       el('button', {
         type: 'button', class: 'flag-chip-remove', 'aria-label': `Remove ${flag}`, [keyAttr]: `${keyPrefix}-remove-${index}`,
         onMousedown: keepFocus, onClick: (event) => { stop(event); onRemove(index); },
