@@ -405,12 +405,14 @@ function skipSummary(skipped) {
  * The toast an import ends with (spec §5.8): `Imported 10 studies, updated 2, skipped 3 (already in the library: a, b;
  * being edited: c)`, then, only when present, the studies that came without a film and where an import stopped (ruling
  * S19). `result` is `{ added, updated, skipped: [{ fileName, reason }], withoutFilm: string[], stoppedAt: { fileName,
- * message }|null }`. `flagged` (default 0) is the films that only gained flags; it is named only when above 0.
+ * message }|null }`. `flagged` (default 0) is the films that only gained flags; it is named only when above 0. `recordsFailed` (default 0) is the touched films whose label record
+ * could not take their flags (study flags, ruling 14); it is named only when above 0, before the stopped-at clause.
  */
-export function importMessage({ added, updated, flagged = 0, skipped = [], withoutFilm = [], stoppedAt = null }) {
+export function importMessage({ added, updated, flagged = 0, recordsFailed = 0, skipped = [], withoutFilm = [], stoppedAt = null }) {
   let text = `Imported ${added} ${plural(added, 'study', 'studies')}, updated ${updated}${flagged > 0 ? `, flagged ${flagged}` : ''}, skipped ${skipped.length}`;
   if (skipped.length > 0) text += ` (${skipSummary(skipped)})`;
   if (withoutFilm.length > 0) text += ` · ${withoutFilm.length} without film (${withoutFilm.join(', ')})`;
+  if (recordsFailed > 0) text += ` · the label record could not be updated for ${recordsFailed} ${plural(recordsFailed, 'film', 'films')}`;
   if (stoppedAt) text += ` · stopped at ${stoppedAt.fileName}: ${stoppedAt.message} Import the bundle again to continue.`;
   return text;
 }

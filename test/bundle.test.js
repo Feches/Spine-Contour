@@ -1128,8 +1128,12 @@ test('applyImport merges flags and never removes one', () => {
   const bare = { ...local('SP-1000') };
   delete bare.flags;
   const bareFacts = { studies: [bare], localHashes: { 'SP-1000': HASH_A }, localRecords: { 'SP-1000': localRecord(day(10)) } };
-  const bareUpdate = planOf([entryFor('film', { hash: HASH_A, record: labelRecord(day(3)), study: { flags: ['cement'] } })], bareFacts);
-  assert.deepEqual(applyImport(bareFacts.studies, bareUpdate)[0].flags, ['cement'], 'a study with no flags key takes the entry\'s');
+  const bareFlagItem = planOf([entryFor('film', { hash: HASH_A, record: labelRecord(day(3)), study: { flags: ['cement'] } })], bareFacts);
+  assert.equal(bareFlagItem.flag.length, 1);
+  assert.deepEqual(applyImport(bareFacts.studies, bareFlagItem)[0].flags, ['cement'], 'a flag item onto a study with no flags key takes the entry\'s');
+  const bareUpdate = planOf([entryFor('film', { hash: HASH_A, record: labelRecord(day(12)), study: { flags: ['cement'] } })], bareFacts);
+  assert.equal(bareUpdate.update.length, 1);
+  assert.deepEqual(applyImport(bareFacts.studies, bareUpdate)[0].flags, ['cement'], 'an update onto a study with no flags key takes the entry\'s');
 
   const unplaced = applyImport(studies, { ...update, add: [], flag: flagOnly.flag }, []);
   assert.deepEqual(unplaced[0].flags, ['Hardware', 'OLIF outcomes', 'cement'], 'a flag item needs no placement');
@@ -1149,4 +1153,17 @@ test('importPromptText and importMessage name the flagged films only when there 
   );
   assert.equal(importMessage({ added: 1, updated: 0, flagged: 2, skipped: [] }), 'Imported 1 study, updated 0, flagged 2, skipped 0');
   assert.equal(importMessage({ added: 1, updated: 0, skipped: [] }), 'Imported 1 study, updated 0, skipped 0');
+});
+
+test('importMessage says when a label record could not take its flags, before the stopped-at clause', () => {
+  const base = { added: 0, updated: 1, flagged: 2, skipped: [] };
+  const head = 'Imported 0 studies, updated 1, flagged 2, skipped 0';
+  assert.equal(importMessage({ ...base, recordsFailed: 1 }), `${head} \u00b7 the label record could not be updated for 1 film`);
+  assert.equal(importMessage({ ...base, recordsFailed: 3 }), `${head} \u00b7 the label record could not be updated for 3 films`);
+  assert.equal(importMessage({ ...base, recordsFailed: 0 }), head);
+  assert.equal(importMessage(base), head);
+  assert.equal(
+    importMessage({ ...base, recordsFailed: 2, stoppedAt: { fileName: 'x.png', message: 'Disk full.' } }),
+    `${head} \u00b7 the label record could not be updated for 2 films \u00b7 stopped at x.png: Disk full. Import the bundle again to continue.`,
+  );
 });

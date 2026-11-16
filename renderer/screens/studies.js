@@ -47,7 +47,7 @@ import {
   cleanFlags, flagsInUse, flagChoices, FLAGS_MAX, startFlagEdit, flagEditText, flagEditAdd, flagEditRemove,
   flagEditActive, flagEditResult, bulkState, bulkChange, librarySpelling, flagKey,
 } from '../data/flags.js';
-import { setStudyFlags, flagsRefusal, setFlagsBusy, syncFlagsAndReport } from '../study-flags.js';
+import { setStudyFlags, flagsRefusal, setFlagsBusy } from '../study-flags.js';
 import { flagChips, flagEditor } from '../components/flag-editor.js';
 import { checkbox } from '../components/checkbox.js';
 import { filterMenu } from '../components/filter-menu.js';
@@ -55,7 +55,7 @@ import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js
 import { startBatch, stopBatch } from '../batch.js';
 import { setFilePayload, releaseStudy } from './analysis.js';
 import { forgetPrediction } from '../components/viewer.js';
-import { hasStashedEditor, forgetLevelEditor } from '../level-editor.js';
+import { hasStashedEditor, forgetLevelEditor, syncRecordFlags } from '../level-editor.js';
 import { mountParameters } from './parameters.js';
 
 const DASH = '\u2014';
@@ -1139,9 +1139,10 @@ export async function confirmImport() {
     setState({ studies: applyImport(getState().studies, plan, placedIds) });
     const added = plan.add.filter((item) => placed.has(item.id));
     // Every film the import touched has its label record's flags brought in line with its study: an update has just
-    // replaced the record with the sender's. This is syncFlagsAndReport, not setStudyFlags, which refuses while the
-    // import lock is held.
-    await syncFlagsAndReport([
+    // replaced the record with the sender's. This is syncRecordFlags, not setStudyFlags, which refuses while the
+    // import lock is held, and not syncFlagsAndReport, whose own toast the closing toast below would replace at once
+    // (ruling 14): the count of records that failed goes into the import's own message.
+    const synced = await syncRecordFlags([
       ...plan.update.filter((item) => placed.has(item.id)).map((item) => item.id),
       ...added.map((item) => item.id),
       ...plan.flag.map((item) => item.id),
@@ -1159,6 +1160,7 @@ export async function confirmImport() {
       added: added.length,
       updated: plan.update.filter((item) => placed.has(item.id)).length,
       flagged: plan.flag.length,
+      recordsFailed: synced.failed.length,
       skipped: [...plan.skip, ...skippedAtPlacement],
       withoutFilm: added.filter((item) => item.entry.filmPath == null).map((item) => item.entry.study.fileName),
       stoppedAt: failed ? { fileName: filmName(stoppedOn), message: failed.message } : null,
