@@ -1150,12 +1150,8 @@ try {
   // list (which sits under its row) does not cover it.
   await openFlags(FA);
   const after4 = await editorNow(FA);
-  check('clicking another row\'s FLAGS cell saves the first row\'s draft and opens the second row\'s editor, one editor only',
+  check('ONE pointer click on another row\'s resting FLAGS cell saves the first row\'s draft and leaves the second row\'s editor open with focus in its box, one editor only',
     same(await flagsOf(FB), ['hardware']) && after4.open && after4.focused === true && after4.editors === 1 && !(await editorNow(FB)).open, { b: await flagsOf(FB), after4 });
-
-  // (A click that does not open the second editor leaves the first closed and focus on the cell; open it with a second
-  // click so the checks below still run on the film they name.)
-  if (!(await editorNow(FA)).open) await openFlags(FA);
 
   // 19.5 Esc, Enter in an empty box, Tab.
   await cdp.typeText('dropme,');
@@ -1191,6 +1187,67 @@ try {
   check('a click on the field\'s own padding keeps the editor open and the box focused', pad5.open === true && pad5.focused === true && pad5.editors === 1, pad5);
   await cdp.key('Escape');
   await cdp.settle(200);
+
+  // 19.5b (2026-11-16, the click / Tab fix) A SUBJECT editor and a FLAGS editor hand over to each other. A pointer press on
+  // a resting FLAGS cell opens it, from a SUBJECT editor on the same row or another and from a flags editor; Tab, which
+  // only moves focus, leaves the FLAGS cell at rest. One trusted click each, no re-click.
+  const subjectOpen = async (id) => { await clickAt(`[data-find-key="subject-${id}"]`); await cdp.settle(200); };
+  const subjectOf = (id) => cdp.evaluate(`import('./renderer/store.js').then((m) => m.getState().studies.find((x) => x.id === ${JSON.stringify(id)})?.subjectId ?? null)`);
+  const editorsAll = () => cdp.evaluate(`({ editors: document.querySelectorAll('.flag-editor').length, popups: document.querySelectorAll('.flag-popup').length, active: document.activeElement?.getAttribute('data-find-key') ?? null })`);
+  await subjectOpen(FA);
+  await cdp.typeText('SJ1');
+  await clickAt(`[data-find-key="flags-${FA}"]`);
+  await cdp.settle(250);
+  const sameRow = await editorNow(FA);
+  check('with a SUBJECT editor open, one click on the same row\'s FLAGS cell saves the subject and opens the flags editor with focus in its box',
+    (await subjectOf(FA)) === 'SJ1' && sameRow.open === true && sameRow.focused === true && sameRow.editors === 1, { subject: await subjectOf(FA), sameRow });
+  await cdp.key('Escape');
+  await cdp.settle(200);
+  await subjectOpen(FB);
+  await cdp.typeText('SJ2');
+  await clickAt(`[data-find-key="flags-${FC}"]`);
+  await cdp.settle(250);
+  const otherRow = await editorNow(FC);
+  check('with a SUBJECT editor open, one click on another row\'s FLAGS cell saves the subject and opens that flags editor with focus in its box',
+    (await subjectOf(FB)) === 'SJ2' && otherRow.open === true && otherRow.focused === true && otherRow.editors === 1 && !(await cdp.evaluate(`Boolean(document.querySelector('[data-find-key="subject-input-${FB}"]'))`)), { subject: await subjectOf(FB), otherRow });
+  await cdp.key('Escape');
+  await cdp.settle(200);
+  // Tab out of a SUBJECT editor lands on the row\'s FLAGS cell at rest: no editor, no list. Enter on it then opens it.
+  await subjectOpen(FA);
+  await cdp.typeText('SJ3');
+  await cdp.key('Tab');
+  await cdp.settle(250);
+  const tabSubject = await editorsAll();
+  check('Tab out of a SUBJECT editor saves the subject, leaves focus on that row\'s FLAGS cell and opens no flags editor or list',
+    (await subjectOf(FA)) === 'SJ3' && tabSubject.active === `flags-${FA}` && tabSubject.editors === 0 && tabSubject.popups === 0, { subject: await subjectOf(FA), tabSubject });
+  await cdp.key('Enter');
+  await cdp.settle(250);
+  const enterCell = await editorNow(FA);
+  check('Enter on the focused FLAGS cell opens its editor with focus in the box', enterCell.open === true && enterCell.focused === true && enterCell.editors === 1, enterCell);
+  await cdp.key('Escape');
+  await cdp.settle(200);
+  // Tab out of a flags editor saves the draft and opens no editor on any row.
+  await openFlags(FB);
+  await cdp.typeText('tabagain,');
+  await cdp.settle(200);
+  await cdp.key('Tab');
+  await cdp.settle(250);
+  const tabFlags = await editorsAll();
+  check('Tab out of a flags editor saves the draft and leaves no flags editor or list open on any row',
+    (await flagsOf(FB)).includes('tabagain') && tabFlags.editors === 0 && tabFlags.popups === 0, { flags: await flagsOf(FB), tabFlags });
+  // A stale press note: a resting cell opened the ordinary way, Esc, then a SUBJECT editor and Tab opens nothing.
+  await openFlags(FB);
+  await cdp.key('Escape');
+  await cdp.settle(200);
+  await subjectOpen(FA);
+  await cdp.key('Tab');
+  await cdp.settle(250);
+  const stale = await editorsAll();
+  check('a FLAGS cell opened and cancelled earlier leaves no note behind: a later SUBJECT editor on another row and Tab opens no flags editor',
+    stale.editors === 0 && stale.popups === 0, stale);
+  await putFlags({ [FB]: ['hardware', 'tabflag'] });
+  await cdp.setState('{ paramSelected: [] }');
+  await cdp.settle(100);
 
   // 19.6 A repaint the editor did not cause. One repaint per keystroke; the draft, focus and caret survive; nothing is
   // written; the last row's list is inside the host and not clipped.
@@ -1239,8 +1296,20 @@ try {
   })()`);
   check('the last row\'s suggestion list is mounted outside the table and a click at its centre and at its last option reaches it (not clipped)',
     Boolean(pop6) && pop6.outsideTable === true && pop6.hitsPopup === true && pop6.lastOptionVisible === true, pop6);
-  check('the last row\'s suggestion list lies fully inside the table host\'s bounding box',
-    Boolean(pop6) && pop6.inside === true, pop6);
+  // Reachable: each option, scrolled into view, is what a hit test at its own centre returns (nothing covers or clips it),
+  // and a trusted click on the last option adds that flag.
+  const reach6 = await cdp.evaluate(`(() => {
+    const options = [...document.querySelectorAll('.flag-popup .flag-option')];
+    return options.map((o) => { o.scrollIntoView({ block: 'nearest', inline: 'nearest' }); const r = o.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { text: o.textContent, ok: Boolean(hit && o.contains(hit)) }; });
+  })()`);
+  check('every option of the last row\'s suggestion list is hit at its own centre once scrolled into view',
+    reach6.length > 1 && reach6.every((o) => o.ok), reach6);
+  const lastOpt = await cdp.evaluate(`(() => { const o = [...document.querySelectorAll('.flag-popup .flag-option')].pop(); if (!o) return null; o.scrollIntoView({ block: 'nearest' }); const r = o.getBoundingClientRect(); return { text: o.textContent, cx: r.left + r.width / 2, cy: r.top + r.height / 2 }; })()`);
+  if (lastOpt) await cdp.click(lastOpt.cx, lastOpt.cy);
+  await cdp.settle(250);
+  const clicked6 = await editorNow(FC);
+  check('a trusted click on the last option adds that flag to the draft and keeps the editor open',
+    Boolean(lastOpt) && clicked6.open === true && clicked6.chips.includes(lastOpt.text) && clicked6.focused === true, { lastOpt, clicked6 });
   check('the list opens 4px under its cell', Boolean(pop6) && pop6.underCell === true, pop6);
   await cdp.key('Escape');
   await cdp.settle(200);
