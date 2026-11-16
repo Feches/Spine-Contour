@@ -10,6 +10,10 @@
  * Every control carries a data-find-key (the Global Constraints' hook names), so the screen's focus snapshot can hand
  * focus back to the same control after the table rebuilds behind the menu. The menu does not take focus itself: it is
  * rebuilt with the table on every repaint, and only the screen knows when it has just been opened.
+ *
+ * (2026-11-16, study flags; spec FL17) The FLAGS menu passes `match` ('any' or 'every') and `onMatch`: after the options
+ * and before the sort group it adds a divider, the caption `Show films with` and two buttons, `Any ticked flag` and
+ * `Every ticked flag`, the chosen one pressed. Every other column leaves `match` unset and has no such section.
  */
 import { el } from '../dom.js';
 import { checkbox } from './checkbox.js';
@@ -23,7 +27,7 @@ const CLOSE_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" s
 // `sortLabels` the column's own words for ascending and descending. Escape anywhere in the menu is `onClose`.
 export function filterMenu({
   column, label, options = [], ticked = [], subjectText = '', sortKey, sortDir,
-  onToggle, onAll, onNone, onSubject, onSort, onClose, sortLabels,
+  onToggle, onAll, onNone, onSubject, onSort, onClose, sortLabels, match, onMatch,
 }) {
   const key = (suffix) => `filter-${column}-${suffix}`;
   const values = column === 'subject'
@@ -56,6 +60,17 @@ export function filterMenu({
       'data-find-key': `sort-${column}-${dir}`, onClick: () => onSort(dir),
     }, text);
   });
+  const matches = match === 'any' || match === 'every'
+    ? [
+      el('div', { class: 'studies-filter-divider', role: 'separator' }),
+      el('div', { class: 'studies-filter-sort', role: 'group', 'aria-label': 'Show films with' },
+        el('div', { class: 'studies-filter-caption', 'aria-hidden': 'true' }, 'Show films with'),
+        [['any', 'Any ticked flag'], ['every', 'Every ticked flag']].map(([value, text]) => el('button', {
+          type: 'button', class: `studies-filter-item${match === value ? ' is-active' : ''}`, 'aria-pressed': String(match === value),
+          'data-find-key': key(`match-${value}`), onClick: () => onMatch(value),
+        }, text))),
+    ]
+    : [];
   return el('div', {
     class: 'studies-filter-menu', role: 'dialog', 'aria-label': `Filter by ${label}`, 'data-filter-menu': column,
     onKeydown: (event) => {
@@ -66,6 +81,7 @@ export function filterMenu({
     },
   },
     ...values,
+    ...matches,
     el('div', { class: 'studies-filter-divider', role: 'separator' }),
     // The caption is what makes `Reverse` read as a sort; the group carries the same word for a screen reader.
     el('div', { class: 'studies-filter-sort', role: 'group', 'aria-label': 'Sort' },

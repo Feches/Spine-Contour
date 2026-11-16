@@ -171,3 +171,44 @@ export function bulkChange(studies, ids, flag, on) {
 export function flagsText(flags, separator) {
   return cleanFlags(flags).join(separator);
 }
+
+// The flag editor's draft, as pure transitions (2026-11-16, study flags; spec section 4.3). The Find list's FLAGS cell
+// and the Analysis side panel hold `{ ...edit }` (the screen adds its `id`) and call these from the editor's callbacks,
+// so the two screens cannot drift. `active` is the highlighted suggestion's index, -1 for none: nothing is highlighted
+// while the box is empty, so Enter in an empty box closes the editor; typing highlights the first suggestion. Each
+// helper returns a new object and leaves `edit` and its `draft` alone; keys the screen added are carried through.
+
+/** A fresh edit of `flags`: the cleaned list, an empty box, nothing highlighted. */
+export function startFlagEdit(flags) {
+  return { draft: cleanFlags(flags), text: '', active: -1 };
+}
+
+/** `edit` with the box's text replaced; the first suggestion is highlighted, or none when the text is blank. */
+export function flagEditText(edit, text) {
+  return { ...edit, text, active: String(text).trim() === '' ? -1 : 0 };
+}
+
+/** `edit` with each of `flags` added (in the library's spelling) and the box emptied. */
+export function flagEditAdd(edit, flags, inUse) {
+  let draft = edit.draft;
+  for (const flag of flags ?? []) draft = addFlag(draft, librarySpelling(flag, inUse));
+  return { ...edit, draft, text: '', active: -1 };
+}
+
+/** `edit` without the flag at `index`; an index out of range changes nothing. */
+export function flagEditRemove(edit, index) {
+  if (!Number.isInteger(index) || index < 0 || index >= edit.draft.length) return { ...edit, draft: [...edit.draft] };
+  return { ...edit, draft: edit.draft.filter((_, i) => i !== index) };
+}
+
+/** `edit` with the highlight moved to `index`, kept within -1 ... count - 1. */
+export function flagEditActive(edit, index, count) {
+  return { ...edit, active: Math.max(-1, Math.min(count - 1, index)) };
+}
+
+/** The flags to save when the editor closes: the draft plus whatever is still typed in the box. */
+export function flagEditResult(edit, inUse) {
+  let flags = edit.draft;
+  for (const flag of splitTyped(edit.text)) flags = addFlag(flags, librarySpelling(flag, inUse));
+  return flags;
+}

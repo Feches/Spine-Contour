@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   FLAGS_MAX, cleanFlag, cleanFlags, splitTyped, sameFlag, sameFlagList, addFlag, removeFlag, flagsInUse,
   librarySpelling, mergeFlags, flagChoices, bulkState, bulkChange, flagsText,
+  startFlagEdit, flagEditText, flagEditAdd, flagEditRemove, flagEditActive, flagEditResult,
 } from '../renderer/data/flags.js';
 
 test('cleanFlag trims, collapses spaces, drops a leading # and refuses what is not a flag', () => {
@@ -84,4 +85,21 @@ test('bulkState and bulkChange act on the given real films only', () => {
 test('flagsText joins a film\'s flags and reads a missing list as empty', () => {
   assert.equal(flagsText(['a', 'b'], '; '), 'a; b');
   assert.equal(flagsText(undefined, '; '), '');
+});
+
+test("the flag editor's draft transitions are pure and carry extra keys", () => {
+  assert.deepEqual(startFlagEdit([' hardware ', 'Hardware']), { draft: ['hardware'], text: '', active: -1 });
+  assert.deepEqual(startFlagEdit(undefined), { draft: [], text: '', active: -1 });
+  const edit = Object.freeze({ id: 'SP-9001', draft: Object.freeze(['OLIF outcomes']), text: 'har', active: 1 });
+  assert.deepEqual(flagEditText(edit, 'ce'), { id: 'SP-9001', draft: ['OLIF outcomes'], text: 'ce', active: 0 });
+  assert.equal(flagEditText(edit, '  ').active, -1);
+  assert.deepEqual(flagEditAdd(edit, ['HARDWARE', 'cement', 'olif OUTCOMES'], ['cement', 'hardware']),
+    { id: 'SP-9001', draft: ['OLIF outcomes', 'hardware', 'cement'], text: '', active: -1 });
+  assert.deepEqual(flagEditRemove(edit, 0), { id: 'SP-9001', draft: [], text: 'har', active: 1 });
+  assert.deepEqual(flagEditRemove(edit, 3).draft, ['OLIF outcomes']);
+  assert.equal(flagEditActive(edit, 5, 2).active, 1);
+  assert.equal(flagEditActive(edit, -3, 2).active, -1);
+  assert.equal(flagEditActive(edit, 1, 0).active, -1);
+  assert.deepEqual(flagEditResult({ draft: ['a'], text: ' Cement, b ', active: 0 }, ['cement']), ['a', 'cement', 'b']);
+  assert.deepEqual(flagEditResult(edit, []), ['OLIF outcomes', 'har']);
 });

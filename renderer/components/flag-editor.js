@@ -28,11 +28,12 @@ export function flagChips(flags) {
     flags.map((flag) => el('span', { class: 'flag-chip', title: flag }, el('span', { class: 'flag-chip-text' }, flag))));
 }
 
-// `draft` is the flags as edited so far, `text` the box's text, `choices` the popup's { flag, create? }[] and `active`
-// the highlighted index, `full` that the film holds the most flags it may (the box is then disabled). Callbacks:
+// `draft` is the flags as edited so far, `text` the box's text, `choices` data/flags.js flagChoices' { kind, flag }[]
+// ('use' or 'create') and `active` the highlighted index (-1 for none), `full` that the film holds the most flags it
+// may (the box is then read-only, still focusable). Callbacks:
 // onText(value), onAdd(flags[]), onRemove(index), onActive(index), onDone(), onCancel(), onLeave(relatedKey | null).
 export function flagEditor({
-  keyAttr, keyPrefix, ariaLabel, draft = [], text = '', choices = [], active = 0, full = false,
+  keyAttr, keyPrefix, ariaLabel, draft = [], text = '', choices = [], active = -1, full = false,
   onText, onAdd, onRemove, onActive, onDone, onCancel, onLeave,
 }) {
   // Focus stays in the box while the popup or a x is pressed. It is the prevented MOUSEDOWN, not pointerdown, that
@@ -80,7 +81,12 @@ export function flagEditor({
     },
   });
 
-  const field = el('div', { class: 'flag-editor', onClick: stop },
+  // A press on the field's own padding or a chip's text would blur the box and so close the editor; it keeps focus in
+  // the box instead (the x buttons do the same through their own mousedown).
+  const field = el('div', {
+    class: 'flag-editor', onClick: stop,
+    onMousedown: (event) => { if (event.target !== input) { event.preventDefault(); input.focus(); } },
+  },
     draft.map((flag, index) => el('span', { class: 'flag-chip', title: flag },
       el('span', { class: 'flag-chip-text' }, flag),
       el('button', {
@@ -94,7 +100,7 @@ export function flagEditor({
       choices.map((choice, index) => el('button', {
         type: 'button', class: `flag-option${index === active ? ' is-active' : ''}`, [keyAttr]: `${keyPrefix}-option-${index}`,
         onMousedown: keepFocus, onClick: (event) => { stop(event); onAdd([choice.flag]); },
-      }, choice.create ? `Create "${choice.flag}"` : choice.flag))),
+      }, choice.kind === 'create' ? `Create "${choice.flag}"` : choice.flag))),
     el('div', { class: 'flag-popup-hint' }, 'ENTER ADDS · ESC CANCELS'));
 
   return { field, popup };

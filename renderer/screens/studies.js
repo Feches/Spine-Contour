@@ -12,6 +12,8 @@
  * (2026-10-19, header filters spec F1, section 3) The list filters from its headers: a funnel in each filterable
  * header cell opens that column's menu (components/filter-menu.js) of multi-select ticks and its two sort directions,
  * and the bar lost its Workspace, Folder and Status dropdowns.
+ * (2026-11-16, study flags spec sections 3 and 4.3) The FLAGS column: its chips, the in-row editor that copies the SUBJECT
+ * editor's shape (flagsCell, beginFlagsEdit, commitFlags), and its header menu with the any / every choice.
  */
 
 import { deleteStudyBatch } from '../data/delete-studies.js';
@@ -41,6 +43,12 @@ import {
   activeColumns,
 } from '../data/find.js';
 import { progressTitle, progressDetail } from '../data/processing.js';
+import {
+  cleanFlags, flagsInUse, flagChoices, FLAGS_MAX, startFlagEdit, flagEditText, flagEditAdd, flagEditRemove,
+  flagEditActive, flagEditResult,
+} from '../data/flags.js';
+import { setStudyFlags, flagsRefusal } from '../study-flags.js';
+import { flagChips, flagEditor } from '../components/flag-editor.js';
 import { checkbox } from '../components/checkbox.js';
 import { filterMenu } from '../components/filter-menu.js';
 import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
@@ -315,6 +323,48 @@ function subjectCell(study) {
   }, label);
 }
 
+// The FLAGS cell (2026-11-16, study flags spec section 4.3). A demo row shows the muted dash and is not editable (never
+// saved). A real row at rest is a click-to-edit target exactly as the SUBJECT cell is: a SINGLE click that stops at the
+// cell so the row underneath does not open the study. While this row is the one being edited the cell IS the editor,
+// built from the draft in `editingFlags` so a rebuild mid-word (a batch finishing, a run ending) loses nothing; update()
+// restores its focus and caret by data-find-key. Each callback replaces `editingFlags` through one of data/flags.js's
+// pure transitions and repaints, and the editor's suggestion popup, which the table would clip, is kept in `flagsPopup`
+// for update() to mount on the table's host (placeFlagsPopup). The row is rebuilt from the saved flags until the editor
+// closes, so a row under a `No flags` filter stays where it is while it is edited (spec 4.3).
+function flagsCell(study) {
+  if (study.source !== 'real') return el('div', { class: 'studies-cell-flags' }, flagChips([]));
+  const id = study.id;
+  const name = studyName(study);
+  if (editingFlags && editingFlags.id === id) {
+    const live = getState();
+    const { draft, text, active } = editingFlags;
+    const choices = flagChoices({ inUse: flagsInUse(live.studies), draft, text });
+    const { field, popup } = flagEditor({
+      keyAttr: 'data-find-key', keyPrefix: `flags-${id}`, ariaLabel: `Flags for ${name}`,
+      draft, text, choices, active, full: draft.length >= FLAGS_MAX,
+      onText: (value) => changeFlagsEdit(id, (edit) => flagEditText(edit, value)),
+      onAdd: (flags) => changeFlagsEdit(id, (edit) => flagEditAdd(edit, flags, flagsInUse(getState().studies))),
+      onRemove: (index) => changeFlagsEdit(id, (edit) => flagEditRemove(edit, index)),
+      onActive: (index) => changeFlagsEdit(id, (edit) => flagEditActive(edit, index, choices.length)),
+      onDone: () => commitFlags(id, `flags-${id}`),
+      onCancel: () => cancelFlagsEdit(),
+      onLeave: (key) => commitFlags(id, key),
+    });
+    flagsPopup = popup;
+    return el('div', { class: 'studies-cell-flags studies-flags-editing', 'data-flags-editing': id }, field);
+  }
+  const flags = cleanFlags(study.flags);
+  return el('div', {
+    class: 'studies-cell-flags studies-flags-editable',
+    role: 'button', tabindex: '0', title: flagsRefusal() || 'Click to edit flags', 'data-find-key': `flags-${id}`,
+    'aria-label': `Flags for ${name}: ${flags.join(', ') || 'none'}. Press Enter to edit`,
+    onClick: (event) => { event.stopPropagation(); beginFlagsEdit(id); },
+    onKeydown: (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); beginFlagsEdit(id); }
+    },
+  }, flagChips(flags));
+}
+
 // `runningId` is state.running and `batch` is state.batch. displayStatus (data/status.js) applies
 // spec 13.1's "or currently running" rule and (2026-10-01, issue #39) the batch's waiting films, so
 // deriveStatus stays a pure function of the record.
@@ -324,7 +374,8 @@ function buildRow(study, runningId, selected, batch) {
     && runningId !== study.id && !inferenceView(study.view);
   // While this row is confirming a delete, the prompt takes every cell from WORKSPACE rightwards
   // (see .studies-cell-actions-confirming); the study, subject, region and view cells stay visible.
-  // Those four are nulled together and the prompt's grid-column start is the 5th track, so the
+  // (2026-11-16, study flags) FLAGS joined the cells the prompt covers, so it is five cells now: WORKSPACE, FOLDER,
+  // DATE, STATUS and FLAGS. All five are nulled together and the prompt's grid-column start is the 5th track, so the
   // placement cursor is still at 5 when the action cell is laid out (2026-10-19: the REGION cell
   // moved it from 4). Adding a VISIBLE cell before the prompt without moving that start line
   // would push the cursor past it and wrap the prompt onto a second row.
@@ -370,6 +421,7 @@ function buildRow(study, runningId, selected, batch) {
     confirming ? null : el('div', { class: 'studies-cell-date' }, formatDate(study.addedAt)),
     confirming ? null : el('div', {}, unsupported ? unsupportedViewBadge(study.view)
       : statusBadge(status, status === 'fail' ? failureTitle(study.processingError, study.processingErrorAt) : undefined)),
+    confirming ? null : flagsCell(study),
     actionCell(study, confirming));
   return row;
 }
@@ -478,6 +530,7 @@ function buildTable(studies, runningId, emptyKind, selected, sort, batch, filter
       filterHeader('folder', 'FOLDER', sort, filters, options),
       sortableHeader('date', 'DATE', sort),
       filterHeader('status', 'STATUS', sort, filters, options),
+      filterHeader('flags', 'FLAGS', sort, filters, options),
       el('div', {})),
     ...body);
 }
@@ -537,6 +590,14 @@ let confirmingSelected = null;
 // `editingSubject`, not `editing`: the store has its own `editing` key (the viewer's edit mode),
 // which this file spreads through FRESH_VIEW, and one name for the two would read as the other.
 let editingSubject = null;
+// (2026-11-16, study flags spec 4.3) The FLAGS cell being edited in place: { id, draft: string[], text: string,
+// active: number } (the shape data/flags.js startFlagEdit returns, plus the row's id), or null. `draft` is the flags as
+// edited so far, `text` what is typed in the box, `active` the highlighted suggestion (-1 for none). Replaced, never
+// mutated -- every change is one of data/flags.js's pure transitions -- and compared by reference in update()'s key,
+// which lists it right after editingSubject. Cleared on navigation with editingSubject. `flagsPopup` is the open
+// editor's suggestion list, built with its cell and mounted by update() on the table's host (placeFlagsPopup).
+let editingFlags = null;
+let flagsPopup = null;
 // True while an export writes its bundle (bundle spec 4.1): the button reads Exporting… and refuses a second one.
 // Listed in update()'s key like the three above, but navigation does NOT clear it: the export carries on without
 // the screen, and only its own `finally` may end it.
@@ -562,8 +623,8 @@ subscribe((state) => {
   // closes the menu, spec 3.2). The import prompt goes too: a plan left pending while a study is opened in edit mode
   // would update it on return (its `editing` set is the click's).
   if (state.screen !== 'studies') {
-    mounted = null; confirmingId = null; confirmingSelected = null; editingSubject = null; pendingImport = null;
-    openMenu = null; menuShows = null; listenOutside(false);
+    mounted = null; confirmingId = null; confirmingSelected = null; editingSubject = null; editingFlags = null; flagsPopup = null;
+    pendingImport = null; openMenu = null; menuShows = null; listenOutside(false);
     return;
   }
   if (mounted) mounted.update(state);
@@ -659,12 +720,14 @@ function listenOutside(on) {
 function buildMenu(column, live, filters, options) {
   return filterMenu({
     column, label: column, options: options[column] ?? [], ticked: column === 'subject' ? [] : filters[column],
-    subjectText: filters.subject, sortKey: live.findSort?.key, sortDir: live.findSort?.dir,
+    subjectText: filters.subject, match: column === 'flags' ? filters.flagsMatch : undefined, sortKey: live.findSort?.key, sortDir: live.findSort?.dir,
     sortLabels: SORT_LABELS[column] ?? TEXT_SORT_LABELS,
     onToggle: (value) => writeFindFilters((s) => ({ [column]: toggleId(normaliseFindFilters(s.findFilters, s.studies)[column], value) })),
     onAll: () => writeFindFilters(() => ({ [column]: [] })),
     onNone: () => writeFindFilters(() => ({ [column]: [] })),
     onSubject: (subject) => writeFindFilters(() => ({ subject })),
+    // (2026-11-16, study flags; FL17) The FLAGS menu's any / every choice, written like a tick.
+    onMatch: (value) => writeFindFilters(() => ({ flagsMatch: value })),
     // Closed before the write, so the sort's own repaint already draws the list without the menu.
     onSort: (dir) => {
       openMenu = null;
@@ -690,6 +753,25 @@ function placeMenu(host, menu, column) {
   menu.style.top = `${Math.round(head.getBoundingClientRect().bottom - hostRect.top + 4)}px`;
 }
 
+// (2026-11-16, study flags spec 4.3) The open flags editor's suggestion list, mounted as the table host's last child
+// under its cell and positioned as placeMenu positions a menu: inside the table it would be clipped, because
+// .studies-table scrolls sideways and so clips below its rows (the last row's list included). Left edge on the cell,
+// kept inside the host's width, top at the cell's bottom plus 4px. Called after every repaint and after refreshTable's
+// focus move, which can scroll the table sideways. Nothing is mounted when the row is not on screen (a search or filter
+// has hidden it; the draft is kept and the list returns with the row).
+function placeFlagsPopup() {
+  if (!mounted || !flagsPopup || !editingFlags) return;
+  const host = mounted.host;
+  const cell = host.querySelector(`.studies-flags-editing[data-flags-editing="${CSS.escape(editingFlags.id)}"]`);
+  if (!cell) return;
+  host.append(flagsPopup);
+  const hostRect = host.getBoundingClientRect();
+  const cellRect = cell.getBoundingClientRect();
+  const left = Math.max(0, Math.min(cellRect.left - hostRect.left, hostRect.width - flagsPopup.offsetWidth));
+  flagsPopup.style.left = `${Math.round(left)}px`;
+  flagsPopup.style.top = `${Math.round(cellRect.bottom - hostRect.top + 4)}px`;
+}
+
 // Repaint the bar and the table from the current store after module-scope UI state changes.
 // Called from DOM event handlers only, never from inside a subscriber. The repaint replaces the
 // nodes, which drops keyboard focus onto the body; `focusSelector` names the node that gets it
@@ -706,6 +788,7 @@ function refreshTable(focusSelector) {
       if (target instanceof HTMLInputElement && target.type === 'text') target.select();
     }
   }
+  placeFlagsPopup();
 }
 
 // Focus lands on CANCEL, not Delete. The repaint drops focus to <body>, so something must
@@ -1071,6 +1154,8 @@ function beginSubjectEdit(id) {
   // and so its deferred commit -- before the click that lands here, so this is belt and braces;
   // but an editor a rebuild destroyed while focused got no blur, and this is what keeps its text.
   if (editingSubject && editingSubject.id !== id) commitSubject(editingSubject.id, 'blur');
+  // (2026-11-16, study flags) An open flags editor commits first, for the same reason.
+  if (editingFlags) commitFlags(editingFlags.id);
   confirmingId = null;
   editingSubject = { id, draft: subjectDraft(study) };
   refreshTable(`[data-find-key="subject-input-${id}"]`);
@@ -1126,10 +1211,62 @@ function commitSubject(id, mode, focusKey = null) {
         : null);
 }
 
+// ---- FLAGS in place (study flags spec 2026-11-16, section 4.3; FL14) ---------------------------------------------------
+
+// Opens the editor on `id`. Refused, with the reason toasted, while a bulk delete, a bundle import or export runs or
+// studies are not being saved (flagsRefusal): those read or replace the label records a flag change writes. An open
+// SUBJECT editor, or a flags editor on another row, is committed first: Chromium fires its blur before the click that
+// lands here, so this is belt and braces, but an editor a rebuild destroyed while focused got no blur.
+function beginFlagsEdit(id) {
+  const live = getState();
+  const study = live.studies.find((s) => s.id === id);
+  if (!study || study.source !== 'real') return;
+  const refusal = flagsRefusal(live);
+  if (refusal) { showToast(refusal); return; }
+  if (editingSubject) commitSubject(editingSubject.id, 'blur');
+  if (editingFlags && editingFlags.id !== id) commitFlags(editingFlags.id);
+  confirmingId = null;
+  editingFlags = { id, ...startFlagEdit(study.flags) };
+  refreshTable(`[data-find-key="flags-${id}-input"]`);
+}
+
+// One of the editor's callbacks: replaces `editingFlags` with `change`'s result and repaints. update()'s focus snapshot
+// keeps the box and its caret. Nothing when that row's editor has already closed (a late callback).
+function changeFlagsEdit(id, change) {
+  if (!editingFlags || editingFlags.id !== id) return;
+  const { id: kept, ...edit } = editingFlags;
+  editingFlags = { id: kept, ...change(edit) };
+  refreshTable();
+}
+
+// Esc: the draft is thrown away and focus returns to the cell.
+function cancelFlagsEdit() {
+  if (!editingFlags) return;
+  const { id } = editingFlags;
+  editingFlags = null;
+  refreshTable(`[data-find-key="flags-${id}"]`);
+}
+
+// Closes the editor for `id` and writes its flags: the draft plus any text still in the box. Idempotent, as
+// commitSubject is: a blur that follows an Enter finds the editor already closed and does nothing, so the one write
+// cannot happen twice. setStudyFlags writes nothing when the list did not change, and toasts its own refusal or failure;
+// it is not awaited here. `focusKey` is where focus goes: the cell after Enter in an empty box, the blur's relatedTarget
+// key (a keyed control inside this screen, whose rebuilt twin takes the focus the rebuild would throw away), or null
+// when focus went somewhere that survives the rebuild.
+function commitFlags(id, focusKey = null) {
+  if (!editingFlags || editingFlags.id !== id) return;
+  const flags = flagEditResult(editingFlags, flagsInUse(getState().studies));
+  editingFlags = null;
+  setStudyFlags([{ id, flags }]);
+  refreshTable(focusKey ? `[data-find-key="${CSS.escape(focusKey)}"]` : null);
+}
+
 export function render(state) {
   confirmingId = null;
   confirmingSelected = null;
   editingSubject = null;
+  editingFlags = null;
+  flagsPopup = null;
   pendingImport = null;
   openMenu = null;
   menuShows = null;
@@ -1309,6 +1446,7 @@ export function render(state) {
     // assignments, not setState: this runs inside a store notification.
     if (confirmingSelected && (live.studiesTab === 'parameters' || confirmingSelected.join(' ') !== targets.join(' '))) confirmingSelected = null;
     if (editingSubject && !studies.some((study) => study.id === editingSubject.id)) editingSubject = null;
+    if (editingFlags && !studies.some((study) => study.id === editingFlags.id)) editingFlags = null;
     // The import prompt likewise (ruling S26): withdrawn silently when the library is no longer the list its plan was
     // made against (a run ending, a subject typed, a film added: its new ids and matches may be wrong now) or the user
     // leaves for the Parameters tab.
@@ -1345,7 +1483,7 @@ export function render(state) {
     }
 
     // live.running is in the key so the table repaints when a run starts or ends: the row badge is
-    // derived from it. confirmingId, confirmingSelected, editingSubject, exporting, importing,
+    // derived from it. confirmingId, confirmingSelected, editingSubject, editingFlags, exporting, importing,
     // pendingImport and openMenu are module scope, not store state; listing them here is what lets a
     // refreshTable() after a change to them get past the gate, while a notification that changed
     // nothing the table shows (a pan frame, a toast) still returns early. paramSelected, batch,
@@ -1355,7 +1493,7 @@ export function render(state) {
     // stops repainting for it. openMenu is the LAST entry on purpose (2026-10-19, final review; R16):
     // menuClosedInPlace() below rewrites that one slot when an outside press closes the menu without a
     // rebuild.
-    const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, editingSubject, exporting,
+    const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, editingSubject, editingFlags, exporting,
       importing, pendingImport, live.deletingStudies, live.paramSelected, live.batch, live.findSort,
       live.findFilters, openMenu];
     if (sameKey(key, lastKey)) return;
@@ -1381,11 +1519,14 @@ export function render(state) {
     // refreshTable() restores the row's delete controls, which carry no key, by its own selector.
     const active = document.activeElement;
     const focusKey = (barHost.contains(active) || tableHost.contains(active)) ? active.getAttribute('data-find-key') : null;
-    const caret = focusKey !== null && (focusKey.startsWith('subject-input-') || focusKey === 'filter-subject-text')
+    // (2026-11-16, study flags) The flags editor's box keeps its caret the same way.
+    const caret = focusKey !== null && (focusKey.startsWith('subject-input-') || focusKey === 'filter-subject-text'
+      || /^flags-.+-input$/.test(focusKey))
       && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
     // The header menu the focus was in, if any: when this rebuild closed it, focus goes back to its funnel (spec 3.2).
     const menuColumn = focusKey !== null ? active.closest('.studies-filter-menu')?.getAttribute('data-filter-menu') ?? null : null;
     mount(barHost, buildFilterBar(live, visible));
+    flagsPopup = null;
     mount(tableHost, buildTable(visible, live.running, emptyKind, selected, live.findSort, live.batch, filters, shown));
     if (openMenu !== null) placeMenu(tableHost, buildMenu(openMenu, live, filters, shown), openMenu);
     listenOutside(openMenu !== null);
@@ -1403,6 +1544,7 @@ export function render(state) {
         if (caret && typeof target.setSelectionRange === 'function') target.setSelectionRange(caret[0], caret[1]);
       }
     }
+    placeFlagsPopup();
   }
 
   // (2026-10-19, final review; R16) An outside press that closes the menu without a rebuild (closeMenuOnOutsidePress)
