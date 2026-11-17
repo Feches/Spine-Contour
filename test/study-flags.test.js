@@ -98,7 +98,16 @@ test('setStudyFlags refuses while a delete, an import or an export runs', async 
     assert.equal(getState().toast, 'Wait for the delete to finish.', 'the refusal is said');
     setState({ deletingStudies: false });
 
+    // The refusal toasts notify too, so count only the notifications that carry a change of the lock.
+    const seen = [];
+    const unsubscribe = subscribe((state) => { if (seen.at(-1) !== state.flagsBusy) seen.push(state.flagsBusy); });
+    let notified = 0;
+    const unsubscribeAll = subscribe(() => { notified += 1; });
     setFlagsBusy('import');
+    assert.equal(getState().flagsBusy, 'import', 'the lock is store state, so every screen repaints when it changes');
+    assert.equal(notified, 1, 'a subscriber is told when the lock is set');
+    setFlagsBusy('import');
+    assert.equal(notified, 1, 'setting the same value again tells no one');
     assert.equal(flagsRefusal(), 'Wait for the import to finish.');
     assert.deepEqual(await setStudyFlags([{ id: study.id, flags: ['cement'] }]), { changed: [], failed: [] });
     setFlagsBusy('export');
@@ -107,6 +116,10 @@ test('setStudyFlags refuses while a delete, an import or an export runs', async 
     assert.equal(getState().studies, studies, 'still nothing written');
 
     setFlagsBusy(null);
+    assert.equal(getState().flagsBusy, null);
+    assert.deepEqual(seen, ['import', 'export', null], 'a subscriber is told when it is set and when it is cleared');
+    unsubscribe();
+    unsubscribeAll();
     assert.equal(flagsRefusal(), '');
     assert.equal(flagsRefusal({ deletingStudies: true }), 'Wait for the delete to finish.', 'reads the state it is given');
     assert.equal(bridge.saved.length, 0);

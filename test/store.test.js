@@ -10,6 +10,7 @@ test('getState returns the documented initial shape', () => {
   assert.equal(state.navCollapsed, false);
   assert.equal(state.settingsOpen, false);
   assert.deepEqual(state.studies, []);
+  assert.equal(state.flagsBusy, null);
   assert.equal(state.query, '');
   assert.equal(state.studiesTab, 'find');
   assert.deepEqual(state.paramFilters, {

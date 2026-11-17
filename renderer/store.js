@@ -10,6 +10,10 @@ let state = {
   // a complete pair, including when the saver runs or the app closes mid-edit.
   measurementDrafts: {},
   deletingStudies: false,
+  // (2026-11-16, study flags spec 4.3) 'import' or 'export' while a bundle import or export runs, else null. Flag edits
+  // are refused meanwhile (flagsRefusal in study-flags.js). Store state, as deletingStudies is, so the Find list and the
+  // Analysis screen's flags block repaint when it clears and never keep a stale "Wait for the export" button.
+  flagsBusy: null,
   query: '',
   // The Studies screen's second tab (pre-op/post-op spec §10). Which tab is up, and the
   // Parameters tab's filters, sort and lordosis-level toggle. Store state rather than screen

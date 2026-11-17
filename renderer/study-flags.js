@@ -14,19 +14,20 @@ import { showToast } from './components/toast.js';
 import { cleanFlags, sameFlagList } from './data/flags.js';
 import { syncRecordFlags } from './level-editor.js';
 
-// 'import' or 'export' while a bundle import or export runs, else null.
-let busy = null;
-
-/** A bundle import or export starting (`'import'`, `'export'`) or ending (`null`). */
+/**
+ * A bundle import or export starting (`'import'`, `'export'`) or ending (`null`). Written to the store's `flagsBusy`
+ * (2026-11-16: it was a module variable no screen could see change), only when it differs from what is there.
+ */
 export function setFlagsBusy(kind) {
-  busy = kind === 'import' || kind === 'export' ? kind : null;
+  const next = kind === 'import' || kind === 'export' ? kind : null;
+  if (getState().flagsBusy !== next) setState({ flagsBusy: next });
 }
 
 /** Why flags cannot change now, as the sentence to show; `''` when they can. */
 export function flagsRefusal(state = getState()) {
   if (state.deletingStudies) return 'Wait for the delete to finish.';
-  if (busy === 'import') return 'Wait for the import to finish.';
-  if (busy === 'export') return 'Wait for the export to finish.';
+  if (state.flagsBusy === 'import') return 'Wait for the import to finish.';
+  if (state.flagsBusy === 'export') return 'Wait for the export to finish.';
   const reason = persistenceDisabledReason();
   if (reason) return `Studies are not being saved: ${reason}`;
   return '';

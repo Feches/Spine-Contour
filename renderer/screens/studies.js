@@ -1745,7 +1745,7 @@ export function render(state) {
     // menuClosedInPlace() below rewrites that one slot when an outside press closes the menu without a
     // rebuild.
     const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, editingSubject, editingFlags, exporting,
-      importing, pendingImport, live.deletingStudies, live.paramSelected, live.batch, live.findSort,
+      importing, pendingImport, live.deletingStudies, live.flagsBusy, live.paramSelected, live.batch, live.findSort,
       live.findFilters, bulkFlags, openMenu];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
