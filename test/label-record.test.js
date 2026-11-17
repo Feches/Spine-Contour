@@ -436,6 +436,16 @@ test('withRecordFlags changes flags and nothing else', () => {
   assert.deepEqual(Object.keys(old), ['schema', 'saved_at', 'flags', 'levels', 'femoral_heads']);
 });
 
+// (2026-11-16, the final review, M5) A file that parses but is not an object is no record to put flags into: it comes
+// back as it went in, never thrown on, never turned into an object.
+test('withRecordFlags returns anything that is not a plain object unchanged', () => {
+  const list = [1, 2];
+  for (const value of [null, undefined, 'text', 7, true, list]) {
+    assert.equal(withRecordFlags(value, ['cement']), value, String(value));
+  }
+  assert.deepEqual(list, [1, 2], 'the array is not touched');
+});
+
 test('the schema takes an optional flags list and nothing looser', () => {
   assertValid(EXAMPLE);
   const { flags: _flags, ...without } = EXAMPLE;

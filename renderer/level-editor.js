@@ -33,6 +33,7 @@ import { moveHandle } from './viewer/level-handles.js';
 import { projectGeometry, projectsLevel, regionFollowsLevels, projectionIsEmpty, staleStudyLevels } from './data/level-projection.js';
 import {
   toLabelRecord, recordLevels, recordComment, normalizeComment, labelFileName, appVersion, recordFlags, withRecordFlags,
+  isPlainRecord,
 } from './data/label-record.js';
 import { cleanFlags, sameFlagList } from './data/flags.js';
 import { levelContours } from './data/contours.js';
@@ -530,33 +531,95 @@ export async function writeReviewRecord(studyId) {
  * The study is read once the turn is taken, so a flag changed while a save was writing, or a first record whose
  * `labelFile` reached the study as that save ended, is still caught. A study gone, a demo, one with no record (none is
  * created), a record that is not there or already holds the study's flags: skipped. Never rejects.
+ *
+ * (2026-11-16, the final review, I1 and M5) The study is read again once its record has been read, and the turn ends
+ * without a write when the study went, was re-added (another `addedAt`) or names another record file by then (an
+ * import's placement, which replaces the file): the record read is no longer that study's to write. A record that parses
+ * but is not a plain object is skipped too. After the write, writeRecord's rule: a study deleted or re-added while the
+ * file was written loses that file, unless another study names it now. Such a film is neither written nor failed.
+ * Every call is counted while it runs, so recordWritesSettled can wait for the whole of a bulk update.
  * @param {string[]} studyIds
  * @returns {Promise<{written: string[], failed: string[]}>} both lists hold study ids
  */
 export async function syncRecordFlags(studyIds) {
+  syncStarted();
   const written = [];
   const failed = [];
-  for (const id of studyIds) {
-    // (Task 4 review, 2026-11-16) Yield once before testing the latch: the release that ended the last film's turn ran
-    // in this same run, so without this the next film would take the latch before a waiter queued on that release could.
-    await null;
-    while (saving) await writeEnded;
-    const release = holdWrite('flags');
-    try {
-      const study = studyOf(getState(), id);
-      const file = study?.labelFile;
-      if (!study || study.source === 'demo' || typeof file !== 'string' || !file) continue;
-      const record = await loadLabelRecord(file);
-      if (!record || sameFlagList(recordFlags(record), cleanFlags(study.flags))) continue;
-      await saveLabelRecord(file, withRecordFlags(record, study.flags));
-      written.push(id);
-    } catch {
-      failed.push(id);
-    } finally {
-      release();
+  try {
+    for (const id of studyIds) {
+      // (Task 4 review, 2026-11-16) Yield once before testing the latch: the release that ended the last film's turn ran
+      // in this same run, so without this the next film would take the latch before a waiter queued on that release could.
+      await null;
+      while (saving) await writeEnded;
+      const release = holdWrite('flags');
+      try {
+        const study = studyOf(getState(), id);
+        const file = study?.labelFile;
+        if (!study || study.source === 'demo' || typeof file !== 'string' || !file) continue;
+        const { addedAt } = study;
+        const record = await loadLabelRecord(file);
+        if (!isPlainRecord(record)) continue;
+        const owner = studyOf(getState(), id);
+        if (!owner || owner.addedAt !== addedAt || owner.labelFile !== file) continue;
+        if (sameFlagList(recordFlags(record), cleanFlags(owner.flags))) continue;
+        await saveLabelRecord(file, withRecordFlags(record, owner.flags));
+        const after = getState();
+        const kept = studyOf(after, id);
+        if (!kept || kept.addedAt !== addedAt) {
+          const name = file.toLowerCase();
+          if (!after.studies.some((item) => typeof item.labelFile === 'string' && item.labelFile.toLowerCase() === name)) {
+            deleteLabelRecord(file).catch(() => {});
+          }
+          continue;
+        }
+        written.push(id);
+      } catch {
+        failed.push(id);
+      } finally {
+        release();
+      }
     }
+  } finally {
+    syncEnded();
   }
   return { written, failed };
+}
+
+// (2026-11-16, the final review, I1) How many syncRecordFlags calls are running, and a promise that settles when the
+// count is back to zero. A bulk update frees the latch between films, so `saving` alone cannot say it has finished.
+let syncsRunning = 0;
+let syncsIdle = Promise.resolve();
+let syncsIdleResolve = null;
+
+function syncStarted() {
+  if (syncsRunning === 0) syncsIdle = new Promise((resolve) => { syncsIdleResolve = resolve; });
+  syncsRunning += 1;
+}
+
+function syncEnded() {
+  syncsRunning -= 1;
+  if (syncsRunning === 0 && syncsIdleResolve) {
+    const resolve = syncsIdleResolve;
+    syncsIdleResolve = null;
+    resolve();
+  }
+}
+
+/**
+ * (2026-11-16, the final review, I1) Resolves once no label-record write is pending or in flight: no syncRecordFlags
+ * call is running and the write latch is free (no Save edits, Mark reviewed or flag update writing). A call that starts
+ * while this waits is waited for too. An export, an import or a delete awaits it after taking its own lock (so no new
+ * flag change can start) and before it reads, copies, replaces or removes a record. It only observes the latch: it
+ * never takes it, so the order Save edits, Mark reviewed and the flag updates keep among themselves is unchanged.
+ * Never rejects.
+ * @returns {Promise<void>}
+ */
+export async function recordWritesSettled() {
+  for (;;) {
+    if (saving) await writeEnded;
+    else if (syncsRunning > 0) await syncsIdle;
+    else return;
+  }
 }
 
 /**

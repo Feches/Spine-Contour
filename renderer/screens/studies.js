@@ -55,7 +55,7 @@ import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js
 import { startBatch, stopBatch } from '../batch.js';
 import { setFilePayload, releaseStudy } from './analysis.js';
 import { forgetPrediction } from '../components/viewer.js';
-import { hasStashedEditor, forgetLevelEditor, syncRecordFlags } from '../level-editor.js';
+import { hasStashedEditor, forgetLevelEditor, syncRecordFlags, recordWritesSettled } from '../level-editor.js';
 import { mountParameters } from './parameters.js';
 
 const DASH = '\u2014';
@@ -859,7 +859,15 @@ async function deleteStudy(id) {
       // comes after the sidecar's has succeeded: the record, its label file and the caches stay, but the sidecar
       // is gone, so once the cached film is dropped its stored image cannot be restored (FILM UNAVAILABLE) until
       // the film is run again.
-      if (study?.labelFile) await deleteLabelRecord(study.labelFile);
+      // (2026-11-16, the final review, I1) Every label-record write in flight ends first (a flag update walking a bulk
+      // change, a Save edits, a Mark reviewed write), and the file is read from the live study after it: a write that
+      // ended meanwhile may have given the study its first record. Awaited here, directly before the record is removed,
+      // so a flag update that starts after the removal finds no file and writes none. This delete takes no flag lock:
+      // `deletingStudies` would also make a running batch's next film fail ("Wait for study deletion to finish."), and a
+      // single-row delete is allowed during a batch; see the final fix report.
+      await recordWritesSettled();
+      const file = getState().studies.find((s) => s.id === id && s.addedAt === study?.addedAt)?.labelFile ?? study?.labelFile;
+      if (file) await deleteLabelRecord(file);
     } catch (error) {
       showToast(`Could not delete the saved segmentation: ${error.message}`);
       refreshTable(`.studies-row[data-study-id="${id}"] .studies-delete`);
@@ -933,7 +941,12 @@ async function deleteSelectedStudies(ids) {
   if (targets.length === 0) { refreshTable('[data-find-key="delete"]'); return; }
   setState({ deletingStudies: true });
   try {
-    const { deleted, failed } = await deleteStudyBatch(targets, { deletePrediction, deleteLabelRecord });
+    // (2026-11-16, the final review, I1) deletingStudies now refuses every new flag change; a flag update already
+    // walking its films, or a Save edits or Mark reviewed write, ends before any record is removed. The targets are read
+    // again after it, so a record a write in flight gave a study is the one removed.
+    await recordWritesSettled();
+    const settled = getState().studies.filter((study) => study.source === 'real' && wanted.has(study.id));
+    const { deleted, failed } = await deleteStudyBatch(settled, { deletePrediction, deleteLabelRecord });
     const removed = new Set(deleted);
     for (const id of removed) { forgetPrediction(id); releaseStudy(id); }
     setState((current) => ({
@@ -972,10 +985,15 @@ export async function exportBundleTo(parentDir) {
   if (exporting || barBlocked(live)) return;
   const rows = rowsToExport(findRows(live).visible.filter((study) => study.source === 'real'), live.paramSelected);
   if (rows.length === 0) return;
-  exporting = true;
-  setFlagsBusy('export'); // flag edits are refused while the export runs; the same finally releases it
-  refreshTable('[data-find-key="export-bundle"]');
+  // (2026-11-16, the final review, M6) The locks are set inside the try: a subscriber throwing on the first repaint
+  // must not leave flags refused for the session, and only this finally releases them.
   try {
+    exporting = true;
+    setFlagsBusy('export'); // flag edits are refused while the export runs; the same finally releases it
+    refreshTable('[data-find-key="export-bundle"]');
+    // (2026-11-16, the final review, I1) The lock stops new flag changes; a flag update still walking its films (or a
+    // Save edits) ends before the records are copied, so every bundled record carries its study's flags.
+    await recordWritesSettled();
     const { name, entries } = planExport(rows, new Date());
     const result = await exportBundle({ parent: parentDir, name, entries, appVersion: appVersion() });
     showToast(exportMessage(result));
@@ -1061,12 +1079,16 @@ async function readLocalRecords(locals, { names, hashes }, localHashes) {
 export async function importBundleFrom(dir) {
   const state = getState();
   if (exporting || pendingImport || barBlocked(state)) return; // barBlocked holds `importing` (S25)
-  importing = true;
-  setFlagsBusy('import');
-  confirmingSelected = null;
-  confirmingId = null;
-  refreshTable();
+  // (2026-11-16, the final review, M6) The locks are set inside the try, so only its finally can be the one to end them.
   try {
+    importing = true;
+    setFlagsBusy('import');
+    confirmingSelected = null;
+    confirmingId = null;
+    refreshTable();
+    // (2026-11-16, the final review, I1) Label-record writes in flight end before the local records are read for the
+    // plan: a record read mid-write would be planned against a state about to change.
+    await recordWritesSettled();
     const bundle = await readBundle(dir);
     const locals = state.studies.filter((study) => study.source === 'real');
     const keys = bundleKeys(bundle.entries);
@@ -1122,10 +1144,14 @@ export async function confirmImport() {
   if (!pendingImport || exporting || barBlocked(live)) return; // barBlocked holds `importing` (S25)
   const { dir, plan } = pendingImport;
   pendingImport = null;
-  importing = true;
-  setFlagsBusy('import');
-  refreshTable();
+  // (2026-11-16, the final review, M6) The locks are set inside the try, so only its finally can be the one to end them.
   try {
+    importing = true;
+    setFlagsBusy('import');
+    refreshTable();
+    // (2026-11-16, the final review, I1) A flag update still walking its films ends before the placement replaces any
+    // record, so no older local record plus new flags can be written over a record the bundle has just placed.
+    await recordWritesSettled();
     // (2026-11-16, study flags) A plan of flags alone has no files to place: nothing is sent, nothing is placed.
     const result = plan.actions.length === 0 ? { placed: [] } : await importBundle({ dir, actions: plan.actions });
     const reported = Array.isArray(result?.placed) ? result.placed : [];

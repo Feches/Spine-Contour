@@ -162,13 +162,21 @@ export function recordFlags(record) {
   return cleanFlags(record?.flags);
 }
 
+/** (2026-11-16, the final review, M5) True for a parsed record that is a plain object: not null, a list or a scalar. */
+export function isPlainRecord(record) {
+  return record !== null && typeof record === 'object' && !Array.isArray(record);
+}
+
 /**
  * (Study flags, 2026-11-16) A new record equal to `record` except `flags`, which is `cleanFlags(flags)`. The key keeps
  * its place when the record has it, else sits directly after `comment`, else directly before `levels`; every other
  * key keeps its value and order. A flag change is not a save: `saved_at`, `app_version` and the annotation are untouched.
+ * (2026-11-16, the final review, M5) Anything that is not a plain object (null, a list, a string: a file that parses but
+ * is no record) comes back as it went in, never thrown on and never turned into an object; syncRecordFlags skips it.
  * @returns {object}
  */
 export function withRecordFlags(record, flags) {
+  if (!isPlainRecord(record)) return record;
   const cleaned = cleanFlags(flags);
   const keys = Object.keys(record);
   const out = {};

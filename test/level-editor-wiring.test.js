@@ -22,6 +22,7 @@ import {
   restorePlacing, fitPlacing, writeReviewRecord, saveLevelEdits, hasStashedEditor, forgetLevelEditor, commitHandleMove,
   revertPlacedLevel, setLevelComment, discardLevelEdits, resetLevelsToModel, clearPlacedLevel, toggleLevelGroup,
   aimHandle, cancelAim, placeAimedPoint, setFocusedHandle, cancelPlace, resumePlace, removeFocusedPart, syncRecordFlags,
+  recordWritesSettled,
 } from '../renderer/level-editor.js';
 import { projectionIsEmpty, projectGeometry } from '../renderer/data/level-projection.js';
 import { openEditor, setLevelGeometry, toggleVisible } from '../renderer/data/levels.js';
@@ -1791,5 +1792,188 @@ test('a bulk flag update yields the latch between films: a Save edits clicked me
     assert.equal(bridge.saved.length, 3);
     const order = bridge.saved.map(({ name, record }) => `${name === fileA ? 'a' : 'b'}:${record.levels ? 'edits' : 'flags'}`);
     assert.deepEqual(order, ['a:flags', 'a:edits', 'b:flags'], 'flags for a, the edits save, then flags for b');
+  }));
+});
+
+// ---------------------------------------------------------------------------
+// (2026-11-16, the final review, I1) The record lock works both ways: an export, an import or a delete waits for every
+// label-record write in flight (recordWritesSettled) before it reads, copies, replaces or removes a record, and a flag
+// update re-reads its study across its own read and write, so a study deleted or re-pointed meanwhile gets no file.
+
+// A load that waits on the test: `reached` settles when the load has started, `release()` lets it answer.
+function heldLoad(bridge) {
+  const hold = {};
+  hold.reached = new Promise((resolve) => { hold.reach = resolve; });
+  hold.gate = new Promise((resolve) => { hold.release = resolve; });
+  const load = bridge.spineContour.loadLabelRecord;
+  bridge.spineContour.loadLabelRecord = async (name) => {
+    hold.reach();
+    await hold.gate;
+    return load(name);
+  };
+  return hold;
+}
+
+// Whether `promise` has settled by the time a 20 ms timer fires.
+async function settledYet(promise) {
+  let done = false;
+  promise.then(() => { done = true; });
+  await settle();
+  return done;
+}
+
+test('a study deleted while the flag update reads its record gets no file written back', async () => {
+  const file = 'lumbar_9590.label.json';
+  const study = segmentedFilm('SP-9590', { labelFile: file, flags: ['cement'] });
+  wire([], NO_FILM);
+  const bridge = folderBridge({ [file]: { saved_at: STORED_AT, comment: null, flags: [] } });
+  const hold = heldLoad(bridge);
+  await withBridge(bridge, () => withStore(study, async () => {
+    const sync = syncRecordFlags([study.id]);
+    await hold.reached;
+    remove(study.id);
+    hold.release();
+    assert.deepEqual(await sync, { written: [], failed: [] }, 'neither written nor failed: the study is gone');
+    await settle();
+    assert.ok(bridge.saved.length === 0 || bridge.deleted.includes(file), 'no file is left for the deleted study');
+    assert.equal(bridge.saved.length, 0, 'nothing was saved');
+  }));
+});
+
+test('a study deleted while the flag update writes loses the file it wrote, unless another study names it', async () => {
+  const file = 'lumbar_9591.label.json';
+  const study = segmentedFilm('SP-9591', { labelFile: file, flags: ['cement'] });
+  wire([], NO_FILM);
+  let bridge = folderBridge({ [file]: { saved_at: STORED_AT, flags: [] } }, async () => remove(study.id));
+  await withBridge(bridge, () => withStore(study, async () => {
+    assert.deepEqual(await syncRecordFlags([study.id]), { written: [], failed: [] });
+    await settle();
+    assert.equal(bridge.saved.length, 1);
+    assert.deepEqual(bridge.deleted, [file], 'the delete could not see the file: it is removed here');
+  }));
+
+  const other = segmentedFilm('SP-9592', { labelFile: file.toUpperCase() });
+  bridge = folderBridge({ [file]: { saved_at: STORED_AT, flags: [] } },
+    async () => setState((s) => ({ studies: [...s.studies.filter((x) => x.id !== study.id), other] })));
+  await withBridge(bridge, () => withStore(study, async () => {
+    await syncRecordFlags([study.id]);
+    await settle();
+    assert.deepEqual(bridge.deleted, [], 'another study names the file now: it stays');
+  }));
+
+  const readded = { ...study, addedAt: '2099-01-01T00:00:00.000Z', labelFile: null };
+  bridge = folderBridge({ [file]: { saved_at: STORED_AT, flags: [] } }, async () => setState({ studies: [readded] }));
+  await withBridge(bridge, () => withStore(study, async () => {
+    assert.deepEqual(await syncRecordFlags([study.id]), { written: [], failed: [] });
+    await settle();
+    assert.deepEqual(bridge.deleted, [file], 're-added under the same id meanwhile: the old study\'s file goes');
+  }));
+});
+
+test('a flag update whose study names another record by the time it was read writes nothing', async () => {
+  const file = 'lumbar_9593.label.json';
+  const study = segmentedFilm('SP-9593', { labelFile: file, flags: ['cement'] });
+  wire([], NO_FILM);
+  const bridge = folderBridge({ [file]: { saved_at: STORED_AT, flags: [] } });
+  const hold = heldLoad(bridge);
+  await withBridge(bridge, () => withStore(study, async () => {
+    const sync = syncRecordFlags([study.id]);
+    await hold.reached;
+    setState((s) => ({ studies: s.studies.map((x) => (x.id === study.id ? { ...x, labelFile: 'lumbar_9593-2.label.json' } : x)) }));
+    hold.release();
+    assert.deepEqual(await sync, { written: [], failed: [] });
+    assert.equal(bridge.saved.length, 0, 'the record read is not the study\'s any more: nothing is written over it');
+  }));
+});
+
+// (2026-11-16, the final review, M5) A record file that parses but is not an object is skipped, not "fixed".
+test('a flag update skips a record that is not a plain object', async () => {
+  const file = 'lumbar_9594.label.json';
+  wire([], NO_FILM);
+  for (const junk of [[], 'text', 7]) {
+    const bridge = folderBridge({ [file]: junk });
+    await withBridge(bridge, () => withStore(segmentedFilm('SP-9594', { labelFile: file, flags: ['cement'] }), async () => {
+      assert.deepEqual(await syncRecordFlags(['SP-9594']), { written: [], failed: [] }, JSON.stringify(junk));
+      assert.equal(bridge.saved.length, 0, `${JSON.stringify(junk)}: nothing written`);
+    }));
+  }
+});
+
+test('recordWritesSettled resolves at once with nothing in flight, and after both of two queued flag updates', async () => {
+  const fileA = 'lumbar_9595.label.json';
+  const fileB = 'lumbar_9596.label.json';
+  const a = segmentedFilm('SP-9595', { labelFile: fileA, flags: ['cement'] });
+  const b = segmentedFilm('SP-9596', { labelFile: fileB, flags: ['cement'] });
+  wire([], NO_FILM);
+  const first = await Promise.race([
+    recordWritesSettled().then(() => 'settled'),
+    new Promise((resolve) => { setTimeout(() => resolve('a timer'), 0); }),
+  ]);
+  assert.equal(first, 'settled', 'nothing in flight: it resolves at once');
+
+  const hold = heldSave();
+  hold.armed = true;
+  const seed = { [fileA]: { saved_at: STORED_AT, flags: [] }, [fileB]: { saved_at: STORED_AT, flags: [] } };
+  const bridge = folderBridge(seed, hold.onSave);
+  await withBridge(bridge, () => withStore(a, async () => {
+    setState((s) => ({ studies: [...s.studies, b] }));
+    const syncA = syncRecordFlags([a.id]);
+    await hold.reached;
+    const settled = recordWritesSettled();
+    assert.equal(await settledYet(settled), false, 'a flag save is held: not settled');
+    let bDone = false;
+    const syncB = syncRecordFlags([b.id]).then((result) => { bDone = true; return result; });
+    let bDoneWhenSettled = null;
+    const watched = settled.then(() => { bDoneWhenSettled = bDone; });
+    hold.release();
+    await syncA;
+    await syncB;
+    await watched;
+    assert.equal(bDoneWhenSettled, true, 'with two flag updates queued it resolves after both');
+    assert.equal(bridge.saved.length, 2);
+  }));
+});
+
+test('recordWritesSettled waits for a bulk flag update across its films, not just the film in flight', async () => {
+  const fileA = 'lumbar_9597.label.json';
+  const fileB = 'lumbar_9598.label.json';
+  const a = segmentedFilm('SP-9597', { labelFile: fileA, flags: ['cement'] });
+  const b = segmentedFilm('SP-9598', { labelFile: fileB, flags: ['cement'] });
+  wire([], NO_FILM);
+  const hold = heldSave();
+  hold.armed = true;
+  const seed = { [fileA]: { saved_at: STORED_AT, flags: [] }, [fileB]: { saved_at: STORED_AT, flags: [] } };
+  const bridge = folderBridge(seed, hold.onSave);
+  await withBridge(bridge, () => withStore(a, async () => {
+    setState((s) => ({ studies: [...s.studies, b] }));
+    let syncDone = false;
+    const sync = syncRecordFlags([a.id, b.id]).then((result) => { syncDone = true; return result; });
+    await hold.reached;
+    let doneWhenSettled = null;
+    const settled = recordWritesSettled().then(() => { doneWhenSettled = syncDone; });
+    hold.release();
+    await sync;
+    await settled;
+    assert.equal(doneWhenSettled, true, 'the latch is free between films, but the update is still walking them');
+    assert.equal(bridge.saved.length, 2);
+  }));
+});
+
+test('a Save edits in flight holds recordWritesSettled back', async () => {
+  const study = segmentedFilm('SP-9599', { reviewedAt: null });
+  wire([], NO_FILM, { getPrediction: snapshotOf(lumbarGeometry()) });
+  const hold = heldSave();
+  const bridge = folderBridge({}, hold.onSave);
+  await withBridge(bridge, () => withStore(study, async () => {
+    await enterLevelEditor(study.id);
+    toggleLevelVisible('T1');
+    hold.armed = true;
+    const save = saveLevelEdits();
+    await hold.reached;
+    const settled = recordWritesSettled();
+    assert.equal(await settledYet(settled), false, 'the edits write is held: not settled');
+    hold.release();
+    await save;
+    assert.equal(await settledYet(settled), true, 'settled once the save ends');
   }));
 });
