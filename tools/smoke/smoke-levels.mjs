@@ -270,6 +270,13 @@ const badge = (code) => text(`[data-level-key="${code}"] .badge`);
 const viaWiring = (call) => ev(`import('./renderer/level-editor.js').then((m) => { ${call}; return true; })`);
 const editLabel = () => text('.viewer-editbar-label');
 const readRecord = (name) => JSON.parse(fs.readFileSync(path.join(LABELS, name), 'utf8'));
+// (2026-11-16, study flags spec 4.8) Flags: set through the app's own setStudyFlags (the path the Find list and the Analysis
+// screen take: the store, then the label record), and the record's raw text, to compare bytes.
+const FLAGS_A = ['Hardware', 'olif outcomes'];
+const FLAGS_B = ['Hardware', 'Revision'];
+const setFlags = (id, flags) => ev(`import('./renderer/study-flags.js').then((m) => m.setStudyFlags([{ id: ${js(id)}, flags: ${js(flags)} }])).then((r) => r)`);
+const rawRecord = (name) => fs.readFileSync(path.join(LABELS, name), 'utf8');
+const withoutFlags = (record) => { const copy = { ...record }; delete copy.flags; return copy; };
 
 // (Gate feedback G5, D18) A record's entries, levels and heads together, and the edits summary computed from them
 // alone, to compare with the record's own `edits`. Null when an entry has no edited_points list.
@@ -594,7 +601,7 @@ async function reviewRecordChecks(films) {
       labels: { L1: 20, L2: 21, L3: 22, L4: 23, L5: 24 }, prediction_id: ${js(PREDICTION_ID)} });
     const study = { id: ${js(REVIEW)}, source: 'real', fileName: ${js(REVIEW_FILE)}, filePath: '/test/levels-review-check.png',
       name: 'Levels review check', addedAt: new Date().toISOString(), view: 'Standing lateral', clinical: {},
-      predictionId: ${js(PREDICTION_ID)}, labelFile: null, reviewedAt: null,
+      predictionId: ${js(PREDICTION_ID)}, labelFile: null, reviewedAt: null, flags: ${js(FLAGS_A)},
       measurements: result.measurements, geometry: result.geometry, qc: result.qc ?? null };
     store.setState((s) => ({ studies: [study, ...s.studies.filter((x) => x.id !== ${js(REVIEW)})] }));
     return { vertebrae: Object.keys(result.geometry?.vertebrae ?? {}) };
@@ -632,6 +639,9 @@ async function reviewRecordChecks(films) {
   try { record = readRecord(REVIEW_RECORD); } catch (_error) { record = null; }
   const valid = record ? validateAgainst(SCHEMA, record) : { ok: false, errors: ['unreadable'] };
   check('18. the record validates against the label record schema', valid.ok, valid.errors.slice(0, 5));
+  check('18. (flags) Mark reviewed on a flagged film with no record writes the flags into it, after comment',
+    js(record?.flags) === js(FLAGS_A) && Object.keys(record ?? {}).indexOf('flags') === Object.keys(record ?? {}).indexOf('comment') + 1,
+    { flags: record?.flags, keys: Object.keys(record ?? {}) });
   const entries = recordEntries(record);
   check('18. the zero-change record: every level and head segmented or not_visible with no edited points, edits.edited 0 and edits.manual 0',
     entries.length === 16 && entries.every((e) => ['segmented', 'not_visible'].includes(e.state) && Array.isArray(e.edited_points) && e.edited_points.length === 0)
@@ -687,6 +697,22 @@ async function reviewRecordChecks(films) {
     unmarked && remarked && js(files) === js([REVIEW_RECORD]) && (await studyOf(REVIEW))?.labelFile === REVIEW_RECORD
       && Boolean(again) && again.saved_at === record?.saved_at && savedToasts === 1,
     { unmarked, remarked, files, savedAt: [record?.saved_at ?? null, again?.saved_at ?? null], toasts: await ev('window.__lv.toasts') });
+  // (2026-11-16, flags, spec 4.8) A flag changed on the reviewed film rewrites its record's flags and nothing else; and
+  // a flag set on a film with no record (SP-9303) creates none.
+  const reviewRaw = rawRecord(REVIEW_RECORD);
+  await setFlags(REVIEW, [...FLAGS_B, 'third']);
+  const reviewFlagsDone = await untilNode(() => { try { return readRecord(REVIEW_RECORD).flags.length === 3; } catch (_e) { return false; } });
+  const reviewAfter = readRecord(REVIEW_RECORD);
+  check('18. (flags) a flag added after Mark reviewed rewrites the record flags only: saved_at byte-identical, every other field equal, flags equal the study flags',
+    reviewFlagsDone && reviewAfter.saved_at === record?.saved_at && js(withoutFlags(reviewAfter)) === js(withoutFlags(JSON.parse(reviewRaw)))
+      && js(reviewAfter.flags) === js((await studyOf(REVIEW))?.flags) && js(reviewAfter.flags) === js([...FLAGS_B, 'third']),
+    { flags: reviewAfter.flags, savedAt: [record?.saved_at, reviewAfter.saved_at], study: (await studyOf(REVIEW))?.flags });
+  const labelsBefore = fs.readdirSync(LABELS).sort();
+  await setFlags(OTHER, ['no record here']);
+  await cdp.settle(300);
+  check('18. (flags) flagging SP-9303, which has no label record, creates none: the study holds the flag, labelFile stays null, the labels folder is unchanged',
+    js((await studyOf(OTHER))?.flags) === js(['no record here']) && (await studyOf(OTHER))?.labelFile === null && js(fs.readdirSync(LABELS).sort()) === js(labelsBefore),
+    { flags: (await studyOf(OTHER))?.flags, labelFile: (await studyOf(OTHER))?.labelFile });
 }
 
 // ---------------------------------------------------------------------------
@@ -1516,7 +1542,12 @@ async function domPhase() {
   check('5. once measured s1_superior is null and PI is null',
     s1Measured && afterS1?.geometry?.s1_superior === null && afterS1?.measurements?.PI === null, { s1: afterS1?.geometry?.s1_superior, PI: afterS1?.measurements?.PI });
 
-  // 6. Save edits.
+  // 6. Save edits. (2026-11-16, flags) The film is flagged first: it has no record yet, so none is created by the flagging.
+  const flagsBeforeSave = await setFlags(SEG, FLAGS_A);
+  check('6. (flags) flagging a film with no label record changes the study and writes no record',
+    js((await studyOf(SEG))?.flags) === js(FLAGS_A) && (await studyOf(SEG))?.labelFile === null && !fs.existsSync(path.join(LABELS, 'levels-ui-check.label.json'))
+      && js(flagsBeforeSave?.changed) === js([SEG]) && js(flagsBeforeSave?.failed) === '[]',
+    { flags: (await studyOf(SEG))?.flags, labelFile: (await studyOf(SEG))?.labelFile, flagsBeforeSave });
   check('6. the footer reads 2 UNSAVED CHANGES', (await text('.lv-unsaved')) === '2 UNSAVED CHANGES', await text('.lv-unsaved'));
   await clearToasts();
   await clickSelector('.lv-save');
@@ -1548,6 +1579,25 @@ async function domPhase() {
       && segEdits.edited === 0 && segEdits.points_moved === 0,
     { edits: segRecord?.edits, fromEntries: segEdits });
   check('6. the record names no SP id anywhere', Boolean(segRecord) && !/SP-\d{4}/.test(JSON.stringify(segRecord)), null);
+  // (2026-11-16, flags, spec 4.8) Save edits wrote the study's flags into the record, after `comment`; a flag changed
+  // afterwards rewrites only `flags` and leaves saved_at, and every other byte of the record's content, alone.
+  const keysOfRecord = segRecord ? Object.keys(segRecord) : [];
+  check('6. (flags) the record on disk carries the flags, in order, after comment',
+    js(segRecord?.flags) === js(FLAGS_A) && keysOfRecord.includes('comment') && keysOfRecord.indexOf('flags') === keysOfRecord.indexOf('comment') + 1,
+    { flags: segRecord?.flags, keys: keysOfRecord });
+  const segRaw = rawRecord(segRecordName);
+  const flagChange = await setFlags(SEG, FLAGS_B);
+  const rewritten = await untilNode(() => { try { return js(readRecord(segRecordName).flags) === js(FLAGS_B); } catch (_e) { return false; } });
+  const segRawAfter = rawRecord(segRecordName);
+  const segAfter = readRecord(segRecordName);
+  check('6. (flags) a flag changed after the save rewrites the record flags and leaves saved_at byte-identical, and every other field equal',
+    rewritten && segAfter.saved_at === segRecord.saved_at && segRawAfter.match(/"saved_at":\s*"[^"]*"/)?.[0] === segRaw.match(/"saved_at":\s*"[^"]*"/)?.[0] && Boolean(segRaw.match(/"saved_at"/))
+      && js(withoutFlags(segAfter)) === js(withoutFlags(segRecord)) && js(flagChange?.changed) === js([SEG]) && validateAgainst(SCHEMA, segAfter).ok,
+    { rewritten, savedAt: [segRecord?.saved_at, segAfter?.saved_at], flags: segAfter?.flags });
+  const noOpChange = await setFlags(SEG, FLAGS_B);
+  await cdp.settle(300);
+  check('6. (flags) setting the flags a film already has changes nothing and writes nothing',
+    js(noOpChange?.changed) === '[]' && rawRecord(segRecordName) === segRawAfter, noOpChange);
   check('6. the study record carries labelFile', (await studyOf(SEG))?.labelFile === segRecordName, (await studyOf(SEG))?.labelFile);
   check('6. after the save the footer reads NOTHING TO SAVE and Save edits is disabled',
     (await text('.lv-unsaved')) === 'NOTHING TO SAVE' && (await ev(`document.querySelector('.lv-save')?.disabled`)) === true, await text('.lv-unsaved'));
