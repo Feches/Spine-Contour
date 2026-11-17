@@ -2170,6 +2170,155 @@ try {
   await cdp.settle(200);
   check('no console errors or exceptions during section 20', cdp.errors.length === errorsBefore20, cdp.errors.slice(errorsBefore20));
   }
+
+  // ---------------------------------------------------------------------------------------------
+  // 21 (2026-11-17, the combined bar). PR #86's Set region select beside the flags work's Flag button: both changed the
+  // Find bar, and this is the merged bar in the running app. Three throwaway films (SP-9121..9123, searched out by
+  // `zzregion`). A native select's dropdown cannot be driven over CDP, so a choice arrives as the page receives it: the
+  // value set and a `change` event dispatched on the select, and the press that closes the open flag list is a dispatched
+  // pointerdown. Every click on a button or a tick box and every key is trusted input. "A saved result" is a
+  // predictionId put straight into the store (region-change.js hasResult), so no model runs.
+  // ---------------------------------------------------------------------------------------------
+  {
+  const errorsBefore21 = cdp.errors.length;
+  const listBefore21 = await cdp.evaluate(`import('./renderer/store.js').then((m) => { const s = m.getState(); return { query: s.query, findSort: s.findSort, findFilters: s.findFilters, paramFilters: s.paramFilters, paramSelected: s.paramSelected, studiesTab: s.studiesTab, screen: s.screen, openId: s.openId }; })`);
+  const [RA, RB, RC] = ['SP-9121', 'SP-9122', 'SP-9123'];
+  for (const [id, fileName] of [[RA, 'zzregion-a.png'], [RB, 'zzregion-b.png'], [RC, 'zzregion-c.png']]) {
+    await injectFilm({ id, fileName, filePath: null, workspaceFolder: null, base64: null });
+  }
+  const regionView = () => cdp.setState(`{ screen: "studies", openId: null, query: "zzregion", paramFilters: ${FILTERS_RESET}, findFilters: ${FLAG_RESET}, paramSelected: [], findSort: { key: "study", dir: "asc" }, navCollapsed: false }`);
+  const tick21 = (ids) => cdp.setState(`{ paramSelected: ${JSON.stringify(ids)} }`);
+  const regionSel = () => cdp.evaluate(`(() => { const e = document.querySelector('[data-find-key="region"]'); return e ? { tag: e.tagName, disabled: e.disabled, title: e.title, value: e.value, first: e.options[0]?.textContent ?? null, options: [...e.options].map((o) => o.value) } : null; })()`);
+  const pick = async (value) => {
+    await cdp.evaluate(`(() => { const e = document.querySelector('[data-find-key="region"]'); if (!e) return; e.value = ${JSON.stringify(value)}; e.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await cdp.settle(250);
+  };
+  const film = (id) => cdp.evaluate(`import('./renderer/store.js').then((m) => { const x = m.getState().studies.find((y) => y.id === ${JSON.stringify(id)}); return x ? { region: x.region ?? null, predictionId: x.predictionId ?? null, reviewedAt: x.reviewedAt ?? null, regionHints: x.regionHints ?? null, flags: x.flags ?? null } : null; })`);
+  // RA as a film with a saved result, a review date and crop marks (1.7.0, Mark crops).
+  const MARKS = { s1: { x: 120, y: 340 }, neck: { x: 110, y: 60 } };
+  const giveResult = () => cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (x.id === ${JSON.stringify(RA)} ? { ...x, predictionId: 'smoke-region', reviewedAt: '2026-01-02T03:04:05.000Z', regionHints: ${JSON.stringify(MARKS)} } : x)) })))`);
+  const promptNow = () => cdp.evaluate(`(() => { const p = document.querySelector('[data-find-key="region-prompt"]'); return p ? { text: p.querySelector('span')?.textContent ?? null, focused: document.activeElement?.getAttribute('data-find-key') ?? null } : null; })()`);
+  const barKeys = () => cdp.evaluate(`[...document.querySelectorAll('.studies-filters > [data-find-key]')].map((e) => e.getAttribute('data-find-key'))`);
+  const listOpen21 = () => cdp.evaluate(`Boolean(document.querySelector('.studies-bulk-flags'))`);
+  const toast21 = async () => (await cdp.state()).toast;
+
+  // 21.1 The bar: Delete, Export, Flag, then the select; with nothing ticked it is disabled and says why.
+  await regionView();
+  await putFlags({ [RA]: ['keep me'], [RB]: ['keep me', 'second'], [RC]: [] });
+  await cdp.settle(250);
+  const keys1 = await barKeys();
+  const none21 = await regionSel();
+  check('the bar reads Delete, Export, Flag, Set region in that order', same(keys1, ['delete', 'export-bundle', 'flag-selected', 'region']), keys1);
+  check('with nothing ticked the select is disabled, reads "Set region…" and is titled "Tick studies to set their region"',
+    Boolean(none21) && none21.tag === 'SELECT' && none21.disabled === true && none21.first === 'Set region…' && none21.title === 'Tick studies to set their region'
+    && same(none21.options, ['', 'auto', 'lumbar', 'cervical', 'full_spine']), none21);
+
+  // 21.2 Two films with no result: the change applies at once, says so, and their flags stay.
+  for (const id of [RA, RB]) await clickAt(`input[data-find-key="row-${id}"]`);
+  await cdp.settle(200);
+  const two2 = await regionSel();
+  check('two ticked films: the select is enabled and reads "Set region of 2…"', Boolean(two2) && two2.disabled === false && two2.first === 'Set region of 2…', two2);
+  await pick('cervical');
+  const applied2 = { a: await film(RA), b: await film(RB), c: await film(RC), prompt: await promptNow(), toast: await toast21(), sel: await regionSel() };
+  check('choosing Cervical with no result to clear applies at once: both films read cervical, the unticked one does not, no prompt',
+    applied2.a.region === 'cervical' && applied2.b.region === 'cervical' && applied2.c.region !== 'cervical' && applied2.prompt === null, applied2);
+  check('the toast says "Set 2 studies to Cervical." and the select is back on its label', applied2.toast === 'Set 2 studies to Cervical.' && applied2.sel.value === '' && applied2.sel.first === 'Set region of 2…', { toast: applied2.toast, sel: applied2.sel });
+  check('a region change keeps each film\'s flags', same(applied2.a.flags, ['keep me']) && same(applied2.b.flags, ['keep me', 'second']), { a: applied2.a.flags, b: applied2.b.flags });
+  await pick('cervical');
+  check('choosing the region they already have changes nothing and says so', (await toast21()) === 'Set 0 studies to Cervical. 2 already were Cervical.', await toast21());
+
+  // 21.3 A film with a saved result: the prompt takes the bar's place and closes the open flag list; Cancel and Escape
+  // keep the result; Set region clears the result and the crop marks and keeps the flags.
+  await giveResult();
+  await cdp.settle(200);
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  const listBefore3 = await listOpen21();
+  await pick('lumbar');
+  const asked3 = { prompt: await promptNow(), list: await listOpen21(), keys: await barKeys(), a: await film(RA) };
+  check('choosing Lumbar with one result to clear asks first, naming the count, with focus on Cancel',
+    Boolean(asked3.prompt) && asked3.prompt.text === 'Set 2 studies to Lumbar? 1 of their saved results will be cleared; segment them again.' && asked3.prompt.focused === 'region-cancel', asked3.prompt);
+  check('the prompt takes the bar\'s place and the open flag list closes with it', listBefore3 === true && asked3.list === false && same(asked3.keys, ['region-prompt']), { listBefore3, list: asked3.list, keys: asked3.keys });
+  check('nothing changes while the prompt waits', asked3.a.region === 'cervical' && asked3.a.predictionId === 'smoke-region', asked3.a);
+  await clickAt('[data-find-key="region-cancel"]');
+  await cdp.settle(250);
+  const cancelled3 = { prompt: await promptNow(), active: await activeKey(), a: await film(RA), keys: await barKeys() };
+  check('Cancel withdraws the prompt, keeps the result and the marks, and returns focus to the select',
+    cancelled3.prompt === null && cancelled3.active === 'region' && cancelled3.a.predictionId === 'smoke-region' && same(cancelled3.a.regionHints, MARKS)
+    && same(cancelled3.keys, ['delete', 'export-bundle', 'flag-selected', 'region']), cancelled3);
+  await pick('lumbar');
+  await cdp.key('Escape');
+  await cdp.settle(250);
+  const escaped3 = { prompt: await promptNow(), active: await activeKey(), a: await film(RA) };
+  check('Escape does the same', escaped3.prompt === null && escaped3.active === 'region' && escaped3.a.predictionId === 'smoke-region', escaped3);
+  await pick('lumbar');
+  await clickAt('[data-find-key="region-confirm"]');
+  await cdp.settle(300);
+  const set3 = { a: await film(RA), b: await film(RB), prompt: await promptNow(), toast: await toast21(), keys: await barKeys() };
+  check('Set region applies it: both films read lumbar and the result and its review date are cleared',
+    set3.a.region === 'lumbar' && set3.b.region === 'lumbar' && set3.a.predictionId === null && set3.a.reviewedAt === null && set3.prompt === null && set3.toast === 'Set 2 studies to Lumbar.', set3);
+  check('the changed film loses its crop marks, as the Analysis Region select clears them', set3.a.regionHints === null, set3.a.regionHints);
+  check('and both films still hold their flags', same(set3.a.flags, ['keep me']) && same(set3.b.flags, ['keep me', 'second']), { a: set3.a.flags, b: set3.b.flags });
+  check('the bar is back with its four controls', same(set3.keys, ['delete', 'export-bundle', 'flag-selected', 'region']), set3.keys);
+
+  // 21.4 The prompt is withdrawn when the ticked set no longer holds its films.
+  await giveResult();
+  await cdp.settle(200);
+  await pick('cervical');
+  const armed4 = await promptNow();
+  await clickAt(`input[data-find-key="row-${RB}"]`);
+  await cdp.settle(250);
+  const after4 = { prompt: await promptNow(), a: await film(RA), keys: await barKeys() };
+  check('unticking one of its films withdraws the prompt and changes nothing', Boolean(armed4) && after4.prompt === null && after4.a.region === 'lumbar' && after4.a.predictionId === 'smoke-region', { armed4, after4 });
+
+  // 21.5 A press on the select closes the open flag list in place: the select itself is not rebuilt (a rebuilt select
+  // would lose the press that opens its dropdown), and a later notification does not rebuild it either.
+  await tick21([RA, RB]);
+  await cdp.settle(200);
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  const open5 = await listOpen21();
+  const pressed5 = await cdp.evaluate(`(() => {
+    const e = document.querySelector('[data-find-key="region"]');
+    if (!e) return null;
+    e.__smokeKept = true;
+    e.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }));
+    const now = document.querySelector('[data-find-key="region"]');
+    return { same: now === e && now.__smokeKept === true, list: Boolean(document.querySelector('.studies-bulk-flags')), expanded: document.querySelector('[data-find-key="flag-selected"]')?.getAttribute('aria-expanded') };
+  })()`);
+  check('a press on the select closes the open flag list and leaves the select node in place', open5 === true && Boolean(pressed5) && pressed5.same === true && pressed5.list === false && pressed5.expanded === 'false', { open5, pressed5 });
+  await cdp.setState('{ toast: "a notification after the press" }');
+  await cdp.settle(150);
+  check('a notification after that press does not rebuild the select', (await cdp.evaluate(`document.querySelector('[data-find-key="region"]')?.__smokeKept === true`)) === true, await regionSel());
+  await cdp.setState('{ toast: "" }');
+
+  // 21.6 An open FLAGS editor holding typed text: moving focus to the select saves the text as a flag and focus lands
+  // on the select.
+  await openFlags(RC);
+  await cdp.typeText('typed first');
+  await cdp.settle(150);
+  await cdp.evaluate(`document.querySelector('[data-find-key="region"]')?.focus()`);
+  await cdp.settle(300);
+  const moved6 = { flags: await flagsOf(RC), active: await activeKey(), editor: (await editorNow(RC)).open };
+  check('focus moving from an open FLAGS editor to the select saves the typed flag, closes the editor and lands on the select',
+    same(moved6.flags, ['typed first']) && moved6.active === 'region' && moved6.editor === false, moved6);
+
+  // 21.7 A run in flight (simulated in the store): Set region is refused as Delete is, Flag is not.
+  await cdp.setState(`{ running: ${JSON.stringify(RC)} }`);
+  await cdp.settle(250);
+  const during7 = { sel: await regionSel(), flag: await cdp.evaluate(`document.querySelector('[data-find-key="flag-selected"]')?.disabled ?? null`), del: await cdp.evaluate(`document.querySelector('[data-find-key="delete"]')?.disabled ?? null`) };
+  check('during a run the select is disabled with the wait reason on its title, Delete is disabled, and Flag stays enabled',
+    Boolean(during7.sel) && during7.sel.disabled === true && during7.sel.title !== '' && during7.sel.title !== 'Tick studies to set their region' && during7.del === true && during7.flag === false, during7);
+  await cdp.setState('{ running: null }');
+  await cdp.settle(250);
+  check('and it is enabled again when the run ends', (await regionSel()).disabled === false, await regionSel());
+
+  // Tidy: the throwaway films go and the list is put back.
+  await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ query: '', paramSelected: [], toast: '', studies: s.studies.filter((x) => !${JSON.stringify([RA, RB, RC])}.includes(x.id)) })))`);
+  await cdp.setState(JSON.stringify(listBefore21));
+  await cdp.settle(200);
+  check('no console errors or exceptions during section 21', cdp.errors.length === errorsBefore21, cdp.errors.slice(errorsBefore21));
+  }
 } finally {
   cdp.close();
 }
