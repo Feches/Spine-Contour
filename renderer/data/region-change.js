@@ -42,7 +42,8 @@ export function regionChangePrompt(plan, region) {
   const label = REGION_CHOICES.find(([value]) => value === region)?.[1] ?? region;
   const n = plan.ids.length;
   const results = plan.cleared === 0 ? ''
-    : ` ${plan.cleared === n ? (n === 1 ? 'Its' : 'Their') : `${plan.cleared} of their`} saved ${plan.cleared === 1 ? 'result' : 'results'} will be cleared; segment ${n === 1 ? 'it' : 'them'} again.`;
+    // 'Its saved result', 'Their saved results', and 'k of their saved results' (plural even when k is 1: it is one OF them).
+    : ` ${plan.cleared === n ? (n === 1 ? 'Its' : 'Their') : `${plan.cleared} of their`} saved ${n === 1 ? 'result' : 'results'} will be cleared; segment ${n === 1 ? 'it' : 'them'} again.`;
   return `Set ${n} ${n === 1 ? 'study' : 'studies'} to ${label}?${results}`;
 }
 

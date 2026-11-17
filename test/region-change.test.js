@@ -55,6 +55,9 @@ test('the prompt names the count, the region and the results it clears', () => {
     'Set 3 studies to Full spine? Their saved results will be cleared; segment them again.');
   assert.equal(regionChangePrompt({ ids: [1, 2, 3], cleared: 2 }, 'lumbar'),
     'Set 3 studies to Lumbar? 2 of their saved results will be cleared; segment them again.');
+  // (2026-11-17) One result among several films is still one of their results, plural.
+  assert.equal(regionChangePrompt({ ids: [1, 2], cleared: 1 }, 'lumbar'),
+    'Set 2 studies to Lumbar? 1 of their saved results will be cleared; segment them again.');
   assert.equal(regionChangeToast({ ids: [1, 2], unchanged: 1 }, 'auto'), 'Set 2 studies to Auto detect. 1 already was Auto detect.');
   assert.equal(regionChangeToast({ ids: [], unchanged: 2 }, 'lumbar'), 'Set 0 studies to Lumbar. 2 already were Lumbar.');
 });
