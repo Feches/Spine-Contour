@@ -27,8 +27,25 @@ test('a changed study is cleared exactly as the Analysis Region select clears it
   const after = applyRegionChange(before, [1], 'full_spine');
   assert.equal(after[1], before[1], 'untouched records keep their identity');
   assert.deepEqual(after[0], { ...before[0], region: 'full_spine', anteriorSide: null, geometry: null, measurements: null,
-    qc: null, reviewedAt: null, predictionId: null, processingError: null, processingErrorAt: null });
+    qc: null, reviewedAt: null, predictionId: null, processingError: null, processingErrorAt: null, regionHints: null });
   assert.equal(after[0].name, 'film 1');
+});
+
+// (2026-11-17) Crop marks (1.7.0, Mark crops) frame the crops of the region they were drawn for; the Analysis Region
+// select clears them with the result (changeRegion: a patch naming a region sets regionHints to null), so the bulk
+// change does too. Kept, a film marked as full spine and set to Lumbar here would run with its old marks.
+test('a changed study loses its crop marks; an untouched one keeps them', () => {
+  const marks = { s1: { x: 10, y: 20 }, neck: { x: 30, y: 40 } };
+  const before = [{ ...segmented(1, 'full_spine'), regionHints: marks }, { ...segmented(2, 'lumbar'), regionHints: marks }];
+  const after = applyRegionChange(before, [1], 'lumbar');
+  assert.equal(after[0].regionHints, null);
+  assert.equal(after[1].regionHints, marks);
+});
+
+// A film's flags are its own, not the result's: a region change keeps them (2026-11-16, study flags).
+test('a changed study keeps its flags', () => {
+  const after = applyRegionChange([{ ...segmented(1, 'auto'), flags: ['recheck', 'cohort A'] }], [1], 'cervical');
+  assert.deepEqual(after[0].flags, ['recheck', 'cohort A']);
 });
 
 test('the prompt names the count, the region and the results it clears', () => {

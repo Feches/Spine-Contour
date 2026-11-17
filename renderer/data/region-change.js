@@ -10,9 +10,11 @@ export const REGION_CHOICES = Object.freeze([
 const REGIONS = REGION_CHOICES.map(([value]) => value);
 
 // The fields the single-film change resets (changeRegion), plus the anterior side, which belongs to the old region.
+// (2026-11-17) And the crop marks (1.7.0, Mark crops), which changeRegion clears whenever the region changes: they frame
+// the crops of the region they were drawn for.
 const CLEARED = Object.freeze({
   anteriorSide: null, geometry: null, measurements: null, qc: null, reviewedAt: null, predictionId: null,
-  processingError: null, processingErrorAt: null,
+  processingError: null, processingErrorAt: null, regionHints: null,
 });
 
 const requested = (study) => (REGIONS.includes(study?.region) ? study.region : 'auto');
