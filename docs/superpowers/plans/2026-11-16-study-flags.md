@@ -1110,3 +1110,37 @@ use before it is fixed.
 Two observations outside the wave, also for the owner: a single-row delete is not refused during an export (it checks
 the import only; this predates the wave), and a Mark reviewed or Save edits that is waiting for its turn, but has not
 taken it, is not counted by `recordWritesSettled` (its own post-write check covers a delete, not an export's copy).
+
+### 2026-11-17: the pull request, with PR #85 and PR #86 combined
+
+The owner, shown the finishing menu, wrote: "can you make a pull request and combine the other pull requests 86 and 85".
+Task 14 (his gate) had not been run; he asked for the pull request first, so the gate is still open and nothing here
+marks it passed. What was done is in HANDOFF's first "Where things stand" section; the commits are `e2d91e5` (merge of
+PR #85), `f40d98e` (merge of PR #86), `270eeb6`, `3c4b3cf`, `c87a8a7` and the 1.8.0 release commit.
+
+**Ruling 20:** the merged Find bar reads Delete, Export, Flag, Set region…, in that order: the flags design the owner
+approved put Flag after Export, and Michael's select goes after the three buttons. If wrong: one line of
+`buildFilterBar`.
+
+**Ruling 21:** a bulk region change clears the film's crop marks (`regionHints`), a fix on top of PR #86 in its own
+commit (`270eeb6`). PR #86 was written on a base from before 1.7.0; the Analysis screen's Region select clears the marks
+and the 1.7.0 notes say "Changing the region clears them". If wrong: one field in `CLEARED` and two test lines to take
+back, and Michael may have meant to keep them.
+
+**Ruling 22:** the Set region prompt's "1 of their saved result" is corrected to "results" (`3c4b3cf`), also on top of
+PR #86. If wrong: copy only.
+
+**Ruling 23:** the pull request carries the 1.8.0 release commit. He asked for a pull request, not for a release in so
+many words, but a pull request merged to `main` without a version bump builds both installers and then fails to publish
+(the tag `v1.7.0` belongs to `4eea101`), and every pull request of his to `main` has carried its release commit. Minor,
+not patch: new functionality, compatible. If wrong: the release commit is dropped or renumbered before the merge; nothing
+is published until he merges.
+
+Counts on the release tree, each suite on its own launch: unit 1328/1328; `smoke-studies.mjs` 309/309 (section 21 is
+new: the merged bar); `smoke-reviewer.mjs` 180/180 after one stale check was corrected (it asserted the bar holds no
+dropdown; PR #86 adds one); `smoke-parameters.mjs` 87/87; `smoke-levels.mjs` dom 202/202; `smoke-persist.mjs` 46/46 then
+60/60; `smoke-bundle.mjs` a 19/19, b 24/24, c 37/37; `smoke-flags-scale.mjs` 35/35; `smoke-region-change.mjs` 16/16.
+
+Not established by this step: the Set region select's native dropdown (the suite dispatches the choice), including
+whether a press that also commits an open FLAGS or SUBJECT editor still opens it; anything on real films; the backend
+suite locally; a packaged build.

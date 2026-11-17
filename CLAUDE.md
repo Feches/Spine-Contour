@@ -1,6 +1,30 @@
 # Spine Contour
 
-**2026-11-16 flags on films (BUILT, not pushed, no version bumped):** branch `claude/study-flags` (worktree
+**2026-11-17 release 1.8.0 (flags on films, with PR #85 and PR #86; the release commit is on the branch):** on the owner's
+instruction ("make a pull request and combine the other pull requests 86 and 85") the flags branch `claude/study-flags`
+(next paragraph; tip `8d2923d` before this) took Michael's two open pull requests by merge commits, so merging the release
+PR marks both merged: PR #85 (`mjayasur/claude/readme-refresh`, head `6e50273`, the README rewrite; one conflict, the old
+download paragraph, resolved to his side with the flags text kept in its Parameters block) as `e2d91e5`, and PR #86
+(`mjayasur/claude/bulk-set-region`, head `fff3c22`, **Set region of N…** on the Find bar: `renderer/data/region-change.js`,
+`confirmingRegion` in `renderer/screens/studies.js`) as `f40d98e`. Both pull requests predate 1.7.0 (base `a889b07`). PR #86
+and the flags work both changed the Find bar; the five conflicts keep both: the bar reads Delete, Export, Flag, Set
+region…; `confirmingRegion` is in `update()`'s key beside `confirmingSelected` (the flag list's and the open menu's slots
+stay the last two); the Set region prompt closes the open flag list as the Delete prompt does; a region change keeps a
+film's flags. Two fixes on top of PR #86, each its own commit: `270eeb6` a bulk region change clears `regionHints` (crop
+marks), as `changeRegion` on the Analysis screen does since 1.7.0; `3c4b3cf` the prompt reads "1 of their saved results".
+`c87a8a7` adds `smoke-studies.mjs` section 21 (the merged bar). Then the 1.8.0 release commit (`package.json`,
+`renderer/data/version.js`, `CHANGELOG.md`, `docs/releases/1.8.0.md`; the new README names no version, so it has no link
+to bump). Counts on the release tree, each suite on its own launch: unit 1328/1328; `smoke-studies.mjs` 309/309;
+`smoke-reviewer.mjs` 180/180 (its "no dropdown on the bar" check now expects the one Set region select); `smoke-parameters.mjs`
+87/87; `smoke-levels.mjs` dom 202/202; `smoke-persist.mjs` 46/46 then 60/60; `smoke-bundle.mjs` a 19/19, b 24/24, c 37/37;
+`smoke-flags-scale.mjs` 35/35; `smoke-region-change.mjs` 16/16. **Not run:** the owner's own test (the flags plan's Task 14: he asked
+for the pull request before it); anything on real films; the backend suite locally (no backend file changed); a packaged
+build; the native dropdown of the Set region select (the suite dispatches a choice to the page), including whether a
+press that also commits an open FLAGS or SUBJECT editor still opens it (that commit rebuilds the bar under the press).
+Merging the release PR to `main` with Create a merge commit publishes v1.8.0. **Before that reaches Michael's trainer, tell
+him** label records gain an optional `flags` list (a validator on the old schema file rejects them).
+
+**2026-11-16 flags on films (BUILT; pushed on 2026-11-17 inside the 1.8.0 release PR, see the paragraph above):** branch `claude/study-flags` (worktree
 `.claude/worktrees/study-flags`) off `origin/main` @ `4eea101` (v1.7.0), built by plan
 `docs/superpowers/plans/2026-11-16-study-flags.md` (Tasks 1-13; its `## Ledger` holds rulings 1-18, the per-task commits,
 the deferred minors, the counts and what was not established) from spec

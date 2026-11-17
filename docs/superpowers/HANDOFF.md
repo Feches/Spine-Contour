@@ -1,6 +1,8 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-11-16 (flags on films, the first section under "Where things stand"; the paragraphs below it date from 2026-10-19 and earlier)
+**Last updated:** 2026-11-17 (release 1.8.0: flags on films with PR #85 and PR #86 merged in, the first section under "Where things stand"; flags on films itself is the second; the paragraphs below them date from 2026-10-19 and earlier)
+**2026-11-17:** the same branch carries Michael's PR #85 and PR #86 by merge commits and the 1.8.0 release commit; it
+is pushed for the release PR against `main`; the owner's own test has not been run.
 **2026-11-16 branch:** `claude/study-flags` in the worktree `.claude\worktrees\study-flags`, off `origin/main` @ `4eea101`
 (v1.7.0): flags on films, built, the whole-branch review's fix wave in, waiting for the owner's gate, nothing pushed.
 **Branch:** `worktree-reviewer-navigation` in the worktree `.claude\worktrees\reviewer-navigation` of the main checkout,
@@ -68,6 +70,56 @@ the newest architecture amendment for controls and null rules. No model or calib
 algorithm changed; no screenshots were added.
 
 ## Where things stand
+
+### Release 1.8.0: flags on films with PR #85 and PR #86 merged in, the release commit on the branch, pushed for the release PR, the owner's own test NOT run (branch `claude/study-flags`, worktree `.claude/worktrees/study-flags`, 2026-11-17)
+
+The owner asked for a pull request that also combines Michael's two open pull requests ("make a pull request and combine
+the other pull requests 86 and 85"). He asked before running his gate on flags (the flags plan's Task 14), so that test
+is still his to do, on this branch, before or after he merges.
+
+**What the branch holds, on top of the flags work (tip `8d2923d`):**
+
+- `e2d91e5`, a merge of PR #85 (`mjayasur/claude/readme-refresh`, head `6e50273`): the README rewrite and
+  `assets/branding/spinecontour-header.svg`. One conflict: his README replaces the old download paragraph, whose
+  release-notes link 1.7.0 had moved; resolved to his side. His Download section links `docs/releases/` and names no
+  version, so a release no longer has a README link to bump. The flags text merged into his Parameters block unchanged.
+- `f40d98e`, a merge of PR #86 (`mjayasur/claude/bulk-set-region`, head `fff3c22`): **Set region of N…** on the Find
+  bar (`renderer/data/region-change.js`, `test/region-change.test.js`, `confirmingRegion` in
+  `renderer/screens/studies.js`). Five conflicts, all in `studies.js`, where both sides changed the bar. Both kept: the
+  bar reads Delete, Export, Flag, Set region…, then the segment group; navigation and an import withdraw the Set region
+  prompt and the flag editors; `update()`'s key lists `confirmingRegion` beside `confirmingSelected` and keeps the flag
+  list's and the open menu's slots last (`bulkClosedInPlace` and `menuClosedInPlace` rewrite them by position); the Set
+  region prompt takes the bar's place, so `update()` closes the open flag list for it.
+- `270eeb6`, a fix on PR #86: a bulk region change clears `regionHints` (crop marks). PR #86 was written on a base from
+  before 1.7.0; `changeRegion` on the Analysis screen clears them and the 1.7.0 notes say so.
+- `3c4b3cf`, a fix on PR #86: the prompt read "1 of their saved result"; it reads "results".
+- `c87a8a7`, `smoke-studies.mjs` section 21: the merged bar in the running app.
+- The 1.8.0 release commit: `package.json`, `renderer/data/version.js`, `CHANGELOG.md`, `docs/releases/1.8.0.md`,
+  `CLAUDE.md`, this file and the flags plan's Ledger (rulings 20 to 23).
+
+Both pull requests are merged by merge commits with their heads unchanged, so GitHub marks #85 and #86 merged when the
+release PR is merged with Create a merge commit, as it marked #84 for 1.7.0.
+
+**Counts on the release tree** (each suite on its own launch, scratch profile, invented films): unit 1328/1328;
+`smoke-studies.mjs` 309/309; `smoke-reviewer.mjs` 180/180; `smoke-parameters.mjs` 87/87; `smoke-levels.mjs` dom 202/202;
+`smoke-persist.mjs` 46/46 then 60/60; `smoke-bundle.mjs` a 19/19, b 24/24, c 37/37; `smoke-flags-scale.mjs` 35/35;
+`smoke-region-change.mjs` 16/16. The reviewer suite first read 179/180: its check that the bar holds no dropdown (from
+the 2026-10-19 round that removed the Workspace, Folder and Status dropdowns) met PR #86's select; the check now expects
+exactly that one select, and the suite was run again on a fresh launch.
+
+**Not run, not established:**
+
+- The owner's own test: the twelve items of the flags plan's Task 14, and Set region beside them.
+- Anything on real films or his library. The suites use invented films on a scratch profile.
+- The Set region select's native dropdown. The suite sets the select's value and dispatches `change`; whether a press
+  that also commits an open FLAGS or SUBJECT editor still opens the dropdown is not known (that commit rebuilds the bar
+  under the press).
+- The backend suite locally (no backend file changed; the release build runs it) and a packaged build.
+- Everything the section below lists as not run for flags still stands.
+
+**For the owner:** tell Michael before this release reaches his trainer (label records gain an optional `flags` list; a
+validator on the old schema file rejects them). The release notes carry that and the CSV column change. The parked points
+of the flags plan's Ruling 19 are still parked.
 
 ### Flags on films: BUILT, reviewed and smoke-verified, the final review's fix wave in, waiting for the owner's gate, nothing pushed, no version bumped (branch `claude/study-flags`, worktree `.claude/worktrees/study-flags`, off `origin/main` @ `4eea101`, v1.7.0)
 
