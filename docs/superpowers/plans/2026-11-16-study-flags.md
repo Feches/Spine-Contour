@@ -1080,3 +1080,33 @@ Smoke, each on a fresh launch of a source build on a scratch profile with invent
 | `smoke-bundle.mjs` | a 19/19, b 21/21, c 36/36 | a 19/19, b 24/24, c 37/37 |
 | `smoke-persist.mjs` | 46/46, 60/60 | 46/46, 60/60 |
 | `smoke-flags-scale.mjs` | 35/35 | 35/35 |
+
+### The re-review of the fix wave
+
+One scoped re-review (2026-11-17, over `c456b72..1d100fe`) read every item of the fix wave against its definition of
+fixed: all addressed, no new Critical or Important finding. It confirmed that `recordWritesSettled` counts a sync from
+the moment it is called, always settles, and is awaited after each flow's own lock and before any record is touched;
+that the single-row delete's fallback (no lock; wait, then re-read `labelFile`) closes the reproduced case; and that the
+earlier latch behaviour is unchanged. It accepted both of the fix agent's recorded concerns: the import-placement race is
+closed by construction (the prompt is withdrawn by a flag change, and both import steps wait), though it is forced only
+in unit tests; and a header menu can shift about 15px when a page scrollbar appears after it is placed, which is
+cosmetic. Unit 1321/1321 at `1d100fe` (the controller's run).
+
+There is no second fix wave. **Ruling 19:** the re-review's five Minor points are parked for the owner, not fixed. They
+are small, none loses or overwrites an annotation, and each needs an unusual sequence. If wrong: one of them is met in
+use before it is fixed.
+
+1. Two refused pieces in one paste: pasting two flags that are each over 40 characters leaves both in the box, and the
+   hint goes back to `ENTER ADDS · ESC CANCELS` because the text now holds a separator. Nothing invalid can be saved.
+2. `exportBundleTo` reads the rows it will export before it waits for record writes to settle (up to about a second
+   after a large bulk change). A film deleted, or a record first written, during that wait is not reflected in that
+   export.
+3. A single-row delete now waits between removing the result file and removing the label record, so the existing late
+   refusal (a batch reaching that film mid-delete) has a window of up to about a second instead of a few milliseconds.
+4. If every film of a bulk delete is removed by a single-row delete during that wait, the toast reads
+   `Deleted 0 studies.`
+5. One overlong line in `docs/bundles.md` (the Importing paragraph) and a short wrapped line in `README.md`.
+
+Two observations outside the wave, also for the owner: a single-row delete is not refused during an export (it checks
+the import only; this predates the wave), and a Mark reviewed or Save edits that is waiting for its turn, but has not
+taken it, is not counted by `recordWritesSettled` (its own post-write check covers a delete, not an export's copy).
