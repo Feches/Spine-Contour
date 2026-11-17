@@ -676,4 +676,10 @@
   color: var(--muted);
 }
 
+/* (2026-11-16, the final review, I2) Text that cannot be a flag: the hint says why, in the accent colour, so it reads as
+   a refusal rather than the usual instructions. Also under the bar's bulk flag box. */
+.flag-popup-hint.is-refused {
+  color: var(--accent);
+}
+
 /* Long method names remain readable in the narrow Settings sidebar. */

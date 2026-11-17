@@ -4,6 +4,7 @@ import {
   FLAGS_MAX, cleanFlag, cleanFlags, splitTyped, sameFlag, sameFlagList, addFlag, removeFlag, flagsInUse,
   librarySpelling, mergeFlags, flagChoices, bulkState, bulkChange, flagsText,
   startFlagEdit, flagEditText, flagEditAdd, flagEditRemove, flagEditActive, flagEditResult,
+  FLAG_MAX_LENGTH, flagTextProblem, splitTypedKeep,
 } from '../renderer/data/flags.js';
 
 test('cleanFlag trims, collapses spaces, drops a leading # and refuses what is not a flag', () => {
@@ -102,4 +103,48 @@ test("the flag editor's draft transitions are pure and carry extra keys", () => 
   assert.equal(flagEditActive(edit, 1, 0).active, -1);
   assert.deepEqual(flagEditResult({ draft: ['a'], text: ' Cement, b ', active: 0 }, ['cement']), ['a', 'cement', 'b']);
   assert.deepEqual(flagEditResult(edit, []), ['OLIF outcomes', 'har']);
+});
+
+// (2026-11-16, the final review; Task 1's deferred minor) Every leading run of # and spaces goes, so cleaning twice
+// gives what cleaning once gives.
+test('cleanFlag drops every leading run of # and spaces and is idempotent', () => {
+  assert.equal(cleanFlag('# #x'), 'x');
+  assert.equal(cleanFlag('#  # # x y'), 'x y');
+  assert.equal(cleanFlag('C#7'), 'C#7');
+  assert.equal(cleanFlag('# # #'), null);
+  for (const text of ['# #x', '## # hardware ', '  #a  b ', 'C#7', '#C#7', `# ${'z'.repeat(40)}`]) {
+    assert.equal(cleanFlag(cleanFlag(text)), cleanFlag(text), JSON.stringify(text));
+  }
+});
+
+// (2026-11-16, the final review, I2) Why the typed text cannot be a flag, for the hint line; '' when nothing is wrong.
+test('flagTextProblem names text over the length limit and nothing else', () => {
+  assert.equal(flagTextProblem('a'.repeat(41)), `${FLAG_MAX_LENGTH} CHARACTERS AT MOST`);
+  assert.equal(flagTextProblem('a'.repeat(41)), '40 CHARACTERS AT MOST');
+  assert.equal(flagTextProblem('a'.repeat(40)), '');
+  assert.equal(flagTextProblem(''), '');
+  assert.equal(flagTextProblem('   '), '');
+  assert.equal(flagTextProblem(`#${'a'.repeat(41)}`), '40 CHARACTERS AT MOST');
+  assert.equal(flagTextProblem(`#${'a'.repeat(40)}`), '', 'the # is dropped before counting');
+  assert.equal(flagTextProblem(`  ${'a'.repeat(20)}     ${'b'.repeat(19)}  `), '', 'spaces collapse before counting');
+  assert.equal(flagTextProblem(`${'a'.repeat(41)}, b`), '', 'text holding a separator is a list, not one flag');
+  assert.equal(flagTextProblem('hardware'), '');
+  assert.equal(flagTextProblem(undefined), '');
+});
+
+// (2026-11-16, the final review, I2) A typed or pasted separator: the pieces that are flags go to the draft, a piece
+// that is not one stays in the box so the person sees what was refused.
+test('splitTypedKeep splits flags from the pieces that are not flags', () => {
+  const long = 'x'.repeat(41);
+  assert.deepEqual(splitTypedKeep('hardware,'), { flags: ['hardware'], rest: '' });
+  assert.deepEqual(splitTypedKeep(`hardware, ${long}`), { flags: ['hardware'], rest: long });
+  assert.deepEqual(splitTypedKeep(`${long};cement`), { flags: ['cement'], rest: long });
+  assert.deepEqual(splitTypedKeep(` # ,  ,\n`), { flags: [], rest: '' }, 'blank pieces and a bare # are nothing');
+  assert.deepEqual(splitTypedKeep(`a, ${long}, ${long}y`), { flags: ['a'], rest: `${long}, ${long}y` });
+  assert.deepEqual(splitTypedKeep('Cement; cement'), { flags: ['Cement'], rest: '' });
+  const edit = Object.freeze({ id: 'SP-9001', draft: Object.freeze(['OLIF outcomes']), text: 'x', active: 0 });
+  assert.deepEqual(flagEditAdd(edit, ['cement'], [], long), { id: 'SP-9001', draft: ['OLIF outcomes', 'cement'], text: long, active: 0 },
+    'what is left stays in the box');
+  assert.deepEqual(flagEditAdd(edit, ['cement'], [], '  '), { id: 'SP-9001', draft: ['OLIF outcomes', 'cement'], text: '', active: -1 });
+  assert.deepEqual(flagEditResult({ draft: ['a'], text: long, active: 0 }, []), ['a'], 'leaving saves the draft without it');
 });

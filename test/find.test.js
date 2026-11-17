@@ -26,7 +26,7 @@ const REV = { measurements: { PI: 50, PT: 10, SS: 40, LL: { 'L1-S1': 45 } }, qc:
 const HAND = { measurements: { PI: 50, PT: 10, SS: 40, LL: { 'L1-S1': 45 } }, geometry: {}, qc: null, predictionId: null };
 const ids = (rows) => rows.map((s) => s.id);
 
-test('the default sort is newest first and the keys are the eight columns', () => {
+test('the default sort is newest first and the keys are the nine columns', () => {
   assert.deepEqual(DEFAULT_FIND_SORT, { key: 'date', dir: 'desc' });
   assert.ok(Object.isFrozen(DEFAULT_FIND_SORT));
   assert.deepEqual([...FIND_SORT_KEYS], ['study', 'subject', 'region', 'view', 'workspace', 'folder', 'date', 'status', 'flags']);

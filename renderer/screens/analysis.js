@@ -34,7 +34,7 @@ import {
   flagEditActive, flagEditResult,
 } from '../data/flags.js';
 import { setStudyFlags, flagsRefusal } from '../study-flags.js';
-import { flagChips, flagEditor } from '../components/flag-editor.js';
+import { flagChips, flagEditor, revealActiveChoice } from '../components/flag-editor.js';
 
 const BACK_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12 H5"></path><path d="M11 6 L5 12 L11 18"></path></svg>';
 // (2026-10-19, reviewer navigation) Previous and next, the same 24-unit stroke convention as BACK_SVG.
@@ -1259,7 +1259,8 @@ export function render(state) {
         keyAttr: 'data-flags-key', keyPrefix: 'analysis-flags', ariaLabel: `Flags for ${name}`,
         draft, text, choices, active, full: draft.length >= FLAGS_MAX,
         onText: (value) => changeFlagsEdit((edit) => flagEditText(edit, value)),
-        onAdd: (flags) => changeFlagsEdit((edit) => flagEditAdd(edit, flags, flagsInUse(getState().studies))),
+        // (2026-11-16, the final review, I2) `rest`: the typed pieces that were not flags stay in the box.
+        onAdd: (flags, rest) => changeFlagsEdit((edit) => flagEditAdd(edit, flags, flagsInUse(getState().studies), rest)),
         onRemove: (index) => changeFlagsEdit((edit) => flagEditRemove(edit, index)),
         onActive: (index) => changeFlagsEdit((edit) => flagEditActive(edit, index, choices.length)),
         onDone: () => commitFlagsEdit('analysis-flags-add'),
@@ -1289,6 +1290,8 @@ export function render(state) {
       target.focus();
       if (!focusKey && kept && kept.start !== null && target instanceof HTMLInputElement) target.setSelectionRange(kept.start, kept.end);
     }
+    // (2026-11-16, the final review, M2) The highlighted suggestion stays in view inside the list, once it has layout.
+    revealActiveChoice(flagsBlock.querySelector('.flag-popup'));
   }
 
   function update() {

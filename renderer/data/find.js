@@ -143,6 +143,9 @@ export function sortFindRows(studies, sort, runningId = null, batch = null) {
 // (2026-10-19, final review; R13) from a REGION or STATUS tick on a value no film shows now, such as Needs review once
 // the last film to review is marked. Every menu says "none" with one key, NO_VIEW, for a film with no view and a film
 // with no region alike.
+// (2026-11-16, study flags) `flags` is the FLAGS menu's ticks (flag keys, or NO_FLAGS) and `flagsMatch` its any / every
+// choice over the ticked flags other than No flags: 'any' passes a film holding at least one, 'every' only a film
+// holding all of them; No flags passes a film with none, whichever is chosen.
 
 export const DEFAULT_FIND_FILTERS = Object.freeze({ subject: '', region: [], view: [], workspace: [], folder: [], status: [], flags: [], flagsMatch: 'any' });
 export const FILTER_COLUMNS = Object.freeze(['subject', 'region', 'view', 'workspace', 'folder', 'status', 'flags']);

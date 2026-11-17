@@ -19,7 +19,9 @@ const FORBIDDEN = /[,;\r\n]/;
 export function cleanFlag(text) {
   if (typeof text !== 'string') return null;
   if (FORBIDDEN.test(text.trim())) return null;
-  const flag = text.trim().replace(/^#+\s*/, '').replace(/\s+/g, ' ');
+  // (2026-11-16, the final review; Task 1's deferred minor) Every leading run of # and spaces goes, so '# #x' is 'x'
+  // and cleaning a cleaned flag changes nothing. 'C#7' keeps its # (not leading).
+  const flag = text.trim().replace(/^(?:#\s*)+/, '').replace(/\s+/g, ' ');
   if (flag === '' || flag.length > FLAG_MAX_LENGTH) return null;
   return flag;
 }
@@ -59,6 +61,28 @@ export function cleanFlags(value) {
 /** A pasted or typed list ("a, b; c" or one per line) as flags. */
 export function splitTyped(text) {
   return cleanFlags(String(text ?? '').split(/[,;\r\n]/));
+}
+
+/**
+ * (2026-11-16, the final review, I2) Why the typed text cannot be a flag, as the flag box's hint line says it, or ''
+ * when nothing is wrong with it: blank text, a valid flag, or text holding a separator (a list, read piece by piece).
+ * The text is measured cleaned, as cleanFlag cleans it (trimmed, leading # dropped, spaces collapsed).
+ */
+export function flagTextProblem(text) {
+  if (typeof text !== 'string' || FORBIDDEN.test(text)) return '';
+  const cleaned = text.trim().replace(/^(?:#\s*)+/, '').replace(/\s+/g, ' ');
+  return cleaned.length > FLAG_MAX_LENGTH ? `${FLAG_MAX_LENGTH} CHARACTERS AT MOST` : '';
+}
+
+/**
+ * (2026-11-16, the final review, I2) A typed or pasted list split in two: `flags`, the pieces that are flags (as
+ * splitTyped reads them), and `rest`, the pieces that are not flags but are not blank either, trimmed and joined with
+ * ', ', so the box can keep what was refused in view instead of discarding it.
+ */
+export function splitTypedKeep(text) {
+  const pieces = String(text ?? '').split(/[,;\r\n]/);
+  const refused = pieces.filter((piece) => cleanFlag(piece) === null && piece.trim().replace(/^(?:#\s*)+/, '') !== '');
+  return { flags: cleanFlags(pieces), rest: refused.map((piece) => piece.trim()).join(', ') };
 }
 
 /** `flags` with `flag` appended; unchanged when `flag` is not a flag, matches one held, or the list is full. */
@@ -188,11 +212,16 @@ export function flagEditText(edit, text) {
   return { ...edit, text, active: String(text).trim() === '' ? -1 : 0 };
 }
 
-/** `edit` with each of `flags` added (in the library's spelling) and the box emptied. */
-export function flagEditAdd(edit, flags, inUse) {
+/**
+ * `edit` with each of `flags` added (in the library's spelling) and the box emptied. (2026-11-16, the final review,
+ * I2) `rest`, when given, is left in the box instead: the pieces of a typed list that were not flags (splitTypedKeep),
+ * with the highlight set as flagEditText sets it.
+ */
+export function flagEditAdd(edit, flags, inUse, rest = '') {
   let draft = edit.draft;
   for (const flag of flags ?? []) draft = addFlag(draft, librarySpelling(flag, inUse));
-  return { ...edit, draft, text: '', active: -1 };
+  const text = String(rest ?? '').trim();
+  return { ...edit, draft, text, active: text === '' ? -1 : 0 };
 }
 
 /** `edit` without the flag at `index`; an index out of range changes nothing. */

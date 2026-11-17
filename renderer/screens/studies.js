@@ -45,10 +45,10 @@ import {
 import { progressTitle, progressDetail } from '../data/processing.js';
 import {
   cleanFlags, flagsInUse, flagChoices, FLAGS_MAX, startFlagEdit, flagEditText, flagEditAdd, flagEditRemove,
-  flagEditActive, flagEditResult, bulkState, bulkChange, librarySpelling, flagKey,
+  flagEditActive, flagEditResult, bulkState, bulkChange, librarySpelling, flagKey, cleanFlag, flagTextProblem,
 } from '../data/flags.js';
 import { setStudyFlags, flagsRefusal, setFlagsBusy } from '../study-flags.js';
-import { flagChips, flagEditor } from '../components/flag-editor.js';
+import { flagChips, flagEditor, revealActiveChoice } from '../components/flag-editor.js';
 import { checkbox } from '../components/checkbox.js';
 import { filterMenu } from '../components/filter-menu.js';
 import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
@@ -343,7 +343,8 @@ function flagsCell(study) {
       keyAttr: 'data-find-key', keyPrefix: `flags-${id}`, ariaLabel: `Flags for ${name}`,
       draft, text, choices, active, full: draft.length >= FLAGS_MAX,
       onText: (value) => changeFlagsEdit(id, (edit) => flagEditText(edit, value)),
-      onAdd: (flags) => changeFlagsEdit(id, (edit) => flagEditAdd(edit, flags, flagsInUse(getState().studies))),
+      // (2026-11-16, the final review, I2) `rest`: the typed pieces that were not flags stay in the box.
+      onAdd: (flags, rest) => changeFlagsEdit(id, (edit) => flagEditAdd(edit, flags, flagsInUse(getState().studies), rest)),
       onRemove: (index) => changeFlagsEdit(id, (edit) => flagEditRemove(edit, index)),
       onActive: (index) => changeFlagsEdit(id, (edit) => flagEditActive(edit, index, choices.length)),
       onDone: () => commitFlags(id, `flags-${id}`),
@@ -659,6 +660,10 @@ function toggleMenu(column) {
   if (openMenu === column) { closeMenu(column); return; }
   openMenu = column;
   menuShows = null;
+  // (2026-11-16, the final review, T8) One popup at a time: a funnel opened by keyboard while the bar's flag list is open
+  // closes the list (opening the list already closes a menu). Two open popups meant one Escape fired both document
+  // listeners and two repaints fought over focus.
+  bulkFlags = null;
   refreshTable(`[data-filter-menu="${column}"] [data-find-key]`);
 }
 
@@ -791,6 +796,8 @@ function placeFlagsPopup() {
   const left = Math.max(0, Math.min(cellRect.left - hostRect.left, hostRect.width - flagsPopup.offsetWidth));
   flagsPopup.style.left = `${Math.round(left)}px`;
   flagsPopup.style.top = `${Math.round(cellRect.bottom - hostRect.top + 4)}px`;
+  // (2026-11-16, the final review, M2) The highlighted suggestion stays in view inside the list.
+  revealActiveChoice(flagsPopup);
 }
 
 // Repaint the bar and the table from the current store after module-scope UI state changes.
@@ -1433,6 +1440,7 @@ function closeBulkOnOutsidePress(event) {
   if (!mounted) return;
   mounted.bar.querySelectorAll('.studies-bulk-flags').forEach((list) => list.remove());
   mounted.bar.querySelector('.studies-flag-selected')?.setAttribute('aria-expanded', 'false');
+  mounted.bulkClosedInPlace();
 }
 
 function closeBulkOnEscape(event) {
@@ -1489,9 +1497,18 @@ function buildBulkFlags(live) {
       placeholder: 'Find or create a flag…', 'aria-label': 'Find or create a flag',
       onInput: (event) => { bulkFlags = { ...bulkFlags, text: event.target.value }; refreshTable(); },
       onKeydown: (event) => {
-        if (event.key === 'Enter' && created) { event.preventDefault(); createBulkFlag(created.flag); }
+        if (event.key !== 'Enter') return;
+        if (created) { event.preventDefault(); createBulkFlag(created.flag); return; }
+        // (2026-11-16, the final review, T8) Enter on the name of a flag in use (ignoring case) puts that flag, in the
+        // library's spelling, on every film the list acts on, as ticking its row does: fixing a misspelling means typing
+        // the right, existing flag, and a silent no-op read as broken.
+        const typed = cleanFlag(text);
+        const existing = typed === null ? null : inUse.find((flag) => flagKey(flag) === flagKey(typed));
+        if (existing) { event.preventDefault(); createBulkFlag(existing); }
       },
     }),
+    // (2026-11-16, the final review, I2) Text that cannot be a flag says why under the box, as the row editor's hint does.
+    flagTextProblem(text) ? el('div', { class: 'flag-popup-hint is-refused studies-bulk-problem', role: 'status' }, flagTextProblem(text)) : null,
     el('div', { class: 'studies-filter-options' }, ...rows),
     created ? el('button', {
       type: 'button', class: 'studies-filter-item', 'data-find-key': 'bulk-flag-create',
@@ -1804,7 +1821,17 @@ export function render(state) {
     const menuColumn = focusKey !== null ? active.closest('.studies-filter-menu')?.getAttribute('data-filter-menu') ?? null : null;
     mount(barHost, buildFilterBar(live, visible));
     flagsPopup = null;
+    // (2026-11-16, the final review, M1) .studies-table is the sideways scroll container and the rebuild replaces it, so
+    // a new node starts at 0: every tick, commit, menu tick or batch step threw a list scrolled right (FLAGS is off-screen
+    // at the default window with the sidebar open) back to STUDY. Carried across as screens/parameters.js carries its
+    // grid's; the browser clamps an offset the new table cannot take. Set before the focus move below, which may scroll
+    // the focused control into view, and before the popups are placed against the scrolled cells.
+    const scrollLeft = tableHost.querySelector('.studies-table')?.scrollLeft ?? 0;
     mount(tableHost, buildTable(visible, live.running, emptyKind, selected, live.findSort, live.batch, filters, shown));
+    if (scrollLeft) {
+      const table = tableHost.querySelector('.studies-table');
+      if (table) table.scrollLeft = scrollLeft;
+    }
     if (openMenu !== null) placeMenu(tableHost, buildMenu(openMenu, live, filters, shown), openMenu);
     listenOutside(openMenu !== null);
     listenBulk(bulkFlags !== null);
@@ -1837,6 +1864,13 @@ export function render(state) {
     if (lastKey !== null) lastKey = [...lastKey.slice(0, -1), null];
   }
 
+  // (2026-11-16, the final review, M4) The same for the bar's flag list (closeBulkOnOutsidePress): its slot, directly
+  // before openMenu, becomes null. Left stale, the next notification of any kind (a batch step) would rebuild, and one
+  // landing between the press and its click would replace the pressed control and swallow the click.
+  function bulkClosedInPlace() {
+    if (lastKey !== null) lastKey = [...lastKey.slice(0, -2), null, lastKey.at(-1)];
+  }
+
   const root = el('main', { class: 'studies-page' },
     el('div', { class: 'studies-page-inner' },
       el('div', { class: 'studies-header' },
@@ -1846,7 +1880,7 @@ export function render(state) {
       tabs,
       findPanel,
       parametersHost));
-  mounted = { update, host: tableHost, bar: barHost, zone, menuClosedInPlace };
+  mounted = { update, host: tableHost, bar: barHost, zone, menuClosedInPlace, bulkClosedInPlace };
   update(state);
   // (2026-10-19) Back from a study lands on its row. The panel is rebuilt on every trip, so a fresh mount starts at
   // the top, and a reviewer returning from the fortieth film had to scroll down to it again. render() returns a

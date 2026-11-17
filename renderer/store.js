@@ -27,8 +27,9 @@ let state = {
   // session-only, never persisted.
   paramSelected: [],
   // (2026-09-10, studies-table spec 6.1) the Find list's sort: key 'study'|'subject'|'region'|'view'|'workspace'|
-  // 'folder'|'date'|'status', dir 'asc'|'desc'. Replaced wholesale on change; session-only, never persisted;
-  // read by the Studies screen's own subscription, never by SCREEN_KEYS. The grid's paramSort is separate.
+  // 'folder'|'date'|'status'|'flags' ('flags' 2026-11-16, study flags), dir 'asc'|'desc'. Replaced wholesale on
+  // change; session-only, never persisted; read by the Studies screen's own subscription, never by SCREEN_KEYS. The
+  // grid's paramSort is separate.
   findSort: { key: 'date', dir: 'desc' },
   // (2026-10-19, header filters; spec F6) the Find list's own per-column ticks, one list per header menu plus the
   // SUBJECT menu's text (data/find.js DEFAULT_FIND_FILTERS). Replaced wholesale; session-only, never persisted; written
