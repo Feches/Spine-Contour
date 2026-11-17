@@ -205,7 +205,9 @@ try {
   const all = await rows();
   const headers = await cdp.evaluate("['study', 'subject', 'region', 'view', 'workspace', 'folder', 'date', 'status'].map((c) => Boolean(document.querySelector('[data-find-key=\"filter-' + c + '\"]')))");
   check('2. every header but STUDY and DATE has a funnel', JSON.stringify(headers) === JSON.stringify([false, true, true, true, true, true, false, true]), headers);
-  check('2. the bar has no Workspace, Folder or Status dropdown', (await cdp.evaluate("document.querySelectorAll('.studies-filters select').length")) === 0);
+  // (2026-11-17, PR #86) The bar has one select now, Set region…; the Workspace, Folder and Status dropdowns stay gone.
+  const barSelects = await cdp.evaluate("[...document.querySelectorAll('.studies-filters select')].map((e) => e.getAttribute('data-find-key'))");
+  check('2. the bar has no Workspace, Folder or Status dropdown (its one select is Set region)', JSON.stringify(barSelects) === JSON.stringify(['region']), barSelects);
   let fn = await funnel('status');
   check('2. the STATUS funnel: Filter by status, a dialog popup, closed and plain', fn && fn.label === 'Filter by status' && fn.popup === 'dialog'
     && fn.expanded === 'false' && !fn.active && fn.title === 'Filter by status', fn);
