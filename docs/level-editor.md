@@ -409,12 +409,29 @@ the new model's C7 corners; the point is in image coordinates and stays valid, a
 Opening the editor takes the comment from the record, else from `labelComment`. Mark reviewed's zero-change record
 carries the study's current comment, usually none.
 
+**The flags** (study flags, 2026-11-16; spec `docs/superpowers/specs/2026-11-16-study-flags-design.md`, section 4.8). The
+record carries `flags`, directly after `comment`: the film's flags in the order they were added (1 to 40 characters each,
+at most 20, no two that match ignoring case). The key is optional in the schema, the way `comment` is, under the same
+schema id (FL23), so a record saved before flags validates and reads as no flags; `toLabelRecord` writes it on every save,
+as an empty list when there are none, so Save edits and Mark reviewed carry the flags with no further work. The home of a
+film's flags is the study, not the record, because a film with no record (never edited, never marked reviewed) must still
+take a flag; the record holds a copy for the trainer. **A flag change rewrites only `flags`** in an existing record, with
+`saved_at`, `app_version` and the annotation left byte-identical, because an import treats the record with the later
+`saved_at` as the newer annotation and a film that was only flagged must not overwrite someone else's level edits. A film
+with no record gets none created. The rewrite takes its turn behind Save edits and Mark reviewed (`saving`, `writeEnded`),
+so it cannot put back levels a save has just replaced; once no write is in flight the `flags` in every record equal the
+flags on its study. **The schema file `docs/design/level-editor/label-record.schema.json` gained `flags`, and its top
+level is `additionalProperties: false`, so a validator holding the old schema file rejects a record that has `flags`;
+the trainer's copy must take the new file before the release that writes it.** The flags block is hidden while the editor
+is open (FL19), like the comment's read-only block; flags are set before opening the editor or after DONE.
+
 **The record travels in bundles** (annotation bundles, 2026-10-15, B1–B9). **Export all** on the Find tab copies each
 film's record, its `comment` with it, into that film's folder in the bundle, beside the film and its model result;
 **Import bundle…** places it in the other library's `labels/` folder under a name that library chooses
 (`labelFileName`, so `-2` on a clash) and sets `labelFile` and `labelComment` on the new study. For a film the library
 already holds, a record saved later than the local one is written over it, under the local `labelFile`, and an older or
-equal one is skipped (B4). The record itself is unchanged, the same schema id; `saved_at` is what the rule reads. See
+equal one is skipped (B4). The record itself is unchanged, the same schema id; `saved_at` is what the rule reads. Flags
+are merged into the film either way and never move `saved_at` (see "The flags" above). See
 [annotation bundles](bundles.md) for what a bundle holds, the identifiers warning (B3) and why to keep the bundle folder
 where it is (B5).
 
@@ -524,7 +541,11 @@ full-spine film; the study gaining `t1_superior` and `t4_centroid` and finite `T
 degrees for the placed line; the panel's T1 SLOPE and T4 PELVIC ANGLE rows reading a number outside edit mode; unchecking
 T4 naming `T4PA` in a note, taking the field and the value off the study and the row to a dash; checking it again
 returning them; DONE and a reopen keeping both fields; 12 checks), with the T1 toggle check in section 11 now reading
-`t1_superior` null on the study after the commit;
+`t1_superior` null on the study after the commit,
+and (2026-11-16) the flags checks in sections 6 and 18 (a flag on a film with no record creates none; the saved record
+carries `flags` right after `comment`; a flag changed after Save edits, or after Mark reviewed, rewrites `flags` with
+`saved_at` byte-identical; setting the flags a film already has writes nothing; Mark reviewed on a flagged film with no
+record writes them: 7 checks, the dom suite 202/202);
 the pure modules have unit tests (`test/levels`, `level-projection`, `level-handles`, `level-labels` for the plates,
 `window-level`, `label-record`, `contours`, and `interactions` for the double right-click; `canvas` draws the plates; 1.4.0 adds the partial-level groups in
 `levels`, `level-projection`, `persistence`, `level-handles`, `canvas`, `label-record` and the wiring, and

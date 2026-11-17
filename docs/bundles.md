@@ -36,12 +36,12 @@ spine-contour-export-2026-10-15-1432/
 - **A film's folder** is its file name without the extension, made safe for every file system, with `-2`, `-3` for a
   second film of the same name. Names never end in a dot or a space (S10).
 - **`study.json`** is the study as the library holds it: its name, view, region, subject, timepoint, film date, note,
-  clinical fields, measurements, geometry, review mark and the comment on its label record. Only the film's location is
-  left out.
+  clinical fields, measurements, geometry, review mark, flags (2026-11-16) and the comment on its label record. Only the
+  film's location is left out.
 - **`prediction.json`** is the model's result for the film (the same sidecar the app keeps in its data folder). A film
   with no model run, a film placed by hand included, has none.
 - **The label record** is the file Save edits writes (see [the level editor](level-editor.md#the-label-record)), under the
-  name the study already gave it. Its `comment` travels with it.
+  name the study already gave it. Its `comment` and its `flags` travel with it.
 - **`calibration.json`** is the manual image-scale reference you applied to the film, so a re-run on the other computer
   keeps your correction (B7).
 - **The original film** is the DICOM or image file you added, copied byte for byte (B3), so the other computer can
@@ -89,18 +89,22 @@ bar instead of the usual buttons:
 > Import from spine-contour-export-2026-10-15-1432: 10 to add, 2 to update, 3 to skip. The films stay in this folder, so
 > keep it where it is.
 
-with **Import** and **Cancel**. Focus starts on Cancel, and Escape cancels too. Nothing has been changed yet. If there is
-nothing to add or update the prompt does not appear and a toast says why instead: `Nothing to import: already in the
+with **Import** and **Cancel**. Focus starts on Cancel, and Escape cancels too. Nothing has been changed yet. When some
+films would only gain flags, the line names them between the update and skip counts (`…, 2 to update, 2 to flag, 3 to
+skip.`); with none it reads as above. If there is
+nothing to add, update or flag the prompt does not appear and a toast says why instead: `Nothing to import: already in the
 library: a.dcm, b.dcm`. A folder with no manifest is refused with `This folder is not a Spine Contour bundle.`, and a
 bundle written by a newer Spine Contour than the one importing it with `This bundle was written by a newer Spine Contour
 (schema …). Update the app to import it.`
 
 - **A film the library does not hold** is added as a new study, ready to open, review and edit. It takes the subject,
-  timepoint, note and clinical fields the bundle recorded, and its model result, label record, comment, review mark and
-  image scale come with it.
+  timepoint, note and clinical fields the bundle recorded, and its model result, label record, comment, flags, review
+  mark and image scale come with it.
 - **A film the library already holds** is matched by the film's content, never by its file name (B4): the bundle's
   SHA-256 against the library's. A bundle that names a film the library holds under another name still matches; two
   different films that share a name do not.
+- **A film the library already holds, where only the flags differ,** is a fourth outcome, *to flag* (2026-11-16, FL22).
+  It gains the bundle's flags and nothing else; see "Flags" below.
 - **Anything else is skipped and named**, with its reason: `already in the library`, `being edited` or `malformed`. A
   damaged file in the bundle (a `study.json`, label record, model result or scale reference that cannot be read) makes
   that one film `malformed` and never stops the others (S38).
@@ -112,13 +116,15 @@ typed in the list, a film added) because its plan was made against the list as i
 again. If the library changed while the bundle was being read, a toast says so and no prompt appears (S29).
 
 When the import ends, the toast reads like `Imported 10 studies, updated 2, skipped 3 (already in the library: a, b;
-being edited: c)`. A film whose file in the bundle was damaged or gone by the time it was placed, or whose scale
+being edited: c)`, or `Imported 10 studies, updated 2, flagged 2, skipped 3 (…)` when films gained flags. A film whose file in the bundle was damaged or gone by the time it was placed, or whose scale
 reference was refused, is counted there too, under `malformed`: nothing of it was written and the import went on with
 the others (S38). After it, when they apply:
 
 - `· 2 without film (x.dcm, y.dcm)`: those studies came in without a film (see below).
 - `· 1 not added because the library changed (z.dcm); import the bundle again`: a film was added by another route while
   the import ran and took the id the plan had set aside for this one (S28). Nothing is lost; import the bundle again.
+- `· the label record could not be updated for 1 film`: that film's flags are in the library but its label record could
+  not be rewritten to match (see "Flags"). It is corrected the next time that film's flags change or its record is saved.
 - `· stopped at q.dcm: <reason> Import the bundle again to continue.`: a file could not be written into this
   computer's data folder (the disk was full, a file was held open by another program). The studies placed before it
   stay. Importing the bundle again continues: the studies already placed are skipped as already in the library,
@@ -159,7 +165,7 @@ The rule is the newer annotation wins (B4):
 | the library does not hold it | added |
 | held; the bundle has a label record and the library's study has none | updated |
 | held; both have records and the bundle's was saved later | updated |
-| held; anything else: the bundle's record is older, was saved at the same moment, has a save time that cannot be read, or the bundle has no record | skipped, `already in the library` |
+| held; anything else (the flags below are still merged): the bundle's record is older, was saved at the same moment, has a save time that cannot be read, or the bundle has no record | skipped, `already in the library` |
 | held; that study is open in edit mode, or has edits left unsaved by opening another study | skipped, `being edited` |
 | `study.json` or a named label record missing or damaged, a model result or scale reference damaged, or a path outside its folder | skipped, `malformed` |
 
@@ -178,6 +184,36 @@ whether it applies, and the other is skipped as `already in the library`.
 A label record on this computer that exists but cannot be read at the moment (another program holds it open) is never
 written over: the film is skipped as `already in the library` until it can be read (S42). One that is missing or
 damaged counts as no record, so the bundle's replaces it.
+
+## Flags
+
+Since 2026-11-16 (spec `docs/superpowers/specs/2026-11-16-study-flags-design.md`, FL22 and section 4.7) a film carries
+**flags**, short labels of your own (1 to 40 characters, at most 20 per film). They travel in two places: the study's
+`flags` in `study.json` and, as a copy, `flags` in the label record. `manifest.json` and the schema id of the bundle
+(`spinecontour.bundle/1`) are unchanged. A bundle entry's flags are its study's, or the label record's when the study has
+none; both are cleaned by the same rules the app applies when you type one.
+
+On import the flags are **merged, never replaced**, and this happens for every film the bundle matches, whatever happens to
+its annotation, because a flag change leaves a record's `saved_at` alone and the newer-annotation rule above would
+otherwise never carry flags to a film both computers hold:
+
+- **A film the import adds** takes the bundle's flags.
+- **A film the library already holds** keeps its own flags, in their order, and gains the bundle's new ones after them.
+  A match is by case-insensitive text, and the local spelling wins. No local flag is ever removed. This holds whether the
+  import updates the film or would otherwise skip it as `already in the library`.
+- **Not merged:** an entry skipped as `malformed` or `being edited`. Where several entries match one film, the entry the
+  annotation rule picks is the one whose flags are used.
+- A film that only gained flags counts as *to flag* in the prompt and *flagged* in the toast; a bundle whose only effect
+  is flags is still offered.
+- Afterwards each film the import touched has its label record's `flags` set to match its study. Nothing else in that
+  record changes, and its `saved_at` is not touched. A film with no label record gets none. If a record cannot be
+  rewritten the toast says so (above); the study's flags stand, because the library is the truth and the record the copy.
+
+While an import is reading or placing, and while an export is writing, a flag edit anywhere is refused with `Wait for the
+import to finish.` or `Wait for the export to finish.` (the Find list's Flag button is disabled with that title).
+
+An older Spine Contour (before this change) ignores `flags` on import and drops them from a library the next time it
+saves.
 
 ## Importing the same bundle twice
 
@@ -207,6 +243,8 @@ View state: window / level, zoom and where you dragged the level plates. The lib
 
 `tools/smoke/smoke-bundle.mjs` (phases `a`, `b` and `c`, on two scratch profiles; see `tools/smoke/README.md`) exports
 two synthetic films from one profile, imports them into a second, imports them again, edits a comment on the second,
-exports from it and imports into the first, by DOM, store and file reads. The pure planner has unit tests in
+exports from it and imports into the first, by DOM, store and file reads. `smoke-bundle.mjs` also covers flags (2026-11-16): the
+exported `study.json` and record carry them, an import merges them, names the film as flagged, leaves `saved_at`
+byte-identical, and the lock is seen in flight. The pure planner has unit tests in
 `test/bundle.test.js`, the main-process module in `test/bundle-io.test.js`, and the four channels in `test/api.test.js`
 and `test/api-persistence.test.js`. The human gate (plan Task 9) is the owner's, on real films and a second computer.

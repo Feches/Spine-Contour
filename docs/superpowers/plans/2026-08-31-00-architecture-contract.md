@@ -2014,3 +2014,32 @@ N14 for this amendment); the 2026-10-22 femoral-centre rule (a fitted circle cen
 full-spine path as on the lumbar one) is recorded in `docs/releases/1.4.0.md`.
 
 No IPC or CSP change, no runtime dependency, no new renderer module file.
+
+## 2026-11-16 amendment: flags on films
+
+Spec `docs/superpowers/specs/2026-11-16-study-flags-design.md` (FL1-FL25); plan `plans/2026-11-16-study-flags.md` (rulings 1-15
+in its Ledger). Branch `claude/study-flags`, off `origin/main` @ `4eea101` (v1.7.0). Nothing an earlier amendment says is
+removed. No `STORE_VERSION` bump, no CSP change, no runtime dependency, no IPC channel, no backend change.
+
+**The record.** A study gains `flags`, a list of text, empty by default (`newStudy` writes it; the persistence sanitizer in
+`renderer/data/persistence.js` cleans it and a library saved before flags loads with none; every reader tolerates a study
+without the key). `renderer/data/flags.js` owns the rules (1 to 40 characters, at most 20 per film, `,` `;` and line
+breaks end a flag, a leading `#` is dropped, a match ignores case, a typed flag takes the library's spelling) and no
+screen applies them any other way. Every change goes through `setStudyFlags(changes)` in `renderer/study-flags.js`, one store
+update, then each changed film's label record is brought in step by rewriting only its `flags`; `saved_at`, `app_version`
+and the annotation never change, and a film with no record gets none. The label record gains an optional `flags` after
+`comment` (same schema id; `toLabelRecord` always writes it); the CSVs gain `Flags` after `Note` and `<visit> flags` after the
+film dates; a bundle merges the flags of every film it matches, never removing a local one.
+
+**The store key `flagsBusy` (2026-11-16, ruling 15).** The store's shape gains `flagsBusy`: `null | 'import' | 'export'`,
+default `null`, session-only and never persisted. `setFlagsBusy(kind)` in `renderer/study-flags.js` writes it, in the
+same `finally` that clears `importing` and `exporting`, and `flagsRefusal(state)` reads it (beside `deletingStudies`)
+to refuse a flag edit with `Wait for the import to finish.` or `Wait for the export to finish.`. It is a store key, not a
+module variable, because two screens read it (the Find list's Flag button and FLAGS cells, the Analysis screen's
+`+ Add flag`) and only a store change repaints them; an earlier module variable left the Analysis button disabled after an
+export ended until the next unrelated store change. It is in no router key set and nothing persists it.
+
+**The Find list's UI state.** `findFilters` gains `flags` (the ticked flag values) and `flagsMatch` (`'any'` or `'every'`);
+`paramFilters` gains `flag` (one value, `null` for all). A ticked flag stays ticked, and stays offered, when the last film
+loses it (FL25). The Find tab's `data-find-key`s gain the FLAGS column, editor and bulk-list hooks, the Analysis
+screen's flags block has `data-flags-key`s, and the Parameters bar `data-param-key` for the flag dropdown.

@@ -1,6 +1,29 @@
 # Spine Contour
 
-**2026-11-12 release 1.7.0 (PR #84, the YOLO region detector and Mark crops; release PR open, not merged):** branch
+**2026-11-16 flags on films (BUILT, not pushed, no version bumped):** branch `claude/study-flags` (worktree
+`.claude/worktrees/study-flags`) off `origin/main` @ `4eea101` (v1.7.0), built by plan
+`docs/superpowers/plans/2026-11-16-study-flags.md` (Tasks 1-13; its `## Ledger` holds rulings 1-15, the per-task commits,
+the deferred minors, the counts and what was not established) from spec
+`docs/superpowers/specs/2026-11-16-study-flags-design.md` (FL1-FL25). A film carries `flags`, free-text labels of the owner's
+own (1 to 40 characters, at most 20, `,` `;` and line breaks end one, a leading `#` is dropped, matched ignoring case), set
+from the Find list's FLAGS column and the bar's Flag button (many ticked films at once) and from a flags block above the
+comment on the Analysis screen, filtered by a header menu (any or every, `No flags`), and carried into the Parameters tab
+(a column and a dropdown), both CSV exports (`Flags` after `Note`; `<visit> flags` after the film dates), bundles (merged
+on import, never removed) and the label record (`flags` after `comment`). The rules are `renderer/data/flags.js`; every
+change goes through `setStudyFlags` in `renderer/study-flags.js`, which rewrites only `flags` in an existing record and
+leaves `saved_at` alone; the import/export lock is the store key `flagsBusy`. Comments are untouched. Counts at `9d9f357`:
+unit 1307/1307; `smoke-studies.mjs` 258/258; `smoke-reviewer.mjs` 172/172; `smoke-parameters.mjs` 87/87;
+`smoke-levels.mjs` dom 202/202; `smoke-bundle.mjs` a 19/19, b 21/21, c 36/36; `smoke-persist.mjs` 46/46 then 60/60. Every
+task was reviewed (Tasks 4, 6, 7, 8 and 12 after fix rounds). **Not run:** the owner's gate (plan Task 14) and the final
+whole-branch review; anything on real films (the suites use synthetic films on a scratch profile); the narrow-window layout
+at a real resize (checked at 1180 px by a device-metrics override); the native save dialog of the CSV exports and the
+bundle's folder pickers; the `the label record could not be updated` toast clause; a packaged build. Nothing is pushed. The
+release (`CHANGELOG.md`, `docs/releases/`, `package.json`, `renderer/data/version.js`) is the owner's later commit, and its
+notes must say that every CSV column after `Note` moved one place right and that label records gain an optional `flags`
+list a validator on the old schema file rejects (tell Michael first). See HANDOFF's first "Where things stand" section and
+the architecture contract's `## 2026-11-16 amendment: flags on films`.
+
+**2026-11-12 release 1.7.0 (PR #84, the YOLO region detector and Mark crops; RELEASED as v1.7.0: PR #87, merge `4eea101`):** branch
 `claude/release-1.7.0` from `main` @ `a889b07` (v1.6.1), with PR #84's eleven commits (head `0da455e`, from
 `mjayasur/Spine-Contour` `claude/yolo-crop-pipeline`) merged in unchanged by a merge commit, then the 1.7.0 release
 commit. Auto detect routes and frames films from the two-class YOLO26-s `crop_detector.onnx` boxes
@@ -11,8 +34,8 @@ are removed. Mark crops (`renderer/data/crop-marks.js`) stores optional `regionH
 bump) and sends them as the `region_hints` form field (validated in `backend/region_hints.py`). The merged tree equals PR #84's head (Windows and macOS checks
 passed). On the owner's Windows workstation: unit 1265/1265, backend 734 passed / 3 skipped, `verify_onnx` verified all
 eight graphs (its GPU parity exit 3 is the known Intel UHD 770 `cervical_hrnet` case, a graph this release leaves
-unchanged); the owner tried the build by hand on a scratch profile. Merging the release PR to `main` with a merge commit
-publishes v1.7.0 and marks PR #84 merged.
+unchanged); the owner tried the build by hand on a scratch profile. The release PR (#87) was merged to `main` with a
+merge commit, which published v1.7.0 and marked PR #84 merged.
 
 **2026-10-29 release 1.6.1 (PR #79, the +15% upward lumbar crop on full-spine films; RELEASED as v1.6.1: PR #80, merge
 `a889b07`):**

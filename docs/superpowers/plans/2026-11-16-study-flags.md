@@ -790,3 +790,186 @@ No code. The owner tests the branch before anything is pushed; nothing here is d
   6. Open a label record from the labels folder: `flags` is there, `saved_at` did not move after a flag-only change.
   7. Resize the window to about 1200 wide: the list scrolls sideways and FLAGS is the column scrolled to.
 - [ ] **Step 3:** Record his rulings in a `## Ledger` at the end of this file, fix what he reports as new tasks with their own tests, and stop. Pushing, the pull request, the version and telling Michael about the schema (spec §11) wait for his word.
+
+---
+
+## Ledger
+
+Written 2026-11-16 at the end of Task 13, from the run's own ledger (`progress.md` in the untracked SDD workspace
+`.superpowers/sdd/2026-11-16-study-flags/`, deleted when the run ends) and the smoke pass's report. Executed
+subagent-driven on 2026-11-16, at the owner's instruction to use lower models where able: Sonnet implementers and
+reviewers, Opus for Task 4 (write ordering on label records) and for Task 12's review (import planning). Plan commit at the
+start of execution: `0022804`. Nothing is pushed and no version is bumped. The final whole-branch review and the owner's
+gate (Task 14) are still to come and add their own entries below.
+
+### Rulings
+
+The controller's, each made while the plan ran, with its reason and what it costs if wrong. Numbering follows the run's
+ledger.
+
+1. **The flag editor's draft transitions are written once.** Adding with the library's spelling, removing, text,
+   highlight and the final list on close (leftover typed text included) are pure exported helpers with unit tests in
+   `renderer/data/flags.js`, written in Task 7 and reused by Task 9; the plan's "the callbacks are Task 7's" would otherwise
+   have copied one logic block into two screens. If wrong: one small refactor in Task 9.
+2. **Implementers of Tasks 7-10 ran the in-app checks only if a working source launch on a scratch profile existed**
+   (the controller prepared one after Task 1), otherwise they verified by unit tests and code reading and said so; a
+   lower-model subagent improvising an app launch risks opening the owner's real library. If wrong: DOM bugs surface later.
+3. **A bulk change must not hold the label-record latch across films.** The brief's stated rule won over its step 3.1
+   wording: the bulk writer yields once per film before testing the latch, and an ordering test (flags a, edits, flags b)
+   pins it, because the spec wants bulk writes that do not freeze other work. Cost if wrong: one extra microtask per film.
+4. **`syncFlagsAndReport` resolves with the list of failed ids** (the brief's `Promise<void>` contradicted `setStudyFlags`
+   resolving with that list). Task 12 may ignore the value. Cost if wrong: nothing.
+5. **Each DOM task's in-app checks are run right after its review by a separate verification agent** that writes them as a
+   section of the matching smoke suite and runs it against a source launch on the scratch profile; what it finds enters
+   that task's fix loop. This refines ruling 2: DOM bugs surface the moment the code exists, implementers stay on the code,
+   and the smoke sections were owed anyway. Task 13 kept the levels, bundle and persist suites, the full run and the docs.
+   Cost if wrong: one extra agent per DOM task.
+6. **Enter in an empty flag box always closes it; nothing is highlighted until the person types.** The highlight index is
+   -1 (none), typing sets it to 0, the arrows move it within -1 to n-1, and Enter with text but no highlighted choice does
+   nothing. The brief let Enter in an empty box add the first suggestion, which contradicts spec section 4.3 (Enter in an
+   empty box closes the cell). Cost if wrong: one more keystroke to pick the first suggestion from an empty box.
+7. **At 20 flags the input is read-only with the placeholder `20 flags`, not disabled.** A disabled input cannot take
+   focus, so Esc, Enter, Backspace and the leave-to-save would never fire and the editor could not be closed or trimmed from
+   the keyboard. Cost if wrong: nothing.
+8. **A chip's text sits in a span that carries the ellipsis**, because an inline-flex box cannot show one and the x must stay
+   in view; spec section 4.3 requires a long flag to be cut with an ellipsis inside its chip. Cost if wrong: cosmetic.
+9. **A pointer press on a FLAGS cell opens its editor whatever editor was open (amended; this is the final form).**
+   The first form (commit on a blur whose focus target is another row's FLAGS cell) was wrong, because Tab from a SUBJECT
+   box lands on the same row's FLAGS cell and would open the flags editor too. The cell now notes the press on
+   `pointerdown` (it fires before the open editor's blur) and the commit opens that cell's editor only when the leave was
+   that press. Tab keeps its keyboard meaning: focus lands on the cell at rest and Enter opens it, so tabbing through a row
+   never drops a keyboard user into a text box with a popup. Cost if wrong: a keyboard user presses Enter once more.
+10. **Check 6 of Task 7 means "not clipped and reachable", not "inside the host's box".** Spec section 4.3 asks that the
+    suggestion list not be clipped by the table; the last row's popup extended 141 px below the host and was visible and
+    clickable. The assertion was rewritten and the product stands. Cost if wrong: nothing.
+11. **The bulk list keeps offering every flag that was in use when it opened, together with the flags in use now, until it
+    closes.** The spec gives no undo and Task 8's own check 4 re-ticks the emptied flag from the list; same reasoning as FL25
+    for the header menu. Cost if wrong: an emptied flag lingers in the list until it is closed.
+12. **One click on the Flag button opens the list whatever editor was open.** Ruling 9's press note is generalised to the
+    button (noted on a primary `pointerdown`, honoured by `commitFlags` and `commitSubject` on a blur headed for that
+    button): same defect class, same cure. Cost if wrong: nothing.
+13. **Task 10's in-app checks ran together with Task 11's CSV checks** in one `smoke-parameters.mjs` pass after Task 11 was
+    reviewed, because Task 11 moves the CSV positions that suite reads. Cost if wrong: a Parameters screen bug surfaces
+    one task later.
+14. **`confirmImport` calls `syncRecordFlags` itself and names the failures in its own closing toast** (`importMessage`
+    gains a `recordsFailed` count and the clause `· the label record could not be updated for N film(s)`);
+    `syncFlagsAndReport` is not used there. One toast slot cannot show two messages, and spec section 4.7 requires a record
+    left out of step to be said. Cost if wrong: nothing.
+15. **The import/export lock is the store key `flagsBusy` (`null | 'import' | 'export'`)**, written by `setFlagsBusy` and
+    read by `flagsRefusal(state)`, as `deletingStudies` is. Two screens read it and only a store change repaints them; a
+    module variable cannot, and left the Analysis screen's `+ Add flag` disabled after an export ended until the next
+    store change. The architecture contract carries an amendment note for the key (2026-11-16). Cost if wrong: one more key
+    in the store's shape.
+
+### Tasks
+
+One line per task: the commit range, how its review ended. Smoke commits are the in-app verification passes (ruling 5).
+
+- **Task 1** (the flag rules, `renderer/data/flags.js`): `0022804..5891194`, review clean.
+- **Task 2** (`flags` on the study record and through the sanitizer): `5891194..be0c01e`, review clean.
+- **Task 3** (the label record carries the flags): `be0c01e..f39ada3`, review clean.
+- **Task 4** (one writer, the record kept in step; Opus): `f39ada3..b574e11`, review clean after 1 fix round (a bulk record
+  sync held the latch across films: ruling 3).
+- **Task 5** (the Find list's filter, sort and search): `b574e11..6418d01`, review clean.
+- **Task 6** (the flag editor component and chip styles): `6418d01..b8616e4`, review clean after 1 fix round (rulings 6, 7,
+  8 and a misplaced CSS comment).
+- **Task 7** (the FLAGS column, its editor and menu): `b8616e4..81f2a8d`, review clean after 2 fix rounds (rulings 9 and 10);
+  in-app commits `4a08c78` (smoke-studies section 19, 155/157 then 203/205 before the fixes) and `81f2a8d` (212/212).
+- **Task 8** (flag the ticked films from the bar): `81f2a8d..93dac98`, review clean after 1 fix round (rulings 11 and 12, and
+  a ticked box left checked when every target was full); in-app commits `7d54809` (243/245 before the fix) and `93dac98`
+  (258/258).
+- **Task 9** (the flags block on the Analysis screen): `93dac98..abe797b`, review clean first time; in-app commit `abe797b`
+  (smoke-reviewer 131/131 before, 172/172 after).
+- **Task 10** (the Parameters tab's filter and FLAGS column): `abe797b..2ff82c3`, review clean; in-app commit `c72282b`
+  (ruling 13).
+- **Task 11** (`Flags` in the per-film CSV, `<visit> flags` in the paired CSV): `2ff82c3..d682c80`, review clean; in-app
+  commit `c72282b` (smoke-parameters 56/58 as it stood, the two failures being the paired header and row Task 11 moved, then
+  87/87).
+- **Task 12** (flags in bundles; Opus review): `c72282b..e8be227`, review clean after 1 fix round (an import swallowed a
+  record-sync failure: ruling 14).
+- **Task 13** (smoke sections for the remaining suites, the lock, the written record): Pass A `75e9b38` (smoke-levels,
+  smoke-bundle, smoke-persist and the harness notes) with 1 fix round, `d2700b3` (ruling 15), re-reviewed clean, then the
+  smoke second pass `9d9f357`; Pass B is the commit that holds this Ledger.
+- **Task 14** (the owner's gate): not run.
+
+### Deferred minors
+
+Recorded by the reviewers and controller as not worth a fix round, grouped by task. Where one was handed on and fixed, it
+says so.
+
+- **Task 1:** `cleanFlag('# #x')` gives `#x` (only the first run of leading `#` is dropped); no no-mutation assertion for
+  `removeFlag`, `bulkChange` or `mergeFlags`, `mergeFlags`' cap of 20 is untested, `flagKey` and `NO_FLAGS` have no direct test,
+  and the spelling tiebreak in `flagsInUse`' sort is unreachable.
+- **Task 2:** the RED step was not run (tests and code written together); the new persistence test is not beside the
+  `labelComment` test.
+- **Task 3:** `withRecordFlags`' in-place branch (record already has `flags`) has no key-order assertion;
+  `withRecordFlags(null)` throws (callers pass an object).
+- **Task 4:** the `persistenceDisabledReason` refusal branch is untested; `test/study-flags.test.js` copies a bridge helper
+  from the wiring test. A note for Task 12's review (that `setFlagsBusy` be cleared in the same `finally` that clears
+  `importing` and `exporting`) was carried and checked there.
+- **Task 5:** a flag tick with capitals is kept as its own never-matching row (`find.js`) rather than lower-cased (ticks must
+  be option values; Task 7 was told); stale wording (the sort-key list in `store.js` lacks `flags`, a test title in
+  `test/find.test.js` says "the eight columns", the comment above `DEFAULT_FIND_FILTERS` does not mention `flagsMatch`); no
+  test drives `findVisible` or `findNeighbour` with a flag tick.
+- **Task 6:** `flagEditor`'s parameter comment still said the box is "disabled" when full and the signature default was
+  `active = 0` where it should be -1. Handed to Task 7 through its addendum; this ledger does not record Task 7's review
+  confirming either was changed.
+- **Task 7:** the editor popup is placed once and does not follow a sideways table scroll; the resting cell's refusal title is
+  read at build time; a draft on a row hidden by a search survives unfocused (as with SUBJECT). Handed to Task 8: the press
+  note was set for any mouse button and survived a press dragged off the cell, so a later Tab out of that row's SUBJECT editor
+  could open the flags editor (the fix named was to note only button 0 and clear the note in `beginSubjectEdit`). Task 8's
+  implementer reported fixing the `flagsPressed` leftover; the ledger does not confirm the button-0 point separately.
+- **Task 8:** a header menu can be opened by keyboard while the bulk list is open; Enter on text that exactly matches a flag in
+  use does nothing; `held` is recomputed beside `bulkState`; `bulkFlags.active` is stored but unused. Fixed in the fix round
+  (the verification pass failed on it): a write that changes nothing left the native box toggled.
+- **Task 9:** Tab from the box to a popup option or an x closes the editor and drops focus to the body (the Find list behaves
+  the same); `flagsKeyOf` allocates and calls `flagsRefusal` on every store notification.
+- **Task 10:** `test/parameters.test.js`' `FLAG_FILMS` `filePath` template has unescaped backslashes (harmless today); no
+  test pins flag `''` giving null or the flag filter composing with another filter.
+- **Task 11:** the paired cell's inline `reduce` could be a small helper beside `clinicalOf`; the new paired test asserts only
+  S001's row; a missing space after `=` in that test.
+- **Task 12:** the `applyImport` test's "bareUpdate" case was really a flag item (renamed, and an update-path case added in
+  the fix round); an update whose placement fails drops that entry's flags with its annotation (a re-import recovers them),
+  a judgement recorded and not changed.
+
+### Counts
+
+At `9d9f357` (the last commit before this one; no product code changes after it). Unit suite, `node --test "test/*.test.js"`:
+1307/1307 (1265 at the branch point, `4eea101`). The six smoke suites, from the Pass A report (`task-13a-verify-report.md`),
+each alone on a fresh launch of a source build on a scratch profile with synthetic films:
+
+| Suite | Count at `9d9f357` | Before Pass A |
+|---|---|---|
+| `smoke-studies.mjs` | 258/258 (also in the documented order, twice) | 258 |
+| `smoke-reviewer.mjs` | 172/172 (also in the order parameters, studies, reviewer, twice) | 172 alone; 169/172 in order |
+| `smoke-parameters.mjs` | 87/87 | 87 |
+| `smoke-levels.mjs` (dom) | 202/202 | 195 |
+| `smoke-bundle.mjs` | a 19/19, b 21/21, c 36/36 (76/76) | a 17, b 18, c 9 |
+| `smoke-persist.mjs` | 46/46 (run), 60/60 (restart) | 42, 55 |
+
+smoke-reviewer failed 169/172 and 167/172 in two earlier runs in the documented order; the cause was a lost OS focus closing
+an open flags editor (it closes on blur and saves, as SUBJECT does), not product state, and the suite now brings the page to
+front and enables focus emulation. Before the lock became store state the bundle suite's one failing check (the Analysis
+`+ Add flag` enabled again after an export) was kept as a failing assertion (c 29/30), and passes unchanged now.
+
+### Not established
+
+- The owner's gate (Task 14) has not been run, and the final whole-branch review has not been done. Nothing is pushed.
+- Nothing was run on real films or the owner's library; every in-app check used synthetic films on a scratch profile, read
+  by DOM, store and file reads, with no screenshots.
+- The narrow-window layout was checked at 1180 px by a device-metrics override, not by resizing a real window.
+- The native save dialog of the two CSV exports and the bundle's folder pickers are not driven by the suites; they call the
+  screens' own functions, and the exported text is built through the page's own modules.
+- The absence of a main-process placement call for a flags-only import cannot be observed through the harness (the bridge
+  cannot be intercepted); its effects are asserted and the code path was read. The toast clause `the label record could not
+  be updated` was never seen (no way to fail a label write without breaking the profile).
+- The import lock on the Analysis screen was seen during an import and an export; persistence-disabled refusal was not
+  exercised. The persist suite's "written without flags" case removes the key from `studies.json` while the app runs, which
+  is not a file written by an older build.
+- `smoke-levels.mjs` was run on its `dom` phase; no `film` phase count was taken for this work. Backend tests were not run (no
+  backend file changed). No packaged build was made.
+
+### The final review and the owner's gate
+
+To be added below: the whole-branch review's findings and fixes, the owner's rulings from the gate, and anything he reports
+as a new task.

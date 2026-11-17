@@ -153,16 +153,22 @@ workspace and folder each film came from.
   The search box applies to the grid as well as the list. Click a column header to sort; absent
   values sort last. Sorting by **Subject** groups each subject's films, Pre-op first, with a rule
   between subjects.
+- **Flags** are short labels of your own on a film (1 to 40 characters, up to 20 per film; a comma, semicolon or line break
+  ends one, and a leading `#` is dropped). The Find tab's FLAGS column and the Analysis screen's flags block set them, and
+  the Flag button on the Find bar sets them on every ticked film. The Parameters tab shows a read-only FLAGS column and a
+  flag dropdown (`All flags`, each flag in use, `No flags`) that narrows the grid and so both exports. Flags also travel in
+  bundles and in the label record; see [annotation bundles](docs/bundles.md) and [the level editor](docs/level-editor.md).
 - Click a study name to open it. Tick rows to choose a subset: the button reads **Export N selected**
   and writes the ticked rows that are visible; with nothing ticked, **Export CSV** writes every
   visible row. Hidden picks stay ticked and return with the filter.
 - The file has two `#` comment lines, then the header
-  `Study ID,View,Subject,Timepoint,Film date,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1`
+  `Study ID,View,Subject,Timepoint,Film date,Note,Flags,LL L1-S1,PI,PT,SS,PI-LL Mismatch,L1PA,LL L2-S1,LL L3-S1,LL L4-S1,LL L5-S1`
   followed by 15 calibrated disc-height columns, every clinical field present on the exported studies,
-  and calibration metadata when present. Absent values are empty cells. Demo
-  studies are never exported.
+  and calibration metadata when present. Absent values are empty cells. `Flags` (2026-11-16) is the film's flags in the
+  order they were added, joined with `; `, and is empty for a film with none; it is always written, so every column after
+  `Note` sits one place further right than in earlier versions. Demo studies are never exported.
 - **Export paired CSV** writes one row per subject over the same rows: `Subject`, then every visit's `<label> study`,
-  then every visit's `<label> view`, then every visit's `<label> film date` (`Pre-op` first within each kind, then
+  then every visit's `<label> view`, then every visit's `<label> film date`, then every visit's `<label> flags` (`Pre-op` first within each kind, then
   every later timepoint present — Intra-op, Post-op, then durations by length, then other labels), then for each
   measurement `<M> Pre-op`, `<M> <label>` and `Delta <M> <label>` (the later value minus the Pre-op value over the
   values as written; empty when either is absent), then each clinical field per visit. A subject needs exactly one
