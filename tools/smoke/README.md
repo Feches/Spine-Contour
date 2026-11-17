@@ -1095,3 +1095,26 @@ What the harness cannot see: `confirmImport` of a flags-only plan sends nothing 
 === 0`), but `window.spineContour` is non-configurable, so the missing `importBundle` call is not observed; the suite asserts
 the files it would have written are untouched and the toast carries no error. The native save dialog of the CSV exports and
 the narrow-window layout (checked at 1180px by a device-metrics override, not a real resize) are not driven by any suite.
+
+## The flags scale probe (2026-11-16)
+
+`smoke-flags-scale.mjs` measures the study flags at 100 and 400 invented films (75% of them with a label record on disk in the
+scratch profile, the rest without; ten flags in use, a few films with none). Run it on a FRESH launch (it checks that no `SP-8xxx`
+study exists), with `SPINE_CONTOUR_USER_DATA` as the launcher printed it (it reads the labels folder):
+
+```
+node tools/smoke/launch.mjs
+node tools/smoke/smoke-flags-scale.mjs
+node tools/smoke/cdp.mjs --quit
+```
+
+Each figure is a median of repeated samples, from a trusted input event's arrival in the page to the second animation frame
+after it (repaint included), so nothing under one or two frames (16-33 ms) can show. It prints every number, then asserts
+generous ceilings at 400 films: the FLAGS cell keystroke is at most 3 times the search-box keystroke and under 150 ms; opening
+the FLAGS menu, ticking and unticking a flag, opening the Flag list over 300 ticked films and one keystroke in it are each under
+300 ms; the store part of a 300-film bulk add is under 500 ms and the 300-record sync under 60 s. It also asserts that a bulk
+add and a bulk remove leave every record's `saved_at` byte-identical, create no record for a film that had none, and hold
+`flagsBusy` and `deletingStudies` null throughout. Measured 2026-11-16 at becf790 (two fresh launches): at 400 films the
+search-box keystroke 59 ms, the FLAGS cell keystroke 60-61 ms, the bulk add 74 ms to the store and about 1.1 s to the
+300 records on disk. Not observable: the main process's own time inside `saveLabelRecord` (only the end-to-end sync is timed).
+It cleans up its studies and records in `finally`.
