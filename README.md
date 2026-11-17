@@ -168,8 +168,9 @@ workspace and folder each film came from.
   order they were added, joined with `; `, and is empty for a film with none; it is always written, so every column after
   `Note` sits one place further right than in earlier versions. Demo studies are never exported.
 - **Export paired CSV** writes one row per subject over the same rows: `Subject`, then every visit's `<label> study`,
-  then every visit's `<label> view`, then every visit's `<label> film date`, then every visit's `<label> flags` (`Pre-op` first within each kind, then
-  every later timepoint present — Intra-op, Post-op, then durations by length, then other labels), then for each
+  then every visit's `<label> view`, then every visit's `<label> film date`, then every visit's `<label> flags`
+  (`Pre-op` first within each kind, then every later timepoint present — Intra-op, Post-op, then durations by length,
+  then other labels), then for each
   measurement `<M> Pre-op`, `<M> <label>` and `Delta <M> <label>` (the later value minus the Pre-op value over the
   values as written; empty when either is absent), then each clinical field per visit. A subject needs exactly one
   Pre-op film and one film per later visit it has; a subject with two films on one visit is left out and named in the

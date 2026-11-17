@@ -220,6 +220,15 @@ One pure module owns the rules of FL11–FL13, and every screen and file goes th
 - Click, or Enter on the focused cell, opens it. Enter or a comma adds the highlighted suggestion, or the typed text
   when nothing is highlighted. Backspace in an empty box removes the last flag. × removes that flag. Clicks inside the
   cell do not open the study.
+  *Amended 2026-11-16 (final review, rulings 16 and 6 as amended):* only Enter takes the highlighted suggestion. A
+  comma, a semicolon or a pasted line break adds the typed text **as typed** and never the highlighted suggestion (a
+  typed or pasted `hard, cement` must not become `hardware`). Enter with a highlighted suggestion adds it; Enter in an
+  empty box closes the cell; Enter with text and nothing highlighted adds the typed text when it cleans to a flag the
+  film does not already hold, and otherwise does nothing. Text that cannot be a flag (over 40 characters) is refused out
+  loud: the hint line under the suggestions reads `40 CHARACTERS AT MOST` in place of `ENTER ADDS · ESC CANCELS`, a
+  refused piece of a typed list stays in the box, and closing the cell saves the draft without it. The bar's list box
+  shows the same line, and Enter there on the name of a flag in use adds that flag, in the library's spelling, to every
+  film the list acts on.
 - **The open cell holds a draft, as the SUBJECT editor does (`editingSubject`), and the film's flags are written once,
   when the cell closes:** on a click elsewhere, on Tab, or on Enter in an empty box. Esc closes it and throws the
   draft away. So the row does not leave a filtered list, or move in a sorted one, while it is being edited. Under a
@@ -260,6 +269,16 @@ joined in their order, ignoring case. Films with no flags go where the list alre
 **When flag changes are refused.** While a bundle is being imported or exported, or a delete is running, the row
 cell, the bar button and the Analysis block are disabled with a title that says why: those operations read or replace
 the label records a flag change writes. A segmentation run or batch does not block flags.
+*Amended 2026-11-16 (final review, I1):* the lock is the store key `flagsBusy` (`'import'`, `'export'` or null) beside
+`deletingStudies` (a bulk delete); `flagsRefusal(state)` reads both. The lock works both ways: the export, the import
+(before it reads the local records for its plan and again before its confirmed placement) and both deletes wait for every
+label-record write already in flight (`recordWritesSettled` in `renderer/level-editor.js`: a bulk flag update still
+walking its films, a Save edits, a Mark reviewed write) before they read, copy, replace or remove a record, and the
+flag update re-reads its study across its own read and write, writing nothing for a study deleted, re-added or pointed at
+another record meanwhile. A single-row delete does not set `deletingStudies`: that key also makes a running batch's next
+film fail ("Wait for study deletion to finish."), and a single-row delete is allowed during a batch. It waits for the
+writes in flight directly before it removes the record instead, so a flag update that starts after the removal finds no
+file and writes none; the refusal itself is not shown for a single-row delete.
 
 ### 4.4 Analysis screen
 
@@ -304,6 +323,10 @@ the label records a flag change writes. A segmentation run or batch does not blo
   falls back to the record). Both are cleaned by §4.1's rules; an entry's study already passes through the
   persistence sanitizer on import.
 - **A film the import adds** takes the bundle's flags.
+  *Amended 2026-11-16 (final review, ruling 18):* an incoming flag that matches one already in use in the library (as
+  it was before the import) takes the library's spelling, for a film the import adds as for one it updates or flags, so
+  two spellings of one flag never coexist after an import (FL12's rule). A local film's own spelling still wins for that
+  film.
 - **A film already in the library** keeps its own flags, in order, and gains the bundle's new ones after them. The
   local spelling wins on a match. No local flag is ever removed. This applies both when the import updates the film
   and when it would otherwise skip it as already in the library (FL22). It does not apply to an entry skipped as
@@ -412,6 +435,11 @@ Whichever of 1 and 2, a flag change must leave `saved_at` alone (§4.8).
   library is right; those records are corrected the next time that film's flags change or its record is saved.
 - **Position-counting CSV readers** see every column after `Note` move by one (§4.6).
 - **No rename.** A misspelt flag is fixed with the filter and the bulk list (FL18).
+- *Amended 2026-11-16 (final review, ruling 17):* **an import that would take a film past 20 flags** keeps the first 20
+  (the local ones first) and does not say so. It needs a film already near the cap and a bundle bringing more; removing a
+  flag and importing again recovers the rest.
+- *Amended 2026-11-16 (final review):* **text left in a flag box is saved when the window loses focus**, as SUBJECT's is:
+  the box blurs, and leaving the box saves the draft with whatever typed text is a flag.
 
 ## 9. Checking it
 

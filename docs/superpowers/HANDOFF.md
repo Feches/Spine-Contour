@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-11-16 (flags on films, the first section under "Where things stand"; the paragraphs below it date from 2026-10-19 and earlier)
 **2026-11-16 branch:** `claude/study-flags` in the worktree `.claude\worktrees\study-flags`, off `origin/main` @ `4eea101`
-(v1.7.0): flags on films, built, waiting for the whole-branch review and the owner's gate, nothing pushed.
+(v1.7.0): flags on films, built, the whole-branch review's fix wave in, waiting for the owner's gate, nothing pushed.
 **Branch:** `worktree-reviewer-navigation` in the worktree `.claude\worktrees\reviewer-navigation` of the main checkout,
 off `origin/main` @ `cc1b548` (v1.2.0): the reviewer navigation round (previous / next over the Find list's filtered
 order, every unsegmented film's X-ray on the stage, the list's scroll fix) and, on top of it, the header filters round
@@ -69,7 +69,7 @@ algorithm changed; no screenshots were added.
 
 ## Where things stand
 
-### Flags on films: BUILT and smoke-verified, waiting for the whole-branch review and the owner's gate, nothing pushed, no version bumped (branch `claude/study-flags`, worktree `.claude/worktrees/study-flags`, off `origin/main` @ `4eea101`, v1.7.0)
+### Flags on films: BUILT, reviewed and smoke-verified, the final review's fix wave in, waiting for the owner's gate, nothing pushed, no version bumped (branch `claude/study-flags`, worktree `.claude/worktrees/study-flags`, off `origin/main` @ `4eea101`, v1.7.0)
 
 2026-11-16. The owner reviews a library of several hundred films and wanted short labels of his own on a film (a project
 title, `hardware`, `cement`, `poor segmentation`) that he could set without opening the level editor, filter the list by,
@@ -77,8 +77,8 @@ and carry into the Parameters tab, both CSV exports, bundles and the label recor
 the annotation comment to show in the list; after seeing mock-ups he decided flags take that job and the comment stays
 exactly as it is (FL5). Spec `docs/superpowers/specs/2026-11-16-study-flags-design.md` (FL1-FL25, approved by the owner
 2026-11-16, who also confirmed that FLAGS is the last column); plan `docs/superpowers/plans/2026-11-16-study-flags.md`
-(Tasks 1-14; its `## Ledger` at the end holds rulings 1-15, the per-task commit ranges, the deferred minors, the counts
-and what was not established). Built subagent-driven on 2026-11-16: one implementer per task, a review after each, and
+(Tasks 1-14; its `## Ledger` at the end holds rulings 1-18, the per-task commit ranges, the deferred minors, the counts,
+what was not established and the final review's part). Built subagent-driven on 2026-11-16: one implementer per task, a review after each, and
 each DOM task verified in the running app over CDP on a scratch profile by a separate pass that wrote its section of the
 matching smoke suite. No screenshot of the app was taken or read.
 
@@ -116,10 +116,38 @@ fresh launch of a source build on a scratch profile with synthetic films: `smoke
 a lost OS focus closes it (as the SUBJECT editor does); the suite now brings the page to front and enables focus
 emulation, and passed 172/172 twice in the documented order.
 
+**The final whole-branch review and its fix wave (2026-11-16).** The review (Fable, over `0022804..becf790`) said "ready
+for the owner's test with fixes", 0 Critical. I1: the record lock worked one way only (an export, an import or a delete
+could start while a bulk flag change was still writing label records, and the flag update did not re-check its study
+after writing). I2: text over 40 characters was refused silently while the hint still said `ENTER ADDS`. I3: nothing had
+been run at several hundred films. A scale probe on 400 invented films came first (`c456b72`, no performance problem),
+then one fix wave: `8b01a87` (`recordWritesSettled`: the export, the import, the confirm and both deletes wait for
+record writes in flight; the flag update re-reads its study and removes a file written for a study deleted meanwhile; a
+record that is not an object is skipped; the bundle locks set inside their `try`), `62ef191` (the hint
+`40 CHARACTERS AT MOST` and a refused piece kept in the box; Enter with nothing highlighted adds the typed text, ruling 6
+as amended; Enter in the bulk box on a flag in use; the Find table keeps its sideways scroll; the highlighted suggestion
+stays in view; one popup at a time; `cleanFlag('# #x')` is `x`), `a1b67f1` (an imported flag takes the library's
+spelling, ruling 18), then the test commit and the docs commit. Rulings 16 (a comma adds the text as typed, never the
+highlighted suggestion) and 17 (an import that would pass 20 flags keeps the first 20, silently: a known limit) are in the
+plan's Ledger with the review's triage. Counts after the wave: unit 1321/1321; `smoke-studies.mjs` 286/286;
+`smoke-reviewer.mjs` 180/180; `smoke-parameters.mjs` 87/87; `smoke-levels.mjs` dom 202/202; `smoke-bundle.mjs` a 19/19,
+b 24/24, c 37/37; `smoke-persist.mjs` 46/46 then 60/60; `smoke-flags-scale.mjs` 35/35. Scale reference, 400 invented
+films: a keystroke in a FLAGS cell about 60 ms, the same as in the search box; a 300-film bulk change about 75 ms to the
+store and about 1.2 s to all 300 label records.
+
+**For the owner, not fixed here** (it predates this branch): the Analysis screen's Export CSV suggests `<SP id>.csv` as the
+file name in the save dialog, which breaks the rule that the SP id is never shown.
+
 **Not run, not established.**
 
-- The owner's gate (plan Task 14) has not been run, and the final whole-branch review has not been done yet. Nothing is
-  pushed; there is no pull request.
+- The owner's gate (plan Task 14) has not been run (the plan's Task 14 Step 2 list gained five checks in the fix wave:
+  a 41-character flag, a long suggestion list walked with the arrows, an export straight after a bulk flag, his real
+  library, and a flag box left with text when he switches windows). Nothing is pushed; there is no pull request.
+- Several hundred films were measured on 400 invented films, not on his library.
+- A single-row delete does not refuse flag changes while it runs: it waits for the record writes in flight before it
+  removes the record (`deletingStudies` would fail a running batch's next film). An import's placement racing a bulk
+  flag change is forced only in unit tests; in the app the export and the delete were seen to start while writes were in
+  flight, with the right results.
 - Nothing was run on real films or on the owner's library. Every in-app check used synthetic films on a scratch profile.
 - The narrow-window layout was checked at 1180 px by a device-metrics override, not a real window resize.
 - The native save dialog of the two CSV exports and the folder pickers of the bundle are not driven by the suites (the

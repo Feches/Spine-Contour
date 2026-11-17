@@ -2039,6 +2039,18 @@ module variable, because two screens read it (the Find list's Flag button and FL
 `+ Add flag`) and only a store change repaints them; an earlier module variable left the Analysis button disabled after an
 export ended until the next unrelated store change. It is in no router key set and nothing persists it.
 
+**`recordWritesSettled()` (2026-11-16, the final review, I1).** `renderer/level-editor.js` exports
+`recordWritesSettled() → Promise<void>`: it resolves once no `syncRecordFlags` call is running (a bulk update frees the
+write latch between films, so the calls are counted) and the write latch (`saving`: Save edits, Mark reviewed, a flag
+update) is free; a call that starts while it waits is waited for too; it never rejects and never takes the latch, so the
+order those writers keep among themselves is unchanged. `exportBundleTo`, `importBundleFrom`, `confirmImport` and the bulk
+delete await it after taking their own lock (`flagsBusy`, `deletingStudies`) and before they read, copy, replace or remove a
+label record; the single-row delete awaits it directly before it removes the record and takes no lock (`deletingStudies`
+would also fail a running batch's next film, and a single-row delete is allowed during a batch). `syncRecordFlags`
+re-reads its study across its own read and write (skipping a study gone, re-added or pointed at another file, and a
+record that is not a plain object) and, after writing, removes the file it wrote for a study deleted meanwhile, as
+`writeRecord` does.
+
 **The Find list's UI state.** `findFilters` gains `flags` (the ticked flag values) and `flagsMatch` (`'any'` or `'every'`);
 `paramFilters` gains `flag` (one value, `null` for all). A ticked flag stays ticked, and stays offered, when the last film
 loses it (FL25). The Find tab's `data-find-key`s gain the FLAGS column, editor and bulk-list hooks, the Analysis

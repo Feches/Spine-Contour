@@ -789,6 +789,17 @@ No code. The owner tests the branch before anything is pushed; nothing here is d
   5. Export a bundle; import it into a second scratch profile that already holds some of the films with different flags.
   6. Open a label record from the labels folder: `flags` is there, `saved_at` did not move after a flag-only change.
   7. Resize the window to about 1200 wide: the list scrolls sideways and FLAGS is the column scrolled to.
+  8. (Added by the final fix wave, 2026-11-16.) Type a flag of 41 characters or more, in a row's box and in the bar's list
+     box: the line under it says `40 CHARACTERS AT MOST`, and the text stays in the box instead of vanishing.
+  9. With more than eight flags in use, open a FLAGS cell and walk the suggestions with the arrow keys to the last one: the
+     highlighted suggestion stays in view.
+  10. Flag many films with the bar button and start a bundle export straight away: every label record in the bundle
+      carries the new flag.
+  11. On his real library of several hundred films (when he chooses to open it): type in a FLAGS cell and flag a few hundred
+      films at once with the bar button. Reference from the scale probe on 400 invented films: about 60 ms a keystroke in a
+      FLAGS cell (the same as the search box), about 75 ms for a 300-film bulk change to show, about 1.2 s for its 300 label
+      records to be written.
+  12. Type into a flag box, then switch to another window: the typed text is saved as a flag, as SUBJECT's is.
 - [ ] **Step 3:** Record his rulings in a `## Ledger` at the end of this file, fix what he reports as new tasks with their own tests, and stop. Pushing, the pull request, the version and telling Michael about the schema (spec §11) wait for his word.
 
 ---
@@ -799,8 +810,8 @@ Written 2026-11-16 at the end of Task 13, from the run's own ledger (`progress.m
 `.superpowers/sdd/2026-11-16-study-flags/`, deleted when the run ends) and the smoke pass's report. Executed
 subagent-driven on 2026-11-16, at the owner's instruction to use lower models where able: Sonnet implementers and
 reviewers, Opus for Task 4 (write ordering on label records) and for Task 12's review (import planning). Plan commit at the
-start of execution: `0022804`. Nothing is pushed and no version is bumped. The final whole-branch review and the owner's
-gate (Task 14) are still to come and add their own entries below.
+start of execution: `0022804`. Nothing is pushed and no version is bumped. The final whole-branch review and its fix wave
+have their own part at the end (2026-11-16); the owner's gate (Task 14) is still to come.
 
 ### Rulings
 
@@ -861,6 +872,23 @@ ledger.
     store change. The architecture contract carries an amendment note for the key (2026-11-16). Cost if wrong: one more key
     in the store's shape.
 
+Made after the final whole-branch review, for its one fix wave:
+
+- **Ruling 6, amended.** Enter with text and nothing highlighted adds the typed text when it cleans to a flag the film does
+  not already hold, and otherwise does nothing; Enter in an empty box still closes. The final review found the earlier
+  "does nothing" clause contradicted spec section 4.3 (amended in the spec). Cost if wrong: nothing.
+16. **A comma, a semicolon or a pasted line break adds the typed text as typed; only Enter takes the highlighted
+    suggestion.** Spec section 4.3's sentence gave a comma the highlighted suggestion, which would turn a typed or pasted
+    `hard, cement` into `hardware`; the code already did this and the spec sentence is amended. Cost if wrong: one sentence
+    of the spec and one branch of the editor.
+17. **An import that would take a film past 20 flags keeps the first 20 and does not count the rest.** Recorded as a known
+    limit in spec section 8, not built: it needs a film already at the cap and a bundle bringing more. Cost if wrong: a rare
+    silent truncation, recovered by removing a flag and importing again.
+18. **On import, an incoming flag that matches one already in use in the library takes the library's spelling**, for films
+    the import adds as well as films it updates or flags (FL12's rule applied to imports); otherwise two spellings of one
+    flag coexist after an import. A local film's own spelling still wins for that film. Cost if wrong: a sender's
+    capitalisation is not preserved.
+
 ### Tasks
 
 One line per task: the commit range, how its review ended. Smoke commits are the in-app verification passes (ruling 5).
@@ -874,7 +902,8 @@ One line per task: the commit range, how its review ended. Smoke commits are the
 - **Task 6** (the flag editor component and chip styles): `6418d01..b8616e4`, review clean after 1 fix round (rulings 6, 7,
   8 and a misplaced CSS comment).
 - **Task 7** (the FLAGS column, its editor and menu): `b8616e4..81f2a8d`, review clean after 2 fix rounds (rulings 9 and 10);
-  in-app commits `4a08c78` (smoke-studies section 19, 155/157 then 203/205 before the fixes) and `81f2a8d` (212/212).
+  in-app commits `4a08c78` (smoke-studies section 19: the suite read 155/157 before the new section was added and
+  203/205 with it, before the fixes) and `81f2a8d` (212/212).
 - **Task 8** (flag the ticked films from the bar): `81f2a8d..93dac98`, review clean after 1 fix round (rulings 11 and 12, and
   a ticked box left checked when every target was full); in-app commits `7d54809` (243/245 before the fix) and `93dac98`
   (258/258).
@@ -912,13 +941,14 @@ says so.
   `test/find.test.js` says "the eight columns", the comment above `DEFAULT_FIND_FILTERS` does not mention `flagsMatch`); no
   test drives `findVisible` or `findNeighbour` with a flag tick.
 - **Task 6:** `flagEditor`'s parameter comment still said the box is "disabled" when full and the signature default was
-  `active = 0` where it should be -1. Handed to Task 7 through its addendum; this ledger does not record Task 7's review
-  confirming either was changed.
+  `active = 0` where it should be -1. Handed to Task 7 through its addendum. Fixed in Task 7: both changed, confirmed by
+  Task 7's review.
 - **Task 7:** the editor popup is placed once and does not follow a sideways table scroll; the resting cell's refusal title is
   read at build time; a draft on a row hidden by a search survives unfocused (as with SUBJECT). Handed to Task 8: the press
   note was set for any mouse button and survived a press dragged off the cell, so a later Tab out of that row's SUBJECT editor
-  could open the flags editor (the fix named was to note only button 0 and clear the note in `beginSubjectEdit`). Task 8's
-  implementer reported fixing the `flagsPressed` leftover; the ledger does not confirm the button-0 point separately.
+  could open the flags editor. Fixed in Task 8: only a button-0 press is noted and `beginSubjectEdit` clears the note,
+  confirmed by Task 8's review and by smoke-studies section 20 (20.8: a right press, and a primary press dragged off, then
+  Tab out of a SUBJECT editor, open no flags editor).
 - **Task 8:** a header menu can be opened by keyboard while the bulk list is open; Enter on text that exactly matches a flag in
   use does nothing; `held` is recomputed beside `bulkState`; `bulkFlags.active` is stored but unused. Fixed in the fix round
   (the verification pass failed on it): a write that changes nothing left the native box toggled.
@@ -954,7 +984,20 @@ front and enables focus emulation. Before the lock became store state the bundle
 
 ### Not established
 
-- The owner's gate (Task 14) has not been run, and the final whole-branch review has not been done. Nothing is pushed.
+- The owner's gate (Task 14) has not been run. The final whole-branch review was done and its one fix wave is in (see
+  "The final whole-branch review" below). Nothing is pushed.
+- (After the fix wave.) Several hundred films were measured on **400 invented films** by the scale probe, not on the
+  owner's real library: at 400 films a keystroke in a FLAGS cell costs what a keystroke in the search box costs (about
+  60 ms, 59.9 / 61.1 ms against 58.6 / 59.0 ms over two launches at `becf790`, 61.3 against 61.6 ms after the wave), opening
+  the Flag list over 300 ticked films about 75 ms, and a bulk change over 300 films reaches the store in about 75 ms and all
+  300 label records in about 1.1-1.2 s (1196 / 1131 ms, 1165 ms after the wave). His real library stays on the gate list.
+- (After the fix wave.) The single-row delete does not refuse a flag change while it runs (it waits for the writes in
+  flight before removing the record instead). A flag update that interleaves with a delete or an import is forced only
+  in the unit tests with a stubbed bridge; in the running app the export and the delete were each seen to start while
+  record writes were in flight (150 films), and their results were right, but the import's placement racing a bulk change
+  could not be set up across the bundle suite's phases (its flags-only path was raced instead, and the result was right).
+  The header menu's placement is right when it opens, but a page scrollbar that appears or goes after it opens can move
+  the table under it by the scrollbar's width (15 px seen once at the 1180 px layout); not changed.
 - Nothing was run on real films or the owner's library; every in-app check used synthetic films on a scratch profile, read
   by DOM, store and file reads, with no screenshots.
 - The narrow-window layout was checked at 1180 px by a device-metrics override, not by resizing a real window.
@@ -971,5 +1014,69 @@ front and enables focus emulation. Before the lock became store state the bundle
 
 ### The final review and the owner's gate
 
-To be added below: the whole-branch review's findings and fixes, the owner's rulings from the gate, and anything he reports
-as a new task.
+To be added below: the owner's rulings from the gate, and anything he reports as a new task.
+
+### The final whole-branch review
+
+The whole-branch review (Fable, over `0022804..becf790`) said: **ready for the owner's test with fixes**. 0 Critical.
+Three Important findings:
+
+- **I1, the record lock worked one way only.** A flag change was refused during an import, an export or a bulk delete,
+  but nothing stopped those starting while a bulk flag change was still writing its label records, and the flag update
+  did not re-check its study after its write: with a stub, a study deleted between the update's read and write got its
+  label file written back, and a record replaced from outside meanwhile was overwritten by the older local record plus
+  the new flags (the spec's first anti-goal). A single-row delete set no lock at all.
+- **I2, text that is not a flag was refused silently.** With 41 or more characters the suggestion list was empty, Enter did
+  nothing, a comma or leaving the box discarded the text, and the hint still read `ENTER ADDS · ESC CANCELS`.
+- **I3, nothing had been run at several hundred films**, and the record did not say so. A scale probe on 400 invented films
+  was run before the fix wave (`tools/smoke/smoke-flags-scale.mjs`, commit `c456b72`) and found no performance problem.
+
+One fix wave answered it, with these commits (Opus, one agent, verified in the running app itself):
+
+- `8b01a87` fix(flags): label-record writes settle before a bundle or a delete touches records (I1, M5, M6):
+  `recordWritesSettled()` in `renderer/level-editor.js`; the export, the import (before its plan and before its
+  placement), the confirm and both deletes await it; `syncRecordFlags` re-reads its study across its read and write,
+  removes a file written for a study deleted meanwhile and skips a record that is not a plain object;
+  `withRecordFlags` returns a non-object unchanged; the bundle locks are set inside their `try`. The single-row delete
+  takes no lock: `deletingStudies` would also fail a running batch's next film ("Wait for study deletion to finish.") and a
+  single-row delete is allowed during a batch, so it waits for the writes in flight directly before it removes the
+  record, after which a flag update finds no file.
+- `62ef191` fix(flags): the flag box says why it refuses, Enter adds typed text, the list keeps its scroll (I2, M1-M4,
+  T8, Task 1 and Task 5 minors): `flagTextProblem` and the accent-coloured hint (row, Analysis block, bulk box); a refused
+  piece of a typed list stays in the box (`splitTypedKeep`, `flagEditAdd`'s `rest`); ruling 6 as amended; Enter in the
+  bulk box on a flag in use; the Find table's `scrollLeft` carried across rebuilds; the highlighted suggestion kept in view
+  (`revealActiveChoice`); `bulkClosedInPlace` for the bulk slot of `update()`'s key; a header menu opened by keyboard closes
+  the bulk list; `cleanFlag` drops every leading run of `#`; the stale wording.
+- `a1b67f1` fix(flags): an imported flag takes the library's spelling (ruling 18).
+- The test commit (C1, C2, C4 and the smoke sections) and the documentation commit that holds this section.
+
+Triage of the deferred minors. **Fixed in this wave:** Task 1's `cleanFlag('# #x')` and `mergeFlags`' untested cap; Task 3's
+`withRecordFlags(null)` throwing; Task 5's stale wording; Task 7's popup and sideways scroll (the table no longer loses
+its scroll, so a repaint no longer moves the cell from under its list); Task 8's keyboard menu over the bulk list and Enter
+on an exact match; Task 10's unescaped fixture paths; the commonest record shape (comment, no flags) now has its own
+assertion. **Stay as recorded:** Task 1's missing no-mutation assertions, the `flagKey` / `NO_FLAGS` direct tests and the
+unreachable tiebreak; Task 2's process note; Task 3's in-place key-order assertion; Task 4's untested
+persistence-disabled branch and copied bridge helper; Task 5's capital tick and the `findVisible` / `findNeighbour` flag
+test; Task 7's refusal title read at build time and the hidden row's draft; Task 8's recomputed `held` and unused
+`bulkFlags.active`; Task 9's Tab onto a popup option and `flagsKeyOf`'s allocation; Task 10's flag `''` and composition
+tests; Task 11's helper, single-row assertion and spacing; Task 12's failed placement dropping that entry's flags.
+
+The lines the review declined to judge, with the controller's ruling on each: IME composition, Unicode forms, CSV formula
+characters, screen-reader roles, a hidden draft meeting an import, and `flagsOf`'s record fallback are out of scope and
+parked. Leftover typed text saved when the window loses focus is by design (SUBJECT's rule) and the owner is told (spec
+section 8, gate step 12). The Analysis screen's Export CSV suggesting `<SP id>.csv` in the save dialog predates this branch
+and breaks the rule that the SP id is never shown: reported to the owner (HANDOFF), not changed here.
+
+Counts after the fix wave. Unit 1321/1321 (1307 before; +14: seven wiring tests for the lock, one for a non-object record,
+three for the flag rules, one for the import spelling, one for the commonest record shape, one for the fixture paths).
+Smoke, each on a fresh launch of a source build on a scratch profile with invented films, in the README's order:
+
+| Suite | Before the wave | After |
+|---|---|---|
+| `smoke-studies.mjs` | 258/258 | 286/286 (sections 19.10b, 19.11, 20.14-20.17) |
+| `smoke-reviewer.mjs` | 172/172 | 180/180 (section 7.10) |
+| `smoke-parameters.mjs` | 87/87 | 87/87 |
+| `smoke-levels.mjs` (dom) | 202/202 | 202/202 |
+| `smoke-bundle.mjs` | a 19/19, b 21/21, c 36/36 | a 19/19, b 24/24, c 37/37 |
+| `smoke-persist.mjs` | 46/46, 60/60 | 46/46, 60/60 |
+| `smoke-flags-scale.mjs` | 35/35 | 35/35 |

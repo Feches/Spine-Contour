@@ -91,9 +91,8 @@ bar instead of the usual buttons:
 
 with **Import** and **Cancel**. Focus starts on Cancel, and Escape cancels too. Nothing has been changed yet. When some
 films would only gain flags, the line names them between the update and skip counts (`…, 2 to update, 2 to flag, 3 to
-skip.`); with none it reads as above. If there is
-nothing to add, update or flag the prompt does not appear and a toast says why instead: `Nothing to import: already in the
-library: a.dcm, b.dcm`. A folder with no manifest is refused with `This folder is not a Spine Contour bundle.`, and a
+skip.`); with none it reads as above. If there is nothing to add, update or flag the prompt does not appear and a toast
+says why instead: `Nothing to import: already in the library: a.dcm, b.dcm`. A folder with no manifest is refused with `This folder is not a Spine Contour bundle.`, and a
 bundle written by a newer Spine Contour than the one importing it with `This bundle was written by a newer Spine Contour
 (schema …). Update the app to import it.`
 
@@ -116,9 +115,10 @@ typed in the list, a film added) because its plan was made against the list as i
 again. If the library changed while the bundle was being read, a toast says so and no prompt appears (S29).
 
 When the import ends, the toast reads like `Imported 10 studies, updated 2, skipped 3 (already in the library: a, b;
-being edited: c)`, or `Imported 10 studies, updated 2, flagged 2, skipped 3 (…)` when films gained flags. A film whose file in the bundle was damaged or gone by the time it was placed, or whose scale
-reference was refused, is counted there too, under `malformed`: nothing of it was written and the import went on with
-the others (S38). After it, when they apply:
+being edited: c)`, or `Imported 10 studies, updated 2, flagged 2, skipped 3 (…)` when films gained flags. A film whose
+file in the bundle was damaged or gone by the time it was placed, or whose scale reference was refused, is counted there
+too, under `malformed`: nothing of it was written and the import went on with the others (S38). After it, when they
+apply:
 
 - `· 2 without film (x.dcm, y.dcm)`: those studies came in without a film (see below).
 - `· 1 not added because the library changed (z.dcm); import the bundle again`: a film was added by another route while
@@ -203,6 +203,10 @@ otherwise never carry flags to a film both computers hold:
   import updates the film or would otherwise skip it as `already in the library`.
 - **Not merged:** an entry skipped as `malformed` or `being edited`. Where several entries match one film, the entry the
   annotation rule picks is the one whose flags are used.
+- **The library's spelling** (2026-11-16, the final review, ruling 18): a bundle's flag that matches one already in use
+  in the library, ignoring case, comes in under the library's spelling, for a film the import adds as for one it updates
+  or flags, so one flag never ends up with two spellings. A flag the library does not use yet keeps the bundle's
+  spelling, and a film's own spelling of a flag it already holds is kept.
 - A film that only gained flags counts as *to flag* in the prompt and *flagged* in the toast; a bundle whose only effect
   is flags is still offered.
 - Afterwards each film the import touched has its label record's `flags` set to match its study. Nothing else in that
@@ -210,7 +214,10 @@ otherwise never carry flags to a film both computers hold:
   rewritten the toast says so (above); the study's flags stand, because the library is the truth and the record the copy.
 
 While an import is reading or placing, and while an export is writing, a flag edit anywhere is refused with `Wait for the
-import to finish.` or `Wait for the export to finish.` (the Find list's Flag button is disabled with that title).
+import to finish.` or `Wait for the export to finish.` (the Find list's Flag button is disabled with that title). The
+other way round (2026-11-16, the final review): an export or an import started while a bulk flag change is still writing
+its label records waits for those writes to end before it copies, reads or replaces any record, so an export started
+straight after flagging many films carries the new flags in every record.
 
 An older Spine Contour (before this change) ignores `flags` on import and drops them from a library the next time it
 saves.

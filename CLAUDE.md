@@ -2,7 +2,7 @@
 
 **2026-11-16 flags on films (BUILT, not pushed, no version bumped):** branch `claude/study-flags` (worktree
 `.claude/worktrees/study-flags`) off `origin/main` @ `4eea101` (v1.7.0), built by plan
-`docs/superpowers/plans/2026-11-16-study-flags.md` (Tasks 1-13; its `## Ledger` holds rulings 1-15, the per-task commits,
+`docs/superpowers/plans/2026-11-16-study-flags.md` (Tasks 1-13; its `## Ledger` holds rulings 1-18, the per-task commits,
 the deferred minors, the counts and what was not established) from spec
 `docs/superpowers/specs/2026-11-16-study-flags-design.md` (FL1-FL25). A film carries `flags`, free-text labels of the owner's
 own (1 to 40 characters, at most 20, `,` `;` and line breaks end one, a leading `#` is dropped, matched ignoring case), set
@@ -11,13 +11,22 @@ comment on the Analysis screen, filtered by a header menu (any or every, `No fla
 (a column and a dropdown), both CSV exports (`Flags` after `Note`; `<visit> flags` after the film dates), bundles (merged
 on import, never removed) and the label record (`flags` after `comment`). The rules are `renderer/data/flags.js`; every
 change goes through `setStudyFlags` in `renderer/study-flags.js`, which rewrites only `flags` in an existing record and
-leaves `saved_at` alone; the import/export lock is the store key `flagsBusy`. Comments are untouched. Counts at `9d9f357`:
-unit 1307/1307; `smoke-studies.mjs` 258/258; `smoke-reviewer.mjs` 172/172; `smoke-parameters.mjs` 87/87;
-`smoke-levels.mjs` dom 202/202; `smoke-bundle.mjs` a 19/19, b 21/21, c 36/36; `smoke-persist.mjs` 46/46 then 60/60. Every
-task was reviewed (Tasks 4, 6, 7, 8 and 12 after fix rounds). **Not run:** the owner's gate (plan Task 14) and the final
-whole-branch review; anything on real films (the suites use synthetic films on a scratch profile); the narrow-window layout
+leaves `saved_at` alone; the import/export lock is the store key `flagsBusy`, and the export, the import and both deletes
+wait for label-record writes in flight (`recordWritesSettled` in `renderer/level-editor.js`) before they touch a record.
+Comments are untouched. Every task was reviewed (Tasks 4, 6, 7, 8 and 12, and Task 13's Pass A, after fix rounds). The
+final whole-branch review (Fable) said "ready for the owner's test with fixes" (0 Critical; I1 the record lock worked one
+way only, I2 text over 40 characters was refused silently, I3 nothing had been run at several hundred films) and one fix
+wave answered it (`8b01a87`, `62ef191`, `a1b67f1`, then a test and a docs commit; rulings 6 as amended, 16-18 in the plan's
+Ledger, which also has the review's part). Counts after the wave: unit 1321/1321; `smoke-studies.mjs` 286/286;
+`smoke-reviewer.mjs` 180/180; `smoke-parameters.mjs` 87/87; `smoke-levels.mjs` dom 202/202; `smoke-bundle.mjs` a 19/19,
+b 24/24, c 37/37; `smoke-persist.mjs` 46/46 then 60/60; `smoke-flags-scale.mjs` 35/35 (400 invented films: a FLAGS-cell
+keystroke about 60 ms, the same as the search box; a 300-film bulk change about 75 ms to the store, about 1.2 s to its 300
+records; not the owner's real library). **Not run:** the owner's gate (plan Task 14); anything on real films or his
+library (the suites use invented films on a scratch profile); the narrow-window layout
 at a real resize (checked at 1180 px by a device-metrics override); the native save dialog of the CSV exports and the
-bundle's folder pickers; the `the label record could not be updated` toast clause; a packaged build. Nothing is pushed. The
+bundle's folder pickers; the `the label record could not be updated` toast clause; an import's placement racing a bulk
+flag change in the running app (forced only in unit tests); a packaged build. A single-row delete does not refuse flag
+changes (it waits for the writes in flight instead: `deletingStudies` would fail a running batch's next film). Nothing is pushed. The
 release (`CHANGELOG.md`, `docs/releases/`, `package.json`, `renderer/data/version.js`) is the owner's later commit, and its
 notes must say that every CSV column after `Note` moved one place right and that label records gain an optional `flags`
 list a validator on the old schema file rejects (tell Michael first). See HANDOFF's first "Where things stand" section and
