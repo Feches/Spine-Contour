@@ -15,6 +15,7 @@ import { displayStatus, statusLabel } from './status.js';
 import { studyName, workspaceLabel, folderLabel, subjectLabel } from './labels.js';
 import { matchesLocation, matchesSubject, workspaceOptions, folderOptions, NO_VIEW } from './parameters.js';
 import { regionKey, regionLabel, REGION_KEYS } from './cervical.js';
+import { cleanFlags, flagKey, flagsInUse, NO_FLAGS } from './flags.js';
 
 const DASH = '\u2014';
 
@@ -30,12 +31,14 @@ const DASH = '\u2014';
 // tells two same-day films of one subject apart. The FULL file path is still not: only the two
 // folder names the cells actually display are matched. The label record's comment (`labelComment`,
 // annotation round 2) is searchable too, though no column shows it: it is what flags a film for a reader.
+// (2026-11-16, study flags) The film's FLAGS are searchable: FLAGS is a visible column, and a column the box cannot
+// search reads as broken.
 // (2026-10-19) Moved here from screens/studies.js, which re-exports it, so the Analysis screen's previous / next can
 // apply the search without importing a screen.
 export function matchesQuery(study, query) {
   const needle = (query ?? '').trim().toLowerCase();
   if (!needle) return true;
-  return [study.id, studyName(study), study.subjectId, study.timepoint, study.filmDate, study.note, study.labelComment, workspaceLabel(study), folderLabel(study), study.pt, study.dx, study.view, ...Object.values(study.clinical ?? {})]
+  return [study.id, studyName(study), study.subjectId, study.timepoint, study.filmDate, study.note, study.labelComment, workspaceLabel(study), folderLabel(study), study.pt, study.dx, study.view, ...cleanFlags(study.flags), ...Object.values(study.clinical ?? {})]
     .filter((value) => typeof value === 'string')
     .join(' ')
     .toLowerCase()
@@ -65,7 +68,7 @@ export function matchesStatus(study, filter, runningId = null, batch = null) {
 }
 
 export const DEFAULT_FIND_SORT = Object.freeze({ key: 'date', dir: 'desc' });
-export const FIND_SORT_KEYS = Object.freeze(['study', 'subject', 'region', 'view', 'workspace', 'folder', 'date', 'status']);
+export const FIND_SORT_KEYS = Object.freeze(['study', 'subject', 'region', 'view', 'workspace', 'folder', 'date', 'status', 'flags']);
 
 // Workflow order: what still needs doing sorts first. (2026-10-01, issue #39; port spec 3) A failure
 // needs a person first, then the films running or waiting in the batch, then films nobody has run.
@@ -109,6 +112,11 @@ function sortValue(study, key, runningId, batch) {
       return Number.isNaN(time) ? null : time;
     }
     case 'status': return statusRank(displayStatus(study, runningId, batch));
+    // (2026-11-16, study flags) the flags joined in their order, lower-cased; none is an absent value, so last.
+    case 'flags': {
+      const flags = cleanFlags(study.flags);
+      return flags.length === 0 ? null : flags.join(', ').toLowerCase();
+    }
     default: return null;
   }
 }
@@ -135,9 +143,12 @@ export function sortFindRows(studies, sort, runningId = null, batch = null) {
 // (2026-10-19, final review; R13) from a REGION or STATUS tick on a value no film shows now, such as Needs review once
 // the last film to review is marked. Every menu says "none" with one key, NO_VIEW, for a film with no view and a film
 // with no region alike.
+// (2026-11-16, study flags) `flags` is the FLAGS menu's ticks (flag keys, or NO_FLAGS) and `flagsMatch` its any / every
+// choice over the ticked flags other than No flags: 'any' passes a film holding at least one, 'every' only a film
+// holding all of them; No flags passes a film with none, whichever is chosen.
 
-export const DEFAULT_FIND_FILTERS = Object.freeze({ subject: '', region: [], view: [], workspace: [], folder: [], status: [] });
-export const FILTER_COLUMNS = Object.freeze(['subject', 'region', 'view', 'workspace', 'folder', 'status']);
+export const DEFAULT_FIND_FILTERS = Object.freeze({ subject: '', region: [], view: [], workspace: [], folder: [], status: [], flags: [], flagsMatch: 'any' });
+export const FILTER_COLUMNS = Object.freeze(['subject', 'region', 'view', 'workspace', 'folder', 'status', 'flags']);
 
 // A row's value in the REGION and VIEW menus: regionKey's `unknown` and a missing view are both NO_VIEW.
 function regionValue(key) {
@@ -178,6 +189,11 @@ function byText(a, b) {
 // a view, a root or a folder nobody holds any more is not worth a row. FOLDER lists the folders among the films the
 // WORKSPACE ticks keep (every film when none is ticked), counting only the ticks the WORKSPACE menu offers, as
 // normaliseFindFilters keeps them; folderOptions lists them over those films, so the list and the grid share one rule.
+// (2026-11-16, study flags; spec FL25) FLAGS follows a THIRD rule, neither of those two: it offers the flags any film
+// holds now (one spelling each, the library's, by flagsInUse) TOGETHER WITH every flag that is ticked, whether or not a
+// film holds it, A to Z by key, then `No flags` always. Not the fixed vocabulary, because flags are free text; not the
+// "present" rule, because a tick on the last film's flag must not dissolve (R13's reason: the whole library would show
+// and the tick would come back unseen when the flag is typed again). A ticked flag nobody holds is labelled by its key.
 export function findFilterOptions(studies, filters) {
   const list = studies ?? [];
   const region = REGION_KEYS.map((key) => ({ value: regionValue(key), label: regionLabel(key) }));
@@ -190,7 +206,16 @@ export function findFilterOptions(studies, filters) {
   const ticked = (ticksOf(filters, 'workspace') ?? []).filter((value) => workspace.some((o) => o.value === value));
   const folder = folderOptions(ticked.length > 0 ? list.filter((study) => inWorkspaces(study, ticked)) : list, null);
   const status = STATUS_FILTERS.map(({ value, label }) => ({ value, label }));
-  return { region, view, workspace, folder, status };
+  const inUse = flagsInUse(list);
+  const inUseKeys = new Set(inUse.map(flagKey));
+  const gone = [...new Set(ticksOf(filters, 'flags') ?? [])]
+    .filter((value) => typeof value === 'string' && value !== NO_FLAGS && !inUseKeys.has(value))
+    .map((value) => ({ value, label: value }));
+  const flags = [
+    ...[...inUse.map((flag) => ({ value: flagKey(flag), label: flag })), ...gone].sort((a, b) => byText(a.value, b.value)),
+    { value: NO_FLAGS, label: 'No flags' },
+  ];
+  return { region, view, workspace, folder, status, flags };
 }
 
 // The stored ticks reduced to what the menus offer now, each column deduplicated in the order it was ticked, every key
@@ -211,6 +236,8 @@ export function normaliseFindFilters(filters, studies) {
   return {
     subject: typeof filters?.subject === 'string' ? filters.subject : '',
     region: offered('region'), view: offered('view'), workspace: offered('workspace'), folder: offered('folder'), status: offered('status'),
+    // (2026-11-16, study flags) the options include every ticked key, so no flag tick dissolves (FL25).
+    flags: offered('flags'), flagsMatch: filters?.flagsMatch === 'every' ? 'every' : 'any',
   };
 }
 
@@ -237,7 +264,16 @@ export function matchesFindFilters(study, filters, runningId = null, batch = nul
   const folder = ticksOf(filters, 'folder');
   if (folder && !folder.includes(folderLabel(study))) return false;
   const status = ticksOf(filters, 'status');
-  return !status || status.includes(displayStatus(study, runningId, batch));
+  if (status && !status.includes(displayStatus(study, runningId, batch))) return false;
+  const flags = ticksOf(filters, 'flags');
+  if (!flags) return true;
+  // (2026-11-16, study flags) No flags is always an "or": a film cannot both hold flags and hold none. The any/every
+  // choice is over the ticked flags other than No flags.
+  const held = cleanFlags(study.flags).map(flagKey);
+  if (held.length === 0) return flags.includes(NO_FLAGS);
+  const wanted = flags.filter((key) => key !== NO_FLAGS);
+  if (wanted.length === 0) return false;
+  return filters?.flagsMatch === 'every' ? wanted.every((key) => held.includes(key)) : wanted.some((key) => held.includes(key));
 }
 
 // The columns whose funnel reads active, in column order: any tick, or SUBJECT text the contains rule would apply

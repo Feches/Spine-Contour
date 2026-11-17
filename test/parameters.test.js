@@ -7,7 +7,9 @@ import {
   patchFilters, filterParameters, matchesLocation, hiddenUnsegmented, sortParameters, emptyReason, exportFileName,
   toggleId, withIds, selectedVisible, rowsToExport,
   subjectKey, timepointOptions, viewOptions, pairedWithOptions, pairedSubjects, hiddenUnpaired, subjectBreaks,
+  flagFilterOptions,
 } from '../renderer/data/parameters.js';
+import { NO_FLAGS } from '../renderer/data/flags.js';
 
 const DASH = '\u2014';
 const ROOT = 'C:\\films\\Fusion2025';
@@ -406,7 +408,7 @@ const COHORT = [
 
 test('DEFAULT_FILTERS carries the four new filters at rest', () => {
   assert.deepEqual(DEFAULT_FILTERS, {
-    workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: ANY_POST,
+    workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: ANY_POST, flag: null,
   });
   assert.equal(NO_TIMEPOINT, '__none__');
   assert.equal(ANY_POST, '__any__');
@@ -612,4 +614,45 @@ test('T4PA is a core column and T1S a cervical column; parameterValues fills eac
   assert.equal(cervical.T4PA, null);
   assert.ok(measurementColumns(false, true).some((c) => c.key === 'T1S' && c.unit === '\u00b0'));
   assert.ok(!measurementColumns(false, false).some((c) => c.key === 'T1S'));
+});
+
+// (2026-11-16, study flags; spec 4.5) The one-flag filter on the Parameters bar.
+const FLAG_FILMS = [
+  ['A', ['OLIF outcomes', 'hardware']], ['B', ['OLIF outcomes']], ['C', ['Hardware', 'cement']], ['D', []], ['E', undefined],
+].map(([id, flags], i) => study({
+  // (2026-11-16, the final review) The backslashes escaped: `\f` was a form feed and `\$` an escaped `$`, so all five
+  // films shared one junk path.
+  id, filePath: `${ROOT}\\flags\\${id}.png`, fileName: `${id}.png`, measurements: measurements(50 + i, 10, 40, 45),
+  ...(flags === undefined ? {} : { flags }),
+}));
+
+test('the flag fixtures each have their own path under the root', () => {
+  assert.deepEqual(FLAG_FILMS.map((s) => s.filePath), ['A', 'B', 'C', 'D', 'E'].map((id) => `C:\\films\\Fusion2025\\flags\\${id}.png`));
+});
+
+test('flagFilterOptions offers the flags in use, a chosen flag no film holds, then No flags', () => {
+  assert.deepEqual(flagFilterOptions(FLAG_FILMS, null).map((o) => o.label), ['cement', 'hardware', 'OLIF outcomes', 'No flags']);
+  assert.deepEqual(flagFilterOptions(FLAG_FILMS, null).map((o) => o.value), ['cement', 'hardware', 'olif outcomes', NO_FLAGS]);
+  const gone = flagFilterOptions(FLAG_FILMS, 'gone flag');
+  assert.deepEqual(gone.map((o) => o.value), ['cement', 'gone flag', 'hardware', 'olif outcomes', NO_FLAGS]);
+  assert.equal(gone[1].label, 'gone flag');
+  assert.equal(flagFilterOptions(FLAG_FILMS, 'hardware').length, 4);
+  assert.equal(flagFilterOptions(FLAG_FILMS, NO_FLAGS).length, 4);
+});
+
+test('filterParameters reads the flag filter: a key, NO_FLAGS, a key no film holds, or none', () => {
+  const ids = (flag) => filterParameters(FLAG_FILMS, { ...DEFAULT_FILTERS, flag }).map((s) => s.id);
+  assert.deepEqual(ids('hardware'), ['A', 'C']);
+  assert.deepEqual(ids(NO_FLAGS), ['D', 'E']);
+  assert.deepEqual(ids('gone flag'), []);
+  assert.deepEqual(ids(null), ['A', 'B', 'C', 'D', 'E']);
+});
+
+test('normaliseFilters keeps a flag choice no film holds (FL25) and drops a non-string one', () => {
+  assert.equal(normaliseFilters({ flag: 'gone flag' }, FLAG_FILMS).flag, 'gone flag');
+  assert.equal(normaliseFilters({ flag: 7 }, FLAG_FILMS).flag, null);
+});
+
+test('emptyReason counts the flag filter as a filter', () => {
+  assert.equal(emptyReason({ total: 5, visible: 0, filters: { ...DEFAULT_FILTERS, flag: 'gone flag' }, query: '' }), 'filtered');
 });

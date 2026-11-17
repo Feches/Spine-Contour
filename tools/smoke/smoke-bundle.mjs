@@ -77,6 +77,16 @@ const FROM_B = 'from B';
 const SAVED_ONE = 'Saved 1 edit to the label record.';
 const KEEP_FOLDER = 'The films stay in this folder, so keep it where it is.';
 const REVIEW_BUTTON = '.analysis-review';
+// (2026-11-16, study flags) The flags each side gives each film. B respells SEG's first flag, drops its second and adds
+// one of its own; C's merge keeps the local spelling and order, never removes a local flag, and appends B's new ones.
+const A_SEG_FLAGS = ['Hardware', 'olif outcomes'];
+const A_UNSEG_FLAGS = ['unseg tag'];
+const B_SEG_FLAGS = ['HARDWARE', 'b only'];
+const B_UNSEG_FLAGS = ['unseg tag', 'b extra'];
+const MERGED_SEG_FLAGS = ['Hardware', 'olif outcomes', 'b only'];
+const MERGED_UNSEG_FLAGS = ['unseg tag', 'b extra'];
+const WAIT_IMPORT = 'Wait for the import to finish.';
+const WAIT_EXPORT = 'Wait for the export to finish.';
 
 // The level editor suite's prototype geometry (corners [SA, SP, IA, IP]), measured by the real /measure.
 const BODIES = {
@@ -134,7 +144,7 @@ const readRecord = (name) => readJson(path.join(LABELS, name));
 const isInside = (file, folder) => typeof file === 'string' && file.toLowerCase().startsWith(`${folder}${path.sep}`.toLowerCase());
 const escapeRe = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // `Exported 2 studies to <parent>\spine-contour-export-YYYY-MM-DD-HHMM`, exactly: no film missing, no sidecar unread.
-const exportedToast = (parent) => new RegExp(`^Exported 2 studies to ${escapeRe(parent + path.sep)}spine-contour-export-\\d{4}-\\d{2}-\\d{2}-\\d{4}$`);
+const exportedToast = (parent) => new RegExp(`^Exported 2 studies to ${escapeRe(parent + path.sep)}spine-contour-export-\\d{4}-\\d{2}-\\d{2}-\\d{4}(-\\d+)?$`);
 
 // The page-side helpers: store reads and a toast log fed by a store subscription that only reads (subscribers never
 // call setState), as smoke-levels.mjs's window.__lv.
@@ -238,7 +248,69 @@ async function confirm() {
   return toasts();
 }
 
-const promptText = (dir, add, update, skip) => `Import from ${path.basename(dir)}: ${add} to add, ${update} to update, ${skip} to skip. ${KEEP_FOLDER}`;
+// `flag` (2026-11-16, study flags) is the films that only gain flags; the prompt names it only when above 0.
+const promptText = (dir, add, update, skip, flag = 0) => `Import from ${path.basename(dir)}: ${add} to add, ${update} to update, ${flag > 0 ? `${flag} to flag, ` : ''}${skip} to skip. ${KEEP_FOLDER}`;
+
+// Flags through the app's own setStudyFlags (the store, then each film's label record); the changes are {id, flags}.
+const setFlags = (changes) => ev(`import('./renderer/study-flags.js').then((m) => m.setStudyFlags(${js(changes)}))`);
+const rawRecord = (name) => fs.readFileSync(path.join(LABELS, name), 'utf8');
+const savedAtLine = (raw) => raw.match(/"saved_at":\s*"[^"]*"/)?.[0] ?? null;
+const withoutFlags = (record) => { const copy = { ...(record ?? {}) }; delete copy.flags; return copy; };
+const flagsOfStudy = async (key) => (await studyOf(key))?.flags ?? null;
+
+// The lock (study flags spec 4.3, `flagsRefusal`), read the instant an import or export has started: the operation is
+// called but not awaited, and everything below is read synchronously in the same turn, before its first await can
+// resolve, so the operation is genuinely in flight (its in-flight flag and the busy lock are set before its first
+// await, and refreshTable repaints synchronously). Reads: the refusal sentence, the Find list's Flag button (its
+// disabled flag and title), a click on the film's FLAGS cell (no editor opens; the store's toast is the sentence) and a
+// direct setStudyFlags (changes nothing, toasts the sentence). `startCall` is a studies.js export call, as `m.fn(...)`.
+async function lockProbe(startCall, id) {
+  return ev(`(async () => {
+    const m = await import('./renderer/screens/studies.js');
+    const flags = await import('./renderer/study-flags.js');
+    const store = await import('./renderer/store.js');
+    const study = () => store.getState().studies.find((x) => x.id === ${js(id)});
+    const before = JSON.stringify(study().flags);
+    store.setState({ toast: '' });
+    const running = ${startCall};
+    const during = { refusal: flags.flagsRefusal(), busy: store.getState().flagsBusy };
+    const button = document.querySelector('[data-find-key="flag-selected"]');
+    during.button = button ? { disabled: button.disabled, title: button.title } : null;
+    const cell = document.querySelector('[data-find-key="flags-${id}"]');
+    during.cellTitle = cell ? cell.title : null;
+    store.setState({ toast: '' });
+    if (cell) cell.click();
+    during.cellOpened = Boolean(document.querySelector('[data-find-key="flags-${id}-input"]'));
+    during.cellToast = store.getState().toast;
+    store.setState({ toast: '' });
+    const set = await flags.setStudyFlags([{ id: ${js(id)}, flags: ['must not land'] }]);
+    during.set = { changed: set.changed, toast: store.getState().toast, unchanged: JSON.stringify(study().flags) === before };
+    await running;
+    during.busyAfter = store.getState().flagsBusy;
+    return during;
+  })()`);
+}
+
+const busyNow = () => ev(`import('./renderer/store.js').then((m) => m.getState().flagsBusy)`);
+
+// The Flag button and a FLAGS cell once an operation has ended: the button enabled with an empty title (a row ticked),
+// a click on the cell opening its editor, Escape closing it again.
+async function lockReleased(id) {
+  return ev(`(async () => {
+    const button = document.querySelector('[data-find-key="flag-selected"]');
+    const out = { button: button ? { disabled: button.disabled, title: button.title } : null };
+    const cell = document.querySelector('[data-find-key="flags-${id}"]');
+    out.cellTitle = cell ? cell.title : null;
+    if (cell) cell.click();
+    out.cellOpened = Boolean(document.querySelector('[data-find-key="flags-${id}-input"]'));
+    const input = document.querySelector('[data-find-key="flags-${id}-input"]');
+    if (input) input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await new Promise((r) => setTimeout(r, 50));
+    out.closed = !document.querySelector('[data-find-key="flags-${id}-input"]');
+    return out;
+  })()`);
+}
+
 
 // The bundle folder's manifest from disk, its rows in manifest order and by source id.
 function readBundleFolder(bundle) {
@@ -329,6 +401,18 @@ async function phaseA() {
   check('a. Mark reviewed (.analysis-review) stamps reviewedAt on SP-9400, its record unchanged and nothing toasted',
     reviewReady && reviewed && marked.pressed === 'true' && marked.labelFile === SEG_RECORD && (await toasts()).length === 0, { marked, toasts: await toasts() });
 
+  // (2026-11-16, study flags) Flags on both films, set through the app's own path. SP-9400 has a record: only its `flags`
+  // are rewritten (saved_at untouched); SP-9401 has none and none is created.
+  const savedAtBefore = savedAtLine(rawRecord(SEG_RECORD));
+  const setA = await setFlags([{ id: SEG, flags: A_SEG_FLAGS }, { id: UNSEG, flags: A_UNSEG_FLAGS }]);
+  const recordFlagged = await untilNode(() => js(readRecord(SEG_RECORD).flags) === js(A_SEG_FLAGS));
+  const labelsAfterFlags = fs.readdirSync(LABELS).sort();
+  check("a. (flags) setStudyFlags puts the flags on both studies and rewrites SP-9400's record flags, saved_at byte-identical; SP-9401 gets no record",
+    js([...setA.changed].sort()) === js([SEG, UNSEG]) && js(setA.failed) === '[]' && js(await flagsOfStudy(SEG)) === js(A_SEG_FLAGS) && js(await flagsOfStudy(UNSEG)) === js(A_UNSEG_FLAGS)
+      && recordFlagged && savedAtLine(rawRecord(SEG_RECORD)) === savedAtBefore && js(withoutFlags(readRecord(SEG_RECORD))) === js(withoutFlags(recordA))
+      && js(labelsAfterFlags) === js([SEG_RECORD]) && (await studyOf(UNSEG))?.labelFile === null,
+    { setA, flags: readRecord(SEG_RECORD).flags, savedAt: [savedAtBefore, savedAtLine(rawRecord(SEG_RECORD))], labels: labelsAfterFlags });
+
   // Export all into A's bundle parent.
   const exported = await exportAll(OUT_A);
   const bundle = exported.bundle;
@@ -364,6 +448,11 @@ async function phaseA() {
   check(`a. SP-9400's folder has prediction.json (its sidecar) and ${SEG_RECORD} with comment "${FROM_A}"; the manifest names both`,
     segEntry?.prediction === 'prediction.json' && sidecar?.prediction_id === PREDICTION_ID && segEntry?.label === SEG_RECORD && bundled?.comment === FROM_A,
     { prediction: segEntry?.prediction, label: segEntry?.label, sidecarId: sidecar?.prediction_id ?? sidecar?.error, comment: bundled?.comment ?? bundled?.error });
+  // (2026-11-16, study flags spec 4.7) The flags travel: each study.json carries them, and so does SP-9400's bundled record.
+  const studyJsonOf = (id) => { try { return readJson(path.join(bundle, read.bySource[id].dir, 'study.json')); } catch (error) { return { error: error.message }; } };
+  check("a. (flags) each exported study.json carries its flags, in order, and SP-9400's bundled record carries its own",
+    js(studyJsonOf(SEG).flags) === js(A_SEG_FLAGS) && js(studyJsonOf(UNSEG).flags) === js(A_UNSEG_FLAGS) && js(bundled?.flags) === js(A_SEG_FLAGS),
+    { seg: studyJsonOf(SEG).flags, unseg: studyJsonOf(UNSEG).flags, record: bundled?.flags });
   const unsegEntry = read?.bySource?.[UNSEG];
   check("a. the manifest's prediction and label are null for SP-9401", unsegEntry?.prediction === null && unsegEntry?.label === null,
     unsegEntry && { prediction: unsegEntry.prediction, label: unsegEntry.label });
@@ -372,9 +461,10 @@ async function phaseA() {
   const persisted = await untilNode(() => {
     const stored = readJson(path.join(USER_DATA, 'studies.json')).studies ?? [];
     const s = stored.find((x) => x.id === SEG);
-    return s?.labelFile === SEG_RECORD && s.labelComment === FROM_A && typeof s.reviewedAt === 'string' && stored.some((x) => x.id === UNSEG);
+    return s?.labelFile === SEG_RECORD && s.labelComment === FROM_A && typeof s.reviewedAt === 'string' && stored.some((x) => x.id === UNSEG)
+      && js(s.flags) === js(A_SEG_FLAGS) && js(stored.find((x) => x.id === UNSEG).flags) === js(A_UNSEG_FLAGS);
   });
-  check("a. profile A's studies.json holds SP-9400 (its record, comment and review mark) and SP-9401 for phase c", persisted, null);
+  check("a. profile A's studies.json holds SP-9400 (its record, comment, review mark and flags) and SP-9401 (its flags) for phase c", persisted, null);
 
   fs.mkdirSync(OUT, { recursive: true });
   fs.writeFileSync(PATH_A, bundle);
@@ -420,6 +510,13 @@ async function phaseB() {
       && [seg, unseg].every((s) => isInside(s.filePath, bundle) && fs.existsSync(s.filePath)),
     { real, rows, seg: seg && { id: seg.id, filePath: seg.filePath }, unseg: unseg && { id: unseg.id, filePath: unseg.filePath } });
   if (!seg || !unseg) return;
+  // (2026-11-16, study flags) The import carried the flags: onto both studies, and into SP-9400's placed record. With no
+  // film to flag, the prompt and the toast above are the old texts (nothing named "to flag" or "flagged").
+  let importedRecord = null;
+  try { importedRecord = readRecord(seg.labelFile); } catch (error) { importedRecord = { error: error.message }; }
+  check("b. (flags) the imported studies hold A's flags, and the placed record holds the segmented film's",
+    js(seg.flags) === js(A_SEG_FLAGS) && js(unseg.flags) === js(A_UNSEG_FLAGS) && js(importedRecord?.flags) === js(A_SEG_FLAGS),
+    { seg: seg.flags, unseg: unseg.flags, record: importedRecord?.flags ?? importedRecord?.error });
   const badge = await text(`${row(seg.id)} .badge`);
   check(`b. the segmented film's row reads Reviewed and its labelComment is "${FROM_A}"`, badge === 'Reviewed' && seg.labelComment === FROM_A,
     { badge, labelComment: seg.labelComment, reviewedAt: seg.reviewedAt });
@@ -448,6 +545,16 @@ async function phaseB() {
   check(`b. importBundleFrom again toasts "${nothing}" and shows no prompt`,
     js(again.toasts) === js([nothing]) && again.prompt === null && !(await present(PROMPT)), again);
 
+  // (2026-11-16, study flags) B gives its copies other flags: the segmented film's respelled, one dropped and one added,
+  // the other film one more. Its record's flags follow with saved_at untouched; Save edits below writes them again.
+  const importedAt = savedAtLine(rawRecord(seg.labelFile));
+  await setFlags([{ id: seg.id, flags: B_SEG_FLAGS }, { id: unseg.id, flags: B_UNSEG_FLAGS }]);
+  await untilNode(() => js(readRecord(seg.labelFile).flags) === js(B_SEG_FLAGS));
+  check("b. (flags) B's own flag changes reach the studies and the segmented film's record, saved_at byte-identical",
+    js(await flagsOfStudy(seg.id)) === js(B_SEG_FLAGS) && js(await flagsOfStudy(unseg.id)) === js(B_UNSEG_FLAGS)
+      && js(readRecord(seg.labelFile).flags) === js(B_SEG_FLAGS) && savedAtLine(rawRecord(seg.labelFile)) === importedAt,
+    { seg: await flagsOfStudy(seg.id), record: readRecord(seg.labelFile).flags, savedAt: [importedAt, savedAtLine(rawRecord(seg.labelFile))] });
+
   // B's own edit: the comment `from B` through the level editor, on the imported record.
   check(`b. precondition: the segmented film opens again on its restored film`, await openFromRow(seg.id), null);
   const saved = await saveComment(seg.id, FROM_B);
@@ -471,6 +578,11 @@ async function phaseB() {
     const entry = readB.rows.find((r) => r.file_name === SEG_FILE);
     bundledB = readJson(path.join(exported.bundle, entry.dir, entry.label));
   } catch (error) { bundledB = { error: error.message }; }
+  const studyJsonB = (file) => { try { return readJson(path.join(exported.bundle, readB.rows.find((r) => r.file_name === file).dir, 'study.json')); } catch (error) { return { error: error.message }; } };
+  check("b. (flags) B's bundle carries B's flags in both study.json files and in the record Save edits wrote",
+    js(studyJsonB(SEG_FILE).flags) === js(B_SEG_FLAGS) && js(studyJsonB(UNSEG_FILE).flags) === js(B_UNSEG_FLAGS) && js(bundledB?.flags) === js(B_SEG_FLAGS)
+      && js(readRecord(edited.labelFile).flags) === js(B_SEG_FLAGS),
+    { seg: studyJsonB(SEG_FILE).flags, unseg: studyJsonB(UNSEG_FILE).flags, record: bundledB?.flags });
   check(`b. B's bundle holds both films and the segmented film's record with comment "${FROM_B}"`,
     readB?.rows?.length === 2 && readB.rows.every((r) => typeof r.film_sha256 === 'string') && bundledB?.comment === FROM_B,
     { rows: readB?.rows?.map((r) => ({ file_name: r.file_name, film_sha256: r.film_sha256, label: r.label })), comment: bundledB?.comment ?? bundledB?.error });
@@ -478,6 +590,25 @@ async function phaseB() {
   fs.mkdirSync(OUT, { recursive: true });
   fs.writeFileSync(PATH_B, exported.bundle);
   check('b. the bundle\'s path is written to tools/smoke/out/bundle-path-b.txt for phase c', fs.readFileSync(PATH_B, 'utf8') === exported.bundle, exported.bundle);
+
+  // (2026-11-16, ruling 18; the final review) An imported flag takes the library's spelling, for a film the import ADDS.
+  // B's bundle for phase c is already written, so this changes nothing phase c reads. The unsegmented film leaves B's
+  // library (it has no sidecar and no record, so only the study goes) and the segmented one is given `UNSEG TAG`, B's
+  // spelling of A's `unseg tag`; A's bundle imported again then adds the unsegmented film back, with the library's
+  // spelling, and flags the segmented one with A's `olif outcomes` (local order and spelling first).
+  await findTab();
+  await setFlags([{ id: seg.id, flags: [...B_SEG_FLAGS, 'UNSEG TAG'] }]);
+  await ev(`import('./renderer/store.js').then((m) => { m.setState((s) => ({ studies: s.studies.filter((x) => x.id !== ${js(unseg.id)}) })); return true; })`);
+  const readd = await importFrom(bundle);
+  check(`b. (ruling 18) with the unsegmented film gone, A's bundle again is offered as "${promptText(bundle, 1, 0, 0, 1)}"`, readd.prompt === promptText(bundle, 1, 0, 0, 1), readd);
+  const readdToast = await confirm();
+  const readded = await studyOf(UNSEG_FILE);
+  const segNow = await studyOf(seg.id);
+  check('b. (ruling 18) the film the import adds takes the library\'s spelling "UNSEG TAG", not the bundle\'s "unseg tag"',
+    readdToast.length === 1 && readdToast[0].startsWith('Imported 1 study, updated 0, flagged 1') && js(readded?.flags) === js(['UNSEG TAG']),
+    { readdToast, flags: readded?.flags });
+  check('b. (ruling 18) and the film it flags keeps its own spelling and order, the new flag after them',
+    js(segNow?.flags) === js([...B_SEG_FLAGS, 'UNSEG TAG', 'olif outcomes']), segNow?.flags);
 }
 
 // ---------------------------------------------------------------------------
@@ -488,8 +619,9 @@ async function phaseC() {
   await installHelpers();
   const start = await studyOf(SEG);
   const unsegStart = await studyOf(UNSEG);
-  check(`c. precondition: profile A (${USER_DATA}) reloads SP-9400 (${SEG_RECORD}, "${FROM_A}", reviewed) and SP-9401 from phase a`,
-    start?.labelFile === SEG_RECORD && start.labelComment === FROM_A && typeof start.reviewedAt === 'string' && unsegStart?.labelFile === null,
+  check(`c. precondition: profile A (${USER_DATA}) reloads SP-9400 (${SEG_RECORD}, "${FROM_A}", reviewed, A's flags) and SP-9401 (A's flags) from phase a`,
+    start?.labelFile === SEG_RECORD && start.labelComment === FROM_A && typeof start.reviewedAt === 'string' && unsegStart?.labelFile === null
+      && js(start.flags) === js(A_SEG_FLAGS) && js(unsegStart.flags) === js(A_UNSEG_FLAGS),
     { seg: start && { labelFile: start.labelFile, labelComment: start.labelComment, reviewedAt: start.reviewedAt }, unseg: unsegStart && { labelFile: unsegStart.labelFile } });
   const bundle = fs.existsSync(PATH_B) ? fs.readFileSync(PATH_B, 'utf8').trim() : null;
   check("c. precondition: phase b's bundle (out/bundle-path-b.txt) is on disk with its manifest",
@@ -497,13 +629,15 @@ async function phaseC() {
   if (!bundle || !start) return;
 
   const offered = await importFrom(bundle);
-  check(`c. importBundleFrom B's bundle: the prompt reads "${promptText(bundle, 0, 1, 1)}"`, offered.prompt === promptText(bundle, 0, 1, 1), offered);
+  // (2026-11-16, study flags) SP-9401 used to be a skip (no record either side); B's copy has a flag A lacks, so it is now a
+  // fourth outcome, "to flag", and the film is not among the skipped.
+  check(`c. importBundleFrom B's bundle: the prompt reads "${promptText(bundle, 0, 1, 0, 1)}" (one update, one to flag, none skipped)`, offered.prompt === promptText(bundle, 0, 1, 0, 1), offered);
   check('c. the prompt has the focus on its Cancel ([data-find-key="import-cancel"])', offered.focus === 'import-cancel', offered.focus);
 
   // SP-9401's record as it stands, to tell "untouched" by reference: applyImport keeps a study the plan leaves alone.
   await ev(`(() => { window.__bundle.unsegBefore = window.__bundle.study(${js(UNSEG)}); return true; })()`);
   const confirmed = await confirm();
-  const expected = `Imported 0 studies, updated 1, skipped 1 (already in the library: ${UNSEG_FILE})`;
+  const expected = 'Imported 0 studies, updated 1, flagged 1, skipped 0';
   check(`c. confirmImport toasts "${expected}"`, js(confirmed) === js([expected]), confirmed);
 
   const seg = await studyOf(SEG);
@@ -520,8 +654,206 @@ async function phaseC() {
   check('c. SP-9400 stays reviewed and the sidecar under its id still matches it (predictionMatchesStudy)', typeof seg?.reviewedAt === 'string' && sidecar === true, { reviewedAt: seg?.reviewedAt, sidecar });
   const untouched = await ev(`(() => { const s = window.__bundle.study(${js(UNSEG)}); return { same: s === window.__bundle.unsegBefore, labelFile: s ? s.labelFile : 'missing' }; })()`);
   const real = await realIds();
-  check('c. SP-9401 is untouched (the same record, labelFile null) and the library still holds exactly the two films',
-    untouched.same === true && untouched.labelFile === null && js([...real].sort()) === js([SEG, UNSEG]), { untouched, real });
+  // (2026-11-16, study flags) SP-9401 is no longer the same record by reference: it gained B's flag. It is the same in
+  // every other field, still has no label record, and none was created.
+  const unsegNow = await studyOf(UNSEG);
+  check('c. SP-9401 differs from before only in its flags (labelFile still null, no record created) and the library still holds exactly the two films',
+    untouched.labelFile === null && js(withoutFlags(unsegNow)) === js(withoutFlags(unsegStart)) && js([...real].sort()) === js([SEG, UNSEG])
+      && !fs.readdirSync(LABELS).some((name) => name.includes('unsegmented')),
+    { untouched, real, labels: fs.readdirSync(LABELS) });
+
+  // --- flags on import (spec 4.7): the merge, the update, the record.
+  check("c. (flags) the merge is local order and spelling first, never removes a local flag, then the bundle's new ones",
+    js(seg?.flags) === js(MERGED_SEG_FLAGS) && js(unsegNow?.flags) === js(MERGED_UNSEG_FLAGS), { seg: seg?.flags, unseg: unsegNow?.flags });
+  let bundledSeg = null;
+  try {
+    const manifest = readBundleFolder(bundle);
+    const entry = manifest.rows.find((r) => r.file_name === SEG_FILE);
+    bundledSeg = readJson(path.join(bundle, entry.dir, entry.label));
+  } catch (error) { bundledSeg = { error: error.message }; }
+  check("c. (flags) the update replaced SP-9400's record with the bundle's (its saved_at), and the record's flags now equal the merged list on the study",
+    Boolean(bundledSeg?.saved_at) && record?.saved_at === bundledSeg.saved_at && js(record?.flags) === js(MERGED_SEG_FLAGS) && js(record?.flags) === js(seg?.flags)
+      && js(withoutFlags(record)) === js(withoutFlags(bundledSeg)),
+    { savedAt: [record?.saved_at, bundledSeg?.saved_at], record: record?.flags, bundle: bundledSeg?.flags, study: seg?.flags });
+  const persistedC = await untilNode(() => {
+    const stored = readJson(path.join(USER_DATA, 'studies.json')).studies ?? [];
+    return js(stored.find((x) => x.id === SEG)?.flags) === js(MERGED_SEG_FLAGS) && js(stored.find((x) => x.id === UNSEG)?.flags) === js(MERGED_UNSEG_FLAGS);
+  });
+  check('c. (flags) studies.json holds the merged flags', persistedC, null);
+
+  // --- a bundle whose only effect is flags (nothing to add or update): export A as it is now, then give A's films other
+  // flags (SP-9400 loses one and gains one, SP-9401 respelled), so the bundle's films are "already in the library" and
+  // only their flags differ.
+  await findTab();
+  await setStore(`{ paramSelected: [] }`);
+  const exportedC = await exportAll(OUT_A);
+  check('c. Export all from A (the merged library) toasts the bundle path', Boolean(exportedC.toast) && fs.existsSync(exportedC.bundle ?? ''), exportedC.seen);
+  if (!exportedC.bundle) return;
+  const LOCAL_SEG = ['Hardware', 'local only'];
+  const LOCAL_UNSEG = ['UNSEG TAG'];
+  // (2026-11-16, the final review, I1) The flag change and the import start in the same turn: the import takes its lock and
+  // waits for the record write the change set going (recordWritesSettled) before it reads the local records for its plan.
+  // The record is read before the change (its flags are compared apart from every other field).
+  const segRawBefore = rawRecord(SEG_RECORD);
+  const segRecordBefore = readRecord(SEG_RECORD);
+  const sidecarFile = path.join(PREDICTIONS, `${SEG}.json`);
+  const sidecarBefore = fs.readFileSync(sidecarFile);
+  const labelsBefore = fs.readdirSync(LABELS).sort();
+  await findTab();
+  await clearToasts();
+  const raced = await ev(`(async () => {
+    const flags = await import('./renderer/study-flags.js');
+    const screen = await import('./renderer/screens/studies.js');
+    const lvl = await import('./renderer/level-editor.js');
+    const setting = flags.setStudyFlags(${js([{ id: SEG, flags: LOCAL_SEG }, { id: UNSEG, flags: LOCAL_UNSEG }])});
+    let settled = false;
+    lvl.recordWritesSettled().then(() => { settled = true; });
+    const importing = screen.importBundleFrom(${js(exportedC.bundle)});
+    const busyAtStart = (await import('./renderer/store.js')).getState().flagsBusy;
+    await importing;
+    const settledBeforeThePrompt = settled;
+    const set = await setting;
+    return { changed: set.changed, busyAtStart, settledBeforeThePrompt };
+  })()`);
+  const flagOnly = { prompt: await text(PROMPT_TEXT), focus: await focusedKey(), toasts: await toasts() };
+  check('c. (I1) a flag change and an import started in the same turn: the record write ends before the import has its plan, and the record holds the new flags',
+    js(raced.changed) === js([SEG, UNSEG]) && raced.busyAtStart === 'import' && raced.settledBeforeThePrompt === true && js(readRecord(SEG_RECORD).flags) === js(LOCAL_SEG), { raced, record: readRecord(SEG_RECORD).flags });
+  check(`c. (flags) a bundle with nothing to add or update is offered: "${promptText(exportedC.bundle, 0, 0, 0, 2)}"`,
+    flagOnly.prompt === promptText(exportedC.bundle, 0, 0, 0, 2) && flagOnly.focus === 'import-cancel', flagOnly);
+  const flagToast = await confirm();
+  check('c. (flags) confirming toasts "Imported 0 studies, updated 0, flagged 2, skipped 0" and nothing else (no error, no record-failure clause)',
+    js(flagToast) === js(['Imported 0 studies, updated 0, flagged 2, skipped 0']), flagToast);
+  // Local first: SP-9400 had Hardware, local only; the bundle adds olif outcomes and b only. SP-9401 keeps its local
+  // spelling of the same flag and gains b extra.
+  const segFlagged = await studyOf(SEG);
+  const unsegFlagged = await studyOf(UNSEG);
+  check("c. (flags) the flags merged: local order and spelling first, no local flag removed, the bundle's new ones after",
+    js(segFlagged?.flags) === js(['Hardware', 'local only', 'olif outcomes', 'b only']) && js(unsegFlagged?.flags) === js(['UNSEG TAG', 'b extra']),
+    { seg: segFlagged?.flags, unseg: unsegFlagged?.flags });
+  const segRawAfter = rawRecord(SEG_RECORD);
+  const segRecordAfter = readRecord(SEG_RECORD);
+  check("c. (flags) SP-9400's record: flags equal the study's, saved_at byte-identical, every other field equal",
+    js(segRecordAfter.flags) === js(segFlagged?.flags) && savedAtLine(segRawAfter) === savedAtLine(segRawBefore) && Boolean(savedAtLine(segRawAfter))
+      && js(withoutFlags(segRecordAfter)) === js(withoutFlags(segRecordBefore)),
+    { flags: segRecordAfter.flags, savedAt: [savedAtLine(segRawBefore), savedAtLine(segRawAfter)] });
+  check('c. (flags) a flags-only import placed nothing: the sidecar is byte-identical, no label record was added for SP-9401, the labels folder holds the same files',
+    Buffer.compare(sidecarBefore, fs.readFileSync(sidecarFile)) === 0 && (await studyOf(UNSEG))?.labelFile === null && js(fs.readdirSync(LABELS).sort()) === js(labelsBefore),
+    { labels: fs.readdirSync(LABELS) });
+  const againC = await importFrom(exportedC.bundle);
+  check('c. (flags) the same bundle again is Nothing to import (the flags are in the library now)',
+    againC.toasts.length === 1 && againC.toasts[0].startsWith("Nothing to import: already in the library: ") && js(againC.toasts[0].slice("Nothing to import: already in the library: ".length).split(", ").sort()) === js([SEG_FILE, UNSEG_FILE].sort()) && againC.prompt === null, againC);
+
+  // --- the lock. A row is ticked so the Flag button is enabled when nothing holds it; each operation is started and the
+  // lock read in the same turn (see lockProbe). Idle first, so a disabled button below means the lock and nothing else.
+  await findTab();
+  await setStore(`{ paramSelected: [${js(SEG)}] }`);
+  const idle = await lockReleased(UNSEG);
+  check('c. (flags) idle: the Flag button is enabled with no title, and a FLAGS cell opens its editor and Escape closes it',
+    idle.button?.disabled === false && idle.button?.title === '' && idle.cellOpened === true && idle.closed === true, idle);
+  const readingDuring = await lockProbe(`m.importBundleFrom(${js(exportedC.bundle)})`, UNSEG);
+  check(`c. (flags) while an import is reading: the refusal is "${WAIT_IMPORT}", the Flag button is disabled with that title, a FLAGS cell does not open and toasts it, and setStudyFlags changes nothing and toasts it`,
+    readingDuring.refusal === WAIT_IMPORT && readingDuring.button?.disabled === true && readingDuring.button?.title === WAIT_IMPORT
+      && readingDuring.cellTitle === WAIT_IMPORT && readingDuring.cellOpened === false && readingDuring.cellToast === WAIT_IMPORT
+      && readingDuring.set?.changed.length === 0 && readingDuring.set?.toast === WAIT_IMPORT && readingDuring.set?.unchanged === true,
+    readingDuring);
+  check("c. (flags) the store's flagsBusy is 'import' while the import reads and null once it ends (a nothing-to-import result)",
+    readingDuring.busy === 'import' && readingDuring.busyAfter === null && (await busyNow()) === null, { during: readingDuring.busy, after: readingDuring.busyAfter });
+  const afterReading = await lockReleased(UNSEG);
+  check('c. (flags) after the reading import ends (nothing to import): the Flag button is enabled again and a FLAGS cell opens',
+    afterReading.button?.disabled === false && afterReading.button?.title === '' && afterReading.cellOpened === true && afterReading.closed === true, afterReading);
+
+  // Placing: a plan of flags alone has no files to place, but the confirm still holds the lock while it awaits the record
+  // sync. Give SP-9400 fewer flags so the bundle has something to merge, offer it, then confirm.
+  await setFlags([{ id: SEG, flags: ['Hardware'] }]);
+  const offeredAgain = await importFrom(exportedC.bundle);
+  check('c. (flags) a flags-only plan is offered again once local flags are gone: "1 to flag", the other film (nothing to gain) still skipped', offeredAgain.prompt === promptText(exportedC.bundle, 0, 0, 1, 1), offeredAgain);
+  await setStore(`{ paramSelected: [${js(SEG)}] }`);
+  const placingDuring = await lockProbe('m.confirmImport()', UNSEG);
+  check(`c. (flags) while an import is placing: the refusal is "${WAIT_IMPORT}", the Flag button is disabled with that title, a FLAGS cell does not open and toasts it, and setStudyFlags changes nothing`,
+    placingDuring.refusal === WAIT_IMPORT && placingDuring.button?.disabled === true && placingDuring.button?.title === WAIT_IMPORT
+      && placingDuring.cellOpened === false && placingDuring.cellToast === WAIT_IMPORT && placingDuring.set?.changed.length === 0 && placingDuring.set?.unchanged === true,
+    placingDuring);
+  check("c. (flags) flagsBusy is 'import' while the confirmed import places and null once it ends",
+    placingDuring.busy === 'import' && placingDuring.busyAfter === null && (await busyNow()) === null, { during: placingDuring.busy, after: placingDuring.busyAfter });
+  const afterPlacing = await lockReleased(UNSEG);
+  check('c. (flags) after the placing import ends: the flags merged back, the Flag button is enabled and a FLAGS cell opens',
+    afterPlacing.button?.disabled === false && afterPlacing.cellOpened === true && afterPlacing.closed === true
+      && js(await flagsOfStudy(SEG)) === js(['Hardware', 'olif outcomes', 'b only']),
+    { afterPlacing, seg: await flagsOfStudy(SEG) });
+
+  await setStore(`{ paramSelected: [${js(SEG)}] }`);
+  const exportingDuring = await lockProbe(`m.exportBundleTo(${js(OUT_A)})`, UNSEG);
+  check(`c. (flags) while an export is writing: the refusal is "${WAIT_EXPORT}", the Flag button is disabled with that title, a FLAGS cell does not open and toasts it, and setStudyFlags changes nothing`,
+    exportingDuring.refusal === WAIT_EXPORT && exportingDuring.button?.disabled === true && exportingDuring.button?.title === WAIT_EXPORT
+      && exportingDuring.cellTitle === WAIT_EXPORT && exportingDuring.cellOpened === false && exportingDuring.cellToast === WAIT_EXPORT
+      && exportingDuring.set?.changed.length === 0 && exportingDuring.set?.toast === WAIT_EXPORT && exportingDuring.set?.unchanged === true,
+    exportingDuring);
+  check("c. (flags) flagsBusy is 'export' while the export writes and null once it ends",
+    exportingDuring.busy === 'export' && exportingDuring.busyAfter === null && (await busyNow()) === null, { during: exportingDuring.busy, after: exportingDuring.busyAfter });
+  const afterExport = await lockReleased(UNSEG);
+  check('c. (flags) after the export ends: the Flag button is enabled again and a FLAGS cell opens',
+    afterExport.button?.disabled === false && afterExport.button?.title === '' && afterExport.cellOpened === true && afterExport.closed === true, afterExport);
+  const afterSet = await setFlags([{ id: UNSEG, flags: ['edit works again'] }]);
+  check('c. (flags) and a flag edit works again once both have ended', js(afterSet.changed) === js([UNSEG]) && js(await flagsOfStudy(UNSEG)) === js(['edit works again']), afterSet);
+
+  // The Analysis screen's + Add flag follows the same lock. Opened on SP-9401 while an export is in flight (the screen
+  // is opened in the same turn the export starts).
+  const addButton = () => ev(`(() => { const b = document.querySelector('[data-flags-key="analysis-flags-add"]'); return b ? { disabled: b.disabled, title: b.title } : null; })()`);
+  await setStore(`{ screen: 'analysis', openId: ${js(UNSEG)} }`);
+  const analysisIdle = await until(`Boolean(document.querySelector('[data-flags-key="analysis-flags-add"]'))`, 5000);
+  const addIdle = await addButton();
+  await findTab();
+  const analysisDuring = await ev(`(async () => {
+    const screen = await import('./renderer/screens/studies.js');
+    const store = await import('./renderer/store.js');
+    const running = screen.exportBundleTo(${js(OUT_A)});
+    store.setState({ screen: 'analysis', openId: ${js(UNSEG)} });
+    const b = document.querySelector('[data-flags-key="analysis-flags-add"]');
+    const during = b ? { disabled: b.disabled, title: b.title } : null;
+    await running;
+    return during;
+  })()`);
+  const addAfter = await addButton();
+  await setStore(`{ paramSelected: [] }`);
+  const addAfterRepaint = await addButton();
+  check(`c. (flags) the Analysis screen's + Add flag is enabled when idle and disabled with "${WAIT_EXPORT}" when the screen opens during an export`,
+    analysisIdle && addIdle?.disabled === false && analysisDuring?.disabled === true && analysisDuring?.title === WAIT_EXPORT, { addIdle, analysisDuring });
+  check("c. (flags) and the Analysis screen's + Add flag is enabled again after that export ends",
+    addAfter?.disabled === false, { afterEnd: addAfter, afterTheNextStoreChange: addAfterRepaint });
+  // flagsBusy through a cancelled prompt: the import reads (busy), the prompt waits (not busy), Cancel leaves it null.
+  await setFlags([{ id: SEG, flags: ['Hardware'] }]);
+  await findTab();
+  const prompted = await importFrom(exportedC.bundle);
+  const busyAtPrompt = await busyNow();
+  await ev(`document.querySelector('[data-find-key="import-cancel"]')?.click()`);
+  await cdp.settle(150);
+  check('c. (flags) a prompt waiting for Import or Cancel holds no lock, and after Cancel flagsBusy is null and no prompt is left',
+    Boolean(prompted.prompt) && busyAtPrompt === null && (await busyNow()) === null && !(await present(PROMPT)), { prompted: Boolean(prompted.prompt), busyAtPrompt });
+  // The Analysis screen during an import: opened in the same turn the import starts, + Add flag is disabled with the import
+  // sentence and, once the import ends (nothing to import after the merge below), enabled again with no other store change.
+  const importAnalysis = await ev(`(async () => {
+    const screen = await import('./renderer/screens/studies.js');
+    const store = await import('./renderer/store.js');
+    const running = screen.importBundleFrom(${js(exportedC.bundle)});
+    store.setState({ screen: 'analysis', openId: ${js(UNSEG)} });
+    const b = document.querySelector('[data-flags-key="analysis-flags-add"]');
+    const during = { busy: store.getState().flagsBusy, button: b ? { disabled: b.disabled, title: b.title } : null };
+    await running;
+    const a = document.querySelector('[data-flags-key="analysis-flags-add"]');
+    during.after = { busy: store.getState().flagsBusy, button: a ? { disabled: a.disabled, title: a.title } : null };
+    return during;
+  })()`);
+  check(`c. (flags) the Analysis screen's + Add flag is disabled with "${WAIT_IMPORT}" while an import reads, and enabled again when it ends`,
+    importAnalysis.busy === 'import' && importAnalysis.button?.disabled === true && importAnalysis.button?.title === WAIT_IMPORT
+      && importAnalysis.after?.busy === null && importAnalysis.after?.button?.disabled === false, importAnalysis);
+  // Set through the store hook (the screens' reaction to the key itself, with no operation running).
+  await ev(`import('./renderer/store.js').then((m) => m.setState({ flagsBusy: 'import' }))`);
+  const hooked = await ev(`(() => { const b = document.querySelector('[data-flags-key="analysis-flags-add"]'); return b ? { disabled: b.disabled, title: b.title } : null; })()`);
+  await ev(`import('./renderer/store.js').then((m) => m.setState({ flagsBusy: null }))`);
+  const unhooked = await ev(`(() => { const b = document.querySelector('[data-flags-key="analysis-flags-add"]'); return b ? { disabled: b.disabled, title: b.title } : null; })()`);
+  check('c. (flags) setting flagsBusy in the store disables the Analysis + Add flag at once, and clearing it enables it again',
+    hooked?.disabled === true && hooked?.title === WAIT_IMPORT && unhooked?.disabled === false, { hooked, unhooked });
+  await setStore(`{ screen: 'studies', studiesTab: 'find', openId: null, paramSelected: [] }`);
 }
 
 // ---------------------------------------------------------------------------

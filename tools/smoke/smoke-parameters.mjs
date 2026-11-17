@@ -24,7 +24,8 @@ function check(name, ok, detail) {
 const WS_ROOT = 'C:\\smoke-fixture\\Fusion2025';
 // The injected records: one unsegmented hand-added film, and three segmented films under one
 // workspace root -- S001 Pre-op and Post-op (a pair) and S002 Pre-op (unpaired).
-const INJECTED = ['SP-9100', 'SP-9101', 'SP-9102', 'SP-9103'];
+// (2026-11-16, study flags) SP-9104..SP-9106 are injected by section 14 and removed by it; listed so the final cleanup clears them too.
+const INJECTED = ['SP-9100', 'SP-9101', 'SP-9102', 'SP-9103', 'SP-9104', 'SP-9105', 'SP-9106'];
 const RESET_FILTERS = '{ workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: "", pairedOnly: false, pairedWith: "__any__" }';
 const RESET = `{ query: "", studiesTab: "find", paramFilters: ${RESET_FILTERS}, paramSort: { key: "study", dir: "asc" }, paramLevels: false, paramSelected: [] }`;
 
@@ -40,9 +41,10 @@ const PAIRED_MEASURES = ['LL L1-S1', 'PI', 'PT', 'SS', 'PI-LL Mismatch', 'L1PA',
     ['anterior', 'middle', 'posterior'].map(position => `Disc height ${level} ${position} (mm)`)),
   ...['L1-L2', 'L2-L3', 'L3-L4', 'L4-L5', 'L5-S1'].flatMap(level =>
     ['lordosis', 'angulation'].map(kind => `Segmental ${kind} ${level} (deg)`))];
-const PAIRED_HEADER = ['Subject', 'Pre-op study', 'Post-op study', 'Pre-op view', 'Post-op view', 'Pre-op film date', 'Post-op film date',
+// (2026-11-16, study flags, Task 11) Each visit's flags follow the film-date columns: 'Pre-op flags', 'Post-op flags'.
+const PAIRED_HEADER = ['Subject', 'Pre-op study', 'Post-op study', 'Pre-op view', 'Post-op view', 'Pre-op film date', 'Post-op film date', 'Pre-op flags', 'Post-op flags',
   ...PAIRED_MEASURES.flatMap((m) => [`${m} Pre-op`, `${m} Post-op`, `Delta ${m} Post-op`])].join(',');
-const PAIRED_ROW = ['S001', 'smoke-seg-a', 'smoke-seg-b', 'Standing lateral', 'Standing lateral', '2025-03-02', '2025-09-14',
+const PAIRED_ROW = ['S001', 'smoke-seg-a', 'smoke-seg-b', 'Standing lateral', 'Standing lateral', '2025-03-02', '2025-09-14', '', '',
   '60', '45', '-15', '99.5', '50', '-49.5', '30', '15', '-15', '69.5', '35', '-34.5', '39.5', '5', '-34.5', '12', '', '',
   // 90 empties: 36 measures x 3 cells = 108, less the 18 literal cells above (six measures to L1PA); T4PA onward is all empty.
   ...Array(PAIRED_MEASURES.length * 3 - 18).fill('')].join(',');
@@ -378,6 +380,191 @@ try {
   // Back to the sort section 12 left, so section 10 sees exactly what it saw before this section.
   await cdp.setState('{ paramSort: { key: "PI", dir: "desc" } }');
   await cdp.settle(80);
+
+
+  // 14. (2026-11-16, study flags, Tasks 10 and 11; spec 4.5, 4.6; FL20, FL21, FL25) Flags on the Parameters tab and in both
+  // CSV exports. Films: the injected SP-9101 (S001 Pre-op), SP-9102 (S001 Post-op) and SP-9103 (S002 Pre-op), plus SP-9104
+  // (S001 Post-op, same day, noted: merges into SP-9102's visit), SP-9105 (S004 Pre-op) and SP-9106 (S004 `6 wk`), which
+  // give the paired file a third visit that S001 lacks and a Post-op that S004 lacks. The save dialog is the human's, so
+  // the exported text is built the way the buttons build it, through the page's own modules over the rows the grid shows
+  // (as section 13 does for the paired file); line 3 of a file is its header (two comment lines above it).
+  {
+    const errorsBefore14 = cdp.errors.length;
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const FLAG_RESET = `{ workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, flag: null, subject: "", pairedOnly: false, pairedWith: "__any__" }`;
+    const NEW = ['SP-9104', 'SP-9105', 'SP-9106'];
+    const real = (id, name, subject, timepoint, filmDate, extra = {}) => `{ id: '${id}', source: 'real', filePath: ${JSON.stringify(`${WS_ROOT}\\${timepoint.toLowerCase().replace(' ', '')}\\${name}.png`)}, fileName: '${name}.png', name: null, workspaceFolder: ${JSON.stringify(WS_ROOT)},
+      subjectId: '${subject}', timepoint: '${timepoint}', filmDate: '${filmDate}', addedAt: '2026-09-0${(Number(id.slice(-1)) % 8) + 1}T00:00:00.000Z', view: 'Standing lateral', thumbnail: null,
+      measurements: { PI: 40, PT: 10, SS: 30, LL: { 'L1-S1': 35 } }, geometry: null, qc: null, clinical: {}, ...${JSON.stringify(extra)} }`;
+    const putFlags = (map) => cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (Object.prototype.hasOwnProperty.call(${JSON.stringify(map)}, x.id) ? { ...x, flags: ${JSON.stringify(map)}[x.id] } : x)) })))`);
+    const injectNew = () => cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: [
+      ${real('SP-9104', 'smoke-seg-b2', 'S001', 'Post-op', '2025-09-14', { note: 'femoral heads' })},
+      ${real('SP-9105', 'smoke-seg-d', 'S004', 'Pre-op', '2025-04-01')},
+      ${real('SP-9106', 'smoke-seg-e', 'S004', '6 wk', '2025-05-13')},
+      ...s.studies.filter((x) => !${JSON.stringify(NEW)}.includes(x.id)) ] })))`);
+    const flagSel = () => cdp.evaluate(`(() => { const e = document.querySelector('[data-param-key="flag"]'); return e ? { value: e.value, options: [...e.options].map((o) => [o.value, o.textContent]), focused: document.activeElement === e, selected: e.options[e.selectedIndex]?.textContent ?? null } : null; })()`);
+    const chooseFlag = async (value) => {
+      await cdp.evaluate("document.querySelector('[data-param-key=\"flag\"]')?.focus()");
+      await choose('[data-param-key="flag"]', value);
+      await cdp.settle(120);
+    };
+    const exportButtons = () => cdp.evaluate(`(() => { const q = (k) => { const b = document.querySelector('[data-param-key="' + k + '"]'); return b ? { disabled: b.disabled, title: b.title, text: b.textContent } : null; }; return { csv: q('export'), paired: q('export-paired') }; })()`);
+    // The two files as the buttons would write them over the rows shown now (the selection, then the filters, as the screen does).
+    const files = () => cdp.evaluate(`Promise.all([import('./renderer/store.js'), import('./renderer/data/pairing.js'), import('./renderer/data/csv.js'), import('./renderer/data/parameters.js')]).then(([st, pr, csvm, pm]) => {
+      const s = st.getState();
+      const f = pm.normaliseFilters(s.paramFilters, s.studies);
+      const rows = pm.rowsToExport(pm.sortParameters(pm.filterParameters(s.studies, f), s.paramSort), s.paramSelected);
+      const p = pr.pairStudies(rows, { post: pr.postFromFilters(f) });
+      return { rows: rows.map((x) => x.id), csv: csvm.toCsv(rows), paired: p.subjects.length > 0 ? csvm.toPairedCsv(p) : null };
+    })`);
+    const parse = (fileText) => fileText.split('\r\n').filter((line, i, all) => !(i === all.length - 1 && line === '')).map((line) => line.split(','));
+
+    await cdp.setState(`{ screen: "studies", studiesTab: "parameters", paramFilters: ${FLAG_RESET}, paramSort: { key: "study", dir: "asc" }, paramSelected: [], query: "" }`);
+    await injectNew();
+    await putFlags({ 'SP-9101': ['Hardware', 'OLIF outcomes'], 'SP-9102': ['hardware', 'cement'], 'SP-9104': ['HARDWARE', 'Cement', 'extra'], 'SP-9103': [], 'SP-9105': [], 'SP-9106': [] });
+    await cdp.settle(250);
+
+    // 14.1 The grid: FLAGS last, joined with ", " and titled in full, an em dash when none, read only.
+    const grid1 = await cdp.evaluate(`(() => {
+      const heads = [...document.querySelectorAll('.param-table thead th')].map((h) => h.textContent.replace(/[\\u25B4\\u25BE]/g, '').trim());
+      const cell = (id) => { const c = document.querySelector('.param-row[data-study-id="' + id + '"] td:last-child'); return c ? { text: c.textContent, title: c.getAttribute('title'), role: c.getAttribute('role'), tab: c.getAttribute('tabindex'), inputs: c.querySelectorAll('input, button, [role="button"]').length } : null; };
+      return { heads, last: heads[heads.length - 1], a: cell('SP-9102'), b: cell('SP-9103'), c: cell('SP-9101') };
+    })()`);
+    check('14.1 FLAGS is the grid\'s last header', grid1.last === 'FLAGS' && grid1.heads.filter((h) => h === 'FLAGS').length === 1, grid1.heads);
+    check('14.1 a film with flags shows them joined with a comma and a space, the full text on the cell\'s title',
+      grid1.a && grid1.a.text === 'hardware, cement' && grid1.a.title === 'hardware, cement' && grid1.c.text === 'Hardware, OLIF outcomes' && grid1.c.title === 'Hardware, OLIF outcomes', grid1);
+    check('14.1 a film with none shows the em dash', grid1.b && grid1.b.text === '—', grid1.b);
+    const cellRect = await cdp.rect('.param-row[data-study-id="SP-9102"] td:last-child');
+    await cdp.click(cellRect.cx, cellRect.cy);
+    await cdp.settle(150);
+    const afterClick1 = await cdp.evaluate(`(() => { const c = document.querySelector('.param-row[data-study-id="SP-9102"] td:last-child'); return { inputs: c.querySelectorAll('input, button, textarea, select').length, role: c.getAttribute('role'), page: document.querySelectorAll('.flag-editor').length, screen: document.querySelector('.param-table') ? 'grid' : null }; })()`);
+    check('14.1 the cell is not editable: no button role, nothing opens on a click, no editor appears',
+      grid1.a.role === null && grid1.a.tab === null && grid1.a.inputs === 0 && afterClick1.inputs === 0 && afterClick1.page === 0 && afterClick1.screen === 'grid', { grid1: grid1.a, afterClick1 });
+
+    // 14.2 The dropdown.
+    let sel = await flagSel();
+    check('14.2 the options read All flags, then one per flag in use A to Z by spelling, then No flags',
+      sel && sel.options[0][0] === '' && sel.options[0][1] === 'All flags' && same(sel.options.slice(1, -1).map((o) => o[0]), ['cement', 'extra', 'hardware', 'olif outcomes'])
+      && sel.options.slice(1, -1).every(([v, label]) => label.toLowerCase() === v) && sel.options[sel.options.length - 1][1] === 'No flags', sel && sel.options);
+    await chooseFlag('hardware');
+    const hw = await rowIds();
+    sel = await flagSel();
+    check('14.2 choosing a flag narrows the grid to the films holding it, whatever their case', same([...hw].sort(), ['SP-9101', 'SP-9102', 'SP-9104']) && sel.value === 'hardware', { hw, sel: sel && sel.value });
+    check('14.2 and focus is back on the select after the rebuild', sel.focused === true, sel);
+    await chooseFlag('__no_flags__');
+    const none = await rowIds();
+    check('14.2 No flags shows the films with none (the segmented demos and the flagless real films)', none.includes('SP-9103') && none.includes('SP-9105') && !none.includes('SP-9102') && !none.includes('SP-9101') && none.length > 2, none);
+    await chooseFlag('');
+    const everyone = await rowIds();
+    check('14.2 All flags restores every row', everyone.length > none.length && ['SP-9101', 'SP-9102', 'SP-9103', 'SP-9104'].every((id) => everyone.includes(id)), everyone);
+
+    // 14.3 A kept choice (FL25): the last film loses the chosen flag.
+    await chooseFlag('extra');
+    check('14.3 choosing extra leaves the one film holding it', same(await rowIds(), ['SP-9104']), await rowIds());
+    await putFlags({ 'SP-9104': ['HARDWARE', 'Cement'] });
+    await cdp.settle(250);
+    sel = await flagSel();
+    const emptyText = await text('[data-param-key="empty"]');
+    const btn3 = await exportButtons();
+    check('14.3 with extra removed from its last film the select still shows extra and the grid is empty with the filtered copy',
+      sel.value === 'extra' && sel.selected === 'extra' && (await count('.param-row')) === 0 && emptyText === 'No studies match these filters.', { sel: sel.value, selected: sel.selected, emptyText });
+    check('14.3 and both export buttons are disabled with Nothing to export', btn3.csv?.disabled === true && btn3.paired?.disabled === true && btn3.csv.title === 'Nothing to export', btn3);
+    await putFlags({ 'SP-9103': ['extra'] });
+    await cdp.settle(250);
+    sel = await flagSel();
+    check('14.3 giving extra to a film brings it back without touching the select', same(await rowIds(), ['SP-9103']) && sel.value === 'extra', { rows: await rowIds(), value: sel.value });
+    await chooseFlag('');
+    await putFlags({ 'SP-9103': [] });
+
+    // 14.4 Options follow the library.
+    await putFlags({ 'SP-9105': ['brandnew'] });
+    await cdp.settle(250);
+    sel = await flagSel();
+    check('14.4 a flag added to a film adds its option', sel.options.some(([v]) => v === 'brandnew') && sel.value === '', sel.options);
+    await putFlags({ 'SP-9105': [] });
+    await cdp.settle(250);
+    sel = await flagSel();
+    check('14.4 a flag removed from its last film (not the chosen one) loses its option', !sel.options.some(([v]) => v === 'brandnew') && sel.value === '', sel.options);
+
+    // 14.5 Export CSV with a flag chosen writes only the films holding it.
+    await chooseFlag('hardware');
+    const f5 = await files();
+    const lines5 = parse(f5.csv);
+    const head5 = lines5[2];
+    const iNote = head5.indexOf('Note');
+    const body5 = lines5.slice(3);
+    const flagsByName = { 'smoke-seg-a': 'Hardware; OLIF outcomes', 'smoke-seg-b': 'hardware; cement', 'smoke-seg-b2': 'HARDWARE; Cement' };
+    check('14.5 line 3 is the header and Flags sits directly after Note', head5[0] === 'Study ID' && iNote > 0 && head5[iNote + 1] === 'Flags', head5.slice(0, 8));
+    check('14.5 only the three films holding hardware are written, each with its flags joined by "; "',
+      body5.length === 3 && body5.every((row) => flagsByName[row[0]] === row[iNote + 1]) && same(body5.map((r) => r[0]).sort(), Object.keys(flagsByName).sort()), body5.map((r) => [r[0], r[iNote + 1]]));
+    check('14.5 no cell and no header holds an SP- id', !/SP-\d/.test(f5.csv), f5.csv.split('\r\n').filter((l) => /SP-\d/.test(l)).slice(0, 2));
+    await chooseFlag('__no_flags__');
+    const f5b = await files();
+    const body5b = parse(f5b.csv).slice(3);
+    check('14.5 with No flags chosen every written row has an empty Flags cell', body5b.length > 0 && body5b.every((row) => row[parse(f5b.csv)[2].indexOf('Note') + 1] === ''), body5b.map((r) => r[0]));
+    await chooseFlag('');
+
+    // 14.6 The paired file. The merged visit's partner is given its flags in another order and case, so primary-first and no-repeats are both exercised.
+    await putFlags({ 'SP-9104': ['Cement', 'extra2', 'HARDWARE'] });
+    await cdp.settle(200);
+    const f6 = await files();
+    const lines6 = parse(f6.paired);
+    const head6 = lines6[2];
+    const dateCols = head6.map((h, i) => (/ film date$/.test(h) ? i : -1)).filter((i) => i >= 0);
+    const flagCols = head6.map((h, i) => (/ flags$/.test(h) ? i : -1)).filter((i) => i >= 0);
+    const visits6 = dateCols.map((i) => head6[i].replace(/ film date$/, ''));
+    check('14.6 the header has a "<visit> flags" column for each visit directly after the last film-date column',
+      visits6.length >= 3 && same(flagCols, dateCols.map((_, k) => dateCols[dateCols.length - 1] + 1 + k)) && same(flagCols.map((i) => head6[i]), visits6.map((v) => `${v} flags`)), { visits6, dateCols, flagCols });
+    const rowFor = (subject) => lines6.slice(3).find((r) => r[0] === subject);
+    const cellFor = (row, visit) => row[head6.indexOf(`${visit} flags`)];
+    const s001 = rowFor('S001');
+    const s004 = rowFor('S004');
+    check('14.6 a single-film visit lists its film\'s flags joined with "; "', Boolean(s001) && cellFor(s001, 'Pre-op') === 'Hardware; OLIF outcomes', s001 && cellFor(s001, 'Pre-op'));
+    check('14.6 a visit merged from two same-day films lists the primary film\'s flags first, without repeats of a different case',
+      Boolean(s001) && cellFor(s001, 'Post-op') === 'hardware; cement; extra2', s001 && cellFor(s001, 'Post-op'));
+    check('14.6 a visit with no film is empty (S001 has no 6 wk film, S004 no Post-op film)',
+      Boolean(s001) && Boolean(s004) && cellFor(s001, '6 wk') === '' && cellFor(s004, 'Post-op') === '' && cellFor(s004, '6 wk') === '', { s001, s004 });
+    check('14.6 no cell or header of the paired file holds an SP- id', !/SP-\d/.test(f6.paired), f6.paired.split('\r\n').filter((l) => /SP-\d/.test(l)).slice(0, 2));
+
+    // 14.7 No flag chosen: the same rows both exports always held.
+    const expectedRows = await store("s.studies.filter((x) => x.source === 'real' && x.measurements != null).map((x) => x.id).sort()");
+    const csvIds = (await files()).rows.filter((id) => !/^SP-00/.test(id)).sort();
+    const f7 = await files();
+    check('14.7 with no flag chosen Export CSV writes every real segmented film, one row each', same(csvIds, expectedRows) && parse(f7.csv).length - 3 === expectedRows.length, { csvIds, expectedRows, lines: parse(f7.csv).length });
+    check('14.7 and the paired file writes the subjects with a Pre-op film and a later visit (S001, S004), not S002',
+      same(lines6.slice(3).map((r) => r[0]).sort(), ['S001', 'S004']), lines6.slice(3).map((r) => r[0]));
+
+    // 14.8 The Find list's flag filter and the grid's are independent.
+    await clickKey('tab-find');
+    await cdp.settle(150);
+    await cdp.evaluate(`document.querySelector('[data-find-key="filter-flags"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })`);
+    const funnel8 = await cdp.rect('[data-find-key="filter-flags"]');
+    await cdp.click(funnel8.cx, funnel8.cy);
+    await cdp.settle(200);
+    const tickRect = await cdp.rect('label:has(> [data-find-key="filter-flags-cement"])');
+    if (tickRect) await cdp.click(tickRect.cx, tickRect.cy);
+    await cdp.settle(200);
+    const findFlags = (await cdp.state()).findFilters.flags;
+    await cdp.key('Escape');
+    await cdp.settle(100);
+    await clickKey('tab-parameters');
+    await cdp.settle(150);
+    sel = await flagSel();
+    s = await cdp.state();
+    check('14.8 a tick in the Find list\'s FLAGS menu leaves the Parameters select and filter alone',
+      same(findFlags, ['cement']) && sel.value === '' && s.paramFilters.flag === null && (await count('.param-row')) === everyone.length, { findFlags, select: sel.value, flag: s.paramFilters.flag });
+    await chooseFlag('hardware');
+    s = await cdp.state();
+    check('14.8 and choosing a flag in the Parameters select leaves the Find list\'s ticks as they were', same(s.findFilters.flags, ['cement']) && s.paramFilters.flag === 'hardware', { find: s.findFilters.flags, param: s.paramFilters.flag });
+    await chooseFlag('');
+    await cdp.setState(`{ findFilters: { subject: "", region: [], view: [], workspace: [], folder: [], status: [], flags: [], flagsMatch: "any" } }`);
+
+    // Tidy: the extra films go; the injected ones lose their flags.
+    await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.filter((x) => !${JSON.stringify(NEW)}.includes(x.id)).map((x) => (x.flags && x.flags.length ? { ...x, flags: [] } : x)) })))`);
+    await cdp.setState(`{ paramFilters: ${RESET_FILTERS}, paramSort: { key: "PI", dir: "desc" }, paramSelected: [] }`);
+    await cdp.settle(100);
+    check('14.9 no console errors or exceptions in section 14', cdp.errors.length === errorsBefore14, cdp.errors.slice(errorsBefore14));
+  }
 
   // 10. Deleting a ticked study prunes its tick. data/persistence.js's nextId is max+1 over the
   // surviving records, so deleting the highest-numbered study puts its id straight back in

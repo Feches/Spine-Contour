@@ -10,16 +10,17 @@ test('getState returns the documented initial shape', () => {
   assert.equal(state.navCollapsed, false);
   assert.equal(state.settingsOpen, false);
   assert.deepEqual(state.studies, []);
+  assert.equal(state.flagsBusy, null);
   assert.equal(state.query, '');
   assert.equal(state.studiesTab, 'find');
   assert.deepEqual(state.paramFilters, {
-    workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: '__any__',
+    workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: '__any__', flag: null,
   });
   assert.deepEqual(state.paramSort, { key: 'study', dir: 'asc' });
   assert.equal(state.paramLevels, false);
   assert.deepEqual(state.paramSelected, []);
   assert.deepEqual(state.findSort, { key: 'date', dir: 'desc' });
-  assert.deepEqual(state.findFilters, { subject: '', region: [], view: [], workspace: [], folder: [], status: [] });
+  assert.deepEqual(state.findFilters, { subject: '', region: [], view: [], workspace: [], folder: [], status: [], flags: [], flagsMatch: 'any' });
   assert.equal(state.openId, null);
   assert.equal(state.compareId, null);
   assert.equal(state.tab, 'meas');

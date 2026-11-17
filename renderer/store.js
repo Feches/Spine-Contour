@@ -10,21 +10,26 @@ let state = {
   // a complete pair, including when the saver runs or the app closes mid-edit.
   measurementDrafts: {},
   deletingStudies: false,
+  // (2026-11-16, study flags spec 4.3) 'import' or 'export' while a bundle import or export runs, else null. Flag edits
+  // are refused meanwhile (flagsRefusal in study-flags.js). Store state, as deletingStudies is, so the Find list and the
+  // Analysis screen's flags block repaint when it clears and never keep a stale "Wait for the export" button.
+  flagsBusy: null,
   query: '',
   // The Studies screen's second tab (pre-op/post-op spec §10). Which tab is up, and the
   // Parameters tab's filters, sort and lordosis-level toggle. Store state rather than screen
   // scope so coming back from Analysis lands on the tab, filters and sort the user left. Each
   // is replaced wholesale on change -- the screen's gate compares by reference.
   studiesTab: 'find',
-  paramFilters: { workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: '__any__' },
+  paramFilters: { workspace: null, folder: null, segmentedOnly: true, timepoint: null, view: null, subject: '', pairedOnly: false, pairedWith: '__any__', flag: null },
   paramSort: { key: 'study', dir: 'asc' },
   paramLevels: false,
   // The study ids ticked on the Parameters grid (addendum, 2026-09-07); replaced wholesale;
   // session-only, never persisted.
   paramSelected: [],
   // (2026-09-10, studies-table spec 6.1) the Find list's sort: key 'study'|'subject'|'region'|'view'|'workspace'|
-  // 'folder'|'date'|'status', dir 'asc'|'desc'. Replaced wholesale on change; session-only, never persisted;
-  // read by the Studies screen's own subscription, never by SCREEN_KEYS. The grid's paramSort is separate.
+  // 'folder'|'date'|'status'|'flags' ('flags' 2026-11-16, study flags), dir 'asc'|'desc'. Replaced wholesale on
+  // change; session-only, never persisted; read by the Studies screen's own subscription, never by SCREEN_KEYS. The
+  // grid's paramSort is separate.
   findSort: { key: 'date', dir: 'desc' },
   // (2026-10-19, header filters; spec F6) the Find list's own per-column ticks, one list per header menu plus the
   // SUBJECT menu's text (data/find.js DEFAULT_FIND_FILTERS). Replaced wholesale; session-only, never persisted; written
@@ -32,7 +37,7 @@ let state = {
   // previous/next, never by SCREEN_KEYS. It replaced the list's share of paramFilters (workspace, folder) and the
   // reviewer navigation round's single status filter, whose job the STATUS menu took over. The grid keeps paramFilters
   // and its own segmentedOnly.
-  findFilters: { subject: '', region: [], view: [], workspace: [], folder: [], status: [] },
+  findFilters: { subject: '', region: [], view: [], workspace: [], folder: [], status: [], flags: [], flagsMatch: 'any' },
   openId: null,
   compareId: null,
 

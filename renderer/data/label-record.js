@@ -12,6 +12,7 @@ import { LEVEL_CODES, kindOf, hasCentroid, levelState, trainingStatus, changedPo
 import { projectionRegion } from './level-projection.js';
 import { fileStem, safeStem } from './labels.js';
 import { VERSION_LABEL } from './version.js';
+import { cleanFlags } from './flags.js';
 
 export const LABEL_SCHEMA = 'spinecontour.segmentation-label/1';
 
@@ -153,6 +154,48 @@ export function recordComment(record) {
 }
 
 /**
+ * (Study flags, spec §4.8, 2026-11-16) The flags a record holds, cleaned: `[]` when the key is absent (a record saved
+ * before flags), not a list, or the record is not an object. Never throws.
+ * @returns {string[]}
+ */
+export function recordFlags(record) {
+  return cleanFlags(record?.flags);
+}
+
+/** (2026-11-16, the final review, M5) True for a parsed record that is a plain object: not null, a list or a scalar. */
+export function isPlainRecord(record) {
+  return record !== null && typeof record === 'object' && !Array.isArray(record);
+}
+
+/**
+ * (Study flags, 2026-11-16) A new record equal to `record` except `flags`, which is `cleanFlags(flags)`. The key keeps
+ * its place when the record has it, else sits directly after `comment`, else directly before `levels`; every other
+ * key keeps its value and order. A flag change is not a save: `saved_at`, `app_version` and the annotation are untouched.
+ * (2026-11-16, the final review, M5) Anything that is not a plain object (null, a list, a string: a file that parses but
+ * is no record) comes back as it went in, never thrown on and never turned into an object; syncRecordFlags skips it.
+ * @returns {object}
+ */
+export function withRecordFlags(record, flags) {
+  if (!isPlainRecord(record)) return record;
+  const cleaned = cleanFlags(flags);
+  const keys = Object.keys(record);
+  const out = {};
+  if (keys.includes('flags')) {
+    for (const key of keys) out[key] = key === 'flags' ? cleaned : record[key];
+    return out;
+  }
+  const after = keys.includes('comment') ? 'comment' : null;
+  const before = after ? null : 'levels';
+  for (const key of keys) {
+    if (key === before) out.flags = cleaned;
+    out[key] = record[key];
+    if (key === after) out.flags = cleaned;
+  }
+  if (!('flags' in out)) out.flags = cleaned;
+  return out;
+}
+
+/**
  * The label record for one film, ready for JSON.stringify. `image` is `{ file, sha256, width, height }`, `model`
  * is `{ name, version }`, `savedAt` an ISO-8601 string and `contours` maps a level code to the model's mask
  * outline (`Pt[]`, or null); only a `segmented` body level takes its contour, an edited or manual one writes null
@@ -161,6 +204,7 @@ export function recordComment(record) {
  * carry only `state`, `source` and an empty `edited_points`; a level's geometry is written only while it is visible
  * and placed. (D18) Every level and head lists `edited_points`, and `edits`, after `complete`, sums them.
  * (Round 2, spec §3.1) `comment`, after `edits`, is the editor's comment trimmed, or null when it is blank.
+ * (Study flags, spec §4.8, 2026-11-16) `flags`, after `comment`, is a cleaned copy of the study's flags.
  */
 export function toLabelRecord({ editor, study, image, model, appVersion: version = appVersion(), savedAt, contours = {} }) {
   const levels = {};
@@ -182,6 +226,7 @@ export function toLabelRecord({ editor, study, image, model, appVersion: version
     complete: trainingStatus(editor).complete,
     edits: editsSummary([...Object.values(levels), ...femoralHeads]),
     comment: normalizeComment(editor.comment),
+    flags: cleanFlags(study?.flags),
     levels,
     femoral_heads: femoralHeads,
   };

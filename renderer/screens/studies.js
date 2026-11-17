@@ -12,6 +12,8 @@
  * (2026-10-19, header filters spec F1, section 3) The list filters from its headers: a funnel in each filterable
  * header cell opens that column's menu (components/filter-menu.js) of multi-select ticks and its two sort directions,
  * and the bar lost its Workspace, Folder and Status dropdowns.
+ * (2026-11-16, study flags spec sections 3 and 4.3) The FLAGS column: its chips, the in-row editor that copies the SUBJECT
+ * editor's shape (flagsCell, beginFlagsEdit, commitFlags), and its header menu with the any / every choice.
  */
 
 import { deleteStudyBatch } from '../data/delete-studies.js';
@@ -41,14 +43,21 @@ import {
   activeColumns,
 } from '../data/find.js';
 import { progressTitle, progressDetail } from '../data/processing.js';
+import {
+  cleanFlags, flagsInUse, flagChoices, FLAGS_MAX, startFlagEdit, flagEditText, flagEditAdd, flagEditRemove,
+  flagEditActive, flagEditResult, bulkState, bulkChange, librarySpelling, flagKey, cleanFlag, flagTextProblem,
+} from '../data/flags.js';
+import { setStudyFlags, flagsRefusal, setFlagsBusy } from '../study-flags.js';
+import { flagChips, flagEditor, revealActiveChoice } from '../components/flag-editor.js';
 import { checkbox } from '../components/checkbox.js';
 import { filterMenu } from '../components/filter-menu.js';
 import { statusBadge, unsupportedViewBadge } from '../components/status-badge.js';
 import { startBatch, stopBatch } from '../batch.js';
 import { setFilePayload, releaseStudy } from './analysis.js';
 import { forgetPrediction } from '../components/viewer.js';
-import { hasStashedEditor, forgetLevelEditor } from '../level-editor.js';
+import { hasStashedEditor, forgetLevelEditor, syncRecordFlags, recordWritesSettled } from '../level-editor.js';
 import { mountParameters } from './parameters.js';
+import { REGION_CHOICES, planRegionChange, applyRegionChange, regionChangePrompt, regionChangeToast } from '../data/region-change.js';
 
 const DASH = '\u2014';
 
@@ -90,6 +99,8 @@ export function newStudy({ id, fileName, filePath, workspaceFolder = null }) {
     note: null,
     // (annotation round 2, spec §3.3) the display copy of the label record's comment; null until a save writes one.
     labelComment: null,
+    // (2026-11-16, study-flags spec) the film's free-text flags; always a list, empty until a person adds one.
+    flags: [],
     // (2026-09-10, studies-table spec 8.1) the review mark; set on the Analysis screen, cleared by every write that changes the numbers.
     reviewedAt: null,
     // (2026-10-19) the view is Unknown (null) until the film's name, a workspace load or the drawer says otherwise.
@@ -313,6 +324,50 @@ function subjectCell(study) {
   }, label);
 }
 
+// The FLAGS cell (2026-11-16, study flags spec section 4.3). A demo row shows the muted dash and is not editable (never
+// saved). A real row at rest is a click-to-edit target exactly as the SUBJECT cell is: a SINGLE click that stops at the
+// cell so the row underneath does not open the study. While this row is the one being edited the cell IS the editor,
+// built from the draft in `editingFlags` so a rebuild mid-word (a batch finishing, a run ending) loses nothing; update()
+// restores its focus and caret by data-find-key. Each callback replaces `editingFlags` through one of data/flags.js's
+// pure transitions and repaints, and the editor's suggestion popup, which the table would clip, is kept in `flagsPopup`
+// for update() to mount on the table's host (placeFlagsPopup). The row is rebuilt from the saved flags until the editor
+// closes, so a row under a `No flags` filter stays where it is while it is edited (spec 4.3).
+function flagsCell(study) {
+  if (study.source !== 'real') return el('div', { class: 'studies-cell-flags' }, flagChips([]));
+  const id = study.id;
+  const name = studyName(study);
+  if (editingFlags && editingFlags.id === id) {
+    const live = getState();
+    const { draft, text, active } = editingFlags;
+    const choices = flagChoices({ inUse: flagsInUse(live.studies), draft, text });
+    const { field, popup } = flagEditor({
+      keyAttr: 'data-find-key', keyPrefix: `flags-${id}`, ariaLabel: `Flags for ${name}`,
+      draft, text, choices, active, full: draft.length >= FLAGS_MAX,
+      onText: (value) => changeFlagsEdit(id, (edit) => flagEditText(edit, value)),
+      // (2026-11-16, the final review, I2) `rest`: the typed pieces that were not flags stay in the box.
+      onAdd: (flags, rest) => changeFlagsEdit(id, (edit) => flagEditAdd(edit, flags, flagsInUse(getState().studies), rest)),
+      onRemove: (index) => changeFlagsEdit(id, (edit) => flagEditRemove(edit, index)),
+      onActive: (index) => changeFlagsEdit(id, (edit) => flagEditActive(edit, index, choices.length)),
+      onDone: () => commitFlags(id, `flags-${id}`),
+      onCancel: () => cancelFlagsEdit(),
+      onLeave: (key) => commitFlags(id, key),
+    });
+    flagsPopup = popup;
+    return el('div', { class: 'studies-cell-flags studies-flags-editing', 'data-flags-editing': id }, field);
+  }
+  const flags = cleanFlags(study.flags);
+  return el('div', {
+    class: 'studies-cell-flags studies-flags-editable',
+    role: 'button', tabindex: '0', title: flagsRefusal() || 'Click to edit flags', 'data-find-key': `flags-${id}`,
+    onPointerdown: (event) => { if (event.button === 0) flagsPressed = id; },
+    'aria-label': `Flags for ${name}: ${flags.join(', ') || 'none'}. Press Enter to edit`,
+    onClick: (event) => { event.stopPropagation(); beginFlagsEdit(id); },
+    onKeydown: (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); beginFlagsEdit(id); }
+    },
+  }, flagChips(flags));
+}
+
 // `runningId` is state.running and `batch` is state.batch. displayStatus (data/status.js) applies
 // spec 13.1's "or currently running" rule and (2026-10-01, issue #39) the batch's waiting films, so
 // deriveStatus stays a pure function of the record.
@@ -322,7 +377,8 @@ function buildRow(study, runningId, selected, batch) {
     && runningId !== study.id && !inferenceView(study.view);
   // While this row is confirming a delete, the prompt takes every cell from WORKSPACE rightwards
   // (see .studies-cell-actions-confirming); the study, subject, region and view cells stay visible.
-  // Those four are nulled together and the prompt's grid-column start is the 5th track, so the
+  // (2026-11-16, study flags) FLAGS joined the cells the prompt covers, so it is five cells now: WORKSPACE, FOLDER,
+  // DATE, STATUS and FLAGS. All five are nulled together and the prompt's grid-column start is the 5th track, so the
   // placement cursor is still at 5 when the action cell is laid out (2026-10-19: the REGION cell
   // moved it from 4). Adding a VISIBLE cell before the prompt without moving that start line
   // would push the cursor past it and wrap the prompt onto a second row.
@@ -368,6 +424,7 @@ function buildRow(study, runningId, selected, batch) {
     confirming ? null : el('div', { class: 'studies-cell-date' }, formatDate(study.addedAt)),
     confirming ? null : el('div', {}, unsupported ? unsupportedViewBadge(study.view)
       : statusBadge(status, status === 'fail' ? failureTitle(study.processingError, study.processingErrorAt) : undefined)),
+    confirming ? null : flagsCell(study),
     actionCell(study, confirming));
   return row;
 }
@@ -476,6 +533,7 @@ function buildTable(studies, runningId, emptyKind, selected, sort, batch, filter
       filterHeader('folder', 'FOLDER', sort, filters, options),
       sortableHeader('date', 'DATE', sort),
       filterHeader('status', 'STATUS', sort, filters, options),
+      filterHeader('flags', 'FLAGS', sort, filters, options),
       el('div', {})),
     ...body);
 }
@@ -529,12 +587,43 @@ let confirmingId = null;
 // Captured at the click; update() withdraws it the moment the ticked visible set no longer
 // matches them, so the prompt can never delete a set the user cannot see.
 let confirmingSelected = null;
+// The bar's pending Set region change ({ plan, region }) while its prompt is up, or null. Only a change that would
+// clear saved results asks first.
+let confirmingRegion = null;
 // The SUBJECT cell being edited in place (spec 7.2): { id, draft }, or null. `draft` is the text typed
 // so far, kept current by the input's own handler, so a rebuild mid-word re-creates the editor
 // with it. Replaced, never mutated: it is compared by reference in update()'s key. Named
 // `editingSubject`, not `editing`: the store has its own `editing` key (the viewer's edit mode),
 // which this file spreads through FRESH_VIEW, and one name for the two would read as the other.
 let editingSubject = null;
+// (2026-11-16, study flags spec 4.3) The FLAGS cell being edited in place: { id, draft: string[], text: string,
+// active: number } (the shape data/flags.js startFlagEdit returns, plus the row's id), or null. `draft` is the flags as
+// edited so far, `text` what is typed in the box, `active` the highlighted suggestion (-1 for none). Replaced, never
+// mutated -- every change is one of data/flags.js's pure transitions -- and compared by reference in update()'s key,
+// which lists it right after editingSubject. Cleared on navigation with editingSubject. `flagsPopup` is the open
+// editor's suggestion list, built with its cell and mounted by update() on the table's host (placeFlagsPopup).
+let editingFlags = null;
+let flagsPopup = null;
+// (2026-11-16, study flags; ruling 9) The id whose resting FLAGS cell the pointer last pressed, or null: noted on the
+// cell's pointerdown, which fires before an open editor's blur, so the commit that blur triggers can tell a press on the
+// cell (open its editor) from Tab landing on it (leave it at rest). Replaced, never mutated, transient, and NOT in
+// update()'s key. Cleared by whoever reads it, by beginFlagsEdit and on navigation, so a stale note never opens an
+// editor on a later keyboard move. (2026-11-16, Task 7 review) Only a primary-button press is noted (a right-click fires
+// pointerdown too but never a click), and beginSubjectEdit clears the note as beginFlagsEdit does: a press dragged off
+// the cell before release fires no click either, and its note would otherwise open a flags editor when Tab later left a
+// SUBJECT editor for that cell. (Ruling 12) The note names either target: a row id (a resting FLAGS cell) or BULK_BUTTON
+// (the bar's Flag button, noted on its own primary-button pointerdown). The blur that makes an open editor commit
+// repaints before mouseup and swallows that press's click, so commitFlags and commitSubject open what was pressed;
+// Tab onto the button notes nothing and opens nothing. toggleBulkFlags clears it with the ordinary click.
+let flagsPressed = null;
+const BULK_BUTTON = 'flag-selected';
+// (2026-11-16, study flags spec 4.3; FL18) The bar's flag list for the ticked films: { ids: string[], text: string,
+// active: number }, or null when closed. `ids` is captured when the list opens and acts for as long as it stays open --
+// under a filter by the flag being removed the rows leave the list as they lose it, and the open list must go on acting
+// on the films it started with (update() only drops an id whose film left the library). `text` is the box, `active` the
+// highlighted choice (-1 for none). Replaced, never mutated, listed in update()'s key before openMenu, cleared on
+// navigation, and closed by Escape, a second click of the button or a press outside it (closeBulkOnOutsidePress).
+let bulkFlags = null;
 // True while an export writes its bundle (bundle spec 4.1): the button reads Exporting… and refuses a second one.
 // Listed in update()'s key like the three above, but navigation does NOT clear it: the export carries on without
 // the screen, and only its own `finally` may end it.
@@ -560,8 +649,9 @@ subscribe((state) => {
   // closes the menu, spec 3.2). The import prompt goes too: a plan left pending while a study is opened in edit mode
   // would update it on return (its `editing` set is the click's).
   if (state.screen !== 'studies') {
-    mounted = null; confirmingId = null; confirmingSelected = null; editingSubject = null; pendingImport = null;
-    openMenu = null; menuShows = null; listenOutside(false);
+    mounted = null; confirmingId = null; confirmingSelected = null; confirmingRegion = null; editingSubject = null; editingFlags = null;
+    flagsPopup = null; flagsPressed = null; bulkFlags = null;
+    pendingImport = null; openMenu = null; menuShows = null; listenOutside(false); listenBulk(false);
     return;
   }
   if (mounted) mounted.update(state);
@@ -575,6 +665,10 @@ function toggleMenu(column) {
   if (openMenu === column) { closeMenu(column); return; }
   openMenu = column;
   menuShows = null;
+  // (2026-11-16, the final review, T8) One popup at a time: a funnel opened by keyboard while the bar's flag list is open
+  // closes the list (opening the list already closes a menu). Two open popups meant one Escape fired both document
+  // listeners and two repaints fought over focus.
+  bulkFlags = null;
   refreshTable(`[data-filter-menu="${column}"] [data-find-key]`);
 }
 
@@ -657,12 +751,14 @@ function listenOutside(on) {
 function buildMenu(column, live, filters, options) {
   return filterMenu({
     column, label: column, options: options[column] ?? [], ticked: column === 'subject' ? [] : filters[column],
-    subjectText: filters.subject, sortKey: live.findSort?.key, sortDir: live.findSort?.dir,
+    subjectText: filters.subject, match: column === 'flags' ? filters.flagsMatch : undefined, sortKey: live.findSort?.key, sortDir: live.findSort?.dir,
     sortLabels: SORT_LABELS[column] ?? TEXT_SORT_LABELS,
     onToggle: (value) => writeFindFilters((s) => ({ [column]: toggleId(normaliseFindFilters(s.findFilters, s.studies)[column], value) })),
     onAll: () => writeFindFilters(() => ({ [column]: [] })),
     onNone: () => writeFindFilters(() => ({ [column]: [] })),
     onSubject: (subject) => writeFindFilters(() => ({ subject })),
+    // (2026-11-16, study flags; FL17) The FLAGS menu's any / every choice, written like a tick.
+    onMatch: (value) => writeFindFilters(() => ({ flagsMatch: value })),
     // Closed before the write, so the sort's own repaint already draws the list without the menu.
     onSort: (dir) => {
       openMenu = null;
@@ -688,6 +784,27 @@ function placeMenu(host, menu, column) {
   menu.style.top = `${Math.round(head.getBoundingClientRect().bottom - hostRect.top + 4)}px`;
 }
 
+// (2026-11-16, study flags spec 4.3) The open flags editor's suggestion list, mounted as the table host's last child
+// under its cell and positioned as placeMenu positions a menu: inside the table it would be clipped, because
+// .studies-table scrolls sideways and so clips below its rows (the last row's list included). Left edge on the cell,
+// kept inside the host's width, top at the cell's bottom plus 4px. Called after every repaint and after refreshTable's
+// focus move, which can scroll the table sideways. Nothing is mounted when the row is not on screen (a search or filter
+// has hidden it; the draft is kept and the list returns with the row).
+function placeFlagsPopup() {
+  if (!mounted || !flagsPopup || !editingFlags) return;
+  const host = mounted.host;
+  const cell = host.querySelector(`.studies-flags-editing[data-flags-editing="${CSS.escape(editingFlags.id)}"]`);
+  if (!cell) return;
+  host.append(flagsPopup);
+  const hostRect = host.getBoundingClientRect();
+  const cellRect = cell.getBoundingClientRect();
+  const left = Math.max(0, Math.min(cellRect.left - hostRect.left, hostRect.width - flagsPopup.offsetWidth));
+  flagsPopup.style.left = `${Math.round(left)}px`;
+  flagsPopup.style.top = `${Math.round(cellRect.bottom - hostRect.top + 4)}px`;
+  // (2026-11-16, the final review, M2) The highlighted suggestion stays in view inside the list.
+  revealActiveChoice(flagsPopup);
+}
+
 // Repaint the bar and the table from the current store after module-scope UI state changes.
 // Called from DOM event handlers only, never from inside a subscriber. The repaint replaces the
 // nodes, which drops keyboard focus onto the body; `focusSelector` names the node that gets it
@@ -704,6 +821,7 @@ function refreshTable(focusSelector) {
       if (target instanceof HTMLInputElement && target.type === 'text') target.select();
     }
   }
+  placeFlagsPopup();
 }
 
 // Focus lands on CANCEL, not Delete. The repaint drops focus to <body>, so something must
@@ -713,7 +831,7 @@ function refreshTable(focusSelector) {
 // S25): its placement may be writing this study's sidecar and record.
 function askToDelete(id) {
   if (getState().deletingStudies || importing) return;
-  confirmingSelected = null;
+  confirmingSelected = null; confirmingRegion = null;
   confirmingId = id;
   refreshTable('.studies-delete-cancel');
 }
@@ -753,7 +871,15 @@ async function deleteStudy(id) {
       // comes after the sidecar's has succeeded: the record, its label file and the caches stay, but the sidecar
       // is gone, so once the cached film is dropped its stored image cannot be restored (FILM UNAVAILABLE) until
       // the film is run again.
-      if (study?.labelFile) await deleteLabelRecord(study.labelFile);
+      // (2026-11-16, the final review, I1) Every label-record write in flight ends first (a flag update walking a bulk
+      // change, a Save edits, a Mark reviewed write), and the file is read from the live study after it: a write that
+      // ended meanwhile may have given the study its first record. Awaited here, directly before the record is removed,
+      // so a flag update that starts after the removal finds no file and writes none. This delete takes no flag lock:
+      // `deletingStudies` would also make a running batch's next film fail ("Wait for study deletion to finish."), and a
+      // single-row delete is allowed during a batch; see the final fix report.
+      await recordWritesSettled();
+      const file = getState().studies.find((s) => s.id === id && s.addedAt === study?.addedAt)?.labelFile ?? study?.labelFile;
+      if (file) await deleteLabelRecord(file);
     } catch (error) {
       showToast(`Could not delete the saved segmentation: ${error.message}`);
       refreshTable(`.studies-row[data-study-id="${id}"] .studies-delete`);
@@ -798,8 +924,30 @@ function askToDeleteSelected(ids) {
   refreshTable('[data-find-key="delete-cancel"]');
 }
 
+// The bar's Set region (the bulk form of the Analysis screen's Region select). `targets` are the ticked visible real
+// studies. A change that clears saved results waits for the prompt; one that clears nothing applies at once.
+function askToSetRegion(targets, region) {
+  const plan = planRegionChange(targets, region);
+  if (plan.ids.length === 0) { showToast(regionChangeToast(plan, region)); return; }
+  if (plan.cleared === 0) { applyRegion(plan, region); return; }
+  confirmingId = null; confirmingSelected = null;
+  confirmingRegion = { plan, region };
+  refreshTable('[data-find-key="region-cancel"]');
+}
+
+function applyRegion(plan, region) {
+  confirmingRegion = null;
+  const live = getState();
+  // The prompt captured its ids; a run or batch that started since must not have its film's record changed under it.
+  if (barBlocked(live)) { refreshTable(); showToast(waitTitle(live) || 'Wait for the current work to finish.'); return; }
+  for (const id of plan.ids) { forgetPrediction(id); forgetLevelEditor(id); }
+  setState((s) => ({ studies: applyRegionChange(s.studies, plan.ids, region) }));
+  refreshTable();
+  showToast(regionChangeToast(plan, region));
+}
+
 function cancelDeleteSelected() {
-  confirmingSelected = null;
+  confirmingSelected = null; confirmingRegion = null;
   refreshTable('[data-find-key="delete"]');
 }
 
@@ -817,17 +965,22 @@ async function deleteSelectedStudies(ids) {
   // between that click and this call, so the confirm handler can arrive holding null and
   // `new Set(null)` would throw. Withdraw the prompt and hand focus back to Delete, exactly as an
   // empty target set below does.
-  if (!Array.isArray(ids) || ids.length === 0) { confirmingSelected = null; refreshTable('[data-find-key="delete"]'); return; }
+  if (!Array.isArray(ids) || ids.length === 0) { confirmingSelected = null; confirmingRegion = null; refreshTable('[data-find-key="delete"]'); return; }
   const live = getState();
   if (barBlocked(live)) return;
   const wanted = new Set(ids);
   const targets = live.studies.filter((study) => study.source === 'real' && wanted.has(study.id));
-  confirmingSelected = null;
+  confirmingSelected = null; confirmingRegion = null;
   confirmingId = null;
   if (targets.length === 0) { refreshTable('[data-find-key="delete"]'); return; }
   setState({ deletingStudies: true });
   try {
-    const { deleted, failed } = await deleteStudyBatch(targets, { deletePrediction, deleteLabelRecord });
+    // (2026-11-16, the final review, I1) deletingStudies now refuses every new flag change; a flag update already
+    // walking its films, or a Save edits or Mark reviewed write, ends before any record is removed. The targets are read
+    // again after it, so a record a write in flight gave a study is the one removed.
+    await recordWritesSettled();
+    const settled = getState().studies.filter((study) => study.source === 'real' && wanted.has(study.id));
+    const { deleted, failed } = await deleteStudyBatch(settled, { deletePrediction, deleteLabelRecord });
     const removed = new Set(deleted);
     for (const id of removed) { forgetPrediction(id); releaseStudy(id); }
     setState((current) => ({
@@ -866,9 +1019,15 @@ export async function exportBundleTo(parentDir) {
   if (exporting || barBlocked(live)) return;
   const rows = rowsToExport(findRows(live).visible.filter((study) => study.source === 'real'), live.paramSelected);
   if (rows.length === 0) return;
-  exporting = true;
-  refreshTable('[data-find-key="export-bundle"]');
+  // (2026-11-16, the final review, M6) The locks are set inside the try: a subscriber throwing on the first repaint
+  // must not leave flags refused for the session, and only this finally releases them.
   try {
+    exporting = true;
+    setFlagsBusy('export'); // flag edits are refused while the export runs; the same finally releases it
+    refreshTable('[data-find-key="export-bundle"]');
+    // (2026-11-16, the final review, I1) The lock stops new flag changes; a flag update still walking its films (or a
+    // Save edits) ends before the records are copied, so every bundled record carries its study's flags.
+    await recordWritesSettled();
     const { name, entries } = planExport(rows, new Date());
     const result = await exportBundle({ parent: parentDir, name, entries, appVersion: appVersion() });
     showToast(exportMessage(result));
@@ -876,6 +1035,7 @@ export async function exportBundleTo(parentDir) {
     showToast(error?.message || 'The export failed.');
   } finally {
     exporting = false;
+    setFlagsBusy(null);
     refreshTable(ifFocusDropped('[data-find-key="export-bundle"]'));
   }
 }
@@ -953,11 +1113,16 @@ async function readLocalRecords(locals, { names, hashes }, localHashes) {
 export async function importBundleFrom(dir) {
   const state = getState();
   if (exporting || pendingImport || barBlocked(state)) return; // barBlocked holds `importing` (S25)
-  importing = true;
-  confirmingSelected = null;
-  confirmingId = null;
-  refreshTable();
+  // (2026-11-16, the final review, M6) The locks are set inside the try, so only its finally can be the one to end them.
   try {
+    importing = true;
+    setFlagsBusy('import');
+    confirmingSelected = null; confirmingRegion = null;
+    confirmingId = null;
+    refreshTable();
+    // (2026-11-16, the final review, I1) Label-record writes in flight end before the local records are read for the
+    // plan: a record read mid-write would be planned against a state about to change.
+    await recordWritesSettled();
     const bundle = await readBundle(dir);
     const locals = state.studies.filter((study) => study.source === 'real');
     const keys = bundleKeys(bundle.entries);
@@ -972,11 +1137,11 @@ export async function importBundleFrom(dir) {
     // typed in place) is not offered, and the person is told why nothing appeared.
     if (getState().studies !== state.studies) {
       showToast('The library changed while the bundle was being read. Import it again.');
-    } else if (plan.add.length + plan.update.length === 0) {
+    } else if (plan.add.length + plan.update.length + plan.flag.length === 0) {
       showToast(nothingToImportMessage(plan));
     } else {
       pendingImport = { dir, plan, studies: state.studies };
-      confirmingSelected = null;
+      confirmingSelected = null; confirmingRegion = null;
       confirmingId = null;
       refreshTable('[data-find-key="import-cancel"]');
     }
@@ -984,6 +1149,7 @@ export async function importBundleFrom(dir) {
     showToast(error?.message || 'The import failed.');
   } finally {
     importing = false;
+    setFlagsBusy(null);
     refreshTable(pendingImport ? '[data-find-key="import-cancel"]' : ifFocusDropped('[data-find-key="import-bundle"]'));
   }
 }
@@ -1012,10 +1178,16 @@ export async function confirmImport() {
   if (!pendingImport || exporting || barBlocked(live)) return; // barBlocked holds `importing` (S25)
   const { dir, plan } = pendingImport;
   pendingImport = null;
-  importing = true;
-  refreshTable();
+  // (2026-11-16, the final review, M6) The locks are set inside the try, so only its finally can be the one to end them.
   try {
-    const result = await importBundle({ dir, actions: plan.actions });
+    importing = true;
+    setFlagsBusy('import');
+    refreshTable();
+    // (2026-11-16, the final review, I1) A flag update still walking its films ends before the placement replaces any
+    // record, so no older local record plus new flags can be written over a record the bundle has just placed.
+    await recordWritesSettled();
+    // (2026-11-16, study flags) A plan of flags alone has no files to place: nothing is sent, nothing is placed.
+    const result = plan.actions.length === 0 ? { placed: [] } : await importBundle({ dir, actions: plan.actions });
     const reported = Array.isArray(result?.placed) ? result.placed : [];
     const taken = new Set(getState().studies.map((study) => study.id));
     const lost = plan.add.filter((item) => reported.includes(item.id) && taken.has(item.id));
@@ -1026,6 +1198,15 @@ export async function confirmImport() {
     }
     setState({ studies: applyImport(getState().studies, plan, placedIds) });
     const added = plan.add.filter((item) => placed.has(item.id));
+    // Every film the import touched has its label record's flags brought in line with its study: an update has just
+    // replaced the record with the sender's. This is syncRecordFlags, not setStudyFlags, which refuses while the
+    // import lock is held, and not syncFlagsAndReport, whose own toast the closing toast below would replace at once
+    // (ruling 14): the count of records that failed goes into the import's own message.
+    const synced = await syncRecordFlags([
+      ...plan.update.filter((item) => placed.has(item.id)).map((item) => item.id),
+      ...added.map((item) => item.id),
+      ...plan.flag.map((item) => item.id),
+    ]);
     const failed = result?.failed ?? null;
     // Never the SP-nnnn id: the record id is shown nowhere a person looks (user rule 2026-09-12; ruling S31).
     const filmName = (item) => item?.entry.study.fileName ?? 'a study';
@@ -1038,6 +1219,8 @@ export async function confirmImport() {
     const message = importMessage({
       added: added.length,
       updated: plan.update.filter((item) => placed.has(item.id)).length,
+      flagged: plan.flag.length,
+      recordsFailed: synced.failed.length,
       skipped: [...plan.skip, ...skippedAtPlacement],
       withoutFilm: added.filter((item) => item.entry.filmPath == null).map((item) => item.entry.study.fileName),
       stoppedAt: failed ? { fileName: filmName(stoppedOn), message: failed.message } : null,
@@ -1049,6 +1232,7 @@ export async function confirmImport() {
     showToast(error?.message || 'The import failed.');
   } finally {
     importing = false;
+    setFlagsBusy(null);
     refreshTable(ifFocusDropped('[data-find-key="import-bundle"]'));
   }
 }
@@ -1062,6 +1246,7 @@ function subjectDraft(study) {
 }
 
 function beginSubjectEdit(id) {
+  flagsPressed = null;
   const live = getState();
   const study = live.studies.find((s) => s.id === id);
   if (!study || study.source !== 'real' || live.deletingStudies) return;
@@ -1069,6 +1254,8 @@ function beginSubjectEdit(id) {
   // and so its deferred commit -- before the click that lands here, so this is belt and braces;
   // but an editor a rebuild destroyed while focused got no blur, and this is what keeps its text.
   if (editingSubject && editingSubject.id !== id) commitSubject(editingSubject.id, 'blur');
+  // (2026-11-16, study flags) An open flags editor commits first, for the same reason.
+  if (editingFlags) commitFlags(editingFlags.id);
   confirmingId = null;
   editingSubject = { id, draft: subjectDraft(study) };
   refreshTable(`[data-find-key="subject-input-${id}"]`);
@@ -1122,16 +1309,254 @@ function commitSubject(id, mode, focusKey = null) {
     : mode === 'next' ? `[data-find-key="subject-${id}"]`
       : focusKey ? `[data-find-key="${CSS.escape(focusKey)}"]`
         : null);
+  // (2026-11-16, study flags; ruling 9) A pointer press on a FLAGS cell while this editor was open: the blur's commit
+  // repainted before mouseup, so the cell's own click never arrives (see commitFlags); open its editor here instead.
+  // Only a noted press does: Tab from this box lands on the row's FLAGS cell and leaves it at rest.
+  const flagsTarget = mode === 'blur' ? flagsCellOwner(focusKey) : null;
+  const pressed = flagsPressed;
+  flagsPressed = null;
+  if (flagsTarget !== null && pressed === flagsTarget) beginFlagsEdit(flagsTarget);
+  else if (mode === 'blur' && focusKey === BULK_BUTTON && pressed === BULK_BUTTON) openBulkFromPress();
+}
+
+// ---- FLAGS in place (study flags spec 2026-11-16, section 4.3; FL14) ---------------------------------------------------
+
+// Opens the editor on `id`. Refused, with the reason toasted, while a bulk delete, a bundle import or export runs or
+// studies are not being saved (flagsRefusal): those read or replace the label records a flag change writes. An open
+// SUBJECT editor, or a flags editor on another row, is committed first: Chromium fires its blur before the click that
+// lands here, so this is belt and braces, but an editor a rebuild destroyed while focused got no blur.
+function beginFlagsEdit(id) {
+  flagsPressed = null;
+  const live = getState();
+  const study = live.studies.find((s) => s.id === id);
+  if (!study || study.source !== 'real') return;
+  const refusal = flagsRefusal(live);
+  if (refusal) { showToast(refusal); return; }
+  if (editingSubject) commitSubject(editingSubject.id, 'blur');
+  if (editingFlags && editingFlags.id !== id) commitFlags(editingFlags.id);
+  confirmingId = null;
+  editingFlags = { id, ...startFlagEdit(study.flags) };
+  refreshTable(`[data-find-key="flags-${id}-input"]`);
+}
+
+// One of the editor's callbacks: replaces `editingFlags` with `change`'s result and repaints. update()'s focus snapshot
+// keeps the box and its caret. Nothing when that row's editor has already closed (a late callback).
+function changeFlagsEdit(id, change) {
+  if (!editingFlags || editingFlags.id !== id) return;
+  const { id: kept, ...edit } = editingFlags;
+  editingFlags = { id: kept, ...change(edit) };
+  refreshTable();
+}
+
+// Esc: the draft is thrown away and focus returns to the cell.
+function cancelFlagsEdit() {
+  if (!editingFlags) return;
+  const { id } = editingFlags;
+  editingFlags = null;
+  refreshTable(`[data-find-key="flags-${id}"]`);
+}
+
+// Closes the editor for `id` and writes its flags: the draft plus any text still in the box. Idempotent, as
+// commitSubject is: a blur that follows an Enter finds the editor already closed and does nothing, so the one write
+// cannot happen twice. setStudyFlags writes nothing when the list did not change, and toasts its own refusal or failure;
+// it is not awaited here. `focusKey` is where focus goes: the cell after Enter in an empty box, the blur's relatedTarget
+// key (a keyed control inside this screen, whose rebuilt twin takes the focus the rebuild would throw away), or null
+// when focus went somewhere that survives the rebuild.
+function commitFlags(id, focusKey = null) {
+  if (!editingFlags || editingFlags.id !== id) return;
+  const flags = flagEditResult(editingFlags, flagsInUse(getState().studies));
+  editingFlags = null;
+  setStudyFlags([{ id, flags }]);
+  refreshTable(focusKey ? `[data-find-key="${CSS.escape(focusKey)}"]` : null);
+  // (2026-11-16, study flags; ruling 9) A POINTER press on another row's resting FLAGS cell opens that cell's editor. The
+  // press's mousedown blurs this box, and the commit above repaints BEFORE mouseup, so the cell the person pressed is
+  // replaced and Chromium never sends it a click: without this the first row would save and no editor would open. The
+  // press is noted on the cell's pointerdown (flagsPressed); Tab also lands focus on a cell but is no press, so it
+  // leaves the cell at rest and Enter or Space opens it, as the cell's own keydown does.
+  const target = flagsCellOwner(focusKey);
+  const pressed = flagsPressed;
+  flagsPressed = null;
+  if (target !== null && target !== id && pressed === target) beginFlagsEdit(target);
+  else if (focusKey === BULK_BUTTON && pressed === BULK_BUTTON) openBulkFromPress();
+}
+
+// The id of the real study whose resting FLAGS cell carries `key` (`flags-<id>`), or null. An id holds a hyphen
+// (SP-0001) and the editor's own keys (`-input`, `-remove-<i>`, `-option-<i>`) extend the cell's, so the key is compared
+// with the real studies' ids rather than parsed.
+function flagsCellOwner(key) {
+  if (typeof key !== 'string') return null;
+  return getState().studies.find((study) => study.source === 'real' && key === `flags-${study.id}`)?.id ?? null;
+}
+
+// ---- The bar's flag list (study flags spec 2026-11-16, section 4.3; FL18) ---------------------------------------------
+
+// The button's click: closes the open list, or opens one over `ids`, the ticked visible real films at this moment. An
+// open row editor commits first and an open header menu closes, as opening one row's editor commits another's.
+// `offered` (2026-11-16, ruling 11) is every flag in use at this moment; the list keeps offering them after the last
+// holder loses one, so a flag cleared from every film can be ticked back (buildBulkFlags unions it with the flags in
+// use now).
+function toggleBulkFlags(ids) {
+  flagsPressed = null;
+  if (bulkFlags) { closeBulkFlags(); return; }
+  if (editingSubject) commitSubject(editingSubject.id, 'blur');
+  if (editingFlags) commitFlags(editingFlags.id);
+  confirmingId = null;
+  openMenu = null;
+  menuShows = null;
+  bulkFlags = { ids, offered: flagsInUse(getState().studies), text: '', active: -1 };
+  refreshTable('[data-find-key="bulk-flag-input"]');
+}
+
+// (2026-11-16, ruling 12) A press on the Flag button that made an open editor blur and commit: the commit's repaint
+// replaced the button before mouseup, so its click never came; open the list here with the ticked visible real films,
+// as the click would have.
+function openBulkFromPress() {
+  if (bulkFlags || !mounted) return;
+  const live = getState();
+  if (flagsRefusal(live)) return;
+  const ids = selectedVisible(findRows(live).visible.filter((study) => study.source === 'real'), live.paramSelected ?? [])
+    .map((study) => study.id);
+  if (ids.length > 0) toggleBulkFlags(ids);
+}
+
+// Escape and the second click of the button: the list goes and focus returns to the button.
+function closeBulkFlags() {
+  bulkFlags = null;
+  refreshTable('[data-find-key="flag-selected"]');
+}
+
+// Puts `flag` on (or takes it off) every film the open list acts on, at once; the list stays open. The spelling is the
+// one the library already uses. Films already at the limit are left out of an add and counted in one toast.
+// setStudyFlags toasts its own refusal or failure and is not awaited.
+function applyBulkFlag(flag, on) {
+  if (!bulkFlags) return;
+  const live = getState();
+  const { changes, full } = bulkChange(live.studies, bulkFlags.ids, librarySpelling(flag, flagsInUse(live.studies)), on);
+  setStudyFlags(changes);
+  if (full > 0) {
+    showToast(`${full} ${full === 1 ? 'film already has' : 'films already have'} 20 flags and ${full === 1 ? 'was' : 'were'} left out.`);
+  }
+  // (2026-11-16, ruling 12 fix) A change that wrote nothing -- every film full, or a refusal that began after the list
+  // opened -- leaves the store as it was, so update()'s gate draws nothing and the pressed box would keep the tick the
+  // click gave it. Repaint so the list shows what the films hold; focus stays on the pressed box. A replaced
+  // bulkFlags is what gets past the gate (it is in the key).
+  if (bulkFlags && getState().studies === live.studies) bulkFlags = { ...bulkFlags };
+  refreshTable(`[data-find-key="${CSS.escape(`bulk-flag-${flagKey(flag)}`)}"]`);
+}
+
+// Enter in the box and a click on Create: the typed flag goes onto every film and the box clears. The text is cleared
+// before the write so the write's own repaint already draws the empty box.
+function createBulkFlag(flag) {
+  if (!bulkFlags) return;
+  bulkFlags = { ...bulkFlags, text: '', active: -1 };
+  applyBulkFlag(flag, true);
+  refreshTable('[data-find-key="bulk-flag-input"]');
+}
+
+// A press outside the list closes it; a press inside it or on its button is not outside (the button's click toggles).
+// Captured, as the header menus' is. A press on the table's rows rebuilds the table, so the row's own click finds
+// nothing to open; any other press closes the list in place without a rebuild, so its click still reaches its control.
+function closeBulkOnOutsidePress(event) {
+  if (bulkFlags === null) { listenBulk(false); return; }
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest('.studies-bulk-flags, .studies-flag-selected')) return;
+  bulkFlags = null;
+  const onRows = Boolean(target && mounted?.host.contains(target) && !target.closest('.studies-table-head'));
+  if (onRows) { refreshTable(); return; }
+  listenBulk(false);
+  if (!mounted) return;
+  mounted.bar.querySelectorAll('.studies-bulk-flags').forEach((list) => list.remove());
+  mounted.bar.querySelector('.studies-flag-selected')?.setAttribute('aria-expanded', 'false');
+  mounted.bulkClosedInPlace();
+}
+
+function closeBulkOnEscape(event) {
+  if (bulkFlags === null) { listenBulk(false); return; }
+  if (event.key !== 'Escape') return;
+  event.preventDefault();
+  closeBulkFlags();
+}
+
+// Registered only while the list is open, kept in step by update(); navigation removes them.
+let listeningBulk = false;
+function listenBulk(on) {
+  if (on === listeningBulk) return;
+  listeningBulk = on;
+  if (on) {
+    document.addEventListener('pointerdown', closeBulkOnOutsidePress, true);
+    document.addEventListener('keydown', closeBulkOnEscape);
+  } else {
+    document.removeEventListener('pointerdown', closeBulkOnOutsidePress, true);
+    document.removeEventListener('keydown', closeBulkOnEscape);
+  }
+}
+
+// The open list for `bulkFlags.ids`: the box, one tick row per flag in use that contains the typed text (a tick when
+// every film has it, a dash when some do, its count muted at the right), a Create item when the text is a new flag, and
+// the caption naming how many films it changes. flagChoices is given an empty draft: the list offers every flag in use,
+// held or not.
+function buildBulkFlags(live) {
+  const { ids, text } = bulkFlags;
+  const films = live.studies.filter((study) => ids.includes(study.id));
+  const n = films.length;
+  // (2026-11-16, ruling 11) The flags in use now plus every flag that was in use when the list opened, one spelling per
+  // key (the current one wins), A to Z: a flag emptied from every film stays here, unticked, to be ticked back.
+  const current = flagsInUse(live.studies);
+  const offered = new Map();
+  for (const flag of [...current, ...(bulkFlags.offered ?? [])]) if (!offered.has(flagKey(flag))) offered.set(flagKey(flag), flag);
+  const inUse = [...offered.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, flag]) => flag);
+  const choices = flagChoices({ inUse, draft: [], text });
+  const created = choices.find((choice) => choice.kind === 'create');
+  const rows = choices.filter((choice) => choice.kind === 'use').map(({ flag }) => {
+    const state = bulkState(live.studies, ids, flag);
+    const held = films.filter((study) => cleanFlags(study.flags).some((f) => flagKey(f) === flagKey(flag))).length;
+    const row = checkbox({
+      key: `bulk-flag-${flagKey(flag)}`, keyAttr: 'data-find-key', label: flag, ariaLabel: `${flag}: ${state === 'all' ? `all ${n}` : state === 'some' ? `${held} of ${n}` : 'none'}`,
+      checked: state === 'all', indeterminate: state === 'some', variant: 'menu',
+      onChange: () => applyBulkFlag(flag, state !== 'all'),
+    });
+    if (state !== 'none') row.append(el('span', { class: 'studies-bulk-count' }, state === 'all' ? `all ${n}` : `${held} of ${n}`));
+    return row;
+  });
+  return el('div', { class: 'studies-bulk-flags', role: 'dialog', 'aria-label': 'Flag the selected studies' },
+    el('input', {
+      type: 'text', class: 'studies-filter-text', 'data-find-key': 'bulk-flag-input', value: text,
+      placeholder: 'Find or create a flag…', 'aria-label': 'Find or create a flag',
+      onInput: (event) => { bulkFlags = { ...bulkFlags, text: event.target.value }; refreshTable(); },
+      onKeydown: (event) => {
+        if (event.key !== 'Enter') return;
+        if (created) { event.preventDefault(); createBulkFlag(created.flag); return; }
+        // (2026-11-16, the final review, T8) Enter on the name of a flag in use (ignoring case) puts that flag, in the
+        // library's spelling, on every film the list acts on, as ticking its row does: fixing a misspelling means typing
+        // the right, existing flag, and a silent no-op read as broken.
+        const typed = cleanFlag(text);
+        const existing = typed === null ? null : inUse.find((flag) => flagKey(flag) === flagKey(typed));
+        if (existing) { event.preventDefault(); createBulkFlag(existing); }
+      },
+    }),
+    // (2026-11-16, the final review, I2) Text that cannot be a flag says why under the box, as the row editor's hint does.
+    flagTextProblem(text) ? el('div', { class: 'flag-popup-hint is-refused studies-bulk-problem', role: 'status' }, flagTextProblem(text)) : null,
+    el('div', { class: 'studies-filter-options' }, ...rows),
+    created ? el('button', {
+      type: 'button', class: 'studies-filter-item', 'data-find-key': 'bulk-flag-create',
+      onClick: () => createBulkFlag(created.flag),
+    }, `Create "${created.flag}"`) : null,
+    el('div', { class: 'studies-filter-caption' }, `CHANGES THE ${n} TICKED ${n === 1 ? 'FILM' : 'FILMS'}`));
 }
 
 export function render(state) {
   confirmingId = null;
-  confirmingSelected = null;
+  confirmingSelected = null; confirmingRegion = null;
   editingSubject = null;
+  editingFlags = null;
+  flagsPopup = null;
+  flagsPressed = null;
+  bulkFlags = null;
   pendingImport = null;
   openMenu = null;
   menuShows = null;
   listenOutside(false);
+  listenBulk(false);
   const summary = el('div', { class: 'studies-summary' });
   const search = el('input', {
     type: 'search', class: 'studies-search', value: state.query || '',
@@ -1220,6 +1645,25 @@ export function render(state) {
           }, 'Cancel')));
     }
 
+    if (confirmingRegion) {
+      const { plan, region } = confirmingRegion;
+      return el('div', { class: 'studies-filters' },
+        el('div', {
+          class: 'studies-bulk-prompt', role: 'group', 'aria-label': 'Confirm setting the region of the selected studies',
+          'data-find-key': 'region-prompt',
+          onKeydown: (event) => { if (event.key === 'Escape') { event.preventDefault(); confirmingRegion = null; refreshTable('[data-find-key="region"]'); } },
+        },
+          el('span', {}, regionChangePrompt(plan, region)),
+          el('button', {
+            type: 'button', class: 'btn btn-small', 'data-find-key': 'region-confirm', disabled: blocked,
+            onClick: () => applyRegion(plan, region),
+          }, 'Set region'),
+          el('button', {
+            type: 'button', class: 'btn btn-small studies-bulk-cancel', 'data-find-key': 'region-cancel',
+            onClick: () => { confirmingRegion = null; refreshTable('[data-find-key="region"]'); },
+          }, 'Cancel')));
+    }
+
     // Delete and Export share the first three reasons (waitTitle); each then names its own empty case.
     const wait = waitTitle(live);
     const deleteTitle = wait || (targets.length === 0 ? 'Tick studies to delete' : '');
@@ -1240,6 +1684,29 @@ export function render(state) {
       onClick: () => chooseFolder().then((dir) => dir && exportBundleTo(dir))
         .catch((error) => showToast(error?.message || 'The export failed.')),
     }, exporting ? 'Exporting\u2026' : (targets.length > 0 ? `Export ${exportRows.length} selected` : 'Export all'));
+
+    // Flag (2026-11-16, study flags spec 4.3; FL18): the ticked visible real rows, like Delete. It does NOT read
+    // barBlocked: a segmentation run or batch does not block flags, so only flagsRefusal (a bulk delete, a bundle
+    // import or export, studies not being saved) or an empty tick disables it. Its title says which.
+    const flagWait = flagsRefusal(live);
+    const flagButton = el('button', {
+      type: 'button', class: 'btn btn-small studies-flag-selected', 'data-find-key': 'flag-selected',
+      disabled: flagWait !== '' || targets.length === 0, title: flagWait || (targets.length === 0 ? 'Tick studies to flag' : ''),
+      'aria-haspopup': 'dialog', 'aria-expanded': String(bulkFlags !== null),
+      // Noted for the commit an open editor's blur makes (ruling 12); see flagsPressed.
+      onPointerdown: (event) => { if (event.button === 0) flagsPressed = BULK_BUTTON; },
+      onClick: () => toggleBulkFlags(targets.map((study) => study.id)),
+    }, targets.length > 0 ? `Flag ${targets.length} selected` : 'Flag');
+
+    // Set region (PR #86): the bulk form of the Analysis screen's Region select, over the same ticked visible real rows.
+    // Unlike Flag it reads barBlocked, as Delete does: the change clears results a run or batch may be writing.
+    const regionSelect = el('select', {
+      class: 'workspace-folder-select', 'data-find-key': 'region', 'aria-label': 'Set the region of the selected studies',
+      disabled: blocked || targets.length === 0,
+      title: wait || (targets.length === 0 ? 'Tick studies to set their region' : ''),
+      onChange: (event) => { const region = event.target.value; event.target.value = ''; if (region) askToSetRegion(targets, region); },
+    }, el('option', { value: '' }, targets.length > 0 ? `Set region of ${targets.length}\u2026` : 'Set region\u2026'),
+    ...REGION_CHOICES.map(([value, label]) => el('option', { value }, label)));
 
     let action;
     if (live.batch) {
@@ -1268,7 +1735,21 @@ export function render(state) {
         plan.note ? el('span', { class: 'param-export-note', 'data-find-key': 'segment-note' }, plan.note) : null);
     }
     return el('div', { class: 'studies-filters' },
-      deleteButton, exportButton, el('div', { class: 'studies-header-spacer' }), action);
+      deleteButton, exportButton, flagButton, bulkFlags ? buildBulkFlags(live) : null, regionSelect,
+      el('div', { class: 'studies-header-spacer' }), action);
+  }
+
+  // (2026-11-16, study flags) Under the Flag button, kept inside the bar's width: inside the bar, which is positioned,
+  // so it scrolls with the page. Called after every repaint, as placeFlagsPopup is.
+  function placeBulkFlags() {
+    const list = barHost.querySelector('.studies-bulk-flags');
+    const button = barHost.querySelector('.studies-flag-selected');
+    const bar = list?.parentElement;
+    if (!list || !button || !bar) return;
+    const barRect = bar.getBoundingClientRect();
+    const buttonRect = button.getBoundingClientRect();
+    list.style.left = `${Math.round(Math.max(0, Math.min(buttonRect.left - barRect.left, barRect.width - list.offsetWidth)))}px`;
+    list.style.top = `${Math.round(buttonRect.bottom - barRect.top + 4)}px`;
   }
 
   let lastKey = null;
@@ -1306,7 +1787,19 @@ export function render(state) {
     // prompt armed behind it (spec 5.3); an editor on a study deleted meanwhile closes. Plain
     // assignments, not setState: this runs inside a store notification.
     if (confirmingSelected && (live.studiesTab === 'parameters' || confirmingSelected.join(' ') !== targets.join(' '))) confirmingSelected = null;
+    // So does a pending Set region whose studies are no longer all ticked and visible.
+    if (confirmingRegion && (live.studiesTab === 'parameters'
+        || !confirmingRegion.plan.ids.every((id) => targets.includes(id)))) confirmingRegion = null;
     if (editingSubject && !studies.some((study) => study.id === editingSubject.id)) editingSubject = null;
+    if (editingFlags && !studies.some((study) => study.id === editingFlags.id)) editingFlags = null;
+    // (2026-11-16, study flags; FL18) The flag list keeps the films it opened on: an id leaves only when its film leaves
+    // the library (NOT when a filter hides its row), and the list closes when none is left, when the user leaves for
+    // the Parameters tab, or when the import, Delete or Set region prompt takes the bar's place.
+    if (bulkFlags) {
+      const kept = bulkFlags.ids.filter((id) => live.studies.some((study) => study.id === id && study.source === 'real'));
+      if (kept.length === 0 || live.studiesTab === 'parameters' || pendingImport || confirmingSelected || confirmingRegion) bulkFlags = null;
+      else if (kept.length !== bulkFlags.ids.length) bulkFlags = { ...bulkFlags, ids: kept };
+    }
     // The import prompt likewise (ruling S26): withdrawn silently when the library is no longer the list its plan was
     // made against (a run ending, a subject typed, a film added: its new ids and matches may be wrong now) or the user
     // leaves for the Parameters tab.
@@ -1343,7 +1836,7 @@ export function render(state) {
     }
 
     // live.running is in the key so the table repaints when a run starts or ends: the row badge is
-    // derived from it. confirmingId, confirmingSelected, editingSubject, exporting, importing,
+    // derived from it. confirmingId, confirmingSelected, confirmingRegion, editingSubject, editingFlags, bulkFlags, exporting, importing,
     // pendingImport and openMenu are module scope, not store state; listing them here is what lets a
     // refreshTable() after a change to them get past the gate, while a notification that changed
     // nothing the table shows (a pan frame, a toast) still returns early. paramSelected, batch,
@@ -1353,9 +1846,9 @@ export function render(state) {
     // stops repainting for it. openMenu is the LAST entry on purpose (2026-10-19, final review; R16):
     // menuClosedInPlace() below rewrites that one slot when an outside press closes the menu without a
     // rebuild.
-    const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, editingSubject, exporting,
-      importing, pendingImport, live.deletingStudies, live.paramSelected, live.batch, live.findSort,
-      live.findFilters, openMenu];
+    const key = [live.studies, live.query, live.running, confirmingId, confirmingSelected, confirmingRegion, editingSubject,
+      editingFlags, exporting, importing, pendingImport, live.deletingStudies, live.flagsBusy, live.paramSelected, live.batch,
+      live.findSort, live.findFilters, bulkFlags, openMenu];
     if (sameKey(key, lastKey)) return;
     lastKey = key;
     // The summary always describes the whole library, not the filtered view, and counts with
@@ -1379,19 +1872,35 @@ export function render(state) {
     // refreshTable() restores the row's delete controls, which carry no key, by its own selector.
     const active = document.activeElement;
     const focusKey = (barHost.contains(active) || tableHost.contains(active)) ? active.getAttribute('data-find-key') : null;
-    const caret = focusKey !== null && (focusKey.startsWith('subject-input-') || focusKey === 'filter-subject-text')
+    // (2026-11-16, study flags) The flags editor's box keeps its caret the same way.
+    const caret = focusKey !== null && (focusKey.startsWith('subject-input-') || focusKey === 'filter-subject-text'
+      || /^flags-.+-input$/.test(focusKey) || focusKey === 'bulk-flag-input')
       && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
     // The header menu the focus was in, if any: when this rebuild closed it, focus goes back to its funnel (spec 3.2).
     const menuColumn = focusKey !== null ? active.closest('.studies-filter-menu')?.getAttribute('data-filter-menu') ?? null : null;
     mount(barHost, buildFilterBar(live, visible));
+    flagsPopup = null;
+    // (2026-11-16, the final review, M1) .studies-table is the sideways scroll container and the rebuild replaces it, so
+    // a new node starts at 0: every tick, commit, menu tick or batch step threw a list scrolled right (FLAGS is off-screen
+    // at the default window with the sidebar open) back to STUDY. Carried across as screens/parameters.js carries its
+    // grid's; the browser clamps an offset the new table cannot take. Set before the focus move below, which may scroll
+    // the focused control into view, and before the popups are placed against the scrolled cells.
+    const scrollLeft = tableHost.querySelector('.studies-table')?.scrollLeft ?? 0;
     mount(tableHost, buildTable(visible, live.running, emptyKind, selected, live.findSort, live.batch, filters, shown));
+    if (scrollLeft) {
+      const table = tableHost.querySelector('.studies-table');
+      if (table) table.scrollLeft = scrollLeft;
+    }
     if (openMenu !== null) placeMenu(tableHost, buildMenu(openMenu, live, filters, shown), openMenu);
     listenOutside(openMenu !== null);
+    listenBulk(bulkFlags !== null);
     if (focusKey !== null) {
       // The control that was focused may be gone: clicking Segment replaces the button with the
       // progress group, and the batch's end replaces the group with the button. Land on the other.
       // The key is escaped: a header menu's keys carry stored values (a workspace path, a view typed by hand).
-      const fallback = { segment: 'stop', stop: 'segment' }[focusKey] ?? null;
+      // (2026-11-16, study flags) A flag's row leaves the list when its last holder loses it: focus goes to the box.
+      const fallback = { segment: 'stop', stop: 'segment' }[focusKey]
+        ?? (focusKey.startsWith('bulk-flag-') ? 'bulk-flag-input' : null);
       const byKey = (host, k) => host.querySelector(`[data-find-key="${CSS.escape(k)}"]`);
       const target = byKey(barHost, focusKey) ?? byKey(tableHost, focusKey)
         ?? (fallback ? byKey(barHost, fallback) : null)
@@ -1401,6 +1910,8 @@ export function render(state) {
         if (caret && typeof target.setSelectionRange === 'function') target.setSelectionRange(caret[0], caret[1]);
       }
     }
+    placeFlagsPopup();
+    placeBulkFlags();
   }
 
   // (2026-10-19, final review; R16) An outside press that closes the menu without a rebuild (closeMenuOnOutsidePress)
@@ -1412,6 +1923,13 @@ export function render(state) {
     if (lastKey !== null) lastKey = [...lastKey.slice(0, -1), null];
   }
 
+  // (2026-11-16, the final review, M4) The same for the bar's flag list (closeBulkOnOutsidePress): its slot, directly
+  // before openMenu, becomes null. Left stale, the next notification of any kind (a batch step) would rebuild, and one
+  // landing between the press and its click would replace the pressed control and swallow the click.
+  function bulkClosedInPlace() {
+    if (lastKey !== null) lastKey = [...lastKey.slice(0, -2), null, lastKey.at(-1)];
+  }
+
   const root = el('main', { class: 'studies-page' },
     el('div', { class: 'studies-page-inner' },
       el('div', { class: 'studies-header' },
@@ -1421,7 +1939,7 @@ export function render(state) {
       tabs,
       findPanel,
       parametersHost));
-  mounted = { update, host: tableHost, bar: barHost, zone, menuClosedInPlace };
+  mounted = { update, host: tableHost, bar: barHost, zone, menuClosedInPlace, bulkClosedInPlace };
   update(state);
   // (2026-10-19) Back from a study lands on its row. The panel is rebuilt on every trip, so a fresh mount starts at
   // the top, and a reviewer returning from the fortieth film had to scroll down to it again. render() returns a

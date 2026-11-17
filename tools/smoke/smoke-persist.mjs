@@ -81,6 +81,8 @@ const STUDY_ID = 'SP-9000';
 const FAILED_ID = 'SP-9010';
 const SEEDED_FAILURE = { processingError: 'Automatic film detection was inconclusive. Choose cervical, lumbar or standing / full spine manually.', processingErrorAt: '2026-09-29T12:00:00.000Z' };
 const SIDECAR = path.join(USER_DATA, 'predictions', `${STUDY_ID}.json`);
+// (2026-11-16, study-flags) The flags phase 1 puts on SP-9000: two spellings, one with a capital, in a chosen order.
+const PERSIST_FLAGS = ['Hardware', 'olif outcomes'];
 const JPEG_PREFIX = 'data:image/jpeg;base64,';
 
 const PHASES = ['run', 'restart', 'measurefail'];
@@ -509,6 +511,35 @@ try {
     check(`studies.json holds ${FAILED_ID} unsegmented, with its seeded processingError and processingErrorAt`, Boolean(failedSaved),
       failedSaved ? { processingError: failedSaved.processingError, processingErrorAt: failedSaved.processingErrorAt } : null);
 
+    // 11d. (2026-11-16, study-flags spec 4.2 and 4.7) Flags survive a quit. SP-9000 is flagged through the app's own
+    // setStudyFlags (the path the Find list and the Analysis screen take), which also brings its label record in step;
+    // SP-9010 is flagged through the store only, and its entry's `flags` key is then deleted from studies.json on disk,
+    // so phase 2 meets a library file written without flags (what a library saved before this feature looks like).
+    const labelOf = (file) => JSON.parse(fs.readFileSync(path.join(USER_DATA, 'labels', file), 'utf8'));
+    const labelBefore = (await storedStudy())?.labelFile;
+    const labelSavedAt = labelBefore ? labelOf(labelBefore).saved_at : null;
+    await cdp.evaluate(`import('./renderer/study-flags.js').then((m) => m.setStudyFlags([{ id: ${JSON.stringify(STUDY_ID)}, flags: ${JSON.stringify(PERSIST_FLAGS)} }]))`);
+    const flagsSaved = await waitFor(async () => {
+      const raw = await cdp.evaluate(`window.spineContour.loadStudies().then((r) => (r.studies || []).find((x) => x.id === ${JSON.stringify(STUDY_ID)}) ?? null)`);
+      return raw && JSON.stringify(raw.flags) === JSON.stringify(PERSIST_FLAGS) ? raw : null;
+    }, 5000);
+    check('studies.json holds the flags set on SP-9000, in the order given', Boolean(flagsSaved), flagsSaved ? flagsSaved.flags : null);
+    const labelFlagsOk = await waitFor(async () => (labelBefore && JSON.stringify(labelOf(labelBefore).flags) === JSON.stringify(PERSIST_FLAGS) ? true : null), 5000);
+    check('the label record on disk holds the same flags and its saved_at is unchanged', Boolean(labelFlagsOk) && labelOf(labelBefore).saved_at === labelSavedAt, labelBefore ? { flags: labelOf(labelBefore).flags, saved_at: labelOf(labelBefore).saved_at, was: labelSavedAt } : null);
+    await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((st) => ({ studies: st.studies.map((x) => (x.id === ${JSON.stringify(FAILED_ID)} ? { ...x, flags: ['stripped on disk'] } : x)) })))`);
+    const strippedSaved = await waitFor(async () => {
+      const raw = await cdp.evaluate(`window.spineContour.loadStudies().then((r) => (r.studies || []).find((x) => x.id === ${JSON.stringify(FAILED_ID)}) ?? null)`);
+      return raw && JSON.stringify(raw.flags) === JSON.stringify(['stripped on disk']) ? raw : null;
+    }, 5000);
+    check(`studies.json holds the flag set on ${FAILED_ID} before it is stripped`, Boolean(strippedSaved), strippedSaved ? strippedSaved.flags : null);
+    await cdp.settle(500);
+    const storeFile = path.join(USER_DATA, 'studies.json');
+    const library = JSON.parse(fs.readFileSync(storeFile, 'utf8'));
+    for (const entry of library.studies) if (entry.id === FAILED_ID) delete entry.flags;
+    fs.writeFileSync(storeFile, JSON.stringify(library));
+    const strippedOnDisk = JSON.parse(fs.readFileSync(storeFile, 'utf8')).studies.find((x) => x.id === FAILED_ID);
+    check(`${FAILED_ID}'s entry in studies.json now has no flags key (phase 2 loads it so)`, Boolean(strippedOnDisk) && !('flags' in strippedOnDisk), strippedOnDisk ? Object.keys(strippedOnDisk) : null);
+
     // 12. Hand phase 2 the CORRECTED study, once studies.json has actually caught up with it.
     const final = await openStudy();
     check('the study is still open at the end of the phase', Boolean(final), null);
@@ -517,7 +548,7 @@ try {
       fs.mkdirSync(OUT_DIR, { recursive: true });
       fs.writeFileSync(STATE_FILE, JSON.stringify({
         id: STUDY_ID, measurements: final.measurements, geometry: final.geometry, thumbnail: final.thumbnail,
-        subjectId: final.subjectId, reviewedAt: final.reviewedAt,
+        subjectId: final.subjectId, reviewedAt: final.reviewedAt, flags: PERSIST_FLAGS, labelFile: final.labelFile, labelSavedAt,
       }, null, 2));
     }
     check('wrote out/persist-state.json for the restart phase', fs.existsSync(STATE_FILE), STATE_FILE);
@@ -547,6 +578,18 @@ try {
     check('the sidecar reads back through the bridge after the restart', Boolean(sidecarAtStart && sidecarAtStart.geometry), sidecarAtStart ? Object.keys(sidecarAtStart) : null);
     check('the restored geometry is the CORRECTION, not the prediction', Boolean(restored && sidecarAtStart) && !same(restored.geometry, sidecarAtStart.geometry), null);
     check('the sidecar still holds the model\'s own geometry', Boolean(sidecarAtStart && before) && !same(sidecarAtStart.geometry, before.geometry), null);
+
+    // A1. (2026-11-16, study-flags spec 4.2 and 4.7) Flags came back with the library, in order and spelling, and the label
+    // record on disk still holds them with the saved_at phase 1 saw. A library file written without `flags` loads with none.
+    check('the flags survived the restart, in order and spelling', Boolean(restored) && JSON.stringify(restored.flags) === JSON.stringify(PERSIST_FLAGS) && JSON.stringify(before.flags) === JSON.stringify(PERSIST_FLAGS), restored ? restored.flags : null);
+    const rawLoaded = await cdp.evaluate(`window.spineContour.loadStudies().then((r) => (r.studies || []).find((x) => x.id === ${JSON.stringify(STUDY_ID)}) ?? null)`);
+    check('the bridge reads the same flags from studies.json', Boolean(rawLoaded) && JSON.stringify(rawLoaded.flags) === JSON.stringify(PERSIST_FLAGS), rawLoaded ? rawLoaded.flags : null);
+    const labelRec = before.labelFile && fs.existsSync(path.join(USER_DATA, 'labels', before.labelFile)) ? JSON.parse(fs.readFileSync(path.join(USER_DATA, 'labels', before.labelFile), 'utf8')) : null;
+    check('the label record holds the flags and its saved_at is the one from before the flag change', Boolean(labelRec) && JSON.stringify(labelRec.flags) === JSON.stringify(PERSIST_FLAGS) && labelRec.saved_at === before.labelSavedAt, labelRec ? { flags: labelRec.flags, saved_at: labelRec.saved_at, was: before.labelSavedAt } : null);
+    const legacy = await cdp.evaluate(`import('./renderer/store.js').then((m) => m.getState().studies.find((x) => x.id === ${JSON.stringify(FAILED_ID)}) ?? null)`);
+    check(`${FAILED_ID}, whose entry was written without flags, loads with an empty list`, Boolean(legacy) && Array.isArray(legacy.flags) && legacy.flags.length === 0, legacy ? legacy.flags : null);
+    const legacyFile = JSON.parse(fs.readFileSync(path.join(USER_DATA, 'studies.json'), 'utf8')).studies.find((x) => x.id === FAILED_ID);
+    check('the library file kept loading: the same entry is present and the library has more than one film', Boolean(legacyFile) && JSON.parse(fs.readFileSync(path.join(USER_DATA, 'studies.json'), 'utf8')).studies.length > 1, legacyFile ? Object.keys(legacyFile) : null);
 
     // A2. (2026-10-01, issue #39 port, port spec 4) The failure phase 1 seeded on FAILED_ID came back
     // through validateStudy with its time, and the film reads Failed on the list and on the Analysis

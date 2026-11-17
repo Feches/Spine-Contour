@@ -1,6 +1,10 @@
 # Handoff — Spine Contour UI Redesign
 
-**Last updated:** 2026-10-19
+**Last updated:** 2026-11-17 (release 1.8.0: flags on films with PR #85 and PR #86 merged in, the first section under "Where things stand"; flags on films itself is the second; the paragraphs below them date from 2026-10-19 and earlier)
+**2026-11-17:** the same branch carries Michael's PR #85 and PR #86 by merge commits and the 1.8.0 release commit; it
+is pushed for the release PR against `main`; the owner's own test has not been run.
+**2026-11-16 branch:** `claude/study-flags` in the worktree `.claude\worktrees\study-flags`, off `origin/main` @ `4eea101`
+(v1.7.0): flags on films, built, the whole-branch review's fix wave in, waiting for the owner's gate, nothing pushed.
 **Branch:** `worktree-reviewer-navigation` in the worktree `.claude\worktrees\reviewer-navigation` of the main checkout,
 off `origin/main` @ `cc1b548` (v1.2.0): the reviewer navigation round (previous / next over the Find list's filtered
 order, every unsegmented film's X-ray on the stage, the list's scroll fix) and, on top of it, the header filters round
@@ -66,6 +70,161 @@ the newest architecture amendment for controls and null rules. No model or calib
 algorithm changed; no screenshots were added.
 
 ## Where things stand
+
+### Release 1.8.0: flags on films with PR #85 and PR #86 merged in, the release commit on the branch, pushed for the release PR, the owner's own test NOT run (branch `claude/study-flags`, worktree `.claude/worktrees/study-flags`, 2026-11-17)
+
+The owner asked for a pull request that also combines Michael's two open pull requests ("make a pull request and combine
+the other pull requests 86 and 85"). He asked before running his gate on flags (the flags plan's Task 14), so that test
+is still his to do, on this branch, before or after he merges.
+
+**What the branch holds, on top of the flags work (tip `8d2923d`):**
+
+- `e2d91e5`, a merge of PR #85 (`mjayasur/claude/readme-refresh`, head `6e50273`): the README rewrite and
+  `assets/branding/spinecontour-header.svg`. One conflict: his README replaces the old download paragraph, whose
+  release-notes link 1.7.0 had moved; resolved to his side. His Download section links `docs/releases/` and names no
+  version, so a release no longer has a README link to bump. The flags text merged into his Parameters block unchanged.
+- `f40d98e`, a merge of PR #86 (`mjayasur/claude/bulk-set-region`, head `fff3c22`): **Set region of N…** on the Find
+  bar (`renderer/data/region-change.js`, `test/region-change.test.js`, `confirmingRegion` in
+  `renderer/screens/studies.js`). Five conflicts, all in `studies.js`, where both sides changed the bar. Both kept: the
+  bar reads Delete, Export, Flag, Set region…, then the segment group; navigation and an import withdraw the Set region
+  prompt and the flag editors; `update()`'s key lists `confirmingRegion` beside `confirmingSelected` and keeps the flag
+  list's and the open menu's slots last (`bulkClosedInPlace` and `menuClosedInPlace` rewrite them by position); the Set
+  region prompt takes the bar's place, so `update()` closes the open flag list for it.
+- `270eeb6`, a fix on PR #86: a bulk region change clears `regionHints` (crop marks). PR #86 was written on a base from
+  before 1.7.0; `changeRegion` on the Analysis screen clears them and the 1.7.0 notes say so.
+- `3c4b3cf`, a fix on PR #86: the prompt read "1 of their saved result"; it reads "results".
+- `c87a8a7`, `smoke-studies.mjs` section 21: the merged bar in the running app.
+- The 1.8.0 release commit: `package.json`, `renderer/data/version.js`, `CHANGELOG.md`, `docs/releases/1.8.0.md`,
+  `CLAUDE.md`, this file and the flags plan's Ledger (rulings 20 to 23).
+
+Both pull requests are merged by merge commits with their heads unchanged, so GitHub marks #85 and #86 merged when the
+release PR is merged with Create a merge commit, as it marked #84 for 1.7.0.
+
+**Counts on the release tree** (each suite on its own launch, scratch profile, invented films): unit 1328/1328;
+`smoke-studies.mjs` 309/309; `smoke-reviewer.mjs` 180/180; `smoke-parameters.mjs` 87/87; `smoke-levels.mjs` dom 202/202;
+`smoke-persist.mjs` 46/46 then 60/60; `smoke-bundle.mjs` a 19/19, b 24/24, c 37/37; `smoke-flags-scale.mjs` 35/35;
+`smoke-region-change.mjs` 16/16. The reviewer suite first read 179/180: its check that the bar holds no dropdown (from
+the 2026-10-19 round that removed the Workspace, Folder and Status dropdowns) met PR #86's select; the check now expects
+exactly that one select, and the suite was run again on a fresh launch.
+
+**Not run, not established:**
+
+- The owner's own test: the twelve items of the flags plan's Task 14, and Set region beside them.
+- Anything on real films or his library. The suites use invented films on a scratch profile.
+- The Set region select's native dropdown. The suite sets the select's value and dispatches `change`; whether a press
+  that also commits an open FLAGS or SUBJECT editor still opens the dropdown is not known (that commit rebuilds the bar
+  under the press).
+- The backend suite locally (no backend file changed; the release build runs it) and a packaged build.
+- Everything the section below lists as not run for flags still stands.
+
+**For the owner:** tell Michael before this release reaches his trainer (label records gain an optional `flags` list; a
+validator on the old schema file rejects them). The release notes carry that and the CSV column change. The parked points
+of the flags plan's Ruling 19 are still parked.
+
+### Flags on films: BUILT, reviewed and smoke-verified, the final review's fix wave in, waiting for the owner's gate, nothing pushed, no version bumped (branch `claude/study-flags`, worktree `.claude/worktrees/study-flags`, off `origin/main` @ `4eea101`, v1.7.0)
+
+2026-11-16. The owner reviews a library of several hundred films and wanted short labels of his own on a film (a project
+title, `hardware`, `cement`, `poor segmentation`) that he could set without opening the level editor, filter the list by,
+and carry into the Parameters tab, both CSV exports, bundles and the label record the trainer reads. He first asked for
+the annotation comment to show in the list; after seeing mock-ups he decided flags take that job and the comment stays
+exactly as it is (FL5). Spec `docs/superpowers/specs/2026-11-16-study-flags-design.md` (FL1-FL25, approved by the owner
+2026-11-16, who also confirmed that FLAGS is the last column); plan `docs/superpowers/plans/2026-11-16-study-flags.md`
+(Tasks 1-14; its `## Ledger` at the end holds rulings 1-18, the per-task commit ranges, the deferred minors, the counts,
+what was not established and the final review's part). Built subagent-driven on 2026-11-16: one implementer per task, a review after each, and
+each DOM task verified in the running app over CDP on a scratch profile by a separate pass that wrote its section of the
+matching smoke suite. No screenshot of the app was taken or read.
+
+**What was built.** A study gains `flags` (a list of text, empty by default; `STORE_VERSION` stays 1; the sanitizer in
+`renderer/data/persistence.js` keeps it, so a library saved before flags loads with none). The rules are one pure module,
+`renderer/data/flags.js`: 1 to 40 characters, at most 20 per film, `,` `;` and line breaks end a flag, a leading `#` is
+dropped, flags match ignoring case, and a flag typed that matches one already used in the library takes the library's
+spelling. Every change goes through one writer, `setStudyFlags(changes)` in `renderer/study-flags.js`, which writes the
+new lists in one store update and then brings each film's label record in step. The Find list has a FLAGS column (last,
+after STATUS; the page grew from 1160 to 1280 wide) with an in-row editor and a header menu (any or every, and
+`No flags`), sorting and search; the bar's Flag button flags every ticked film; the Analysis screen has a flags block above
+the comment (hidden while the level editor is open); the Parameters tab has a read-only FLAGS column and a flag dropdown
+that keeps its choice when the last film loses the flag; both CSVs gain `Flags` and `<visit> flags`; a bundle's
+`study.json` and label record carry them and an import merges them. The editor component is
+`renderer/components/flag-editor.js`, used three times. A flag change never changes a film's status or review mark.
+
+**What the label record does.** `flags` sits directly after `comment`, always written. A flag change rewrites only that
+key in an existing record: `saved_at`, `app_version` and the annotation are byte-identical, because an import treats the
+later `saved_at` as the newer annotation. A film with no record gets none. The rewrite takes its turn behind Save edits
+and Mark reviewed, and a bulk change yields between films so the list does not freeze (ruling 3). Once no write is in
+flight a record's `flags` equal its study's. The import/export lock that refuses a flag edit is the store key
+`flagsBusy` (`null | 'import' | 'export'`), noted in the architecture contract.
+
+**Rulings made on the way** (all in the plan's Ledger): the editor's draft transitions are pure helpers in `flags.js`
+used by both screens (1); Enter in an empty box closes it, a full box stays focusable and a long chip shows an ellipsis
+(6-8); a press on a FLAGS cell or the Flag button opens it in one click whatever editor was open (9, 12); the bulk list
+keeps offering every flag that was in use when it opened (11); an import calls the record sync itself and names a record
+it could not update in its own toast (14); the import/export lock is a store key, `flagsBusy` (15).
+
+**Counts at `9d9f357`.** Unit `node --test "test/*.test.js"` 1307/1307 (1265 at the branch point). Smoke suites, each on a
+fresh launch of a source build on a scratch profile with synthetic films: `smoke-studies.mjs` 258/258; `smoke-reviewer.mjs`
+172/172; `smoke-parameters.mjs` 87/87; `smoke-levels.mjs` dom 202/202; `smoke-bundle.mjs` phase a 19/19, b 21/21, c 36/36
+(76/76); `smoke-persist.mjs` 46/46 then, after a quit and relaunch, 60/60. The reviewer suite twice failed checks (169/172 and
+167/172) when run straight after the studies suite while the machine's windows were in use: an open flags editor closes on blur, so
+a lost OS focus closes it (as the SUBJECT editor does); the suite now brings the page to front and enables focus
+emulation, and passed 172/172 twice in the documented order.
+
+**The final whole-branch review and its fix wave (2026-11-16).** The review (Fable, over `0022804..becf790`) said "ready
+for the owner's test with fixes", 0 Critical. I1: the record lock worked one way only (an export, an import or a delete
+could start while a bulk flag change was still writing label records, and the flag update did not re-check its study
+after writing). I2: text over 40 characters was refused silently while the hint still said `ENTER ADDS`. I3: nothing had
+been run at several hundred films. A scale probe on 400 invented films came first (`c456b72`, no performance problem),
+then one fix wave: `8b01a87` (`recordWritesSettled`: the export, the import, the confirm and both deletes wait for
+record writes in flight; the flag update re-reads its study and removes a file written for a study deleted meanwhile; a
+record that is not an object is skipped; the bundle locks set inside their `try`), `62ef191` (the hint
+`40 CHARACTERS AT MOST` and a refused piece kept in the box; Enter with nothing highlighted adds the typed text, ruling 6
+as amended; Enter in the bulk box on a flag in use; the Find table keeps its sideways scroll; the highlighted suggestion
+stays in view; one popup at a time; `cleanFlag('# #x')` is `x`), `a1b67f1` (an imported flag takes the library's
+spelling, ruling 18), then the test commit and the docs commit. Rulings 16 (a comma adds the text as typed, never the
+highlighted suggestion) and 17 (an import that would pass 20 flags keeps the first 20, silently: a known limit) are in the
+plan's Ledger with the review's triage. Counts after the wave: unit 1321/1321; `smoke-studies.mjs` 286/286;
+`smoke-reviewer.mjs` 180/180; `smoke-parameters.mjs` 87/87; `smoke-levels.mjs` dom 202/202; `smoke-bundle.mjs` a 19/19,
+b 24/24, c 37/37; `smoke-persist.mjs` 46/46 then 60/60; `smoke-flags-scale.mjs` 35/35. Scale reference, 400 invented
+films: a keystroke in a FLAGS cell about 60 ms, the same as in the search box; a 300-film bulk change about 75 ms to the
+store and about 1.2 s to all 300 label records.
+
+**For the owner, not fixed here** (it predates this branch): the Analysis screen's Export CSV suggests `<SP id>.csv` as the
+file name in the save dialog, which breaks the rule that the SP id is never shown.
+
+**Not run, not established.**
+
+- The owner's gate (plan Task 14) has not been run (the plan's Task 14 Step 2 list gained five checks in the fix wave:
+  a 41-character flag, a long suggestion list walked with the arrows, an export straight after a bulk flag, his real
+  library, and a flag box left with text when he switches windows). Nothing is pushed; there is no pull request.
+- Several hundred films were measured on 400 invented films, not on his library.
+- A single-row delete does not refuse flag changes while it runs: it waits for the record writes in flight before it
+  removes the record (`deletingStudies` would fail a running batch's next film). An import's placement racing a bulk
+  flag change is forced only in unit tests; in the app the export and the delete were seen to start while writes were in
+  flight, with the right results.
+- Nothing was run on real films or on the owner's library. Every in-app check used synthetic films on a scratch profile.
+- The narrow-window layout was checked at 1180 px by a device-metrics override, not a real window resize.
+- The native save dialog of the two CSV exports and the folder pickers of the bundle are not driven by the suites (the
+  suites call the screens' own functions; the exported text is built through the page's own modules).
+- That a flags-only import makes no main-process placement call is not observable from the harness (the bridge cannot be
+  intercepted); its effects are asserted and the code path was read. The toast clause `the label record could not be
+  updated for N film(s)` was never seen: no way to make a label write fail without breaking the profile.
+- The import lock on the Analysis screen was seen during an import and during an export; persistence-disabled refusal
+  (`Studies are not being saved`) was not exercised. The persist suite's "written without flags" case deletes the key from
+  `studies.json` with the app running, a faithful stand-in but not a file written by an older build.
+- `smoke-levels.mjs` was reported on its `dom` phase only (202/202); no `film` phase count was taken for this work. Backend
+  tests were not run: no backend file changed. No packaged build was made.
+
+**What the release notes must say** when the owner releases (the release commit, `CHANGELOG.md`, `docs/releases/`,
+`package.json` and `renderer/data/version.js` are his to ask for; none is touched on this branch):
+
+- **Every CSV column after `Note` moved one place right.** The per-film file gained a `Flags` column directly after
+  `Note`, always written, empty for a film with none, several flags joined with `; `. The paired file gained a
+  `<visit> flags` column per visit, after the `<visit> film date` columns, so every column after those moved too. A reader
+  that finds columns by name is unaffected; one that counts positions is not.
+- **Label records gain an optional `flags` list** (after `comment`, same schema id `spinecontour.segmentation-label/1`).
+  The schema's top level is `additionalProperties: false`, so **a validator holding the old
+  `label-record.schema.json` rejects a record that has `flags`** until it takes the new file. Tell Michael before the
+  release reaches his trainer (spec section 11).
+- An older build ignores `flags` in a bundle and drops them from a library the next time it saves.
 
 ### Find list header filters, the REGION column and the Unknown view: BUILT, at the owner's gate, not pushed (branch `worktree-reviewer-navigation`, worktree `.claude/worktrees/reviewer-navigation`, on top of the reviewer navigation round below and shipping as one release with it, off `origin/main` @ `cc1b548`, v1.2.0)
 

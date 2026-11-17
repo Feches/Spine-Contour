@@ -224,6 +224,33 @@
 .analysis-comment.is-hidden,
 .analysis-panel.is-editing .analysis-comment { display: none; }
 
+/* The film's flags (study flags spec 4.4), above the comment: the label is .analysis-comment-label's face, then the chips
+   and the dashed add chip wrap together. Relative, so the editor's suggestion popup opens under the field at the
+   block's left. Hidden for a demo study and in edit mode, as the comment is. */
+.analysis-flags { padding: 0 14px 10px; flex-shrink: 0; position: relative; }
+.analysis-flags-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 5px;
+  margin-top: 3px;
+}
+.analysis-flags-row .flag-chips { display: contents; }
+.analysis-flags-row .analysis-flags-chips { cursor: pointer; }
+.analysis-flags .flag-editor { margin-top: 3px; }
+.analysis-flags .flag-popup { left: 14px; }
+.flag-chip-add {
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.flag-chip-add:hover:not(:disabled) { color: var(--ink); }
+.flag-chip-add:disabled { cursor: default; opacity: 0.6; }
+.flag-chip-add:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.analysis-flags.is-hidden,
+.analysis-panel.is-editing .analysis-flags { display: none; }
+
 /* The list's status badge in the header, before the OVERALL CONFIDENCE badge. */
 .analysis-status {
   display: flex;

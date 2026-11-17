@@ -1,6 +1,62 @@
 # Spine Contour
 
-**2026-11-12 release 1.7.0 (PR #84, the YOLO region detector and Mark crops; release PR open, not merged):** branch
+**2026-11-17 release 1.8.0 (flags on films, with PR #85 and PR #86; the release commit is on the branch):** on the owner's
+instruction ("make a pull request and combine the other pull requests 86 and 85") the flags branch `claude/study-flags`
+(next paragraph; tip `8d2923d` before this) took Michael's two open pull requests by merge commits, so merging the release
+PR marks both merged: PR #85 (`mjayasur/claude/readme-refresh`, head `6e50273`, the README rewrite; one conflict, the old
+download paragraph, resolved to his side with the flags text kept in its Parameters block) as `e2d91e5`, and PR #86
+(`mjayasur/claude/bulk-set-region`, head `fff3c22`, **Set region of N…** on the Find bar: `renderer/data/region-change.js`,
+`confirmingRegion` in `renderer/screens/studies.js`) as `f40d98e`. Both pull requests predate 1.7.0 (base `a889b07`). PR #86
+and the flags work both changed the Find bar; the five conflicts keep both: the bar reads Delete, Export, Flag, Set
+region…; `confirmingRegion` is in `update()`'s key beside `confirmingSelected` (the flag list's and the open menu's slots
+stay the last two); the Set region prompt closes the open flag list as the Delete prompt does; a region change keeps a
+film's flags. Two fixes on top of PR #86, each its own commit: `270eeb6` a bulk region change clears `regionHints` (crop
+marks), as `changeRegion` on the Analysis screen does since 1.7.0; `3c4b3cf` the prompt reads "1 of their saved results".
+`c87a8a7` adds `smoke-studies.mjs` section 21 (the merged bar). Then the 1.8.0 release commit (`package.json`,
+`renderer/data/version.js`, `CHANGELOG.md`, `docs/releases/1.8.0.md`; the new README names no version, so it has no link
+to bump). Counts on the release tree, each suite on its own launch: unit 1328/1328; `smoke-studies.mjs` 309/309;
+`smoke-reviewer.mjs` 180/180 (its "no dropdown on the bar" check now expects the one Set region select); `smoke-parameters.mjs`
+87/87; `smoke-levels.mjs` dom 202/202; `smoke-persist.mjs` 46/46 then 60/60; `smoke-bundle.mjs` a 19/19, b 24/24, c 37/37;
+`smoke-flags-scale.mjs` 35/35; `smoke-region-change.mjs` 16/16. **Not run:** the owner's own test (the flags plan's Task 14: he asked
+for the pull request before it); anything on real films; the backend suite locally (no backend file changed); a packaged
+build; the native dropdown of the Set region select (the suite dispatches a choice to the page), including whether a
+press that also commits an open FLAGS or SUBJECT editor still opens it (that commit rebuilds the bar under the press).
+Merging the release PR to `main` with Create a merge commit publishes v1.8.0. **Before that reaches Michael's trainer, tell
+him** label records gain an optional `flags` list (a validator on the old schema file rejects them).
+
+**2026-11-16 flags on films (BUILT; pushed on 2026-11-17 inside the 1.8.0 release PR, see the paragraph above):** branch `claude/study-flags` (worktree
+`.claude/worktrees/study-flags`) off `origin/main` @ `4eea101` (v1.7.0), built by plan
+`docs/superpowers/plans/2026-11-16-study-flags.md` (Tasks 1-13; its `## Ledger` holds rulings 1-18, the per-task commits,
+the deferred minors, the counts and what was not established) from spec
+`docs/superpowers/specs/2026-11-16-study-flags-design.md` (FL1-FL25). A film carries `flags`, free-text labels of the owner's
+own (1 to 40 characters, at most 20, `,` `;` and line breaks end one, a leading `#` is dropped, matched ignoring case), set
+from the Find list's FLAGS column and the bar's Flag button (many ticked films at once) and from a flags block above the
+comment on the Analysis screen, filtered by a header menu (any or every, `No flags`), and carried into the Parameters tab
+(a column and a dropdown), both CSV exports (`Flags` after `Note`; `<visit> flags` after the film dates), bundles (merged
+on import, never removed) and the label record (`flags` after `comment`). The rules are `renderer/data/flags.js`; every
+change goes through `setStudyFlags` in `renderer/study-flags.js`, which rewrites only `flags` in an existing record and
+leaves `saved_at` alone; the import/export lock is the store key `flagsBusy`, and the export, the import and both deletes
+wait for label-record writes in flight (`recordWritesSettled` in `renderer/level-editor.js`) before they touch a record.
+Comments are untouched. Every task was reviewed (Tasks 4, 6, 7, 8 and 12, and Task 13's Pass A, after fix rounds). The
+final whole-branch review (Fable) said "ready for the owner's test with fixes" (0 Critical; I1 the record lock worked one
+way only, I2 text over 40 characters was refused silently, I3 nothing had been run at several hundred films) and one fix
+wave answered it (`8b01a87`, `62ef191`, `a1b67f1`, then a test and a docs commit; rulings 6 as amended, 16-18 in the plan's
+Ledger, which also has the review's part). Counts after the wave: unit 1321/1321; `smoke-studies.mjs` 286/286;
+`smoke-reviewer.mjs` 180/180; `smoke-parameters.mjs` 87/87; `smoke-levels.mjs` dom 202/202; `smoke-bundle.mjs` a 19/19,
+b 24/24, c 37/37; `smoke-persist.mjs` 46/46 then 60/60; `smoke-flags-scale.mjs` 35/35 (400 invented films: a FLAGS-cell
+keystroke about 60 ms, the same as the search box; a 300-film bulk change about 75 ms to the store, about 1.2 s to its 300
+records; not the owner's real library). **Not run:** the owner's gate (plan Task 14); anything on real films or his
+library (the suites use invented films on a scratch profile); the narrow-window layout
+at a real resize (checked at 1180 px by a device-metrics override); the native save dialog of the CSV exports and the
+bundle's folder pickers; the `the label record could not be updated` toast clause; an import's placement racing a bulk
+flag change in the running app (forced only in unit tests); a packaged build. A single-row delete does not refuse flag
+changes (it waits for the writes in flight instead: `deletingStudies` would fail a running batch's next film). Nothing is pushed. The
+release (`CHANGELOG.md`, `docs/releases/`, `package.json`, `renderer/data/version.js`) is the owner's later commit, and its
+notes must say that every CSV column after `Note` moved one place right and that label records gain an optional `flags`
+list a validator on the old schema file rejects (tell Michael first). See HANDOFF's first "Where things stand" section and
+the architecture contract's `## 2026-11-16 amendment: flags on films`.
+
+**2026-11-12 release 1.7.0 (PR #84, the YOLO region detector and Mark crops; RELEASED as v1.7.0: PR #87, merge `4eea101`):** branch
 `claude/release-1.7.0` from `main` @ `a889b07` (v1.6.1), with PR #84's eleven commits (head `0da455e`, from
 `mjayasur/Spine-Contour` `claude/yolo-crop-pipeline`) merged in unchanged by a merge commit, then the 1.7.0 release
 commit. Auto detect routes and frames films from the two-class YOLO26-s `crop_detector.onnx` boxes
@@ -11,8 +67,8 @@ are removed. Mark crops (`renderer/data/crop-marks.js`) stores optional `regionH
 bump) and sends them as the `region_hints` form field (validated in `backend/region_hints.py`). The merged tree equals PR #84's head (Windows and macOS checks
 passed). On the owner's Windows workstation: unit 1265/1265, backend 734 passed / 3 skipped, `verify_onnx` verified all
 eight graphs (its GPU parity exit 3 is the known Intel UHD 770 `cervical_hrnet` case, a graph this release leaves
-unchanged); the owner tried the build by hand on a scratch profile. Merging the release PR to `main` with a merge commit
-publishes v1.7.0 and marks PR #84 merged.
+unchanged); the owner tried the build by hand on a scratch profile. The release PR (#87) was merged to `main` with a
+merge commit, which published v1.7.0 and marked PR #84 merged.
 
 **2026-10-29 release 1.6.1 (PR #79, the +15% upward lumbar crop on full-spine films; RELEASED as v1.6.1: PR #80, merge
 `a889b07`):**

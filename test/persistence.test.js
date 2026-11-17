@@ -402,6 +402,17 @@ test('validate carries the note as optional text and defaults it to null', () =>
   }
 });
 
+test('a study keeps its flags through validate, cleaned; a library saved before flags reads as none', () => {
+  const [kept, before, notAList] = validate({ version: STORE_VERSION, studies: [
+    { ...identity('SP-1000'), flags: [' hardware ', 'Hardware', 'a,b', 3] },
+    identity('SP-1001'),
+    { ...identity('SP-1002'), flags: 'hardware' },
+  ] });
+  assert.deepEqual(kept.flags, ['hardware']);
+  assert.deepEqual(before.flags, []);
+  assert.deepEqual(notAList.flags, []);
+});
+
 test('validate carries the label comment copy as optional text and defaults it to null (annotation round 2, spec §3.3)', () => {
   const [bare] = validate({ version: STORE_VERSION, studies: [identity('SP-1000')] });
   assert.equal(bare.labelComment, null);

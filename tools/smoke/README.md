@@ -879,7 +879,10 @@ its row; the same bundle again toasting exactly `Nothing to import: already in t
 order>` with no prompt; Edit reading the imported record's comment `from A` back, `from B` saved (`Saved 1 edit to the
 label record.`), the study and B's record reading `from B`; Export all into `spine-contour-bundle-out-b` (the same exact
 toast), B's bundle holding both films' digests and the record with `comment` `from B`; the path file written.
-**Phase c** (9): profile A reloaded with SP-9400 (its record, `from A`, reviewed) and SP-9401; B's bundle on disk;
+**Phase c** (9; 30 since the study-flags work, see "Study flags sections" below, which also changes the two lines that
+follow: SP-9401 is now a film to flag, `… 0 to add, 1 to update, 1 to flag, 0 to skip. …` and `Imported 0 studies,
+updated 1, flagged 1, skipped 0`): profile A reloaded with SP-9400 (its record, `from A`, reviewed) and SP-9401; B's
+bundle on disk;
 `importBundleFrom` showing `… 0 to add, 1 to update, 1 to skip. …` with the focus on Cancel; `confirmImport` toasting
 exactly `Imported 0 studies, updated 1, skipped 1 (already in the library: bundle-unsegmented.png)` (the unsegmented
 film has no record on either side); SP-9400's `labelComment` `from B` under its own, unchanged `labelFile`
@@ -1027,3 +1030,113 @@ low-memory settings across reload. Pass de-identified local examples; no images 
 screenshots are written into the repository. Results are ignored under
 `tools/smoke/out/processing/`. The CPU resource comparison is separately reproducible
 with `tools/benchmark_processing.py`; see `docs/low-memory-processing.md`.
+
+## Study flags sections (2026-11-16)
+
+The study-flags work (spec `docs/superpowers/specs/2026-11-16-study-flags-design.md`; branch `claude/study-flags`) added a
+section to six suites. Every check is a DOM, store or file read; no screenshot is taken. The ids and hooks: the Find list's
+`data-find-key` (`flags-<id>`, `flags-<id>-input`, `flag-selected`, `bulk-flag-input`, `bulk-flag-<flag key>`,
+`filter-flags`, `import-bundle`, `import-confirm`, `import-cancel`, `export-bundle`), the Analysis screen's
+`data-flags-key` (`analysis-flags-add`, `analysis-flags-input`) and the Parameters tab's `data-param-key`.
+
+- **`smoke-studies.mjs`** sections 19 and 20: the FLAGS column, its in-place editor and its menu; flagging the ticked
+  films. Run it on a fresh launch like the rest of the suite.
+- **`smoke-reviewer.mjs`** section 7: the FLAGS block on the Analysis screen (the chips, `+ Add flag`, the editor, and the
+  position / Next buttons while the flags filter is on).
+- **`smoke-parameters.mjs`** section 14: the Parameters tab's FLAGS column, its dropdown, the kept choice, and `Flags` in
+  both exported CSV files (the paired file has a `<visit> flags` column per visit after the film dates).
+- **`smoke-levels.mjs`** (dom phase, 195 checks before, 202 after): section 6 flags SP-9300 before Save edits (a film with
+  no record: the flagging creates none), then reads the written record's `flags` after `comment`, changes the flags
+  afterwards through `setStudyFlags` (the same call the Find list and Analysis screen make) and reads the record again
+  (`flags` rewritten, `saved_at` byte-identical, every other field equal), and a call with the flags the film already
+  has writes nothing; section 18 injects SP-9304 already flagged, so Mark reviewed on a film with no record writes the
+  flags into the new record, then adds a flag after the mark (flags only, `saved_at` byte-identical) and flags SP-9303,
+  which has no record, to prove none is created.
+- **`smoke-persist.mjs`** (42 then 55 before, 46 then 60 after): phase 1 flags SP-9000 through `setStudyFlags` (studies.json
+  and the label record hold the flags, record `saved_at` unchanged) and flags SP-9010, then deletes SP-9010's `flags` key
+  from `studies.json` on disk (the file written with `fs`, after the saver has caught up; the app is quit next and
+  writes nothing more), so phase 2 meets a library file written without flags; phase 2 reads the flags back from the
+  store, the bridge and the record, and SP-9010 loads with an empty list. `out/persist-state.json` carries the flags and
+  the label file's `saved_at` between the phases.
+- **`smoke-bundle.mjs`** (17, 18, 9 before; 19, 21, 30 after): phase a flags both films (SP-9400 has a record: only its
+  `flags` are rewritten, `saved_at` untouched; SP-9401 has none and none is created) and reads the flags in both exported
+  `study.json` files and in the bundled record. Phase b reads A's flags on the imported studies and in the placed
+  record, then gives B's copies other ones (SP-9400's first flag respelled, its second dropped, one added; SP-9401 one
+  added) and exports again. Phase c: the first import is now one update and one **flag** (SP-9401 used to be a skip: no
+  record either side), so the prompt reads `0 to add, 1 to update, 1 to flag, 0 to skip` and the toast `Imported 0
+  studies, updated 1, flagged 1, skipped 0`; SP-9401 is no longer the same record object, only its `flags` differ; the
+  merge is local order and spelling first, never removes a local flag, then the bundle's new ones; the update leaves the
+  record's `flags` equal to the study's. Then an export of A's merged library is imported back after A's flags are
+  changed locally: a bundle with nothing to add or update, offered (`0 to add, 0 to update, 2 to flag, 0 to skip`),
+  confirmed (`Imported 0 studies, updated 0, flagged 2, skipped 0`), merged, the record's `saved_at` byte-identical and
+  its other fields equal, the sidecar byte-identical, no record created for the unsegmented film, and the same bundle
+  again is Nothing to import. The lock is read at the instant an import (reading), a confirm (placing) and an export
+  (writing) has started: the call is not awaited and the page reads, in the same turn and before its first await can
+  resolve, `flagsRefusal()`, the Flag button's `disabled` and `title`, a click on a FLAGS cell (no editor opens, the
+  toast is the sentence) and a direct `setStudyFlags` (changes nothing). After each operation the button, a cell and a
+  flag edit work again; the Analysis screen's `+ Add flag` is read the same way (the screen opened in the same turn an
+  export starts). Two harness changes: the export toast pattern accepts the `-2` suffix a second export in the same
+  minute takes, and `promptText` names `to flag` only when above 0. The lock is store state (`flagsBusy`, `null | 'import' |
+  'export'`, commit d2700b3), so the suite also reads it: `'import'` while an import reads or places, `'export'` while an
+  export writes, `null` after each, after a prompt is cancelled and after a "nothing to import" result; the Analysis
+  `+ Add flag` is disabled with the import (or export) sentence when the screen opens in the same turn the operation starts,
+  and is enabled again when it ends with no other store change; and `flagsBusy` set through the store hook disables it at
+  once and clearing it enables it. Phase c is 36 checks (19, 21, 36 in all).
+
+Order and focus (2026-11-16): the documented single launch is `smoke-parameters.mjs`, `smoke-studies.mjs`, `smoke-reviewer.mjs`,
+in that order; each also passes alone on a fresh launch. Sections 19 and 20 of `smoke-studies.mjs` now put back the search, sort,
+filters, ticks, tab and screen they found (`listBefore19`), and section 7 of `smoke-reviewer.mjs` starts by resetting the list and
+turning on `Emulation.setFocusEmulationEnabled`: its flag editors close on blur, and two long runs in the documented order read
+5 and 3 failures (the editor did not stay open) when the operating system's focus moved away from the Electron window mid-run,
+while the same section passed alone and in later runs. No store state left by sections 19 and 20 explained it (the list was
+default but for the sort), so it was a focus flake, not a product fault.
+
+What the harness cannot see: `confirmImport` of a flags-only plan sends nothing to the main process (`plan.actions.length
+=== 0`), but `window.spineContour` is non-configurable, so the missing `importBundle` call is not observed; the suite asserts
+the files it would have written are untouched and the toast carries no error. The native save dialog of the CSV exports and
+the narrow-window layout (checked at 1180px by a device-metrics override, not a real resize) are not driven by any suite.
+
+**The final fix wave (2026-11-16, the whole-branch review's findings).** New checks, each marked in its name with the
+finding it answers:
+
+- `smoke-studies.mjs` 19.10b (M1): at the 1180 px layout, scrolled to the right-hand end, a tick, a click on a FLAGS cell,
+  a commit and a tick in the FLAGS menu keep the table's `scrollLeft`, and the list and the menu open from their cells.
+  The menu is checked to open over its header cell, not to the pixel: opening it can add or remove the page's vertical
+  scrollbar after it is placed, which moves the table by the scrollbar's width (15 px seen once). 19.11 (I2, M3, M2): the
+  hint `40 CHARACTERS AT MOST` for 41 characters, a refused piece kept in the box, Enter with nothing highlighted adding
+  the typed text, Enter on a held flag doing nothing, and ArrowDown through twelve suggestions keeping the last inside the
+  list's visible box with nothing else scrolled. 20.14 (I2, T8): the bulk box's refusal line and Enter on a flag in use;
+  20.15 (T8): one popup at a time by keyboard; 20.16 (M4): Delete pressed while the list is open, a store notification
+  written between mousedown and mouseup, the click still opens the Delete prompt; 20.17 (I1): 150 throwaway films with
+  seeded label records, a bulk change through the list (trusted Enter) then an export at once (every bundled record carries
+  the flag), and a single-row delete: the trash pressed (trusted), then in one page call a second change through
+  `setStudyFlags` and the prompt's confirm button clicked, on the film whose record the updates reach first (no label file
+  left for it); each start probed for record writes still in flight (`recordWritesSettled` not yet resolved). A trusted
+  click on the confirm button came after the writes for 150 films had ended in one of two runs, hence the page call.
+- `smoke-reviewer.mjs` 7.10: the same hint, refused piece, Enter rule and arrow walk in the Analysis block.
+- `smoke-bundle.mjs` phase b's tail (ruling 18): the unsegmented film leaves B's library and A's bundle adds it back with
+  B's spelling of its flag; phase c (I1): a flag change and an import started in the same turn, the record written before
+  the import's plan.
+
+## The flags scale probe (2026-11-16)
+
+`smoke-flags-scale.mjs` measures the study flags at 100 and 400 invented films (75% of them with a label record on disk in the
+scratch profile, the rest without; ten flags in use, a few films with none). Run it on a FRESH launch (it checks that no `SP-8xxx`
+study exists), with `SPINE_CONTOUR_USER_DATA` as the launcher printed it (it reads the labels folder):
+
+```
+node tools/smoke/launch.mjs
+node tools/smoke/smoke-flags-scale.mjs
+node tools/smoke/cdp.mjs --quit
+```
+
+Each figure is a median of repeated samples, from a trusted input event's arrival in the page to the second animation frame
+after it (repaint included), so nothing under one or two frames (16-33 ms) can show. It prints every number, then asserts
+generous ceilings at 400 films: the FLAGS cell keystroke is at most 3 times the search-box keystroke and under 150 ms; opening
+the FLAGS menu, ticking and unticking a flag, opening the Flag list over 300 ticked films and one keystroke in it are each under
+300 ms; the store part of a 300-film bulk add is under 500 ms and the 300-record sync under 60 s. It also asserts that a bulk
+add and a bulk remove leave every record's `saved_at` byte-identical, create no record for a film that had none, and hold
+`flagsBusy` and `deletingStudies` null throughout. Measured 2026-11-16 at becf790 (two fresh launches): at 400 films the
+search-box keystroke 59 ms, the FLAGS cell keystroke 60-61 ms, the bulk add 74 ms to the store and about 1.1 s to the
+300 records on disk. Not observable: the main process's own time inside `saveLabelRecord` (only the end-to-end sync is timed).
+It cleans up its studies and records in `finally`.

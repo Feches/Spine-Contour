@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.8.0
+
+- **Flags on films.** A film carries short labels of your own (1 to 40 characters, up to 20 per film). Set them in the
+  Find tab's new FLAGS column, with **Flag N selected** for every ticked film, or in the flags block above the comment
+  on the Analysis screen. The FLAGS header menu filters the list (any or every ticked flag, `No flags`); the list sorts
+  by them and the search box finds them. The Parameters tab gains a read-only FLAGS column and a flag dropdown that
+  narrows the grid and both exports. Comments are unchanged.
+- **Flags in the exports, bundles and the label record.** Export CSV gains `Flags` after `Note` and the paired file
+  `<visit> flags` after the film dates, **so every column after `Note` sits one place further right**. A bundle carries
+  flags, and an import adds the incoming ones to a film's own without removing any. The label record gains an optional
+  `flags` list after `comment`; a flag change rewrites only that list and leaves `saved_at` alone. **A validator on the
+  earlier `label-record.schema.json` rejects a record with `flags`** until it takes the new file.
+- **Set the region of several studies at once (PR #86).** The Find bar's **Set region of N…** sets Auto detect, Lumbar,
+  Cervical or Full spine on every ticked, visible study, as the Analysis screen's Region select does on one film. A
+  changed study loses its result and its crop marks, and **Segment N selected** runs it again; a change that would clear
+  saved results asks first.
+- **A new README (PR #85)** with the website's logo, a table of what each film type measures, an accuracy summary and
+  the usage reference in collapsible blocks.
+
+[Release notes](docs/releases/1.8.0.md)
+
 ## 1.7.0
 
 - **Auto detect is the region detector, then the models (PR #84).** A YOLO26-s region detector replaces the crop detector; its
