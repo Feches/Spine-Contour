@@ -1141,6 +1141,36 @@ test('applyImport merges flags and never removes one', () => {
   assert.equal(updateUnplaced[0], mine, 'an update that was not placed is not applied');
 });
 
+// (2026-11-16, ruling 18; the final review) An incoming flag the library already uses takes the library's spelling, for
+// an add as for an update or a flag item, so an import never leaves two spellings of one flag (FL12's rule).
+test('applyImport gives an incoming flag the library\'s spelling', () => {
+  const mine = local('SP-1000', { flags: ['OLIF outcomes'], labelFile: 'mine.label.json' });
+  const other = local('SP-1001', { fileName: 'other.png', flags: ['hardware'] });
+  const studies = [mine, other];
+  const facts = { studies, localHashes: { 'SP-1000': HASH_A }, localRecords: { 'SP-1000': localRecord(day(10)) } };
+
+  const add = planOf([entryFor('fresh', { hash: HASH_B, study: { flags: ['Hardware', 'new one'] } })], { studies });
+  assert.equal(add.add.length, 1);
+  assert.deepEqual(applyImport(studies, add).at(-1).flags, ['hardware', 'new one'], 'an add takes the library\'s spelling');
+
+  const update = planOf([entryFor('film', { hash: HASH_A, record: labelRecord(day(12)), study: { flags: ['HARDWARE', 'cement'] } })], facts);
+  assert.equal(update.update.length, 1);
+  assert.deepEqual(applyImport(studies, update)[0].flags, ['OLIF outcomes', 'hardware', 'cement'], 'an update too');
+
+  const flagItem = planOf([entryFor('film', { hash: HASH_A, record: labelRecord(day(3)), study: { flags: ['Hardware'] } })], facts);
+  assert.equal(flagItem.flag.length, 1);
+  assert.deepEqual(applyImport(studies, flagItem)[0].flags, ['OLIF outcomes', 'hardware'], 'and a flag item');
+
+  const fresh = planOf([entryFor('fresh', { hash: HASH_B, study: { flags: ['Cement'] } })], { studies });
+  assert.deepEqual(applyImport(studies, fresh).at(-1).flags, ['Cement'], 'no match: the bundle\'s spelling is kept');
+
+  const ownSpelling = [local('SP-1000', { flags: ['HARDWARE'], labelFile: 'mine.label.json' }), other,
+    local('SP-1002', { fileName: 'third.png', flags: ['hardware'] })];
+  const own = planOf([entryFor('film', { hash: HASH_A, record: labelRecord(day(3)), study: { flags: ['Hardware', 'cement'] } })],
+    { ...facts, studies: ownSpelling });
+  assert.deepEqual(applyImport(ownSpelling, own)[0].flags, ['HARDWARE', 'cement'], 'a local film keeps its own spelling');
+});
+
 test('importPromptText and importMessage name the flagged films only when there are some', () => {
   const tail = 'The films stay in this folder, so keep it where it is.';
   assert.equal(

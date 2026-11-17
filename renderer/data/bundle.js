@@ -10,7 +10,7 @@
 
 import { STORE_VERSION, nextId, validate } from './persistence.js';
 import { labelFileName, normalizeComment, recordFlags } from './label-record.js';
-import { cleanFlags, mergeFlags } from './flags.js';
+import { cleanFlags, mergeFlags, flagsInUse, librarySpelling } from './flags.js';
 import { fileStem, lastSegment, safeStem } from './labels.js';
 
 export const BUNDLE_SCHEMA = 'spinecontour.bundle/1';
@@ -347,18 +347,22 @@ const UPDATED_FIELDS = [
 // replaces the local one, as every other field in the list does.
 const namesView = view => typeof view === 'string' && view.trim() !== '';
 
-function updatedStudy(local, { labelFile, entry }) {
+// (2026-11-16, ruling 18; the final review) The entry's flags, each in the spelling the library already uses for it
+// (`inUse`: flagsInUse over the library as it was before the import), else the bundle's.
+const incomingFlags = (entry, inUse) => flagsOf(entry.study, entry.record).map(flag => librarySpelling(flag, inUse));
+
+function updatedStudy(local, { labelFile, entry }, inUse) {
   const patch = Object.fromEntries(UPDATED_FIELDS.map(field => [field, entry.study[field]]));
   if (!namesView(patch.view)) patch.view = local.view;
-  const flags = mergeFlags(local.flags, flagsOf(entry.study, entry.record));
+  const flags = mergeFlags(local.flags, incomingFlags(entry, inUse));
   return { ...local, ...patch, labelComment: commentOf(entry.study, entry.record), labelFile, flags };
 }
 
-function addedStudy({ id, labelFile, entry }) {
+function addedStudy({ id, labelFile, entry }, inUse) {
   // The bundle's record with the new id, the film in the bundle (none when it was not exported) and the label name its
   // record was written under; addedAt and everything else is the bundle's.
   return { ...entry.study, id, filePath: entry.filmPath ?? null, labelFile, labelComment: commentOf(entry.study, entry.record),
-    flags: flagsOf(entry.study, entry.record) };
+    flags: cleanFlags(incomingFlags(entry, inUse)) };
 }
 
 /**
@@ -366,20 +370,23 @@ function addedStudy({ id, labelFile, entry }) {
  * (§5.6), as new objects; a study the plan does not touch keeps its reference. `placedIds` are the ids placeImport
  * reported placed (PB5); an action that was not placed is not applied. Every add and update by default. A `flag` item
  * (FL22) patches only the film's `flags`, the local list then the bundle's new ones, and needs no placement. No local
- * flag is removed by an update or a flag item.
+ * flag is removed by an update or a flag item. (2026-11-16, ruling 18) An incoming flag that matches one in use in the
+ * library before the import takes the library's spelling, for an add as for an update or a flag item; a local film's
+ * own spelling still wins for that film (mergeFlags keeps the local list's).
  */
 export function applyImport(studies, plan, placedIds) {
   const placed = placedIds == null ? null : new Set(placedIds);
   const wanted = item => placed === null || placed.has(item.id);
+  const inUse = flagsInUse(studies ?? []);
   const updates = new Map((plan?.update ?? []).filter(wanted).map(item => [item.id, item]));
   const flagItems = new Map((plan?.flag ?? []).map(item => [item.id, item]));
   const patched = (studies ?? []).map(study => {
-    if (updates.has(study?.id)) return updatedStudy(study, updates.get(study.id));
+    if (updates.has(study?.id)) return updatedStudy(study, updates.get(study.id), inUse);
     const item = flagItems.get(study?.id);
     return item === undefined ? study
-      : { ...study, flags: mergeFlags(study.flags, flagsOf(item.entry.study, item.entry.record)) };
+      : { ...study, flags: mergeFlags(study.flags, incomingFlags(item.entry, inUse)) };
   });
-  return [...patched, ...(plan?.add ?? []).filter(wanted).map(addedStudy)];
+  return [...patched, ...(plan?.add ?? []).filter(wanted).map(item => addedStudy(item, inUse))];
 }
 
 /** The line the import prompt shows (spec §5.5, ruling S16): what the plan does, and that the films stay in the folder. */
