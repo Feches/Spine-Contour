@@ -1454,11 +1454,157 @@ try {
       Boolean(popN) && popN.inside === true && popN.leftOff <= 2 && popN.topOff <= 2, popN);
     await cdp.key('Escape');
     await cdp.settle(200);
+
+    // 19.10b (2026-11-16, the final review, M1) The sideways scroll survives a repaint: a tick, a commit of the flags
+    // editor and a tick in the FLAGS menu each rebuild the table, which used to put scrollLeft back to 0. Every control is
+    // pressed where it already is (no scrollIntoView, which would itself move the scroll), and the tick goes through the
+    // store, since the row's box is off-screen at the right-hand end. The menu and the list are placed against the
+    // scrolled cells.
+    const scrollNow = () => cdp.evaluate(`document.querySelector('.studies-table')?.scrollLeft ?? null`);
+    await cdp.evaluate(`(() => { const t = document.querySelector('.studies-table'); t.scrollLeft = t.scrollWidth; })()`);
+    await cdp.settle(150);
+    const scroll0 = await scrollNow();
+    await cdp.setState(`{ paramSelected: ["${FA}"] }`);
+    await cdp.settle(250);
+    const scrollTick = await scrollNow();
+    check('(M1) at the right-hand end of the narrow table, a tick repaints the list and the sideways scroll stays where it was',
+      scroll0 > 0 && Math.abs(scrollTick - scroll0) <= 1.5, { scroll0, scrollTick });
+    await cdp.setState('{ paramSelected: [] }');
+    await cdp.settle(200);
+    const cellFC = await cdp.rect(`[data-find-key="flags-${FC}"]`);
+    if (cellFC) await cdp.click(cellFC.cx, cellFC.cy);
+    await cdp.settle(250);
+    const scrollOpen = await scrollNow();
+    const popScrolled = await cdp.evaluate(`(() => {
+      const popup = document.querySelector('.flag-popup'); const cell = document.querySelector('.studies-flags-editing');
+      if (!popup || !cell) return null;
+      const p = popup.getBoundingClientRect(); const c = cell.getBoundingClientRect(); const host = document.querySelector('.studies-table-host').getBoundingClientRect();
+      const wanted = Math.max(host.left, Math.min(c.left, host.right - p.width));
+      return { leftOff: Math.abs(p.left - wanted), topOff: Math.abs(p.top - (c.bottom + 4)), cellVisible: c.right <= host.right + 1 && c.left >= host.left - 1 };
+    })()`);
+    check('(M1) one click on a FLAGS cell at the scrolled end opens its editor without moving the scroll, its list under the cell',
+      Boolean(cellFC) && Math.abs(scrollOpen - scroll0) <= 1.5 && Boolean(popScrolled) && popScrolled.leftOff <= 2 && popScrolled.topOff <= 2, { scrollOpen, scroll0, popScrolled });
+    await cdp.typeText('scrollflag,');
+    await cdp.settle(200);
+    await cdp.key('Enter');
+    await cdp.settle(300);
+    const scrollCommit = await scrollNow();
+    check('(M1) committing the editor (Enter in the empty box) saves the flag and the sideways scroll stays where it was',
+      (await flagsOf(FC)).includes('scrollflag') && Math.abs(scrollCommit - scroll0) <= 1.5, { scrollCommit, scroll0, flags: await flagsOf(FC) });
+    const funnelFlags = await cdp.rect('[data-find-key="filter-flags"]');
+    if (funnelFlags) await cdp.click(funnelFlags.cx, funnelFlags.cy);
+    await cdp.settle(250);
+    const menuScrolled = await cdp.evaluate(`(() => {
+      const menu = document.querySelector('.studies-filter-menu'); const th = document.querySelector('[data-find-key="filter-flags"]')?.closest('.studies-th');
+      if (!menu || !th) return null;
+      const host = document.querySelector('.studies-table-host').getBoundingClientRect(); const m = menu.getBoundingClientRect(); const t = th.getBoundingClientRect();
+      const wanted = Math.max(host.left, Math.min(t.left, host.right - m.width));
+      return { leftOff: Math.abs(m.left - wanted), inside: m.left >= host.left - 0.5 && m.right <= host.right + 0.5,
+        overHeader: m.left <= t.left + 2 && m.right >= t.left, menu: [m.left, m.right], th: [t.left, t.right], host: [host.left, host.right] };
+    })()`);
+    // The menu opens from its header cell, kept inside the host (at the right-hand end it is clamped to the host's right
+    // edge), so it overlaps the cell's left edge. Not compared to the pixel: opening the menu can add or remove the page's
+    // vertical scrollbar after the menu is placed, which narrows or widens the table by the scrollbar's width and clamps
+    // its scroll (seen on 2026-11-16: 15 px, the scroll going from 46.7 to 31.3 at its new maximum).
+    check('(M1) the FLAGS menu opened at the scrolled end opens from its own header cell, inside the host, and the table stays scrolled to its end',
+      Boolean(menuScrolled) && menuScrolled.overHeader && menuScrolled.inside
+      && (await cdp.evaluate(`(() => { const t = document.querySelector('.studies-table'); return t.scrollLeft > 0 && Math.abs(t.scrollLeft - (t.scrollWidth - t.clientWidth)) <= 1.5; })()`)),
+      { menuScrolled, scroll: await scrollNow() });
+    const tickRect = await cdp.rect('label:has(> [data-find-key="filter-flags-scrollflag"])');
+    const scrollBeforeTick = await scrollNow();
+    if (tickRect) await cdp.click(tickRect.cx, tickRect.cy);
+    await cdp.settle(300);
+    const scrollMenuTick = await scrollNow();
+    check('(M1) a tick in the FLAGS menu filters the list and the sideways scroll stays where it was',
+      Boolean(tickRect) && same((await cdp.state()).findFilters.flags, ['scrollflag']) && scrollBeforeTick > 0 && Math.abs(scrollMenuTick - scrollBeforeTick) <= 1.5,
+      { scrollMenuTick, scrollBeforeTick, scroll0, flags: (await cdp.state()).findFilters.flags });
+    await cdp.key('Escape');
+    await cdp.settle(150);
+    await cdp.setState(`{ findFilters: ${FLAG_RESET} }`);
+    await cdp.settle(200);
   } finally {
     await cdp.send('Emulation.clearDeviceMetricsOverride');
     await cdp.setState('{ navCollapsed: false }');
     await cdp.settle(300);
   }
+
+  // 19.11 (2026-11-16, the final review: I2, M3 with ruling 6 as amended, M2) A row's editor says why it refuses text that
+  // cannot be a flag, keeps a refused piece in the box, adds typed text on Enter when nothing is highlighted, and keeps
+  // the highlighted suggestion in view when the arrows walk a long list.
+  await resetFlagsView();
+  await putFlags({ [FA]: [], [FB]: [], [FC]: [] });
+  await cdp.settle(250);
+  const LONG = 'p'.repeat(41);
+  const hintNow = () => cdp.evaluate(`(() => { const h = document.querySelector('.flag-popup .flag-popup-hint'); return h ? { text: h.textContent, refused: h.classList.contains('is-refused'), colour: getComputedStyle(h).color } : null; })()`);
+  await openFlags(FB);
+  const plainHint = await hintNow();
+  check('(I2) an empty box\'s hint reads ENTER ADDS · ESC CANCELS', Boolean(plainHint) && plainHint.text === 'ENTER ADDS · ESC CANCELS' && plainHint.refused === false, plainHint);
+  await cdp.typeText(LONG);
+  await cdp.settle(200);
+  const longHint = await hintNow();
+  const long11 = await editorNow(FB);
+  check('(I2) 41 characters in a row\'s box: the hint reads 40 CHARACTERS AT MOST, in another colour than the plain hint, and nothing is offered',
+    Boolean(longHint) && longHint.text === '40 CHARACTERS AT MOST' && longHint.refused === true && longHint.colour !== plainHint?.colour && same(long11.options, []) && long11.value === LONG, { longHint, long11 });
+  await cdp.key('Enter');
+  await cdp.settle(200);
+  const enterLong = await editorNow(FB);
+  check('(I2) Enter on the refused text adds nothing and leaves it in the box', enterLong.open && same(enterLong.chips, []) && enterLong.value === LONG, enterLong);
+  await cdp.typeText(',');
+  await cdp.settle(200);
+  const commaLong = await editorNow(FB);
+  check('(I2) a comma after it does not discard it: the refused text stays in the box, with the hint', commaLong.open && same(commaLong.chips, []) && commaLong.value === LONG && (await hintNow())?.text === '40 CHARACTERS AT MOST', { commaLong, hint: await hintNow() });
+  await cdp.key('Escape');
+  await cdp.settle(200);
+  await openFlags(FB);
+  await cdp.typeText(`goodflag, ${LONG}`);
+  await cdp.settle(200);
+  const pasted11 = await editorNow(FB);
+  check('(I2) pasting "goodflag, <41 characters>": the flag becomes a chip and the refused piece stays in the box with the hint',
+    pasted11.open && same(pasted11.chips, ['goodflag']) && pasted11.value === LONG && (await hintNow())?.text === '40 CHARACTERS AT MOST', { pasted11, hint: await hintNow() });
+  await cdp.key('Tab');
+  await cdp.settle(250);
+  check('(I2) leaving the box saves the draft without the refused text and closes the editor', same(await flagsOf(FB), ['goodflag']) && (await editorsAll()).editors === 0, { flags: await flagsOf(FB) });
+  await openFlags(FB);
+  await cdp.typeText('typedone');
+  await cdp.settle(200);
+  await cdp.key('ArrowUp');
+  await cdp.settle(200);
+  const none11 = await editorNow(FB);
+  await cdp.key('Enter');
+  await cdp.settle(200);
+  const typed11 = await editorNow(FB);
+  check('(ruling 6 amended) Enter with text and nothing highlighted adds the typed text and empties the box, the editor still open',
+    same(none11.highlighted, []) && typed11.open && same(typed11.chips, ['goodflag', 'typedone']) && typed11.value === '' && typed11.focused === true, { none11, typed11 });
+  await cdp.typeText('GOODFLAG');
+  await cdp.settle(200);
+  await cdp.key('Enter');
+  await cdp.settle(200);
+  const held11 = await editorNow(FB);
+  check('(ruling 6 amended) Enter on text naming a flag the film already holds does nothing', held11.open && same(held11.chips, ['goodflag', 'typedone']) && held11.value === 'GOODFLAG', held11);
+  await cdp.key('Escape');
+  await cdp.settle(200);
+  // More than eight flags in use: ArrowDown to the last suggestion leaves it inside the list's visible box, and only the
+  // list scrolls (the page and the table stay put).
+  const many = Array.from({ length: 12 }, (_, i) => `f${String(i + 1).padStart(2, '0')}`);
+  await putFlags({ [FA]: many, [FB]: [], [FC]: [] });
+  await cdp.settle(250);
+  await openFlags(FB);
+  const pageScroll = () => cdp.evaluate(`({ page: document.querySelector('.studies-page')?.scrollTop ?? null, win: window.scrollY, table: document.querySelector('.studies-table')?.scrollLeft ?? null })`);
+  const before11 = await pageScroll();
+  for (let i = 0; i < many.length; i += 1) { await cdp.key('ArrowDown'); await cdp.settle(60); }
+  await cdp.settle(150);
+  const walk11 = await cdp.evaluate(`(() => {
+    const list = document.querySelector('.flag-popup .flag-popup-options'); const active = list?.querySelector('.flag-option.is-active');
+    if (!list || !active) return null;
+    const l = list.getBoundingClientRect(); const a = active.getBoundingClientRect();
+    return { options: list.querySelectorAll('.flag-option').length, text: active.textContent, inside: a.top >= l.top - 0.5 && a.bottom <= l.bottom + 0.5, scrollTop: list.scrollTop, overflows: list.scrollHeight > list.clientHeight };
+  })()`);
+  const after11 = await pageScroll();
+  check('(M2) with twelve flags in use, ArrowDown to the last suggestion leaves it inside the list\'s visible box (the list scrolled)',
+    Boolean(walk11) && walk11.options === 12 && walk11.text === 'f12' && walk11.overflows === true && walk11.inside === true && walk11.scrollTop > 0, walk11);
+  check('(M2) and neither the page nor the table scrolled', same(before11, after11), { before11, after11 });
+  await cdp.key('Escape');
+  await cdp.settle(200);
 
   // Tidy: the throwaway films go, so a later suite on this profile does not meet them.
   await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ query: '', studies: s.studies.filter((x) => !['${FA}', '${FB}', '${FC}'].includes(x.id)) })))`);
@@ -1852,6 +1998,170 @@ try {
     stillOpen13 === true && same(refused13.stored, [['cement'], [], []]) && refused13.toast === 'Wait for the delete to finish.'
     && refused13.list !== null && refused13.list.boxes.cement.checked === false && refused13.list.boxes.cement.indeterminate === true && refused13.list.boxes.cement.count === '1 of 3', { stillOpen13, refused13 });
   await closeList();
+
+  // 20.14 (2026-11-16, the final review: I2, T8) The list's box says why it refuses text that cannot be a flag, and Enter
+  // on the name of a flag in use puts that flag, in the library's spelling, on every film the list acts on.
+  await bulkView();
+  await putFlags({ [BA]: [], [BB]: [], [BC]: [], [BD]: [], [BE]: ['Hardware'] });
+  await tick([BA, BB, BC]);
+  await cdp.settle(250);
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  const bulkProblem = () => cdp.evaluate(`(() => { const h = document.querySelector('.studies-bulk-flags .studies-bulk-problem'); return h ? { text: h.textContent, refused: h.classList.contains('is-refused') } : null; })()`);
+  const noProblem14 = await bulkProblem();
+  await cdp.typeText('q'.repeat(41));
+  await cdp.settle(200);
+  const problem14 = await bulkProblem();
+  check('(I2) 41 characters in the list\'s box: the line under it reads 40 CHARACTERS AT MOST (and nothing did before)',
+    noProblem14 === null && Boolean(problem14) && problem14.text === '40 CHARACTERS AT MOST' && problem14.refused === true, { noProblem14, problem14 });
+  await cdp.evaluate(`document.querySelector('[data-find-key="bulk-flag-input"]').select()`);
+  await cdp.typeText('HARDWARE');
+  await cdp.settle(200);
+  const typed14 = await listNow();
+  check('(T8) typing the name of a flag in use clears the refusal and offers no Create', (await bulkProblem()) === null && Boolean(typed14) && typed14.create === null && typed14.input === 'HARDWARE', typed14);
+  await cdp.key('Enter');
+  await cdp.settle(300);
+  const enter14 = { stored: [await flagsOf(BA), await flagsOf(BB), await flagsOf(BC), await flagsOf(BD)], list: await listNow() };
+  check('(T8) Enter on it puts "Hardware", the library\'s spelling, on the three ticked films and not the fourth; the box clears and the list stays open',
+    same(enter14.stored, [['Hardware'], ['Hardware'], ['Hardware'], []]) && enter14.list !== null && enter14.list.input === '' && enter14.list.boxes.hardware?.count === 'all 3', enter14);
+
+  // 20.15 (T8) One popup at a time by keyboard: a funnel opened with Enter while the list is open closes the list, and
+  // the Flag button opened with Enter while a menu is open closes the menu.
+  const popups = () => cdp.evaluate(`({ menus: document.querySelectorAll('.studies-filter-menu').length, lists: document.querySelectorAll('.studies-bulk-flags').length, active: document.activeElement?.getAttribute('data-find-key') ?? null })`);
+  await cdp.evaluate(`document.querySelector('[data-find-key="filter-flags"]').focus()`);
+  await cdp.key('Enter', { typed: true });
+  await cdp.settle(300);
+  const menuOverList = await popups();
+  check('(T8) with the list open, Enter on a focused funnel opens its menu and closes the list: one popup', menuOverList.menus === 1 && menuOverList.lists === 0, menuOverList);
+  await cdp.key('Escape');
+  await cdp.settle(250);
+  const afterEsc15 = await popups();
+  check('(T8) one Escape then closes the menu and focus lands on its funnel', afterEsc15.menus === 0 && afterEsc15.lists === 0 && afterEsc15.active === 'filter-flags', afterEsc15);
+  await cdp.key('Enter', { typed: true });
+  await cdp.settle(250);
+  await cdp.evaluate(`document.querySelector('[data-find-key="flag-selected"]').focus()`);
+  await cdp.key('Enter', { typed: true });
+  await cdp.settle(300);
+  const listOverMenu = await popups();
+  check('(T8) with a menu open, Enter on the focused Flag button opens the list and closes the menu: one popup', listOverMenu.menus === 0 && listOverMenu.lists === 1, listOverMenu);
+  await closeList();
+
+  // 20.16 (M4) The list closed by a press on a bar button, with another store notification landing between the press and
+  // its release: the button's click still acts. Delete is pressed (its click opens the bar's prompt) and a toast is
+  // written between mousedown and mouseup.
+  await bulkView();
+  await tick([BA, BB]);
+  await cdp.settle(250);
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  const delRect = await cdp.rect('[data-find-key="delete"]');
+  const opened16 = await listOpen();
+  if (delRect) {
+    await cdp.mouse('mouseMoved', delRect.cx, delRect.cy);
+    await cdp.mouse('mousePressed', delRect.cx, delRect.cy, { button: 'left', buttons: 1, clickCount: 1 });
+    await cdp.setState('{ toast: "a notification between press and release" }');
+    await cdp.mouse('mouseReleased', delRect.cx, delRect.cy, { button: 'left', buttons: 0, clickCount: 1 });
+  }
+  await cdp.settle(300);
+  const after16 = { list: await listOpen(), prompt: await cdp.evaluate(`Boolean(document.querySelector('[data-find-key="delete-cancel"]'))`) };
+  check('(M4) a press on Delete closes the open list, and with a notification between press and release its click still opens the Delete prompt',
+    opened16 === true && Boolean(delRect) && after16.list === false && after16.prompt === true, { opened16, delRect: Boolean(delRect), after16 });
+  if (after16.prompt) { await clickAt('[data-find-key="delete-cancel"]'); await cdp.settle(200); }
+  await cdp.setState('{ toast: null }');
+
+  // 20.17 (I1) The record lock works both ways. 150 throwaway films, each with a label record seeded in the scratch
+  // profile, are flagged through the list (trusted Enter); an export started at once, while the flag updates are still
+  // walking the films, carries the new flag in every bundled record. A second change, then a row deleted at once: no
+  // label file is left for it. Each operation's start is probed for writes still in flight (level-editor.js
+  // recordWritesSettled not yet resolved), which is what makes the check mean anything.
+  const SYNC_N = 150;   // enough films that their record writes outlast the clicks that start the export and the delete
+  const SYNC_IDS = Array.from({ length: SYNC_N }, (_, i) => `SP-${8601 + i}`);
+  const syncName = (i) => `zzsync-${String(i + 1).padStart(3, '0')}`;
+  const SYNC_SAVED_AT = '2026-02-03T04:05:06.789Z';
+  const EXPORT_PARENT = path.join(os.tmpdir(), 'spine-contour-smoke-a1-export');
+  fs.rmSync(EXPORT_PARENT, { recursive: true, force: true });
+  fs.mkdirSync(EXPORT_PARENT, { recursive: true });
+  await cdp.evaluate(`(async () => {
+    const ids = ${JSON.stringify(SYNC_IDS)};
+    const names = ids.map((_, i) => 'zzsync-' + String(i + 1).padStart(3, '0'));
+    for (const name of names) {
+      await window.spineContour.saveLabelRecord(name + '.label.json', { version: 1, saved_at: ${JSON.stringify(SYNC_SAVED_AT)}, app_version: '0.0.0-smoke', comment: 'smoke', flags: [], levels: {} });
+    }
+    const store = await import('./renderer/store.js');
+    const now = new Date().toISOString();
+    const records = ids.map((id, i) => ({ id, source: 'real', filePath: null, fileName: names[i] + '.png', name: null, workspaceFolder: null, subjectId: null, timepoint: null, filmDate: null, addedAt: now, view: 'Standing lateral', thumbnail: null, measurements: null, geometry: null, qc: null, clinical: {}, flags: [], labelFile: names[i] + '.label.json' }));
+    store.setState((s) => ({ studies: [...records, ...s.studies.filter((x) => !ids.includes(x.id))] }));
+  })()`);
+  await cdp.setState(`{ screen: "studies", openId: null, query: "zzsync", paramFilters: ${FILTERS_RESET}, findFilters: ${FLAG_RESET}, paramSelected: ${JSON.stringify(SYNC_IDS)}, findSort: { key: "study", dir: "asc" }, navCollapsed: false }`);
+  await cdp.settle(400);
+  check(`(I1) setup: ${SYNC_N} throwaway films with a label record each, all ticked and shown`, (await rowIds()).length === SYNC_N && fs.existsSync(path.join(LABEL_DIR, `${syncName(SYNC_N - 1)}.label.json`)), (await rowIds()).length);
+  await clickAt('[data-find-key="flag-selected"]');
+  await cdp.settle(250);
+  await cdp.typeText('synced');
+  await cdp.settle(150);
+  // The in-flight probe: recordWritesSettled raced against one timer turn.
+  const PROBE = `const lvl = await import('./renderer/level-editor.js'); let settled = false; lvl.recordWritesSettled().then(() => { settled = true; }); await new Promise((r) => setTimeout(r, 0)); const inFlight = !settled;`;
+  await cdp.key('Enter');
+  const exportStart = await cdp.evaluate(`(async () => {
+    ${PROBE}
+    const screen = await import('./renderer/screens/studies.js');
+    window.__a1Export = screen.exportBundleTo(${JSON.stringify(EXPORT_PARENT)});
+    return { inFlight };
+  })()`);
+  await cdp.evaluate('window.__a1Export');
+  await cdp.settle(300);
+  const bundleRecords = (() => {
+    const found = [];
+    const walk = (dir) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) walk(p); else if (/^zzsync-\d+\.label\.json$/.test(e.name)) found.push(p); } };
+    try { walk(EXPORT_PARENT); } catch { /* none */ }
+    return found.map((p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } });
+  })();
+  check('(I1) precondition: the export started while the flag updates were still writing label records', exportStart?.inFlight === true, exportStart);
+  check(`(I1) an export started at once after a bulk flag change: all ${SYNC_N} bundled records carry the new flag, saved_at untouched`,
+    bundleRecords.length === SYNC_N && bundleRecords.every((r) => r && Array.isArray(r.flags) && r.flags.includes('synced') && r.saved_at === SYNC_SAVED_AT),
+    { count: bundleRecords.length, without: bundleRecords.filter((r) => !r?.flags?.includes('synced')).length });
+  await closeList();
+  // The second change, then the film whose record the updates reach FIRST (the first of them in library order: its record is
+  // read while the delete starts, the interleaving the review reproduced with a stub) is deleted at once.
+  const deletedId = SYNC_IDS[0];
+  // The row's own trash button (trusted) shows its prompt; then, in one page call, the second change goes through the same
+  // writer the bar uses (setStudyFlags, which starts the record writes and repaints the row with its prompt still up) and the
+  // prompt's confirm button is pressed straight after, so the delete starts while the writes are certainly in flight. A
+  // trusted click on the confirm button came too late in one of two runs (the writes for 150 films had ended).
+  const trash = await cdp.evaluate(`(() => { const e = document.querySelector('[data-find-key="row-delete-${deletedId}"]'); if (!e) return null; e.scrollIntoView({ block: 'nearest', inline: 'nearest' }); const r = e.getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 }; })()`);
+  if (trash) await cdp.click(trash.cx, trash.cy);
+  await cdp.settle(200);
+  const deleteStart = await cdp.evaluate(`(async () => {
+    const flags = await import('./renderer/study-flags.js');
+    const store = await import('./renderer/store.js');
+    const lvl = await import('./renderer/level-editor.js');
+    const changes = store.getState().studies.filter((x) => ${JSON.stringify(SYNC_IDS)}.includes(x.id)).map((x) => ({ id: x.id, flags: [...(x.flags || []), 'synced2'] }));
+    window.__a1Set = flags.setStudyFlags(changes);
+    let settled = false; lvl.recordWritesSettled().then(() => { settled = true; });
+    const confirm = document.querySelector('.studies-row[data-study-id="${deletedId}"] .studies-delete-confirm');
+    if (confirm) confirm.click();
+    await Promise.resolve();
+    return { inFlight: !settled, confirm: Boolean(confirm) };
+  })()`);
+  const confirmRect = deleteStart?.confirm;
+  await cdp.evaluate('window.__a1Set');
+  let gone17 = false;
+  for (let i = 0; i < 40 && !gone17; i += 1) {
+    await cdp.settle(150);
+    gone17 = !(await cdp.evaluate(`import('./renderer/store.js').then((m) => m.getState().studies.some((x) => x.id === '${deletedId}'))`));
+  }
+  await cdp.evaluate(`import('./renderer/level-editor.js').then((m) => m.recordWritesSettled())`);
+  await cdp.settle(500);
+  const deletedFile = path.join(LABEL_DIR, `${syncName(0)}.label.json`);
+  const others17 = SYNC_IDS.slice(1).map((_, i) => { try { return JSON.parse(fs.readFileSync(path.join(LABEL_DIR, `${syncName(i + 1)}.label.json`), 'utf8')); } catch { return null; } });
+  check('(I1) precondition: the delete was confirmed while the flag updates were still writing label records', Boolean(trash) && Boolean(confirmRect) && deleteStart?.inFlight === true, { trash: Boolean(trash), confirm: Boolean(confirmRect), deleteStart });
+  check('(I1) a film deleted at once after a bulk flag change leaves no label file behind', gone17 === true && !fs.existsSync(deletedFile), { gone17, exists: fs.existsSync(deletedFile) });
+  check('(I1) and every other record carries the second flag, saved_at untouched',
+    others17.every((r) => r && r.flags.includes('synced2') && r.saved_at === SYNC_SAVED_AT), others17.filter((r) => !r?.flags?.includes('synced2')).length);
+  await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ paramSelected: [], studies: s.studies.filter((x) => !${JSON.stringify(SYNC_IDS)}.includes(x.id)) })))`);
+  for (let i = 0; i < SYNC_N; i += 1) { try { fs.rmSync(path.join(LABEL_DIR, `${syncName(i)}.label.json`), { force: true }); } catch { /* scratch */ } }
+  fs.rmSync(EXPORT_PARENT, { recursive: true, force: true });
+  await cdp.setState('{ toast: null }');
 
   // Tidy: the throwaway films and the record go.
   await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ query: '', paramSelected: [], studies: s.studies.filter((x) => !${JSON.stringify([BA, BB, BC, BD, BE, BF])}.includes(x.id)) })))`);

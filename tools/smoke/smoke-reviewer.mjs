@@ -163,6 +163,10 @@ try {
 
   // 1. The scroll fix. The hidden tick inputs used to escape the list's clipping and make the document scrollable to the
   // last row's depth; ticking a row near the bottom then scrolled the app shell off the window.
+  // (2026-11-16, the final review, M1) The table now keeps its sideways scroll across repaints, so a suite run before this
+  // one on the same launch (smoke-studies.mjs presses the FLAGS cells at the right-hand end) can leave it scrolled right,
+  // with the tick boxes clipped off its left edge. Back to the start, as a person would scroll to reach the boxes.
+  await cdp.evaluate(`(() => { const t = document.querySelector('.studies-table'); if (t) t.scrollLeft = 0; })()`);
   await scrollListTo('end');
   await cdp.settle(100);
   let sc = await scrolls();
@@ -946,6 +950,80 @@ try {
     check('7.9 Right from the film that left steps to the film the filter still shows', (await openId()) === FC, await openId());
     h = await header();
     check('7.9 whose position reads 1 / 1', h.position === '1 / 1', h);
+
+    // 7.10 (2026-11-16, the final review: I2, M3 with ruling 6 as amended, M2) The block's editor says why it refuses text
+    // that cannot be a flag and keeps a refused piece in the box; Enter adds typed text when nothing is highlighted; the
+    // arrows keep the highlighted suggestion inside the list's visible box.
+    const LONG10 = 'r'.repeat(41);
+    const hint10 = () => cdp.evaluate(`(() => { const h = document.querySelector('.analysis-flags .flag-popup-hint'); return h ? { text: h.textContent, refused: h.classList.contains('is-refused'), colour: getComputedStyle(h).color } : null; })()`);
+    await putFlags({ [FA]: [], [FB]: [], [FC]: [] });
+    check('7.10 the film opens', await openFilm(FB), await screenNow());
+    await openEditor();
+    const plain10 = await hint10();
+    await cdp.typeText(LONG10);
+    await cdp.settle(250);
+    const long10 = await hint10();
+    blk = await blockNow();
+    check('7.10 (I2) 41 characters in the box: the hint reads 40 CHARACTERS AT MOST in another colour, nothing is offered',
+      plain10?.text === 'ENTER ADDS · ESC CANCELS' && long10?.text === '40 CHARACTERS AT MOST' && long10.refused === true && long10.colour !== plain10.colour
+      && same(blk.options, []) && blk.input?.value === LONG10, { plain10, long10, options: blk.options });
+    await cdp.typeText(',');
+    await cdp.settle(250);
+    blk = await blockNow();
+    check('7.10 (I2) a comma after it keeps the refused text in the box, with the hint, and adds nothing',
+      blk.editors === 1 && same(blk.chips, []) && blk.input?.value === LONG10 && (await hint10())?.text === '40 CHARACTERS AT MOST', { blk, hint: await hint10() });
+    await cdp.key('Escape');
+    await cdp.settle(250);
+    await openEditor();
+    await cdp.typeText(`kept10, ${LONG10}`);
+    await cdp.settle(250);
+    blk = await blockNow();
+    check('7.10 (I2) pasting "kept10, <41 characters>" makes one chip and leaves the refused piece in the box',
+      same(blk.chips, ['kept10']) && blk.input?.value === LONG10, blk);
+    await cdp.key('Escape');
+    await cdp.settle(250);
+    await openEditor();
+    await cdp.typeText('typed10');
+    await cdp.settle(200);
+    await cdp.key('ArrowUp');
+    await cdp.settle(200);
+    const none10 = await blockNow();
+    await cdp.key('Enter');
+    await cdp.settle(250);
+    blk = await blockNow();
+    check('7.10 (ruling 6 amended) Enter with text and nothing highlighted adds the typed text, the editor still open and nothing written yet',
+      same(none10.highlighted, []) && blk.editors === 1 && same(blk.chips, ['typed10']) && blk.input?.value === '' && same(await flagsOf(FB), []), { none10: none10.highlighted, blk });
+    await cdp.typeText('TYPED10');
+    await cdp.settle(200);
+    await cdp.key('Enter');
+    await cdp.settle(250);
+    blk = await blockNow();
+    check('7.10 (ruling 6 amended) Enter on text naming a flag the film already holds does nothing', blk.editors === 1 && same(blk.chips, ['typed10']) && blk.input?.value === 'TYPED10', blk);
+    await cdp.key('Escape');
+    await cdp.settle(250);
+    const many10 = Array.from({ length: 12 }, (_, i) => `m${String(i + 1).padStart(2, '0')}`);
+    await putFlags({ [FA]: many10, [FB]: [] });
+    await cdp.settle(200);
+    await openEditor();
+    // Every scrolling ancestor of the block, and the window: none of them may move while the arrows walk the list.
+    const scrolls10 = () => cdp.evaluate(`(() => { const out = [window.scrollY]; for (let e = document.querySelector('.analysis-flags'); e; e = e.parentElement) out.push(e.scrollTop); return out; })()`);
+    const before10 = await scrolls10();
+    for (let i = 0; i < many10.length; i += 1) { await cdp.key('ArrowDown'); await cdp.settle(60); }
+    await cdp.settle(150);
+    const walk10 = await cdp.evaluate(`(() => {
+      const list = document.querySelector('.analysis-flags .flag-popup-options'); const active = list?.querySelector('.flag-option.is-active');
+      if (!list || !active) return null;
+      const l = list.getBoundingClientRect(); const a = active.getBoundingClientRect();
+      return { options: list.querySelectorAll('.flag-option').length, text: active.textContent, inside: a.top >= l.top - 0.5 && a.bottom <= l.bottom + 0.5, scrollTop: list.scrollTop, overflows: list.scrollHeight > list.clientHeight };
+    })()`);
+    const after10 = await scrolls10();
+    check('7.10 (M2) with twelve flags in use, ArrowDown to the last suggestion leaves it inside the list\'s visible box',
+      Boolean(walk10) && walk10.options === 12 && walk10.text === 'm12' && walk10.overflows === true && walk10.inside === true && walk10.scrollTop > 0, walk10);
+    check('7.10 (M2) and nothing else scrolled (the window and every ancestor of the block)', same(before10, after10), { before10, after10 });
+    await cdp.key('Escape');
+    await cdp.settle(250);
+    await putFlags({ [FA]: [] });
+
     check('7.9 no page errors in section 7', cdp.errors.length === errorsBefore7, cdp.errors.slice(errorsBefore7));
     await cdp.setState(`{ screen: "studies", openId: null, findFilters: ${NO_FILTERS}, findSort: { key: "date", dir: "desc" } }`);
     await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (x.flags?.length || x.labelComment ? { ...x, flags: [], labelComment: x.id === ${JSON.stringify(FB)} ? null : x.labelComment } : x)) })))`);

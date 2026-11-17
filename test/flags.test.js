@@ -54,6 +54,10 @@ test('mergeFlags keeps the local order and spelling and appends what is new', ()
   assert.deepEqual(mergeFlags(['Hardware', 'OLIF outcomes'], ['cement', 'hardware']), ['Hardware', 'OLIF outcomes', 'cement']);
   assert.deepEqual(mergeFlags(undefined, ['cement']), ['cement']);
   assert.deepEqual(mergeFlags(['cement'], undefined), ['cement']);
+  // (2026-11-16, the final review; Task 1's deferred minor, ruling 17) The cap: 19 local and 3 new keep 20, the local
+  // ones first.
+  const local = Array.from({ length: 19 }, (_, i) => `l${i}`);
+  assert.deepEqual(mergeFlags(local, ['n1', 'n2', 'n3']), [...local, 'n1']);
 });
 
 test('flagChoices offers the flags in use that fit, then Create', () => {

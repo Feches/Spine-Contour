@@ -1096,6 +1096,28 @@ What the harness cannot see: `confirmImport` of a flags-only plan sends nothing 
 the files it would have written are untouched and the toast carries no error. The native save dialog of the CSV exports and
 the narrow-window layout (checked at 1180px by a device-metrics override, not a real resize) are not driven by any suite.
 
+**The final fix wave (2026-11-16, the whole-branch review's findings).** New checks, each marked in its name with the
+finding it answers:
+
+- `smoke-studies.mjs` 19.10b (M1): at the 1180 px layout, scrolled to the right-hand end, a tick, a click on a FLAGS cell,
+  a commit and a tick in the FLAGS menu keep the table's `scrollLeft`, and the list and the menu open from their cells.
+  The menu is checked to open over its header cell, not to the pixel: opening it can add or remove the page's vertical
+  scrollbar after it is placed, which moves the table by the scrollbar's width (15 px seen once). 19.11 (I2, M3, M2): the
+  hint `40 CHARACTERS AT MOST` for 41 characters, a refused piece kept in the box, Enter with nothing highlighted adding
+  the typed text, Enter on a held flag doing nothing, and ArrowDown through twelve suggestions keeping the last inside the
+  list's visible box with nothing else scrolled. 20.14 (I2, T8): the bulk box's refusal line and Enter on a flag in use;
+  20.15 (T8): one popup at a time by keyboard; 20.16 (M4): Delete pressed while the list is open, a store notification
+  written between mousedown and mouseup, the click still opens the Delete prompt; 20.17 (I1): 150 throwaway films with
+  seeded label records, a bulk change through the list (trusted Enter) then an export at once (every bundled record carries
+  the flag), and a single-row delete: the trash pressed (trusted), then in one page call a second change through
+  `setStudyFlags` and the prompt's confirm button clicked, on the film whose record the updates reach first (no label file
+  left for it); each start probed for record writes still in flight (`recordWritesSettled` not yet resolved). A trusted
+  click on the confirm button came after the writes for 150 films had ended in one of two runs, hence the page call.
+- `smoke-reviewer.mjs` 7.10: the same hint, refused piece, Enter rule and arrow walk in the Analysis block.
+- `smoke-bundle.mjs` phase b's tail (ruling 18): the unsegmented film leaves B's library and A's bundle adds it back with
+  B's spelling of its flag; phase c (I1): a flag change and an import started in the same turn, the record written before
+  the import's plan.
+
 ## The flags scale probe (2026-11-16)
 
 `smoke-flags-scale.mjs` measures the study flags at 100 and 400 invented films (75% of them with a label record on disk in the

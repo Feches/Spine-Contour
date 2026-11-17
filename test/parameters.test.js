@@ -620,9 +620,15 @@ test('T4PA is a core column and T1S a cervical column; parameterValues fills eac
 const FLAG_FILMS = [
   ['A', ['OLIF outcomes', 'hardware']], ['B', ['OLIF outcomes']], ['C', ['Hardware', 'cement']], ['D', []], ['E', undefined],
 ].map(([id, flags], i) => study({
-  id, filePath: `${ROOT}\flags\${id}.png`, fileName: `${id}.png`, measurements: measurements(50 + i, 10, 40, 45),
+  // (2026-11-16, the final review) The backslashes escaped: `\f` was a form feed and `\$` an escaped `$`, so all five
+  // films shared one junk path.
+  id, filePath: `${ROOT}\\flags\\${id}.png`, fileName: `${id}.png`, measurements: measurements(50 + i, 10, 40, 45),
   ...(flags === undefined ? {} : { flags }),
 }));
+
+test('the flag fixtures each have their own path under the root', () => {
+  assert.deepEqual(FLAG_FILMS.map((s) => s.filePath), ['A', 'B', 'C', 'D', 'E'].map((id) => `C:\\films\\Fusion2025\\flags\\${id}.png`));
+});
 
 test('flagFilterOptions offers the flags in use, a chosen flag no film holds, then No flags', () => {
   assert.deepEqual(flagFilterOptions(FLAG_FILMS, null).map((o) => o.label), ['cement', 'hardware', 'OLIF outcomes', 'No flags']);

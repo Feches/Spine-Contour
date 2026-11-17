@@ -436,6 +436,20 @@ test('withRecordFlags changes flags and nothing else', () => {
   assert.deepEqual(Object.keys(old), ['schema', 'saved_at', 'flags', 'levels', 'femoral_heads']);
 });
 
+// (2026-11-16, the final review, M8) The commonest record on disk: one written by 1.2.0 to 1.7.0, with a comment and no
+// flags. The flags go directly after the comment and every other key keeps its place and its value.
+test('withRecordFlags puts flags directly after comment in a record that has a comment and no flags', () => {
+  const rec = record(setComment(lumbarEditor(), 'kept as is'));
+  const { flags: _flags, ...older } = rec;
+  const keys = Object.keys(older);
+  const next = withRecordFlags(older, ['cement']);
+  const at = keys.indexOf('comment');
+  assert.deepEqual(Object.keys(next), [...keys.slice(0, at + 1), 'flags', ...keys.slice(at + 1)]);
+  for (const key of keys) assert.deepEqual(next[key], older[key], key);
+  assert.deepEqual(next.flags, ['cement']);
+  assertValid(next);
+});
+
 // (2026-11-16, the final review, M5) A file that parses but is not an object is no record to put flags into: it comes
 // back as it went in, never thrown on, never turned into an object.
 test('withRecordFlags returns anything that is not a plain object unchanged', () => {

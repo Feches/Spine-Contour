@@ -590,6 +590,25 @@ async function phaseB() {
   fs.mkdirSync(OUT, { recursive: true });
   fs.writeFileSync(PATH_B, exported.bundle);
   check('b. the bundle\'s path is written to tools/smoke/out/bundle-path-b.txt for phase c', fs.readFileSync(PATH_B, 'utf8') === exported.bundle, exported.bundle);
+
+  // (2026-11-16, ruling 18; the final review) An imported flag takes the library's spelling, for a film the import ADDS.
+  // B's bundle for phase c is already written, so this changes nothing phase c reads. The unsegmented film leaves B's
+  // library (it has no sidecar and no record, so only the study goes) and the segmented one is given `UNSEG TAG`, B's
+  // spelling of A's `unseg tag`; A's bundle imported again then adds the unsegmented film back, with the library's
+  // spelling, and flags the segmented one with A's `olif outcomes` (local order and spelling first).
+  await findTab();
+  await setFlags([{ id: seg.id, flags: [...B_SEG_FLAGS, 'UNSEG TAG'] }]);
+  await ev(`import('./renderer/store.js').then((m) => { m.setState((s) => ({ studies: s.studies.filter((x) => x.id !== ${js(unseg.id)}) })); return true; })`);
+  const readd = await importFrom(bundle);
+  check(`b. (ruling 18) with the unsegmented film gone, A's bundle again is offered as "${promptText(bundle, 1, 0, 0, 1)}"`, readd.prompt === promptText(bundle, 1, 0, 0, 1), readd);
+  const readdToast = await confirm();
+  const readded = await studyOf(UNSEG_FILE);
+  const segNow = await studyOf(seg.id);
+  check('b. (ruling 18) the film the import adds takes the library\'s spelling "UNSEG TAG", not the bundle\'s "unseg tag"',
+    readdToast.length === 1 && readdToast[0].startsWith('Imported 1 study, updated 0, flagged 1') && js(readded?.flags) === js(['UNSEG TAG']),
+    { readdToast, flags: readded?.flags });
+  check('b. (ruling 18) and the film it flags keeps its own spelling and order, the new flag after them',
+    js(segNow?.flags) === js([...B_SEG_FLAGS, 'UNSEG TAG', 'olif outcomes']), segNow?.flags);
 }
 
 // ---------------------------------------------------------------------------
@@ -672,14 +691,33 @@ async function phaseC() {
   if (!exportedC.bundle) return;
   const LOCAL_SEG = ['Hardware', 'local only'];
   const LOCAL_UNSEG = ['UNSEG TAG'];
-  await setFlags([{ id: SEG, flags: LOCAL_SEG }, { id: UNSEG, flags: LOCAL_UNSEG }]);
-  await untilNode(() => js(readRecord(SEG_RECORD).flags) === js(LOCAL_SEG));
+  // (2026-11-16, the final review, I1) The flag change and the import start in the same turn: the import takes its lock and
+  // waits for the record write the change set going (recordWritesSettled) before it reads the local records for its plan.
+  // The record is read before the change (its flags are compared apart from every other field).
   const segRawBefore = rawRecord(SEG_RECORD);
   const segRecordBefore = readRecord(SEG_RECORD);
   const sidecarFile = path.join(PREDICTIONS, `${SEG}.json`);
   const sidecarBefore = fs.readFileSync(sidecarFile);
   const labelsBefore = fs.readdirSync(LABELS).sort();
-  const flagOnly = await importFrom(exportedC.bundle);
+  await findTab();
+  await clearToasts();
+  const raced = await ev(`(async () => {
+    const flags = await import('./renderer/study-flags.js');
+    const screen = await import('./renderer/screens/studies.js');
+    const lvl = await import('./renderer/level-editor.js');
+    const setting = flags.setStudyFlags(${js([{ id: SEG, flags: LOCAL_SEG }, { id: UNSEG, flags: LOCAL_UNSEG }])});
+    let settled = false;
+    lvl.recordWritesSettled().then(() => { settled = true; });
+    const importing = screen.importBundleFrom(${js(exportedC.bundle)});
+    const busyAtStart = (await import('./renderer/store.js')).getState().flagsBusy;
+    await importing;
+    const settledBeforeThePrompt = settled;
+    const set = await setting;
+    return { changed: set.changed, busyAtStart, settledBeforeThePrompt };
+  })()`);
+  const flagOnly = { prompt: await text(PROMPT_TEXT), focus: await focusedKey(), toasts: await toasts() };
+  check('c. (I1) a flag change and an import started in the same turn: the record write ends before the import has its plan, and the record holds the new flags',
+    js(raced.changed) === js([SEG, UNSEG]) && raced.busyAtStart === 'import' && raced.settledBeforeThePrompt === true && js(readRecord(SEG_RECORD).flags) === js(LOCAL_SEG), { raced, record: readRecord(SEG_RECORD).flags });
   check(`c. (flags) a bundle with nothing to add or update is offered: "${promptText(exportedC.bundle, 0, 0, 0, 2)}"`,
     flagOnly.prompt === promptText(exportedC.bundle, 0, 0, 0, 2) && flagOnly.focus === 'import-cancel', flagOnly);
   const flagToast = await confirm();
