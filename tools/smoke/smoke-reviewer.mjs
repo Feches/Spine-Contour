@@ -685,6 +685,10 @@ try {
   // trusted clicks and keys.
   {
     const errorsBefore7 = cdp.errors.length;
+    // The editor closes on blur, so the page must believe it has focus however the operating system's windows move during a long
+    // run: two runs in the documented order read 5 and 3 failures (the editor did not stay open) while the same section alone passed.
+    await cdp.send('Page.bringToFront');
+    await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {});
     const [FA, FB, FC] = [injectedId(10), injectedId(11), injectedId(12)];
     const SEG = 'SP-9000';
     const NO_FILTERS = '{ subject: "", region: [], view: [], workspace: [], folder: [], status: [], flags: [], flagsMatch: "any" }';
@@ -730,6 +734,8 @@ try {
     const openEditor = async () => { await clickSel('[data-flags-key="analysis-flags-add"]'); };
     const screenNow = async () => { const s = await cdp.state(); return { screen: s.screen, openId: s.openId }; };
 
+    await resetList();   // its own starting list: no search, sort, filter or tick left by an earlier section or suite
+    await cdp.settle(150);
     // 7.1 A real film with no flags shows the block on both tabs; the comment block below it is untouched.
     await putFlags({ [FA]: [], [FB]: ['bflag'], [FC]: [] });
     await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ studies: s.studies.map((x) => (x.id === ${JSON.stringify(FB)} ? { ...x, labelComment: 'Cage at L4-5, screws L4-S1.' } : x)) })))`);

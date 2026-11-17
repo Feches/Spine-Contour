@@ -1054,6 +1054,9 @@ try {
   // module. The window is resized (check 10) with the DevTools device-metrics override and put back in a finally.
   // ---------------------------------------------------------------------------------------------
   const errorsBefore19 = cdp.errors.length;
+  // What the list looked like when section 19 began, put back when section 20 ends (the sort, filters, search and ticks these
+  // sections change are the next suite's starting list when it runs on this launch).
+  const listBefore19 = await cdp.evaluate(`import('./renderer/store.js').then((m) => { const s = m.getState(); return { query: s.query, findSort: s.findSort, findFilters: s.findFilters, paramFilters: s.paramFilters, paramSelected: s.paramSelected, studiesTab: s.studiesTab, screen: s.screen, openId: s.openId }; })`);
   const FLAG_RESET = '{ subject: "", region: [], view: [], workspace: [], folder: [], status: [], flags: [], flagsMatch: "any" }';
   const [FA, FB, FC] = ['SP-9101', 'SP-9102', 'SP-9103'];
   for (const [id, fileName] of [[FA, 'zzflag-a.png'], [FB, 'zzflag-b.png'], [FC, 'zzflag-c.png']]) {
@@ -1852,6 +1855,7 @@ try {
 
   // Tidy: the throwaway films and the record go.
   await cdp.evaluate(`import('./renderer/store.js').then((m) => m.setState((s) => ({ query: '', paramSelected: [], studies: s.studies.filter((x) => !${JSON.stringify([BA, BB, BC, BD, BE, BF])}.includes(x.id)) })))`);
+  await cdp.setState(JSON.stringify(listBefore19));
   try { fs.rmSync(recPath, { force: true }); } catch { /* the profile is scratch */ }
   await cdp.settle(200);
   check('no console errors or exceptions during section 20', cdp.errors.length === errorsBefore20, cdp.errors.slice(errorsBefore20));

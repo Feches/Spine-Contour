@@ -1076,10 +1076,20 @@ section to six suites. Every check is a DOM, store or file read; no screenshot i
   toast is the sentence) and a direct `setStudyFlags` (changes nothing). After each operation the button, a cell and a
   flag edit work again; the Analysis screen's `+ Add flag` is read the same way (the screen opened in the same turn an
   export starts). Two harness changes: the export toast pattern accepts the `-2` suffix a second export in the same
-  minute takes, and `promptText` names `to flag` only when above 0. **The Analysis check "enabled again after that export
-  ends" fails on the product**: the button stays disabled with `Wait for the export to finish.` until the next store
-  change repaints the block (`renderer/screens/analysis.js`, `flagsKeyOf`, reads a lock that is not in the store, and
-  `setFlagsBusy(null)` in `renderer/screens/studies.js` repaints no screen but the Find list).
+  minute takes, and `promptText` names `to flag` only when above 0. The lock is store state (`flagsBusy`, `null | 'import' |
+  'export'`, commit d2700b3), so the suite also reads it: `'import'` while an import reads or places, `'export'` while an
+  export writes, `null` after each, after a prompt is cancelled and after a "nothing to import" result; the Analysis
+  `+ Add flag` is disabled with the import (or export) sentence when the screen opens in the same turn the operation starts,
+  and is enabled again when it ends with no other store change; and `flagsBusy` set through the store hook disables it at
+  once and clearing it enables it. Phase c is 36 checks (19, 21, 36 in all).
+
+Order and focus (2026-11-16): the documented single launch is `smoke-parameters.mjs`, `smoke-studies.mjs`, `smoke-reviewer.mjs`,
+in that order; each also passes alone on a fresh launch. Sections 19 and 20 of `smoke-studies.mjs` now put back the search, sort,
+filters, ticks, tab and screen they found (`listBefore19`), and section 7 of `smoke-reviewer.mjs` starts by resetting the list and
+turning on `Emulation.setFocusEmulationEnabled`: its flag editors close on blur, and two long runs in the documented order read
+5 and 3 failures (the editor did not stay open) when the operating system's focus moved away from the Electron window mid-run,
+while the same section passed alone and in later runs. No store state left by sections 19 and 20 explained it (the list was
+default but for the sort), so it was a focus flake, not a product fault.
 
 What the harness cannot see: `confirmImport` of a flags-only plan sends nothing to the main process (`plan.actions.length
 === 0`), but `window.spineContour` is non-configurable, so the missing `importBundle` call is not observed; the suite asserts

@@ -273,7 +273,7 @@ async function lockProbe(startCall, id) {
     const before = JSON.stringify(study().flags);
     store.setState({ toast: '' });
     const running = ${startCall};
-    const during = { refusal: flags.flagsRefusal() };
+    const during = { refusal: flags.flagsRefusal(), busy: store.getState().flagsBusy };
     const button = document.querySelector('[data-find-key="flag-selected"]');
     during.button = button ? { disabled: button.disabled, title: button.title } : null;
     const cell = document.querySelector('[data-find-key="flags-${id}"]');
@@ -286,9 +286,12 @@ async function lockProbe(startCall, id) {
     const set = await flags.setStudyFlags([{ id: ${js(id)}, flags: ['must not land'] }]);
     during.set = { changed: set.changed, toast: store.getState().toast, unchanged: JSON.stringify(study().flags) === before };
     await running;
+    during.busyAfter = store.getState().flagsBusy;
     return during;
   })()`);
 }
+
+const busyNow = () => ev(`import('./renderer/store.js').then((m) => m.getState().flagsBusy)`);
 
 // The Flag button and a FLAGS cell once an operation has ended: the button enabled with an empty title (a row ticked),
 // a click on the cell opening its editor, Escape closing it again.
@@ -715,6 +718,8 @@ async function phaseC() {
       && readingDuring.cellTitle === WAIT_IMPORT && readingDuring.cellOpened === false && readingDuring.cellToast === WAIT_IMPORT
       && readingDuring.set?.changed.length === 0 && readingDuring.set?.toast === WAIT_IMPORT && readingDuring.set?.unchanged === true,
     readingDuring);
+  check("c. (flags) the store's flagsBusy is 'import' while the import reads and null once it ends (a nothing-to-import result)",
+    readingDuring.busy === 'import' && readingDuring.busyAfter === null && (await busyNow()) === null, { during: readingDuring.busy, after: readingDuring.busyAfter });
   const afterReading = await lockReleased(UNSEG);
   check('c. (flags) after the reading import ends (nothing to import): the Flag button is enabled again and a FLAGS cell opens',
     afterReading.button?.disabled === false && afterReading.button?.title === '' && afterReading.cellOpened === true && afterReading.closed === true, afterReading);
@@ -730,6 +735,8 @@ async function phaseC() {
     placingDuring.refusal === WAIT_IMPORT && placingDuring.button?.disabled === true && placingDuring.button?.title === WAIT_IMPORT
       && placingDuring.cellOpened === false && placingDuring.cellToast === WAIT_IMPORT && placingDuring.set?.changed.length === 0 && placingDuring.set?.unchanged === true,
     placingDuring);
+  check("c. (flags) flagsBusy is 'import' while the confirmed import places and null once it ends",
+    placingDuring.busy === 'import' && placingDuring.busyAfter === null && (await busyNow()) === null, { during: placingDuring.busy, after: placingDuring.busyAfter });
   const afterPlacing = await lockReleased(UNSEG);
   check('c. (flags) after the placing import ends: the flags merged back, the Flag button is enabled and a FLAGS cell opens',
     afterPlacing.button?.disabled === false && afterPlacing.cellOpened === true && afterPlacing.closed === true
@@ -743,6 +750,8 @@ async function phaseC() {
       && exportingDuring.cellTitle === WAIT_EXPORT && exportingDuring.cellOpened === false && exportingDuring.cellToast === WAIT_EXPORT
       && exportingDuring.set?.changed.length === 0 && exportingDuring.set?.toast === WAIT_EXPORT && exportingDuring.set?.unchanged === true,
     exportingDuring);
+  check("c. (flags) flagsBusy is 'export' while the export writes and null once it ends",
+    exportingDuring.busy === 'export' && exportingDuring.busyAfter === null && (await busyNow()) === null, { during: exportingDuring.busy, after: exportingDuring.busyAfter });
   const afterExport = await lockReleased(UNSEG);
   check('c. (flags) after the export ends: the Flag button is enabled again and a FLAGS cell opens',
     afterExport.button?.disabled === false && afterExport.button?.title === '' && afterExport.cellOpened === true && afterExport.closed === true, afterExport);
@@ -773,6 +782,39 @@ async function phaseC() {
     analysisIdle && addIdle?.disabled === false && analysisDuring?.disabled === true && analysisDuring?.title === WAIT_EXPORT, { addIdle, analysisDuring });
   check("c. (flags) and the Analysis screen's + Add flag is enabled again after that export ends",
     addAfter?.disabled === false, { afterEnd: addAfter, afterTheNextStoreChange: addAfterRepaint });
+  // flagsBusy through a cancelled prompt: the import reads (busy), the prompt waits (not busy), Cancel leaves it null.
+  await setFlags([{ id: SEG, flags: ['Hardware'] }]);
+  await findTab();
+  const prompted = await importFrom(exportedC.bundle);
+  const busyAtPrompt = await busyNow();
+  await ev(`document.querySelector('[data-find-key="import-cancel"]')?.click()`);
+  await cdp.settle(150);
+  check('c. (flags) a prompt waiting for Import or Cancel holds no lock, and after Cancel flagsBusy is null and no prompt is left',
+    Boolean(prompted.prompt) && busyAtPrompt === null && (await busyNow()) === null && !(await present(PROMPT)), { prompted: Boolean(prompted.prompt), busyAtPrompt });
+  // The Analysis screen during an import: opened in the same turn the import starts, + Add flag is disabled with the import
+  // sentence and, once the import ends (nothing to import after the merge below), enabled again with no other store change.
+  const importAnalysis = await ev(`(async () => {
+    const screen = await import('./renderer/screens/studies.js');
+    const store = await import('./renderer/store.js');
+    const running = screen.importBundleFrom(${js(exportedC.bundle)});
+    store.setState({ screen: 'analysis', openId: ${js(UNSEG)} });
+    const b = document.querySelector('[data-flags-key="analysis-flags-add"]');
+    const during = { busy: store.getState().flagsBusy, button: b ? { disabled: b.disabled, title: b.title } : null };
+    await running;
+    const a = document.querySelector('[data-flags-key="analysis-flags-add"]');
+    during.after = { busy: store.getState().flagsBusy, button: a ? { disabled: a.disabled, title: a.title } : null };
+    return during;
+  })()`);
+  check(`c. (flags) the Analysis screen's + Add flag is disabled with "${WAIT_IMPORT}" while an import reads, and enabled again when it ends`,
+    importAnalysis.busy === 'import' && importAnalysis.button?.disabled === true && importAnalysis.button?.title === WAIT_IMPORT
+      && importAnalysis.after?.busy === null && importAnalysis.after?.button?.disabled === false, importAnalysis);
+  // Set through the store hook (the screens' reaction to the key itself, with no operation running).
+  await ev(`import('./renderer/store.js').then((m) => m.setState({ flagsBusy: 'import' }))`);
+  const hooked = await ev(`(() => { const b = document.querySelector('[data-flags-key="analysis-flags-add"]'); return b ? { disabled: b.disabled, title: b.title } : null; })()`);
+  await ev(`import('./renderer/store.js').then((m) => m.setState({ flagsBusy: null }))`);
+  const unhooked = await ev(`(() => { const b = document.querySelector('[data-flags-key="analysis-flags-add"]'); return b ? { disabled: b.disabled, title: b.title } : null; })()`);
+  check('c. (flags) setting flagsBusy in the store disables the Analysis + Add flag at once, and clearing it enables it again',
+    hooked?.disabled === true && hooked?.title === WAIT_IMPORT && unhooked?.disabled === false, { hooked, unhooked });
   await setStore(`{ screen: 'studies', studiesTab: 'find', openId: null, paramSelected: [] }`);
 }
 
